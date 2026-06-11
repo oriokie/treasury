@@ -7,7 +7,6 @@ swallowed — the checker never breaks a page.
 """
 import json
 import urllib.request
-from functools import lru_cache
 
 from django.conf import settings
 from core.version import get_version
@@ -23,27 +22,52 @@ def _parse(v):
     return tuple(parts + [0, 0, 0])[:3]
 
 
-@lru_cache(maxsize=1)
-def latest_release():
-    """Return dict(tag, url, body) of the latest GitHub release, or None."""
+_release_cache = {"at": 0.0, "value": None}
+_RELEASE_TTL = 600  # seconds — re-check GitHub at most every 10 minutes
+
+
+def latest_release(force=False):
+    """Return dict(tag, url, body) of the latest GitHub release, or None.
+
+    Result is cached for a few minutes (not forever) so the update banner can
+    appear without a process restart, while avoiding hammering the GitHub API.
+    Pass force=True to bypass the cache (used by the explicit "check now" button).
+
+    Authenticates with GITHUB_TOKEN if set, so private repositories work (the
+    unauthenticated API returns 404 for private repos). The token is read from
+    settings/env and never logged."""
+    import time
+    now = time.time()
+    if not force and _release_cache["value"] is not None \
+            and (now - _release_cache["at"]) < _RELEASE_TTL:
+        return _release_cache["value"]
+
     repo = getattr(settings, "GITHUB_REPO", "") or ""
     if not repo:
         return None
+    token = getattr(settings, "GITHUB_TOKEN", "") or ""
     url = f"https://api.github.com/repos/{repo}/releases/latest"
+    headers = {"Accept": "application/vnd.github+json",
+               "User-Agent": "treasury-updater"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json",
-                                                   "User-Agent": "treasury-updater"})
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=4) as r:
             data = json.loads(r.read().decode())
-        return {"tag": data.get("tag_name", ""), "url": data.get("html_url", ""),
-                "body": (data.get("body") or "")[:2000]}
+        result = {"tag": data.get("tag_name", ""), "url": data.get("html_url", ""),
+                  "body": (data.get("body") or "")[:2000]}
     except Exception:  # noqa: BLE001
-        return None
+        result = None
+    _release_cache["at"] = now
+    _release_cache["value"] = result
+    return result
 
 
-def update_available():
-    """(/bool, latest_tag, current) — whether a newer release exists on GitHub."""
-    rel = latest_release()
+def update_available(force=False):
+    """(bool, latest_tag, current) — whether a newer release exists on GitHub.
+    Pass force=True (the "check now" button) to bypass the time cache."""
+    rel = latest_release(force=force)
     cur = get_version()
     if not rel or not rel["tag"]:
         return False, None, cur

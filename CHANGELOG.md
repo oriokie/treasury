@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.0.4
+- Update checker now authenticates with an optional GITHUB_TOKEN, so it can read
+  releases from a PRIVATE GitHub repository (the unauthenticated API returns 404
+  for private repos).
+- Fixed: the release check was cached permanently per process, so a new release
+  was not noticed until the app restarted. It now re-checks at most every 10
+  minutes, and the update page forces a fresh check.
+
 ## v1.0.3
 - Import dedup now also matches on the M-Pesa receipt (mpesa_ref), catching a
   repeated payment even when one row has a core_ref and another does not.

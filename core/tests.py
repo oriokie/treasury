@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 # Create your tests here.
 
@@ -499,3 +499,41 @@ class ProductionReadinessTests(TestCase):
         fb = wb["Fund Balances"]
         totals = [row[0] for row in fb.iter_rows(values_only=True)]
         self.assertIn("TOTAL", totals)
+
+
+class GithubTokenAuthTests(TestCase):
+    """The release checker sends an Authorization header when GITHUB_TOKEN is
+    set (needed for private repos), and omits it when not."""
+
+    def _capture_headers(self):
+        import json
+        from unittest.mock import patch
+        from core.services import updates
+        captured = {}
+
+        class FakeResp:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def read(self):
+                return json.dumps({"tag_name": "v1.0.3", "html_url": "u",
+                                   "body": "n"}).encode()
+
+        def fake_urlopen(req, timeout=4):
+            captured["headers"] = dict(req.header_items())
+            return FakeResp()
+
+        updates._release_cache["value"] = None   # bypass the time cache in tests
+        with patch.object(updates.urllib.request, "urlopen", fake_urlopen):
+            rel = updates.latest_release(force=True)
+        return captured.get("headers", {}), rel
+
+    @override_settings(GITHUB_REPO="o/r", GITHUB_TOKEN="ghp_secret")
+    def test_token_adds_auth_header(self):
+        headers, rel = self._capture_headers()
+        self.assertEqual(rel["tag"], "v1.0.3")
+        self.assertEqual(headers.get("Authorization"), "Bearer ghp_secret")
+
+    @override_settings(GITHUB_REPO="o/r", GITHUB_TOKEN="")
+    def test_no_token_no_auth_header(self):
+        headers, rel = self._capture_headers()
+        self.assertNotIn("Authorization", headers)

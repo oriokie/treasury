@@ -38,6 +38,8 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.4": "Update checker supports private repos via GITHUB_TOKEN, and now "
+             "re-checks every 10 min instead of caching once per process.",
     "1.0.3": "Dedup also catches repeated M-Pesa receipts; cleanup command for "
              "existing duplicates; statement purge can unlink linked expenses.",
     "1.0.2": "Dedup keys normalised to uppercase so duplicate detection is exact "

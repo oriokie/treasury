@@ -712,7 +712,8 @@ class UpdateRunView(TreasurerRequiredMixin, View):
 
     def get(self, request):
         from core.services.updates import update_status, update_available
-        avail, tag, cur = update_available()
+        # visiting the update page = an explicit "check now", so bypass the cache
+        avail, tag, cur = update_available(force=True)
         return render(request, self.template_name, {
             "status": update_status(), "update_tag": tag,
             "current": cur, "available": avail})

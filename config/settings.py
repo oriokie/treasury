@@ -228,6 +228,13 @@ LOGOUT_REDIRECT_URL = "login"
 # --- App config -------------------------------------------------------------
 SITE_NAME = os.environ.get("SITE_NAME", "Church Treasury")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # e.g. "your-org/church-treasury"
+# Personal access token for the update checker to read releases from a PRIVATE
+# repo (an unauthenticated API request returns 404 for private repos). A
+# fine-grained token with read-only "Contents" permission is enough. Never
+# committed — set it in .env. Note: this authorises the release CHECK only; the
+# git pull during an update uses the local git remote's own credentials (SSH key
+# or a stored credential helper).
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 CHURCH_NAME = os.environ.get("CHURCH_NAME", "SDA Central Church")
 
 # Whether expenses must be approved before they affect fund balances.
