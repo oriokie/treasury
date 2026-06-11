@@ -12,8 +12,14 @@ openpyxl==3.1.5
 xlrd==2.0.2
 python-dateutil==2.9.0.post0
 
-# PostgreSQL driver (production). Uncomment to install:
+# Database drivers (production). Install the one matching your DB:
+#   PostgreSQL:
 # psycopg[binary]==3.2.3
+#   MySQL / MariaDB (recommended on cPanel/WHM):
+#   - mysqlclient is faster but needs a compiler + python3-devel + mariadb-devel
+# mysqlclient==2.2.4
+#   - PyMySQL is pure-Python (no compiler needed) — the easy choice on cPanel:
+# PyMySQL==1.1.1
 
 # Static file serving (production; no separate web server needed)
 whitenoise==6.8.2

@@ -10,6 +10,34 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _load_dotenv(path):
+    """Minimal, dependency-free .env reader.
+
+    Loads KEY=VALUE lines from a .env file into os.environ if not already set,
+    so the app works without exporting variables manually (and without the
+    fragile `export $(... | xargs)` trick, which breaks on spaces or #). Lines
+    starting with # are ignored; surrounding single/double quotes are stripped.
+    Existing environment variables always win, so a real export still overrides.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip()
+                if (len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'"):
+                    val = val[1:-1]
+                os.environ.setdefault(key, val)
+    except OSError:
+        pass
+
+
+_load_dotenv(BASE_DIR / ".env")
+
+
 def env_bool(key, default=False):
     return os.environ.get(key, str(default)).lower() in {"1", "true", "yes", "on"}
 
@@ -88,6 +116,9 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 # --- Database --------------------------------------------------------------
+# Priority: PostgreSQL (POSTGRES_DB) → MySQL/MariaDB (MYSQL_DB) → SQLite.
+# On cPanel/WHM, MySQL is the native managed option — create the DB and user in
+# cPanel, grant ALL PRIVILEGES, then set the MYSQL_* variables in .env.
 if os.environ.get("POSTGRES_DB"):
     DATABASES = {
         "default": {
@@ -98,6 +129,35 @@ if os.environ.get("POSTGRES_DB"):
             "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
             "PORT": os.environ.get("POSTGRES_PORT", "5432"),
             "CONN_MAX_AGE": 60,
+        }
+    }
+elif os.environ.get("MYSQL_DB"):
+    # Prefer the C driver (mysqlclient) if present; otherwise transparently fall
+    # back to the pure-Python PyMySQL driver, which needs no compiler. This lets
+    # the app run on hosts (e.g. cPanel without Python dev headers) where the C
+    # extension can't be built.
+    try:
+        import MySQLdb  # noqa: F401  (mysqlclient)
+    except Exception:
+        try:
+            import pymysql
+            pymysql.install_as_MySQLdb()
+        except Exception:
+            pass
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": os.environ["MYSQL_DB"],
+            "USER": os.environ.get("MYSQL_USER", "treasury"),
+            "PASSWORD": os.environ.get("MYSQL_PASSWORD", ""),
+            "HOST": os.environ.get("MYSQL_HOST", "localhost"),
+            "PORT": os.environ.get("MYSQL_PORT", "3306"),
+            "CONN_MAX_AGE": 60,
+            "OPTIONS": {
+                "charset": "utf8mb4",
+                # strict mode + sane defaults
+                "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
         }
     }
 else:

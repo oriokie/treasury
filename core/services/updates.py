@@ -101,13 +101,20 @@ def _run_step(label, args):
 
 def _backup_db():
     from django.conf import settings
-    db = settings.DATABASES["default"]["NAME"]
-    if isinstance(db, (str, bytes)) and os.path.exists(db):
-        import shutil
-        stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-        dest = f"{db}.backup-{stamp}"
-        shutil.copy2(db, dest)
-        _log(f"✓ Database backed up to {os.path.basename(dest)}")
+    db = settings.DATABASES["default"]
+    if db["ENGINE"].endswith("sqlite3"):
+        path = db["NAME"]
+        if isinstance(path, (str, bytes)) and os.path.exists(path):
+            import shutil
+            stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+            dest = f"{path}.backup-{stamp}"
+            shutil.copy2(path, dest)
+            _log(f"✓ Database backed up to {os.path.basename(dest)}")
+    else:
+        # for MySQL/Postgres, code updates don't touch data; remind the user to
+        # take a dump from Settings → Backup before major upgrades
+        _log("• Using a managed database (MySQL/Postgres) — code update won't "
+             "alter your data. For a data snapshot, use Settings → Download backup.")
 
 
 def _pip_executable():
