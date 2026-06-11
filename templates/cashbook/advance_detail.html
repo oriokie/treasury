@@ -1,0 +1,43 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Advance · {{ adv.staff_name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Advance — {{ adv.staff_name }}</h1>
+<div class="sub">{{ adv.department.name }} · issued {{ adv.date_issued|date:"d M Y" }} · {{ adv.get_status_display }}</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div>
+
+<div class="grid cols-3" style="margin-bottom:1rem">
+  <div class="stat"><div class="lbl">Advanced</div><div class="val mono">KES {{ adv.amount|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Settled by receipts</div><div class="val mono">KES {{ adv.settled_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">{% if adv.balance >= 0 %}Surplus to recover{% else %}Shortfall to reimburse{% endif %}</div>
+    <div class="val mono" style="color:{% if adv.balance > 0 %}var(--brass){% elif adv.balance < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">KES {{ adv.balance|floatformat:2|intcomma }}</div></div>
+</div>
+{% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}{% if adv.reference %} · Ref {{ adv.reference }}{% endif %}</p>{% endif %}
+
+<div class="card"><div class="hd">Receipts / expenses settling this advance</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th>Status</th></tr></thead>
+<tbody>{% for x in expenses %}<tr><td>{{ x.date|date:"d M y" }}</td><td>{{ x.description }}</td>
+  <td class="muted">{{ x.get_category_display }}</td><td class="num mono">{{ x.amount|floatformat:2|intcomma }}</td>
+  <td><span class="pill">{{ x.get_status_display }}</span></td></tr>
+{% empty %}<tr><td colspan="5" class="empty">No settling expenses recorded yet.</td></tr>{% endfor %}</tbody>
+</table>
+
+{% if can_enter_data and adv.status != 'CLOSED' %}
+<form method="post" action="{% url 'advance_add_expense' adv.id %}" style="margin-top:1rem">{% csrf_token %}
+  <div class="section-title">Record a settling expense</div>
+  <div class="form-grid" style="display:grid;grid-template-columns:120px 1.6fr 1fr .8fr auto;gap:.6rem;align-items:end">
+    <div class="form-row" style="margin:0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
+    <div class="form-row" style="margin:0"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, hotel"></div>
+    <div class="form-row" style="margin:0"><label>Category</label><select name="category" class="field--select">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+    <div class="form-row" style="margin:0"><label>Amount</label><input name="amount" class="field mono" style="text-align:right"></div>
+    <button class="btn">Add</button>
+  </div>
+</form>
+{% endif %}
+</div></div>
+
+{% if is_treasurer and adv.status != 'CLOSED' %}
+<form method="post" action="{% url 'advance_close' adv.id %}" style="margin-top:1rem" onsubmit="return confirm('Close this advance? The surplus/shortfall should already be recovered or reimbursed.');">{% csrf_token %}
+  <input name="note" class="field" placeholder="Closing note (e.g. surplus KES 500 returned to cashier)" style="max-width:480px;display:inline-block">
+  <button class="btn btn-ghost">Close advance</button>
+</form>{% endif %}
+{% endblock %}

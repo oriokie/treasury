@@ -1,0 +1,17 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Giving by group · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Giving by group</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div></div>
+{% include 'partials/period_filter.html' %}
+<div class="table-wrap" style="margin-top:1rem"><table class="ledger">
+  <thead><tr><th>Demographic group</th><th class="num">Total given</th><th class="num">Share</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td><strong>{{ r.group }}</strong></td>
+      <td class="num mono">{{ r.total|floatformat:2|intcomma }}</td>
+      <td class="num mono muted">{% if grand_total %}{% widthratio r.total grand_total 100 %}%{% else %}—{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="3" class="empty">No giving in this period.</td></tr>{% endfor %}
+  </tbody>
+  <tfoot><tr><th>Total</th><th class="num mono">{{ grand_total|floatformat:2|intcomma }}</th><th></th></tr></tfoot>
+</table></div>
+{% endblock %}

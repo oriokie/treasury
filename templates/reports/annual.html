@@ -1,0 +1,62 @@
+{% extends 'base.html' %}{% load humanize static %}
+{% block title %}Annual summary · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Annual summary</h1><div class="sub">Income, expenditure &amp; net by year</div></div>
+<button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Year</th><th class="num">Income</th><th class="num">Expenditure</th><th class="num">Net</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr><td><strong>{{ r.year }}</strong></td>
+      <td class="num mono">{{ r.income|floatformat:2|intcomma }}</td>
+      <td class="num mono row-debit">{{ r.expense|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.net|floatformat:2|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="4" class="empty">No data yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% if historical %}
+<div class="card" style="margin-top:1.5rem"><div class="hd">Historical comparison (prior years) <a class="link" href="{% url 'historical_manage' %}" style="float:right;font-weight:400;font-size:.8rem">Manage years</a></div><div class="bd">
+  <p class="help">Reference figures from earlier years, for trend comparison. These do not affect the live ledger.</p>
+  <table class="ledger"><thead><tr><th>Year</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th><th class="num">Net (local)</th></tr></thead>
+  <tbody>
+  {% for h in historical %}
+    <tr><td><strong>{{ h.year }}</strong></td>
+      <td class="num mono">{{ h.collection|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ h.trust_fund|floatformat:2|intcomma }}</td>
+      <td class="num mono row-debit">{{ h.expenditure|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ h.net|floatformat:2|intcomma }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+{% if has_season %}
+<div class="card" style="margin-top:1.5rem"><div class="hd">Seasonality — average by month (historical)</div><div class="bd">
+  <canvas id="seasonChart" height="120"></canvas>
+  <p class="help" style="margin-top:.6rem">Average collection, trust fund, and expenditure for each calendar month across the recorded historical years — useful for spotting camp-meeting peaks, December giving, and lean months when budgeting.</p>
+</div></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_season %}
+<script src="{% static 'vendor/chart.umd.js' %}"></script>
+<script>
+(function(){
+  var s = {{ season_json|safe }};
+  var css = getComputedStyle(document.documentElement);
+  var forest = (css.getPropertyValue('--forest')||'#1f5f4f').trim();
+  var brass = (css.getPropertyValue('--brass')||'#b07d2c').trim();
+  new Chart(document.getElementById('seasonChart'), {
+    type: 'line',
+    data: { labels: s.labels, datasets: [
+      { label: 'Collection', data: s.collection, borderColor: forest, tension: .3 },
+      { label: 'Trust fund', data: s.trust, borderColor: brass, tension: .3 },
+      { label: 'Expenditure', data: s.expenditure, borderColor: '#9a3b3b', tension: .3 }
+    ]},
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } },
+      scales: { y: { ticks: { callback: function(v){ return (v/1000).toFixed(0)+'k'; } } } } }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

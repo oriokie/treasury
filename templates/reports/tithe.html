@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Tithe report · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Tithe report</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div></div>
+{% include 'partials/period_filter.html' %}
+<div class="grid-3" style="margin-top:1rem">
+  <div class="stat"><div class="lbl">Total tithe</div><div class="val mono">{{ tithe|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Contributions</div><div class="val mono">{{ count }}</div></div>
+  <div class="stat"><div class="lbl">Average</div><div class="val mono">{% if count %}{{ tithe|floatformat:2 }}{% else %}0.00{% endif %}</div></div>
+</div>
+<div class="note" style="margin-top:1rem">Tithe is fully remitted to the conference and is reported separately from local and trust funds.</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Statement of changes in net assets · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Statement of Changes in Net Assets</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · by class of net assets</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Statement of Changes in Net Assets</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+
+<div class="table-wrap"><table class="ledger report-table cna">
+  <thead><tr><th>Movement</th><th class="num">Unallocated</th><th class="num">Allocated</th><th class="num">Invested in property</th><th class="num">Total</th></tr></thead>
+  <tbody>
+    <tr class="open"><td>Net assets, beginning of period</td><td class="num mono">{{ un.opening|floatformat:2|intcomma }}</td><td class="num mono">{{ al.opening|floatformat:2|intcomma }}</td><td class="num mono">{{ prop.opening|floatformat:2|intcomma }}</td><td class="num mono">{{ t_open|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Surplus/(deficit) from operations</td><td class="num mono">{{ un.op_surplus|floatformat:2|intcomma }}</td><td class="num mono">{{ al.op_surplus|floatformat:2|intcomma }}</td><td class="num mono">—</td><td class="num mono">{{ t_opsurplus|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Capital expenditure (property acquired)</td><td class="num mono">({{ un.capital|floatformat:2|intcomma }})</td><td class="num mono">({{ al.capital|floatformat:2|intcomma }})</td><td class="num mono">{{ cap_total|floatformat:2|intcomma }}</td><td class="num mono">—</td></tr>
+    <tr><td>Depreciation &amp; disposals</td><td class="num mono">—</td><td class="num mono">—</td><td class="num mono">{{ depr|floatformat:2|intcomma }}</td><td class="num mono">{{ depr|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Net inter-fund transfers</td><td class="num mono">{{ un.transfers|floatformat:2|intcomma }}</td><td class="num mono">{{ al.transfers|floatformat:2|intcomma }}</td><td class="num mono">—</td><td class="num mono">{{ t_transfers|floatformat:2|intcomma }}</td></tr>
+    <tr class="close"><td><strong>Net assets, end of period</strong></td><td class="num mono"><strong>{{ un.closing|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ al.closing|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ prop.closing|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ t_close|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+<p class="help">Each column rolls its opening net assets forward by the period's activity to its closing balance. Capital expenditure is a reclassification — it reduces spendable funds and increases amounts invested in property, with no effect on total net assets. The closing total agrees with net assets on the Statement of Financial Position. Tithe is excluded as a pass-through held on behalf of {{ FIELD_NAME }}.</p>
+{% include 'reports/_report_styles.html' %}
+<style>
+.cna th,.cna td{padding:.4rem .6rem}
+.cna .num{white-space:nowrap}
+.cna .open td{border-bottom:1px solid var(--line)}
+.cna .close td{border-top:2px solid var(--forest);background:var(--forest-soft)}
+</style>
+{% endblock %}

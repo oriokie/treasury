@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Trust funds by month · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Trust funds — collections by month</h1><div class="sub">{{ CHURCH_NAME }} · {{ year }} · remitted to {{ FIELD_NAME }}</div></div></div>
+{% include 'reports/_year_filter.html' %}
+<div class="table-wrap"><table class="ledger report-table">
+  <thead><tr><th>Trust account</th>{% for m,lbl in d.months %}<th class="num">{{ lbl }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+  <tbody>
+  {% for r in d.rows %}
+    <tr><td {% if r.dept.parent_id %}style="padding-left:1.4rem" class="muted"{% endif %}>{% if r.dept.parent_id %}↳ {{ r.dept.name }}{% else %}<strong>{{ r.dept.name }}</strong>{% endif %}</td>
+      {% for c in r.cells %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}
+      <td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="14" class="empty">No trust funds defined.</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>TOTAL TRUST FUNDS</strong></td>{% for c in d.col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.grand|floatformat:0|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+<style>.total-row td{border-top:2px solid var(--line)}.report-table th,.report-table td{white-space:nowrap}</style>
+{% endblock %}

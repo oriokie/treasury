@@ -1,0 +1,68 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Statement of financial position · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Statement of Financial Position</h1><div class="sub">As at {{ as_of|date:"d M Y" }} · fund-accounting basis</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?as_of={{ as_of|date:'Y-m-d' }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?as_of={{ as_of|date:'Y-m-d' }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
+<form method="get" class="filters no-print"><div class="f"><label>As at</label><input type="date" name="as_of" value="{{ as_of|date:'Y-m-d' }}" class="field"></div><button class="btn btn-sm">View</button></form>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Statement of Financial Position</div><div class="ph-sub">As at {{ as_of|date:"d M Y" }}</div></div>
+
+<div class="stmt">
+  <div class="stmt-section">ASSETS</div>
+  <table class="ledger compact"><tbody>
+    <tr class="grp"><td colspan="2">Current assets</td></tr>
+    <tr><td class="indent">Cash &amp; bank (funds on hand)</td><td class="num mono">{{ cash_on_hand|floatformat:2|intcomma }}</td></tr>
+    {% if advances %}<tr><td class="indent">Staff advances (receivable)</td><td class="num mono">{{ advances|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if pending %}<tr><td class="indent">Bank receipts pending allocation</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if prepaid %}<tr><td class="indent">Prepayments (unexpired)</td><td class="num mono">{{ prepaid|floatformat:2|intcomma }}</td></tr>{% endif %}
+    <tr class="grp"><td colspan="2">Non-current assets</td></tr>
+    <tr><td class="indent">Property, plant &amp; equipment (net book value)</td><td class="num mono">{{ nbv|floatformat:2|intcomma }}</td></tr>
+    <tr class="subtotal"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ total_assets|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+
+  <div class="stmt-section">LIABILITIES</div>
+  <table class="ledger compact"><tbody>
+    <tr class="grp"><td colspan="2">Current liabilities</td></tr>
+    <tr><td class="indent">Trust funds payable to {{ FIELD_NAME }}</td><td class="num mono">{{ trust_payable|floatformat:2|intcomma }}</td></tr>
+    {% if payables %}<tr><td class="indent">Accounts payable (credit purchases)</td><td class="num mono">{{ payables|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if accruals %}<tr><td class="indent">Accrued expenses</td><td class="num mono">{{ accruals|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if pending %}<tr><td class="indent">Receipts pending allocation (unidentified)</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}
+    <tr class="subtotal"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ total_liabilities|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+
+  <div class="stmt-section">NET ASSETS</div>
+  <table class="ledger compact"><tbody>
+    <tr><td>Unallocated funds (general)</td><td class="num mono">{{ unallocated|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Allocated funds (Board-designated)</td><td class="num mono">{{ allocated|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Invested in property</td><td class="num mono">{{ nbv|floatformat:2|intcomma }}</td></tr>
+    {% if accrual_adj %}<tr><td>Accrual adjustments (prepaid less payables &amp; accruals)</td><td class="num mono">{{ accrual_adj|floatformat:2|intcomma }}</td></tr>{% endif %}
+    <tr class="subtotal"><td><strong>Total net assets</strong></td><td class="num mono"><strong>{{ net_assets|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+
+  <table class="ledger compact" style="margin-top:.6rem"><tbody>
+    <tr class="grand"><td><strong>TOTAL LIABILITIES &amp; NET ASSETS</strong></td><td class="num mono"><strong>{{ total_liab_and_na|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+  <p class="bal-line">{% if balanced %}<span class="pill pill-green">✓ Balanced</span> Total assets equal total liabilities plus net assets.{% else %}<span class="pill pill-red">Out of balance</span> by {{ total_assets|floatformat:2|intcomma }} vs {{ total_liab_and_na|floatformat:2|intcomma }}.{% endif %}</p>
+
+  {% if unpaid %}<p class="help">Memorandum: {{ unpaid|floatformat:2|intcomma }} of approved/pending vouchers were committed but not yet paid as at this date.</p>{% endif %}
+  {% if opening_total %}<div class="opening-pos"><div class="stmt-section">Opening cash position (start of year)</div>
+    <table class="ledger compact"><tbody>
+      <tr><td>Bank balance</td><td class="num mono">{{ opening_bank|floatformat:2|intcomma }}</td></tr>
+      <tr><td>Add: cash on hand (not yet banked)</td><td class="num mono">{{ opening_cash_on_hand|floatformat:2|intcomma }}</td></tr>
+      <tr><td>Less: unremitted trust / pending receipts</td><td class="num mono">({{ opening_unremitted_trust|floatformat:2|intcomma }})</td></tr>
+      <tr class="subtotal"><td><strong>Opening funds carried forward</strong></td><td class="num mono"><strong>{{ opening_total|floatformat:2|intcomma }}</strong></td></tr>
+    </tbody></table>
+    <p class="help">The opening balances brought forward reconcile to bank plus cash-in-hand less trust funds not yet remitted, rather than implying all funds were held in the bank.</p></div>{% endif %}
+  <p class="help">Prepared on a fund-accounting basis following the SDA financial reporting framework. The equity section is presented as <strong>Net Assets</strong> (not “fund balance”), classified into unallocated and Board-allocated funds plus amounts invested in property. Tithe is treated as a pass-through liability (held on behalf of {{ FIELD_NAME }}) and is not recognised as the church’s revenue or net assets.</p>
+</div>
+{% include 'reports/_report_styles.html' %}
+<style>
+.stmt{max-width:680px}
+.stmt-section{font-weight:700;letter-spacing:.5px;color:var(--forest);margin:1.1rem 0 .3rem;border-bottom:1px solid var(--line);padding-bottom:.2rem}
+.ledger.compact td{padding:.3rem .55rem}
+.ledger .grp td{color:var(--muted);font-size:.82rem;font-weight:600;padding-top:.45rem}
+.ledger .indent{padding-left:1.4rem}
+.subtotal td{border-top:2px solid var(--forest)}
+.grand td{border-top:2px solid var(--forest);background:var(--forest-soft)}
+.bal-line{margin:.5rem 0 0;font-size:.86rem}
+</style>
+{% endblock %}

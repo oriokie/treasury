@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Bank accounts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Bank accounts</h1><div class="sub">Tag statements and bank transactions to an account for per-account reconciliation. One account is the default.</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'statement_upload' %}">Import a statement</a></div>
+
+<div class="card"><div class="bd">
+<table class="ledger compact"><thead><tr><th>Name</th><th>Bank</th><th>Number</th><th>Type</th><th>Default</th><th>Status</th></tr></thead>
+<tbody>{% for a in accounts %}<tr>
+  <td><strong>{{ a.name }}</strong></td><td>{{ a.bank_name|default:"—" }}</td>
+  <td class="mono">{{ a.masked_number|default:"—" }}</td><td>{{ a.get_kind_display }}</td>
+  <td>{% if a.is_default %}<span class="pill pill-green">Default</span>{% endif %}</td>
+  <td>{% if a.active %}Active{% else %}<span class="muted">Inactive</span>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">No accounts yet — all imports use one undifferentiated pool. Add accounts to track them separately.</td></tr>{% endfor %}</tbody>
+</table>
+
+<form method="post" style="margin-top:1rem">{% csrf_token %}
+  <div class="form-grid" style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr auto;gap:.6rem;align-items:end">
+    <div class="form-row" style="margin:0"><label>Name</label><input name="name" class="field" placeholder="e.g. Co-op Current"></div>
+    <div class="form-row" style="margin:0"><label>Bank</label><input name="bank_name" class="field" placeholder="Cooperative Bank"></div>
+    <div class="form-row" style="margin:0"><label>Account number</label><input name="account_number" class="field"></div>
+    <div class="form-row" style="margin:0"><label>Type</label><select name="kind" class="field--select">{% for v,l in kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+    <button class="btn">Add</button>
+  </div>
+  <label class="check-row" style="margin-top:.5rem"><input type="checkbox" name="is_default"> Make this the default account</label>
+</form>
+</div></div>
+{% endblock %}

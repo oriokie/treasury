@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}New transfer · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>New inter-fund transfer</h1><div class="sub">Reallocate money from one fund to another</div></div></div>
+<div class="card form-card" style="max-width:560px"><div class="bd">
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    <div class="form-grid">
+      <div class="form-row"><label>Date</label>{{ form.date }}{% for e in form.date.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>Amount</label>{{ form.amount }}{% for e in form.amount.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>From fund</label>{{ form.source }}{% for e in form.source.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>To fund</label>{{ form.destination }}{% for e in form.destination.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+    </div>
+    <div class="form-row"><label>Reason</label>{{ form.reason }}</div>
+    <div class="form-row"><label>Reference (optional)</label>{{ form.reference }}</div>
+    <div class="btn-row"><button class="btn">Record transfer</button><a class="btn btn-ghost" href="{% url 'transfer_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

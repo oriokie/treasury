@@ -1,0 +1,77 @@
+{% load humanize %}<!doctype html><html><head><meta charset="utf-8">
+<title>Receipts — {{ sabbath|date:"d M Y" }}</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;color:#1a1a1a;font-family:'Public Sans',system-ui,sans-serif;background:#f3f1ea}
+  .toolbar{padding:.8rem 1rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;background:#fff;border-bottom:1px solid #ddd;position:sticky;top:0}
+  .toolbar a,.toolbar button{font:inherit;padding:.4rem .8rem;border:1px solid #1f5f4f;background:#fff;color:#1f5f4f;border-radius:6px;cursor:pointer;text-decoration:none}
+  .toolbar .primary{background:#1f5f4f;color:#fff}
+  .toolbar .sp{flex:1}
+  .meta{color:#555;font-size:.85rem}
+
+  /* a compact receipt card, reused in both layouts */
+  .rcpt{background:#fff;border:1px dashed #999;padding:.35rem .55rem;break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid}
+  .rc-h{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1.5px solid #1f5f4f;padding-bottom:.12rem;margin-bottom:.18rem}
+  .rc-church{font-weight:800;font-size:.82rem;line-height:1.05}
+  .rc-field{color:#666;font-size:.6rem}
+  .rc-no{font-size:.64rem;text-align:right;white-space:nowrap}
+  .rc-meta{display:flex;justify-content:space-between;font-size:.68rem;margin:.05rem 0}
+  .rc-meta b{font-weight:700}
+  table{width:100%;border-collapse:collapse;margin:.12rem 0}
+  td{padding:.03rem 0;font-size:.66rem;vertical-align:top;line-height:1.15}
+  td.amt{text-align:right;font-variant-numeric:tabular-nums}
+  .rc-tot td{border-top:1px solid #1f5f4f;font-weight:800;padding-top:.08rem}
+  .rc-msg{font-size:.56rem;color:#555;font-style:italic;margin-top:.14rem;border-top:1px dotted #bbb;padding-top:.1rem;line-height:1.15}
+
+  /* A4: tile compact receipts three-up so fewer pages are used */
+  .a4-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;max-width:210mm;margin:.5rem auto;background:#fff}
+  .a4-grid .rcpt{border-right:1px dashed #999;border-bottom:1px dashed #999;margin:0}
+
+  /* ETR: a single 72mm column, one receipt per slip */
+  body.etr{background:#fff}
+  .etr-run{width:72mm;margin:0 auto}
+  body.etr .rcpt{width:72mm;border:none;border-bottom:1px dashed #000;padding:3mm;font-family:'IBM Plex Mono','Courier New',monospace}
+  body.etr .rc-church{font-size:11pt}
+  body.etr td,body.etr .rc-meta{font-size:8pt}
+
+  @media print{
+    .toolbar{display:none}
+    body{background:#fff}
+    .a4-grid{margin:0;max-width:none}
+    .a4-grid .rcpt{break-inside:avoid}
+    body.etr .rcpt{break-after:page}     /* one slip per feed on a thermal printer */
+    @page{margin:8mm}
+    body.etr{}
+  }
+</style></head>
+<body class="{% if fmt == 'etr' %}etr{% endif %}">
+<div class="toolbar">
+  <strong>Receipts — {{ sabbath|date:"d M Y" }}</strong>
+  <span class="meta">{{ count }} receipt{{ count|pluralize }} · KES {{ total|floatformat:2|intcomma }}</span>
+  <span class="sp"></span>
+  {% if fmt == 'etr' %}<a href="?date={{ sabbath|date:'Y-m-d' }}">A4 cut-up</a>{% else %}<a href="?date={{ sabbath|date:'Y-m-d' }}&format=etr">ETR (thermal)</a>{% endif %}
+  <button class="primary" onclick="window.print()">⎙ Print all</button>
+</div>
+
+{% if not envelopes %}
+  <p style="padding:2rem;text-align:center;color:#777">No envelopes recorded for this Sabbath.</p>
+{% else %}
+<div class="{% if fmt == 'etr' %}etr-run{% else %}a4-grid{% endif %}">
+  {% for e in envelopes %}
+  <div class="rcpt">
+    <div class="rc-h">
+      <div><div class="rc-church">{{ CHURCH_NAME }}</div><div class="rc-field">{{ FIELD_NAME }} · OFFICIAL RECEIPT</div></div>
+      <div class="rc-no"><b>{{ e.receipt_no }}</b><br>{{ e.date|date:"d M Y" }}</div>
+    </div>
+    <div class="rc-meta"><span>Received from:</span><b>{{ e.contributor_name }}</b></div>
+    <table>
+      {% for l in e.lines.all %}<tr><td>{{ l.department.name }}</td><td class="amt">{{ l.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+      <tr class="rc-tot"><td>TOTAL (KES)</td><td class="amt">{{ e.total|floatformat:2|intcomma }}</td></tr>
+    </table>
+    <div class="rc-msg">{{ receipt_message }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% if auto_print %}<script>window.addEventListener('load',function(){setTimeout(function(){window.print()},300)})</script>{% endif %}
+</body></html>

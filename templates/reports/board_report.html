@@ -1,0 +1,81 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Board report · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Board financial report</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+<div class="btn-row">{% include 'partials/period_filter.html' %}<button class="btn btn-sm" onclick="window.print()">⎙ Print / PDF</button></div></div>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Board Financial Report</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+
+<div class="card" style="margin-bottom:1.2rem"><div class="hd">Board narrative
+  <span class="pill {% if narrative_source == 'ai' %}pill-green{% else %}pill-grey{% endif %} no-print" style="float:right;font-weight:600">{% if narrative_source == 'ai' %}AI-generated{% else %}Auto (rule-based){% endif %}</span></div>
+  <div class="bd">
+    {% if ai_error and not ai_enabled %}<p class="help no-print">AI assistant off — showing the built-in summary. Enable it in Settings → Assistant for a richer narrative.</p>
+    {% elif ai_error %}<p class="help no-print">AI narrative unavailable ({{ ai_error }}); showing the rule-based summary.</p>{% endif %}
+    <div style="white-space:pre-wrap;line-height:1.55">{{ narrative }}</div>
+  </div></div>
+
+<div class="two-col">
+  <div class="card"><div class="hd">Income &amp; Expenditure (this period)</div><div class="bd">
+    <table class="ledger compact"><tbody>
+      <tr><td>Local income</td><td class="num mono">{{ ie_income|floatformat:2|intcomma }}</td></tr>
+      {% for c in ie_expense_by_cat %}<tr><td style="padding-left:1.2rem" class="muted">{{ c.label }}</td><td class="num mono muted">({{ c.total|floatformat:2|intcomma }})</td></tr>{% endfor %}
+      <tr class="total-row"><td><strong>Total expenditure</strong></td><td class="num mono"><strong>({{ ie_expense|floatformat:2|intcomma }})</strong></td></tr>
+      <tr class="grand-row"><td><strong>Surplus / (deficit)</strong></td><td class="num mono"><strong>{{ ie_surplus|floatformat:2|intcomma }}</strong></td></tr>
+      {% if ie_capital %}<tr><td class="muted">Memo: capital additions</td><td class="num mono muted">{{ ie_capital|floatformat:2|intcomma }}</td></tr>{% endif %}
+    </tbody></table>
+  </div></div>
+
+  <div class="card"><div class="hd">Statement of Financial Position (period end)</div><div class="bd">
+    <table class="ledger compact"><tbody>
+      <tr class="section-row"><td colspan="2"><strong>Assets</strong></td></tr>
+      <tr><td>Cash &amp; bank</td><td class="num mono">{{ sofp.cash_bank|floatformat:2|intcomma }}</td></tr>
+      {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
+      <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|floatformat:2|intcomma }}</strong></td></tr>
+      <tr class="section-row"><td colspan="2"><strong>Liabilities</strong></td></tr>
+      <tr><td>Trust funds to remit</td><td class="num mono">{{ sofp.trust_liab|floatformat:2|intcomma }}</td></tr>
+      {% if sofp.payables %}<tr><td>Payables</td><td class="num mono">{{ sofp.payables|floatformat:2|intcomma }}</td></tr>{% endif %}
+      {% if sofp.accruals %}<tr><td>Accruals</td><td class="num mono">{{ sofp.accruals|floatformat:2|intcomma }}</td></tr>{% endif %}
+      <tr class="total-row"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ sofp.total_liab|floatformat:2|intcomma }}</strong></td></tr>
+      <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|floatformat:2|intcomma }}</strong></td></tr>
+    </tbody></table>
+  </div></div>
+</div>
+
+<div class="section-title" style="margin-top:1.2rem">Fund summaries</div>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
+  <tbody>
+  {% for r in local_rows %}<tr><td>{{ r.department.name }}</td>
+    <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
+    <td class="num mono"><strong>{{ r.closing|floatformat:0|intcomma }}</strong></td></tr>{% endfor %}
+  <tr class="section-row"><td colspan="5"><strong>Trust funds (remitted to {{ FIELD_NAME }})</strong></td></tr>
+  {% for r in trust_rows %}<tr><td>{{ r.department.name }}</td>
+    <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  <tr class="grand-row"><td><strong>All funds</strong></td>
+    <td class="num mono"><strong>{{ totals.opening|floatformat:0|intcomma }}</strong></td>
+    <td class="num mono"><strong>{{ totals.receipts|floatformat:0|intcomma }}</strong></td>
+    <td class="num mono"><strong>{{ totals.expenses|floatformat:0|intcomma }}</strong></td>
+    <td class="num mono"><strong>{{ totals.closing|floatformat:0|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+
+<div class="section-title" style="margin-top:1.2rem">Trend analysis (by year)</div>
+<div class="table-wrap" style="max-width:640px"><table class="ledger compact">
+  <thead><tr><th>Year</th><th class="num">Income</th><th class="num">Expenditure</th><th class="num">Net</th></tr></thead>
+  <tbody>
+  {% for t in trend %}<tr><td class="mono">{{ t.year }}</td>
+    <td class="num mono">{{ t.income|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ t.expense|floatformat:0|intcomma }}</td>
+    <td class="num mono {% if t.net < 0 %}row-debit{% endif %}">{{ t.net|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% if trend|length < 2 %}<p class="help">Add prior-year figures under Reports → Historical years to enable a fuller multi-year trend.</p>{% endif %}
+
+<style>.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem}@media(max-width:760px){.two-col{grid-template-columns:1fr}}
+.section-row td{background:var(--card-head)}.total-row td{border-top:1.5px solid var(--line)}
+.grand-row td{border-top:2px solid var(--forest);background:var(--forest-soft)}</style>
+{% endblock %}

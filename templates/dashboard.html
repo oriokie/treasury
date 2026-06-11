@@ -1,0 +1,201 @@
+{% extends 'base.html' %}{% load humanize static %}
+{% block title %}Dashboard · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <div class="sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</div>
+  </div>
+  <form method="get" class="btn-row" style="align-items:flex-end">
+    <div class="f filters" style="margin:0;border:none;padding:0;background:none;gap:.5rem">
+      <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
+      <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+      <button class="btn btn-sm">Apply</button>
+    </div>
+  </form>
+</div>
+
+{% if can_enter_data %}
+<div class="quick-actions">
+  <a class="qa" href="{% url 'envelope_ledger' %}"><span class="qa-ic">✉</span><span>Record envelopes</span></a>
+  <a class="qa" href="{% url 'cash_new' %}"><span class="qa-ic">＋</span><span>Cash entry</span></a>
+  <a class="qa" href="{% url 'expense_create' %}"><span class="qa-ic">⊟</span><span>New expense</span></a>
+  <a class="qa" href="{% url 'statement_upload' %}"><span class="qa-ic">⬆</span><span>Import statement</span></a>
+  <a class="qa" href="{% url 'report_collections_summary' %}"><span class="qa-ic">∑</span><span>Collections summary</span></a>
+</div>
+{% endif %}
+
+<div class="grid cols-4" style="margin-bottom:1.4rem">
+  <div class="stat accent"><div class="label">Total receipts</div>
+    <div class="value"><span class="ksh">KSh</span>{{ totals.receipts|floatformat:2|intcomma }}</div>
+    <div class="foot">Across {{ fund_count }} active funds</div></div>
+  <div class="stat warn"><div class="label">Expenses</div>
+    <div class="value"><span class="ksh">KSh</span>{{ totals.expenses_operating|floatformat:2|intcomma }}</div>
+    <div class="foot">Approved &amp; paid · excl. trust remittances</div></div>
+  <a class="stat brass" href="{% url 'remittance_dashboard' %}" style="display:block">
+    <div class="label">Trust to remit</div>
+    <div class="value"><span class="ksh">KSh</span>{{ trust_to_remit|floatformat:2|intcomma }}</div>
+    <div class="foot">All trust funds (incl. tithe) → conference</div></a>
+  <div class="stat"><div class="label">Closing balance</div>
+    <div class="value"><span class="ksh">KSh</span>{{ totals.closing|floatformat:2|intcomma }}</div>
+    <div class="foot">Opening + receipts − expenses</div></div>
+</div>
+
+{% if queue_count or pending_expenses or dup_count %}
+<div class="card" style="margin-bottom:1.4rem;border-left:3px solid var(--brass)">
+  <div class="bd btn-row" style="align-items:center">
+    <strong style="font-family:Fraunces,serif">Needs attention:</strong>
+    {% if queue_count %}<a class="pill pill-amber" href="{% url 'queue' %}">⚑ {{ queue_count }} item(s) to allocate</a>{% endif %}
+    {% if pending_expenses %}<a class="pill pill-brass" href="{% url 'expense_list' %}?status=PENDING">⊟ {{ pending_expenses }} expense(s) to approve</a>{% endif %}
+    {% if dup_count %}<a class="pill pill-red" href="{% url 'member_duplicates' %}">☺ {{ dup_count }} possible duplicate(s)</a>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<div class="grid cols-3" style="margin-bottom:1.4rem">
+  <div class="card"><div class="hd">Income by channel</div><div class="bd" style="display:flex;justify-content:center">
+    <canvas id="channelChart" height="200"></canvas></div></div>
+  <div class="card"><div class="hd">Receipts vs expenses by month</div><div class="bd">
+    {% if has_monthly %}<canvas id="monthlyChart" height="200"></canvas>
+    {% else %}<div class="muted" style="padding:2rem 0;text-align:center">Not enough months in range</div>{% endif %}</div></div>
+  <div class="card"><div class="hd">Top funds by receipts</div><div class="bd">
+    {% if has_topfunds %}<canvas id="topFundsChart" height="200"></canvas>
+    {% else %}<div class="muted" style="padding:2rem 0;text-align:center">No fund receipts in range</div>{% endif %}</div></div>
+</div>
+
+<div class="section-title">Local funds <span class="muted" style="font-weight:400;font-size:.8rem">— {{ local_rows|length }} fund(s)</span></div>
+<div class="table-wrap" style="margin-bottom:1.4rem">
+  <table class="ledger">
+    <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
+    <tbody>
+    {% for r in local_rows %}
+      <tr>
+        <td><a href="{% url 'report_fund' r.department.id %}">{{ r.department.name }}</a></td>
+        <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ r.expenses|floatformat:2|intcomma }}</td>
+        <td class="num mono"><strong>{{ r.closing|floatformat:2|intcomma }}</strong></td>
+      </tr>
+    {% empty %}<tr><td colspan="5" class="muted">No local funds yet.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700">
+      <td>Total local</td>
+      <td class="num mono">{{ local_totals.opening|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ local_totals.receipts|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ local_totals.expenses|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ local_totals.closing|floatformat:2|intcomma }}</td>
+    </tr></tfoot>
+  </table>
+</div>
+
+<div class="split">
+  <div>
+    <div class="section-title">Trust funds (remit to {{ field_name|default:"conference" }})</div>
+    <div class="table-wrap">
+      <table class="ledger">
+        <thead><tr><th>Fund</th><th class="num">Receipts</th><th class="num">Remitted</th><th class="num">To remit</th></tr></thead>
+        <tbody>
+        {% for r in trust_rows %}
+          <tr><td>{{ r.department.name }}</td>
+            <td class="num mono">{{ r.collected|floatformat:2|intcomma }}</td>
+            <td class="num mono">{{ r.remitted|floatformat:2|intcomma }}</td>
+            <td class="num mono"><strong>{{ r.to_remit|floatformat:2|intcomma }}</strong></td></tr>
+        {% empty %}<tr><td colspan="4" class="muted">No trust funds yet.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div>
+    <div class="section-title">Giving by group</div>
+    <div class="card"><div class="bd">
+      {% for g, total in by_group.items %}
+        <div class="kv"><span>{{ g|title }}</span><span class="mono">{{ total|floatformat:2|intcomma }}</span></div>
+      {% empty %}<div class="muted">No group-tagged giving yet.</div>{% endfor %}
+    </div></div>
+  </div>
+</div>
+
+{% if has_trend %}
+<div class="section-title">Multi-year trend</div>
+<div class="card" style="margin-bottom:1.4rem"><div class="bd">
+  <canvas id="trendChart" height="110"></canvas>
+  <p class="help" style="margin-top:.6rem">Collection, trust fund, and expenditure by year. Prior years are reference figures; the current year updates from the live ledger.</p>
+</div></div>
+{% endif %}
+
+<div class="section-title">Recent imports</div>
+<div class="table-wrap">
+  <table class="ledger">
+    <thead><tr><th>File</th><th>When</th><th class="num">Imported</th><th class="num">Queued</th><th class="num">Duplicates</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for i in recent_imports %}
+      <tr><td><a href="{% url 'statement_detail' i.id %}">{{ i.filename }}</a></td>
+        <td class="muted">{{ i.uploaded_at|date:"j M, H:i" }}</td>
+        <td class="num">{{ i.imported }}</td><td class="num">{{ i.queued_for_review }}</td>
+        <td class="num">{{ i.duplicates_skipped }}</td>
+        <td><span class="pill {% if i.status == 'DONE' %}pill-green{% elif i.status == 'FAILED' %}pill-red{% else %}pill-grey{% endif %}">{{ i.get_status_display }}</span></td></tr>
+    {% empty %}<tr><td colspan="6" class="muted">No statements imported yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'vendor/chart.umd.js' %}"></script>
+<script>
+(function(){
+  var css = getComputedStyle(document.documentElement);
+  var forest = (css.getPropertyValue('--forest')||'#1f5f4f').trim();
+  var brass = (css.getPropertyValue('--brass')||'#b07d2c').trim();
+  var danger = '#9a3b3b';
+  function money(v){ return (v/1000000).toFixed(2)+'M'; }
+
+  var ch = {{ channel_json|safe }};
+  if (document.getElementById('channelChart')) {
+    new Chart(document.getElementById('channelChart'), {
+      type: 'doughnut',
+      data: { labels: ch.map(function(d){return d.label;}),
+        datasets: [{ data: ch.map(function(d){return d.value;}),
+          backgroundColor: [forest, brass, '#6b8f7e'] }]},
+      options: { plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  {% if has_monthly %}
+  var mo = {{ monthly_json|safe }};
+  new Chart(document.getElementById('monthlyChart'), {
+    type: 'bar',
+    data: { labels: mo.labels, datasets: [
+      { label: 'Receipts', data: mo.receipts, backgroundColor: forest },
+      { label: 'Expenses', data: mo.expenses, backgroundColor: danger } ]},
+    options: { plugins: { legend: { position: 'bottom' } },
+      scales: { y: { ticks: { callback: money } } } }
+  });
+  {% endif %}
+
+  {% if has_topfunds %}
+  var tf = {{ topfunds_json|safe }};
+  new Chart(document.getElementById('topFundsChart'), {
+    type: 'bar',
+    data: { labels: tf.labels, datasets: [{ label: 'Receipts', data: tf.values, backgroundColor: brass }]},
+    options: { indexAxis: 'y', plugins: { legend: { display: false } },
+      scales: { x: { ticks: { callback: money } } } }
+  });
+  {% endif %}
+
+  {% if has_trend %}
+  var data = {{ trend_json|safe }};
+  new Chart(document.getElementById('trendChart'), {
+    type: 'bar',
+    data: { labels: data.map(function(d){ return d.year; }), datasets: [
+      { label: 'Collection', data: data.map(function(d){return d.collection;}), backgroundColor: forest },
+      { label: 'Trust fund', data: data.map(function(d){return d.trust;}), backgroundColor: brass },
+      { label: 'Expenditure', data: data.map(function(d){return d.expenditure;}), backgroundColor: danger }
+    ]},
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } },
+      scales: { y: { ticks: { callback: function(v){ return (v/1000000).toFixed(1)+'M'; } } } } }
+  });
+  {% endif %}
+})();
+</script>
+{% endblock %}

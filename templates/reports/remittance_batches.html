@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Remittance batches · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Remittance batches</h1></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'remittance_dashboard' %}">Dashboard</a></div>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Batch</th><th>Date</th><th class="num">Total</th><th>Status</th><th>Cheque</th><th>Approved by</th></tr></thead>
+  <tbody>
+  {% for b in batches %}
+    <tr><td><a class="link" href="{% url 'remittance_batch_detail' b.id %}">{{ b.batch_number }}</a></td>
+      <td class="mono">{{ b.date|date:"d/m/y" }}</td>
+      <td class="num mono">{{ b.total_amount|floatformat:2|intcomma }}</td>
+      <td><span class="pill {% if b.status == 'REMITTED' %}pill-green{% elif b.status == 'APPROVED' %}pill-blue{% elif b.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ b.get_status_display }}</span></td>
+      <td class="mono muted">{{ b.cheque_no|default:"—" }}</td>
+      <td class="muted">{{ b.approved_by.username|default:"—" }}</td></tr>
+  {% empty %}<tr><td colspan="6" class="empty">No batches yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

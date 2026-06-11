@@ -1,0 +1,318 @@
+{% extends 'base.html' %}
+{% block title %}Settings · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>System configuration</h1><div class="sub">Branding, features, SMS, assistant &amp; signatories</div></div></div>
+
+<div class="tabs" id="tabs">
+  <button type="button" class="tab active" data-tab="branding">Branding</button>
+  <button type="button" class="tab" data-tab="features">Features</button>
+  <button type="button" class="tab" data-tab="approvals">Approvals</button>
+  <button type="button" class="tab" data-tab="sms">SMS</button>
+  <button type="button" class="tab" data-tab="assistant">Assistant</button>
+  <button type="button" class="tab" data-tab="telegram">Telegram</button>
+  <button type="button" class="tab" data-tab="sign">Signatories</button>
+  <button type="button" class="tab" data-tab="assets">Assets</button>
+  <button type="button" class="tab" data-tab="channels">Channels</button>
+  <button type="button" class="tab" data-tab="email">Email</button>
+  <button type="button" class="tab" data-tab="about">About &amp; updates</button>
+</div>
+
+<form method="post">{% csrf_token %}
+  <section class="tabpane active" data-pane="branding">
+    <div class="card"><div class="bd"><div class="form-grid">
+      {% for f in form %}{% if f.name in 'church_name field_name receipt_message' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+    </div></div></div>
+  </section>
+
+  <section class="tabpane" data-pane="features">
+    <div class="card"><div class="bd"><div class="form-grid">
+      {% for f in form %}{% if f.name in 'show_mpesa_ref enable_dev_groups auto_create_members envelope_auto_receipt trust_remit_due_day petty_cash_float' %}
+        <div class="form-row"><div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      {% for f in form %}{% if f.name == 'receipt_bank_scope' or f.name == 'sabbath_confirm_scope' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+    </div></div></div>
+  </section>
+
+  <section class="tabpane" data-pane="approvals">
+    <div class="card"><div class="hd">Approvals &amp; financial controls</div><div class="bd">
+      <div class="help" style="margin-bottom:.7rem">These settings decide how tightly the
+      system enforces approvals and balances. Tighten them as your church's controls require.</div>
+      <div class="form-grid">
+        {% for f in form %}{% if f.name in 'require_expense_approval enforce_fund_balance enforce_petty_float require_dual_yearend require_import_confirmation' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'dual_approval_threshold' %}
+          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="sms">
+    <div class="card"><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Advanta bulk SMS (see <span class="mono">advantasms.com/bulksms-api</span>).</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'sms_enabled sms_receipt_scope sms_api_url sms_api_key sms_partner_id sms_shortcode sms_receipt_template' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="assistant">
+    <div class="card"><div class="bd">
+      <div class="info-panel">The assistant works offline using the built-in engine. Turn this on only if you have purchased API credentials for a provider — then the assistant will use that model and fall back to the offline engine if the call fails.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'llm_enabled llm_provider llm_model llm_api_key llm_base_url' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="help" style="margin-top:.5rem">Suggested models — Anthropic: <span class="mono">claude-3-5-sonnet-latest</span>; OpenAI: <span class="mono">gpt-4o-mini</span>; Gemini: <span class="mono">gemini-1.5-flash</span>; Groq: <span class="mono">llama-3.3-70b-versatile</span>. If you leave the model blank a sensible default for the chosen provider is used.</div>
+      <div style="margin-top:.8rem">
+        <button class="btn btn-sm" name="test_llm" value="1">Save &amp; test assistant connection</button>
+        <span class="help" style="margin-left:.5rem">Saves your settings, then makes one live call — the result (or the exact error) appears at the top.</span>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="telegram">
+    <div class="card"><div class="bd">
+      <div class="info-panel">Lets the treasurer use a Telegram chat to check figures and record expenses remotely. A PIN is required at the start of each chat session; expenses recorded here are saved as <strong>PENDING</strong> and must be approved in the web app.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'telegram_enabled telegram_bot_token telegram_pin telegram_session_minutes telegram_run_in_app' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="help" style="margin-top:.8rem;line-height:1.6">
+        <strong>Setup</strong><br>
+        1. In Telegram, message <span class="mono">@BotFather</span> → <span class="mono">/newbot</span>, and paste the token above.<br>
+        2. Turn the bot on and save.<br>
+        3. <strong>Either</strong> run the bot from a server with <span class="mono">python manage.py telegram_bot</span>,<br>
+        &nbsp;&nbsp;<strong>or</strong>, if this site has a public HTTPS address, register a webhook (replace HOST and TOKEN):<br>
+        <span class="mono" style="display:inline-block;margin:.2rem 0;word-break:break-all">https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url=https://&lt;HOST&gt;/api/telegram/webhook/&lt;TOKEN&gt;/</span><br>
+        4. Open your bot in Telegram, send any message, and enter your PIN when prompted.
+      </div>
+    </div></div>
+
+    <div class="card"><div class="hd">Personal PINs (per user)</div><div class="bd">
+      <div class="info-panel">Each treasurer/assistant can have their <strong>own</strong> PIN. When someone enters their personal PIN in the bot, anything they record (e.g. an expense) is attributed to them. The shared PIN above still works as a fallback.</div>
+      <div class="form-grid" style="margin-top:.6rem">
+        <div class="form-row"><label>My personal PIN</label>
+          <input type="text" name="pin" form="telegram-pin-form" class="field mono" value="{{ my_telegram_pin }}" placeholder="e.g. 4827" inputmode="numeric">
+          <div class="help">Set a 4–8 digit PIN for yourself, or clear it to disable personal sign-in.</div></div>
+        <div class="form-row" style="align-self:end"><button class="btn" type="submit" form="telegram-pin-form">Save my PIN</button></div>
+      </div>
+      {% if telegram_users %}
+      <table class="ledger compact" style="margin-top:1rem"><thead><tr><th>User</th><th>Role</th><th>Personal PIN set?</th></tr></thead><tbody>
+        {% for u in telegram_users %}<tr><td>{{ u.name }}</td><td>{{ u.role }}</td><td>{% if u.has_pin %}<span class="pill pill-green">Yes</span>{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}
+      </tbody></table>{% endif %}
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="sign">
+    <div class="card"><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Names printed in the signature block of reports (e.g. the offering summary).</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'sig_treasurer sig_pastor sig_elder' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="assets">
+    <div class="card"><div class="bd">
+      <div class="info-panel">Default depreciation for assets without a category-specific rule. Set per-category rules on the <a class="link" href="{% url 'depreciation_rules' %}">depreciation rules</a> page.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'asset_depr_method asset_depr_rate' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="btn-row" style="margin-top:.8rem"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">Open asset register</a></div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="email">
+    <div class="card"><div class="hd">Outgoing email (SMTP)</div><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Used to email reports (e.g. development-group statements to leaders), receipts and notifications. For Gmail use an app password.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'email_enabled email_host email_port email_use_tls email_host_user email_host_password email_from' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div style="margin-top:.8rem">
+        <input name="email_test_to" class="field" placeholder="Send a test to (email)" style="max-width:280px;display:inline-block">
+        <button class="btn btn-sm" name="test_email" value="1">Save &amp; send test email</button>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="channels">
+    <div class="card"><div class="hd">Notifications</div><div class="bd">
+      <div class="form-grid">
+      {% for f in form %}{% if f.name == 'notify_email_enabled' %}
+        <div class="form-row"><div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <p class="help">In-app notifications (the 🔔 bell) are always on. Email also requires your server's mail settings to be configured.</p>
+    </div></div>
+
+    <div class="card" style="margin-top:1rem"><div class="hd">WhatsApp receipts <span class="muted">(optional, for future use)</span></div><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Deliver giving receipts and reminders over WhatsApp Business (Twilio or Africa's Talking). Leave disabled until configured.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'whatsapp_enabled whatsapp_provider whatsapp_api_url whatsapp_api_key whatsapp_sender' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+
+    <div class="card" style="margin-top:1rem"><div class="hd">M-Pesa Daraja (Paybill) <span class="muted">(optional, for future use)</span></div><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Pull Paybill transactions directly from Safaricom Daraja for real-time reconciliation, instead of the weekly CSV upload. Leave disabled until your Daraja app credentials are ready.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'daraja_enabled daraja_shortcode daraja_consumer_key daraja_consumer_secret daraja_env' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+
+    <div class="card" style="margin-top:1rem"><div class="hd">Real-time bank feed — Co-operative Bank CBS events</div><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Receive a notification for <strong>every transaction in real time</strong>. The bank's Core Banking System posts each debit/credit to this app the moment it happens, so donations appear without waiting for a statement upload. Enable this, choose how the bank authenticates, and give the bank the endpoint URL and credentials below.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'bank_feed_enabled bank_feed_auth_mode bank_feed_username bank_feed_password bank_feed_token' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <hr style="margin:1rem 0;border:none;border-top:1px solid var(--line)">
+      <div class="section-title">Give these to the bank</div>
+      <table class="ledger"><tbody>
+        <tr><td style="width:180px"><strong>Webhook URL</strong></td><td class="mono">{{ cbs_webhook_url }}</td></tr>
+        <tr><td><strong>Method</strong></td><td class="mono">POST &nbsp; Content-Type: application/json</td></tr>
+        <tr><td><strong>Auth</strong></td><td>Basic (username &amp; password above) or Bearer token — as selected</td></tr>
+        <tr><td><strong>Success reply</strong></td><td class="mono">HTTP 200 · MessageCode 200</td></tr>
+      </tbody></table>
+      <p class="help" style="margin-top:.5rem"><strong>Important:</strong> in production the bank requires this URL to run on HTTPS (SSL). The endpoint is public but every call is authenticated against the credentials above — set strong values and share them with the bank only. Re-deliveries of the same TransactionId are de-duplicated automatically.</p>
+      <a class="btn btn-ghost btn-sm" href="{% url 'bank_feed_log' %}">View feed log</a>
+    </div></div>
+
+
+    <div class="card" style="margin-top:1rem"><div class="hd">Allocation &amp; categories</div><div class="bd">
+      <div class="form-grid">
+      {% for f in form %}{% if f.name == 'dev_group_extra_prefixes' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <a class="btn btn-ghost btn-sm" href="{% url 'expense_categories' %}" style="margin-top:.5rem">Manage expense categories</a>
+      <hr style="margin:1rem 0;border:none;border-top:1px solid var(--line)">
+      <div class="section-title">Sabbath close</div>
+      <p class="help">When you finish counting a Sabbath, close it from its cash-count page. Any donation that arrives afterwards for a closed Sabbath is automatically credited to the next open Sabbath — there's no fixed time of day, and a closed count is never reopened.</p>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name == 'sabbath_cutoff_enabled' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+
+    <div class="card" style="margin-top:1rem"><div class="hd">Bank accounts</div><div class="bd">
+      <p class="help">Track multiple bank accounts and tag statements to each for per-account reconciliation.</p>
+      <a class="btn btn-ghost btn-sm" href="{% url 'bank_accounts' %}">Manage bank accounts</a>
+    </div></div>
+    <div class="card" style="margin-top:1rem"><div class="hd">Opening cash position (start of year)</div><div class="bd">
+      <div class="help" style="margin-bottom:.6rem">Bank balance, cash on hand, and unremitted trust at the start of the financial year. These appear on the Statement of Financial Position so opening funds reconcile correctly. The legacy importer fills these in automatically.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'opening_bank_balance opening_cash_on_hand opening_unremitted_trust' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="about">
+    <div class="card"><div class="hd">About this app</div><div class="bd">
+      <table class="ledger compact"><tbody>
+        <tr><td>Version</td><td class="mono"><strong>{{ APP_VERSION }}</strong></td></tr>
+        <tr><td>Church</td><td>{{ CHURCH_NAME }}</td></tr>
+      </tbody></table>
+    </div></div>
+    <div class="card"><div class="hd">Software updates</div><div class="bd">
+      {% if update_available %}
+      <div class="flash" style="background:#e8f3ee;border:1px solid var(--forest)">
+        <strong>Update available: {{ update_available }}.</strong> A newer version has been published.</div>
+      {% else %}
+      <div class="info-panel">You're on the latest version the app can see.</div>
+      {% endif %}
+      <div class="btn-row" style="margin:.6rem 0">
+        <a class="btn" href="{% url 'update_run' %}">Check for &amp; install updates</a>
+      </div>
+      <div class="help" style="line-height:1.7">
+        <strong>How updates work.</strong> Updates are <strong>never forced</strong> and never applied automatically. When a new version is published you'll see an "Update available" banner. Click <strong>Check for &amp; install updates</strong> above and then <strong>Update now</strong> — the app backs up your database, fetches the new code, applies any database changes, and reloads itself, all from this screen. Nothing changes until you click. (Server admins can alternatively run <span class="mono">./update.sh</span>; see <span class="mono">DEPLOYMENT.md</span>.)
+      </div>
+    </div></div>
+
+    <div class="card"><div class="hd">Backup &amp; data export</div><div class="bd">
+      <p class="help" style="margin-top:0">Keep your own copies of the church's financial data. Both downloads are generated on demand — nothing is stored on the server.</p>
+      <div class="btn-row" style="margin:.6rem 0">
+        <a class="btn" href="{% url 'backup_database' %}">⤓ Download full backup (.sqlite3)</a>
+        <a class="btn btn-ghost" href="{% url 'data_export' %}">⤓ Export all data (Excel)</a>
+      </div>
+      <div class="help" style="line-height:1.6">
+        The <strong>full backup</strong> is a complete, restorable snapshot of the database — keep it somewhere safe (it contains all financial records). To restore, replace the app's database file with a backup and restart.<br>
+        The <strong>Excel export</strong> is a multi-sheet workbook (members, transactions, expenses, funds, reconciliations) for analysis or archival — it can't be restored back into the app.
+      </div>
+    </div></div>
+  </section>
+
+  <div class="btn-row"><button class="btn">Save settings</button></div>
+</form>
+
+<form method="post" id="telegram-pin-form" action="{% url 'telegram_set_pin' %}">{% csrf_token %}</form>
+
+<div class="card sms-tab-only" id="smsTestCard" style="margin-top:1.2rem;display:none"><div class="hd">Send a test SMS</div><div class="bd">
+  <form method="post" class="filters" style="margin:0">{% csrf_token %}
+    <div class="f"><label>Phone number</label><input name="test_to" class="field" placeholder="07XXXXXXXX"></div>
+    <button class="btn btn-sm" name="send_test" value="1">Send test</button>
+  </form>
+  <table class="ledger" style="margin-top:1rem">
+    <thead><tr><th>When</th><th>To</th><th>Status</th><th>Response</th></tr></thead>
+    <tbody>
+    {% for s in recent_sms %}
+      <tr><td class="mono">{{ s.created_at|date:"d/m/y H:i" }}</td><td class="mono">{{ s.to }}</td>
+        <td><span class="pill {% if s.status == 'SENT' %}pill-green{% elif s.status == 'FAILED' %}pill-red{% else %}pill-grey{% endif %}">{{ s.get_status_display }}</span></td>
+        <td class="muted" style="font-size:.85rem">{{ s.response|truncatechars:80 }}</td></tr>
+    {% empty %}<tr><td colspan="4" class="empty">No SMS sent yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+
+<script>
+document.querySelectorAll("#tabs .tab").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll("#tabs .tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active");
+  document.querySelector('.tabpane[data-pane="'+b.dataset.tab+'"]').classList.add("active");
+  var test=document.getElementById("smsTestCard");
+  if(test) test.style.display = (b.dataset.tab==="sms") ? "" : "none";
+}));
+</script>
+<style>
+.tabs{display:flex;gap:.3rem;border-bottom:2px solid var(--line);margin-bottom:1rem;flex-wrap:wrap}
+.tabs .tab{border:none;background:none;padding:.5rem .9rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
+.tabs .tab.active{color:var(--forest);border-bottom-color:var(--forest)}
+.tabpane{display:none}.tabpane.active{display:block}
+.card .hd{padding:.7rem 1rem;font-weight:600;border-bottom:1px solid var(--line);background:var(--card-head)}
+.card .bd{padding:1rem}
+</style>
+{% endblock %}

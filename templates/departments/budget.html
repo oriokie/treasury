@@ -1,0 +1,36 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Budgeting · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Annual budgeting</h1>
+<div class="sub">Set each fund's annual budget and brought-forward opening balance</div></div>
+<form method="get" style="display:inline-flex;gap:.4rem;align-items:center">
+  <select name="year" class="field--select" onchange="this.form.submit()">
+    {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+  </select>
+  <a class="btn btn-sm btn-ghost" href="{% url 'report_budget_board' %}?year={{ year }}">📋 Board summary</a></form></div>
+
+<div class="info-panel">
+  <strong>Opening balance</strong> is the amount <em>brought forward</em> into a fund at the start of the year
+  (last year's closing balance). It is added to receipts and reduced by expenses to give the fund's running
+  balance. <strong>Annual budget</strong> is the total of the fund's <em>breakdown</em> lines — click “Edit breakdown” to set them. It's used for budget-vs-actual reports.
+</div>
+
+<form method="post"><input type="hidden" name="year" value="{{ year }}">{% csrf_token %}
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Fund</th><th>Type</th><th class="num">Opening balance (b/f)</th><th class="num">Annual budget {{ year }}</th><th>Breakdown</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td {% if r.child %}style="padding-left:1.6rem" class="muted"{% endif %}>{% if r.child %}↳ {% endif %}{{ r.d.name }}</td>
+      <td><span class="pill {% if r.d.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.75">{% if r.d.is_trust %}Trust{% else %}Local{% endif %}</span></td>
+      <td class="num"><input name="opening_{{ r.d.id }}" value="{{ r.d.opening_balance|stringformat:'.2f' }}" class="field mono" style="width:130px;text-align:right"></td>
+      <td class="num mono">{% if r.budget != None %}{{ r.budget|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}{% if r.from_lines %} <span class="pill pill-blue" style="font-size:.6rem">from breakdown</span>{% endif %}</td>
+      <td><a class="link" href="{% url 'budget_lines' r.d.id %}?year={{ year }}">Edit breakdown…</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<div class="btn-row"><button class="btn">Save budgets &amp; opening balances</button><a class="btn btn-ghost" href="{% url 'department_list' %}">Back to funds</a></div>
+</form>
+<style>.ledger.compact td,.ledger.compact th{padding:.32rem .55rem;font-size:.88rem}</style>
+{% endblock %}

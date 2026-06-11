@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Bank feed log · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Real-time bank feed</h1><div class="sub">Events pushed by the bank's Core Banking System</div></div></div>
+<div class="grid-3" style="margin-top:1rem">
+  {% for label, n in counts.items %}<div class="stat"><div class="lbl">{{ label }}</div><div class="val mono">{{ n }}</div></div>{% endfor %}
+</div>
+<table class="ledger" style="margin-top:1rem"><thead><tr>
+  <th>Received</th><th>Transaction ID</th><th>Account</th><th>Type</th><th class="num">Amount</th><th>Status</th><th>Linked</th>
+</tr></thead><tbody>
+{% for e in events %}
+  <tr>
+    <td class="mono">{{ e.received_at|date:"d/m/y H:i" }}</td>
+    <td class="mono">{{ e.cbs_transaction_id }}</td>
+    <td class="mono">{{ e.acct_no }}</td>
+    <td>{{ e.event_type }}</td>
+    <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    <td><span class="pill {% if e.status == 'PROCESSED' %}pill-green{% elif e.status == 'FAILED' or e.status == 'REJECTED' %}pill-amber{% else %}pill-grey{% endif %}">{{ e.get_status_display }}</span>{% if e.error %}<div class="help">{{ e.error }}</div>{% endif %}</td>
+    <td>{% if e.transaction %}<a class="link" href="{% url 'transaction_list' %}">view</a>{% else %}—{% endif %}</td>
+  </tr>
+{% empty %}
+  <tr><td colspan="7" class="muted">No events received yet. Configure the feed in Settings → Channels and share the webhook URL with the bank.</td></tr>
+{% endfor %}
+</tbody></table>
+{% endblock %}

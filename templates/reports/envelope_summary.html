@@ -1,0 +1,71 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Offering summary · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Collection / Offering Summary</h1><div class="sub">{{ CHURCH_NAME }} · {{ month_label }}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?year={{ year }}&month={{ month }}&export=csv">Export CSV</a><button class="btn btn-sm" onclick="window.print()">⎙ Print (landscape)</button></div></div>
+
+<form method="get" class="filters no-print">
+  <div class="f"><label>Year</label><input name="year" value="{{ year }}" class="field" style="width:90px"></div>
+  <div class="f"><label>Month</label><input name="month" value="{{ month }}" class="field" style="width:70px"></div>
+  <button class="btn btn-sm">View</button>
+</form>
+
+<div class="print-sheet">
+  <div class="print-head">
+    <div class="ph-church">{{ CHURCH_NAME }}</div>
+    <div class="ph-title">Collection / Offering Summary</div>
+    <div class="ph-sub">{{ FIELD_NAME }} · {{ month_label }}</div>
+  </div>
+
+  <table class="ledger report-table">
+    <thead><tr><th class="fundcol">Fund</th>{% for s in d.saturdays %}<th class="num sat">{{ s|date:"d/m" }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+    <tbody>
+    <tr class="section-row"><td colspan="{{ d.saturdays|length|add:2 }}"><strong>Trust funds (remitted to {{ FIELD_NAME }})</strong></td></tr>
+    {% for r in d.trust_rows %}<tr><td class="fundcol">{{ r.fund.name }}</td>{% for c in r.cols %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}<td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>{% endfor %}
+    <tr class="total-row"><td class="fundcol"><strong>Total trust funds</strong></td>{% for c in d.trust_col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.trust_total|floatformat:0|intcomma }}</strong></td></tr>
+
+    <tr class="section-row"><td colspan="{{ d.saturdays|length|add:2 }}"><strong>Local funds (retained)</strong></td></tr>
+    {% for r in d.local_rows %}<tr><td class="fundcol">{{ r.fund.name }}</td>{% for c in r.cols %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}<td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>{% endfor %}
+    <tr class="total-row"><td class="fundcol"><strong>Total local funds</strong></td>{% for c in d.local_col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.local_total|floatformat:0|intcomma }}</strong></td></tr>
+    <tr class="grand-row"><td class="fundcol"><strong>GRAND TOTAL</strong></td><td class="num mono" colspan="{{ d.saturdays|length }}"></td><td class="num mono"><strong>{{ d.trust_total|add:d.local_total|floatformat:0|intcomma }}</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="sign-block">
+    <div class="sign"><div class="sign-line"></div><div class="sign-role">Head Treasurer</div><div class="sign-name">{{ cfg.sig_treasurer }}</div></div>
+    <div class="sign"><div class="sign-line"></div><div class="sign-role">Pastor</div><div class="sign-name">{{ cfg.sig_pastor }}</div></div>
+    <div class="sign"><div class="sign-line"></div><div class="sign-role">First Church Elder</div><div class="sign-name">{{ cfg.sig_elder }}</div></div>
+  </div>
+</div>
+
+<style>
+.print-head{text-align:center;margin-bottom:1rem}
+.print-head .ph-church{font-size:1.3rem;font-weight:800;letter-spacing:.5px}
+.print-head .ph-title{font-size:1.05rem;font-weight:600;margin-top:.15rem}
+.print-head .ph-sub{color:var(--muted);font-size:.9rem}
+.report-table{width:100%;table-layout:fixed}
+.report-table th,.report-table td{padding:.28rem .5rem;font-size:.86rem;overflow:hidden;text-overflow:ellipsis}
+.report-table th.sat{font-size:.72rem;white-space:nowrap}
+.report-table .num{white-space:nowrap}
+.report-table .fundcol{text-align:left;width:24%;word-break:break-word}
+.section-row td{background:var(--card-head)}
+.total-row td{border-top:1.5px solid var(--line)}
+.grand-row td{border-top:2px solid var(--forest);background:var(--forest-soft)}
+.sign-block{display:flex;justify-content:space-between;gap:2rem;margin-top:3rem}
+.sign{flex:1;text-align:center}
+.sign-line{border-top:1px solid #333;margin-bottom:.3rem}
+.sign-role{font-weight:600;font-size:.85rem}
+.sign-name{color:var(--muted);font-size:.85rem;min-height:1.1em}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  html,body{background:#fff}
+  body *{visibility:hidden}
+  .print-sheet,.print-sheet *{visibility:visible}
+  .print-sheet{position:absolute;left:0;top:0;width:100%}
+  .no-print{display:none!important}
+  .report-table th,.report-table td{padding:2px 4px;font-size:7.8pt}
+  .report-table th.sat{font-size:6.8pt}
+  .report-table,.section-row td,.grand-row td,.total-row td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+{% endblock %}

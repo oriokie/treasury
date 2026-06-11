@@ -1,0 +1,17 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Audit log · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Audit log</h1><div class="sub">Most recent changes across transactions, expenses &amp; members</div></div></div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>When</th><th>Record</th><th>Change</th><th>By</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for r in records %}
+    <tr><td class="mono">{{ r.when|date:"d/m/y H:i" }}</td>
+      <td>{{ r.model }}</td>
+      <td><span class="pill {% if r.type == 'Created' %}pill-green{% elif r.type == 'Deleted' %}pill-red{% else %}pill-grey{% endif %}">{{ r.type }}</span></td>
+      <td class="muted">{{ r.user }}</td>
+      <td class="muted">{{ r.obj|truncatechars:48 }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No history yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

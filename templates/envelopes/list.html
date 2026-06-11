@@ -1,0 +1,108 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Envelopes · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Envelopes</h1><div class="sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
+  <div class="btn-row">
+    {% if can_enter_data %}<a class="btn" href="{% url 'envelope_ledger' %}">＋ Record</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>{% endif %}
+  </div>
+</div>
+
+<div class="month-bar">
+  <a class="btn btn-ghost btn-sm" href="?month={{ prev_month }}">‹ Prev</a>
+  <form method="get" style="display:inline-flex;gap:.4rem;align-items:center">
+    <input type="month" name="month" value="{{ month_value }}" class="field" onchange="this.form.submit()">
+  </form>
+  <a class="btn btn-ghost btn-sm" href="?month={{ next_month }}">Next ›</a>
+  <span class="month-title">{{ month_label }}</span>
+  <span class="grow"></span>
+  <span class="muted">Total this month: <strong class="mono">KES {{ grand_total|floatformat:2|intcomma }}</strong></span>
+  {% if can_enter_data %}
+  <form method="post" action="{% url 'envelope_pull_bank' %}" onsubmit="return confirm('Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
+    {% csrf_token %}<input type="hidden" name="month" value="{{ month_value }}">
+    <button class="btn btn-sm btn-ghost" title="Create envelopes from bank giving, counted once">⤓ Receipt bank giving</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if all_sections|length > 1 %}
+<div class="sabbath-filter" style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin:.2rem 0 1rem">
+  <span class="muted" style="font-size:.8rem">Sabbath:</span>
+  <a class="pill {% if not sel_sabbath %}pill-active{% endif %}" href="?month={{ month_value }}">All</a>
+  {% for s in all_sections %}
+    <a class="pill {% if sel_sabbath == s.sabbath %}pill-active{% endif %}" href="?month={{ month_value }}&sabbath={{ s.sabbath|date:'Y-m-d' }}">{{ s.sabbath|date:"d M" }} <span class="muted">({{ s.count }})</span></a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% for sec in sections %}
+<div class="sabbath-card">
+  <div class="sabbath-head">
+    <div><strong>Sabbath {{ sec.sabbath|date:"d M Y" }}</strong>
+      <span class="muted">· {{ sec.count }} envelope{{ sec.count|pluralize }}</span>
+      {% if sec.closed %}<span class="pill pill-green" title="Closed by {{ sec.closed.closed_by.username|default:'—' }}">🔒 Sabbath closed</span>{% endif %}
+      {% if month_locked %}<span class="pill pill-amber" title="The month is locked">🔒 {{ month_locked }} locked</span>{% endif %}</div>
+    <div class="sabbath-totals">
+      <span class="pill pill-amber" title="Trust">T {{ sec.trust|floatformat:0|intcomma }}</span>
+      <span class="pill pill-grey" title="Local">L {{ sec.local|floatformat:0|intcomma }}</span>
+      <span class="mono"><strong>KES {{ sec.total|floatformat:2|intcomma }}</strong></span>
+      {% if can_enter_data %}
+      <form method="post" action="{% url 'sabbath_close' %}" style="display:inline">{% csrf_token %}
+        <input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        {% if sec.closed %}{% if is_treasurer %}<button name="action" value="reopen" class="btn btn-xs btn-ghost" onclick="return confirm('Reopen this Sabbath? Later offerings will count against it again.')">🔓 Reopen Sabbath</button>{% endif %}
+        {% else %}<button name="action" value="close" class="btn btn-xs" title="Lock this Sabbath's count — later offerings roll to the next open Sabbath">🔒 Lock Sabbath</button>{% endif %}
+      </form>
+      {% endif %}
+      <a class="btn btn-xs" href="{% url 'envelope_sabbath_excel' %}?date={{ sec.sabbath|date:'Y-m-d' }}">⬇ Excel</a>
+      {% if sec.count %}<a class="btn btn-xs" href="{% url 'envelope_receipts_bulk' %}?date={{ sec.sabbath|date:'Y-m-d' }}" target="_blank" title="Print all receipts, several per A4 page (cut to separate)">🧾 Receipts (A4)</a>
+      <a class="btn btn-xs btn-ghost" href="{% url 'envelope_receipts_bulk' %}?date={{ sec.sabbath|date:'Y-m-d' }}&format=etr&print=1" target="_blank" title="Print all receipts on a thermal/ETR printer">ETR</a>
+      <form method="post" action="{% url 'envelope_send_bulk' %}" style="display:inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="sms"><button class="btn btn-xs btn-ghost" title="Send all receipts by SMS">✉ SMS all</button></form>
+      <form method="post" action="{% url 'envelope_send_bulk' %}" style="display:inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="whatsapp"><button class="btn btn-xs btn-ghost" title="Send all receipts by WhatsApp">WhatsApp all</button></form>{% endif %}
+    </div>
+  </div>
+  {% if sec.items %}
+  <div class="table-wrap"><table class="ledger">
+    <thead><tr><th>Receipt</th><th>Contributor</th><th>Channel</th><th>Funds</th><th class="num">Total</th>{% if can_enter_data %}<th>Move to</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for e in sec.items %}
+      <tr {% if e.is_voided %}style="text-decoration:line-through;opacity:.55" title="Reversed in the ledger"{% endif %}>
+        <td class="mono"><a href="{% url 'envelope_detail' e.id %}">{{ e.receipt_no }}</a>
+          {% if e.is_voided %}<span class="pill pill-red" style="font-size:.6rem;text-decoration:none">reversed</span>{% else %}
+          <a href="{% url 'envelope_receipt' e.id %}" target="_blank" title="Print receipt" style="text-decoration:none">🧾</a>
+          <a href="{% url 'envelope_receipt' e.id %}?format=etr&print=1" target="_blank" title="Print compact ETR receipt" style="text-decoration:none;font-size:.78rem">ETR</a>
+          {% if can_enter_data and e.member %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="channel" value="sms"><button class="link" title="Send receipt by SMS" style="text-decoration:none">✉</button></form><form method="post" action="{% url 'envelope_send_receipt' e.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="channel" value="whatsapp"><button class="link" title="Send receipt by WhatsApp" style="text-decoration:none">🟢</button></form>{% endif %}{% endif %}</td>
+        <td>{% if e.member %}<a href="{% url 'member_detail' e.member.id %}">{{ e.contributor_name }}</a>{% else %}{{ e.contributor_name }}{% endif %}</td>
+        <td><span class="pill {% if e.channel == 'BANK' %}pill-amber{% else %}pill-grey{% endif %}">{{ e.get_channel_display }}</span></td>
+        <td class="muted" style="font-size:.82rem">{% for l in e.lines.all %}{{ l.department.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+        <td class="num mono">{{ e.total|floatformat:2|intcomma }}</td>
+        {% if can_enter_data %}
+        <td><form method="post" action="{% url 'envelope_reassign' e.id %}" style="margin:0">{% csrf_token %}
+          <select name="sabbath" class="field--select" style="font-size:.8rem;padding:.2rem" onchange="this.form.submit()">
+            {% for s in all_saturdays %}<option value="{{ s|date:'Y-m-d' }}" {% if s == sec.sabbath %}selected{% endif %}>{{ s|date:"d M" }}</option>{% endfor %}
+          </select></form></td>
+        <td><a class="link" href="{% url 'envelope_edit' e.id %}" title="Edit envelope" style="margin-right:.5rem">Edit</a><form method="post" action="{% url 'envelope_delete' e.id %}" style="margin:0;display:inline" onsubmit="return confirm('Delete this envelope and its ledger entries? This cannot be undone.');">{% csrf_token %}<button class="link link-danger" title="Delete envelope">✕</button></form></td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty" style="padding:1rem">No envelopes this Sabbath.</div>
+  {% endif %}
+</div>
+{% empty %}
+<div class="empty"><div class="big">✉</div>No Sabbaths in this month.</div>
+{% endfor %}
+
+<style>
+.month-bar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem;padding:.5rem .2rem;border-bottom:1px solid var(--line)}
+.month-bar .month-title{font-weight:700;font-size:1.05rem}
+.month-bar .grow{flex:1}
+.sabbath-card{border:1px solid var(--line);border-radius:10px;margin-bottom:1rem;overflow:hidden}
+.sabbath-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.6rem .9rem;background:var(--card-head,#faf7f0);border-bottom:1px solid var(--line)}
+.sabbath-totals{display:flex;align-items:center;gap:.5rem}
+.btn-xs{padding:.12rem .5rem;font-size:.78rem}
+</style>
+{% endblock %}

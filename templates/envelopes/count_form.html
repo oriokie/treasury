@@ -1,0 +1,58 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Cash count · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Sabbath cash count</h1>
+<div class="sub">Counters independently verify the offering, record the denomination breakdown, and sign.</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'count_list' %}">All counts</a></div>
+
+<form method="post" class="card"><div class="bd">{% csrf_token %}
+  <div class="form-grid" style="display:grid;grid-template-columns:200px 1fr;gap:.8rem;align-items:end">
+    <div class="form-row" style="margin:0"><label>Sabbath</label><input type="date" name="date" value="{{ sabbath|date:'Y-m-d' }}" class="field" onchange="this.form.action='';this.form.method='get';this.form.submit()"></div>
+    <div class="help">Expected (system cash receipts for this Sabbath): <strong class="mono">KES {{ expected|floatformat:2|intcomma }}</strong>
+      <br><span style="font-size:.82rem">= cash entries {{ breakdown.cash|floatformat:2|intcomma }} + cash envelopes {{ breakdown.envelope|floatformat:2|intcomma }} − cash disbursed {{ breakdown.disbursed|floatformat:2|intcomma }} (bank deposits excluded)</span></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1rem">
+    <div>
+      <div class="section-title">Denomination breakdown</div>
+      <table class="ledger compact"><thead><tr><th>Denomination</th><th class="num">Count</th><th class="num">Subtotal</th></tr></thead>
+        <tbody>
+        {% for d in denoms %}<tr><td class="mono">KES {{ d }}</td>
+          <td><input name="d_{{ d }}" class="field mono dcount" data-denom="{{ d }}" inputmode="numeric" style="width:90px;text-align:right" value=""></td>
+          <td class="num mono sub" id="sub_{{ d }}">0.00</td></tr>{% endfor %}
+        </tbody>
+        <tfoot><tr><td colspan="2" style="text-align:right"><strong>Counted total</strong></td><td class="num mono"><strong id="counted">0.00</strong></td></tr>
+          <tr><td colspan="3" id="disc" class="help"></td></tr></tfoot>
+      </table>
+    </div>
+    <div>
+      <div class="section-title">Counters / witnesses</div>
+      {% for i in "123" %}
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;margin-bottom:.5rem;align-items:center">
+        <input name="w_name" class="field" placeholder="Counter name">
+        <input name="w_role" class="field" placeholder="Role (e.g. deacon)">
+        <label class="check-row" style="white-space:nowrap"><input type="checkbox" name="w_signed_{{ forloop.counter0 }}"> Signed</label>
+      </div>
+      {% endfor %}
+      <div class="form-row"><label>Note (optional)</label><input name="note" class="field" placeholder="e.g. KES 200 short — under review"></div>
+    </div>
+  </div>
+  <div class="btn-row"><button class="btn">Save count</button></div>
+</div></form>
+<script>
+var expected={{ expected|stringformat:'.2f' }};
+function recompute(){
+  var total=0;
+  document.querySelectorAll(".dcount").forEach(function(i){
+    var d=parseFloat(i.dataset.denom), n=parseInt(i.value||"0",10); if(isNaN(n))n=0;
+    var sub=d*n; total+=sub; document.getElementById("sub_"+i.dataset.denom).textContent=sub.toFixed(2);
+  });
+  document.getElementById("counted").textContent=total.toFixed(2);
+  var diff=total-expected, el=document.getElementById("disc");
+  if(total===0){ el.textContent=""; return; }
+  if(Math.abs(diff)<0.005){ el.textContent="✓ Matches expected receipts."; el.style.color="var(--forest)"; }
+  else { el.textContent=(diff>0?"Over":"Short")+" by "+Math.abs(diff).toFixed(2)+" vs expected "+expected.toFixed(2); el.style.color="var(--red,#b00)"; }
+}
+document.querySelectorAll(".dcount").forEach(i=>i.addEventListener("input",recompute));
+</script>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Split entry · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Split entry</h1>
+  <div class="sub">Divide one lump sum across several funds or development groups. The parts must add up to the entry total.</div></div></div>
+
+<div class="card" style="margin-top:1rem"><div class="bd">
+  <table class="ledger"><tbody>
+    <tr><td><strong>Payer</strong></td><td>{{ txn.payer_name|default:"—" }}</td></tr>
+    <tr><td><strong>Date</strong></td><td>{{ txn.date }}</td></tr>
+    <tr><td><strong>Reference</strong></td><td class="mono">{{ txn.reference|default:"—" }}</td></tr>
+    <tr><td><strong>Total to split</strong></td><td class="mono"><span id="total">{{ txn.amount }}</span></td></tr>
+  </tbody></table>
+</div></div>
+
+<form method="post" class="card" style="margin-top:1rem"><div class="bd">{% csrf_token %}
+  <table class="ledger" id="rows"><thead><tr><th>Fund</th><th>Development group</th><th class="num">Amount</th><th></th></tr></thead>
+  <tbody id="rowBody"></tbody></table>
+  <div class="btn-row" style="margin-top:.6rem">
+    <button type="button" class="btn btn-sm" id="addRow">＋ Add part</button>
+    <span class="help" style="margin-left:1rem">Allocated: <span id="alloc" class="mono">0</span> / <span class="mono">{{ txn.amount }}</span> &nbsp; Remaining: <span id="remain" class="mono">{{ txn.amount }}</span></span>
+  </div>
+  <div class="btn-row" style="margin-top:1rem"><button class="btn" type="submit">Save split</button>
+    <a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a></div>
+</div></form>
+
+<script>
+const DEPTS=[{% for d in departments %}{id:"{{ d.id }}",name:"{{ d.name|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const GROUPS=[{% for g in dev_groups %}{id:"{{ g.id }}",name:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const TOTAL=parseFloat("{{ txn.amount }}");
+function deptOpts(){ return '<option value="">— fund —</option>'+DEPTS.map(d=>`<option value="${d.id}">${d.name}</option>`).join(''); }
+function grpOpts(){ return '<option value="">— group —</option>'+GROUPS.map(g=>`<option value="${g.id}">${g.name}</option>`).join(''); }
+function addRow(){
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td><select class="field--select" name="department">${deptOpts()}</select></td>
+    <td><select class="field--select" name="dev_group">${grpOpts()}</select></td>
+    <td class="num"><input class="field num mono amt" name="amount" inputmode="decimal"></td>
+    <td><button type="button" class="btn btn-xs btn-ghost rm">✕</button></td>`;
+  tr.querySelector(".rm").addEventListener("click",()=>{tr.remove();recalc();});
+  tr.querySelector(".amt").addEventListener("input",recalc);
+  document.getElementById("rowBody").appendChild(tr);
+}
+function recalc(){
+  let a=0; document.querySelectorAll(".amt").forEach(i=>{const v=parseFloat(i.value); if(!isNaN(v))a+=v;});
+  document.getElementById("alloc").textContent=a.toLocaleString();
+  const rem=TOTAL-a; const re=document.getElementById("remain");
+  re.textContent=rem.toLocaleString(); re.style.color = Math.abs(rem)<0.005 ? "var(--green)" : "var(--brass)";
+}
+document.getElementById("addRow").addEventListener("click",addRow);
+addRow(); addRow();
+</script>
+{% endblock %}

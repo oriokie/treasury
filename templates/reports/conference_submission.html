@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Conference submission · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Conference submission</h1><div class="sub">Trust remittance for {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Trust Fund Submission to {{ field_name }}</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Trust fund</th><th class="num">Collected</th><th class="num">Remitted</th><th class="num">To remit</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td>{{ r.department.name }}</td><td class="num mono">{{ r.collected|floatformat:2|intcomma }}</td><td class="num mono">{{ r.remitted|floatformat:2|intcomma }}</td><td class="num mono">{{ r.to_remit|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody>
+  <tfoot><tr class="total-row"><td><strong>TOTAL</strong></td><td class="num mono"><strong>{{ totals.collected|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ totals.remitted|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ totals.to_remit|floatformat:2|intcomma }}</strong></td></tr></tfoot>
+</table></div>
+<div class="sign-block">
+  <div class="sign"><div class="sign-line"></div><div>Prepared by — Head Treasurer{% if cfg.sig_treasurer %} ({{ cfg.sig_treasurer }}){% endif %}</div></div>
+  <div class="sign"><div class="sign-line"></div><div>Received by — {{ field_name }}</div></div>
+</div>
+{% include 'reports/_report_styles.html' %}
+<style>.sign-block{display:flex;gap:2rem;margin-top:2.4rem}.sign{flex:1;text-align:center}.sign-line{border-top:1px solid #333;margin-bottom:.3rem}.total-row td{border-top:2px solid var(--forest)}</style>
+{% endblock %}

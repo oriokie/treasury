@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}Edit member{% else %}New member{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if object %}Edit {{ object.name }}{% else %}New member{% endif %}</h1><div class="sub">Members link donations to a person across every channel</div></div></div>
+<div class="card" style="max-width:620px"><div class="bd">
+  <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
+    <div class="btn-row"><button class="btn">Save</button><a class="btn btn-ghost" href="{% url 'member_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

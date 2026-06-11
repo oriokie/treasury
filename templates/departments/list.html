@@ -1,0 +1,59 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Funds · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div class="ph-actions" style="margin-left:auto">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div><div><h1>Funds &amp; departments</h1><div class="sub">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div></div>
+{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a>{% endif %}</div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Name</th><th>Type</th><th>Category</th><th class="num">Opening</th><th class="num">Budget</th><th></th></tr></thead>
+  <tbody>
+  {% for node in fund_tree %}
+    <tr>
+      <td><strong>{{ node.fund.name }}</strong>{% if not node.fund.active %} <span class="pill pill-grey">inactive</span>{% endif %}{% if node.subs %} <span class="muted" style="font-size:.8rem">({{ node.subs|length }} sub-account{{ node.subs|length|pluralize }})</span>{% endif %}</td>
+      <td>{% if node.fund.is_trust %}<span class="pill pill-amber">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
+      <td class="muted">{{ node.fund.get_category_display }}</td>
+      <td class="num mono">{{ node.fund.opening_balance|floatformat:2|intcomma }}</td>
+      <td class="num mono muted">{% if node.fund.annual_budget %}{{ node.fund.annual_budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="num"><a class="link" href="{% url 'report_fund' node.fund.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' node.fund.id %}">Edit</a>{% endif %}</td>
+    </tr>
+    {% for s in node.subs %}
+    <tr>
+      <td style="padding-left:1.8rem" class="muted">↳ {{ s.name }}{% if not s.active %} <span class="pill pill-grey">inactive</span>{% endif %}</td>
+      <td><span class="pill {% if s.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.7">{% if s.is_trust %}Trust{% else %}Local{% endif %}</span></td>
+      <td class="muted">sub-account</td>
+      <td class="num mono">{{ s.opening_balance|floatformat:2|intcomma }}</td>
+      <td class="num mono muted">{% if s.annual_budget %}{{ s.annual_budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="num"><a class="link" href="{% url 'report_fund' s.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' s.id %}">Edit</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% for g in node.dev_groups %}
+    <tr>
+      <td style="padding-left:1.8rem" class="muted">↳ {{ g.label }} <span class="pill pill-grey" style="font-size:.65rem">dev group</span></td>
+      <td><span class="pill pill-grey" style="opacity:.7">Local</span></td>
+      <td class="muted">sub-account</td>
+      <td class="num mono muted">—</td>
+      <td class="num mono muted">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="num"><a class="link" href="{% url 'report_dev_groups' %}">Progress</a>{% if is_treasurer %} · <a class="link" href="{% url 'dev_group_edit' g.id %}">Edit</a> · <a class="link" href="{% url 'dev_group_delete' g.id %}">Delete</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    {% if node.dev_groups and is_treasurer %}
+    <tr><td style="padding-left:1.8rem" colspan="6"><a class="link" href="{% url 'dev_group_create' %}">＋ Add development group</a></td></tr>
+    {% endif %}
+  {% empty %}<tr><td colspan="6" class="empty"><div class="big">◉</div>No funds defined.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+
+<div class="page-head" style="margin-top:1.6rem"><div><h2 style="margin:0">Split offerings</h2><div class="sub">Lump sums that divide automatically across funds (e.g. 50% trust / 50% local)</div></div></div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Collection</th><th>Splits into</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for sf in split_funds %}
+    <tr>
+      <td><strong>{{ sf.name }}</strong></td>
+      <td class="muted">{% for c in sf.components.all %}{{ c.department }} <span class="mono">{{ c.percent|floatformat:0 }}%</span>{% if not forloop.last %} · {% endif %}{% endfor %}</td>
+      <td>{% if sf.active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-grey">Inactive</span>{% endif %}</td>
+    </tr>
+  {% empty %}<tr><td colspan="3" class="empty">No split offerings defined.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% if is_treasurer %}<p class="help">Split offerings are configured in the <a class="link" href="/admin/giving/splitfund/">admin</a>.</p>{% endif %}
+{% endblock %}

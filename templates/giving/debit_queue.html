@@ -1,0 +1,66 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Bank debits · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="btn-row no-print" style="justify-content:flex-end;margin-bottom:.4rem"><a class="btn btn-ghost btn-sm" href="{% url 'auto_reconcile' %}">⟳ Try auto-reconciliation</a></div>
+<div class="page-head"><div><h1>Bank-statement debits</h1>
+<div class="sub">Money leaving the bank — classify each as a charge, an expense, a match, or a float</div></div></div>
+
+<div class="info-panel">
+  <strong>How to treat a debit:</strong> a <em>bank charge</em> records a small fee;
+  <em>match to expense</em> links it to one you already entered (no double count);
+  <em>record as expense</em> creates a new expense from the debit; a <em>float
+  withdrawal</em> is cash drawn to pay expenses later — book those expenses as
+  they're spent.
+</div>
+
+{% for t in debits %}
+<div class="card" style="margin-bottom:.8rem"><div class="bd">
+  <div class="split" style="gap:1rem;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:220px">
+      <div><strong class="mono">KES {{ t.amount|floatformat:2|intcomma }}</strong> · {{ t.date|date:"d M Y" }}</div>
+      <div class="muted" style="font-size:.84rem;margin-top:.3rem">{{ t.raw_narration|default:t.reference }}</div>
+    </div>
+    <form method="post" action="{% url 'debit_resolve' t.id %}" style="flex:2;min-width:300px">{% csrf_token %}
+      <div class="debit-grid">
+        <select name="kind" class="field--select kind-sel" data-id="{{ t.id }}">
+          <option value="bank_charge">Bank charge</option>
+          <option value="match">Match to existing expense</option>
+          <option value="expense">Record as expense</option>
+          <option value="remittance">Trust fund remittance</option>
+          <option value="float">Float withdrawal (cash on hand)</option>
+        </select>
+        <select name="department" class="field--select fld-dept">
+          <option value="">— fund —</option>
+          {% for f in funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+        </select>
+        <select name="category" class="field--select fld-cat">
+          {% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+        </select>
+        <span class="help" style="display:block;font-size:.74rem">Hold Ctrl/Cmd to match one withdrawal to several expenses (across funds); their total must equal the debit.</span>
+        <select name="expense" class="field--select fld-exp" multiple size="3" style="min-width:280px">
+          {% for e in pending_expenses %}<option value="{{ e.id }}">{{ e.date|date:"d M" }} · {{ e.description|truncatechars:28 }} · {{ e.amount|floatformat:0 }}</option>{% endfor %}
+        </select>
+        <input name="description" class="field fld-desc" placeholder="Description (optional)">
+        <button class="btn btn-sm">Apply</button>
+      </div>
+    </form>
+  </div>
+</div></div>
+{% empty %}
+<div class="empty"><div class="big">✓</div>No unclassified bank debits.</div>
+{% endfor %}
+{% include 'partials/pagination.html' %}
+
+<script>
+function syncRow(sel){
+  const form=sel.closest("form");
+  const k=sel.value;
+  form.querySelector(".fld-dept").style.display=(k==="bank_charge"||k==="expense")?"":"none";
+  form.querySelector(".fld-cat").style.display=(k==="expense")?"":"none";
+  form.querySelector(".fld-exp").style.display=(k==="match")?"":"none";
+  form.querySelector(".fld-desc").style.display=(k==="expense")?"":"none";
+}
+document.querySelectorAll(".kind-sel").forEach(s=>{ s.addEventListener("change",()=>syncRow(s)); syncRow(s); });
+</script>
+<style>.debit-grid{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}.debit-grid .field,.debit-grid .field--select{width:auto;min-width:130px}</style>
+{% endblock %}

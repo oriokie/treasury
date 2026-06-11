@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Software update · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Software update</h1>
+  <div class="sub">Current version {{ current }}{% if update_tag %} · latest {{ update_tag }}{% endif %}</div></div>
+  <a class="btn btn-ghost" href="{% url 'settings' %}">← Settings</a></div>
+
+{% if not status.running and not status.finished %}
+  {% if available %}
+  <div class="card"><div class="bd">
+    <p>A new version (<strong>{{ update_tag }}</strong>) is available. Updating will:</p>
+    <ul style="line-height:1.8;margin:.4rem 0 1rem 1.2rem">
+      <li>Back up your database first</li>
+      <li>Fetch and apply the new code</li>
+      <li>Apply any database changes and refresh the app</li>
+    </ul>
+    <p class="help">Your data is not touched except for the safety backup. The update takes about a minute.</p>
+    <form method="post" style="margin-top:1rem">{% csrf_token %}
+      <button class="btn" onclick="return confirm('Update the app to {{ update_tag }} now?')">Update now</button>
+    </form>
+  </div></div>
+  {% else %}
+  <div class="info-panel">You're already on the latest version the app can see ({{ current }}).</div>
+  {% endif %}
+{% else %}
+  <div class="card"><div class="hd">Update progress <span id="spin" class="muted" style="font-weight:400"></span></div><div class="bd">
+    <pre id="log" class="mono" style="white-space:pre-wrap;background:var(--paper-2);padding:1rem;border-radius:10px;max-height:380px;overflow:auto;font-size:.82rem;line-height:1.6">{% for line in status.log %}{{ line }}
+{% endfor %}</pre>
+    <div id="result" style="margin-top:1rem"></div>
+  </div></div>
+  <script>
+  (function(){
+    var logEl=document.getElementById("log"), spin=document.getElementById("spin"),
+        result=document.getElementById("result"), dots=0;
+    function poll(){
+      fetch("{% url 'update_status' %}").then(r=>r.json()).then(function(s){
+        logEl.textContent=(s.log||[]).join("\n");
+        logEl.scrollTop=logEl.scrollHeight;
+        if(s.running){
+          dots=(dots+1)%4; spin.textContent="working"+".".repeat(dots);
+          setTimeout(poll,1500);
+        } else if(s.finished){
+          spin.textContent="";
+          if(s.ok){
+            result.innerHTML='<div class="flash success"><strong>Update complete.</strong> The app is reloading — <a href="{% url "settings" %}">refresh in a moment</a>.</div>';
+          } else {
+            result.innerHTML='<div class="flash error"><strong>Update failed.</strong> Your data and backup are safe. You can retry, or update from the server with <code>./update.sh</code>.</div>';
+          }
+        }
+      }).catch(function(){ setTimeout(poll,2500); });
+    }
+    poll();
+  })();
+  </script>
+{% endif %}
+{% endblock %}

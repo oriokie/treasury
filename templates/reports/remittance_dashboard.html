@@ -1,0 +1,78 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Trust Fund Remittance · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Trust Fund Remittance</h1>
+<div class="sub">Trust funds are held as a liability to {{ field_name }} until remitted</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'remittance_batch_list' %}">All batches</a></div>
+
+<form method="get" class="filter-bar" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+  <div class="form-row" style="margin:0"><label style="font-size:.78rem">Month</label>
+    <input class="field mono" type="month" name="month" value="{{ period_month|default:'' }}"></div>
+  <span class="help" style="padding-bottom:.5rem">or range</span>
+  <div class="form-row" style="margin:0"><label style="font-size:.78rem">From</label>
+    <input class="field mono" type="date" name="start" value="{{ period_start|date:'Y-m-d' }}"></div>
+  <div class="form-row" style="margin:0"><label style="font-size:.78rem">To</label>
+    <input class="field mono" type="date" name="end" value="{{ period_end|date:'Y-m-d' }}"></div>
+  <button class="btn btn-sm">Apply</button>
+  {% if period_active %}<a class="btn btn-ghost btn-sm" href="{% url 'remittance_dashboard' %}">Clear</a>{% endif %}
+</form>
+{% if period_active %}<div class="callout" style="margin-bottom:1rem">Showing trust collected{% if period_month %} for {{ period_month }}{% else %} from {{ period_start|date:'d M Y' }} to {{ period_end|date:'d M Y' }}{% endif %}. A batch created now will be stamped to this period and dated within it — the normal lump-sum-per-period workflow.</div>{% endif %}
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|floatformat:0|intcomma }}</div></div>
+  <div class="kpi"><div class="kpi-label">Remitted</div><div class="kpi-val">{{ total_remitted|floatformat:0|intcomma }}</div></div>
+  <div class="kpi kpi-warn"><div class="kpi-label">Outstanding liability</div><div class="kpi-val">{{ total_outstanding|floatformat:0|intcomma }}</div></div>
+  <div class="kpi {% if max_days > 30 %}kpi-danger{% endif %}"><div class="kpi-label">Oldest outstanding</div><div class="kpi-val">{{ max_days }}<span class="kpi-unit"> days</span></div></div>
+  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Next remittance due</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div></div>
+</div>
+
+<form method="post" action="{% url 'remittance_batch_create' %}">{% csrf_token %}
+{% if period_month %}<input type="hidden" name="month" value="{{ period_month }}">{% endif %}
+{% if period_start and not period_month %}<input type="hidden" name="start" value="{{ period_start|date:'Y-m-d' }}">{% endif %}
+{% if period_end and not period_month %}<input type="hidden" name="end" value="{{ period_end|date:'Y-m-d' }}">{% endif %}
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr>{% if is_treasurer %}<th style="width:30px"></th>{% endif %}<th>Trust fund</th><th class="num">Collected</th><th class="num">Remitted</th><th class="num">Outstanding</th><th class="num">Days</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      {% if is_treasurer %}<td>{% if r.outstanding > 0 %}<input type="checkbox" name="fund" value="{{ r.department.id }}">{% endif %}</td>{% endif %}
+      <td>{{ r.department.name }}</td>
+      <td class="num mono">{{ r.collected|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.remitted|floatformat:0|intcomma }}</td>
+      <td class="num mono {% if r.outstanding > 0 %}row-debit{% endif %}">{{ r.outstanding|floatformat:0|intcomma }}</td>
+      <td class="num"><span class="pill {% if r.days > 30 %}pill-red{% elif r.days > 0 %}pill-amber{% else %}pill-grey{% endif %}">{{ r.days }}</span></td>
+    </tr>
+  {% empty %}<tr><td colspan="6" class="empty">No trust funds.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% if is_treasurer %}
+<div class="btn-row">
+  <button class="btn" name="_sel" value="1">Generate batch for selected</button>
+  <button class="btn btn-ghost" name="all" value="1" onclick="return confirm('Create a remittance batch for ALL outstanding trust funds?');">Remit all outstanding</button>
+</div>{% endif %}
+</form>
+
+<h2 style="margin-top:1.6rem">Recent batches</h2>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Batch</th><th>Date</th><th class="num">Total</th><th>Status</th><th>Cheque</th></tr></thead>
+  <tbody>
+  {% for b in batches %}
+    <tr><td><a class="link" href="{% url 'remittance_batch_detail' b.id %}">{{ b.batch_number }}</a></td>
+      <td class="mono">{{ b.date|date:"d/m/y" }}</td>
+      <td class="num mono">{{ b.total_amount|floatformat:0|intcomma }}</td>
+      <td><span class="pill {% if b.status == 'REMITTED' %}pill-green{% elif b.status == 'APPROVED' %}pill-blue{% elif b.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ b.get_status_display }}</span></td>
+      <td class="mono muted">{{ b.cheque_no|default:"—" }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No batches yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+<style>
+.kpi-row{display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:1.2rem}
+.kpi{flex:1;min-width:150px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem}
+.kpi-label{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.kpi-val{font-size:1.5rem;font-weight:700;font-family:var(--mono,monospace);margin-top:.2rem}
+.kpi-unit{font-size:.85rem;color:var(--muted)}
+.kpi-warn{border-color:var(--brass)}.kpi-warn .kpi-val{color:var(--brass)}
+.kpi-danger{border-color:#b3261e}.kpi-danger .kpi-val{color:#b3261e}
+.ledger.compact td,.ledger.compact th{padding:.32rem .55rem;font-size:.88rem}
+</style>
+{% endblock %}

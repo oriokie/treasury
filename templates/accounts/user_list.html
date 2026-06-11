@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% load treasury_extras %}
+{% block title %}Users &amp; roles · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Users &amp; roles</h1><div class="sub">Who can sign in, and what they may do</div></div>
+<a class="btn" href="{% url 'user_create' %}">＋ New user</a></div>
+<div class="role-key">
+  <span><b>Treasurer</b> — full access, approvals, user management</span>
+  <span><b>Assistant</b> — data entry, imports, no approvals</span>
+  <span><b>Auditor</b> — read-only access to everything</span>
+</div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td class="mono">{{ u.username }}</td>
+      <td>{{ u.get_full_name|default:"—" }}</td>
+      <td>{% if u.is_superuser %}<span class="pill pill-green">Superuser</span>{% else %}{{ roles_by_user|get_item:u.id }}{% endif %}</td>
+      <td>{% if u.is_active %}<span class="pill pill-grey">Active</span>{% else %}<span class="pill pill-red">Disabled</span>{% endif %}</td>
+      <td class="num"><a class="link" href="{% url 'user_edit' u.id %}">Edit role</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Review auto-allocated · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Review auto-allocated entries</h1>
+<div class="sub">{{ imp.filename }} · {{ count }} entr{{ count|pluralize:"y,ies" }} awaiting confirmation</div></div>
+<div class="btn-row">
+  <a class="btn btn-ghost btn-sm" href="{% url 'statement_auto_excel' imp.id %}">⬇ Download Excel</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'statement_detail' imp.id %}">← Back</a>
+</div></div>
+
+<div class="info-panel">These entries were auto-allocated by the rules engine but are <strong>held</strong> until you confirm them — they do not yet affect balances or the ledger. Adjust the fund on any row if needed, then confirm. You can also download the Excel to check offline.</div>
+
+{% if rows %}
+<form method="post">{% csrf_token %}
+  <div class="table-wrap"><table class="ledger compact">
+    <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('input[name=confirm]').forEach(c=>c.checked=this.checked)"></th>
+      <th>Date</th><th>Payer</th><th>Reference</th><th class="num" title="Development group number">Dev #</th><th>Fund / allocation</th><th class="num">Amount</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for t in rows %}<tr>
+      <td><input type="checkbox" name="confirm" value="{{ t.id }}" checked></td>
+      <td class="mono">{{ t.date|date:"d M y" }}</td>
+      <td>{{ t.payer_name|default:"—" }}{% if t.payer_phone %} <span class="muted" style="font-size:.78rem">{{ t.payer_phone }}</span>{% endif %}</td>
+      <td class="mono" style="font-size:.8rem">{{ t.reference|default:"—" }}</td>
+      <td class="num mono">{% if t.dev_group %}<span class="pill pill-brass" title="{{ t.dev_group.label }}">{{ t.dev_group.number }}</span>{% else %}—{% endif %}</td>
+      <td><select name="dept_{{ t.id }}" class="field--select" style="min-width:200px">
+        {% for d in funds %}<option value="{{ d.id }}" {% if d.id == t.department_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
+      </select></td>
+      <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+      <td><span class="pill {% if t.allocation_status == 'AUTO' %}pill-green{% else %}pill-blue{% endif %}">{{ t.get_allocation_status_display }}</span></td>
+    </tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <div class="btn-row" style="margin-top:1rem">
+    <button class="btn" name="confirm_all" value="1" onclick="return confirm('Confirm all auto-allocated entries? They will affect balances.');">Confirm all</button>
+    <button class="btn btn-ghost">Confirm ticked &amp; save fund changes</button>
+  </div>
+</form>
+{% else %}
+<p class="empty">Nothing awaiting confirmation for this import.</p>
+{% endif %}
+<style>.ledger.compact td,.ledger.compact th{padding:.3rem .5rem}</style>
+{% endblock %}

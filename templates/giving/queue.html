@@ -1,0 +1,155 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Review queue · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Review queue</h1>
+    <div class="sub">{{ items|length }} entr{{ items|length|pluralize:"y,ies" }} on this page need a fund before they count toward giving</div></div>
+  <div class="btn-row no-print">
+    <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
+    {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
+  </div>
+</div>
+
+{% for t in items %}
+<div class="q-card">
+  <div class="q-info">
+    <div class="q-amt-row">
+      <span class="q-amt mono">KSh {{ t.amount|floatformat:2|intcomma }}</span>
+      <span class="pill {% if t.direction == 'DEBIT' %}pill-red{% else %}pill-green{% endif %}">{{ t.get_direction_display }}</span>
+      <span class="muted mono q-date">{{ t.date|date:"d M Y" }}</span>
+    </div>
+    <div class="q-payer">{{ t.payer_name|default:"(no payer name)" }}{% if t.payer_phone %} <span class="mono muted">· {{ t.payer_phone }}</span>{% endif %}</div>
+    <div class="q-ref">
+      {% if t.reference %}<span class="q-ref-chip mono">{{ t.reference }}</span>{% endif %}
+      <span class="muted q-narr">{{ t.raw_narration|truncatechars:96 }}</span>
+    </div>
+  </div>
+
+  {% if can_enter_data %}
+  <form method="post" action="{% url 'queue_claim' t.id %}" class="q-form" data-amount="{{ t.amount|floatformat:2 }}">
+    {% csrf_token %}
+    <label class="q-label">Allocate to fund</label>
+    <div class="combo">
+      <input type="text" class="field combo-input" placeholder="Search funds…" autocomplete="off" role="combobox" aria-expanded="false">
+      <input type="hidden" name="department" class="combo-value">
+      <div class="combo-list" role="listbox" hidden></div>
+    </div>
+
+    <select name="dev_group" class="field--select dev-pick" hidden>
+      <option value="">Development group №…</option>
+      {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }} — {{ g.label|truncatechars:30 }}</option>{% endfor %}
+    </select>
+
+    <label class="check-row q-remember"><input type="checkbox" name="remember_rule"> <span>Remember this reference for next time</span></label>
+
+    <div class="q-actions">
+      <button class="btn btn-sm q-submit" disabled>Allocate</button>
+      <button type="button" class="btn btn-sm btn-ghost q-split-toggle">⑂ Split</button>
+    </div>
+
+    <div class="q-split-panel" hidden>
+      <div class="q-split-hint">Divide this offering across funds — the parts must total <strong class="mono">KSh {{ t.amount|floatformat:2 }}</strong>.</div>
+      {% for i in "123" %}
+      <div class="split-row">
+        <div class="combo combo-split">
+          <input type="text" class="field combo-input" placeholder="Fund {{ forloop.counter }}…" autocomplete="off">
+          <input type="hidden" name="split_dept" class="combo-value">
+          <div class="combo-list" role="listbox" hidden></div>
+        </div>
+        <input name="split_amount" class="field mono split-amt" placeholder="Amount" inputmode="decimal">
+        <select name="split_grp" class="field--select dev-pick" hidden>
+          <option value="">Dev №…</option>
+          {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endfor %}
+      <div class="split-running">Allocated <span class="mono alloc">0.00</span> · remaining <span class="mono remain">{{ t.amount|floatformat:2 }}</span></div>
+      <button class="btn btn-sm btn-ghost" name="split" value="1">⑂ Split &amp; allocate</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% empty %}
+<div class="empty"><div class="big">✓</div>Queue is clear — every entry is allocated.</div>
+{% endfor %}
+
+{% include 'partials/pagination.html' %}
+
+<script id="fund-data" type="application/json">{ "funds": [{% for d in departments %}{"v":"{{ d.id }}","t":"{{ d.name|escapejs }}","cat":"{{ d.category }}"}{% if not forloop.last %},{% endif %}{% endfor %}], "splits": [{% for sf in split_funds %}{"v":"sf:{{ sf.id }}","t":"{{ sf.name|escapejs }}","cat":"SPLIT"}{% if not forloop.last %},{% endif %}{% endfor %}] }</script>
+<script>
+(function(){
+  var DATA = JSON.parse(document.getElementById("fund-data").textContent);
+  var OPTS = DATA.funds.concat(DATA.splits);
+
+  function setupCombo(combo){
+    var input = combo.querySelector(".combo-input");
+    var hidden = combo.querySelector(".combo-value");
+    var list = combo.querySelector(".combo-list");
+    var isSplit = combo.classList.contains("combo-split");
+    var pool = isSplit ? DATA.funds : OPTS;   // split rows pick plain funds only
+    var active = -1, shown = [];
+
+    function render(q){
+      q = (q||"").toLowerCase();
+      shown = pool.filter(function(o){ return o.t.toLowerCase().indexOf(q) > -1; }).slice(0, 8);
+      if(!shown.length){ list.innerHTML = '<div class="combo-empty">No match</div>'; }
+      else {
+        list.innerHTML = shown.map(function(o,i){
+          var tag = o.cat==="SPLIT" ? '<span class="combo-tag">split 50/50</span>' :
+                    (o.cat==="DEVELOPMENT" ? '<span class="combo-tag">dev</span>' : '');
+          return '<div class="combo-opt'+(i===active?' on':'')+'" data-i="'+i+'">'+o.t+tag+'</div>';
+        }).join("");
+      }
+      list.hidden = false; input.setAttribute("aria-expanded","true");
+    }
+    function choose(o){
+      input.value = o.t; hidden.value = o.v;
+      list.hidden = true; input.setAttribute("aria-expanded","false"); active = -1;
+      // dev-group select shows only when a DEVELOPMENT fund is chosen
+      var holder = isSplit ? combo.closest(".split-row") : combo.parentNode;
+      var dev = holder.querySelector(".dev-pick");
+      if(dev){ var on = o.cat==="DEVELOPMENT"; dev.hidden = !on; if(!on) dev.value=""; }
+      // enable the main Allocate button
+      var form = combo.closest("form");
+      if(!isSplit){ var sub = form.querySelector(".q-submit"); if(sub) sub.disabled = !o.v; }
+      input.dispatchEvent(new Event("combo:chosen"));
+    }
+    input.addEventListener("focus", function(){ render(input.value); });
+    input.addEventListener("input", function(){ hidden.value=""; active=-1; render(input.value);
+      var form=combo.closest("form"); if(!isSplit){ var s=form.querySelector(".q-submit"); if(s) s.disabled=true; } });
+    input.addEventListener("keydown", function(e){
+      if(list.hidden) return;
+      if(e.key==="ArrowDown"){ active=Math.min(active+1,shown.length-1); render(input.value); e.preventDefault(); }
+      else if(e.key==="ArrowUp"){ active=Math.max(active-1,0); render(input.value); e.preventDefault(); }
+      else if(e.key==="Enter"){ if(active>=0&&shown[active]){ choose(shown[active]); e.preventDefault(); } }
+      else if(e.key==="Escape"){ list.hidden=true; }
+    });
+    list.addEventListener("mousedown", function(e){
+      var opt = e.target.closest(".combo-opt"); if(!opt) return;
+      e.preventDefault(); choose(shown[+opt.dataset.i]);
+    });
+    document.addEventListener("click", function(e){ if(!combo.contains(e.target)){ list.hidden=true; input.setAttribute("aria-expanded","false"); } });
+  }
+  document.querySelectorAll(".combo").forEach(setupCombo);
+
+  // split toggle
+  document.querySelectorAll(".q-split-toggle").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var p = btn.closest("form").querySelector(".q-split-panel");
+      p.hidden = !p.hidden;
+    });
+  });
+  // live split tally
+  document.addEventListener("input", function(e){
+    if(!e.target.classList.contains("split-amt")) return;
+    var form = e.target.closest("form");
+    var full = parseFloat(form.dataset.amount)||0, total=0;
+    form.querySelectorAll(".split-amt").forEach(function(i){ total+=parseFloat(i.value)||0; });
+    form.querySelector(".alloc").textContent = total.toFixed(2);
+    var rem = form.querySelector(".remain");
+    rem.textContent = (full-total).toFixed(2);
+    rem.style.color = Math.abs(full-total)<0.005 ? "var(--forest)" : "var(--danger)";
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,80 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Treasury controls · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Treasury controls</h1><div class="sub">Period locking and duplicate review</div></div>
+<form method="get"><select name="year" class="field--select" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></form></div>
+
+<div class="card"><div class="hd">Accounting period locks — {{ year }}</div><div class="bd">
+  <div class="info-panel">Locking a month prevents entries dated in it from being created, edited or reversed. Only an administrator can unlock a period.</div>
+  <div class="lock-grid">
+    {% for m in months %}
+      <div class="lock-cell {% if m.lock %}locked{% endif %}">
+        <div class="lock-month">{{ m.name }}</div>
+        {% if m.lock %}
+          <div class="lock-state">🔒 Locked</div>
+          <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.num }}"><button name="action" value="unlock" class="btn btn-xs btn-ghost">Unlock</button></form>
+        {% else %}
+          <div class="lock-state muted">Open</div>
+          <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.num }}"><button name="action" value="lock" class="btn btn-xs">Lock</button></form>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</div></div>
+
+<div class="card" style="margin-top:1.2rem"><div class="hd">Year-end close &amp; carry-forward</div><div class="bd">
+  <div class="info-panel">Closing a year records its fund balances as the amounts <strong>carried forward</strong> into the next year, and locks the year's months. Balances carry forward automatically in reports; this gives you a signed, immutable year-end record.</div>
+  <form method="get" style="margin-bottom:.8rem"><input type="hidden" name="year" value="{{ year }}">
+    <label style="font-size:.8rem;font-weight:600">Year to close
+      <select name="close_year" class="field--select" style="width:auto;margin-left:.4rem" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == close_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+    </label>
+    {% if is_closed %}<span class="pill pill-green" style="margin-left:.6rem">Closed</span>{% endif %}
+  </form>
+  <table class="ledger compact"><thead><tr><th>Fund</th><th class="num">Closing (carried forward)</th></tr></thead><tbody>
+    {% for r in cf_rows %}<tr><td>{{ r.department.name }}{% if r.is_trust %} <span class="pill pill-grey">trust</span>{% endif %}</td><td class="num mono">{{ r.closing|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total carried forward into {{ close_year|add:1 }}</strong></td><td class="num mono"><strong>{{ cf_total|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+  <div class="btn-row" style="margin-top:.8rem">
+    {% if is_closed %}
+      <span class="muted" style="font-size:.86rem">{{ close_year }} is closed and its months are locked.</span>
+      <form method="post" onsubmit="return confirm('Re-open {{ close_year }}? This unlocks the year and removes the close record (administrator only).');">{% csrf_token %}<input type="hidden" name="close_year" value="{{ close_year }}"><button name="action" value="reopen_year" class="btn btn-ghost btn-sm">Re-open year</button></form>
+    {% elif pending_close %}
+      <span class="pill pill-amber">Awaiting confirmation</span>
+      <span class="muted" style="font-size:.86rem">{{ close_year }} close was initiated by {{ pending_close.closed_by.get_full_name|default:pending_close.closed_by.username }}. A second, different treasurer must confirm before balances carry forward and months lock.</span>
+      <form method="post" onsubmit="return confirm('Confirm and finalise the {{ close_year }} year-end close?');">{% csrf_token %}<input type="hidden" name="close_year" value="{{ close_year }}"><button name="action" value="confirm_close" class="btn btn-brass">Confirm &amp; finalise close</button></form>
+    {% else %}
+      <form method="post" onsubmit="return confirm('Close {{ close_year }} and carry these balances forward into {{ close_year|add:1 }}? The year\'s months will be locked.');">{% csrf_token %}<input type="hidden" name="close_year" value="{{ close_year }}"><button name="action" value="close_year" class="btn">Close {{ close_year }} &amp; carry forward</button></form>
+    {% endif %}
+  </div>
+  {% if closes %}
+  <div class="sec" style="margin-top:1rem">Closed years</div>
+  <table class="ledger compact"><thead><tr><th>Year</th><th>Closed by</th><th>When</th><th class="num">Total carried forward</th></tr></thead><tbody>
+    {% for c in closes %}<tr><td>{{ c.year }}</td><td>{{ c.closed_by.get_full_name|default:c.closed_by.username }}</td><td class="mono">{{ c.closed_at|date:"d/m/y" }}</td><td class="num mono">{{ c.total_carried|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+</div></div>
+
+<div class="card" style="margin-top:1.2rem"><div class="hd">Possible duplicate expenses</div><div class="bd">
+  <table class="ledger compact"><thead><tr><th>Date</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
+  {% for d in dup_expenses %}<tr><td class="mono">{{ d.date|date:"M Y" }}</td><td>{{ d.fund }}</td><td>{{ d.description }} <span class="muted">· {{ d.claimant }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No duplicate expenses detected.</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+
+<div class="card" style="margin-top:1.2rem"><div class="hd">Possible duplicate offerings</div><div class="bd">
+  <table class="ledger compact"><thead><tr><th>Date</th><th>Payer</th><th>Reference</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
+  {% for d in dup_offerings %}<tr><td class="mono">{{ d.date|date:"d/m/y" }}</td><td>{{ d.payer }}</td><td class="mono muted">{{ d.reference }}</td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No duplicate offerings detected.</td></tr>{% endfor %}
+  </tbody></table>
+  <div class="help" style="margin-top:.6rem">Bank statement imports are de-duplicated automatically by their unique bank reference, so re-importing a statement never double-counts.</div>
+</div></div>
+<style>
+.lock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.6rem}
+.lock-cell{border:1px solid var(--line);border-radius:10px;padding:.6rem;text-align:center}
+.lock-cell.locked{background:var(--card-head);border-color:var(--brass)}
+.lock-month{font-weight:600;font-size:.9rem}
+.lock-state{font-size:.8rem;margin:.25rem 0 .4rem}
+.btn-xs{padding:.12rem .5rem;font-size:.75rem}
+.ledger.compact td,.ledger.compact th{padding:.3rem .5rem;font-size:.86rem}
+</style>
+{% endblock %}

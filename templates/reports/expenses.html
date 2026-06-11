@@ -1,0 +1,28 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Expenditure · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Expenditure</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · approved &amp; paid</div></div></div>
+{% include 'partials/period_filter.html' %}
+<div class="split" style="gap:1.5rem;align-items:flex-start;margin-top:1rem;flex-wrap:wrap">
+  <div style="flex:1;min-width:280px">
+    <h3 class="sec">By fund</h3>
+    <table class="ledger"><thead><tr><th>Fund</th><th class="num">Spent</th><th class="num">Budget</th></tr></thead><tbody>
+    {% for r in by_dept %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td><td class="num mono muted">{% if r.budget %}{{ r.budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="3" class="empty">None.</td></tr>{% endfor %}</tbody></table>
+  </div>
+  <div style="flex:1;min-width:280px">
+    <h3 class="sec">By category</h3>
+    <table class="ledger"><thead><tr><th>Category</th><th class="num">Spent</th></tr></thead><tbody>
+    {% for r in by_category %}<tr><td>{{ cat_labels|get_item:r.category }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td></tr>
+    {% empty %}<tr><td colspan="2" class="empty">None.</td></tr>{% endfor %}</tbody></table>
+  </div>
+</div>
+<h3 class="sec" style="margin-top:1.4rem">Outstanding (pending &amp; approved-unpaid)</h3>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Status</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for e in outstanding %}<tr><td class="mono">{{ e.date|date:"d/m/y" }}</td><td>{{ e.description }}</td><td>{{ e.department.name }}</td>
+    <td><span class="pill {% if e.status == 'APPROVED' %}pill-blue{% else %}pill-amber{% endif %}">{{ e.get_status_display }}</span></td>
+    <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">Nothing outstanding.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

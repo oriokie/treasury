@@ -1,0 +1,8 @@
+<form method="get" class="filters">
+  <div class="f"><label>Year</label>
+    <select name="year" class="field--select" onchange="this.form.submit()">
+      {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select></div>
+  <a class="btn btn-ghost btn-sm" href="?year={{ year }}&export=csv">Export CSV</a>
+  <button type="button" class="btn btn-sm" onclick="window.print()">Print</button>
+</form>

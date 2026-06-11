@@ -1,0 +1,89 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Sabbath envelope statement · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Treasurer's Cash Statement</h1><div class="sub">{{ CHURCH_NAME }} · Sabbath {{ date|date:"d M Y" }}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?date={{ date|date:'Y-m-d' }}&export=csv">Export CSV</a><button class="btn btn-sm" onclick="window.print()">⎙ Print (landscape)</button></div></div>
+
+<form method="get" class="filters no-print"><div class="f"><label>Sabbath date</label><input type="date" name="date" value="{{ date|date:'Y-m-d' }}" class="field"></div><button class="btn btn-sm">View</button></form>
+
+<div class="print-sheet">
+  <div class="print-head">
+    <div class="ph-church">{{ CHURCH_NAME }}</div>
+    <div class="ph-title">Treasurer's Cash Statement</div>
+    <div class="ph-sub">Sabbath {{ date|date:"d M Y" }}</div>
+  </div>
+
+  <div class="sabbath-scroll">
+  <table class="ledger report-table sabbath-tbl">
+    <thead><tr><th class="rcpt-col">Receipt</th><th class="contrib-col">Contributor</th>{% for f in d.funds %}<th class="num fundh">{{ f.name }}{% if f.is_trust %} *{% endif %}</th>{% endfor %}<th class="num totcol">Total</th></tr></thead>
+    <tbody>
+    {% for r in d.rows %}
+      <tr><td class="mono rcpt-col">{{ r.envelope.receipt_no }}</td><td class="contrib-col">{{ r.envelope.contributor_name }}</td>
+      {% for f in d.funds %}<td class="num mono fundcell">{% with a=r.cells|get_item:f.id %}{% if a %}{{ a|floatformat:0|intcomma }}{% endif %}{% endwith %}</td>{% endfor %}
+      <td class="num mono totcol">{{ r.total|floatformat:0|intcomma }}</td></tr>
+    {% empty %}<tr><td colspan="{{ d.funds|length|add:3 }}" class="empty">No envelopes for this Sabbath.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr class="total-row"><td class="rcpt-col"></td><td class="contrib-col"><strong>TOTAL</strong></td>
+      {% for f in d.funds %}<td class="num mono fundcell"><strong>{{ d.fund_totals|get_item:f.id|floatformat:0|intcomma }}</strong></td>{% endfor %}
+      <td class="num mono totcol"><strong>{{ d.grand_total|floatformat:0|intcomma }}</strong></td></tr></tfoot>
+  </table>
+  </div>
+  <div class="trust-note">* Trust fund items — remitted to {{ FIELD_NAME }}.</div>
+
+  <div class="sabbath-summary">
+    <table class="ledger sum-tbl"><tbody>
+    <tr class="section-row"><td colspan="2"><strong>Trust fund items (remitted to {{ FIELD_NAME }})</strong></td></tr>
+    {% for f in d.trust_funds %}<tr><td>{{ f.name }}</td><td class="num mono">{{ d.fund_totals|get_item:f.id|floatformat:0|intcomma }}</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total trust funds</strong></td><td class="num mono"><strong>{{ d.trust_total|floatformat:0|intcomma }}</strong></td></tr>
+    <tr class="section-row"><td colspan="2"><strong>Local fund items (retained)</strong></td></tr>
+    {% for f in d.local_funds %}<tr><td>{{ f.name }}</td><td class="num mono">{{ d.fund_totals|get_item:f.id|floatformat:0|intcomma }}</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total local funds</strong></td><td class="num mono"><strong>{{ d.local_total|floatformat:0|intcomma }}</strong></td></tr>
+    <tr class="grand-row"><td><strong>Grand total given</strong></td><td class="num mono"><strong>{{ d.grand_total|floatformat:0|intcomma }}</strong></td></tr>
+    </tbody></table>
+  </div>
+
+  <div class="sign-block">
+    <div class="sign"><div class="sign-line"></div><div class="sign-role">Head Treasurer</div><div class="sign-name">{{ cfg.sig_treasurer }}</div></div>
+    <div class="sign"><div class="sign-line"></div><div class="sign-role">Pastor</div><div class="sign-name">{{ cfg.sig_pastor }}</div></div>
+    <div class="sign"><div class="sign-line"></div><div class="sign-role">First Church Elder</div><div class="sign-name">{{ cfg.sig_elder }}</div></div>
+  </div>
+</div>
+
+<style>
+.print-head{text-align:center;margin-bottom:.9rem}
+.print-head .ph-church{font-size:1.3rem;font-weight:800;letter-spacing:.5px}
+.print-head .ph-title{font-size:1.05rem;font-weight:600;margin-top:.15rem}
+.print-head .ph-sub{color:var(--muted);font-size:.9rem}
+.sabbath-tbl{width:100%;table-layout:fixed}
+.sabbath-tbl th,.sabbath-tbl td{padding:.2rem .3rem;font-size:.8rem}
+.sabbath-tbl td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sabbath-tbl .rcpt-col{width:62px}
+.sabbath-tbl .contrib-col{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.sabbath-tbl .totcol{width:66px}
+.sabbath-tbl th.fundh{font-size:.64rem;line-height:1.04;white-space:normal;word-break:break-word;
+  overflow:visible;vertical-align:bottom;padding:.2rem .18rem}
+.sabbath-tbl .fundcell{white-space:nowrap;width:58px}
+.sabbath-scroll{overflow-x:auto}
+.trust-note{font-size:.76rem;color:var(--muted);margin:.4rem 0 0}
+.sabbath-summary{max-width:520px;margin-top:1.2rem}
+.sum-tbl .section-row td{background:var(--card-head)}
+.total-row td{border-top:1.5px solid var(--line)}
+.grand-row td{border-top:2px solid var(--forest);background:var(--forest-soft)}
+.sign-block{display:flex;justify-content:space-between;gap:2rem;margin-top:2.4rem}
+.sign{flex:1;text-align:center}.sign-line{border-top:1px solid #333;margin-bottom:.3rem}
+.sign-role{font-weight:600;font-size:.85rem}.sign-name{color:var(--muted);font-size:.85rem;min-height:1.1em}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  html,body{background:#fff}
+  body *{visibility:hidden}
+  .print-sheet,.print-sheet *{visibility:visible}
+  .print-sheet{position:absolute;left:0;top:0;width:100%}
+  .no-print{display:none!important}
+  .sabbath-tbl{font-size:8pt}
+  .sabbath-tbl th,.sabbath-tbl td{padding:2px 3px;font-size:7.6pt}
+  .sabbath-tbl th.fundh{font-size:6.6pt}
+  .report-table,.sum-tbl,.section-row td,.grand-row td,.total-row td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .sabbath-summary{margin-top:.8rem}
+}
+</style>
+{% endblock %}

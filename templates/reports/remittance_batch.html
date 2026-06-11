@@ -1,0 +1,47 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ batch.batch_number }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Remittance {{ batch.batch_number }}</h1>
+<div class="sub">Created {{ batch.date|date:"d M Y" }} · to {{ field_name }}</div></div>
+<span class="pill {% if batch.status == 'REMITTED' %}pill-green{% elif batch.status == 'APPROVED' %}pill-blue{% elif batch.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}" style="font-size:.9rem">{{ batch.get_status_display }}</span></div>
+
+<div class="wizard">
+  <div class="step {% if batch.status != 'CANCELLED' %}done{% endif %}">1 · Funds selected</div>
+  <div class="step {% if batch.status == 'APPROVED' or batch.status == 'REMITTED' %}done{% endif %}">2 · Approved</div>
+  <div class="step {% if batch.status == 'REMITTED' %}done{% endif %}">3 · Remitted</div>
+</div>
+
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Trust fund</th><th>Status</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for e in lines %}
+    <tr><td>{{ e.department.name }}</td>
+      <td><span class="pill {% if e.status == 'PAID' %}pill-green{% elif e.status == 'APPROVED' %}pill-blue{% else %}pill-amber{% endif %}">{{ e.get_status_display }}</span></td>
+      <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td></tr>
+  {% endfor %}
+  <tr class="total-row"><td colspan="2"><strong>Total</strong></td><td class="num mono"><strong>{{ batch.total_amount|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+
+{% if batch.cheque_no %}<p class="help">Remitted by cheque <strong>{{ batch.cheque_no }}</strong> on {{ batch.cheque_date|date:"d M Y" }}.</p>{% endif %}
+
+{% if is_treasurer %}
+<div class="btn-row">
+  {% if batch.status == 'DRAFT' %}
+    <form method="post" action="{% url 'remittance_batch_approve' batch.id %}">{% csrf_token %}<button class="btn">Approve batch</button></form>
+  {% elif batch.status == 'APPROVED' %}
+    <form method="post" action="{% url 'remittance_batch_remit' batch.id %}" style="display:inline-flex;gap:.4rem;align-items:center" onsubmit="return confirm('Mark this batch as remitted? This records the funds as sent to the field.');">{% csrf_token %}
+      <input name="cheque_no" class="field" placeholder="Cheque no." style="width:130px">
+      <input type="date" name="cheque_date" class="field" style="width:150px">
+      <button class="btn">Mark remitted</button>
+    </form>
+  {% endif %}
+  <a class="btn btn-ghost" href="{% url 'remittance_dashboard' %}">Back to dashboard</a>
+</div>{% endif %}
+<style>
+.wizard{display:flex;gap:.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
+.wizard .step{padding:.4rem .8rem;border-radius:999px;background:var(--card-head);color:var(--muted);font-size:.82rem;font-weight:600}
+.wizard .step.done{background:var(--forest-soft);color:var(--forest)}
+.total-row td{border-top:2px solid var(--forest)}
+</style>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ member.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">{{ member.get_group_display|default:"No group" }}{% if member.phone %} · <span class="mono">{{ member.phone }}</span>{% endif %}</div></div>
+<div class="btn-row">
+  <a class="btn btn-ghost" href="{% url 'report_member' member.id %}">Statement</a>
+  {% if can_enter_data %}<a class="btn" href="{% url 'member_edit' member.id %}">Edit</a>{% endif %}
+</div></div>
+<div class="grid-3" style="margin-bottom:1rem">
+  <div class="stat"><div class="lbl">Total given (lifetime)</div><div class="val mono">{{ total_given|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Member type</div><div class="val" style="font-size:1.1rem">{{ member.get_member_type_display|default:"—" }}</div></div>
+  <div class="stat"><div class="lbl">Source</div><div class="val" style="font-size:1.1rem">{{ member.get_source_display }}</div></div>
+</div>
+{% if aliases %}
+<div class="card" style="margin-bottom:1rem"><div class="bd">
+  <strong>Known aliases</strong>
+  <div style="margin-top:.4rem">{% for a in aliases %}<span class="pill pill-grey" style="margin:.15rem">{{ a.name }}</span>{% endfor %}</div>
+</div></div>
+{% endif %}
+<div class="card"><div class="hd"><strong>Recent giving</strong><span class="muted">last {{ transactions|length }}</span></div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Date</th><th>Fund</th><th>Reference</th><th>Channel</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for t in transactions %}
+    <tr><td class="mono">{{ t.date|date:"d/m/y" }}</td><td>{{ t.department.name|default:"—" }}</td>
+      <td class="mono muted">{{ t.reference|default:"—"|truncatechars:24 }}</td>
+      <td><span class="pill pill-grey">{{ t.get_channel_display }}</span></td>
+      <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No giving recorded yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

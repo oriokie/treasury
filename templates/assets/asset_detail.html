@@ -1,0 +1,55 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Asset · {{ asset.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ asset.name }}</h1><div class="sub">{{ asset.get_category_display }} · acquired {{ asset.acquired_on|date:"d M Y" }}{% if asset.reference %} · {{ asset.reference }}{% endif %}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">← Assets</a>{% if is_treasurer and not asset.disposed %}<a class="btn btn-ghost btn-sm" href="{% url 'asset_edit' asset.id %}">Edit</a>{% endif %}</div></div>
+
+<div class="card" style="max-width:680px"><div class="bd">
+  <table class="ledger"><tbody>
+    <tr><td class="muted">Cost</td><td class="num mono">KES {{ asset.cost|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="muted">Accumulated depreciation</td><td class="num mono">{{ accum|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="muted">Net book value</td><td class="num mono"><strong>KES {{ nbv|floatformat:2|intcomma }}</strong></td></tr>
+    {% if asset.department %}<tr><td class="muted">Fund / ministry</td><td>{{ asset.department.name }}</td></tr>{% endif %}
+    {% if asset.location %}<tr><td class="muted">Location</td><td>{{ asset.location }}</td></tr>{% endif %}
+    {% if asset.disposed %}
+    <tr><td class="muted">Disposed</td><td>{{ asset.get_disposal_method_display }} on {{ asset.disposed_on|date:"d M Y" }}</td></tr>
+    <tr><td class="muted">Proceeds</td><td class="num mono">{{ asset.disposal_proceeds|default:0|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="muted">Gain/(loss) on disposal</td><td class="num mono">{% if asset.disposal_gain_loss < 0 %}({{ asset.disposal_gain_loss|floatformat:2|intcomma|cut:"-" }}){% else %}{{ asset.disposal_gain_loss|default:0|floatformat:2|intcomma }}{% endif %}</td></tr>
+    {% endif %}
+  </tbody></table>
+</div></div>
+
+{% if is_treasurer and not asset.disposed %}
+<div class="card" style="max-width:680px;margin-top:1rem"><div class="hd">Dispose of this asset</div><div class="bd">
+  <form method="post" action="{% url 'asset_dispose' asset.id %}">{% csrf_token %}
+    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+      <div class="form-row"><label>Date</label><input type="date" name="disposed_on" value="{{ today|date:'Y-m-d' }}" class="field"></div>
+      <div class="form-row"><label>Method</label><select name="method" class="field--select">{% for v,l in asset.DisposalMethod.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+      <div class="form-row"><label>Proceeds (KES)</label><input name="proceeds" value="0" class="field"></div>
+      <div class="form-row"><label>Proceeds into fund</label><select name="fund" class="field--select"><option value="">—</option>{% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+    </div>
+    <p class="help">Gain or loss is proceeds less net book value ({{ nbv|floatformat:2|intcomma }}). Proceeds are recorded as a receipt into the chosen fund.</p>
+    <div class="btn-row"><button class="btn btn-danger" onclick="return confirm('Dispose of this asset?');">Record disposal</button></div>
+  </form>
+</div></div>
+{% endif %}
+
+<div class="card" style="max-width:680px;margin-top:1rem"><div class="hd">Documents — receipts, warranty, photos</div><div class="bd">
+  {% if asset.attachments.all %}
+  <table class="ledger compact"><tbody>
+    {% for a in asset.attachments.all %}<tr>
+      <td><a class="link" href="{{ a.file.url }}" target="_blank">{{ a.label|default:a.file.name }}</a></td>
+      <td class="muted">{{ a.uploaded_at|date:"d M Y" }}</td>
+      {% if can_enter_data %}<td style="text-align:right"><form method="post" action="{% url 'asset_attachment_delete' asset.id a.id %}" style="display:inline" onsubmit="return confirm('Remove?');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
+    </tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="empty" style="padding:1rem">⎘ No documents attached yet.</p>{% endif %}
+  {% if can_enter_data %}
+  <form method="post" action="{% url 'asset_attachment_upload' asset.id %}" enctype="multipart/form-data" style="margin-top:.8rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:end">
+    {% csrf_token %}
+    <div class="form-row" style="margin:0"><label>Label</label><input name="label" class="field" placeholder="e.g. Purchase receipt / Warranty"></div>
+    <div class="form-row" style="margin:0"><label>File</label><input type="file" name="file" class="field" required></div>
+    <button class="btn">Attach document</button>
+  </form>{% endif %}
+</div></div>
+{% endblock %}

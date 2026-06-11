@@ -1,0 +1,25 @@
+# Core
+Django==5.2.15
+django-simple-history==3.11.0
+
+# Security: credential encryption at rest + login brute-force protection
+cryptography==48.0.0
+django-axes==8.3.1
+certifi==2026.5.20
+
+# Statement parsing (CSV / XLSX / legacy XLS)
+openpyxl==3.1.5
+xlrd==2.0.2
+python-dateutil==2.9.0.post0
+
+# PostgreSQL driver (production). Uncomment to install:
+# psycopg[binary]==3.2.3
+
+# Static file serving (production; no separate web server needed)
+whitenoise==6.8.2
+
+# Production WSGI server
+gunicorn==23.0.0
+
+# Dev/test only
+coverage==7.14.1

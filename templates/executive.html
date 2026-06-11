@@ -1,0 +1,216 @@
+{% extends 'base.html' %}{% load humanize static %}
+{% block title %}Executive dashboard · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Executive dashboard</h1><div class="sub">{{ CHURCH_NAME }} · live financial overview</div></div></div>
+
+<div class="exec-cards">
+  {% for c in cards %}
+  {% if c.link %}<a class="exec-card tone-{{ c.tone }}" href="{{ c.link }}" style="text-decoration:none">{% else %}<div class="exec-card tone-{{ c.tone }}">{% endif %}
+    <div class="ec-label">{{ c.label }}</div>
+    <div class="ec-val">{% if c.money %}<span class="ec-cur">KES</span> {{ c.value|floatformat:0|intcomma }}{% else %}{{ c.value }}{% endif %}</div>
+    {% if c.sub %}<div class="ec-sub">{{ c.sub }}</div>{% endif %}
+  {% if c.link %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>
+
+<div class="insight-tiles">
+  {% for t in insights.tiles %}
+  <div class="insight-tile {% if t.tone == 'warn' %}it-warn{% endif %}">
+    <div class="it-label">{{ t.label }}</div>
+    <div class="it-value mono">
+      {% if t.money %}KSh {{ t.value|floatformat:0|intcomma }}{% elif t.pct != None %}{{ t.pct|floatformat:1 }}%{% else %}—{% endif %}
+      {% if t.delta != None %}<span class="it-delta {% if t.delta >= 0 %}good{% else %}bad{% endif %}">{% if t.delta >= 0 %}▲{% else %}▼{% endif %} {{ t.delta|floatformat:1 }}%</span>{% endif %}
+    </div>
+    <div class="it-sub">{{ t.sub }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="exec-twocol">
+  <div class="card"><div class="hd">Income by channel (YTD)</div><div class="bd">
+    {% with cm=insights.channel_mix %}
+    {% with tot=cm.bank|add:cm.cash|add:cm.envelope %}
+    <div class="chan-bar">
+      {% if tot %}
+      <div class="chan-seg seg-bank" style="width:{% widthratio cm.bank tot 100 %}%" title="Bank {{ cm.bank|floatformat:0|intcomma }}"></div>
+      <div class="chan-seg seg-cash" style="width:{% widthratio cm.cash tot 100 %}%" title="Cash {{ cm.cash|floatformat:0|intcomma }}"></div>
+      <div class="chan-seg seg-env" style="width:{% widthratio cm.envelope tot 100 %}%" title="Envelope {{ cm.envelope|floatformat:0|intcomma }}"></div>
+      {% endif %}
+    </div>
+    <div class="chan-legend">
+      <span><i class="dot seg-bank"></i> Bank <strong class="mono">{{ cm.bank|floatformat:0|intcomma }}</strong></span>
+      <span><i class="dot seg-cash"></i> Cash <strong class="mono">{{ cm.cash|floatformat:0|intcomma }}</strong></span>
+      <span><i class="dot seg-env"></i> Envelope <strong class="mono">{{ cm.envelope|floatformat:0|intcomma }}</strong></span>
+    </div>
+    {% endwith %}{% endwith %}
+  </div></div>
+
+  <div class="card"><div class="hd">Participation (YTD)</div><div class="bd">
+    <div class="part-grid">
+      <div class="part-tile"><div class="pt-val mono">{{ insights.participation.givers }}</div><div class="pt-lbl">Active givers</div></div>
+      <div class="part-tile"><div class="pt-val mono">{{ insights.participation.gifts }}</div><div class="pt-lbl">Donations recorded</div></div>
+      <div class="part-tile"><div class="pt-val mono">KSh {{ insights.participation.median|floatformat:0|intcomma }}</div><div class="pt-lbl">Median donation</div></div>
+      <div class="part-tile"><div class="pt-val mono">{{ insights.participation.new_givers }}</div><div class="pt-lbl">New givers this month</div></div>
+    </div>
+    <div class="muted" style="font-size:.78rem;margin-top:.6rem">Aggregate figures only — individual giving is kept private.</div>
+  </div></div>
+</div>
+
+<style>
+.insight-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.8rem;margin-bottom:1.2rem}
+.insight-tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.9rem 1rem;box-shadow:var(--shadow-sm);border-top:3px solid var(--forest)}
+.insight-tile.it-warn{border-top-color:var(--amber)}
+.it-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);font-weight:700}
+.it-value{font-size:1.25rem;font-weight:700;color:var(--ink);margin:.25rem 0;display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.it-delta{font-size:.78rem;font-weight:600}
+.it-delta.good{color:var(--forest)}.it-delta.bad{color:var(--danger)}
+.it-sub{font-size:.76rem;color:var(--muted)}
+.exec-twocol{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem}
+@media(max-width:760px){.exec-twocol{grid-template-columns:1fr}}
+.chan-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--paper-2);margin-bottom:.7rem}
+.chan-seg{height:100%}
+.seg-bank{background:var(--forest)}.seg-cash{background:var(--brass)}.seg-env{background:#7fa99b}
+.chan-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
+.chan-legend .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:.3rem;vertical-align:middle}
+.chan-legend strong{color:var(--ink)}
+.part-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.part-tile{background:var(--paper-2);border-radius:9px;padding:.7rem .8rem;text-align:center}
+.part-tile .pt-val{font-size:1.4rem;font-weight:700;color:var(--forest-deep)}
+.part-tile .pt-lbl{font-size:.74rem;color:var(--muted);margin-top:.15rem}
+</style>
+
+{% if ai_enabled %}
+<div class="card ai-card" style="margin-bottom:1.2rem;border:1px solid var(--brass)">
+  <div class="hd" style="display:flex;justify-content:space-between;align-items:center">
+    <span>✨ AI insights</span>
+    <button id="aiBtn" class="btn btn-sm" onclick="loadInsights()">Generate briefing</button>
+  </div>
+  <div class="bd" id="aiBody">
+    <p class="muted" style="margin:0">Generate an AI briefing — highlights, risks and recommendations drawn from your current figures. This makes one call to your configured assistant.</p>
+  </div>
+</div>
+<script>
+function loadInsights(){
+  var btn=document.getElementById("aiBtn"), body=document.getElementById("aiBody");
+  btn.disabled=true; btn.textContent="Thinking…"; body.innerHTML='<p class="muted">Analysing your figures…</p>';
+  fetch("{% url 'executive_insights' %}").then(r=>r.json()).then(function(d){
+    btn.disabled=false; btn.textContent="Regenerate";
+    if(!d.ok){ body.innerHTML='<p class="row-debit">'+(d.error||"Could not generate insights.")+'</p>'; return; }
+    var html=d.insights
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+      .replace(/^(Highlights:|Risks:|Recommendations:)\s*$/gim,'<div class="ai-h">$1</div>')
+      .replace(/^\s*[-•]\s*(.+)$/gim,'<div class="ai-li">• $1</div>')
+      .replace(/\n/g,"");
+    body.innerHTML='<div class="ai-out">'+html+'</div>';
+  }).catch(function(){ btn.disabled=false; btn.textContent="Generate briefing"; body.innerHTML='<p class="row-debit">Network error.</p>'; });
+}
+</script>
+<style>
+.ai-out .ai-h{font-weight:700;color:var(--brass);margin:.6rem 0 .2rem}
+.ai-out .ai-li{margin:.15rem 0 .15rem .4rem;line-height:1.45}
+.ai-card .hd .btn{font-size:.78rem}
+</style>
+{% endif %}
+
+{% if alerts %}
+<div class="card alerts-card"><div class="hd">Financial-health alerts{% if dismissed_count %} <form method="post" style="display:inline;float:right">{% csrf_token %}<input type="hidden" name="restore" value="1"><button class="link" style="font-weight:400;font-size:.78rem">Restore {{ dismissed_count }} dismissed</button></form>{% endif %}</div><div class="bd">
+  {% for a in alerts %}
+    <div class="alert-row sev-{{ a.severity }}">
+      <span class="alert-dot"></span>
+      <div style="flex:1"><strong>{{ a.title }}</strong><div class="muted" style="font-size:.84rem">{{ a.detail }}{% if a.link %} · <a class="link" href="{{ a.link }}">{{ a.link_text|default:"View" }}</a>{% endif %}</div></div>
+      <form method="post" style="margin:0" title="Dismiss — no action needed">{% csrf_token %}<input type="hidden" name="dismiss" value="{{ a.key }}"><button class="alert-dismiss" type="submit" aria-label="Dismiss">&times;</button></form>
+    </div>
+  {% endfor %}
+</div></div>
+{% else %}
+<div class="info-panel">No anomalies detected — collections, spending, budgets and remittances all look normal.{% if dismissed_count %} <form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="restore" value="1"><button class="link">Restore {{ dismissed_count }} dismissed</button></form>{% endif %}</div>
+{% endif %}
+
+<div class="kpi-strip">
+  {% for k in kpis %}
+  <div class="kpi-tile">
+    <div class="kpi-top"><span class="kpi-name">{{ k.label }}</span>
+      <span class="kpi-arrow {% if k.invert %}{% if k.trend == 'up' %}bad{% elif k.trend == 'down' %}good{% else %}flat{% endif %}{% else %}{% if k.trend == 'up' %}good{% elif k.trend == 'down' %}bad{% else %}flat{% endif %}{% endif %}">
+        {% if k.trend == 'up' %}▲{% elif k.trend == 'down' %}▼{% else %}▬{% endif %}</span></div>
+    {% if k.pct != None %}<div class="kpi-pct">{{ k.pct|floatformat:1 }}%{% if k.is_level %} <span class="muted" style="font-size:.7rem">{% if k.label == 'Budget compliance' %}used{% else %}level{% endif %}</span>{% endif %}</div>{% else %}<div class="kpi-pct muted">—</div>{% endif %}
+    <div class="kpi-detail">{{ k.detail }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="chart-grid">
+  <div class="card"><div class="hd">Giving trend (12 months)</div><div class="bd"><div class="chart-box"><canvas id="givingTrend"></canvas></div></div></div>
+  <div class="card"><div class="hd">Department spending (this year)</div><div class="bd"><div class="chart-box"><canvas id="deptSpend"></canvas></div></div></div>
+  <div class="card"><div class="hd">Monthly income</div><div class="bd"><div class="chart-box"><canvas id="monthlyIncome"></canvas></div></div></div>
+  <div class="card"><div class="hd">Monthly expenses</div><div class="bd"><div class="chart-box"><canvas id="monthlyExpense"></canvas></div></div></div>
+  <div class="card"><div class="hd">Trust fund balances (outstanding)</div><div class="bd"><div class="chart-box"><canvas id="trustBalances"></canvas></div></div></div>
+</div>
+<style>.chart-box{position:relative;height:200px;width:100%}</style>
+
+{{ charts_json|json_script:"chartData" }}
+<script src="{% static 'vendor/chart.umd.js' %}"></script>
+<script>
+(function(){
+  var D = JSON.parse(document.getElementById("chartData").textContent);
+  var FOREST="#1f5f4f", BRASS="#b07d2c", SOFT="rgba(31,95,79,.15)";
+  var money = function(v){ return "KES " + Number(v).toLocaleString(); };
+  if (typeof Chart === "undefined") return;
+  Chart.defaults.font.family = "'Public Sans', system-ui, sans-serif";
+  Chart.defaults.color = "#6b6b6b";
+  var noLegend = {plugins:{legend:{display:false}}, maintainAspectRatio:false,
+    scales:{y:{ticks:{callback:function(v){return Number(v).toLocaleString();}}}}};
+  function mk(id, key, cfg){
+    try{
+      var el=document.getElementById(id);
+      if(!el || !D[key] || !D[key].labels || !D[key].labels.length){
+        if(el){ el.closest(".card").style.display="none"; }
+        return;
+      }
+      new Chart(el, cfg(D[key]));
+    }catch(e){ /* never let one chart break the page */ }
+  }
+
+  mk("givingTrend","giving_trend",function(d){return {type:"line",
+    data:{labels:d.labels,datasets:[{data:d.values,borderColor:FOREST,backgroundColor:SOFT,
+      fill:true,tension:.3,pointRadius:2}]},options:noLegend};});
+  mk("deptSpend","department_spending",function(d){return {type:"bar",
+    data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:BRASS}]},
+    options:Object.assign({indexAxis:"y"},noLegend)};});
+  mk("monthlyIncome","monthly_income",function(d){return {type:"bar",
+    data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:FOREST}]},options:noLegend};});
+  mk("monthlyExpense","monthly_expenses",function(d){return {type:"bar",
+    data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:"#c0532b"}]},options:noLegend};});
+  mk("trustBalances","trust_balances",function(d){return {type:"doughnut",
+    data:{labels:d.labels,datasets:[{data:d.values,
+      backgroundColor:[FOREST,BRASS,"#3d7d6a","#d09a4e","#7aa399","#9c6b1f"]}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{position:"right"}}}};});
+})();
+</script>
+<style>
+.exec-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:1.2rem}
+.exec-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem}
+.exec-card.tone-warn{border-color:var(--brass)}
+.ec-label{font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.ec-val{font-size:1.45rem;font-weight:700;font-family:var(--mono,monospace);margin-top:.25rem}
+.ec-cur{font-size:.7rem;color:var(--muted)}
+.ec-sub{font-size:.78rem;color:var(--muted);margin-top:.2rem}
+.tone-warn .ec-val{color:var(--brass)}
+.alerts-card .bd{padding:.4rem 1rem}
+.alert-row{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-bottom:1px solid var(--line)}
+.alert-row:last-child{border-bottom:none}
+.alert-dot{width:9px;height:9px;border-radius:50%;margin-top:.4rem;flex:none}
+.alert-dismiss{background:none;border:none;color:var(--ink-soft);font-size:1.2rem;line-height:1;cursor:pointer;padding:0 .2rem;opacity:.5}
+.alert-dismiss:hover{opacity:1;color:var(--danger)}
+.sev-danger .alert-dot{background:#b3261e}.sev-warn .alert-dot{background:var(--brass)}.sev-info .alert-dot{background:#3d7d6a}
+.kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;margin:1.2rem 0}
+.kpi-tile{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.75rem .9rem}
+.kpi-top{display:flex;justify-content:space-between;align-items:center}
+.kpi-name{font-size:.8rem;font-weight:600}
+.kpi-arrow.good{color:#1f7a4d}.kpi-arrow.bad{color:#b3261e}.kpi-arrow.flat{color:var(--muted)}
+.kpi-pct{font-size:1.3rem;font-weight:700;font-family:var(--mono,monospace);margin:.1rem 0}
+.kpi-detail{font-size:.76rem;color:var(--muted)}
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;margin-top:1rem}
+.chart-grid .bd{padding:1rem;height:200px}
+</style>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Delete group · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Delete {{ object.label }}?</h1><div class="sub">Giving already recorded against this group will keep its records but lose the group link.</div></div></div>
+<div class="card" style="max-width:520px"><div class="bd">
+  <form method="post">{% csrf_token %}
+    <p>This cannot be undone.</p>
+    <div class="btn-row"><button class="btn" style="background:var(--danger)">Delete group</button>
+      <a class="btn btn-ghost" href="{% url 'department_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

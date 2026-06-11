@@ -1,0 +1,77 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Members · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Members</h1><div class="sub">Everyone who has given, however they were recorded</div></div>
+<div class="btn-row">
+  {% if dup_count %}<a class="btn btn-ghost" href="{% url 'member_duplicates' %}">⚑ Duplicates <span class="badge">{{ dup_count }}</span></a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'member_export' %}">⬇ Export CSV</a>
+  {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'member_import' %}">⬆ Import</a>
+  <a class="btn" href="{% url 'member_create' %}">＋ New member</a>{% endif %}
+</div></div>
+
+<form method="get" class="filters">
+  <div class="f"><label>Search</label><input name="q" value="{{ filters.q }}" class="field" placeholder="Name, phone…"></div>
+  <div class="f"><label>Group</label><select name="group" class="field--select"><option value="">All</option>{% for v,l in groups %}<option value="{{ v }}" {% if filters.group == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label>Source</label><select name="source" class="field--select"><option value="">All</option>{% for v,l in sources %}<option value="{{ v }}" {% if filters.source == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<form method="post" action="{% url 'member_bulk' %}" id="bulkForm">{% csrf_token %}
+  {% if can_enter_data %}
+  <div class="bulk-bar">
+    <span class="muted"><span id="selCount">0</span> selected</span>
+    <select name="field" class="field--select" id="bulkField" style="width:auto">
+      <option value="group">Set group</option>
+      <option value="member_type">Set member type</option>
+      <option value="active">Set status</option>
+    </select>
+    <select name="value" class="field--select" id="bulkValue" style="width:auto"></select>
+    <button class="btn btn-sm" onclick="return document.querySelectorAll('.rowcb:checked').length>0 || (alert('Select members first'),false);">Apply to selected</button>
+  </div>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="ledger">
+      <thead><tr>
+        {% if can_enter_data %}<th style="width:34px"><input type="checkbox" id="selAll"></th>{% endif %}
+        <th>Name</th><th>Phone</th><th>Group</th><th>Type</th><th>Source</th><th></th></tr></thead>
+      <tbody>
+      {% for m in members %}
+        <tr>
+          {% if can_enter_data %}<td><input type="checkbox" class="rowcb" name="ids" value="{{ m.id }}"></td>{% endif %}
+          <td><a href="{% url 'member_detail' m.id %}"><strong>{{ m.name }}</strong></a></td>
+          <td class="mono muted">{{ m.phone|default:"—" }}</td>
+          <td>{{ m.get_group_display|default:"—" }}</td>
+          <td>{{ m.get_member_type_display|default:"—" }}</td>
+          <td><span class="pill {% if m.source == 'AUTO_BANK' %}pill-amber{% else %}pill-grey{% endif %}">{{ m.get_source_display }}</span></td>
+          <td class="num"><a class="link" href="{% url 'report_member' m.id %}">Statement</a></td>
+        </tr>
+      {% empty %}<tr><td colspan="7" class="empty"><div class="big">☺</div>No members yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+{% include 'partials/pagination.html' %}
+
+<script>
+const GROUPS=[{% for v,l in groups %}{v:"{{ v }}",l:"{{ l|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const TYPES=[{% for v,l in member_types %}{v:"{{ v }}",l:"{{ l|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const field=document.getElementById("bulkField"), val=document.getElementById("bulkValue");
+function fillValues(){
+  if(!field) return;
+  let opts=[];
+  if(field.value==="group") opts=GROUPS;
+  else if(field.value==="member_type") opts=TYPES;
+  else if(field.value==="active") opts=[{v:"1",l:"Active"},{v:"0",l:"Inactive"}];
+  val.innerHTML=opts.map(o=>`<option value="${o.v}">${o.l}</option>`).join("");
+}
+if(field){ field.addEventListener("change",fillValues); fillValues(); }
+const selAll=document.getElementById("selAll");
+function count(){ const n=document.querySelectorAll(".rowcb:checked").length; const c=document.getElementById("selCount"); if(c) c.textContent=n; }
+if(selAll){ selAll.addEventListener("change",()=>{ document.querySelectorAll(".rowcb").forEach(cb=>cb.checked=selAll.checked); count(); }); }
+document.querySelectorAll(".rowcb").forEach(cb=>cb.addEventListener("change",count));
+</script>
+<style>
+.bulk-bar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.55rem .8rem;margin-bottom:.7rem;
+  background:var(--card-head);border:1px solid var(--line);border-radius:8px}
+</style>
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ group.label }} members · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ group.label }} — member contributions</h1>
+<div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% if group.leader_name %} · Leader: {{ group.leader_name }}{% endif %}</div></div>
+<div class="btn-row">
+  <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">⬇ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">⬇ CSV</a>
+  <button class="btn btn-ghost btn-sm no-print" onclick="window.print()">⎙ Print</button>
+</div></div>
+{% include 'partials/period_filter.html' %}
+
+{% if is_treasurer %}
+<form method="post" style="margin:.6rem 0">{% csrf_token %}
+  {% if group.leader_email %}<button class="btn btn-sm">✉ Email this report to {{ group.leader_email }}</button>
+  {% else %}<span class="help">Set a leader email on the <a class="link" href="{% url 'dev_group_edit' group.id %}">group settings</a> to email this report.</span>{% endif %}
+</form>{% endif %}
+
+<div class="table-wrap" style="margin-top:.6rem"><table class="ledger">
+  <thead><tr><th>Member</th><th>Phone</th><th class="num">Donations</th><th class="num">Total (KES)</th></tr></thead>
+  <tbody>
+  {% for r in rows %}<tr>
+    <td>{{ r.name }}</td><td class="mono muted">{{ r.phone|default:"—" }}</td>
+    <td class="num mono">{{ r.count }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td>
+  </tr>{% empty %}<tr><td colspan="4" class="empty">No contributions in this period.</td></tr>{% endfor %}
+  </tbody>
+  {% if rows %}<tfoot><tr class="grand"><td colspan="3"><strong>TOTAL</strong></td><td class="num mono"><strong>{{ grand_total|floatformat:2|intcomma }}</strong></td></tr></tfoot>{% endif %}
+</table></div>
+{% if group.target %}<p class="help">Group target: {{ group.target|floatformat:2|intcomma }} · collected to date shown on the <a class="link" href="{% url 'report_dev_groups' %}">progress report</a>.</p>{% endif %}
+{% endblock %}

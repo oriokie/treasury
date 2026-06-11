@@ -1,0 +1,17 @@
+# Example systemd service. Copy to /etc/systemd/system/treasury.service,
+# edit paths/user, then: systemctl daemon-reload && systemctl enable --now treasury
+[Unit]
+Description=Church Treasury (gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=treasury
+WorkingDirectory=/opt/treasury
+EnvironmentFile=/opt/treasury/.env
+ExecStart=/opt/treasury/.venv/bin/gunicorn -c gunicorn.conf.py config.wsgi
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

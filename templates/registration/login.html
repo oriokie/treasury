@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Sign in · {{ SITE_NAME }}{% endblock %}
+{% block auth %}
+<div class="auth">
+  <div class="auth-card">
+    <div class="mark">₳</div>
+    <h1>{{ CHURCH_NAME }}</h1>
+    <p class="sub">Treasury system — please sign in.</p>
+    {% if form.errors %}<div class="flash error">Wrong username or password.</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="form-row">
+        <label>Username</label>
+        <input name="username" class="field" autofocus required>
+      </div>
+      <div class="form-row">
+        <label>Password</label>
+        <input name="password" type="password" class="field" required>
+      </div>
+      <button class="btn" style="width:100%;justify-content:center">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

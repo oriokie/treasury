@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Depreciation rules · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Depreciation rules</h1><div class="sub">Per-category policy applied to the asset register</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">Back to register</a></div>
+<div class="info-panel">Default for assets without a category rule: <strong>{{ cfg.get_asset_depr_method_display|default:cfg.asset_depr_method }}</strong> at <strong>{{ cfg.asset_depr_rate }}%</strong> (set on the Assets tab in Settings). Land is normally not depreciated.</div>
+<form method="post"><div class="card"><div class="bd">{% csrf_token %}
+<table class="ledger compact"><thead><tr><th>Category</th><th>Method</th><th class="num">Rate %</th></tr></thead><tbody>
+{% for c in cats %}
+  <tr><td>{{ c.label }}</td>
+    <td><select name="method_{{ c.value }}" class="field--select">{% for mv,ml in methods %}<option value="{{ mv }}" {% if c.rule and c.rule.method == mv %}selected{% endif %}>{{ ml }}</option>{% endfor %}</select></td>
+    <td class="num"><input name="rate_{{ c.value }}" value="{% if c.rule %}{{ c.rule.rate }}{% endif %}" class="field mono" style="width:90px;text-align:right" placeholder="0"></td></tr>
+{% endfor %}
+</tbody></table>
+<div class="btn-row"><button class="btn">Save rules</button></div>
+</div></div></form>
+<style>.ledger.compact td,.ledger.compact th{padding:.35rem .55rem}</style>
+{% endblock %}

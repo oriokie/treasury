@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}New user · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Create user</h1><div class="sub">They sign in with the username &amp; password you set here</div></div></div>
+<div class="card" style="max-width:560px"><div class="bd">
+  <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
+    <div class="btn-row"><button class="btn">Create user</button><a class="btn btn-ghost" href="{% url 'user_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

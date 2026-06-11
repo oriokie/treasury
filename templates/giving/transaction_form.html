@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block title %}Edit entry · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Edit ledger entry</h1><div class="sub">Alter a banking or cash entry. Changes are recorded in the audit log.</div></div></div>
+<div class="card" style="max-width:680px"><div class="bd">
+  {% if object.raw_narration %}<div class="help" style="margin-bottom:.6rem">Original narration: <span class="mono">{{ object.raw_narration }}</span></div>{% endif %}
+  <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
+    <div class="btn-row"><button class="btn">Save changes</button><a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

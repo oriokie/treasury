@@ -1,0 +1,33 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Accounts by month · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Accounts — collections &amp; expenses by month</h1><div class="sub">{{ CHURCH_NAME }} · {{ year }}</div></div></div>
+{% include 'reports/_year_filter.html' %}
+
+<h2 style="margin-top:1rem">Collections per account</h2>
+<div class="table-wrap"><table class="ledger report-table">
+  <thead><tr><th>Account</th>{% for m,lbl in coll.months %}<th class="num">{{ lbl }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+  <tbody>
+  {% for r in coll.rows %}
+    <tr><td {% if r.dept.parent_id %}style="padding-left:1.4rem" class="muted"{% endif %}>{% if r.dept.parent_id %}↳ {{ r.dept.name }}{% else %}<strong>{{ r.dept.name }}</strong>{% endif %}</td>
+      {% for c in r.cells %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}
+      <td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>
+  {% endfor %}
+    <tr class="total-row"><td><strong>Total collections</strong></td>{% for c in coll.col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ coll.grand|floatformat:0|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+
+<h2 style="margin-top:1.4rem">Expenses per account</h2>
+<div class="table-wrap"><table class="ledger report-table">
+  <thead><tr><th>Account</th>{% for m,lbl in exp.months %}<th class="num">{{ lbl }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+  <tbody>
+  {% for r in exp.rows %}
+    <tr><td {% if r.dept.parent_id %}style="padding-left:1.4rem" class="muted"{% endif %}>{% if r.dept.parent_id %}↳ {{ r.dept.name }}{% else %}<strong>{{ r.dept.name }}</strong>{% endif %}</td>
+      {% for c in r.cells %}<td class="num mono row-debit">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}
+      <td class="num mono row-debit">{{ r.total|floatformat:0|intcomma }}</td></tr>
+  {% endfor %}
+    <tr class="total-row"><td><strong>Total expenses</strong></td>{% for c in exp.col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ exp.grand|floatformat:0|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+<style>.total-row td{border-top:2px solid var(--line)}.report-table th,.report-table td{white-space:nowrap}</style>
+{% endblock %}

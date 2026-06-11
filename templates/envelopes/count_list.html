@@ -1,0 +1,20 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Cash counts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Sabbath cash counts</h1><div class="sub">Counting-team verification sheets</div></div>
+{% if can_enter_data %}<a class="btn btn-sm" href="{% url 'count_new' %}">+ New count</a>{% endif %}</div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Sabbath</th><th class="num">Counted</th><th class="num">Expected</th><th class="num">Discrepancy</th><th>Counters</th><th></th></tr></thead>
+  <tbody>
+  {% for s in sessions %}<tr>
+    <td>{{ s.date|date:"d M Y" }}</td>
+    <td class="num mono">{{ s.counted_total|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ s.expected_total|floatformat:2|intcomma }}</td>
+    <td class="num mono" style="{% if s.has_discrepancy %}color:var(--red,#b00){% endif %}">{{ s.discrepancy|floatformat:2|intcomma }}</td>
+    <td class="muted">{{ s.witnesses.count }} signed-in</td>
+    <td><a class="link" href="{% url 'count_detail' s.id %}">View</a></td>
+  </tr>{% empty %}<tr><td colspan="6" class="empty">No counts recorded yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+{% endblock %}

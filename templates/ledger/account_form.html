@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}Edit{% else %}New{% endif %} account · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if object %}Edit account{% else %}New account{% endif %}</h1>
+<div class="sub">{% if object.system_key %}Built-in account — name, parent and status can be changed{% else %}Chart of accounts{% endif %}</div></div></div>
+<div class="card" style="max-width:560px"><div class="bd">
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    <div class="form-grid">
+      <div class="form-row"><label>Code</label>{{ form.code }}{% if form.code.help_text %}<div class="help">{{ form.code.help_text }}</div>{% endif %}{% for e in form.code.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>Type</label>{{ form.type }}{% if form.type.help_text %}<div class="help">{{ form.type.help_text }}</div>{% endif %}</div>
+    </div>
+    <div class="form-row"><label>Name</label>{{ form.name }}{% for e in form.name.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+    <div class="form-row"><label>Parent account <span class="muted">(optional)</span></label>{{ form.parent }}</div>
+    <div class="check-row">{{ form.active }} <label for="{{ form.active.id_for_label }}">Active</label></div>
+    <div class="btn-row"><button class="btn">Save account</button><a class="btn btn-ghost" href="{% url 'chart_of_accounts' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

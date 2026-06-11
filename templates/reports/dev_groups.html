@@ -1,0 +1,29 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Development groups · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Development groups</h1><div class="sub">Progress against each group's target{% if start %} · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% endif %}</div></div>
+<div class="btn-row">
+  <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel (this period)</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'dev_groups_excel' %}">⬇ Detailed Excel (all groups)</a>
+  {% if is_treasurer %}<form method="post" action="{% url 'dev_groups_email_all' %}" style="display:inline" onsubmit="return confirm('Email each group its contribution report to the leader? Sends are spaced 30s apart.');">{% csrf_token %}<button class="btn btn-sm">✉ Email all leaders</button></form>{% endif %}
+</div></div>
+{% include 'partials/period_filter.html' %}
+{% if unassigned_count %}
+<div class="callout callout-warn" style="margin-bottom:1rem">⚠ {{ unassigned_count }} development offering(s) totalling {{ unassigned_total|floatformat:2|intcomma }} are on the parent fund with no group assigned — these aren't counted in any group's progress below. <a class="link" href="{% url 'dev_unassigned' %}">Review &amp; assign →</a></div>
+{% endif %}
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th class="num">Balance</th><th style="width:200px">Progress</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><strong>{{ r.group.label }}</strong></td>
+      <td class="num mono">{{ r.collected|floatformat:2|intcomma }}</td>
+      <td class="num mono muted">{{ r.target|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+      <td><div class="bar"><div class="bar-fill" style="width:{{ r.pct|pct_width }}%"></div></div><span class="muted mono" style="font-size:.78rem">{{ r.pct }}%</span></td>
+      <td><a class="link" href="{% url 'report_dev_group_members' r.group.id %}">Members →</a></td>
+    </tr>
+  {% empty %}<tr><td colspan="6" class="empty">No development groups defined.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

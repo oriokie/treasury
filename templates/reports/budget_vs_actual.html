@@ -1,0 +1,45 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Budget vs Actual · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Budget vs Actual</h1><div class="sub">{{ d.label }}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">Export CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+
+<form method="get" class="filters no-print">
+  <div class="f"><label>Period</label><select name="period" class="field--select" onchange="this.form.submit()">
+    <option value="ANNUAL" {% if period == 'ANNUAL' %}selected{% endif %}>Annual</option>
+    <option value="QUARTER" {% if period == 'QUARTER' %}selected{% endif %}>Quarterly</option>
+    <option value="MONTH" {% if period == 'MONTH' %}selected{% endif %}>Monthly</option>
+  </select></div>
+  <div class="f"><label>Year</label><select name="year" class="field--select" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div>
+  {% if period == 'MONTH' %}<div class="f"><label>Month</label><select name="month" class="field--select" onchange="this.form.submit()">{% for m,l in months %}<option value="{{ m }}" {% if m == month %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>{% endif %}
+  {% if period == 'QUARTER' %}<div class="f"><label>Quarter</label><select name="quarter" class="field--select" onchange="this.form.submit()">{% for q in "1234" %}<option value="{{ q }}" {% if q|add:0 == quarter %}selected{% endif %}>Q{{ q }}</option>{% endfor %}</select></div>{% endif %}
+  <button class="btn btn-sm">View</button>
+</form>
+
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Budget vs Actual — {{ d.label }}</div></div>
+
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Fund</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th><th class="num">Variance %</th></tr></thead>
+  <tbody>
+  {% for r in d.rows %}
+    <tr>
+      <td>{{ r.department.name }}</td>
+      <td class="num mono">{{ r.budget|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.actual|floatformat:2|intcomma }}</td>
+      <td class="num mono {% if r.over %}row-debit{% endif %}">{{ r.variance|floatformat:2|intcomma }}</td>
+      <td class="num"><span class="pill {% if r.over %}pill-red{% elif r.variance_pct != None %}pill-green{% else %}pill-grey{% endif %}">{% if r.variance_pct != None %}{{ r.variance_pct|floatformat:1 }}%{% else %}—{% endif %}</span></td>
+    </tr>
+  {% empty %}<tr><td colspan="5" class="empty">No budgets or spending in this period.</td></tr>{% endfor %}
+  </tbody>
+  <tfoot><tr class="total-row"><td><strong>TOTAL</strong></td>
+    <td class="num mono"><strong>{{ d.totals.budget|floatformat:2|intcomma }}</strong></td>
+    <td class="num mono"><strong>{{ d.totals.actual|floatformat:2|intcomma }}</strong></td>
+    <td class="num mono"><strong>{{ d.totals.variance|floatformat:2|intcomma }}</strong></td>
+    <td class="num">{% if d.totals.variance_pct != None %}<strong>{{ d.totals.variance_pct|floatformat:1 }}%</strong>{% endif %}</td></tr></tfoot>
+</table></div>
+<p class="help">Variance = Budget − Actual (positive = under budget; negative = overspent). For monthly and quarterly views the annual budget is pro-rated to the period.</p>
+<style>
+.total-row td{border-top:2px solid var(--forest)}
+@media print{.no-print{display:none!important}.print-head{display:block!important;text-align:center;margin-bottom:1rem}.print-head .ph-church{font-size:1.3rem;font-weight:800}}
+</style>
+{% endblock %}

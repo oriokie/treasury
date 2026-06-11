@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Manual journal entry · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Manual journal entry</h1>
+<div class="sub">Post a balanced correcting entry (audit adjustment, opening-balance correction, reclassification). Manual entries are kept when the ledger is rebuilt.</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'journal' %}">← Journal</a></div>
+
+<form method="post" class="card"><div class="bd">{% csrf_token %}
+  <div class="form-grid" style="display:grid;grid-template-columns:160px 1fr;gap:.8rem">
+    <div class="form-row" style="margin:0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field" required></div>
+    <div class="form-row" style="margin:0"><label>Narration</label><input name="memo" class="field" placeholder="e.g. Correct 2025 opening balance for Building Fund" required></div>
+  </div>
+
+  <table class="ledger compact" style="margin-top:1rem" id="jlines">
+    <thead><tr><th>Account</th><th>Fund (optional)</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+    <tbody>
+    {% for i in "12345" %}<tr>
+      <td><select name="account" class="field--select"><option value="">—</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.code }} · {{ a.name }}</option>{% endfor %}</select></td>
+      <td><select name="dept" class="field--select"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></td>
+      <td><input name="debit" class="field mono dr" inputmode="decimal" style="text-align:right" value=""></td>
+      <td><input name="credit" class="field mono cr" inputmode="decimal" style="text-align:right" value=""></td>
+    </tr>{% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="2" style="text-align:right"><strong>Totals</strong></td>
+      <td class="num mono"><strong id="totDr">0.00</strong></td><td class="num mono"><strong id="totCr">0.00</strong></td></tr>
+      <tr><td colspan="4" id="balMsg" class="help"></td></tr></tfoot>
+  </table>
+  <div class="btn-row"><button class="btn" id="postBtn">Post entry</button></div>
+  <p class="help">Debits must equal credits. By double-entry convention: increasing a fund balance or income is a credit; increasing an expense or asset is a debit.</p>
+</div></form>
+<script>
+function num(v){ v=parseFloat((v||"").toString().replace(/,/g,"")); return isNaN(v)?0:v; }
+function recompute(){
+  let dr=0, cr=0;
+  document.querySelectorAll("#jlines tbody tr").forEach(function(r){
+    dr+=num(r.querySelector(".dr").value); cr+=num(r.querySelector(".cr").value);
+  });
+  document.getElementById("totDr").textContent=dr.toFixed(2);
+  document.getElementById("totCr").textContent=cr.toFixed(2);
+  var msg=document.getElementById("balMsg"), btn=document.getElementById("postBtn");
+  var bal=Math.abs(dr-cr)<0.005 && dr>0;
+  msg.textContent = dr===0&&cr===0 ? "" : (bal ? "✓ Balanced." : "Not balanced — difference "+(dr-cr).toFixed(2));
+  msg.style.color = bal ? "var(--forest)" : "var(--red,#b00)";
+}
+document.querySelectorAll("#jlines input").forEach(i=>i.addEventListener("input",recompute));
+</script>
+{% endblock %}

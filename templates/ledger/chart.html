@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Chart of accounts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Chart of accounts</h1><div class="sub">Assets · Liabilities · Equity · Income · Expenses</div></div>
+<div class="btn-row">{% if is_treasurer %}<a class="btn" href="{% url 'account_create' %}">+ New account</a>
+<form method="post" action="{% url 'ledger_rebuild' %}" style="display:inline">{% csrf_token %}<button class="btn btn-ghost btn-sm">⟳ Rebuild ledger</button></form>{% endif %}</div></div>
+{% if not ready %}<div class="info-panel">The chart of accounts hasn't been built yet. {% if is_treasurer %}Click <strong>Rebuild ledger</strong> to create the built-in accounts and post the general ledger from existing records.{% endif %}</div>{% endif %}
+<div class="info-panel">Built-in accounts (marked <span class="pill pill-grey">core</span>) are wired into the posting engine — you can rename or deactivate them but not delete them or change their code/type. You can add your own accounts freely.</div>
+{% for g in groups %}
+<div class="card" style="margin-bottom:1rem"><div class="hd">{{ g.label }}</div><div class="bd" style="padding:.3rem 1rem">
+  <table class="ledger compact"><tbody>
+    {% for a in g.accounts %}<tr>
+      <td class="mono" style="width:80px">{{ a.code }}</td>
+      <td>{{ a.name }}{% if a.system_key %} <span class="pill pill-grey">core</span>{% endif %}{% if not a.active %} <span class="pill pill-amber">inactive</span>{% endif %}</td>
+      {% if is_treasurer %}<td style="width:120px;text-align:right;white-space:nowrap">
+        <a class="link" href="{% url 'account_edit' a.id %}">Edit</a>
+        {% if not a.system_key %}<form method="post" action="{% url 'account_delete' a.id %}" style="display:inline" onsubmit="return confirm('Delete account {{ a.code }} {{ a.name }}? If it has postings it will be deactivated instead.');">{% csrf_token %}<button class="link link-danger">Delete</button></form>{% endif %}
+      </td>{% endif %}
+    </tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% empty %}<div class="empty"><div class="big">▦</div>No accounts yet.</div>{% endfor %}
+<style>.ledger.compact td{padding:.32rem .55rem}</style>
+{% endblock %}

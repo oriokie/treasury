@@ -1,0 +1,41 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Count {{ cs.date|date:"d M Y" }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cash count — {{ cs.date|date:"d M Y" }}</h1>
+<div class="sub">Recorded by {{ cs.recorded_by.username }} on {{ cs.created_at|date:"d M Y H:i" }}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'count_list' %}">All counts</a><button class="btn btn-ghost btn-sm no-print" onclick="window.print()">⎙ Print</button></div></div>
+
+{% if can_enter_data %}
+<div class="card no-print" style="margin-bottom:1rem;border-left:3px solid {% if sabbath_closed %}var(--forest){% else %}var(--brass){% endif %}"><div class="bd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
+  <div>
+    {% if sabbath_closed %}<strong>✓ This Sabbath is closed.</strong> <span class="muted">Later donations for it are credited to the next open Sabbath. Closed by {{ sabbath_closed.closed_by.username|default:"—" }} on {{ sabbath_closed.closed_at|date:"d M Y" }}.</span>
+    {% else %}<strong>This Sabbath is open.</strong> <span class="muted">Close it once counting and receipting are done, so late donations roll forward instead of reopening it.</span>{% endif %}
+  </div>
+  <form method="post" action="{% url 'sabbath_close' %}" style="margin:0;white-space:nowrap">{% csrf_token %}
+    <input type="hidden" name="date" value="{{ cs.date|date:'Y-m-d' }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    {% if sabbath_closed %}{% if is_treasurer %}<button name="action" value="reopen" class="btn btn-ghost btn-sm" onclick="return confirm('Reopen this Sabbath? New donations will count against it again.')">Reopen</button>{% endif %}
+    {% else %}<button name="action" value="close" class="btn btn-sm">Close this Sabbath</button>{% endif %}
+  </form>
+</div></div>
+{% endif %}
+
+<div class="grid cols-3" style="margin-bottom:1rem">
+  <div class="stat"><div class="lbl">Counted</div><div class="val mono">KES {{ cs.counted_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Expected</div><div class="val mono">KES {{ cs.expected_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Discrepancy</div><div class="val mono" style="color:{% if cs.has_discrepancy %}var(--red,#b00){% else %}var(--forest){% endif %}">KES {{ cs.discrepancy|floatformat:2|intcomma }}</div></div>
+</div>
+{% if cs.has_discrepancy %}<div class="flash" style="background:#fff7e6;border:1px solid var(--amber)">⚠ This count does not match the system's expected receipts. {% if cs.note %}Note: {{ cs.note }}{% endif %}</div>{% endif %}
+
+<div class="card"><div class="hd">Denomination breakdown</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Denomination</th><th class="num">Count</th><th class="num">Subtotal</th></tr></thead>
+<tbody>{% for d in cs.denominations.all %}<tr><td class="mono">KES {{ d.denomination|floatformat:0 }}</td><td class="num mono">{{ d.count }}</td><td class="num mono">{{ d.subtotal|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody>
+<tfoot><tr><td colspan="2" style="text-align:right"><strong>Total counted</strong></td><td class="num mono"><strong>{{ cs.counted_total|floatformat:2|intcomma }}</strong></td></tr></tfoot>
+</table></div></div>
+
+<div class="card" style="margin-top:1rem"><div class="hd">Counters / witnesses</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Name</th><th>Role</th><th>Signature</th></tr></thead>
+<tbody>{% for w in cs.witnesses.all %}<tr><td>{{ w.name }}</td><td class="muted">{{ w.role|default:"—" }}</td><td>{% if w.signed %}✓ signed{% else %}<span class="muted">________________</span>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="3" class="muted">No witnesses recorded.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

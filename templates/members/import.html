@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Import members · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Import / bulk-edit members</h1>
+<div class="sub">Export the CSV, edit it in Excel, and upload it back</div></div></div>
+<div class="card" style="max-width:620px"><div class="bd">
+  <ol class="help" style="margin-top:0;line-height:1.7">
+    <li><a class="link" href="{% url 'member_export' %}">Download the members CSV</a> (columns: id, name, phone, group, member_type, dev_group_number, active).</li>
+    <li>Edit values in Excel. Keep the <span class="mono">id</span> to update an existing member; clear it (or add a new row) to create one.</li>
+    <li><span class="mono">active</span> is 1 or 0. Unknown group/type values are ignored.</li>
+    <li>Save as CSV and upload below.</li>
+  </ol>
+  <form method="post" enctype="multipart/form-data" style="margin-top:1rem">{% csrf_token %}
+    <div class="form-grid"><div class="form-row"><label>Members CSV</label>
+      <input type="file" name="file" accept=".csv" class="field"></div></div>
+    <div class="btn-row"><button class="btn">Import</button><a class="btn btn-ghost" href="{% url 'member_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

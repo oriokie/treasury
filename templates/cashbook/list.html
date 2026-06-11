@@ -1,0 +1,76 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Expenses · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Expenses</h1><div class="sub">Payments &amp; the approval workflow</div></div>
+{% if can_enter_data %}<a class="btn" href="{% url 'expense_create' %}">＋ New expense</a>
+  <a class="btn btn-ghost" href="{% url 'recurring_list' %}">↻ Recurring</a>{% endif %}</div>
+
+<div class="money-bar">
+  <a class="mb-chip {% if not filters.status %}mb-active{% endif %}" href="?{{ status_qs }}">
+    <span class="mb-l">All</span><span class="mb-v mono">KES {{ filtered_total|floatformat:0|intcomma }}</span></a>
+  {% if filtered_remittances %}<div class="mb-chip" style="border-top:3px solid var(--brass)" title="Trust remittances are a liability settlement, not operating expenditure">
+    <span class="mb-l">Operating</span><span class="mb-v mono">KES {{ filtered_operating|floatformat:0|intcomma }}</span>
+    <span class="mb-l" style="margin-top:.2rem">+ remittances KES {{ filtered_remittances|floatformat:0|intcomma }}</span></div>{% endif %}
+  {% for s in status_bar %}
+  <a class="mb-chip mb-{{ s.code|lower }} {% if s.active %}mb-active{% endif %}"
+     href="?{{ status_qs }}{% if status_qs %}&{% endif %}status={{ s.code }}">
+    <span class="mb-l">{{ s.label }} <span class="mb-n">{{ s.n }}</span></span>
+    <span class="mb-v mono">KES {{ s.t|floatformat:0|intcomma }}</span></a>
+  {% endfor %}
+</div>
+<style>
+.money-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem;margin-bottom:1rem}
+.mb-chip{display:flex;flex-direction:column;gap:.18rem;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--radius);padding:.7rem .85rem;transition:border-color var(--t),box-shadow var(--t),transform var(--t)}
+.mb-chip:hover{text-decoration:none;border-color:#cfe0d8;box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.mb-chip .mb-l{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
+.mb-chip .mb-n{background:var(--paper-2);border-radius:9px;padding:0 .4rem;font-size:.68rem;color:var(--ink-soft)}
+.mb-chip .mb-v{font-size:1.02rem;font-weight:600;color:var(--ink)}
+.mb-chip.mb-active{border-color:var(--forest);box-shadow:inset 0 0 0 1px var(--forest),var(--shadow-sm)}
+.mb-pending{border-top:3px solid var(--amber)}.mb-approved{border-top:3px solid var(--blue)}
+.mb-paid{border-top:3px solid var(--forest)}.mb-rejected{border-top:3px solid var(--danger)}
+</style>
+<form method="get" class="filters">
+  <div class="f"><label>Status</label><select name="status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label>Category</label><select name="category" class="field--select"><option value="">All</option>{% for v,l in categories %}<option value="{{ v }}" {% if filters.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label>Type</label><select name="type" class="field--select"><option value="">All</option>{% for v,l in exp_types %}<option value="{{ v }}" {% if filters.type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label>From</label><input type="date" name="start" value="{{ filters.start }}" class="field"></div>
+  <div class="f"><label>To</label><input type="date" name="end" value="{{ filters.end }}" class="field"></div>
+  <button class="btn btn-sm">Filter</button>
+  <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
+  <span class="f" style="align-self:flex-end"><span class="muted">Total: <strong class="mono">KES {{ filtered_total|floatformat:2|intcomma }}</strong></span></span>
+</form>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if is_treasurer %}<th>Action</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for e in expenses %}
+    <tr>
+      <td class="mono">{{ e.date|date:"d/m/y" }}</td>
+      <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted" style="font-size:.78rem">· {{ e.claimant }}</span>{% endif %}{% if e.attachments.exists %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
+      <td>{{ e.department.name }}</td>
+      <td class="muted">{{ e.get_category_display }}</td>
+      <td>{% if e.expenditure_type == 'CAPITAL' %}<span class="pill pill-brass">Capital</span>{% else %}<span class="pill pill-grey">Recurrent</span>{% endif %}</td>
+      <td><span class="pill {% if e.status == 'PAID' %}pill-green{% elif e.status == 'APPROVED' %}pill-blue{% elif e.status == 'REJECTED' %}pill-red{% else %}pill-amber{% endif %}">{{ e.get_status_display }}</span></td>
+      <td class="num mono row-debit">({{ e.amount|floatformat:2|intcomma }})</td>
+      {% if is_treasurer %}<td class="actions">
+        {% if e.status == 'PENDING' or e.status == 'APPROVED' %}
+        <form method="post" action="{% url 'expense_approve' e.id %}" style="display:inline-flex;gap:.3rem">{% csrf_token %}
+          {% if e.status == 'PENDING' %}<button name="action" value="approve" class="btn btn-xs">Approve</button>
+          <button name="action" value="reject" class="btn btn-xs btn-ghost">Reject</button>{% endif %}
+          {% if e.status == 'APPROVED' %}
+            {% if dual_threshold and e.amount >= dual_threshold and not e.second_approved_by %}
+              <button name="action" value="second_approve" class="btn btn-xs btn-brass" title="A second, different treasurer must co-approve">2nd approve</button>
+              <span class="pill pill-amber" title="Needs a second treasurer before payment">2 needed</span>
+            {% else %}<button name="action" value="pay" class="btn btn-xs">Mark paid</button>{% endif %}
+          {% endif %}
+        </form>{% endif %}
+        {% if can_enter_data %}<a class="link" href="{% url 'expense_edit' e.id %}">Edit</a>{% endif %}
+        {% if is_treasurer %}<form method="post" action="{% url 'expense_delete' e.id %}" style="display:inline" onsubmit="return confirm('Delete this expense permanently? This cannot be undone (an audit-log record is kept).');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}
+      </td>{% endif %}
+    </tr>
+  {% empty %}<tr><td colspan="8" class="empty"><div class="big">⊟</div>No expenses recorded.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+<style>.ledger.compact td,.ledger.compact th{padding:.32rem .55rem;font-size:.86rem}.ledger.compact .actions{white-space:nowrap}.ledger.compact .btn-xs{padding:.1rem .45rem;font-size:.75rem}</style>
+{% endblock %}

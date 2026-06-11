@@ -1,0 +1,18 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Income &amp; expenditure · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Income &amp; expenditure</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div></div>
+{% include 'partials/period_filter.html' %}
+<div class="grid-3" style="margin-top:1rem">
+  <div class="stat"><div class="lbl">Local income</div><div class="val mono" style="color:var(--green)">{{ income|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Operating expenditure</div><div class="val mono row-debit">{{ expense|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Net surplus / (deficit)</div><div class="val mono" style="{% if net < 0 %}color:var(--red){% else %}color:var(--green){% endif %}">{{ net|floatformat:2|intcomma }}</div></div>
+</div>
+<p class="help">Local income excludes trust funds (tithe and the remitted share of offerings), which are held on behalf of the field; operating expenditure excludes remittances, which settle that trust liability.{% if disposal_gain_loss %} The net result includes a gain/(loss) on asset disposal of {{ disposal_gain_loss|floatformat:2|intcomma }} (disposal proceeds are a capital receipt, not income).{% endif %}</p>
+<div class="card" style="margin-top:.4rem"><div class="hd">Trust funds (held on behalf of the field — memo)</div><div class="bd">
+  <table class="ledger"><tbody>
+    <tr><td>Trust funds collected this period</td><td class="num mono">{{ trust_collected|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Remitted to the field this period</td><td class="num mono">{{ remittances|floatformat:2|intcomma }}</td></tr>
+    {% if capital %}<tr><td>Capital additions this period (excluded from expenditure above)</td><td class="num mono">{{ capital|floatformat:2|intcomma }}</td></tr>{% endif %}
+  </tbody></table></div>
+{% endblock %}

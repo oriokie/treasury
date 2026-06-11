@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}Edit expense{% else %}New expense{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if object %}Edit expense{% else %}Record an expense{% endif %}</h1>
+<div class="sub">{% if cfg.require_expense_approval %}Submitted as pending until a treasurer approves it{% else %}Approved on save{% endif %}</div></div></div>
+<div class="card form-card" style="max-width:660px"><div class="bd">
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    <div class="form-grid">
+      <div class="form-row">
+        <label>Fund / department</label>
+        <div style="position:relative">
+          <input id="deptSearch" class="field" autocomplete="off" placeholder="Start typing a fund…" data-current="{{ form.instance.department.name|default:'' }}">
+          <div class="ac-box" id="deptAc"></div>
+        </div>
+        {{ form.department }}
+        <div class="help" id="balBox" style="display:none"></div>
+        {% for e in form.department.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+      </div>
+      {% for f in form %}{% if f.name != 'department' %}
+        <div class="form-row">
+          <label>{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+    </div>
+    {% if overspend_warning %}<label class="check-row" style="color:var(--amber)"><input type="checkbox" name="override_balance" value="1"> Override — record this expense even though it exceeds the fund's available balance</label>{% endif %}
+    <div class="btn-row"><button class="btn">Save expense</button><a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+
+<script>
+const balUrl="{% url 'department_balance' %}", searchUrl="{% url 'member_search' %}", fundUrl="{% url 'fund_search' %}";
+const fmt=n=>Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const deptHidden=document.getElementById("id_department");
+const deptSearch=document.getElementById("deptSearch"), deptAc=document.getElementById("deptAc");
+const box=document.getElementById("balBox");
+
+async function showBal(){
+  if(!deptHidden.value){ box.style.display="none"; return; }
+  try{ const d=await (await fetch(balUrl+"?id="+deptHidden.value)).json();
+    if(!d.ok){ box.style.display="none"; return; }
+    box.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong> <span class="muted">(opening ${fmt(d.opening)} + receipts ${fmt(d.receipts)} − spent ${fmt(d.spent)})</span>`;
+    box.style.display="block";
+  }catch(e){ box.style.display="none"; }
+}
+let dt=null;
+deptSearch.addEventListener("input",()=>{ clearTimeout(dt); deptHidden.value=""; box.style.display="none";
+  const q=deptSearch.value.trim();
+  dt=setTimeout(async()=>{ try{
+    const d=await (await fetch(fundUrl+"?scope=expense&q="+encodeURIComponent(q))).json();
+    deptAc.innerHTML=""; if(!d.results.length){ deptAc.style.display="none"; return; }
+    d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
+      it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
+      it.addEventListener("mousedown",e=>{ e.preventDefault(); deptSearch.value=r.label; deptHidden.value=r.id; deptAc.style.display="none"; showBal(); });
+      deptAc.appendChild(it); });
+    deptAc.style.display="block";
+  }catch(e){ deptAc.style.display="none"; } },160);
+});
+deptSearch.addEventListener("blur",()=>setTimeout(()=>deptAc.style.display="none",150));
+// preselect on edit
+if(deptHidden.value){ deptSearch.value = deptSearch.dataset.current || "(current fund)"; showBal(); }
+
+// claimant autocomplete
+const cl=document.querySelector(".claimant-ac");
+if(cl){ const wrap=document.createElement("div"); wrap.style.position="relative";
+  cl.parentNode.insertBefore(wrap,cl); wrap.appendChild(cl);
+  const acb=document.createElement("div"); acb.className="ac-box"; wrap.appendChild(acb);
+  let t=null;
+  cl.addEventListener("input",()=>{ clearTimeout(t); const q=cl.value.trim();
+    if(q.length<2){ acb.style.display="none"; return; }
+    t=setTimeout(async()=>{ try{ const d=await (await fetch(searchUrl+"?q="+encodeURIComponent(q))).json();
+      acb.innerHTML=""; if(!d.results.length){ acb.style.display="none"; return; }
+      d.results.forEach(m=>{ const it=document.createElement("div"); it.className="ac-item";
+        it.innerHTML=`${m.name}${m.type?' <span class="muted">· '+m.type+'</span>':''}${m.phone?' <span class="muted">· '+m.phone+'</span>':''}`;
+        it.addEventListener("mousedown",e=>{ e.preventDefault(); cl.value=m.name; acb.style.display="none"; });
+        acb.appendChild(it); });
+      acb.style.display="block";
+    }catch(e){ acb.style.display="none"; } },170);
+  });
+  cl.addEventListener("blur",()=>setTimeout(()=>acb.style.display="none",150));
+}
+
+// transaction-charge only for M-Pesa / Bank
+const method=document.querySelector(".method-select"), chargeInput=document.getElementById("id_charge");
+function toggleCharge(){ if(!method||!chargeInput) return;
+  const row=chargeInput.closest(".form-row"); const show=["MPESA","BANK"].includes(method.value);
+  if(row) row.style.display=show?"":"none"; if(!show) chargeInput.value=""; }
+if(method){ method.addEventListener("change",toggleCharge); toggleCharge(); }
+</script>
+<style>
+.help#balBox{margin-top:.4rem;padding:.5rem .7rem;border-radius:8px;border:1px solid var(--line);background:var(--card-head)}
+.ac-box{display:none;position:absolute;z-index:30;left:0;right:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.12);max-height:220px;overflow:auto}
+.ac-item{padding:.4rem .6rem;cursor:pointer;font-size:.88rem}
+.ac-item:hover{background:var(--accent-soft)}
+</style>
+{% endblock %}

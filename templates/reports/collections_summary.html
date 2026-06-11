@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Collections summary · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Collections summary</h1><div class="sub">{{ CHURCH_NAME }} · {{ year }} — collections, trust funds &amp; expenditure by month</div></div></div>
+{% include 'reports/_year_filter.html' %}
+<div class="table-wrap"><table class="ledger report-table">
+  <thead><tr><th>Month</th><th class="num">Collections</th><th class="num">Trust funds</th><th class="num">Local funds</th><th class="num">Expenditure</th><th class="num">Net (coll − exp)</th></tr></thead>
+  <tbody>
+  {% for r in d.rows %}
+    <tr><td>{{ r.month }}</td>
+      <td class="num mono">{{ r.collections|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.trust|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.local|floatformat:0|intcomma }}</td>
+      <td class="num mono row-debit">{{ r.expenditure|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.net|floatformat:0|intcomma }}</td></tr>
+  {% endfor %}
+    <tr class="total-row"><td><strong>TOTAL</strong></td>
+      <td class="num mono"><strong>{{ d.tot_collections|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono"><strong>{{ d.tot_trust|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono"><strong>{{ d.tot_local|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono row-debit"><strong>{{ d.tot_expenditure|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono"><strong>{{ d.tot_net|floatformat:0|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+<style>.total-row td{border-top:2px solid var(--line)}</style>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Fund transfers · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Inter-fund transfers</h1><div class="sub">Move money between funds — not income or expenditure</div></div>
+{% if can_enter_data %}<a class="btn" href="{% url 'transfer_create' %}">+ New transfer</a>{% endif %}</div>
+<div class="info-panel">A transfer reduces the source fund and increases the destination fund by the same amount, so total church funds are unchanged. Trust funds can't be transferred — that money is restricted for remittance.</div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Date</th><th>From</th><th>To</th><th>Reason</th><th class="num">Amount</th>{% if is_treasurer %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for t in transfers %}
+    <tr {% if t.is_reversal or t.is_reversed %}class="muted"{% endif %}>
+      <td class="mono">{{ t.date|date:"d/m/y" }}</td>
+      <td>{{ t.source.name }}</td>
+      <td>{{ t.destination.name }}</td>
+      <td>{{ t.reason|default:"—" }}{% if t.reference %} <span class="muted mono" style="font-size:.78rem">· {{ t.reference }}</span>{% endif %}</td>
+      <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+      {% if is_treasurer %}<td style="white-space:nowrap">
+        {% if not t.is_reversal and not t.is_reversed %}<form method="post" action="{% url 'transfer_reverse' t.id %}" style="display:inline" onsubmit="return confirm('Reverse this transfer? A mirror entry is posted and both stay on record.');">{% csrf_token %}<button class="link link-danger">Reverse</button></form>{% endif %}
+        {% if t.is_reversed %}<span class="pill pill-grey">reversed</span>{% endif %}{% if t.is_reversal %}<span class="pill pill-amber">reversal</span>{% endif %}
+      </td>{% endif %}
+    </tr>
+  {% empty %}<tr><td colspan="{% if is_treasurer %}6{% else %}5{% endif %}" class="empty"><div class="big">⇄</div>No transfers recorded.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% if is_paginated %}<div class="pagination">{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹ Prev</a>{% endif %}<span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next ›</a>{% endif %}</div>{% endif %}
+{% endblock %}

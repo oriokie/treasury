@@ -1,0 +1,202 @@
+{% extends 'base.html' %}
+{% block title %}Record envelopes · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Record envelopes</h1>
+<div class="sub">Choose the columns for this Sabbath, then key one row per contributor. Receipt numbers auto-increment; names autocomplete.</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import from Excel</a></div>
+
+<form method="post" id="envForm">{% csrf_token %}
+  <input type="hidden" name="rows" id="rowsField">
+  <div class="filters" style="margin-bottom:.6rem">
+    <div class="f"><label>Sabbath (Saturday)</label><input type="date" name="date" id="sabDate" value="{{ default_date }}" class="field"></div>
+    <div class="f"><label>Start receipt #</label><input id="startReceipt" class="field mono" style="width:120px" placeholder="auto"></div>
+    <div class="f"><label>&nbsp;</label><button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Columns</button></div>
+    <div class="f"><label>&nbsp;</label><a class="btn btn-sm btn-ghost" id="tplLink" href="#">⬇ Excel template</a></div>
+  </div>
+
+  <div id="colPicker" class="col-picker">
+    <div class="cp-title">Columns for this Sabbath <span class="muted">— tick the funds collected; untick the rest to keep the sheet small.</span></div>
+    <div class="cp-grid">
+      {% for c in columns %}
+      <label class="cp-item"><input type="checkbox" class="colcb" value="{{ c.key }}" data-label="{{ c.label }}" {% if c.default %}checked{% endif %}>
+        <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber" style="font-size:.6rem">T</span>{% endif %}</span></label>
+      {% endfor %}
+    </div>
+    <div class="btn-row"><button type="button" class="btn btn-sm" id="applyCols">Apply columns</button></div>
+  </div>
+
+  <div class="table-wrap xl-wrap">
+    <table class="ledger xl-grid" id="envTable">
+      <thead><tr id="headRow">
+        <th class="rownum">#</th>
+        <th class="sticky-name">Contributor</th>
+        <th style="width:104px">Receipt</th>
+        <th style="width:84px">Channel</th>
+        <th class="num">Total</th><th class="rm-col"></th>
+      </tr></thead>
+      <tbody id="envBody"></tbody>
+    </table>
+  </div>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically (e.g. 50% trust / 50% local). Tab or Enter moves down the column.</p>
+  <div class="btn-row">
+    <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
+    <button class="btn">Save envelopes</button>
+    <a class="btn btn-ghost" href="{% url 'envelope_list' %}">Cancel</a>
+  </div>
+</form>
+
+<script>
+const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const DEV_FUND_KEY = "{{ dev_fund_key }}";
+const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+function devGroupOptions(sel){ let o='<option value="">— group —</option>'; DEV_GROUPS.forEach(g=>{ o+=`<option value="${g.id}" ${sel==g.id?'selected':''}>${g.label}</option>`; }); return o; }
+const searchUrl = "{% url 'member_search' %}";
+const nextUrl = "{% url 'next_receipt' %}";
+const tplUrl = "{% url 'envelope_template' %}";
+let nextReceipt = null;
+let COLS = [];
+
+function selectedKeys(){ return Array.from(document.querySelectorAll(".colcb:checked")).map(cb=>cb.value); }
+function syncTemplateLink(){ document.getElementById("tplLink").href = tplUrl + "?cols=" + encodeURIComponent(selectedKeys().join(",")); }
+
+function buildColumns(){
+  const keys = selectedKeys();
+  COLS = ALL_COLS.filter(c=>keys.includes(c.key));
+  const head=document.getElementById("headRow");
+  head.querySelectorAll(".fundcol").forEach(n=>n.remove());
+  const totalTh=head.querySelector("th.num");
+  COLS.forEach(c=>{ const th=document.createElement("th"); th.className="num fundcol"; th.title=c.label; th.textContent=c.label; head.insertBefore(th,totalTh); });
+  const body=document.getElementById("envBody");
+  const saved=[];
+  body.querySelectorAll("tr").forEach(tr=>{
+    const amounts={}; tr.querySelectorAll(".amt").forEach(i=>{ if(i.value) amounts[i.dataset.fid]=i.value; });
+    saved.push({name:tr.querySelector(".cname").value, mid:tr.querySelector(".mid").value,
+                rcpt:tr.querySelector(".rcpt").value, chan:tr.querySelector(".chan").value, amounts});
+  });
+  body.innerHTML="";
+  if(saved.length){ saved.forEach(s=>body.appendChild(makeRow(s.rcpt,s))); }
+  else { for(let i=0;i<5;i++) addRow(); }
+  renumber(); syncTemplateLink();
+}
+
+function renumber(){ document.querySelectorAll("#envBody tr .rownum").forEach((c,i)=>c.textContent=i+1); }
+function rowTotal(tr){ let t=0; tr.querySelectorAll(".amt").forEach(i=>{ const v=parseFloat(i.value); if(!isNaN(v)) t+=v; }); tr.querySelector(".rowtot").textContent=t?t.toLocaleString():""; }
+
+function makeRow(receipt, data){
+  data=data||{};
+  const tr=document.createElement("tr");
+  let cells=`
+    <td class="rownum"></td>
+    <td class="sticky-name" style="position:relative">
+      <input class="field cname" autocomplete="off" placeholder="name…" value="${data.name||''}">
+      <input type="hidden" class="mid" value="${data.mid||''}">
+      <div class="ac-box"></div>
+    </td>
+    <td><input class="field rcpt mono" value="${(data.rcpt!=null?data.rcpt:receipt)||''}"></td>
+    <td><select class="field--select chan"><option value="CASH">Cash</option><option value="BANK" ${data.chan==='BANK'?'selected':''}>Bank</option></select></td>`;
+  COLS.forEach(c=>{ const v=(data.amounts&&data.amounts[c.key])||'';
+    if(c.key===DEV_FUND_KEY && DEV_GROUPS.length){
+      cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"><select class="field--select devgrp" style="margin-top:.2rem;font-size:.8rem">${devGroupOptions(data.dev_group_id||'')}</select></td>`;
+    } else {
+      cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"></td>`;
+    } });
+  cells+=`<td class="num mono rowtot"></td><td class="rm-col"><button type="button" class="btn btn-xs btn-ghost rm">✕</button></td>`;
+  tr.innerHTML=cells;
+  tr.querySelectorAll(".amt").forEach(i=>i.addEventListener("input",()=>rowTotal(tr)));
+  tr.querySelector(".rm").addEventListener("click",()=>{ tr.remove(); renumber(); });
+  rowTotal(tr);
+
+  const nameI=tr.querySelector(".cname"), midI=tr.querySelector(".mid"), box=tr.querySelector(".ac-box");
+  let timer=null;
+  nameI.addEventListener("input",()=>{
+    midI.value=""; clearTimeout(timer);
+    const q=nameI.value.trim();
+    if(q.length<2){ box.style.display="none"; return; }
+    timer=setTimeout(async()=>{
+      try{
+        const d=await (await fetch(searchUrl+"?q="+encodeURIComponent(q))).json();
+        box.innerHTML="";
+        if(!d.results.length){ box.style.display="none"; return; }
+        d.results.forEach(m=>{ const it=document.createElement("div"); it.className="ac-item";
+          it.textContent=m.name+(m.phone?"  ·  "+m.phone:"");
+          it.addEventListener("mousedown",e=>{ e.preventDefault(); nameI.value=m.name; midI.value=m.id; box.style.display="none"; });
+          box.appendChild(it); });
+        box.style.display="block";
+      }catch(e){ box.style.display="none"; }
+    },170);
+  });
+  nameI.addEventListener("blur",()=>setTimeout(()=>box.style.display="none",150));
+
+  tr.querySelectorAll("input,select").forEach(inp=>{
+    inp.addEventListener("keydown",e=>{
+      if(e.key==="Enter"){ e.preventDefault();
+        const all=Array.from(document.querySelectorAll("#envBody tr"));
+        const ri=all.indexOf(tr);
+        if(ri===all.length-1) addRow();
+        const cells=Array.from(tr.querySelectorAll("input,select"));
+        const ci=cells.indexOf(e.target);
+        const next=document.querySelectorAll("#envBody tr")[ri+1];
+        if(next){ const t=next.querySelectorAll("input,select")[ci]; if(t) t.focus(); }
+      }
+    });
+  });
+  return tr;
+}
+
+async function seedReceipt(){ try{ const d=await (await fetch(nextUrl)).json(); nextReceipt=parseInt(d.next)||1; }catch(e){ nextReceipt=1; }
+  const sr=document.getElementById("startReceipt"); if(sr) sr.placeholder=String(nextReceipt); }
+function addRow(){ const rcpt=nextReceipt!=null?String(nextReceipt++):""; const tr=makeRow(rcpt); document.getElementById("envBody").appendChild(tr); renumber(); return tr; }
+function addRows(n){ for(let i=0;i<n;i++) addRow(); }
+function resequence(start){ nextReceipt=start; document.querySelectorAll("#envBody tr .rcpt").forEach(inp=>{ inp.value=String(nextReceipt++); }); }
+
+document.getElementById("addRow").addEventListener("click",()=>addRows(5));
+document.getElementById("toggleCols").addEventListener("click",()=>document.getElementById("colPicker").classList.toggle("open"));
+document.getElementById("applyCols").addEventListener("click",()=>{ buildColumns(); document.getElementById("colPicker").classList.remove("open"); });
+document.querySelectorAll(".colcb").forEach(cb=>cb.addEventListener("change",syncTemplateLink));
+document.getElementById("startReceipt").addEventListener("change",function(){ const v=parseInt(this.value); if(!isNaN(v)&&v>0) resequence(v); });
+
+document.getElementById("envForm").addEventListener("submit",function(){
+  const rows=[];
+  document.querySelectorAll("#envBody tr").forEach(tr=>{
+    const name=tr.querySelector(".cname").value.trim();
+    const amounts={}; tr.querySelectorAll(".amt").forEach(i=>{ if(i.value.trim()) amounts[i.dataset.fid]=i.value.trim(); });
+    if(name && Object.keys(amounts).length){
+      const dg=tr.querySelector(".devgrp");
+      rows.push({name, member_id:tr.querySelector(".mid").value||null,
+                 receipt:tr.querySelector(".rcpt").value.trim(),
+                 channel:tr.querySelector(".chan").value,
+                 dev_group_id:(dg&&dg.value)||null, amounts});
+    }
+  });
+  document.getElementById("rowsField").value=JSON.stringify(rows);
+});
+
+(async()=>{ await seedReceipt(); buildColumns(); })();
+</script>
+<style>
+.col-picker{display:none;border:1px solid var(--line);border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;background:var(--card-head,#faf7f0)}
+.col-picker.open{display:block}
+.cp-title{font-weight:600;margin-bottom:.6rem;font-size:.9rem}
+.cp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.3rem .8rem;margin-bottom:.7rem}
+.cp-item{display:flex;align-items:center;gap:.4rem;font-size:.88rem;cursor:pointer}
+.xl-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:8px}
+.xl-grid{border-collapse:separate;border-spacing:0;min-width:max-content}
+.xl-grid th,.xl-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0}
+.xl-grid thead th{position:sticky;top:0;z-index:5;background:var(--accent,#1f5f4f);color:#fff;padding:.25rem .35rem;font-size:.7rem;white-space:nowrap;text-align:right;max-width:88px}
+.xl-grid thead th.fundcol{width:78px}
+.xl-grid thead th.sticky-name,.xl-grid thead th.rownum{text-align:left}
+.xl-grid td .field,.xl-grid td .field--select{border:none;border-radius:0;width:100%;background:transparent;padding:.18rem .3rem;font-size:.78rem;box-shadow:none}
+.xl-grid td .amt{text-align:right}
+.xl-grid td.fundcell{width:78px}
+.xl-grid td .field:focus{outline:2px solid var(--accent,#1f5f4f);outline-offset:-2px;background:#fff}
+.xl-grid .rownum{width:28px;text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
+.xl-grid .sticky-name{position:sticky;left:0;z-index:4;background:#fff;min-width:150px}
+.xl-grid thead .sticky-name{z-index:6}
+.xl-grid .rowtot{padding:.18rem .35rem;font-weight:600;font-size:.78rem}
+.xl-grid .rm-col{width:28px;text-align:center}
+.ac-box{display:none;position:absolute;z-index:30;left:0;right:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.12);max-height:200px;overflow:auto}
+.ac-item{padding:.4rem .6rem;cursor:pointer;font-size:.85rem}
+.ac-item:hover{background:var(--accent-soft,#eef5f2)}
+.btn-xs{padding:.1rem .4rem;font-size:.8rem}
+</style>
+{% endblock %}

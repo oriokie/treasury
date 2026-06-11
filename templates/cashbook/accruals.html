@@ -1,0 +1,82 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Payables, accruals & prepayments · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Payables, accruals &amp; prepayments</h1>
+<div class="sub">Credit purchases owed, expenses incurred but unpaid, and amounts paid in advance</div></div></div>
+
+<div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+  <div class="stat"><div class="kpi-label">Open payables</div><div class="kpi-val mono">KES {{ open_payables|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="kpi-label">Open accruals</div><div class="kpi-val mono">KES {{ open_accruals|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="kpi-label">Prepaid (unexpired)</div><div class="kpi-val mono">KES {{ unexpired_prepay|floatformat:2|intcomma }}</div></div>
+</div>
+<div class="info-panel">Fund balances are kept on a cash basis. These items are an accrual overlay shown as memoranda on the Statement of Financial Position. Settling a payable or accrual records the actual payment in its fund; a prepayment records the cash paid now and shows the unexpired portion as a prepaid asset.</div>
+
+<!-- Payables -->
+<div class="card" style="margin-top:1rem"><div class="hd">Accounts payable <span class="muted">— purchased on credit</span></div><div class="bd" style="padding:.3rem 1rem">
+<table class="ledger compact"><thead><tr><th>Date</th><th>Vendor / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+  {% for p in payables %}<tr {% if p.settled %}class="muted"{% endif %}>
+    <td class="mono">{{ p.date|date:"d M y" }}</td>
+    <td>{{ p.vendor }} · <span class="muted">{{ p.description }}</span></td>
+    <td>{{ p.department.name }}</td>
+    <td class="mono">{{ p.due_date|date:"d M y"|default:"—" }}</td>
+    <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+    <td style="text-align:right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<form method="post" action="{% url 'payable_settle' p.id %}" style="display:inline" onsubmit="return confirm('Record payment of {{ p.amount }} to {{ p.vendor|escapejs }}?');">{% csrf_token %}<button class="btn btn-xs btn-brass">Settle / pay</button></form>{% endif %}</td>
+  </tr>{% empty %}<tr><td colspan="6" class="empty">No payables recorded.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if can_enter_data %}<div class="bd" style="border-top:1px solid var(--line)">
+  <form method="post" action="{% url 'payable_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;align-items:end">{% csrf_token %}
+    <div class="form-row" style="margin:0"><label>Date</label>{{ payable_form.date }}</div>
+    <div class="form-row" style="margin:0"><label>Vendor</label>{{ payable_form.vendor }}</div>
+    <div class="form-row" style="margin:0"><label>Description</label>{{ payable_form.description }}</div>
+    <div class="form-row" style="margin:0"><label>Fund</label>{{ payable_form.department }}</div>
+    <div class="form-row" style="margin:0"><label>Category</label>{{ payable_form.category }}</div>
+    <div class="form-row" style="margin:0"><label>Amount</label>{{ payable_form.amount }}</div>
+    <div class="form-row" style="margin:0"><label>Due date</label>{{ payable_form.due_date }}</div>
+    <div style="grid-column:span 5;display:flex;align-items:end"><button class="btn">＋ Add payable</button></div>
+  </form>
+</div>{% endif %}</div>
+
+<!-- Accruals -->
+<div class="card" style="margin-top:1rem"><div class="hd">Accrued expenses <span class="muted">— incurred, not yet invoiced/paid</span></div><div class="bd" style="padding:.3rem 1rem">
+<table class="ledger compact"><thead><tr><th>Period</th><th>Description</th><th>Fund</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+  {% for a in accruals %}<tr {% if a.settled %}class="muted"{% endif %}>
+    <td class="mono">{{ a.date|date:"d M y" }}</td><td>{{ a.description }}</td><td>{{ a.department.name }}</td>
+    <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
+    <td style="text-align:right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<form method="post" action="{% url 'accrual_settle' a.id %}" style="display:inline" onsubmit="return confirm('Record this expense of {{ a.amount }}?');">{% csrf_token %}<button class="btn btn-xs btn-brass">Settle</button></form>{% endif %}</td>
+  </tr>{% empty %}<tr><td colspan="5" class="empty">No accruals recorded.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if can_enter_data %}<div class="bd" style="border-top:1px solid var(--line)">
+  <form method="post" action="{% url 'accrual_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;align-items:end">{% csrf_token %}
+    <div class="form-row" style="margin:0"><label>Period end</label>{{ accrual_form.date }}</div>
+    <div class="form-row" style="margin:0"><label>Description</label>{{ accrual_form.description }}</div>
+    <div class="form-row" style="margin:0"><label>Fund</label>{{ accrual_form.department }}</div>
+    <div class="form-row" style="margin:0"><label>Category</label>{{ accrual_form.category }}</div>
+    <div class="form-row" style="margin:0"><label>Amount</label>{{ accrual_form.amount }}</div>
+    <div style="grid-column:span 5"><button class="btn">＋ Add accrual</button></div>
+  </form>
+</div>{% endif %}</div>
+
+<!-- Prepayments -->
+<div class="card" style="margin-top:1rem"><div class="hd">Prepayments <span class="muted">— paid in advance</span></div><div class="bd" style="padding:.3rem 1rem">
+<table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Fund</th><th class="num">Paid</th><th>Spread</th><th class="num">Unexpired</th></tr></thead><tbody>
+  {% for p in prepayments %}<tr>
+    <td class="mono">{{ p.date|date:"d M y" }}</td><td>{{ p.description }}</td><td>{{ p.department.name }}</td>
+    <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+    <td class="mono">{{ p.months }}m from {{ p.start_date|date:"M y" }}</td>
+    <td class="num mono">{{ p.unexpired_now|floatformat:2|intcomma }}</td>
+  </tr>{% empty %}<tr><td colspan="6" class="empty">No prepayments recorded.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if can_enter_data %}<div class="bd" style="border-top:1px solid var(--line)">
+  <form method="post" action="{% url 'prepayment_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;align-items:end">{% csrf_token %}
+    <div class="form-row" style="margin:0"><label>Date paid</label>{{ prepayment_form.date }}</div>
+    <div class="form-row" style="margin:0"><label>Description</label>{{ prepayment_form.description }}</div>
+    <div class="form-row" style="margin:0"><label>Fund</label>{{ prepayment_form.department }}</div>
+    <div class="form-row" style="margin:0"><label>Category</label>{{ prepayment_form.category }}</div>
+    <div class="form-row" style="margin:0"><label>Amount</label>{{ prepayment_form.amount }}</div>
+    <div class="form-row" style="margin:0"><label>Months</label>{{ prepayment_form.months }}</div>
+    <div class="form-row" style="margin:0"><label>First month</label>{{ prepayment_form.start_date }}</div>
+    <div style="grid-column:span 5;display:flex;align-items:end"><button class="btn">＋ Add prepayment</button></div>
+  </form>
+</div>{% endif %}</div>
+<style>.btn-xs{padding:.12rem .5rem;font-size:.78rem}</style>
+{% endblock %}

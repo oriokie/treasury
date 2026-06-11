@@ -1,0 +1,23 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}General ledger · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>General ledger</h1><div class="sub">{% if account %}{{ account.code }} · {{ account.name }}{% endif %}</div></div>
+<button class="btn btn-sm no-print" onclick="window.print()">⎙ PDF</button></div>
+<form method="get" class="filters no-print">
+  <div class="f"><label>Account</label><select name="account" class="field--select" onchange="this.form.submit()">{% for a in accounts %}<option value="{{ a.code }}" {% if account and a.code == account.code %}selected{% endif %}>{{ a.code }} — {{ a.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label>From</label><input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field"></div>
+  <div class="f"><label>To</label><input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field"></div>
+  <button class="btn btn-sm">View</button>
+</form>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">General Ledger — {{ account.code }} {{ account.name }}</div></div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Date</th><th>Detail</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
+  <tbody>
+  {% for r in rows %}<tr><td class="mono">{{ r.date|date:"d/m/y" }}</td><td>{{ r.memo }}</td>
+    <td class="num mono">{% if r.debit %}{{ r.debit|floatformat:2|intcomma }}{% endif %}</td>
+    <td class="num mono">{% if r.credit %}{{ r.credit|floatformat:2|intcomma }}{% endif %}</td>
+    <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No postings for this account in the period.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

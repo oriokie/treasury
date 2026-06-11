@@ -1,0 +1,15 @@
+<style>
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.net-line{margin-top:1rem;padding:.7rem 1rem;background:var(--forest-soft);border-radius:10px;font-size:1.05rem}
+.ledger.compact td,.ledger.compact th{padding:.3rem .55rem;font-size:.88rem}
+.total-row td{border-top:1.5px solid var(--line)}
+@media (max-width:720px){.two-col{grid-template-columns:1fr}}
+@media print{
+  @page{margin:14mm}
+  .no-print{display:none!important}
+  .print-head{display:block!important;text-align:center;margin-bottom:1rem}
+  .print-head .ph-church{font-size:1.3rem;font-weight:800}
+  .print-head .ph-title{font-size:1.05rem;color:#333}
+  nav,.sidebar,.topbar{display:none!important}
+}
+</style>

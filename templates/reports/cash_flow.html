@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Cash flow · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Cash flow</h1><div class="sub">{{ year }}</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?year={{ year }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?year={{ year }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
+<form method="get" class="filters no-print"><div class="f"><label>Year</label><select name="year" class="field--select" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div></form>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Cash flow {{ year }}</div></div>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Month</th><th class="num">Inflow</th><th class="num">Outflow</th><th class="num">Net</th><th class="num">Running</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td>{{ r.month }}</td><td class="num mono">{{ r.inflow|floatformat:2|intcomma }}</td><td class="num mono">{{ r.outflow|floatformat:2|intcomma }}</td>
+    <td class="num mono {% if r.net < 0 %}row-debit{% endif %}">{{ r.net|floatformat:2|intcomma }}</td>
+    <td class="num mono {% if r.running < 0 %}row-debit{% endif %}">{{ r.running|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody>
+  <tfoot><tr class="total-row"><td><strong>Total</strong></td><td class="num mono"><strong>{{ tot_in|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ tot_out|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ tot_in|floatformat:2|intcomma }}</strong></td><td></td></tr></tfoot>
+</table></div>
+{% include 'reports/_report_styles.html' %}
+{% endblock %}

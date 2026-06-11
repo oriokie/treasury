@@ -1,0 +1,240 @@
+{% load static humanize %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+{% if user.is_authenticated %}
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="mark">₳</div>
+      <div><b>{{ CHURCH_NAME }}</b><span>Treasury</span></div>
+    </div>
+    <nav class="nav" id="mainnav">
+      <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
+      <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
+      <a href="{% url 'assistant' %}" class="{% if request.resolver_match.url_name == 'assistant' %}active{% endif %}"><span class="ic">💬</span> Ask the books</a>
+
+      <details class="navgrp" data-grp="giving">
+        <summary><span class="ic">♥</span> Giving <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'transaction_list' %}" class="{% if request.resolver_match.url_name == 'transaction_list' %}active{% endif %}">Ledger</a>
+          <a href="{% url 'envelope_list' %}" class="{% if request.resolver_match.url_name == 'envelope_list' or request.resolver_match.url_name == 'envelope_detail' %}active{% endif %}">Envelopes</a>
+          <a href="{% url 'count_list' %}" class="{% if 'count' in request.resolver_match.url_name %}active{% endif %}">Cash counts</a>
+          <a href="{% url 'queue' %}" class="{% if request.resolver_match.url_name == 'queue' %}active{% endif %}">Review queue{% if queue_badge %}<span class="badge">{{ queue_badge }}</span>{% endif %}</a>
+          <a href="{% url 'sabbath_queue' %}" class="{% if request.resolver_match.url_name == 'sabbath_queue' %}active{% endif %}">Sabbath confirmations{% if sabbath_badge %}<span class="badge">{{ sabbath_badge }}</span>{% endif %}</a>
+        </div>
+      </details>
+
+      <details class="navgrp" data-grp="banking">
+        <summary><span class="ic">⛁</span> Banking <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'statement_list' %}" class="{% if request.resolver_match.url_name == 'statement_list' %}active{% endif %}">Statement imports</a>
+          <a href="{% url 'debit_queue' %}" class="{% if request.resolver_match.url_name == 'debit_queue' %}active{% endif %}">Bank debits</a>
+          <a href="{% url 'reconciliation_list' %}" class="{% if 'reconciliation' in request.resolver_match.url_name %}active{% endif %}">Bank reconciliation</a>
+        </div>
+      </details>
+
+      <details class="navgrp" data-grp="expenses">
+        <summary><span class="ic">⊟</span> Expenses <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'expense_list' %}" class="{% if request.resolver_match.url_name == 'expense_list' %}active{% endif %}">Expenses{% if expense_badge %}<span class="badge">{{ expense_badge }}</span>{% endif %}</a>
+          <a href="{% url 'recurring_list' %}" class="{% if 'recurring' in request.resolver_match.url_name %}active{% endif %}">Recurring</a>
+          <a href="{% url 'petty_cash' %}" class="{% if request.resolver_match.url_name == 'petty_cash' %}active{% endif %}">Petty cash</a>
+          <a href="{% url 'accruals' %}" class="{% if request.resolver_match.url_name == 'accruals' %}active{% endif %}">Payables &amp; accruals</a>
+          <a href="{% url 'advance_list' %}" class="{% if 'advance' in request.resolver_match.url_name %}active{% endif %}">Staff advances</a>
+        </div>
+      </details>
+
+      <details class="navgrp" data-grp="people">
+        <summary><span class="ic">◉</span> People &amp; funds <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">Members</a>
+          <a href="{% url 'department_list' %}" class="{% if 'department' in request.resolver_match.url_name %}active{% endif %}">Funds &amp; departments</a>
+          <a href="{% url 'transfer_list' %}" class="{% if 'transfer' in request.resolver_match.url_name %}active{% endif %}">Fund transfers</a>
+          <a href="{% url 'budget' %}" class="{% if request.resolver_match.url_name == 'budget' %}active{% endif %}">Budgeting</a>
+          <a href="{% url 'asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">Fixed assets</a>
+          <a href="{% url 'rule_list' %}" class="{% if 'rule' in request.resolver_match.url_name %}active{% endif %}">Allocation rules</a>
+        </div>
+      </details>
+
+      <details class="navgrp" data-grp="accounting">
+        <summary><span class="ic">⚖</span> Accounting <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'chart_of_accounts' %}" class="{% if request.resolver_match.url_name == 'chart_of_accounts' %}active{% endif %}">Chart of accounts</a>
+          <a href="{% url 'general_ledger' %}" class="{% if request.resolver_match.url_name == 'general_ledger' %}active{% endif %}">General ledger</a>
+          <a href="{% url 'trial_balance' %}" class="{% if request.resolver_match.url_name == 'trial_balance' %}active{% endif %}">Trial balance</a>
+          <a href="{% url 'journal' %}" class="{% if request.resolver_match.url_name == 'journal' %}active{% endif %}">Journal</a>
+          <a href="{% url 'ledger_reconciliation' %}" class="{% if request.resolver_match.url_name == 'ledger_reconciliation' %}active{% endif %}">Ledger check</a>
+        </div>
+      </details>
+
+      <details class="navgrp" data-grp="reports">
+        <summary><span class="ic">▤</span> Reports <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'report_index' %}" class="{% if request.resolver_match.url_name == 'report_index' %}active{% endif %}">All reports</a>
+          <a href="{% url 'report_board' %}" class="{% if request.resolver_match.url_name == 'report_board' %}active{% endif %}">Board report</a>
+          <a href="{% url 'report_monthly' %}" class="{% if request.resolver_match.url_name == 'report_monthly' %}active{% endif %}">Monthly treasurer's report</a>
+          <a href="{% url 'remittance_dashboard' %}" class="{% if request.resolver_match.url_name == 'remittance_dashboard' %}active{% endif %}">Trust remittance</a>
+          <a href="{% url 'report_envelope_sabbath' %}" class="{% if request.resolver_match.url_name == 'report_envelope_sabbath' %}active{% endif %}">Sabbath statement</a>
+          <a href="{% url 'report_collections_summary' %}" class="{% if request.resolver_match.url_name == 'report_collections_summary' %}active{% endif %}">Collections summary</a>
+          {% if enable_dev_groups %}<a href="{% url 'report_dev_groups' %}" class="{% if request.resolver_match.url_name == 'report_dev_groups' %}active{% endif %}">Development groups</a>{% endif %}
+          <a href="{% url 'report_audit' %}" class="{% if request.resolver_match.url_name == 'report_audit' %}active{% endif %}">Audit log</a>
+        </div>
+      </details>
+
+      {% if is_treasurer %}
+      <details class="navgrp" data-grp="admin">
+        <summary><span class="ic">⚙</span> Administration <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'user_list' %}" class="{% if 'user' in request.resolver_match.url_name %}active{% endif %}">Users &amp; roles</a>
+          <a href="{% url 'controls' %}" class="{% if request.resolver_match.url_name == 'controls' %}active{% endif %}">Period locks &amp; controls</a>
+          <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">Settings</a>
+          <a href="/admin/">Django admin</a>
+        </div>
+      </details>
+      {% endif %}
+    </nav>
+    <div class="nav-foot">
+      <span><kbd>Ctrl</kbd>+<kbd>K</kbd> to search</span>
+      <span class="ver-badge" title="App version">{{ APP_VERSION }}</span>
+    </div>
+  </aside>
+  <div id="navscrim" class="sidebar-scrim" onclick="document.getElementById('sidebar').classList.remove('open');this.classList.remove('show')"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('navscrim').classList.toggle('show')">☰</button>
+
+      <button class="searchbox" type="button" onclick="openPalette()" title="Search pages (Ctrl+K)">
+        <span class="sb-ic">⌕</span><span class="sb-text">Search…</span><span class="sb-kbd"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+      </button>
+
+      {% if can_enter_data %}
+      <details class="dd dd-new">
+        <summary class="btn btn-brass btn-sm">＋ New</summary>
+        <div class="dd-menu">
+          <div class="dd-sec">Record</div>
+          <a href="{% url 'cash_new' %}">Cash entry</a>
+          <a href="{% url 'envelope_ledger' %}">Envelopes (Sabbath sheet)</a>
+          <a href="{% url 'expense_create' %}">Expense / claim</a>
+          <a href="{% url 'transfer_list' %}">Fund transfer</a>
+          <div class="dd-sec">Import</div>
+          <a href="{% url 'statement_upload' %}">Bank statement</a>
+          <a href="{% url 'envelope_import' %}">Envelope sheet</a>
+        </div>
+      </details>
+      {% endif %}
+
+      <div class="topbar-right">
+        <a href="{% url 'notifications' %}" class="iconbtn" title="Notifications">🔔{% if notif_badge %}<span class="dot">{{ notif_badge }}</span>{% endif %}</a>
+        <details class="dd dd-user">
+          <summary>
+            <span class="avatar">{{ user.get_full_name|default:user.username|first|upper }}</span>
+            <span class="who-meta">
+              <strong>{{ user.get_full_name|default:user.username }}</strong>
+              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% else %}Read-only · Auditor / Board{% endif %}</span>
+            </span>
+            <span class="chev">▾</span>
+          </summary>
+          <div class="dd-menu dd-right">
+            <div class="dd-sec">{{ CHURCH_NAME }}</div>
+            {% if is_treasurer %}<a href="{% url 'settings' %}">Settings</a>
+            <a href="{% url 'controls' %}">Period locks</a>{% endif %}
+            <a href="{% url 'notifications' %}">Notifications</a>
+            <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="dd-signout">Sign out</button></form>
+          </div>
+        </details>
+      </div>
+    </header>
+    <main class="content">
+      {% if update_available %}<div class="flash" style="background:#e8f3ee;border:1px solid var(--forest);display:flex;align-items:center;gap:.6rem">
+        <strong>Update available:</strong> version {{ update_available }} is ready. <a href="{% url 'update_run' %}" style="font-weight:600">Install it →</a></div>{% endif %}
+      {% if messages %}
+        {% for m in messages %}<div class="flash {{ m.tags }}">{{ m }}</div>{% endfor %}
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<div class="palette" id="palette" hidden>
+  <div class="palette-card">
+    <input id="paletteInput" class="palette-input" type="text" placeholder="Jump to a page… (↑↓ to choose, Enter to open)" autocomplete="off">
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // --- collapsible nav groups: open the active group, remember the rest ---
+  var KEY="nav-open";
+  var open={};
+  try{ open=JSON.parse(localStorage.getItem(KEY)||"{}"); }catch(e){}
+  document.querySelectorAll(".navgrp").forEach(function(g){
+    var k=g.dataset.grp;
+    if(g.querySelector("a.active")){ g.open=true; }
+    else if(open[k]){ g.open=true; }
+    g.addEventListener("toggle",function(){
+      open[k]=g.open;
+      try{ localStorage.setItem(KEY,JSON.stringify(open)); }catch(e){}
+    });
+  });
+
+  // --- dropdowns: close when clicking elsewhere ---
+  document.addEventListener("click",function(e){
+    document.querySelectorAll("details.dd[open]").forEach(function(d){
+      if(!d.contains(e.target)) d.open=false;
+    });
+  });
+
+  // --- command palette ---
+  var pal=document.getElementById("palette"), inp=document.getElementById("paletteInput"),
+      list=document.getElementById("paletteList"), items=[], sel=0;
+  document.querySelectorAll("#mainnav a").forEach(function(a){
+    var grp=a.closest(".navgrp"), gname=grp?grp.querySelector("summary").textContent.replace("▾","").trim():"";
+    items.push({label:a.textContent.replace(/\d+$/,"").trim(), href:a.getAttribute("href"), group:gname});
+  });
+  function render(q){
+    q=(q||"").toLowerCase();
+    var hits=items.filter(function(i){return (i.label+" "+i.group).toLowerCase().indexOf(q)>-1}).slice(0,12);
+    sel=Math.min(sel,Math.max(0,hits.length-1));
+    list.innerHTML=hits.map(function(i,n){
+      return '<a class="pi'+(n===sel?" sel":"")+'" href="'+i.href+'">'+i.label+
+             (i.group?'<span class="pg">'+i.group+'</span>':"")+'</a>';
+    }).join("")||'<div class="pi-empty">No matching page</div>';
+  }
+  window.openPalette=function(){ pal.hidden=false; inp.value=""; sel=0; render(""); inp.focus(); };
+  function closePalette(){ pal.hidden=true; }
+  pal.addEventListener("click",function(e){ if(e.target===pal) closePalette(); });
+  inp.addEventListener("input",function(){ sel=0; render(inp.value); });
+  inp.addEventListener("keydown",function(e){
+    var hits=list.querySelectorAll(".pi");
+    if(e.key==="ArrowDown"){ sel=Math.min(sel+1,hits.length-1); render(inp.value); e.preventDefault(); }
+    else if(e.key==="ArrowUp"){ sel=Math.max(sel-1,0); render(inp.value); e.preventDefault(); }
+    else if(e.key==="Enter"){ var h=list.querySelector(".pi.sel")||hits[0]; if(h) location.href=h.getAttribute("href"); }
+    else if(e.key==="Escape"){ closePalette(); }
+  });
+  document.addEventListener("keydown",function(e){
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){ e.preventDefault(); openPalette(); }
+    else if(e.key==="/"&&!/(INPUT|TEXTAREA|SELECT)/.test(document.activeElement.tagName)){ e.preventDefault(); openPalette(); }
+    else if(e.key==="Escape"&&!pal.hidden){ closePalette(); }
+  });
+})();
+</script>
+{% else %}
+  {% block auth %}{% endblock %}
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}Edit{% else %}New{% endif %} recurring expense · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if object %}Edit{% else %}New{% endif %} recurring expense</h1>
+<div class="sub">A predetermined payment on a fixed cadence</div></div></div>
+<div class="card" style="max-width:620px"><div class="bd">
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    <div class="form-row"><label>Description</label>{{ form.description }}{% for e in form.description.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+    <div class="form-grid">
+      <div class="form-row"><label>Fund charged</label>{{ form.department }}{% for e in form.department.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>Category</label>{{ form.category }}</div>
+      <div class="form-row"><label>Amount</label>{{ form.amount }}{% for e in form.amount.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>Frequency</label>{{ form.frequency }}</div>
+      <div class="form-row"><label>Day of month <span class="muted">(monthly only)</span></label>{{ form.day_of_month }}</div>
+      <div class="form-row"><label>Method</label>{{ form.method }}</div>
+      <div class="form-row"><label>Claimant / payee</label>{{ form.claimant }}</div>
+      <div class="form-row"><label>Start date</label>{{ form.start_date }}{% for e in form.start_date.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      <div class="form-row"><label>End date <span class="muted">(optional)</span></label>{{ form.end_date }}</div>
+    </div>
+    <div class="check-row">{{ form.active }} <label for="{{ form.active.id_for_label }}">Active</label></div>
+    <div class="btn-row"><button class="btn">Save schedule</button><a class="btn btn-ghost" href="{% url 'recurring_list' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

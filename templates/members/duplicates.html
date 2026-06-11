@@ -1,0 +1,47 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Possible duplicates · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Possible duplicates</h1><div class="sub">Auto-created members sharing a name with an existing record</div></div>
+  {% if can_enter_data and single_count %}
+  <form method="post" action="{% url 'member_bulk_merge' %}" onsubmit="return confirm('Merge all {{ single_count }} duplicate(s) that have exactly one match? Phone numbers are preserved on the kept record.')">
+    {% csrf_token %}
+    <button class="btn">⤵ Merge all {{ single_count }} clear match{{ single_count|pluralize }}</button>
+  </form>
+  {% endif %}
+</div>
+
+{% for row in rows %}
+<div class="card" style="margin-bottom:.8rem"><div class="bd">
+  <div class="split" style="align-items:flex-start;gap:1rem">
+    <div style="flex:1">
+      <strong>{{ row.member.name }}</strong> <span class="pill pill-amber">flagged</span>
+      <div class="muted" style="font-size:.85rem;margin-top:.3rem">{{ row.member.phone|default:"no phone" }} · {{ row.member.get_source_display }}</div>
+    </div>
+    {% if can_enter_data and row.candidates %}
+    <form method="post" action="{% url 'member_merge' %}" style="flex:1.4;min-width:280px">
+      {% csrf_token %}
+      <input type="hidden" name="absorb" value="{{ row.member.id }}">
+      {% if row.single %}
+        {# exactly one candidate — no dropdown needed, merge directly #}
+        {% with c=row.candidates.0 %}
+        <input type="hidden" name="keep" value="{{ c.id }}">
+        <div style="font-size:.88rem;margin-bottom:.5rem">Merge into <strong>{{ c.name }}</strong>
+          <span class="muted">— {{ c.phone|default:"no phone" }} ({{ c.get_source_display }})</span></div>
+        <button class="btn btn-sm">Merge these two</button>
+        {% endwith %}
+      {% else %}
+        <div class="form-row" style="margin-bottom:.5rem"><label>Merge this record into ({{ row.candidates|length }} matches)</label>
+          <select name="keep" class="field--select" required>
+            <option value="">Choose the record to keep…</option>
+            {% for c in row.candidates %}<option value="{{ c.id }}">{{ c.name }} — {{ c.phone|default:"no phone" }} ({{ c.get_source_display }})</option>{% endfor %}
+          </select></div>
+        <button class="btn btn-sm">Merge</button>
+      {% endif %}
+      <span class="muted" style="font-size:.8rem;display:block;margin-top:.3rem">Moves all donations &amp; aliases and keeps both phone numbers, then deletes the duplicate.</span>
+    </form>
+    {% else %}<div class="muted" style="flex:1.4">No same-name candidate to merge with.</div>{% endif %}
+  </div>
+</div></div>
+{% empty %}<div class="empty"><div class="big">✓</div>No unresolved duplicates.</div>{% endfor %}
+{% endblock %}
