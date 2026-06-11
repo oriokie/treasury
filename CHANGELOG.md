@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.5
+- Fixed a 500 error (FieldError on 'children') on the budget breakdown edit page,
+  triggered when the Local Church Budget fund was matched by its full name rather
+  than an 'LCB ' prefix. The query now uses the correct 'subgroups' relation.
+
 ## v1.0.4
 - Update checker now authenticates with an optional GITHUB_TOKEN, so it can read
   releases from a PRIVATE GitHub repository (the unauthenticated API returns 404

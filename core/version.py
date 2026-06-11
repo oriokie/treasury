@@ -38,6 +38,8 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.5": "Fixed a 500 error on the budget breakdown page when the Local "
+             "Church Budget fund was matched by name.",
     "1.0.4": "Update checker supports private repos via GITHUB_TOKEN, and now "
              "re-checks every 10 min instead of caching once per process.",
     "1.0.3": "Dedup also catches repeated M-Pesa receipts; cleanup command for "

@@ -203,5 +203,5 @@ def lcb_fund():
     qs = Department.objects.filter(fund_type=Department.FundType.LOCAL)
     return (qs.filter(name__istartswith="LCB ").first()
             or qs.filter(name__icontains="Local Church Budget").exclude(
-                children__isnull=False).first()
+                subgroups__isnull=False).first()
             or qs.filter(name__icontains="LCB").first())

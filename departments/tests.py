@@ -90,3 +90,32 @@ class BudgetSourceAndBoardTests(TestCase):
         ln = self.budget.lines.get(name="Camp")
         self.assertIsNone(ln.source_fund)
         self.assertIn("own funds", ln.source_label)
+
+
+class LcbFundLookupTests(TestCase):
+    """lcb_fund() must not crash on its name-based fallback branches. Regression
+    for a FieldError ('children' instead of 'subgroups') that 500'd the budget
+    breakdown page when an LCB fund was matched by name rather than prefix."""
+
+    def test_lcb_fund_by_full_name(self):
+        from departments.models import Department, lcb_fund
+        Department.objects.create(name="Local Church Budget", fund_type="LOCAL",
+                                  category="OFFERING")
+        # must resolve without raising
+        result = lcb_fund()
+        self.assertIsNotNone(result)
+
+    def test_budget_lines_page_loads(self):
+        from django.contrib.auth.models import User, Group
+        from django.test import Client
+        from departments.models import Department
+        u = User.objects.create_user("bl", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        Department.objects.create(name="Local Church Budget", fund_type="LOCAL",
+                                  category="OFFERING")
+        d = Department.objects.create(name="Youth Fund", fund_type="LOCAL",
+                                      category="MINISTRY")
+        c = Client(); c.force_login(u)
+        r = c.get(f"/budget/{d.id}/lines/?year=2026")
+        self.assertEqual(r.status_code, 200)
