@@ -474,3 +474,104 @@ class RunningBalanceCheckTests(TestCase):
         rows = [{"core_ref": "A", "credit": None, "debit": None, "balance": None}]
         status, _ = verify_running_balance(rows)
         self.assertEqual(status, "NO_BALANCE")
+
+
+class ReceiptCaseNormalizationTests(TestCase):
+    """Dedup keys (core_ref / receipt) are normalised to uppercase so that
+    deduplication is exact regardless of the database collation. A
+    case-insensitive collation (e.g. latin1_swedish_ci) must not change which
+    rows are treated as duplicates."""
+
+    def test_core_ref_uppercased(self):
+        from statements.services.parser import read_rows
+        csv = ("Receipt No,Completion Time,Details,Paid In,Balance\n"
+               "abc123xyz,2026-06-06 09:00:00,abc123xyz~tithe~254790301470~Test,500,500\n"
+               ).encode()
+        rows = read_rows(csv, "m.csv")
+        self.assertEqual(rows[0]["core_ref"], "ABC123XYZ")
+        self.assertEqual(rows[0]["receipt"], "ABC123XYZ")
+
+    def test_distinct_refs_stay_distinct(self):
+        from statements.services.parser import read_rows
+        # two receipts that differ only after normalisation stay separate
+        csv = ("Receipt No,Completion Time,Details,Paid In,Balance\n"
+               "UER001,2026-06-06 09:00:00,UER001~tithe~254790301470~A,500,500\n"
+               "UER002,2026-06-06 09:01:00,UER002~tithe~254790301470~B,500,1000\n"
+               ).encode()
+        rows = read_rows(csv, "m.csv")
+        self.assertEqual(len({r["core_ref"] for r in rows}), 2)
+
+
+class PurgeUnlinkTests(TestCase):
+    """Purge refuses when expenses are linked, but 'unlink and purge' clears the
+    reconciliation links (keeping the expenses) and proceeds."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        from django.utils import timezone
+        from statements.models import StatementImport
+        from departments.models import Department
+        from giving.models import Transaction
+        from cashbook.models import Expense
+        import datetime as dt
+        from decimal import Decimal
+        self.u = User.objects.create_user("pu", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+        self.imp = StatementImport.objects.create(uploaded_by=self.u, filename="t.xls",
+                                                  status="DONE")
+        self.imp.uploaded_at = timezone.now(); self.imp.save()
+        self.d = Department.objects.create(name="LCB", fund_type="LOCAL", category="OFFERING")
+        self.debit = Transaction.objects.create(
+            date=dt.date.today(), channel="BANK", direction="DEBIT",
+            amount=Decimal("1000"), allocation_status="MANUAL", confirmed=True,
+            statement_import=self.imp, core_ref="DBT9", department=self.d)
+        self.exp = Expense.objects.create(
+            date=dt.date.today(), department=self.d, description="x",
+            amount=Decimal("1000"), status="PAID", recorded_by=self.u,
+            bank_transaction=self.debit)
+
+    def test_plain_purge_refused_when_linked(self):
+        from django.test import Client
+        c = Client(); c.force_login(self.u)
+        c.post(f"/statements/{self.imp.id}/purge/")
+        self.imp.refresh_from_db()
+        self.assertEqual(self.imp.status, "DONE")  # refused
+
+    def test_unlink_and_purge_keeps_expense(self):
+        from django.test import Client
+        from cashbook.models import Expense
+        from giving.models import Transaction
+        c = Client(); c.force_login(self.u)
+        c.post(f"/statements/{self.imp.id}/purge/", {"unlink_expenses": "1"})
+        self.imp.refresh_from_db()
+        self.assertEqual(self.imp.status, "PURGED")
+        exp = Expense.objects.get(id=self.exp.id)         # expense survives
+        self.assertIsNone(exp.bank_transaction_id)        # link cleared
+        self.assertFalse(Transaction.objects.filter(id=self.debit.id).exists())
+
+
+class MpesaRefDedupTests(TestCase):
+    """Import dedup also catches a repeated M-Pesa receipt even when core_ref
+    differs or is absent."""
+
+    def test_dedup_by_mpesa_ref(self):
+        from giving.models import Transaction
+        from statements.models import StatementImport
+        from statements.services.importer import run_import
+        from django.contrib.auth.models import User
+        import datetime as dt
+        from decimal import Decimal
+        u = User.objects.create_user("md", password="x")
+        # pre-existing row with this receipt but a DIFFERENT core_ref
+        Transaction.objects.create(date=dt.date(2026, 6, 6), channel="BANK",
+            direction="CREDIT", amount=Decimal("500"), allocation_status="AUTO",
+            confirmed=True, mpesa_ref="UF6DUP01", core_ref="OLDREF1")
+        csv = ("Receipt No,Completion Time,Details,Paid In,Balance\n"
+               "UF6DUP01,2026-06-06 09:00:00,UF6DUP01~tithe~254790301470~A,500,500\n"
+               ).encode()
+        imp = StatementImport.objects.create(uploaded_by=u, filename="d.csv")
+        run_import(imp, csv, "d.csv")
+        # the incoming row shares the mpesa_ref → skipped as duplicate
+        self.assertEqual(Transaction.objects.filter(mpesa_ref="UF6DUP01").count(), 1)
+        self.assertEqual(imp.duplicates_skipped, 1)

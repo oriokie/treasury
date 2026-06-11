@@ -317,6 +317,12 @@ class Command(BaseCommand):
         if o["clean"] and not self.dry:
             self._clean_and_seed_treasurer()
 
+        # Every imported record needs an owning user (recorded_by). On a fresh
+        # database with no accounts yet, fall back to creating a dedicated import
+        # user rather than crashing on a NULL recorded_by. A real superuser, if
+        # one exists, is always preferred.
+        self.import_user = self._ensure_import_user()
+
         self.resolver = AccountResolver(self, map_path, interactive=not o["noinput"])
         self.totals = {}
         self.dev_lookup = self._build_dev_group_lookup()
@@ -354,6 +360,25 @@ class Command(BaseCommand):
             f"Summary: {self.totals}"))
 
     # ---- helpers -----------------------------------------------------------
+    def _ensure_import_user(self):
+        """Return a user to own imported records. Prefers an existing superuser,
+        then any user; if the database has none (a fresh deploy), creates a
+        dedicated, unusable-password 'import' user so the import never fails on a
+        NULL recorded_by. In a dry run, returns whatever exists without creating."""
+        from django.contrib.auth.models import User
+        user = (User.objects.filter(is_superuser=True).first()
+                or User.objects.order_by("id").first())
+        if user or self.dry:
+            return user
+        user = User.objects.create(username="import", is_staff=True,
+                                   first_name="Legacy", last_name="Import")
+        user.set_unusable_password()
+        user.save()
+        self.stdout.write(self.style.WARNING(
+            "No users found — created a system 'import' user to own imported "
+            "records. Create your own login with: python manage.py createsuperuser"))
+        return user
+
     def _clean_and_seed_treasurer(self):
         """Wipe all data and create a Treasurer login, so the import starts fresh."""
         from django.core.management import call_command
@@ -691,8 +716,7 @@ class Command(BaseCommand):
         from members.services.matching import match_or_create_member
         from envelopes.views import _save_envelope
         from envelopes.models import Envelope
-        user = User.objects.filter(is_superuser=True).first() or \
-            User.objects.order_by("id").first()
+        user = self.import_user
         cfg = SiteConfig.get()
 
         for month_n, fname in REPORTING_FILES.items():
@@ -806,8 +830,7 @@ class Command(BaseCommand):
         from core.utils import sabbath_week_of
         from departments.models import Department
         from django.contrib.auth.models import User
-        user = User.objects.filter(is_superuser=True).first() or \
-            User.objects.order_by("id").first()
+        user = self.import_user
         wb = self._wb(MASTER_FILE)
         ws = wb["BANK"]
         bank_account = BankAccount.get_default()
@@ -979,8 +1002,7 @@ class Command(BaseCommand):
     def phase_expenses(self):
         from cashbook.models import Expense
         from django.contrib.auth.models import User
-        user = User.objects.filter(is_superuser=True).first() or \
-            User.objects.order_by("id").first()
+        user = self.import_user
         wb = self._wb(MASTER_FILE)
         ws = wb["EXPENSES"]
         for r in range(2, ws.max_row + 1):
@@ -1100,7 +1122,7 @@ class Command(BaseCommand):
         from cashbook.models import Expense, RemittanceBatch
         from core.models import SiteConfig
         from core.utils import sabbath_week_of
-        user = User.objects.filter(is_superuser=True).first() or User.objects.order_by("id").first()
+        user = self.import_user
         field = SiteConfig.get().field_name or "the field"
         REMITTED_MONTHS = [1, 2, 3, 4, 5]   # Jan-May remitted; only June still held
         trust_depts = list(Department.objects.filter(fund_type="TRUST", active=True))

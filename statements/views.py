@@ -406,11 +406,21 @@ class StatementPurgeView(TreasurerRequiredMixin, View):
         n_txn = txns.count()
 
         # safety rails -------------------------------------------------------
-        linked = Expense.objects.filter(bank_transaction__in=txns).count()
-        if linked:
-            messages.error(request, f"Cannot purge: {linked} expense(s) are linked to "
-                                    "this statement's debits. Unlink them first.")
+        linked_qs = Expense.objects.filter(bank_transaction__in=txns)
+        linked = linked_qs.count()
+        if linked and not request.POST.get("unlink_expenses"):
+            # offer to auto-unlink rather than just refusing. Unlinking only
+            # clears the reconciliation link (bank_transaction → NULL); the
+            # expenses themselves are kept — they remain recorded expenses, just
+            # no longer matched to a (soon-to-be-removed) bank debit.
+            messages.error(request,
+                f"Cannot purge yet: {linked} expense(s) are linked to this "
+                f"statement's debits. Re-submit with 'unlink and purge' to clear "
+                f"those reconciliation links and proceed (the expenses are kept).")
             return redirect("statement_list")
+        n_unlinked = 0
+        if linked:
+            n_unlinked = linked_qs.update(bank_transaction=None)
         for t in txns:
             why = entry_blocked(t.date)
             if why:
@@ -447,5 +457,6 @@ class StatementPurgeView(TreasurerRequiredMixin, View):
         messages.success(request, f"Import purged — removed {n_txn} transaction(s), "
                                   f"{n_env} bank envelope(s)"
                                   + (f" and {n_mem} auto-created member(s)" if n_mem else "")
+                                  + (f"; unlinked {n_unlinked} expense(s)" if n_unlinked else "")
                                   + ". The file can be re-uploaded cleanly.")
         return redirect("statement_list")

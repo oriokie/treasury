@@ -258,6 +258,13 @@ def read_rows(path_or_bytes, filename):
 
         mref = _real(cell("mpesa_ref")) or narr["receipt"]
         cref = _real(cell("core_ref")) or narr["receipt"]
+        # M-Pesa receipts are canonically uppercase. Normalise the dedup keys to
+        # uppercase so deduplication is exact regardless of the database's
+        # collation (a case-insensitive collation like latin1_swedish_ci would
+        # otherwise merge distinct receipts, or fold case unpredictably).
+        cref = (cref or "").upper().strip() or None
+        mref = (mref or "").upper().strip() or None
+        rcpt = (narr["receipt"] or "").upper().strip()
         parsed.append({
             "date": date,
             "balance": _to_decimal(cell("balance")),   # running balance after this row
@@ -266,7 +273,7 @@ def read_rows(path_or_bytes, filename):
             "debit": debit or None,
             "core_ref": cref,
             "mpesa_ref": mref,
-            "receipt": narr["receipt"],
+            "receipt": rcpt,
             "reference": narr["reference"],
             "phone": narr["phone"],
             "name": narr["name"],

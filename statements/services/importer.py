@@ -160,11 +160,18 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
         core_ref = (row["core_ref"] or "").strip() or None
         receipt = (row["receipt"] or "").strip() or None
 
-        # database-level dedup
+        # database-level dedup. Check core_ref and bank_receipt (both unique),
+        # and also mpesa_ref — the same M-Pesa receipt must never appear twice
+        # even if one row carries a core_ref and another doesn't (e.g. a STKPUSH
+        # placeholder vs the real bank reference for the same payment).
         if core_ref and Transaction.objects.filter(core_ref=core_ref).exists():
             dup += 1
             continue
         if receipt and Transaction.objects.filter(bank_receipt=receipt).exists():
+            dup += 1
+            continue
+        mref_dedup = (row.get("mpesa_ref") or "").strip().upper() or None
+        if mref_dedup and Transaction.objects.filter(mpesa_ref=mref_dedup).exists():
             dup += 1
             continue
 

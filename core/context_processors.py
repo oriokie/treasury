@@ -9,6 +9,7 @@ def site_context(request):
     ctx = {
         "SITE_NAME": settings.SITE_NAME,
         "APP_VERSION": __import__("core.version", fromlist=["version_string"]).version_string(),
+        "APP_WHATS_NEW": __import__("core.version", fromlist=["whats_new"]).whats_new(),
         "CHURCH_NAME": cfg.church_name or settings.CHURCH_NAME,
         "FIELD_NAME": cfg.field_name,
         "cfg": cfg,

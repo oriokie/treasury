@@ -35,3 +35,18 @@ def version_string():
     v = get_version()
     rev = get_git_revision()
     return f"v{v}" + (f" ({rev})" if rev else "")
+
+
+WHATS_NEW = {
+    "1.0.3": "Dedup also catches repeated M-Pesa receipts; cleanup command for "
+             "existing duplicates; statement purge can unlink linked expenses.",
+    "1.0.2": "Dedup keys normalised to uppercase so duplicate detection is exact "
+             "regardless of database collation (fixes latin1 case-folding).",
+    "1.0.1": "In-app updates verified; engine-aware backups; auto .env loading; "
+             "production hardening (WhiteNoise, health check, gunicorn).",
+    "1.0.0": "Initial release.",
+}
+
+
+def whats_new():
+    return WHATS_NEW.get(get_version(), "")
