@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.16
+- Visual redesign of the three core data screens — Ledger (transactions),
+  Envelopes and Expenses — around a single, consistent "workspace" layout so they
+  read as one professional product:
+  * a ruled page header with title and primary actions;
+  * a calm summary strip of metric cards (the lead metric marked with a thin
+    brass keyline), replacing the divergent per-page stat/chip styles;
+  * a single contained command toolbar grouping all filters with Apply / Clear
+    and export actions;
+  * refined data tables with tighter rhythm, a subtle brass margin-cursor on
+    hover, and clearer numeric treatment;
+  * dignified empty states that tell the user what to do next.
+  The warm forest-green / brass / parchment identity and the Fraunces + Public
+  Sans + IBM Plex Mono type system are preserved throughout. All filters,
+  exports, approval actions, bank-receipting and SMS workflows are unchanged.
+
 ## v1.0.15
 - Extended the financial-accuracy suite (reports/test_accuracy.py) with a second
   layer of 15 edge-case / adversarial tests targeting the real-world conditions

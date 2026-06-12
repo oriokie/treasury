@@ -38,6 +38,10 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.16": "Redesigned the Ledger, Envelopes and Expenses screens around a "
+              "unified, enterprise-grade workspace layout — a calm summary strip, a "
+              "contained command toolbar, refined tables and clearer empty states — "
+              "while keeping the church's warm forest-and-brass identity.",
     "1.0.15": "Extended the financial-accuracy suite with 15 edge-case tests "
               "(date boundaries, unconfirmed/pending entries, split offerings, "
               "rounding, mis-keyed dates) — 44 accuracy tests in all.",

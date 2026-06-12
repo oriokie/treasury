@@ -1,12 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Envelopes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div><h1>Envelopes</h1><div class="sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
-  <div class="btn-row">
+<div class="ws-head">
+  <div class="ws-titles"><h1>Envelopes</h1><div class="ws-sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
+  <div class="ws-actions">
     {% if can_enter_data %}<a class="btn" href="{% url 'envelope_ledger' %}">＋ Record</a>
     <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>{% endif %}
   </div>
+</div>
+
+<div class="ws-summary">
+  <div class="ws-metric is-primary"><span class="wm-l">{{ month_label }}</span><span class="wm-v"><span class="cur">KES</span>{{ grand_total|floatformat:0|intcomma }}</span><span class="wm-sub">received this month</span></div>
+  <div class="ws-metric"><span class="wm-l">Sabbaths</span><span class="wm-v">{{ all_sections|length }}</span><span class="wm-sub">counting periods</span></div>
 </div>
 
 <div class="month-bar">
@@ -17,7 +22,6 @@
   <a class="btn btn-ghost btn-sm" href="?month={{ next_month }}">Next ›</a>
   <span class="month-title">{{ month_label }}</span>
   <span class="grow"></span>
-  <span class="muted">Total this month: <strong class="mono">KES {{ grand_total|floatformat:2|intcomma }}</strong></span>
   {% if can_enter_data %}
   <form method="post" action="{% url 'envelope_pull_bank' %}" onsubmit="var s=prompt('Starting receipt number for these bank receipts?\n\nLeave blank to continue automatically from the last receipt.',''); if(s===null){return false;} this.querySelector('.startrcpt').value=s.trim(); return confirm('Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
     {% csrf_token %}<input type="hidden" name="month" value="{{ month_value }}"><input type="hidden" name="start_receipt" class="startrcpt" value="">

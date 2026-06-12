@@ -545,3 +545,90 @@ tr.row-danger td{background:#fdf2f1}
 tr.row-warn td{background:#fffaf0}
 details.inline-edit summary{cursor:pointer;list-style:none}
 details.inline-edit summary::-webkit-details-marker{display:none}
+
+/* ============================================================
+   WORKSPACE — shared enterprise list/workflow surface
+   A unified vocabulary for the core data screens (ledger,
+   envelopes, expenses) so they read as one product: a calm
+   summary strip, a contained command toolbar, and refined
+   tables. Built on the existing forest/brass/parchment tokens.
+   ============================================================ */
+
+/* Page header refinement: a hairline brass rule under the title
+   block evokes a ledger's ruled page without shouting. */
+.ws-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;
+  flex-wrap:wrap;padding-bottom:.9rem;margin-bottom:1.15rem;
+  border-bottom:1px solid var(--line)}
+.ws-head .ws-titles h1{margin:0;letter-spacing:-.015em}
+.ws-head .ws-sub{color:var(--muted);font-size:.9rem;margin-top:.15rem}
+.ws-head .ws-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+
+/* Summary strip: quiet metric cards. The figure is set in the
+   serif-adjacent mono at a confident size; the label is a small
+   uppercase caption. A thin brass keyline on the lead card marks
+   the primary metric. */
+.ws-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:.7rem;margin-bottom:1.15rem}
+.ws-metric{position:relative;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--radius);padding:.85rem 1rem .9rem;overflow:hidden;
+  transition:border-color var(--t),box-shadow var(--t),transform var(--t)}
+.ws-metric:hover{border-color:#cfe0d8;box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.ws-metric .wm-l{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--muted);font-weight:700;display:flex;align-items:center;gap:.35rem}
+.ws-metric .wm-v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  font-size:1.4rem;font-weight:600;color:var(--ink);margin-top:.32rem;letter-spacing:-.02em;
+  line-height:1.05}
+.ws-metric .wm-v .cur{font-size:.72rem;color:var(--muted);font-weight:600;margin-right:.18rem}
+.ws-metric .wm-sub{font-size:.74rem;color:var(--ink-soft);margin-top:.2rem}
+.ws-metric.is-primary{border-top:2.5px solid var(--brass)}
+.ws-metric.is-positive .wm-v{color:var(--forest)}
+.ws-metric.is-negative .wm-v{color:var(--danger)}
+.ws-metric.is-warn{border-top:2.5px solid var(--amber)}
+/* clickable metric (filter chip) */
+a.ws-metric{text-decoration:none}
+a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px var(--forest)}
+.ws-metric .wm-n{margin-left:auto;background:var(--paper-2);border-radius:9px;
+  padding:0 .42rem;font-size:.66rem;color:var(--ink-soft);font-weight:700}
+
+/* Command toolbar: a single contained bar holding filters and
+   the row of actions. Sticky so it stays in reach on long lists. */
+.ws-toolbar{display:flex;align-items:flex-end;gap:.65rem;flex-wrap:wrap;
+  background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.75rem .85rem;margin-bottom:1.1rem;box-shadow:var(--shadow-sm)}
+.ws-toolbar .f{display:flex;flex-direction:column;gap:.25rem}
+.ws-toolbar .f.grow{flex:1;min-width:170px}
+.ws-toolbar label{font-size:.66rem;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);font-weight:700}
+.ws-toolbar .ws-tb-actions{display:flex;gap:.4rem;align-items:flex-end;margin-left:auto;flex-wrap:wrap}
+.ws-toolbar .ws-divider{align-self:stretch;width:1px;background:var(--line);margin:0 .15rem}
+
+/* Refined table treatment layered on .ledger: a touch denser,
+   with a clearer header and calmer zebra. Numbers get the mono
+   tabular treatment already; we just tighten the rhythm. */
+.ws-table{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);
+  box-shadow:var(--shadow-sm);background:var(--paper)}
+.ws-table table.ledger{font-size:.85rem}
+.ws-table table.ledger th{background:linear-gradient(180deg,var(--paper-2),var(--paper));
+  padding:.6rem .85rem;font-size:.66rem}
+.ws-table table.ledger td{padding:.58rem .85rem}
+.ws-table table.ledger tbody tr:nth-child(even){background:rgba(31,95,79,.022)}
+.ws-table table.ledger tbody tr:hover{background:var(--forest-tint)}
+/* a subtle leading accent on hover, like a cursor in a ledger margin */
+.ws-table table.ledger tbody tr{box-shadow:inset 0 0 0 0 var(--brass-2);transition:background .12s,box-shadow .12s}
+.ws-table table.ledger tbody tr:hover{box-shadow:inset 3px 0 0 -0 var(--brass-2)}
+
+/* Dignified empty state: an invitation, not just an icon. */
+.ws-empty{text-align:center;padding:3.2rem 1.5rem;color:var(--muted)}
+.ws-empty .we-mark{font-size:2rem;color:var(--line-strong);margin-bottom:.5rem;
+  font-family:"Fraunces",serif}
+.ws-empty .we-title{font-family:"Fraunces",serif;font-size:1.1rem;color:var(--ink-soft);
+  margin-bottom:.3rem}
+.ws-empty .we-hint{font-size:.88rem}
+.ws-empty a{font-weight:600}
+
+@media(max-width:760px){
+  .ws-summary{grid-template-columns:repeat(2,1fr);gap:.5rem}
+  .ws-metric .wm-v{font-size:1.2rem}
+  .ws-toolbar .ws-tb-actions{margin-left:0;width:100%}
+  .ws-head{align-items:flex-start}
+}

@@ -1,46 +1,52 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Expenses</h1><div class="sub">Payments &amp; the approval workflow</div></div>
-{% if can_enter_data %}<a class="btn" href="{% url 'expense_create' %}">＋ New expense</a>
-  <a class="btn btn-ghost" href="{% url 'recurring_list' %}">↻ Recurring</a>{% endif %}</div>
+<div class="ws-head">
+  <div class="ws-titles"><h1>Expenses</h1><div class="ws-sub">Payments and the approval workflow</div></div>
+  <div class="ws-actions">
+    {% if can_enter_data %}<a class="btn" href="{% url 'expense_create' %}">＋ New expense</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'recurring_list' %}">↻ Recurring</a>{% endif %}
+  </div>
+</div>
 
-<div class="money-bar">
-  <a class="mb-chip {% if not filters.status %}mb-active{% endif %}" href="?{{ status_qs }}">
-    <span class="mb-l">All</span><span class="mb-v mono">KES {{ filtered_total|floatformat:0|intcomma }}</span></a>
-  {% if filtered_remittances %}<div class="mb-chip" style="border-top:3px solid var(--brass)" title="Trust remittances are a liability settlement, not operating expenditure">
-    <span class="mb-l">Operating</span><span class="mb-v mono">KES {{ filtered_operating|floatformat:0|intcomma }}</span>
-    <span class="mb-l" style="margin-top:.2rem">+ remittances KES {{ filtered_remittances|floatformat:0|intcomma }}</span></div>{% endif %}
+<div class="ws-summary">
+  <a class="ws-metric is-primary {% if not filters.status %}is-active{% endif %}" href="?{{ status_qs }}">
+    <span class="wm-l">All expenses</span>
+    <span class="wm-v"><span class="cur">KES</span>{{ filtered_total|floatformat:0|intcomma }}</span>
+    <span class="wm-sub">across every status</span>
+  </a>
+  {% if filtered_remittances %}
+  <div class="ws-metric" title="Trust remittances are a liability settlement, not operating expenditure">
+    <span class="wm-l">Operating</span>
+    <span class="wm-v"><span class="cur">KES</span>{{ filtered_operating|floatformat:0|intcomma }}</span>
+    <span class="wm-sub">+ remittances KES {{ filtered_remittances|floatformat:0|intcomma }}</span>
+  </div>
+  {% endif %}
   {% for s in status_bar %}
-  <a class="mb-chip mb-{{ s.code|lower }} {% if s.active %}mb-active{% endif %}"
+  <a class="ws-metric {% if s.code == 'PENDING' %}is-warn{% elif s.code == 'REJECTED' %}is-negative{% elif s.code == 'PAID' %}is-positive{% endif %} {% if s.active %}is-active{% endif %}"
      href="?{{ status_qs }}{% if status_qs %}&{% endif %}status={{ s.code }}">
-    <span class="mb-l">{{ s.label }} <span class="mb-n">{{ s.n }}</span></span>
-    <span class="mb-v mono">KES {{ s.t|floatformat:0|intcomma }}</span></a>
+    <span class="wm-l">{{ s.label }} <span class="wm-n">{{ s.n }}</span></span>
+    <span class="wm-v"><span class="cur">KES</span>{{ s.t|floatformat:0|intcomma }}</span>
+  </a>
   {% endfor %}
 </div>
-<style>
-.money-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem;margin-bottom:1rem}
-.mb-chip{display:flex;flex-direction:column;gap:.18rem;background:var(--paper);border:1px solid var(--line);
-  border-radius:var(--radius);padding:.7rem .85rem;transition:border-color var(--t),box-shadow var(--t),transform var(--t)}
-.mb-chip:hover{text-decoration:none;border-color:#cfe0d8;box-shadow:var(--shadow-sm);transform:translateY(-1px)}
-.mb-chip .mb-l{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:700}
-.mb-chip .mb-n{background:var(--paper-2);border-radius:9px;padding:0 .4rem;font-size:.68rem;color:var(--ink-soft)}
-.mb-chip .mb-v{font-size:1.02rem;font-weight:600;color:var(--ink)}
-.mb-chip.mb-active{border-color:var(--forest);box-shadow:inset 0 0 0 1px var(--forest),var(--shadow-sm)}
-.mb-pending{border-top:3px solid var(--amber)}.mb-approved{border-top:3px solid var(--blue)}
-.mb-paid{border-top:3px solid var(--forest)}.mb-rejected{border-top:3px solid var(--danger)}
-</style>
-<form method="get" class="filters">
+
+<form method="get" class="ws-toolbar">
   <div class="f"><label>Status</label><select name="status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>Category</label><select name="category" class="field--select"><option value="">All</option>{% for v,l in categories %}<option value="{{ v }}" {% if filters.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>Type</label><select name="type" class="field--select"><option value="">All</option>{% for v,l in exp_types %}<option value="{{ v }}" {% if filters.type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>From</label><input type="date" name="start" value="{{ filters.start }}" class="field"></div>
   <div class="f"><label>To</label><input type="date" name="end" value="{{ filters.end }}" class="field"></div>
-  <button class="btn btn-sm">Filter</button>
-  <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
-  <span class="f" style="align-self:flex-end"><span class="muted">Total: <strong class="mono">KES {{ filtered_total|floatformat:2|intcomma }}</strong></span></span>
+  <div class="ws-tb-actions">
+    <button class="btn btn-sm">Apply filters</button>
+    {% if filters.status or filters.category or filters.type or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
+    <span class="ws-divider"></span>
+    <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
+  </div>
 </form>
-<div class="table-wrap"><table class="ledger compact">
+
+<div class="ws-table">
+  <table class="ledger compact">
   <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if is_treasurer %}<th>Action</th>{% endif %}</tr></thead>
   <tbody>
   {% for e in expenses %}
@@ -68,9 +74,9 @@
         {% if is_treasurer %}<form method="post" action="{% url 'expense_delete' e.id %}" style="display:inline" onsubmit="return confirm('Delete this expense permanently? This cannot be undone (an audit-log record is kept).');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}
       </td>{% endif %}
     </tr>
-  {% empty %}<tr><td colspan="8" class="empty"><div class="big">⊟</div>No expenses recorded.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="8"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% include 'partials/pagination.html' %}
-<style>.ledger.compact td,.ledger.compact th{padding:.32rem .55rem;font-size:.86rem}.ledger.compact .actions{white-space:nowrap}.ledger.compact .btn-xs{padding:.1rem .45rem;font-size:.75rem}</style>
+<style>.ledger.compact td,.ledger.compact th{padding:.4rem .85rem}.ledger.compact .actions{white-space:nowrap;display:flex;gap:.4rem;align-items:center}.ledger.compact .btn-xs{padding:.12rem .5rem;font-size:.75rem}</style>
 {% endblock %}
