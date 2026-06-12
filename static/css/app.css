@@ -605,7 +605,7 @@ a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px va
 /* Refined table treatment layered on .ledger: a touch denser,
    with a clearer header and calmer zebra. Numbers get the mono
    tabular treatment already; we just tighten the rhythm. */
-.ws-table{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);
+.ws-table{border-radius:var(--radius);overflow-x:auto;border:1px solid var(--line);
   box-shadow:var(--shadow-sm);background:var(--paper)}
 .ws-table table.ledger{font-size:.85rem}
 .ws-table table.ledger th{background:linear-gradient(180deg,var(--paper-2),var(--paper));

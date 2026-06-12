@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.0.17
+- Ledger (transactions) made more compact: tighter rows, summary strip and
+  toolbar, and — the real fix — wide tables now scroll horizontally instead of
+  clipping, so the right-hand action buttons (Edit / Split / Reverse / Receipt)
+  are always reachable. This overflow fix applies to the Envelopes and Expenses
+  tables too.
+- The Remittance calendar (trust-fund deadline dates and their reporting
+  Sabbaths) is now linked directly in the left navigation under Reports, not only
+  on the Reports index — it was already built but hard to find.
+- Settings: the "Restore from backup" card no longer appears on every tab — it is
+  now correctly scoped to the About tab. The settings tabs are laid out as a
+  single tidy row with light separators between the General / Messaging / System
+  groups (scrolling horizontally on small screens).
+
 ## v1.0.16
 - Visual redesign of the three core data screens — Ledger (transactions),
   Envelopes and Expenses — around a single, consistent "workspace" layout so they

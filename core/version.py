@@ -38,6 +38,10 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.17": "Compacted the Ledger so all columns and action buttons stay visible "
+              "(wide tables now scroll instead of clipping); added the Remittance "
+              "calendar to the Reports nav; fixed the settings Restore card showing on "
+              "every tab and tidied the settings tabs into one row.",
     "1.0.16": "Redesigned the Ledger, Envelopes and Expenses screens around a "
               "unified, enterprise-grade workspace layout — a calm summary strip, a "
               "contained command toolbar, refined tables and clearer empty states — "

@@ -86,6 +86,7 @@
           <a href="{% url 'report_board' %}" class="{% if request.resolver_match.url_name == 'report_board' %}active{% endif %}">Board report</a>
           <a href="{% url 'report_monthly' %}" class="{% if request.resolver_match.url_name == 'report_monthly' %}active{% endif %}">Monthly treasurer's report</a>
           <a href="{% url 'remittance_dashboard' %}" class="{% if request.resolver_match.url_name == 'remittance_dashboard' %}active{% endif %}">Trust remittance</a>
+          <a href="{% url 'remittance_calendar' %}" class="{% if request.resolver_match.url_name == 'remittance_calendar' %}active{% endif %}">Remittance calendar</a>
           <a href="{% url 'report_envelope_sabbath' %}" class="{% if request.resolver_match.url_name == 'report_envelope_sabbath' %}active{% endif %}">Sabbath statement</a>
           <a href="{% url 'report_collections_summary' %}" class="{% if request.resolver_match.url_name == 'report_collections_summary' %}active{% endif %}">Collections summary</a>
           {% if enable_dev_groups %}<a href="{% url 'report_dev_groups' %}" class="{% if request.resolver_match.url_name == 'report_dev_groups' %}active{% endif %}">Development groups</a>{% endif %}
