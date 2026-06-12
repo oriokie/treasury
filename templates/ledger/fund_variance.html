@@ -34,7 +34,12 @@
     {% endfor %}
     </tbody>
   </table>
-  <div class="help" style="margin-top:.8rem">Most variances are entries not yet posted to the ledger. Rebuilding the ledger (Chart of accounts → Rebuild) re-posts everything from source records and usually clears these.</div>
+  <div class="help" style="margin-top:.8rem">Most variances are entries that were re-allocated, edited, or excluded after the ledger was last posted. Rebuilding the general ledger re-posts everything from the current source records and clears these.</div>
+  {% if is_treasurer %}
+  <form method="post" action="{% url 'ledger_rebuild' %}" style="margin-top:.8rem" onsubmit="return confirm('Rebuild the general ledger from all current source records? Manual journal adjustments are preserved.');">{% csrf_token %}
+    <button class="btn">↻ Rebuild ledger to fix these</button>
+  </form>
+  {% endif %}
 </div></div>
 {% else %}
 <div class="empty" style="margin-top:1rem"><div class="big">✓</div>No specific suspect entries found. If a difference remains, it may be an opening-balance or manual-journal discrepancy.</div>

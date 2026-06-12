@@ -273,58 +273,117 @@ def ledger_for(account, start=None, end=None):
 
 
 def fund_variance_detail(dept):
-    """Explain why a fund's engine balance differs from its ledger balance by
-    finding the specific source records that are missing from, or inconsistent
-    with, the general ledger. Returns a list of dicts describing each suspect
-    entry. Used by the reconciliation drill-down so a treasurer can see the
-    actual transactions/expenses causing a variance rather than just the total.
+    """Explain why a fund's engine balance differs from its ledger balance.
+
+    The engine balance is computed from current source records (transactions,
+    expenses) as they are *now*; the ledger balance is what was actually posted.
+    A difference usually means a record was changed after it was posted — most
+    often re-allocated to a different fund, edited, reversed, or excluded — and
+    the ledger wasn't rebuilt. This walks both sides and flags the specific
+    records whose engine contribution to THIS fund doesn't match what the ledger
+    holds for it. Returns a list of issue dicts; the signed amounts sum to the
+    fund's variance (engine − ledger) so the drill-down can show what's explained.
     """
     from giving.models import Transaction
     from cashbook.models import Expense
 
-    posted_txn_ids = set(JournalEntry.objects.filter(source_type="transaction")
-                         .values_list("source_id", flat=True))
-    posted_exp_ids = set(JournalEntry.objects.filter(source_type="expense")
-                         .values_list("source_id", flat=True))
-
     issues = []
 
-    # credits/debits the fund engine counts but that have no ledger entry
-    txns = Transaction.objects.filter(department=dept).exclude(
-        excluded_from_income=True)
-    for t in txns:
-        if t.is_reversal or t.is_reversed:
-            continue
-        if t.pk not in posted_txn_ids:
+    # ---- transactions: compare engine contribution vs ledger posting ----
+    # What the ledger currently holds per transaction, for THIS fund.
+    ledger_txn = {}
+    if dept.is_trust:
+        rows = (JournalLine.objects.filter(department=dept,
+                entry__source_type="transaction",
+                account__system_key="TRUST_PAYABLE")
+                .values("entry__source_id", "debit", "credit"))
+        for r in rows:
+            sid = r["entry__source_id"]
+            ledger_txn[sid] = ledger_txn.get(sid, Decimal(0)) \
+                + (r["credit"] or Decimal(0)) - (r["debit"] or Decimal(0))
+    else:
+        rows = (JournalLine.objects.filter(department=dept,
+                entry__source_type="transaction", account__system_key="CASH")
+                .values("entry__source_id", "debit", "credit"))
+        for r in rows:
+            sid = r["entry__source_id"]
+            ledger_txn[sid] = ledger_txn.get(sid, Decimal(0)) \
+                + (r["debit"] or Decimal(0)) - (r["credit"] or Decimal(0))
+
+    # every transaction currently allocated to this fund (engine's view)
+    seen = set()
+    for t in Transaction.objects.filter(department=dept,
+                                        direction=Transaction.Direction.CREDIT):
+        seen.add(t.pk)
+        engine_amt = (Decimal(0) if (t.is_reversal or t.is_reversed
+                                     or t.excluded_from_income or not t.confirmed)
+                      else t.amount)
+        ledger_amt = ledger_txn.get(t.pk, Decimal(0))
+        if engine_amt != ledger_amt:
             issues.append({
                 "kind": "transaction", "id": t.pk, "date": t.date,
                 "desc": (t.payer_name or (t.member.name if t.member_id else "")
                          or t.reference or "transaction"),
-                "amount": t.amount if t.direction == "CREDIT" else -t.amount,
-                "reason": "Not posted to the ledger",
+                "amount": engine_amt - ledger_amt,
+                "reason": _txn_reason(t, engine_amt, ledger_amt),
                 "ref": t.mpesa_ref or t.core_ref or t.reference or "",
                 "url": f"/transactions/{t.pk}/edit/"})
 
-    # approved/paid expenses the engine counts but with no ledger entry
-    exps = Expense.objects.filter(department=dept,
-                                  status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-    for x in exps:
-        if x.pk not in posted_exp_ids:
+    # transactions the LEDGER still has under this fund but the engine no longer
+    # does (re-allocated away, deleted, or now excluded)
+    for src_id, ledger_amt in ledger_txn.items():
+        if src_id in seen or ledger_amt == 0:
+            continue
+        t = Transaction.objects.filter(pk=src_id).first()
+        if t and t.department_id == dept.id:
+            continue
+        moved_to = (t.department.name if t and t.department_id else "—") if t else "(deleted)"
+        issues.append({
+            "kind": "transaction", "id": src_id,
+            "date": t.date if t else None,
+            "desc": (t.payer_name if t else "removed transaction") or "transaction",
+            "amount": Decimal(0) - ledger_amt,
+            "reason": f"Ledger still credits this fund but the gift is now under "
+                      f"{moved_to} — rebuild the ledger to re-post it",
+            "ref": (t.mpesa_ref or t.core_ref if t else "") or "",
+            "url": f"/transactions/{src_id}/edit/" if t else ""})
+
+    # ---- expenses: engine vs ledger ----
+    ledger_exp = {}
+    erows = (JournalLine.objects.filter(department=dept,
+             entry__source_type="expense", account__system_key="CASH")
+             .values("entry__source_id", "debit", "credit"))
+    for r in erows:
+        sid = r["entry__source_id"]
+        ledger_exp[sid] = ledger_exp.get(sid, Decimal(0)) \
+            + (r["credit"] or Decimal(0)) - (r["debit"] or Decimal(0))
+    seen_e = set()
+    for x in Expense.objects.filter(department=dept):
+        seen_e.add(x.pk)
+        engine_amt = (x.amount if x.status in (Expense.Status.APPROVED,
+                                               Expense.Status.PAID) else Decimal(0))
+        ledger_amt = ledger_exp.get(x.pk, Decimal(0))
+        if engine_amt != ledger_amt:
             issues.append({
                 "kind": "expense", "id": x.pk, "date": x.date,
-                "desc": x.description, "amount": -x.amount,
-                "reason": "Not posted to the ledger",
+                "desc": x.description, "amount": ledger_amt - engine_amt,
+                "reason": ("Not posted to the ledger" if ledger_amt == 0
+                           else "Ledger amount differs from the current expense"),
                 "ref": x.voucher_no or "", "url": "/expenses/"})
-
-    # ledger entries that point at a now-deleted/changed source (orphan postings)
-    for e in JournalEntry.objects.filter(source_type="transaction"):
-        if e.source_id and not Transaction.objects.filter(pk=e.source_id).exists():
-            issues.append({
-                "kind": "orphan", "id": e.source_id, "date": e.date,
-                "desc": e.memo or "orphaned ledger entry",
-                "amount": Decimal(0),
-                "reason": "Ledger entry for a transaction that no longer exists",
-                "ref": "", "url": ""})
 
     issues.sort(key=lambda i: (i["date"] or dt.date.min), reverse=True)
     return issues
+
+
+def _txn_reason(t, engine_amt, ledger_amt):
+    if ledger_amt == 0 and engine_amt != 0:
+        return "Counted by the fund but not posted to the ledger (rebuild needed)"
+    if engine_amt == 0 and ledger_amt != 0:
+        if t.excluded_from_income:
+            return "Now excluded from income but still in the ledger"
+        if t.is_reversed:
+            return "Reversed but still in the ledger"
+        if not t.confirmed:
+            return "Not yet confirmed but already in the ledger"
+        return "In the ledger but no longer counted by the fund"
+    return "Amount in the ledger differs from the current transaction"

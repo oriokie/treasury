@@ -4,6 +4,7 @@ Runs synchronously (fine for the typical weekly/monthly statement). For very
 large files this is the function a Celery task would call.
 """
 import datetime as dt
+from decimal import Decimal
 
 from django.db import transaction as db_tx
 
@@ -273,6 +274,19 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     bstatus, bdetail = verify_running_balance(rows)
     import_obj.balance_check = bstatus
     import_obj.balance_detail = bdetail[:4000]
+    # capture the statement's own opening/closing running balance and date span,
+    # for the bank reconciliation report
+    with_bal = [r for r in rows if r.get("balance") is not None]
+    if with_bal:
+        first = with_bal[0]
+        first_move = ((first.get("credit") or Decimal(0))
+                      - (first.get("debit") or Decimal(0)))
+        import_obj.stmt_opening_balance = first["balance"] - first_move
+        import_obj.stmt_closing_balance = with_bal[-1]["balance"]
+    dated = [r["date"] for r in rows if r.get("date")]
+    if dated:
+        import_obj.stmt_first_date = min(dated)
+        import_obj.stmt_last_date = max(dated)
     import_obj.imported = imported
     import_obj.duplicates_skipped = dup
     import_obj.queued_for_review = queued

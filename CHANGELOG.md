@@ -1,5 +1,53 @@
 # Changelog
 
+## v1.0.11
+- Redesigned the envelope ledger entry screen (Record envelopes) for faster,
+  clearer entry: a cleaner toolbar, a live summary bar showing the running
+  contributor count, grand total, and per-fund subtotals as you type, a sticky
+  column-totals footer row, a clearer Save button showing the total, and an
+  inline duplicate-name flag. All existing behaviour (name autocomplete,
+  auto-incrementing receipts, keyboard navigation, fund picker, Excel template)
+  is preserved.
+- Confirmed SMS/WhatsApp receipt buttons on the envelopes list appear only when
+  the matching channel is enabled in settings.
+
+## v1.0.10
+- Per-Sabbath Excel sheet cleanups:
+  - Receipt numbers display without the internal month/sabbath prefix (e.g.
+    "JUN1-0421" now shows as "0421").
+  - Combined Offering and Thanksgiving Offering appear as a single block (the
+    full amount given) in the per-contributor entries table, but are split into
+    their trust and local halves in the summary table.
+  - The summary table now has cell borders, matching the entries table.
+
+## v1.0.9
+- Statement imports now capture the statement's own opening/closing running
+  balance and date span.
+- New "Bank position check" report (Reports → Bank position check): compares the
+  system's computed bank balance (opening + bank receipts − bank payments) against
+  the most recent statement's closing balance. A non-zero difference means an
+  entry is on the statement but not in the app (or vice versa) — the report lists
+  the likely culprits (unconfirmed, in-review, or unallocated bank entries) so
+  they can be chased. Directly addresses un-entered bank entries going undetected.
+
+## v1.0.8
+- New per-transaction "Receipt" action on the transactions list: receipt a single
+  bank/M-Pesa gift as an envelope on demand (the per-entry counterpart to the bulk
+  monthly pull). Supports a user-entered receipt number for hybrid manual
+  receipting, so the system record matches a hand-written receipt/envelope; leave
+  it blank to auto-assign. Split parts of one gift are receipted together, the
+  bank transaction is linked, and it is marked accounted-for so income is never
+  double-counted. (Items 7 + 8.)
+
+## v1.0.7
+- Reconciliation variance finder rewritten to explain real-world differences:
+  it now compares each fund's engine contribution against what is actually
+  posted in the ledger, catching transactions that were re-allocated to another
+  fund, edited, excluded, reversed, or unconfirmed after posting — not just
+  entries that were never posted. The flagged amounts now sum to the variance,
+  and a one-click "Rebuild ledger" button on the page re-posts everything from
+  current source records to clear it.
+
 ## v1.0.6
 - Transactions Excel export now includes M-Pesa ref, core ref, bank receipt,
   member, phone, dev group, service Sabbath and confirmed status.

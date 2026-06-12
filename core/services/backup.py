@@ -294,3 +294,95 @@ def full_excel_export_response(year=None):
     resp["Content-Disposition"] = f'attachment; filename="treasury-data-{stamp}.xlsx"'
     wb.save(resp)
     return resp
+
+
+def database_restore(uploaded_file):
+    """Restore the database from an uploaded backup. Returns (ok, message).
+
+    SAFETY: takes a fresh backup of the CURRENT database first (so a bad restore
+    is itself reversible), then loads the uploaded file. SQLite restores by
+    replacing the file; MySQL/Postgres restore by piping the SQL dump through the
+    client. This is a destructive, treasurer-only operation guarded by an
+    explicit confirmation in the view.
+    """
+    import os
+    import subprocess
+    import tempfile
+    import datetime as _dt
+    from django.conf import settings
+    from django.db import connection
+
+    db = settings.DATABASES["default"]
+    engine = db["ENGINE"]
+    stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    # read upload to a temp file
+    suffix = ".sqlite3" if engine.endswith("sqlite3") else ".sql"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        for chunk in uploaded_file.chunks():
+            tmp.write(chunk)
+        tmp.close()
+
+        if engine.endswith("sqlite3"):
+            path = db["NAME"]
+            if not isinstance(path, (str, bytes)) or not os.path.exists(path):
+                return False, "No on-disk SQLite database to restore into."
+            # safety copy of current db
+            import shutil
+            shutil.copy2(path, f"{path}.pre-restore-{stamp}")
+            connection.close()
+            shutil.copy2(tmp.name, path)
+            return True, (f"Database restored from backup. The previous database "
+                          f"was saved as {os.path.basename(path)}.pre-restore-{stamp}.")
+
+        if engine.endswith("mysql"):
+            # safety dump of current state
+            safety = f"/tmp/treasury-pre-restore-{stamp}.sql"
+            env = dict(os.environ, MYSQL_PWD=db.get("PASSWORD", ""))
+            host = db.get("HOST") or "localhost"
+            port = str(db.get("PORT") or "3306")
+            with open(safety, "wb") as out:
+                subprocess.run(["mysqldump", "--single-transaction", "-h", host,
+                                "-P", port, "-u", db["USER"], db["NAME"]],
+                               stdout=out, env=env, timeout=300, check=True)
+            # load the uploaded dump
+            with open(tmp.name, "rb") as src:
+                proc = subprocess.run(["mysql", "-h", host, "-P", port,
+                                       "-u", db["USER"], db["NAME"]],
+                                      stdin=src, env=env, timeout=600,
+                                      capture_output=True)
+            if proc.returncode != 0:
+                return False, ("Restore failed while loading the backup. Your data "
+                               "was not changed beyond the safety dump at "
+                               f"{safety}. Detail: {proc.stderr.decode()[:300]}")
+            return True, (f"Database restored from backup. A safety copy of the "
+                          f"previous data was saved to {safety} on the server.")
+
+        if engine.endswith("postgresql"):
+            safety = f"/tmp/treasury-pre-restore-{stamp}.sql"
+            env = dict(os.environ, PGPASSWORD=db.get("PASSWORD", ""))
+            host = db.get("HOST") or "localhost"
+            port = str(db.get("PORT") or "5432")
+            with open(safety, "wb") as out:
+                subprocess.run(["pg_dump", "-h", host, "-p", port, "-U", db["USER"],
+                                db["NAME"]], stdout=out, env=env, timeout=300, check=True)
+            with open(tmp.name, "rb") as src:
+                proc = subprocess.run(["psql", "-h", host, "-p", port, "-U", db["USER"],
+                                       db["NAME"]], stdin=src, env=env, timeout=600,
+                                      capture_output=True)
+            if proc.returncode != 0:
+                return False, ("Restore failed while loading the backup. A safety "
+                               f"copy was saved to {safety}.")
+            return True, (f"Database restored. Safety copy saved to {safety}.")
+
+        return False, "Restore isn't supported for this database engine."
+    except subprocess.TimeoutExpired:
+        return False, "Restore timed out."
+    except Exception as e:  # noqa: BLE001
+        return False, f"Restore failed: {e}"
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass

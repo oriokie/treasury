@@ -575,3 +575,39 @@ class MpesaRefDedupTests(TestCase):
         # the incoming row shares the mpesa_ref → skipped as duplicate
         self.assertEqual(Transaction.objects.filter(mpesa_ref="UF6DUP01").count(), 1)
         self.assertEqual(imp.duplicates_skipped, 1)
+
+
+class StatementBalanceCaptureTests(TestCase):
+    """Importing a statement captures its opening/closing running balance and
+    date span, for the bank-position reconciliation report."""
+
+    def test_balances_captured(self):
+        from django.contrib.auth.models import User
+        from decimal import Decimal
+        from statements.models import StatementImport
+        from statements.services.importer import run_import
+        u = User.objects.create_user("sb", password="x")
+        csv = ("Receipt No,Completion Time,Details,Paid In,Withdrawn,Balance\n"
+               "UF6A,2026-06-06 09:00:00,UF6A~tithe~254790301470~A,500,,1500\n"
+               "UF6B,2026-06-06 10:00:00,UF6B~tithe~254790301470~B,300,,1800\n"
+               ).encode()
+        imp = StatementImport.objects.create(uploaded_by=u, filename="s.csv")
+        run_import(imp, csv, "s.csv")
+        imp.refresh_from_db()
+        # opening = first balance (1500) minus first move (500) = 1000
+        self.assertEqual(imp.stmt_opening_balance, Decimal("1000"))
+        self.assertEqual(imp.stmt_closing_balance, Decimal("1800"))
+
+
+class BankPositionReportTests(TestCase):
+    """The bank-position report compares the system bank balance to the statement
+    closing balance and renders without error."""
+
+    def test_report_renders(self):
+        from django.contrib.auth.models import User, Group
+        from django.test import Client
+        u = User.objects.create_user("bp", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        c = Client(); c.force_login(u)
+        self.assertEqual(c.get("/reports/bank-position/").status_code, 200)

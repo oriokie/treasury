@@ -1169,15 +1169,35 @@ class BoardReportView(PeriodMixin, TemplateView):
             "total_liab": total_liab, "net_assets": total_assets - total_liab,
         }
 
-        # ---- Multi-year trend ----
-        inc_y = {r["yr"]: r["total"] for r in (Transaction.objects.confirmed_credits()
-                 .filter(excluded_from_income=False).annotate(yr=ExtractYear("date"))
+        # ---- Multi-year trend (like-for-like, year-to-date) ----
+        # Compare each year only up to the SAME point in the year as the current
+        # report period reaches, so a partial current year isn't unfairly shown
+        # against full prior years. We cap each year's figures at the month/day
+        # the current period ends on.
+        import datetime as _d
+        cutoff_month, cutoff_day = e.month, e.day
+        ytd_label = f" (Jan–{e:%b})" if (cutoff_month, cutoff_day) != (12, 31) else ""
+
+        def _ytd_filter(qs):
+            # keep rows whose (month, day) falls on/before the current cutoff
+            from django.db.models.functions import ExtractMonth, ExtractDay
+            return (qs.annotate(_m=ExtractMonth("date"), _dd=ExtractDay("date"))
+                    .filter(Q(_m__lt=cutoff_month)
+                            | Q(_m=cutoff_month, _dd__lte=cutoff_day)))
+
+        inc_y = {r["yr"]: r["total"] for r in (_ytd_filter(
+                 Transaction.objects.confirmed_credits()
+                 .filter(excluded_from_income=False))
+                 .annotate(yr=ExtractYear("date"))
                  .values("yr").annotate(total=Sum("amount")))}
-        exp_y = {r["yr"]: r["total"] for r in (Expense.objects.filter(status__in=paid)
-                 .annotate(yr=ExtractYear("date")).values("yr").annotate(total=Sum("amount")))}
+        exp_y = {r["yr"]: r["total"] for r in (_ytd_filter(
+                 Expense.objects.filter(status__in=paid))
+                 .annotate(yr=ExtractYear("date")).values("yr")
+                 .annotate(total=Sum("amount")))}
         from core.models import HistoricalYear
         hist = {h.year: h for h in HistoricalYear.objects.all()}
         years = sorted(set(inc_y) | set(exp_y) | set(hist))
+        ctx["trend_ytd_label"] = ytd_label
         trend = []
         for y in years:
             coll = inc_y.get(y) or (hist[y].collection if y in hist else 0)
@@ -1777,3 +1797,72 @@ class DevGroupEmailAllView(TreasurerRequiredMixin, View):
                     time.sleep(30)
         finally:
             connection.close()
+
+
+class BankPositionView(ReadAccessMixin, TemplateView):
+    """Bank reconciliation: does the system's bank balance agree with the bank?
+
+    The system's bank position = opening bank balance + every confirmed BANK
+    credit − every confirmed BANK debit (expenses paid from the bank appear as
+    debit rows). The bank's own figure is the closing running balance of the most
+    recent imported statement. If the two differ, an entry is on the statement but
+    not in the app (or vice versa) — exactly the un-entered-entry case. We show the
+    gap and list the most likely culprits so the treasurer can chase them.
+    """
+    template_name = "reports/bank_position.html"
+
+    def get_context_data(self, **kwargs):
+        from decimal import Decimal
+        from statements.models import StatementImport
+        ctx = super().get_context_data(**kwargs)
+        cfg = SiteConfig.get()
+        opening = cfg.opening_bank_balance or Decimal(0)
+
+        # most recent statement with a captured closing balance
+        stmt = (StatementImport.objects.exclude(status="PURGED")
+                .exclude(stmt_closing_balance__isnull=True)
+                .order_by("-stmt_last_date", "-uploaded_at").first())
+        ctx["stmt"] = stmt
+
+        # system bank movements up to the statement's last date (or all, if none)
+        cutoff = stmt.stmt_last_date if stmt else None
+        bank = Transaction.objects.filter(channel=Transaction.Channel.BANK,
+                                          confirmed=True, is_reversal=False,
+                                          is_reversed=False)
+        if cutoff:
+            bank = bank.filter(date__lte=cutoff)
+        credits = bank.filter(direction=Transaction.Direction.CREDIT).aggregate(
+            s=Sum("amount"))["s"] or Decimal(0)
+        debits = bank.filter(direction=Transaction.Direction.DEBIT).aggregate(
+            s=Sum("amount"))["s"] or Decimal(0)
+        system_balance = opening + credits - debits
+
+        ctx["opening"] = opening
+        ctx["bank_credits"] = credits
+        ctx["bank_debits"] = debits
+        ctx["system_balance"] = system_balance
+        ctx["statement_balance"] = stmt.stmt_closing_balance if stmt else None
+        ctx["difference"] = ((stmt.stmt_closing_balance - system_balance)
+                             if stmt else None)
+
+        # if there is a gap, surface candidates: recent bank rows that look
+        # suspicious (unallocated, in review, or unconfirmed) which often explain
+        # a difference, plus a note about the statement's own integrity check.
+        ctx["suspects"] = []
+        if stmt and ctx["difference"] and abs(ctx["difference"]) > Decimal("0.01"):
+            suspects = (Transaction.objects.filter(
+                channel=Transaction.Channel.BANK)
+                .filter(Q(confirmed=False) | Q(allocation_status="REVIEW")
+                        | Q(department__isnull=True))
+                .order_by("-date")[:50])
+            ctx["suspects"] = [{
+                "date": t.date, "payer": t.payer_name or "—",
+                "amount": t.amount if t.direction == "CREDIT" else -t.amount,
+                "ref": t.mpesa_ref or t.core_ref or t.reference or "",
+                "why": ("not confirmed" if not t.confirmed
+                        else "in review" if t.allocation_status == "REVIEW"
+                        else "no fund"),
+                "id": t.id} for t in suspects]
+            ctx["stmt_integrity"] = stmt.balance_check
+            ctx["stmt_integrity_detail"] = stmt.balance_detail
+        return ctx

@@ -24,6 +24,7 @@ urlpatterns = [
     path("member/<int:pk>/", views.MemberStatementView.as_view(), name="report_member"),
     path("cashbook/", views.CashBookView.as_view(), name="report_cashbook"),
     path("reconciliation/", views.ReconciliationView.as_view(), name="report_reconciliation"),
+    path("bank-position/", views.BankPositionView.as_view(), name="report_bank_position"),
     path("annual/", views.AnnualSummaryView.as_view(), name="report_annual"),
     path("annual/historical/", views.HistoricalYearManageView.as_view(), name="historical_manage"),
     path("accounts-monthly/", views.MonthlyAccountsView.as_view(), name="report_accounts_monthly"),

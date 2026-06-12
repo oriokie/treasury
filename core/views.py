@@ -706,17 +706,55 @@ class DataExportView(TreasurerRequiredMixin, View):
         return full_excel_export_response()
 
 
+class RestoreView(TreasurerRequiredMixin, View):
+    """Restore the database from an uploaded backup. Destructive — requires an
+    explicit typed confirmation and takes a safety backup of current data first."""
+    def post(self, request):
+        from core.services.backup import database_restore
+        f = request.FILES.get("backup_file")
+        confirm = request.POST.get("confirm", "").strip().upper()
+        if confirm != "RESTORE":
+            messages.error(request, 'Type RESTORE to confirm — the database was not changed.')
+            return redirect("settings")
+        if not f:
+            messages.error(request, "Choose a backup file to restore.")
+            return redirect("settings")
+        ok, msg = database_restore(f)
+        if ok:
+            messages.success(request, msg)
+        else:
+            messages.error(request, msg)
+        return redirect("settings")
+
+
 class UpdateRunView(TreasurerRequiredMixin, View):
     """Start an in-app update (button-triggered) and show a live progress page."""
     template_name = "update_run.html"
 
     def get(self, request):
-        from core.services.updates import update_status, update_available
+        from core.services.updates import update_status, update_available, latest_release
+        from django.conf import settings
         # visiting the update page = an explicit "check now", so bypass the cache
         avail, tag, cur = update_available(force=True)
+        # diagnostics so the treasurer can see WHY no update shows
+        repo = getattr(settings, "GITHUB_REPO", "") or ""
+        token_set = bool(getattr(settings, "GITHUB_TOKEN", "") or "")
+        rel = latest_release(force=True)
+        if not repo:
+            diag = "No GITHUB_REPO is configured, so the app can't check for updates."
+        elif rel is None:
+            diag = (f"Couldn't read releases from '{repo}'. If the repository is "
+                    f"private, set GITHUB_TOKEN in the server's .env. If it's public, "
+                    f"make sure a Release (not just a tag) has been published on GitHub.")
+        elif not tag:
+            diag = (f"Connected to '{repo}', but no published Release was found. "
+                    f"Publish a Release on GitHub (tags alone aren't enough).")
+        else:
+            diag = None
         return render(request, self.template_name, {
             "status": update_status(), "update_tag": tag,
-            "current": cur, "available": avail})
+            "current": cur, "available": avail,
+            "repo": repo, "token_set": token_set, "diag": diag})
 
     def post(self, request):
         from core.services.updates import start_update

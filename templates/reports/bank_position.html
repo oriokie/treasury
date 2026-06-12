@@ -1,0 +1,53 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Bank reconciliation · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Bank reconciliation</h1>
+  <div class="sub">Does the system's bank balance agree with the bank statement?</div></div>
+  <button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
+
+{% if not stmt %}
+<div class="info-panel">No imported statement with a running balance yet. Import a bank statement to enable this check.</div>
+{% else %}
+<div class="card"><div class="bd">
+  <table class="ledger compact"><tbody>
+    <tr><td>Opening bank balance</td><td class="num mono">KSh {{ opening|floatformat:2|intcomma }}</td></tr>
+    <tr><td>+ Bank/M-Pesa receipts (to {{ stmt.stmt_last_date|date:"d M Y" }})</td><td class="num mono">KSh {{ bank_credits|floatformat:2|intcomma }}</td></tr>
+    <tr><td>− Bank payments / debits</td><td class="num mono">KSh {{ bank_debits|floatformat:2|intcomma }}</td></tr>
+    <tr style="border-top:2px solid var(--line)"><td><strong>System bank balance</strong></td><td class="num mono"><strong>KSh {{ system_balance|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td>Bank statement closing balance</td><td class="num mono">KSh {{ statement_balance|floatformat:2|intcomma }}</td></tr>
+    <tr style="border-top:2px solid var(--line)">
+      <td><strong>Difference</strong></td>
+      <td class="num mono"><strong class="{% if difference %}text-danger{% endif %}">KSh {{ difference|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+  <div class="help" style="margin-top:.7rem">
+    Compared against statement <strong>{{ stmt.filename }}</strong> covering {{ stmt.stmt_first_date|date:"d M Y" }} – {{ stmt.stmt_last_date|date:"d M Y" }}.
+    {% if difference %}A non-zero difference means an entry is on the statement but not in the app (or vice versa).{% else %}<span class="pill pill-green">✓ The system agrees with the bank.</span>{% endif %}
+  </div>
+</div></div>
+
+{% if difference %}
+{% if stmt_integrity == 'BROKEN' %}
+<div class="card" style="margin-top:1rem;border-color:var(--danger)"><div class="bd">
+  <strong>Statement integrity check failed.</strong>
+  <p class="help" style="white-space:pre-wrap;margin-top:.4rem">{{ stmt_integrity_detail }}</p>
+  <p class="help">A broken running balance on the statement itself usually means a row was missing or duplicated in the imported file — re-import a clean copy.</p>
+</div></div>
+{% endif %}
+<div class="card" style="margin-top:1rem"><div class="hd">Likely culprits ({{ suspects|length }})</div><div class="bd">
+  <p class="help" style="margin-top:0">Bank entries that are unconfirmed, in review, or unallocated — these most often explain a difference.</p>
+  {% if suspects %}
+  <table class="ledger"><thead><tr><th>Date</th><th>Payer</th><th>Reference</th><th class="num">Amount</th><th>Issue</th><th></th></tr></thead>
+    <tbody>
+    {% for s in suspects %}
+      <tr><td class="mono">{{ s.date|date:"d M Y" }}</td><td>{{ s.payer }}</td>
+        <td class="mono">{{ s.ref }}</td>
+        <td class="num mono">KSh {{ s.amount|floatformat:2|intcomma }}</td>
+        <td><span class="pill pill-amber">{{ s.why }}</span></td>
+        <td><a class="link" href="{% url 'transaction_edit' s.id %}">open</a></td></tr>
+    {% endfor %}
+    </tbody></table>
+  {% else %}<div class="muted">No unconfirmed/unallocated bank entries found. The difference may be an opening-balance setting, a bank charge not yet recorded, or a timing difference — check the statement against the cash book for the period.</div>{% endif %}
+</div></div>
+{% endif %}
+{% endif %}
+{% endblock %}

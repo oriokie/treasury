@@ -38,6 +38,21 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.11": "Redesigned the envelope entry screen with live running totals, a "
+              "per-fund summary bar, column totals, and duplicate-name flags for "
+              "faster, clearer Sabbath entry.",
+    "1.0.10": "Per-Sabbath Excel: receipt numbers show without the month/sabbath "
+              "prefix; Combined Offering & Thanksgiving appear as one block per "
+              "contributor but split into trust/local in the summary, which now has "
+              "cell borders.",
+    "1.0.9": "New bank-position report: compares the system bank balance to the "
+             "statement closing balance to catch entries that never made it into "
+             "the app.",
+    "1.0.8": "Receipt a single bank/M-Pesa gift as an envelope on demand, with an "
+             "optional hand-written receipt number — without double-counting.",
+    "1.0.7": "Reconciliation variance finder now detects re-allocated, edited, "
+             "excluded and reversed entries (not just unposted ones) and offers a "
+             "one-click ledger rebuild to fix them.",
     "1.0.6": "Richer transaction export (M-Pesa ref etc); SMS/WhatsApp icons gated "
              "on settings; bordered printable Sabbath sheet; reconciliation variance "
              "finder; mobile layout improvements.",

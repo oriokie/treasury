@@ -216,3 +216,33 @@ class FundVarianceTests(TestCase):
         issues = fund_variance_detail(d)
         self.assertTrue(any(i["kind"] == "transaction" and i["ref"] == "VAR1"
                             for i in issues))
+
+
+class VarianceReallocationTests(TestCase):
+    """A transaction re-allocated to a different fund after posting is detected
+    on BOTH funds, with amounts that sum to the variance, and a rebuild clears it."""
+
+    def test_reallocation_detected_and_rebuild_fixes(self):
+        from departments.models import Department
+        from giving.models import Transaction
+        from ledger.services import posting
+        import datetime as dt
+        from decimal import Decimal
+        posting.ensure_chart()
+        a = Department.objects.create(name="RA", fund_type="LOCAL", category="MINISTRY")
+        b = Department.objects.create(name="RB", fund_type="LOCAL", category="MINISTRY")
+        t = Transaction.objects.create(date=dt.date(2026, 6, 6), channel="BANK",
+            direction="CREDIT", amount=Decimal("3950"), allocation_status="MANUAL",
+            confirmed=True, department=a, core_ref="RA1")
+        posting.post_transaction(t)
+        Transaction.objects.filter(pk=t.pk).update(department=b)
+        # old fund: ledger over-credits; new fund: ledger missing it
+        ia = posting.fund_variance_detail(a)
+        ib = posting.fund_variance_detail(b)
+        self.assertTrue(ia and ib)
+        self.assertEqual(sum(i["amount"] for i in ia), Decimal("-3950"))
+        self.assertEqual(sum(i["amount"] for i in ib), Decimal("3950"))
+        # rebuild clears both
+        posting.rebuild()
+        self.assertEqual(posting.fund_variance_detail(a), [])
+        self.assertEqual(posting.fund_variance_detail(b), [])

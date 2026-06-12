@@ -68,6 +68,17 @@ class StatementImport(models.Model):
     balance_check = models.CharField(max_length=12, blank=True, default="")
     balance_detail = models.TextField(blank=True)
 
+    # The statement's own opening/closing running balance and the date range it
+    # covers. Persisted so a reconciliation report can compare the statement's
+    # closing balance against the system's computed bank position — catching
+    # entries that appear on the statement but never made it into the app.
+    stmt_opening_balance = models.DecimalField(max_digits=14, decimal_places=2,
+                                               null=True, blank=True)
+    stmt_closing_balance = models.DecimalField(max_digits=14, decimal_places=2,
+                                               null=True, blank=True)
+    stmt_first_date = models.DateField(null=True, blank=True)
+    stmt_last_date = models.DateField(null=True, blank=True)
+
     class Meta:
         ordering = ["-uploaded_at"]
 

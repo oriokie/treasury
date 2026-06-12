@@ -2,27 +2,29 @@
 {% block title %}Record envelopes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Record envelopes</h1>
-<div class="sub">Choose the columns for this Sabbath, then key one row per contributor. Receipt numbers auto-increment; names autocomplete.</div></div>
+<div class="sub">Key one row per contributor. Names autocomplete, receipts auto-number, and totals update as you type.</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import from Excel</a></div>
 
 <form method="post" id="envForm">{% csrf_token %}
   <input type="hidden" name="rows" id="rowsField">
-  <div class="filters" style="margin-bottom:.6rem">
-    <div class="f"><label>Sabbath (Saturday)</label><input type="date" name="date" id="sabDate" value="{{ default_date }}" class="field"></div>
-    <div class="f"><label>Start receipt #</label><input id="startReceipt" class="field mono" style="width:120px" placeholder="auto"></div>
-    <div class="f"><label>&nbsp;</label><button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Columns</button></div>
-    <div class="f"><label>&nbsp;</label><a class="btn btn-sm btn-ghost" id="tplLink" href="#">⬇ Excel template</a></div>
+
+  <div class="entry-toolbar">
+    <div class="tb-field"><label>Sabbath</label><input type="date" name="date" id="sabDate" value="{{ default_date }}" class="field"></div>
+    <div class="tb-field"><label>Start receipt #</label><input id="startReceipt" class="field mono" placeholder="auto"></div>
+    <div class="tb-spacer"></div>
+    <button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Funds</button>
+    <a class="btn btn-sm btn-ghost" id="tplLink" href="#">⬇ Template</a>
   </div>
 
   <div id="colPicker" class="col-picker">
-    <div class="cp-title">Columns for this Sabbath <span class="muted">— tick the funds collected; untick the rest to keep the sheet small.</span></div>
+    <div class="cp-title">Funds collected this Sabbath <span class="muted">— tick the funds given; untick the rest to keep the sheet small.</span></div>
     <div class="cp-grid">
       {% for c in columns %}
       <label class="cp-item"><input type="checkbox" class="colcb" value="{{ c.key }}" data-label="{{ c.label }}" {% if c.default %}checked{% endif %}>
         <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber" style="font-size:.6rem">T</span>{% endif %}</span></label>
       {% endfor %}
     </div>
-    <div class="btn-row"><button type="button" class="btn btn-sm" id="applyCols">Apply columns</button></div>
+    <div class="btn-row"><button type="button" class="btn btn-sm" id="applyCols">Apply</button></div>
   </div>
 
   <div class="table-wrap xl-wrap">
@@ -35,12 +37,23 @@
         <th class="num">Total</th><th class="rm-col"></th>
       </tr></thead>
       <tbody id="envBody"></tbody>
+      <tfoot><tr id="footRow" class="foot-totals">
+        <td></td><td class="sticky-name foot-label">Column totals</td><td></td><td></td>
+        <td class="num mono foot-grand"></td><td></td>
+      </tr></tfoot>
     </table>
   </div>
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically (e.g. 50% trust / 50% local). Tab or Enter moves down the column.</p>
-  <div class="btn-row">
+
+  <div class="entry-summary" id="entrySummary">
+    <div class="es-stat"><span class="es-num" id="esRows">0</span><span class="es-lbl">contributors</span></div>
+    <div class="es-stat"><span class="es-num mono" id="esTotal">0</span><span class="es-lbl">total (KSh)</span></div>
+    <div class="es-funds" id="esFunds"></div>
+  </div>
+
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically (e.g. 50% trust / 50% local). Press Enter to move down a column; the last row adds a new one.</p>
+  <div class="btn-row entry-actions">
     <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
-    <button class="btn">Save envelopes</button>
+    <button class="btn btn-save">Save envelopes <span id="saveTotal" class="save-total"></span></button>
     <a class="btn btn-ghost" href="{% url 'envelope_list' %}">Cancel</a>
   </div>
 </form>
@@ -76,11 +89,48 @@ function buildColumns(){
   body.innerHTML="";
   if(saved.length){ saved.forEach(s=>body.appendChild(makeRow(s.rcpt,s))); }
   else { for(let i=0;i<5;i++) addRow(); }
-  renumber(); syncTemplateLink();
+  renumber(); syncTemplateLink(); updateTotals();
 }
 
-function renumber(){ document.querySelectorAll("#envBody tr .rownum").forEach((c,i)=>c.textContent=i+1); }
-function rowTotal(tr){ let t=0; tr.querySelectorAll(".amt").forEach(i=>{ const v=parseFloat(i.value); if(!isNaN(v)) t+=v; }); tr.querySelector(".rowtot").textContent=t?t.toLocaleString():""; }
+function flagDuplicate(tr){
+  const cell=tr.querySelector(".sticky-name"); if(!cell) return;
+  let flag=cell.querySelector(".dup-flag");
+  const name=tr.querySelector(".cname").value.trim().toLowerCase();
+  let dup=false;
+  if(name){ document.querySelectorAll("#envBody tr").forEach(o=>{
+    if(o!==tr && o.querySelector(".cname").value.trim().toLowerCase()===name) dup=true; }); }
+  if(dup){ if(!flag){ flag=document.createElement("span"); flag.className="dup-flag"; flag.textContent="dup?"; cell.appendChild(flag); } }
+  else if(flag){ flag.remove(); }
+}
+
+function renumber(){ document.querySelectorAll("#envBody tr .rownum").forEach((c,i)=>c.textContent=i+1); updateTotals(); }
+function rowTotal(tr){ let t=0; tr.querySelectorAll(".amt").forEach(i=>{ const v=parseFloat(i.value); if(!isNaN(v)) t+=v; }); tr.querySelector(".rowtot").textContent=t?t.toLocaleString():""; updateTotals(); }
+
+function updateTotals(){
+  // per-column totals (footer + summary), grand total, contributor count
+  const colSum={}; let grand=0, filledRows=0;
+  COLS.forEach(c=>colSum[c.key]=0);
+  document.querySelectorAll("#envBody tr").forEach(tr=>{
+    let rowHas=false;
+    tr.querySelectorAll(".amt").forEach(i=>{ const v=parseFloat(i.value);
+      if(!isNaN(v)){ colSum[i.dataset.fid]=(colSum[i.dataset.fid]||0)+v; grand+=v; rowHas=true; } });
+    if(tr.querySelector(".cname").value.trim() && rowHas) filledRows++;
+  });
+  // footer column totals — align under each fund column
+  const foot=document.getElementById("footRow");
+  foot.querySelectorAll(".footcol").forEach(n=>n.remove());
+  const grandCell=foot.querySelector(".foot-grand");
+  COLS.forEach(c=>{ const td=document.createElement("td"); td.className="num mono footcol";
+    td.textContent=colSum[c.key]?colSum[c.key].toLocaleString():""; foot.insertBefore(td,grandCell); });
+  grandCell.textContent=grand?grand.toLocaleString():"";
+  // summary bar
+  document.getElementById("esRows").textContent=filledRows;
+  document.getElementById("esTotal").textContent=grand.toLocaleString();
+  const ef=document.getElementById("esFunds"); ef.innerHTML="";
+  COLS.forEach(c=>{ if(colSum[c.key]>0){ const s=document.createElement("span"); s.className="es-fund";
+    s.innerHTML=`<b>${c.label}</b> ${colSum[c.key].toLocaleString()}`; ef.appendChild(s); } });
+  const st=document.getElementById("saveTotal"); if(st) st.textContent=grand?("· KSh "+grand.toLocaleString()):"";
+}
 
 function makeRow(receipt, data){
   data=data||{};
@@ -126,6 +176,7 @@ function makeRow(receipt, data){
     },170);
   });
   nameI.addEventListener("blur",()=>setTimeout(()=>box.style.display="none",150));
+  nameI.addEventListener("input",()=>flagDuplicate(tr));
 
   tr.querySelectorAll("input,select").forEach(inp=>{
     inp.addEventListener("keydown",e=>{
@@ -198,5 +249,35 @@ document.getElementById("envForm").addEventListener("submit",function(){
 .ac-item{padding:.4rem .6rem;cursor:pointer;font-size:.85rem}
 .ac-item:hover{background:var(--accent-soft,#eef5f2)}
 .btn-xs{padding:.1rem .4rem;font-size:.8rem}
+
+/* QuickBooks-style entry chrome */
+.entry-toolbar{display:flex;align-items:flex-end;gap:.8rem;padding:.7rem .9rem;margin-bottom:.8rem;
+  background:var(--card-head,#faf7f0);border:1px solid var(--line);border-radius:10px;flex-wrap:wrap}
+.entry-toolbar .tb-field{display:flex;flex-direction:column;gap:.2rem}
+.entry-toolbar .tb-field label{font-size:.72rem;font-weight:600;color:var(--muted,#777);text-transform:uppercase;letter-spacing:.03em}
+.entry-toolbar .tb-field .field{min-width:150px}
+.entry-toolbar .tb-spacer{flex:1}
+.foot-totals td{position:sticky;bottom:0;background:var(--card-head,#f3efe5);border-top:2px solid var(--accent,#1f5f4f);
+  font-weight:700;font-size:.78rem;padding:.3rem .35rem;z-index:3}
+.foot-totals .foot-label{text-align:left;color:var(--muted,#666);font-weight:600}
+.foot-totals .sticky-name{position:sticky;left:0;z-index:4}
+.entry-summary{display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;margin:.9rem 0 .4rem;
+  padding:.7rem 1rem;background:linear-gradient(0deg,var(--card-head,#faf7f0),#fff);
+  border:1px solid var(--line);border-radius:10px}
+.es-stat{display:flex;flex-direction:column;line-height:1.1}
+.es-num{font-size:1.4rem;font-weight:700;color:var(--accent,#1f5f4f)}
+.es-lbl{font-size:.7rem;color:var(--muted,#888);text-transform:uppercase;letter-spacing:.03em}
+.es-funds{display:flex;gap:.4rem;flex-wrap:wrap;flex:1;justify-content:flex-end}
+.es-fund{font-size:.74rem;background:var(--accent-soft,#eef5f2);border-radius:20px;padding:.18rem .6rem;white-space:nowrap}
+.es-fund b{color:var(--accent,#1f5f4f);font-weight:600}
+.btn-save{font-weight:600}
+.save-total{font-weight:400;opacity:.85;font-size:.85em}
+.entry-actions{align-items:center;margin-top:.6rem}
+.dup-flag{position:absolute;right:.3rem;top:50%;transform:translateY(-50%);font-size:.66rem;
+  color:var(--brass,#b07d2c);background:#fff4e0;border-radius:10px;padding:.05rem .35rem;pointer-events:none}
+@media(max-width:760px){
+  .entry-summary{gap:1rem}.es-num{font-size:1.15rem}
+  .es-funds{justify-content:flex-start;width:100%}
+}
 </style>
 {% endblock %}

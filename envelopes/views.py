@@ -467,12 +467,63 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                 .prefetch_related("lines__department").order_by("receipt_no")
                 if sabbath_bucket(e.date) == sab]
 
-        # funds present this Sabbath, trust first
-        present = {}
+        # Map each split-half department to the single concept it belongs to
+        # (e.g. "Combined Offering (Trust 50%)" -> "Combined Offering"), so the
+        # per-contributor entries table shows ONE block for the full amount given,
+        # while the summary table can still split it into trust/local halves.
+        from giving.models import SplitFund
+        split_parent = {}          # department_id -> split fund name
+        split_name_is_trust = {}   # split fund name -> True if it has a trust half
+        for sf in SplitFund.objects.filter(active=True).prefetch_related(
+                "components__department"):
+            for comp in sf.components.all():
+                split_parent[comp.department_id] = sf.name
+                if comp.department.is_trust:
+                    split_name_is_trust[sf.name] = True
+
+        def _strip_suffix(receipt):
+            # receipts are stored globally-unique as "<MON><sidx>-<original>"
+            # (e.g. "JUN1-0421"); show only the original number to the reader.
+            s = str(receipt or "")
+            if "-" in s:
+                head, _, tail = s.partition("-")
+                # only strip a leading month/sabbath tag like JUN1, MAY2…
+                if head[:3].isalpha() and any(ch.isdigit() for ch in head):
+                    return tail or s
+            return s
+
+        # ---- entries-table columns: real funds, but split halves collapsed to
+        # their single concept name ----
+        present = {}   # key -> ("dept", dept) or ("split", name); preserves order info
         for e in envs:
             for l in e.lines.all():
-                present[l.department_id] = l.department
-        funds = sorted(present.values(), key=lambda d: (not d.is_trust, d.name))
+                if l.department_id in split_parent:
+                    name = split_parent[l.department_id]
+                    present.setdefault(("split", name),
+                                       split_name_is_trust.get(name, False))
+                else:
+                    present.setdefault(("dept", l.department_id), l.department)
+
+        # build ordered display columns (trust first), each with a label + a test
+        entry_cols = []   # list of dicts: {label, is_trust, match(line)->bool}
+        for key, val in present.items():
+            if key[0] == "split":
+                nm = key[1]
+                entry_cols.append({
+                    "label": nm, "is_trust": val,
+                    "ids": {d for d, n in split_parent.items() if n == nm}})
+            else:
+                d = val
+                entry_cols.append({
+                    "label": d.name, "is_trust": d.is_trust, "ids": {d.id}})
+        entry_cols.sort(key=lambda c: (not c["is_trust"], c["label"]))
+
+        # ---- summary funds: the REAL funds (halves stay separate), trust first ----
+        present_real = {}
+        for e in envs:
+            for l in e.lines.all():
+                present_real[l.department_id] = l.department
+        funds = sorted(present_real.values(), key=lambda d: (not d.is_trust, d.name))
 
         wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Sabbath"
         bold = Font(bold=True); white = Font(bold=True, color="FFFFFF")
@@ -481,7 +532,7 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         grey = PatternFill("solid", fgColor="E8E2D4")
         thin = Side(style="thin", color="999999")
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        ncols = 4 + len(funds) + 1
+        ncols = 4 + len(entry_cols) + 1
 
         # church name + report title
         ws.append([church])
@@ -493,7 +544,8 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         ws.cell(2, 1).font = Font(bold=True, size=12)
         ws.cell(2, 1).alignment = Alignment(horizontal="center")
 
-        header = ["No", "Contributor", "Receipt", "Channel"] + [f.name for f in funds] + ["Total"]
+        header = (["No", "Contributor", "Receipt", "Channel"]
+                  + [c["label"] for c in entry_cols] + ["Total"])
         ws.append(header)
         hr = ws.max_row
         for c in range(1, len(header) + 1):
@@ -503,20 +555,30 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
 
         first_data = ws.max_row + 1
         for i, e in enumerate(envs, start=1):
-            amt = {l.department_id: l.amount for l in e.lines.all()}
-            ws.append([i, e.contributor_name, e.receipt_no, e.get_channel_display()] +
-                      [float(amt.get(f.id, "") or "") if amt.get(f.id) else "" for f in funds] +
-                      [float(e.total)])
+            # sum each contributor's lines into the collapsed display columns
+            amt = {}
+            for l in e.lines.all():
+                amt[l.department_id] = amt.get(l.department_id, Decimal(0)) + l.amount
+            row_cells = []
+            for col in entry_cols:
+                v = sum((amt.get(did, Decimal(0)) for did in col["ids"]), Decimal(0))
+                row_cells.append(float(v) if v else "")
+            ws.append([i, e.contributor_name, _strip_suffix(e.receipt_no),
+                       e.get_channel_display()] + row_cells + [float(e.total)])
 
-        # column totals row
-        totals = {f.id: Decimal(0) for f in funds}
+        # column totals row (over the collapsed display columns)
+        totals = {f.id: Decimal(0) for f in funds}   # per REAL fund (for summary)
         grand = Decimal(0)
         for e in envs:
             for l in e.lines.all():
                 if l.department_id in totals:
                     totals[l.department_id] += l.amount
             grand += e.total
-        ws.append(["", "TOTAL", "", ""] + [float(totals[f.id]) for f in funds] + [float(grand)])
+        col_totals = []
+        for col in entry_cols:
+            col_totals.append(float(sum((totals.get(did, Decimal(0))
+                                         for did in col["ids"]), Decimal(0))))
+        ws.append(["", "TOTAL", "", ""] + col_totals + [float(grand)])
         last_data = ws.max_row
         for c in range(1, len(header) + 1):
             ws.cell(last_data, c).font = bold
@@ -532,29 +594,39 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
 
         # ---- summary block ----
         ws.append([])
+        summary_start = ws.max_row + 1
         ws.append(["SUMMARY"]); ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
         ws.append(["Trust fund items (remitted)"]); ws.cell(ws.max_row, 1).font = bold
         ws.cell(ws.max_row, 1).fill = amber
+        ws.cell(ws.max_row, 2).fill = amber
         trust_total = Decimal(0)
         for f in funds:
             if f.is_trust:
                 ws.append([f.name, float(totals[f.id])]); trust_total += totals[f.id]
         ws.append(["Total trust funds", float(trust_total)]); ws.cell(ws.max_row, 1).font = bold
-        ws.append([])
+        ws.cell(ws.max_row, 2).font = bold; ws.cell(ws.max_row, 1).fill = grey
+        ws.cell(ws.max_row, 2).fill = grey
         ws.append(["Local fund items (retained)"]); ws.cell(ws.max_row, 1).font = bold
-        ws.cell(ws.max_row, 1).fill = grey
+        ws.cell(ws.max_row, 1).fill = amber; ws.cell(ws.max_row, 2).fill = amber
         local_total = Decimal(0)
         for f in funds:
             if not f.is_trust:
                 ws.append([f.name, float(totals[f.id])]); local_total += totals[f.id]
         ws.append(["Total local funds", float(local_total)]); ws.cell(ws.max_row, 1).font = bold
-        ws.append(["GRAND TOTAL GIVEN", float(grand)]); ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+        ws.cell(ws.max_row, 2).font = bold; ws.cell(ws.max_row, 1).fill = grey
+        ws.cell(ws.max_row, 2).fill = grey
+        ws.append(["GRAND TOTAL GIVEN", float(grand)])
+        ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+        ws.cell(ws.max_row, 2).font = Font(bold=True, size=12)
+        summary_end = ws.max_row
 
-        # borders + number format on the summary value column
-        for r in range(first_data, ws.max_row + 1):
-            v = ws.cell(r, 2).value
-            if isinstance(v, (int, float)):
-                ws.cell(r, 2).number_format = "#,##0.00"
+        # borders + number format on the summary table (both columns)
+        for r in range(summary_start, summary_end + 1):
+            for c in (1, 2):
+                cell = ws.cell(r, c)
+                cell.border = border
+                if c == 2 and isinstance(cell.value, (int, float)):
+                    cell.number_format = "#,##0.00"
 
         ws.column_dimensions["A"].width = 5
         ws.column_dimensions["B"].width = 26
@@ -583,6 +655,110 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         resp["Content-Disposition"] = f'attachment; filename="sabbath_{sab}.xlsx"'
         return resp
+
+
+class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
+    """Receipt a SINGLE bank transaction (and any split siblings of the same gift)
+    as an envelope, on demand — the per-entry counterpart to the bulk monthly
+    pull. Supports a user-supplied receipt number for hybrid manual receipting:
+    the treasurer can enter the number written on the physical receipt/envelope so
+    the system record and the hand-written one match. Leaving it blank auto-assigns
+    the next 'B' number.
+
+    Like the bulk flow, this never creates a second ledger posting — the bank
+    transaction IS the money; the envelope just receipts it and the transaction is
+    marked processed_via_envelope so it is not double-counted.
+    """
+
+    def get(self, request, pk):
+        """Show a small confirmation form to receipt this bank gift, with an
+        optional manual receipt number."""
+        txn = get_object_or_404(Transaction, pk=pk)
+        eligible = (txn.channel == Transaction.Channel.BANK
+                    and txn.direction == Transaction.Direction.CREDIT
+                    and txn.department_id and not txn.processed_via_envelope
+                    and not txn.sabbath_confirm_pending
+                    and not txn.is_reversed and not txn.is_reversal)
+        nums = []
+        for r in Envelope.objects.values_list("receipt_no", flat=True):
+            d = "".join(ch for ch in str(r) if ch.isdigit())
+            if d:
+                nums.append(int(d))
+        next_no = f"B{(max(nums) + 1) if nums else 1}"
+        return render(request, "envelopes/receipt_bank.html", {
+            "txn": txn, "eligible": eligible, "next_no": next_no})
+
+    @db_tx.atomic
+    def post(self, request, pk):
+        from core.models import period_locked
+        from core.utils import sabbath_of as _sof
+        txn = get_object_or_404(Transaction, pk=pk)
+
+        if txn.channel != Transaction.Channel.BANK or \
+                txn.direction != Transaction.Direction.CREDIT:
+            messages.error(request, "Only bank/M-Pesa credits can be receipted as envelopes.")
+            return redirect("transaction_list")
+        if txn.processed_via_envelope or hasattr(txn, "envelope"):
+            messages.info(request, "That gift has already been receipted as an envelope.")
+            return redirect("transaction_list")
+        if txn.department_id is None:
+            messages.error(request, "Allocate this gift to a fund before receipting it.")
+            return redirect("transaction_list")
+        if txn.sabbath_confirm_pending:
+            messages.error(request, "Confirm this gift's Sabbath before receipting it.")
+            return redirect("transaction_list")
+        lk = period_locked(txn.service_sabbath or txn.date)
+        if lk:
+            messages.error(request, f"{lk} is locked — reopen the period first.")
+            return redirect("transaction_list")
+
+        # gather split siblings of the same gift so the receipt covers the full amount
+        base_ref = ((txn.core_ref or "").split("-S")[0] or txn.mpesa_ref or str(txn.id))
+        siblings = list(Transaction.objects.filter(
+            channel=Transaction.Channel.BANK,
+            direction=Transaction.Direction.CREDIT,
+            processed_via_envelope=False, department__isnull=False,
+            date=txn.date, payer_name=txn.payer_name)
+            .select_related("department", "member"))
+        txns = [t for t in siblings
+                if ((t.core_ref or "").split("-S")[0] or t.mpesa_ref or str(t.id)) == base_ref] or [txn]
+
+        # receipt number: user-supplied (hybrid manual) or auto-assigned
+        manual_no = (request.POST.get("receipt_no") or "").strip()
+        if manual_no:
+            if Envelope.objects.filter(receipt_no=manual_no).exists():
+                messages.error(request, f"Receipt number {manual_no} is already used. "
+                                        "Choose a different number.")
+                return redirect("transaction_list")
+            receipt_no = manual_no
+        else:
+            nums = []
+            for r in Envelope.objects.values_list("receipt_no", flat=True):
+                d = "".join(ch for ch in str(r) if ch.isdigit())
+                if d:
+                    nums.append(int(d))
+            receipt_no = f"B{(max(nums) + 1) if nums else 1}"
+
+        member = next((t.member for t in txns if t.member), None)
+        sab_date = next((t.service_sabbath for t in txns if t.service_sabbath),
+                        _sof(txn.date))
+        env = Envelope.objects.create(
+            date=sab_date, sabbath_week=sabbath_week_of(sab_date),
+            receipt_no=receipt_no, member=member,
+            contributor_name=txn.payer_name or (member.name if member else "(bank)"),
+            channel=Envelope.Channel.BANK,
+            bank_transaction=txns[0], recorded_by=request.user)
+        for t in txns:
+            EnvelopeLine.objects.create(envelope=env, department=t.department,
+                                        amount=t.amount, transaction=t)
+            t.processed_via_envelope = True
+            t.save(update_fields=["processed_via_envelope"])
+        env.recompute_total()
+        env.save(update_fields=["total"])
+        send_receipt_sms(env, SiteConfig.get())
+        messages.success(request, f"Receipted as envelope #{receipt_no} "
+                                  f"(KSh {env.total:,.2f}). You can now print or write it.")
+        return redirect("transaction_list")
 
 
 class EnvelopePullBankView(DataEntryRequiredMixin, View):

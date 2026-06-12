@@ -300,3 +300,128 @@ class EnvelopeSendButtonGatingTests(TestCase):
         html = c.get(f"/envelopes/?month={self.month}").content.decode()
         self.assertIn("SMS all", html)
         self.assertNotIn("WhatsApp all", html)
+
+
+class BankReceiptOneTests(TestCase):
+    """Per-transaction 'Receipt as envelope' with optional manual receipt number,
+    without double-counting the money."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        from departments.models import Department
+        self.u = User.objects.create_user("br", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+        self.d = Department.objects.create(name="Tithe", fund_type="TRUST",
+                                           category="OFFERING", is_trust=True)
+
+    def _txn(self, ref="R1", amt="1000"):
+        from giving.models import Transaction
+        import datetime as dt
+        from decimal import Decimal
+        return Transaction.objects.create(
+            date=dt.date(2026, 6, 6), channel="BANK", direction="CREDIT",
+            amount=Decimal(amt), allocation_status="MANUAL", confirmed=True,
+            department=self.d, core_ref=ref, payer_name="Giver",
+            service_sabbath=dt.date(2026, 6, 6), sabbath_confirm_pending=False)
+
+    def test_manual_receipt_number(self):
+        from django.test import Client
+        from envelopes.models import Envelope
+        t = self._txn()
+        c = Client(); c.force_login(self.u)
+        c.post(f"/transactions/{t.id}/receipt-envelope/", {"receipt_no": "T-500"})
+        t.refresh_from_db()
+        env = Envelope.objects.get(receipt_no="T-500")
+        self.assertTrue(t.processed_via_envelope)
+        self.assertEqual(env.bank_transaction_id, t.id)
+        self.assertEqual(env.total, t.amount)
+
+    def test_auto_receipt_number(self):
+        from django.test import Client
+        from envelopes.models import Envelope
+        t = self._txn(ref="R2")
+        c = Client(); c.force_login(self.u)
+        c.post(f"/transactions/{t.id}/receipt-envelope/", {})
+        self.assertTrue(Envelope.objects.filter(bank_transaction=t).exists())
+
+    def test_no_double_receipt(self):
+        from django.test import Client
+        from envelopes.models import Envelope
+        t = self._txn(ref="R3")
+        c = Client(); c.force_login(self.u)
+        c.post(f"/transactions/{t.id}/receipt-envelope/", {"receipt_no": "A1"})
+        c.post(f"/transactions/{t.id}/receipt-envelope/", {"receipt_no": "A2"})
+        self.assertEqual(Envelope.objects.filter(bank_transaction=t).count(), 1)
+        self.assertFalse(Envelope.objects.filter(receipt_no="A2").exists())
+
+    def test_duplicate_receipt_number_rejected(self):
+        from django.test import Client
+        from envelopes.models import Envelope
+        t1 = self._txn(ref="R4")
+        t2 = self._txn(ref="R5")
+        c = Client(); c.force_login(self.u)
+        c.post(f"/transactions/{t1.id}/receipt-envelope/", {"receipt_no": "DUP"})
+        c.post(f"/transactions/{t2.id}/receipt-envelope/", {"receipt_no": "DUP"})
+        # only the first used DUP; the second was rejected, t2 not receipted
+        t2.refresh_from_db()
+        self.assertFalse(t2.processed_via_envelope)
+
+
+class SabbathExcelCleanupTests(TestCase):
+    """The per-Sabbath Excel: receipt suffix stripped; Combined Offering shown as
+    one block in entries but split in the summary; summary has borders."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        from departments.models import Department
+        from giving.models import SplitFund, SplitComponent
+        self.u = User.objects.create_user("se", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+        # build a Combined Offering split fund with trust + local halves
+        self.trust = Department.objects.create(name="Combined Offering (Trust 50%)",
+            fund_type="TRUST", category="OFFERING", is_trust=True, selectable=False)
+        self.local = Department.objects.create(name="Combined Offering (Local 50%)",
+            fund_type="LOCAL", category="OFFERING", is_trust=False, selectable=False)
+        sf = SplitFund.objects.create(name="Combined Offering")
+        SplitComponent.objects.create(split_fund=sf, department=self.trust, percent=50)
+        SplitComponent.objects.create(split_fund=sf, department=self.local, percent=50)
+
+    def test_excel_cleanups(self):
+        import io, openpyxl
+        from django.test import Client
+        from envelopes.models import Envelope, EnvelopeLine
+        from core.utils import last_saturday
+        from decimal import Decimal
+        sat = last_saturday()
+        env = Envelope.objects.create(date=sat, contributor_name="Member X",
+                                      receipt_no="JUN1-0421", recorded_by=self.u)
+        EnvelopeLine.objects.create(envelope=env, department=self.trust, amount=Decimal("300"))
+        EnvelopeLine.objects.create(envelope=env, department=self.local, amount=Decimal("300"))
+        env.recompute_total(); env.save()
+
+        c = Client(); c.force_login(self.u)
+        r = c.get(f"/envelopes/sabbath.xlsx?date={sat.isoformat()}")
+        self.assertEqual(r.status_code, 200)
+        wb = openpyxl.load_workbook(io.BytesIO(r.content)); ws = wb.active
+
+        header, hr = None, None
+        for row in ws.iter_rows(min_row=1, max_row=10):
+            vals = [c.value for c in row]
+            if "Contributor" in vals:
+                header, hr = vals, row[0].row
+                break
+        # one combined column, no half-columns in entries
+        self.assertEqual(header.count("Combined Offering"), 1)
+        self.assertNotIn("Combined Offering (Trust 50%)", header)
+        # receipt suffix stripped + combined block = full amount
+        for row in ws.iter_rows(min_row=hr + 1):
+            if row[1].value == "Member X":
+                self.assertEqual(str(row[2].value), "0421")
+                self.assertEqual(row[header.index("Combined Offering")].value, 600)
+                break
+        # summary keeps the halves split
+        alltext = "\n".join(str(c.value) for rr in ws.iter_rows() for c in rr if c.value)
+        self.assertIn("Combined Offering (Trust 50%)", alltext)
+        self.assertIn("Combined Offering (Local 50%)", alltext)
