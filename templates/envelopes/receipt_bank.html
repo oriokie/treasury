@@ -23,7 +23,11 @@
     </div>
     <button class="btn">Receipt this gift</button>
   </form>
-  <div class="help" style="margin-top:1rem;line-height:1.6">The bank transaction is the income; this envelope is the member-level record of the same money, so it is <strong>not</strong> counted twice. After receipting, you can print the receipt or write the envelope by hand.</div>
+  <form method="post" style="margin-top:.6rem">{% csrf_token %}
+    <input type="hidden" name="mark_only" value="1">
+    <button class="btn btn-ghost" title="The envelope was already written/typed by hand — just flag this bank entry as receipted, without creating a new envelope record.">Mark as receipted only (envelope already written)</button>
+  </form>
+  <div class="help" style="margin-top:1rem;line-height:1.6">The bank transaction is the income; this envelope is the member-level record of the same money, so it is <strong>not</strong> counted twice. After receipting, you can print the receipt or write the envelope by hand. Use <em>Mark as receipted only</em> when you have already written the envelope by hand and just want to clear this entry from the queue.</div>
   {% else %}
   <div class="info-panel" style="margin-top:1rem">This gift can't be receipted as an envelope. It must be a bank/M-Pesa credit, allocated to a fund, with its Sabbath confirmed, and not already receipted or reversed.</div>
   {% endif %}

@@ -519,6 +519,7 @@ class AnnualSummaryView(ReadAccessMixin, TemplateView):
                   .values("yr").annotate(total=Sum("amount")).order_by("yr"))
         expense = (Expense.objects.filter(
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+            .exclude(category=Expense.Category.REMITTANCE)
             .annotate(yr=ExtractYear("date"))
             .values("yr").annotate(total=Sum("amount")).order_by("yr"))
         inc = {r["yr"]: r["total"] for r in income}
@@ -940,6 +941,93 @@ class RemittanceBatchListView(ReadAccessMixin, TemplateView):
         return ctx
 
 
+class RemittanceCalendarView(ReadAccessMixin, TemplateView):
+    """Per-year remittance calendar: each period's deadline and the reporting
+    Sabbath it maps to (the most recent Saturday on/before the deadline). When a
+    deadline doesn't fall on a Sabbath, the previous Sabbath is shown as the
+    reporting Sabbath, and due-soon / overdue items are highlighted."""
+    template_name = "reports/remittance_calendar.html"
+
+    def get_context_data(self, **kwargs):
+        from cashbook.models import RemittanceDeadline
+        ctx = super().get_context_data(**kwargs)
+        today = _dt.date.today()
+        try:
+            year = int(self.request.GET.get("year", today.year))
+        except (TypeError, ValueError):
+            year = today.year
+        deadlines = list(RemittanceDeadline.objects.filter(year=year))
+        ctx["year"] = year
+        ctx["prev_year"] = year - 1
+        ctx["next_year"] = year + 1
+        ctx["deadlines"] = deadlines
+        ctx["has_any"] = bool(deadlines)
+        ctx["due_soon"] = [d for d in deadlines if d.is_due_soon]
+        ctx["overdue"] = [d for d in deadlines if d.is_overdue]
+        return ctx
+
+
+class RemittanceCalendarGenerateView(TreasurerRequiredMixin, View):
+    """Auto-generate a year's monthly remittance deadlines. The default deadline
+    is the 15th of the following month (adjustable afterwards). Existing periods
+    are left untouched."""
+
+    def post(self, request):
+        from cashbook.models import RemittanceDeadline
+        import calendar
+        today = _dt.date.today()
+        try:
+            year = int(request.POST.get("year", today.year))
+        except (TypeError, ValueError):
+            year = today.year
+        try:
+            due_day = int(request.POST.get("due_day", 15))
+        except (TypeError, ValueError):
+            due_day = 15
+        due_day = min(max(due_day, 1), 28)
+        created = 0
+        for m in range(1, 13):
+            # deadline falls in the FOLLOWING month by default
+            dyear, dmonth = (year + 1, 1) if m == 12 else (year, m + 1)
+            _, last_day = calendar.monthrange(dyear, dmonth)
+            deadline = _dt.date(dyear, dmonth, min(due_day, last_day))
+            _, was_created = RemittanceDeadline.objects.get_or_create(
+                year=year, period_month=m,
+                defaults={"deadline": deadline,
+                          "label": f"{calendar.month_name[m]} remittance"})
+            if was_created:
+                created += 1
+        messages.success(request, f"Generated {created} remittance deadline(s) for "
+                                  f"{year}. You can adjust individual dates below.")
+        return redirect(f"{reverse('remittance_calendar')}?year={year}")
+
+
+class RemittanceDeadlineUpdateView(TreasurerRequiredMixin, View):
+    """Edit one deadline's date/label/notes, or toggle its remitted flag."""
+
+    def post(self, request, pk):
+        from cashbook.models import RemittanceDeadline
+        d = get_object_or_404(RemittanceDeadline, pk=pk)
+        if request.POST.get("toggle_remitted"):
+            d.remitted = not d.remitted
+            d.save(update_fields=["remitted"])
+            messages.success(request, f"{d.get_period_display()} marked "
+                                      f"{'remitted' if d.remitted else 'not remitted'}.")
+            return redirect(f"{reverse('remittance_calendar')}?year={d.year}")
+        new_date = request.POST.get("deadline")
+        if new_date:
+            try:
+                d.deadline = _dt.date.fromisoformat(new_date)
+            except ValueError:
+                messages.error(request, "Invalid date.")
+                return redirect(f"{reverse('remittance_calendar')}?year={d.year}")
+        d.label = (request.POST.get("label") or d.label)[:60]
+        d.notes = (request.POST.get("notes") or "")[:200]
+        d.save()
+        messages.success(request, f"Updated {d.get_period_display()} deadline.")
+        return redirect(f"{reverse('remittance_calendar')}?year={d.year}")
+
+
 # ===================== Budget vs Actual report =====================
 from .services import budget as budget_svc
 
@@ -1191,7 +1279,8 @@ class BoardReportView(PeriodMixin, TemplateView):
                  .annotate(yr=ExtractYear("date"))
                  .values("yr").annotate(total=Sum("amount")))}
         exp_y = {r["yr"]: r["total"] for r in (_ytd_filter(
-                 Expense.objects.filter(status__in=paid))
+                 Expense.objects.filter(status__in=paid)
+                 .exclude(category=Expense.Category.REMITTANCE))
                  .annotate(yr=ExtractYear("date")).values("yr")
                  .annotate(total=Sum("amount")))}
         from core.models import HistoricalYear

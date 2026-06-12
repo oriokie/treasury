@@ -1,0 +1,77 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Remittance calendar {{ year }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Remittance calendar — {{ year }}</h1>
+  <div class="sub">Trust-fund remittance deadlines and the reporting Sabbath each one maps to</div></div>
+  <div class="btn-row">
+    <a class="btn btn-ghost btn-sm" href="?year={{ prev_year }}">← {{ prev_year }}</a>
+    <a class="btn btn-ghost btn-sm" href="?year={{ next_year }}">{{ next_year }} →</a>
+  </div>
+</div>
+
+{% if overdue %}
+<div class="alert alert-danger" style="margin-bottom:.8rem">
+  <strong>⚠ {{ overdue|length }} remittance{{ overdue|pluralize }} overdue.</strong>
+  {% for d in overdue %}{{ d.get_period_display }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+</div>
+{% endif %}
+{% if due_soon %}
+<div class="alert alert-warn" style="margin-bottom:.8rem">
+  <strong>⏰ Due within 7 days:</strong>
+  {% for d in due_soon %}{{ d.get_period_display }} (by {{ d.deadline|date:"d M" }}, report on Sabbath {{ d.reporting_sabbath|date:"d M" }}){% if not forloop.last %}; {% endif %}{% endfor %}.
+</div>
+{% endif %}
+
+{% if not has_any %}
+<div class="card"><div class="bd">
+  <p>No remittance deadlines set for {{ year }} yet.</p>
+  {% if is_treasurer %}
+  <form method="post" action="{% url 'remittance_calendar_generate' %}" class="btn-row" style="align-items:flex-end;gap:.6rem">
+    {% csrf_token %}<input type="hidden" name="year" value="{{ year }}">
+    <div class="f"><label>Due day of following month</label><input type="number" name="due_day" value="15" min="1" max="28" class="field" style="width:90px"></div>
+    <button class="btn">Generate {{ year }} deadlines</button>
+  </form>
+  <p class="help" style="margin-top:.5rem">Creates one deadline per month (by default the 15th of the following month). You can adjust each date afterwards.</p>
+  {% endif %}
+</div></div>
+{% else %}
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Period</th><th>Deadline</th><th>Reporting Sabbath</th><th>Status</th>{% if is_treasurer %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for d in deadlines %}
+    <tr class="{% if d.is_overdue %}row-danger{% elif d.is_due_soon %}row-warn{% endif %}">
+      <td>{{ d.get_period_display }}{% if d.notes %}<br><span class="muted" style="font-size:.8rem">{{ d.notes }}</span>{% endif %}</td>
+      <td class="mono">{{ d.deadline|date:"D, d M Y" }}
+        {% if not d.deadline_is_sabbath %}<br><span class="pill pill-grey" style="font-size:.65rem" title="The deadline is not a Sabbath, so the previous Sabbath is the reporting Sabbath">not a Sabbath</span>{% endif %}</td>
+      <td class="mono"><strong>{{ d.reporting_sabbath|date:"d M Y" }}</strong>
+        <br><span class="muted" style="font-size:.78rem">count all giving up to this Sabbath</span></td>
+      <td>
+        {% if d.remitted %}<span class="pill pill-green">✓ remitted</span>
+        {% elif d.is_overdue %}<span class="pill pill-red">overdue {{ d.days_until|stringformat:"+d" }}d</span>
+        {% elif d.is_due_soon %}<span class="pill pill-amber">due in {{ d.days_until }}d</span>
+        {% else %}<span class="pill pill-grey">{{ d.days_until }}d to go</span>{% endif %}
+      </td>
+      {% if is_treasurer %}
+      <td style="white-space:nowrap">
+        <details class="inline-edit"><summary class="link">edit</summary>
+          <form method="post" action="{% url 'remittance_deadline_update' d.id %}" style="margin-top:.4rem;display:flex;flex-direction:column;gap:.3rem;min-width:200px">
+            {% csrf_token %}
+            <input type="date" name="deadline" value="{{ d.deadline|date:'Y-m-d' }}" class="field">
+            <input type="text" name="label" value="{{ d.label }}" placeholder="Label" class="field">
+            <input type="text" name="notes" value="{{ d.notes }}" placeholder="Notes" class="field">
+            <button class="btn btn-sm">Save</button>
+          </form>
+        </details>
+        <form method="post" action="{% url 'remittance_deadline_update' d.id %}" style="display:inline">
+          {% csrf_token %}<input type="hidden" name="toggle_remitted" value="1">
+          <button class="link">{% if d.remitted %}unmark{% else %}mark remitted{% endif %}</button>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p class="help" style="margin-top:.7rem">The <strong>reporting Sabbath</strong> is the most recent Saturday on or before the deadline. If a deadline falls midweek (say a Wednesday), the previous Sabbath's count is the one that must be in the remittance. Trust funds collected up to that Sabbath should be remitted by the deadline.</p>
+{% endif %}
+{% endblock %}

@@ -15,6 +15,19 @@
   </form>
 </div>
 
+{% if remit_overdue %}
+<div class="alert alert-danger" style="margin-bottom:.7rem">
+  <strong>⚠ Trust remittance overdue:</strong>
+  {% for d in remit_overdue %}<a href="{% url 'remittance_calendar' %}?year={{ d.year }}" style="color:inherit">{{ d.get_period_display }}</a> (was due {{ d.deadline|date:"d M" }}){% if not forloop.last %}; {% endif %}{% endfor %}.
+</div>
+{% endif %}
+{% if remit_due_soon %}
+<div class="alert alert-warn" style="margin-bottom:.7rem">
+  <strong>⏰ Trust remittance due soon:</strong>
+  {% for d in remit_due_soon %}<a href="{% url 'remittance_calendar' %}?year={{ d.year }}" style="color:inherit">{{ d.get_period_display }}</a> by {{ d.deadline|date:"d M" }} — report on Sabbath {{ d.reporting_sabbath|date:"d M" }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+</div>
+{% endif %}
+
 {% if can_enter_data %}
 <div class="quick-actions">
   <a class="qa" href="{% url 'envelope_ledger' %}"><span class="qa-ic">✉</span><span>Record envelopes</span></a>

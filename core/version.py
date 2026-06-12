@@ -38,6 +38,20 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.15": "Extended the financial-accuracy suite with 15 edge-case tests "
+              "(date boundaries, unconfirmed/pending entries, split offerings, "
+              "rounding, mis-keyed dates) — 44 accuracy tests in all.",
+    "1.0.14": "Added a financial-accuracy test suite (29 tests) asserting the core "
+              "accounting invariants: departmental balances, reconciliation, the "
+              "balance sheet, and the statement of cash flows all tie out.",
+    "1.0.13": "Added an interactive deployment installer (deploy/install.sh) that "
+              "collects settings with validation and sets up the database, Python "
+              "environment, gunicorn, Apache, nginx and SSL.",
+    "1.0.12": "Redesigned transactions page with summary cards; fixed trust "
+              "remittances being counted as expenses in prior-year totals; new "
+              "remittance calendar with reporting-Sabbath logic and dashboard alerts; "
+              "mark-as-receipted without raising an envelope; optional starting "
+              "receipt number for bulk receipting; reorganised settings page.",
     "1.0.11": "Redesigned the envelope entry screen with live running totals, a "
               "per-fund summary bar, column totals, and duplicate-name flags for "
               "faster, clearer Sabbath entry.",

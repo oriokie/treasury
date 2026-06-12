@@ -142,3 +142,40 @@ class ReportFigureTests(ReportDataMixin, TestCase):
     def test_sofp_balances(self):
         r = self.client.get(reverse("report_financial_position"))
         self.assertTrue(r.context["balanced"])
+
+
+class RemittanceCalendarTests(TestCase):
+    """Item 5: remittance calendar deadlines + reporting-Sabbath logic."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        self.u = User.objects.create_user("rc", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+
+    def test_generate_and_reporting_sabbath(self):
+        from django.test import Client
+        from cashbook.models import RemittanceDeadline
+        c = Client(); c.force_login(self.u)
+        c.post("/reports/trust/remittance/calendar/generate/",
+               {"year": "2026", "due_day": "15"})
+        self.assertEqual(RemittanceDeadline.objects.filter(year=2026).count(), 12)
+        jan = RemittanceDeadline.objects.get(year=2026, period_month=1)
+        # reporting Sabbath is a Saturday on/before the deadline
+        self.assertEqual(jan.reporting_sabbath.weekday(), 5)
+        self.assertLessEqual(jan.reporting_sabbath, jan.deadline)
+
+    def test_calendar_page_renders(self):
+        from django.test import Client
+        c = Client(); c.force_login(self.u)
+        self.assertEqual(
+            c.get("/reports/trust/remittance/calendar/?year=2026").status_code, 200)
+
+    def test_midweek_deadline_uses_previous_sabbath(self):
+        from cashbook.models import RemittanceDeadline
+        import datetime as dt
+        # a Wednesday deadline
+        d = RemittanceDeadline.objects.create(year=2026, period_month=7,
+            deadline=dt.date(2026, 7, 15))  # 2026-07-15 is a Wednesday
+        self.assertEqual(d.deadline.weekday(), 2)
+        self.assertEqual(d.reporting_sabbath, dt.date(2026, 7, 11))  # prev Saturday

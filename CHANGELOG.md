@@ -1,5 +1,71 @@
 # Changelog
 
+## v1.0.15
+- Extended the financial-accuracy suite (reports/test_accuracy.py) with a second
+  layer of 15 edge-case / adversarial tests targeting the real-world conditions
+  that cause reconciliation gaps:
+  * period-window boundaries are inclusive and adjacent periods neither overlap
+    nor leave a gap;
+  * unconfirmed receipts and pending (unapproved) expenses never reach a balance;
+  * excluded-from-income receipts stay in the fund balance but out of income;
+  * split offerings divide to the exact cent with no money lost or created;
+  * empty/zero state yields zero totals (never None or error) and still balances;
+  * Decimal arithmetic shows no floating-point drift over awkward sums;
+  * a mis-keyed far-future value date is excluded by a bounded period window;
+  * bank debits correctly reduce the bank position.
+  Validated by fault injection. 44 accuracy tests in total (416 across the app).
+
+## v1.0.14
+- New financial-accuracy test suite (reports/test_accuracy.py, 29 tests) that
+  asserts the accounting invariants the figures depend on, each against a fully
+  hand-totalled scenario:
+  * departmental balance identity (closing = opening + receipts − expenses
+    + transfers in − transfers out) for every fund;
+  * carry-forward continuity (a period's opening equals the prior period's
+    closing; a split year equals the full year);
+  * reconciliation (the fund engine balance equals the general-ledger balance,
+    with no variance, and rebuild is idempotent);
+  * ledger integrity (every journal entry balances; the trial balance balances;
+    Assets = Liabilities + Funds);
+  * Statement of Financial Position balances (Total Assets = Total Liabilities
+    + Net Assets) with trust-payable equal to unremitted tithe;
+  * Statement of Cash Flows reconciles (opening + net change = closing; the
+    three categories sum to the net change; capital is investing, not operating);
+  * transfers are zero-sum; reversals net to zero; remittances are never income
+    or operating expense; receipting a bank gift as an envelope never inflates
+    income; and consolidated parents equal own-plus-children.
+  The suite was validated by fault injection — deliberately breaking a formula
+  makes the relevant tests fail, confirming they genuinely catch errors.
+
+## v1.0.13
+- New interactive deployment installer: deploy/install.sh. Collects all settings
+  through validated dialog prompts (whiptail/dialog if available, plain prompts
+  otherwise — never echoes secrets), then sets up the .env (600 perms), MySQL
+  database (utf8mb4), Python venv + migrations + static + superuser, a systemd
+  gunicorn service, the Apache proxy include under the domain-owning cPanel user,
+  nginx pass-through and AutoSSL, and verifies /healthz/ at each layer. Safe to
+  re-run; reuses the existing secret key and backs up the previous .env. See
+  deploy/INSTALL.md.
+
+## v1.0.12
+- Transactions page redesigned: summary cards (count, receipts, payments, net,
+  in-review), a cleaner filter bar with a Clear button, channel colour-coding,
+  service-Sabbath hints and payer phone shown inline.
+- Fixed a reporting bug where trust remittances were counted as expenses in the
+  annual summary and the board-report multi-year trend, overstating expenses for
+  prior years. (Operating expense totals now exclude REMITTANCE everywhere, as
+  intended — trust funds are liabilities, not expenditure.)
+- New Remittance calendar (Reports - Remittance calendar): per-year trust-fund
+  remittance deadlines, each mapped to its reporting Sabbath (the most recent
+  Saturday on/before the deadline). If a deadline falls midweek, the previous
+  Sabbath is the reporting Sabbath. Overdue and due-soon remittances are alerted
+  on the dashboard.
+- Bank receipting: you can now mark a bank gift as receipted WITHOUT creating a
+  new envelope (for when the envelope was already written/typed by hand).
+- Bulk bank receipting now lets you optionally set a starting receipt number.
+- Settings page reorganised into General / Messaging / System groups with a
+  cleaner navigation.
+
 ## v1.0.11
 - Redesigned the envelope ledger entry screen (Record envelopes) for faster,
   clearer entry: a cleaner toolbar, a live summary bar showing the running

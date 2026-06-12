@@ -80,6 +80,15 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["fund_count"] = Department.objects.filter(active=True).count()
         ctx["recent_imports"] = StatementImport.objects.all()[:5]
 
+        # remittance deadline alerts (item 5): surface overdue / due-soon trust
+        # remittances so the treasurer is reminded ahead of the deadline.
+        from cashbook.models import RemittanceDeadline
+        _today = __import__("datetime").date.today()
+        _rd = RemittanceDeadline.objects.filter(remitted=False,
+                                                deadline__gte=_today - __import__("datetime").timedelta(days=60))
+        ctx["remit_overdue"] = [d for d in _rd if d.is_overdue]
+        ctx["remit_due_soon"] = [d for d in _rd if d.is_due_soon]
+
         # multi-year trend: prior years (reference) + the current year so far
         import json, datetime as _dt
         from decimal import Decimal

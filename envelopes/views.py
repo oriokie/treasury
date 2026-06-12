@@ -723,6 +723,22 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
         txns = [t for t in siblings
                 if ((t.core_ref or "").split("-S")[0] or t.mpesa_ref or str(t.id)) == base_ref] or [txn]
 
+        # "mark only" — the envelope was already written/typed by hand, so just flag
+        # the bank entry as receipted-via-envelope (keeps it out of the review queue)
+        # WITHOUT creating a duplicate envelope record. Income is unaffected — the
+        # "mark only" — the envelope was already written/typed by hand, so just flag
+        # the bank entry as receipted-via-envelope (keeps it out of the review queue)
+        # WITHOUT creating a duplicate envelope record. Income is unaffected — the
+        # bank transaction itself remains the income.
+        if request.POST.get("mark_only"):
+            for t in txns:
+                t.processed_via_envelope = True
+                t.save(update_fields=["processed_via_envelope"])
+            messages.success(request, f"Marked as receipted via a manual envelope "
+                                      f"(KSh {sum(t.amount for t in txns):,.2f}). No new "
+                                      f"envelope record was created.")
+            return redirect("transaction_list")
+
         # receipt number: user-supplied (hybrid manual) or auto-assigned
         manual_no = (request.POST.get("receipt_no") or "").strip()
         if manual_no:
@@ -819,23 +835,34 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
             groups = {k: ts for k, ts in groups.items()
                       if any(t.department and t.department.is_trust for t in ts)}
 
-        # next receipt number
-        nums = []
-        for r in Envelope.objects.values_list("receipt_no", flat=True):
-            d = "".join(ch for ch in str(r) if ch.isdigit())
-            if d:
-                nums.append(int(d))
-        nxt = (max(nums) + 1) if nums else 1
+        # next receipt number — honour a user-supplied starting number if given
+        # (optional), otherwise continue from the highest existing receipt.
+        start_raw = (request.POST.get("start_receipt") or "").strip()
+        start_digits = "".join(ch for ch in start_raw if ch.isdigit())
+        prefix = "".join(ch for ch in start_raw if not ch.isdigit()) or "B"
+        if start_digits:
+            nxt = int(start_digits)
+        else:
+            nums = []
+            for r in Envelope.objects.values_list("receipt_no", flat=True):
+                d = "".join(ch for ch in str(r) if ch.isdigit())
+                if d:
+                    nums.append(int(d))
+            nxt = (max(nums) + 1) if nums else 1
 
         created = 0
+        skipped_dupe = 0
         for (gdate, payer, _), txns in groups.items():
             member = next((t.member for t in txns if t.member), None)
             # the envelope (and its receipt) belongs to the gift's service Sabbath
             sab_date = next((t.service_sabbath for t in txns if t.service_sabbath),
                             _sof(gdate))
+            # find the next free receipt number from `nxt` (skip any already used)
+            while Envelope.objects.filter(receipt_no=f"{prefix}{nxt}").exists():
+                nxt += 1
             env = Envelope.objects.create(
                 date=sab_date, sabbath_week=sabbath_week_of(sab_date),
-                receipt_no=f"B{nxt}", member=member,
+                receipt_no=f"{prefix}{nxt}", member=member,
                 contributor_name=payer or (member.name if member else "(bank)"),
                 channel=Envelope.Channel.BANK,
                 bank_transaction=txns[0], recorded_by=request.user)

@@ -490,3 +490,61 @@ def category_label(code):
         return d[code]
     ec = ExpenseCategory.objects.filter(code=code).first()
     return ec.label if ec else code
+
+
+class RemittanceDeadline(models.Model):
+    """A trust-fund remittance deadline for a given period (usually monthly), used
+    to drive the remittance calendar. If a deadline falls on a non-Sabbath day,
+    the reporting Sabbath is the most recent Saturday on or before the deadline —
+    i.e. the last counted Sabbath whose money must be in the remittance.
+
+    Deadlines for a year can be auto-generated (one per month) and then adjusted.
+    """
+    year = models.PositiveIntegerField(db_index=True)
+    period_month = models.PositiveSmallIntegerField(
+        help_text="Calendar month this deadline closes (1–12).")
+    label = models.CharField(max_length=60, blank=True,
+                             help_text="e.g. 'January remittance'.")
+    deadline = models.DateField(help_text="The date the remittance is due to the field/conference.")
+    notes = models.CharField(max_length=200, blank=True)
+    remitted = models.BooleanField(default=False,
+        help_text="Tick once this period's remittance has been sent.")
+    batch = models.ForeignKey("cashbook.RemittanceBatch", null=True, blank=True,
+                              on_delete=models.SET_NULL, related_name="deadlines")
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["year", "period_month", "deadline"]
+        unique_together = [("year", "period_month")]
+
+    def __str__(self):
+        return f"{self.label or self.get_period_display()} — due {self.deadline:%d %b %Y}"
+
+    def get_period_display(self):
+        import calendar
+        return f"{calendar.month_name[self.period_month]} {self.year}"
+
+    @property
+    def reporting_sabbath(self):
+        """The Sabbath whose count this remittance reports on: the most recent
+        Saturday on or before the deadline."""
+        from core.utils import last_saturday
+        return last_saturday(self.deadline)
+
+    @property
+    def deadline_is_sabbath(self):
+        return self.deadline.weekday() == 5
+
+    @property
+    def days_until(self):
+        import datetime as dt
+        return (self.deadline - dt.date.today()).days
+
+    @property
+    def is_overdue(self):
+        return (not self.remitted) and self.days_until < 0
+
+    @property
+    def is_due_soon(self):
+        return (not self.remitted) and 0 <= self.days_until <= 7

@@ -122,6 +122,22 @@ class TransactionListView(ReadAccessMixin, ListView):
             department__isnull=True, excluded_from_income=False).count()
         ctx["noflund_total"] = Transaction.objects.active().filter(
             department__isnull=True).count()
+        # summary stats for the filtered set (header cards)
+        from django.db.models import Sum, Count, Q as _Q
+        qs = self.get_queryset()
+        agg = qs.aggregate(
+            credits=Sum("amount", filter=_Q(direction="CREDIT")),
+            debits=Sum("amount", filter=_Q(direction="DEBIT")),
+            n=Count("id"),
+            review=Count("id", filter=_Q(allocation_status="REVIEW")))
+        ctx["sum_credits"] = agg["credits"] or 0
+        ctx["sum_debits"] = agg["debits"] or 0
+        ctx["sum_net"] = (agg["credits"] or 0) - (agg["debits"] or 0)
+        ctx["sum_count"] = agg["n"] or 0
+        ctx["sum_review"] = agg["review"] or 0
+        ctx["has_filters"] = any(self.request.GET.get(k) for k in
+                                 ("q", "channel", "status", "department",
+                                  "date_from", "date_to"))
         return ctx
 
 

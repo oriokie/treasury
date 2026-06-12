@@ -19,9 +19,9 @@
   <span class="grow"></span>
   <span class="muted">Total this month: <strong class="mono">KES {{ grand_total|floatformat:2|intcomma }}</strong></span>
   {% if can_enter_data %}
-  <form method="post" action="{% url 'envelope_pull_bank' %}" onsubmit="return confirm('Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
-    {% csrf_token %}<input type="hidden" name="month" value="{{ month_value }}">
-    <button class="btn btn-sm btn-ghost" title="Create envelopes from bank giving, counted once">⤓ Receipt bank giving</button>
+  <form method="post" action="{% url 'envelope_pull_bank' %}" onsubmit="var s=prompt('Starting receipt number for these bank receipts?\n\nLeave blank to continue automatically from the last receipt.',''); if(s===null){return false;} this.querySelector('.startrcpt').value=s.trim(); return confirm('Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
+    {% csrf_token %}<input type="hidden" name="month" value="{{ month_value }}"><input type="hidden" name="start_receipt" class="startrcpt" value="">
+    <button class="btn btn-sm btn-ghost" title="Create envelopes from bank giving, counted once (you can set a starting receipt number)">⤓ Receipt bank giving</button>
   </form>
   {% endif %}
 </div>

@@ -425,3 +425,59 @@ class SabbathExcelCleanupTests(TestCase):
         alltext = "\n".join(str(c.value) for rr in ws.iter_rows() for c in rr if c.value)
         self.assertIn("Combined Offering (Trust 50%)", alltext)
         self.assertIn("Combined Offering (Local 50%)", alltext)
+
+
+class MarkReceiptedOnlyTests(TestCase):
+    """Item 3: flag a bank gift as receipted (manual envelope already written)
+    without creating a new envelope record."""
+
+    def test_mark_only(self):
+        from django.contrib.auth.models import User, Group
+        from django.test import Client
+        from departments.models import Department
+        from giving.models import Transaction
+        from envelopes.models import Envelope
+        import datetime as dt
+        from decimal import Decimal
+        u = User.objects.create_user("mo", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        d = Department.objects.create(name="Tithe", fund_type="TRUST",
+                                      category="OFFERING", is_trust=True)
+        t = Transaction.objects.create(date=dt.date(2026, 6, 20), channel="BANK",
+            direction="CREDIT", amount=Decimal("900"), allocation_status="MANUAL",
+            confirmed=True, department=d, core_ref="MO1", payer_name="X",
+            service_sabbath=dt.date(2026, 6, 20), sabbath_confirm_pending=False)
+        before = Envelope.objects.count()
+        c = Client(); c.force_login(u)
+        c.post(f"/transactions/{t.id}/receipt-envelope/", {"mark_only": "1"})
+        t.refresh_from_db()
+        self.assertTrue(t.processed_via_envelope)
+        self.assertEqual(Envelope.objects.count(), before)
+
+
+class BulkReceiptStartNumberTests(TestCase):
+    """Item 4: bulk bank receipting honours an optional starting receipt number."""
+
+    def test_start_number_used(self):
+        from django.contrib.auth.models import User, Group
+        from django.test import Client
+        from departments.models import Department
+        from giving.models import Transaction
+        from envelopes.models import Envelope
+        import datetime as dt
+        from decimal import Decimal
+        u = User.objects.create_user("bs", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        d = Department.objects.create(name="Tithe", fund_type="TRUST",
+                                      category="OFFERING", is_trust=True)
+        Transaction.objects.create(date=dt.date(2026, 6, 20), channel="BANK",
+            direction="CREDIT", amount=Decimal("1200"), allocation_status="AUTO",
+            confirmed=True, department=d, core_ref="BS1", payer_name="Y",
+            service_sabbath=dt.date(2026, 6, 20), sabbath_confirm_pending=False)
+        c = Client(); c.force_login(u)
+        c.post("/envelopes/pull-bank/", {"month": "2026-06", "start_receipt": "700"})
+        env = Envelope.objects.filter(bank_transaction__core_ref="BS1").first()
+        self.assertIsNotNone(env)
+        self.assertEqual(env.receipt_no, "B700")

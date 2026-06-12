@@ -535,3 +535,13 @@ details.dd > summary::-webkit-details-marker{display:none}
 @media(max-width:760px){.q-card{flex-direction:column;gap:1rem}.q-form{max-width:none}}
 
 .ver-badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:var(--radius-pill);padding:.1rem .5rem;font-family:'IBM Plex Mono',monospace;font-size:.66rem;color:#b9cfc5}
+
+/* Alert banners (remittance reminders, etc.) */
+.alert{padding:.7rem 1rem;border-radius:8px;border:1px solid;font-size:.9rem;line-height:1.5}
+.alert-danger{background:#fdecea;border-color:#f5c6c2;color:#8a1c12}
+.alert-warn{background:#fff6e6;border-color:#f0d9a6;color:#7a5410}
+.alert a{font-weight:600}
+tr.row-danger td{background:#fdf2f1}
+tr.row-warn td{background:#fffaf0}
+details.inline-edit summary{cursor:pointer;list-style:none}
+details.inline-edit summary::-webkit-details-marker{display:none}

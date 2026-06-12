@@ -1,20 +1,26 @@
 {% extends 'base.html' %}
 {% block title %}Settings · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>System configuration</h1><div class="sub">Branding, features, SMS, assistant &amp; signatories</div></div></div>
+<div class="page-head"><div><h1>System configuration</h1><div class="sub">Branding, features, messaging, signatories &amp; maintenance</div></div></div>
 
-<div class="tabs" id="tabs">
-  <button type="button" class="tab active" data-tab="branding">Branding</button>
-  <button type="button" class="tab" data-tab="features">Features</button>
-  <button type="button" class="tab" data-tab="approvals">Approvals</button>
-  <button type="button" class="tab" data-tab="sms">SMS</button>
-  <button type="button" class="tab" data-tab="assistant">Assistant</button>
-  <button type="button" class="tab" data-tab="telegram">Telegram</button>
-  <button type="button" class="tab" data-tab="sign">Signatories</button>
-  <button type="button" class="tab" data-tab="assets">Assets</button>
-  <button type="button" class="tab" data-tab="channels">Channels</button>
-  <button type="button" class="tab" data-tab="email">Email</button>
-  <button type="button" class="tab" data-tab="about">About &amp; updates</button>
+<div class="settings-tabs" id="tabs">
+  <div class="st-group"><span class="st-grouplabel">General</span>
+    <button type="button" class="tab active" data-tab="branding">Branding</button>
+    <button type="button" class="tab" data-tab="features">Features</button>
+    <button type="button" class="tab" data-tab="approvals">Approvals</button>
+    <button type="button" class="tab" data-tab="sign">Signatories</button>
+    <button type="button" class="tab" data-tab="assets">Assets</button>
+  </div>
+  <div class="st-group"><span class="st-grouplabel">Messaging</span>
+    <button type="button" class="tab" data-tab="sms">SMS</button>
+    <button type="button" class="tab" data-tab="channels">Channels</button>
+    <button type="button" class="tab" data-tab="telegram">Telegram</button>
+    <button type="button" class="tab" data-tab="email">Email</button>
+  </div>
+  <div class="st-group"><span class="st-grouplabel">System</span>
+    <button type="button" class="tab" data-tab="assistant">Assistant</button>
+    <button type="button" class="tab" data-tab="about">About &amp; updates</button>
+  </div>
 </div>
 
 <form method="post">{% csrf_token %}
@@ -323,11 +329,18 @@ document.querySelectorAll("#tabs .tab").forEach(b=>b.addEventListener("click",()
 }));
 </script>
 <style>
-.tabs{display:flex;gap:.3rem;border-bottom:2px solid var(--line);margin-bottom:1rem;flex-wrap:wrap}
-.tabs .tab{border:none;background:none;padding:.5rem .9rem;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px}
-.tabs .tab.active{color:var(--forest);border-bottom-color:var(--forest)}
+.settings-tabs{display:flex;gap:1.3rem;flex-wrap:wrap;padding:.9rem 1rem;margin-bottom:1.3rem;
+  background:linear-gradient(0deg,var(--card-head,#faf7f0),#fff);border:1px solid var(--line);border-radius:12px}
+.st-group{display:flex;flex-direction:column;gap:.35rem}
+.st-grouplabel{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted,#999);font-weight:700;padding-left:.2rem}
+.st-group .tab{border:1px solid transparent;background:none;text-align:left;padding:.32rem .7rem;font-weight:600;
+  color:var(--muted,#777);cursor:pointer;border-radius:7px;font-size:.86rem;transition:background .12s,color .12s}
+.st-group .tab:hover{background:var(--accent-soft,#eef5f2);color:var(--forest,#1f5f4f)}
+.st-group .tab.active{color:#fff;background:var(--forest,#1f5f4f);border-color:var(--forest,#1f5f4f)}
 .tabpane{display:none}.tabpane.active{display:block}
 .card .hd{padding:.7rem 1rem;font-weight:600;border-bottom:1px solid var(--line);background:var(--card-head)}
 .card .bd{padding:1rem}
+@media(max-width:760px){.settings-tabs{gap:.9rem;flex-direction:column}.st-group{flex-direction:row;flex-wrap:wrap;align-items:center}
+  .st-grouplabel{width:100%}}
 </style>
 {% endblock %}
