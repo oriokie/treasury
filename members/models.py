@@ -63,6 +63,10 @@ class Member(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        # store names in uppercase for a consistent register across imports,
+        # bank statements and envelope entry (collation-independent matching too)
+        if self.name:
+            self.name = " ".join(self.name.upper().split())
         self.name_key = name_key(self.name)
         self.phone = normalize_phone(self.phone) or self.phone
         super().save(*args, **kwargs)

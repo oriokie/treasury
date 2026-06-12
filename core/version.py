@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.0.18": "Names are kept in uppercase everywhere; expenses gained a search box "
+              "and a category-only bulk re-import; the trust remittance dashboard now "
+              "counts down to the reporting Sabbath using freely-set monthly deadlines; "
+              "and a new bulk fund and budget import reads a budget workbook, matching "
+              "each fund to a department and prompting you to map or create the rest.",
     "1.0.17": "Compacted the Ledger so all columns and action buttons stay visible "
               "(wide tables now scroll instead of clipping); added the Remittance "
               "calendar to the Reports nav; fixed the settings Restore card showing on "

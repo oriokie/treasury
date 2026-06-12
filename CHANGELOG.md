@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.0.18
+- Names are now stored in a consistent UPPERCASE register everywhere — bank
+  imports, manual entry, and envelope entry — via the member, transaction and
+  envelope models, so matching and receipts read consistently.
+- Expenses: the Type filter is replaced with a Search box (matches description,
+  claimant and voucher number).
+- Expenses: a new "Re-categorise" route lets you download all expenses, edit only
+  the category column offline, and re-import — every other field is left
+  untouched, keyed on the expense ID.
+- Trust remittance dashboard: instead of "oldest outstanding", it now shows a
+  COUNTDOWN to the reporting Sabbath (the Saturday whose count must be remitted),
+  driven by the per-month remittance deadlines. Those deadline dates are set
+  freely per month on the remittance calendar — they are not assumed to fall on a
+  fixed day — and the reporting Sabbath updates automatically when a deadline is
+  midweek.
+- New Bulk fund & budget import (Budgets - Bulk import): upload a budget workbook
+  with a DEPARTMENTS sheet, and the wizard matches each fund to an existing
+  department (fuzzy + known synonyms). Anything that does not match is flagged so
+  you can map it to a department, create a new fund or sub-group, or skip it.
+  Applying writes the per-year budget and an optional Jan-Dec monthly breakdown
+  (taken from the projected-expense columns so it ties to the headline).
+
 ## v1.0.17
 - Ledger (transactions) made more compact: tighter rows, summary strip and
   toolbar, and — the real fix — wide tables now scroll horizontally instead of

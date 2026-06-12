@@ -829,14 +829,36 @@ class RemittanceDashboardView(ReadAccessMixin, TemplateView):
         ctx["total_collected"] = sum((r["collected"] for r in rows), Decimal(0))
         ctx["total_remitted"] = sum((r["remitted"] for r in rows), Decimal(0))
         ctx["max_days"] = max([r["days"] for r in rows], default=0)
-        # next remittance due date: configured day of the following month
+        # Next remittance: use the configured per-month deadlines if any exist
+        # (their dates are set freely per month, not on a fixed day). We count
+        # down to the *reporting Sabbath* — the Saturday whose count must be in
+        # the remittance. Fall back to the configured due-day only if no
+        # deadlines have been entered yet.
         import datetime as _dt, calendar as _cal
-        cfg = SiteConfig.get()
+        from cashbook.models import RemittanceDeadline
         today = _dt.date.today()
-        ny, nm = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
-        due_day = min(cfg.trust_remit_due_day or 15, _cal.monthrange(ny, nm)[1])
-        ctx["due_date"] = _dt.date(ny, nm, due_day)
-        ctx["due_overdue"] = ctx["total_outstanding"] > 0 and ctx["max_days"] >= 30
+        nxt = (RemittanceDeadline.objects.filter(remitted=False, deadline__gte=today)
+               .order_by("deadline").first())
+        overdue_dl = (RemittanceDeadline.objects.filter(remitted=False, deadline__lt=today)
+                      .order_by("-deadline").first())
+        active = nxt or overdue_dl
+        if active:
+            ctx["next_deadline"] = active
+            ctx["due_date"] = active.deadline
+            ctx["reporting_sabbath"] = active.reporting_sabbath
+            ctx["days_to_deadline"] = (active.deadline - today).days
+            ctx["days_to_sabbath"] = (active.reporting_sabbath - today).days
+            ctx["deadline_period"] = active.get_period_display()
+            ctx["has_deadlines"] = True
+        else:
+            # legacy fallback: configured day of the following month
+            cfg = SiteConfig.get()
+            ny, nm = (today.year + 1, 1) if today.month == 12 else (today.year, today.month + 1)
+            due_day = min(cfg.trust_remit_due_day or 15, _cal.monthrange(ny, nm)[1])
+            ctx["due_date"] = _dt.date(ny, nm, due_day)
+            ctx["days_to_deadline"] = (ctx["due_date"] - today).days
+            ctx["has_deadlines"] = False
+        ctx["due_overdue"] = ctx["total_outstanding"] > 0 and ctx.get("days_to_deadline", 99) < 0
         ctx["batches"] = RemittanceBatch.objects.all()[:10]
         ctx["field_name"] = SiteConfig.get().field_name or "the field"
         return ctx

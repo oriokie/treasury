@@ -75,7 +75,7 @@ class MergeTests(TestCase):
         merge_members(keep, absorb)
         self.assertFalse(Member.objects.filter(pk=absorb.pk).exists())
         self.assertEqual(Transaction.objects.filter(member=keep).count(), 1)
-        self.assertTrue(keep.aliases.filter(name="Maria Atieno").exists())
+        self.assertTrue(keep.aliases.filter(name="MARIA ATIENO").exists())
 
     def test_merge_same_name_order_skips_redundant_alias(self):
         keep = Member.objects.create(name="Mary Achieng", phone="0744555666")
@@ -163,5 +163,5 @@ class BulkMergeTests(TestCase):
         c = Client(); c.force_login(u)
         c.post("/members/duplicates/merge-all/")
         # Paul Kim collapsed to one; Jane Doe still three
-        self.assertEqual(Member.objects.filter(name="Paul Kim").count(), 1)
-        self.assertEqual(Member.objects.filter(name="Jane Doe").count(), 3)
+        self.assertEqual(Member.objects.filter(name="PAUL KIM").count(), 1)
+        self.assertEqual(Member.objects.filter(name="JANE DOE").count(), 3)

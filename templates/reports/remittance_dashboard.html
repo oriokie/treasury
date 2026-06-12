@@ -22,8 +22,17 @@
   <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|floatformat:0|intcomma }}</div></div>
   <div class="kpi"><div class="kpi-label">Remitted</div><div class="kpi-val">{{ total_remitted|floatformat:0|intcomma }}</div></div>
   <div class="kpi kpi-warn"><div class="kpi-label">Outstanding liability</div><div class="kpi-val">{{ total_outstanding|floatformat:0|intcomma }}</div></div>
+  {% if has_deadlines %}
+  <div class="kpi {% if days_to_sabbath < 0 %}kpi-danger{% elif days_to_sabbath <= 7 %}kpi-warn{% endif %}">
+    <div class="kpi-label">Countdown to reporting Sabbath</div>
+    <div class="kpi-val">{% if days_to_sabbath < 0 %}{{ days_to_sabbath|stringformat:"+d" }}<span class="kpi-unit"> days</span>{% elif days_to_sabbath == 0 %}Today{% else %}{{ days_to_sabbath }}<span class="kpi-unit"> day{{ days_to_sabbath|pluralize }}</span>{% endif %}</div>
+    <div class="kpi-sub" style="font-size:.72rem;color:var(--muted)">Sabbath {{ reporting_sabbath|date:"d M" }} · {{ deadline_period }}</div>
+  </div>
+  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Remittance deadline</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div><div class="kpi-sub" style="font-size:.72rem;color:var(--muted)">{% if days_to_deadline < 0 %}overdue by {{ days_to_deadline|stringformat:"d"|cut:"-" }} days{% else %}in {{ days_to_deadline }} day{{ days_to_deadline|pluralize }}{% endif %} · <a href="{% url 'remittance_calendar' %}">calendar</a></div></div>
+  {% else %}
   <div class="kpi {% if max_days > 30 %}kpi-danger{% endif %}"><div class="kpi-label">Oldest outstanding</div><div class="kpi-val">{{ max_days }}<span class="kpi-unit"> days</span></div></div>
-  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Next remittance due</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div></div>
+  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Next remittance due</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div><div class="kpi-sub" style="font-size:.72rem;color:var(--muted)"><a href="{% url 'remittance_calendar' %}">set monthly deadlines →</a></div></div>
+  {% endif %}
 </div>
 
 <form method="post" action="{% url 'remittance_batch_create' %}">{% csrf_token %}

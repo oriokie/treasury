@@ -76,3 +76,52 @@ class CashbookCorePagesRenderTests(TestCase):
 
     def test_dashboard_renders_with_data(self):
         self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+
+
+class ExpenseSearchAndRecategorizeTests(TestCase):
+    """Items 4 & 5: expense search filter, and category-only bulk re-import."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        from departments.models import Department
+        from cashbook.models import Expense
+        import datetime as dt
+        from decimal import Decimal
+        self.u = User.objects.create_user("rc", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+        self.d = Department.objects.create(name="LCB", fund_type="LOCAL",
+                                           category="OFFERING")
+        self.e = Expense.objects.create(date=dt.date(2026, 6, 1), department=self.d,
+            description="Generator fuel", amount=Decimal("500"), category="MATERIALS",
+            status="PAID", recorded_by=self.u, claimant="John")
+
+    def test_search_matches_description(self):
+        from django.test import Client
+        c = Client(); c.force_login(self.u)
+        r = c.get("/expenses/?q=generator")
+        self.assertContains(r, "Generator fuel")
+        r2 = c.get("/expenses/?q=nothinghere")
+        self.assertNotContains(r2, "Generator fuel")
+
+    def test_recategorize_updates_only_category(self):
+        import io, openpyxl
+        from django.test import Client
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        c = Client(); c.force_login(self.u)
+        r = c.get("/expenses/recategorize/?download=1")
+        self.assertEqual(r.status_code, 200)
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        ws = wb["Expenses"]
+        hdr = [cell.value for cell in ws[1]]
+        idc = hdr.index("ID"); newc = hdr.index("New category (edit this)")
+        for row in ws.iter_rows(min_row=2):
+            if row[idc].value == self.e.id:
+                row[newc].value = "Transport"
+                row[2].value = "SHOULD_BE_IGNORED"
+        buf = io.BytesIO(); wb.save(buf)
+        up = SimpleUploadedFile("x.xlsx", buf.getvalue())
+        c.post("/expenses/recategorize/", {"file": up})
+        self.e.refresh_from_db()
+        self.assertEqual(self.e.category, "TRANSPORT")
+        self.assertEqual(self.e.description, "Generator fuel")  # untouched

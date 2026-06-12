@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path("expenses/", views.ExpenseListView.as_view(), name="expense_list"),
+    path("expenses/recategorize/", views.ExpenseRecategorizeView.as_view(), name="expense_recategorize"),
     path("expenses/new/", views.ExpenseCreate.as_view(), name="expense_create"),
     path("expenses/<int:pk>/edit/", views.ExpenseUpdate.as_view(), name="expense_edit"),
     path("expenses/<int:pk>/approve/", views.ExpenseApprove.as_view(), name="expense_approve"),

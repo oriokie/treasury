@@ -28,10 +28,10 @@
   {% if is_treasurer %}
   <form method="post" action="{% url 'remittance_calendar_generate' %}" class="btn-row" style="align-items:flex-end;gap:.6rem">
     {% csrf_token %}<input type="hidden" name="year" value="{{ year }}">
-    <div class="f"><label>Due day of following month</label><input type="number" name="due_day" value="15" min="1" max="28" class="field" style="width:90px"></div>
+    <div class="f"><label>Starting due day (a suggestion)</label><input type="number" name="due_day" value="15" min="1" max="28" class="field" style="width:90px"></div>
     <button class="btn">Generate {{ year }} deadlines</button>
   </form>
-  <p class="help" style="margin-top:.5rem">Creates one deadline per month (by default the 15th of the following month). You can adjust each date afterwards.</p>
+  <p class="help" style="margin-top:.5rem">Creates one row per month as a starting point. The conference sets each month's actual remittance date separately, so <strong>edit each deadline</strong> once you have it — the reporting Sabbath updates automatically.</p>
   {% endif %}
 </div></div>
 {% else %}

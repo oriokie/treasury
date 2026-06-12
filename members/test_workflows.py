@@ -29,7 +29,7 @@ class MemberCrudTests(TestCase):
         r = self.client.post(reverse("member_create"),
                              {"name": "Ruth Momanyi", "phone": "0700111222"})
         self.assertIn(r.status_code, (200, 302))
-        m = Member.objects.get(name="Ruth Momanyi")
+        m = Member.objects.get(name="RUTH MOMANYI")
         self.assertEqual(m.phone, "254700111222")           # normalised
         self.assertEqual(m.name_key, "MOMANYI RUTH")          # order-insensitive key
 
@@ -39,13 +39,13 @@ class MemberCrudTests(TestCase):
         self.client.post(reverse("member_edit", args=[m.pk]),
                          {"name": "Samuel Kip", "phone": "254700333444"})
         m.refresh_from_db()
-        self.assertEqual(m.name, "Samuel Kip")
+        self.assertEqual(m.name, "SAMUEL KIP")
 
     def test_search_finds_member(self):
         Member.objects.create(name="Findable Person", phone="254700999888")
         r = self.client.get(reverse("member_search") + "?q=Findable")
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Findable", r.content)
+        self.assertIn(b"FINDABLE", r.content)
 
 
 class MemberMergeTests(TestCase):
@@ -92,7 +92,7 @@ class MemberImportExportTests(TestCase):
         Member.objects.create(name="Exported One", phone="254700000123")
         r = self.client.get(reverse("member_export"))
         self.assertEqual(r.status_code, 200)
-        self.assertIn(b"Exported One", r.content)
+        self.assertIn(b"EXPORTED ONE", r.content)
 
     def test_import_page_renders(self):
         self.assertEqual(self.client.get(reverse("member_import")).status_code, 200)

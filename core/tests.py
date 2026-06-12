@@ -404,7 +404,7 @@ class TelegramEnhancementsTests(TestCase):
         before = Expense.objects.count()
         self._reply("yes")
         self.assertEqual(Expense.objects.count() - before, 2)  # expense + charge
-        exp = Expense.objects.filter(claimant="Grace Wanjiru").latest("id")
+        exp = Expense.objects.filter(claimant__iexact="Grace Wanjiru").latest("id")
         self.assertEqual(exp.recorded_by_id, self.user.id)
         self.assertEqual(exp.method, "MPESA")
         self.assertTrue(Expense.objects.filter(category="BANK_CHARGE").exists())

@@ -1,0 +1,102 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Bulk fund &amp; budget import · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Bulk fund &amp; budget import</h1>
+    <div class="ws-sub">Import many funds and their budgets from a spreadsheet in one pass</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">← Budgets</a></div>
+</div>
+
+{% if stage == "upload" %}
+<div class="card" style="max-width:760px">
+  <div class="hd">Upload a budget workbook</div>
+  <div class="bd">
+    <p class="help" style="margin-top:0">Upload a spreadsheet with a <strong>DEPARTMENTS</strong> sheet containing
+      <span class="mono">NAME</span>, <span class="mono">B/F</span>,
+      <span class="mono">PROJECTED INCOME</span> and <span class="mono">PROJECTED EXPENSES</span> columns,
+      and optionally a monthly <span class="mono">JAN…DEC</span> breakdown. Each fund is matched to an
+      existing department; anything that doesn't match, you'll be asked to map or create on the next screen.</p>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <div class="filters" style="border:none;background:none;padding:0;margin:.5rem 0">
+        <div class="f"><label>Budget year</label><input type="number" name="year" value="{{ APP_YEAR|default:2026 }}" class="field" style="width:120px"></div>
+        <div class="f grow"><label>Spreadsheet (.xlsx)</label><input type="file" name="file" class="field" accept=".xlsx" required></div>
+      </div>
+      <button class="btn">Upload &amp; review</button>
+    </form>
+  </div>
+</div>
+
+{% elif stage == "review" %}
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="apply" value="1">
+  <div class="ws-summary">
+    <div class="ws-metric is-primary"><span class="wm-l">Funds in file</span><span class="wm-v">{{ plan|length }}</span><span class="wm-sub">budget year {{ year }}</span></div>
+    <div class="ws-metric is-positive"><span class="wm-l">Auto-matched</span><span class="wm-v">{{ matched_count }}</span></div>
+    <div class="ws-metric {% if unmatched_count %}is-warn{% endif %}"><span class="wm-l">Need a choice</span><span class="wm-v">{{ unmatched_count }}</span></div>
+  </div>
+
+  {% if unmatched_count %}
+  <div class="alert alert-warn" style="margin-bottom:1rem">
+    <strong>{{ unmatched_count }} fund{{ unmatched_count|pluralize }} didn't match an existing department.</strong>
+    For each, pick the department it belongs to, choose <em>Create new fund</em>, or skip it.
+  </div>
+  {% endif %}
+
+  <div class="ws-table">
+  <table class="ledger compact">
+    <thead><tr><th>Fund in file</th><th class="num">B/F</th><th class="num">Proj. income</th><th class="num">Proj. expense</th><th>Maps to</th></tr></thead>
+    <tbody>
+    {% for p in plan %}
+    <tr class="{% if not p.match_id %}row-warn{% endif %}">
+      <td><strong>{{ p.name }}</strong></td>
+      <td class="num mono">{{ p.bf|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ p.pinc|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ p.pexp|floatformat:0|intcomma }}</td>
+      <td>
+        <select name="map_{{ forloop.counter0 }}" class="field--select map-select" data-row="{{ forloop.counter0 }}" style="min-width:230px">
+          {% if p.match_id %}<option value="dept:{{ p.match_id }}" selected>✓ {{ p.match_name }}{% if p.score < 1 %} (likely){% endif %}</option>{% endif %}
+          <optgroup label="Map to existing department">
+            {% for c in candidates %}<option value="dept:{{ c.id }}" {% if p.match_id == c.id and p.score == 1 %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+          </optgroup>
+          <option value="create">➕ Create new fund “{{ p.name }}”</option>
+          <option value="skip" {% if not p.match_id %}selected{% endif %}>— Skip this row —</option>
+        </select>
+        <div class="create-opts" id="create-opts-{{ forloop.counter0 }}" style="display:none;margin-top:.35rem;gap:.3rem;flex-wrap:wrap">
+          <select name="ftype_{{ forloop.counter0 }}" class="field--select" style="width:auto">{% for v,l in fund_types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+          <select name="cat_{{ forloop.counter0 }}" class="field--select" style="width:auto">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+          <select name="parent_{{ forloop.counter0 }}" class="field--select" style="width:auto"><option value="">No parent (top-level fund)</option>{% for c in candidates %}<option value="{{ c.id }}">↳ under {{ c.name }}</option>{% endfor %}</select>
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="card" style="margin-top:1rem;max-width:760px"><div class="bd">
+    <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+      <input type="checkbox" name="with_months" value="1" checked>
+      <span>Also import the monthly breakdown as budget lines (Jan–Dec)</span>
+    </label>
+    <div class="btn-row" style="margin-top:.9rem">
+      <button class="btn">Apply import for {{ year }}</button>
+      <a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">Start over</a>
+    </div>
+  </div></div>
+</form>
+
+<script>
+function syncRow(sel){
+  var row=sel.dataset.row;
+  var opts=document.getElementById("create-opts-"+row);
+  if(opts) opts.style.display = (sel.value==="create") ? "flex" : "none";
+}
+document.querySelectorAll(".map-select").forEach(function(s){
+  s.addEventListener("change",function(){syncRow(s);});
+  syncRow(s);
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -52,8 +52,12 @@ class ExpenseListView(ReadAccessMixin, ListView):
             qs = qs.filter(department_id=g["department"])
         if g.get("category"):
             qs = qs.filter(category=g["category"])
-        if g.get("type"):
-            qs = qs.filter(expenditure_type=g["type"])
+        if g.get("q"):
+            from django.db.models import Q
+            term = g["q"].strip()
+            qs = qs.filter(Q(description__icontains=term)
+                           | Q(claimant__icontains=term)
+                           | Q(voucher_no__icontains=term))
         for key, lookup in (("start", "date__gte"), ("end", "date__lte")):
             if g.get(key):
                 try:
@@ -99,8 +103,12 @@ class ExpenseListView(ReadAccessMixin, ListView):
             base = base.filter(department_id=g["department"])
         if g.get("category"):
             base = base.filter(category=g["category"])
-        if g.get("type"):
-            base = base.filter(expenditure_type=g["type"])
+        if g.get("q"):
+            from django.db.models import Q
+            term = g["q"].strip()
+            base = base.filter(Q(description__icontains=term)
+                               | Q(claimant__icontains=term)
+                               | Q(voucher_no__icontains=term))
         import datetime as _dt
         for key, lookup in (("start", "date__gte"), ("end", "date__lte")):
             if g.get(key):
@@ -845,3 +853,124 @@ class ExpenseCategoryList(TreasurerRequiredMixin, View):
                 ec.save(update_fields=["active"])
                 messages.success(request, f"“{ec.label}” is now {'active' if ec.active else 'inactive'}.")
         return redirect("expense_categories")
+
+
+class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
+    """Download all expenses as a spreadsheet for offline re-categorising, then
+    re-import to update ONLY the category column. Every other field is read-only
+    in this flow — the round-trip is keyed on the expense ID, and any change to
+    amounts, dates, descriptions etc. in the file is ignored. This lets a
+    treasurer fix many mis-categorised expenses quickly without risking the rest
+    of the ledger."""
+    template_name = "cashbook/recategorize.html"
+
+    def get(self, request):
+        if request.GET.get("download"):
+            return self._download(request)
+        # show the upload form + the valid category list
+        return render(request, self.template_name, {
+            "categories": Expense.Category.choices})
+
+    def _download(self, request):
+        import io
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+        from django.http import HttpResponse
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Expenses"
+        head = ["ID", "Date", "Description", "Fund", "Amount",
+                "Current category", "New category (edit this)"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
+            ws.cell(1, c).fill = PatternFill("solid", fgColor="1F5F4F")
+        # a reference sheet of valid category codes
+        ref = wb.create_sheet("Valid categories")
+        ref.append(["Code", "Label"])
+        ref.cell(1, 1).font = Font(bold=True); ref.cell(1, 2).font = Font(bold=True)
+        for code, label in Expense.Category.choices:
+            ref.append([code, label])
+        for x in (Expense.objects.select_related("department")
+                  .order_by("-date", "-id")):
+            ws.append([x.id, x.date.isoformat(), x.description,
+                       x.department.name if x.department_id else "",
+                       float(x.amount), x.get_category_display(),
+                       x.get_category_display()])
+        ws.column_dimensions["C"].width = 34
+        ws.column_dimensions["F"].width = 20
+        ws.column_dimensions["G"].width = 22
+        buf = io.BytesIO(); wb.save(buf)
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = 'attachment; filename="expenses_to_recategorize.xlsx"'
+        return resp
+
+    @db_tx.atomic
+    def post(self, request):
+        import openpyxl
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose the edited spreadsheet to upload.")
+            return redirect("expense_recategorize")
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+        except Exception:
+            messages.error(request, "Could not read that file — is it the .xlsx you downloaded?")
+            return redirect("expense_recategorize")
+        ws = wb["Expenses"] if "Expenses" in wb.sheetnames else wb.active
+
+        # build label -> code and code -> code lookups so the file can carry
+        # either the human label ("Transport") or the raw code ("TRANSPORT")
+        by_label = {lbl.lower(): code for code, lbl in Expense.Category.choices}
+        by_code = {code.upper(): code for code, _ in Expense.Category.choices}
+
+        header = [str(c.value).strip().lower() if c.value else "" for c in ws[1]]
+        try:
+            id_col = header.index("id")
+            new_col = header.index("new category (edit this)")
+        except ValueError:
+            messages.error(request, "That doesn't look like the recategorise template "
+                                    "(missing the ID or New category column).")
+            return redirect("expense_recategorize")
+
+        updated = unchanged = bad = missing = 0
+        bad_rows = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if id_col >= len(row) or row[id_col] in (None, ""):
+                continue
+            try:
+                eid = int(row[id_col])
+            except (TypeError, ValueError):
+                continue
+            raw = row[new_col] if new_col < len(row) else None
+            if raw in (None, ""):
+                continue
+            key = str(raw).strip()
+            code = by_code.get(key.upper()) or by_label.get(key.lower())
+            if not code:
+                bad += 1
+                if len(bad_rows) < 10:
+                    bad_rows.append(f"#{eid}: “{key}”")
+                continue
+            exp = Expense.objects.filter(pk=eid).first()
+            if not exp:
+                missing += 1
+                continue
+            if exp.category == code:
+                unchanged += 1
+                continue
+            exp.category = code
+            exp.save(update_fields=["category"])
+            updated += 1
+
+        parts = [f"{updated} re-categorised"]
+        if unchanged:
+            parts.append(f"{unchanged} unchanged")
+        if missing:
+            parts.append(f"{missing} not found")
+        if bad:
+            parts.append(f"{bad} with an unrecognised category")
+        msg = ", ".join(parts) + "."
+        if bad_rows:
+            msg += " Unrecognised: " + "; ".join(bad_rows)
+        (messages.success if updated else messages.warning)(request, msg)
+        return redirect("expense_list")

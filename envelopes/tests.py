@@ -166,7 +166,7 @@ class EnvelopeReceiptTests(TestCase):
         body = r.content.decode()
         self.assertIn("OFFICIAL RECEIPT", body)
         self.assertIn("R-0001", body)
-        self.assertIn("Jane Mumbi", body)
+        self.assertIn("JANE MUMBI", body)
         self.assertIn("1,500", body)
 
     def test_etr_compact_receipt(self):

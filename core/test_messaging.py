@@ -125,5 +125,5 @@ class ReceiptSmsScopeTests(TestCase):
     def test_build_receipt_text_includes_details(self):
         cfg = SiteConfig.get()
         text = sms_svc.build_receipt_text(self._envelope(), cfg)
-        self.assertIn("Asha", text)
+        self.assertIn("ASHA", text)
         self.assertIn("RS1", text)

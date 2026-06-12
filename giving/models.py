@@ -216,6 +216,9 @@ class Transaction(models.Model):
     objects = TransactionQuerySet.as_manager()
 
     def save(self, *args, **kwargs):
+        # keep names in a consistent uppercase register
+        if self.payer_name:
+            self.payer_name = " ".join(self.payer_name.upper().split())
         # default the service Sabbath: a gift for an already-closed Sabbath rolls
         # to the next open one, so a counted Sabbath is never reopened. The real
         # transaction date is never changed.

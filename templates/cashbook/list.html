@@ -32,16 +32,17 @@
 </div>
 
 <form method="get" class="ws-toolbar">
+  <div class="f grow"><label>Search</label><input name="q" value="{{ filters.q }}" class="field" placeholder="Description, claimant, voucher…"></div>
   <div class="f"><label>Status</label><select name="status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>Category</label><select name="category" class="field--select"><option value="">All</option>{% for v,l in categories %}<option value="{{ v }}" {% if filters.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
-  <div class="f"><label>Type</label><select name="type" class="field--select"><option value="">All</option>{% for v,l in exp_types %}<option value="{{ v }}" {% if filters.type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>From</label><input type="date" name="start" value="{{ filters.start }}" class="field"></div>
   <div class="f"><label>To</label><input type="date" name="end" value="{{ filters.end }}" class="field"></div>
   <div class="ws-tb-actions">
     <button class="btn btn-sm">Apply filters</button>
-    {% if filters.status or filters.category or filters.type or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
+    {% if filters.q or filters.status or filters.category or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
+    {% if is_treasurer %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_recategorize' %}" title="Download, edit categories, and re-import">⇄ Re-categorise</a>{% endif %}
   </div>
 </form>
 

@@ -47,6 +47,12 @@ class Envelope(models.Model):
     def __str__(self):
         return f"#{self.receipt_no} {self.contributor_name} ({self.date})"
 
+    def save(self, *args, **kwargs):
+        # consistent uppercase register for contributor names
+        if self.contributor_name:
+            self.contributor_name = " ".join(self.contributor_name.upper().split())
+        super().save(*args, **kwargs)
+
     def recompute_total(self):
         self.total = sum((l.amount for l in self.lines.all()), 0)
         return self.total
