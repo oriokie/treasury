@@ -106,6 +106,29 @@ class ReconciliationReportView(ReadAccessMixin, View):
             "ready": posting.chart_ready()})
 
 
+class FundVarianceView(ReadAccessMixin, View):
+    """Drill-down: list the actual entries causing a fund's engine-vs-ledger
+    variance, so the treasurer can fix the specific records."""
+    template_name = "ledger/fund_variance.html"
+
+    def get(self, request, pk):
+        from decimal import Decimal
+        from departments.models import Department
+        from reports.services import balances
+        dept = get_object_or_404(Department, pk=pk)
+        eng = {r["department"].id: r
+               for r in balances.department_summary(None, None, consolidated=False)}
+        engine_bal = eng.get(dept.id, {}).get("closing", Decimal(0))
+        gl_bal = posting.fund_balance_from_ledger(dept)
+        issues = posting.fund_variance_detail(dept)
+        explained = sum((i["amount"] for i in issues), Decimal(0))
+        return render(request, self.template_name, {
+            "dept": dept, "engine": engine_bal, "ledger": gl_bal,
+            "diff": engine_bal - gl_bal, "issues": issues,
+            "explained": explained,
+            "unexplained": (engine_bal - gl_bal) - explained})
+
+
 from django.views.generic import CreateView, UpdateView
 from django.urls import reverse_lazy
 from .forms import AccountForm

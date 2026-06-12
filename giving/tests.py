@@ -534,3 +534,36 @@ class ExpectedCashTests(TestCase):
             amount=Decimal("300"), category="OTHER", method="CASH", status="PAID",
             recorded_by=u, approved_by=u)
         self.assertEqual(CountSessionCreate()._expected(sab), Decimal("2700"))
+
+
+class TransactionExportDetailTests(TestCase):
+    """The transactions Excel export includes the richer columns (M-Pesa ref etc)."""
+
+    def test_export_has_mpesa_ref_column(self):
+        import io, openpyxl
+        from django.contrib.auth.models import User, Group
+        from django.test import Client
+        from giving.models import Transaction
+        import datetime as dt
+        from decimal import Decimal
+        u = User.objects.create_user("tx", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        Transaction.objects.create(date=dt.date(2026, 6, 6), channel="BANK",
+            direction="CREDIT", amount=Decimal("500"), allocation_status="AUTO",
+            confirmed=True, mpesa_ref="UF6EXP01", core_ref="UF6EXP01",
+            payer_name="Exporter")
+        c = Client(); c.force_login(u)
+        r = c.get("/transactions/?export=xlsx")
+        self.assertEqual(r.status_code, 200)
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        ws = wb.active
+        # the workbook has church/title rows before the header; find the header row
+        header = []
+        for row in ws.iter_rows(values_only=True):
+            if row and "Date" in row:
+                header = list(row)
+                break
+        self.assertIn("M-Pesa ref", header)
+        self.assertIn("Core ref", header)
+        self.assertIn("Sabbath", header)

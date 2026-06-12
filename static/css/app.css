@@ -350,6 +350,20 @@ input[type=checkbox],input[type=radio]{accent-color:var(--forest)}
 @media(max-width:560px){.cols-4,.cols-3,.cols-2,.grid-3,.grid-4{grid-template-columns:1fr}
   .topbar .who-meta{display:none}}
 
+/* Mobile: any table that would overflow scrolls within its card instead of
+   forcing the whole page wide. Also tighten table padding and shrink page
+   padding so content uses the full narrow viewport. */
+@media(max-width:760px){
+  .card>.bd, .card>.hd{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.ledger{font-size:.8rem}
+  table.ledger th, table.ledger td{padding:.4rem .5rem}
+  .page-head{flex-wrap:wrap;gap:.6rem}
+  .page-head h1{font-size:1.3rem}
+  main, .content, .shell-main{padding-left:.7rem;padding-right:.7rem}
+  .btn-row{flex-wrap:wrap}
+  .filters{flex-wrap:wrap}
+}
+
 @media print{
   .sidebar,.topbar,.filters,.btn,.btn-row,.no-print{display:none!important}
   .shell{display:block}.content{padding:0;max-width:none;animation:none}

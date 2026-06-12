@@ -63,14 +63,21 @@ class TransactionListView(ReadAccessMixin, ListView):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
             qs = self.get_queryset()
-            header = ["Date", "Channel", "Direction", "Payer", "Fund", "Reference",
-                      "Status", "Amount"]
-            rows = [[t.date.isoformat(), t.get_channel_display(),
-                     t.get_direction_display(),
+            header = ["Date", "Sabbath", "Channel", "Direction", "Payer", "Member",
+                      "Phone", "Fund", "Dev group", "Reference", "M-Pesa ref",
+                      "Core ref", "Bank receipt", "Status", "Confirmed", "Amount"]
+            rows = [[t.date.isoformat(),
+                     t.service_sabbath.isoformat() if t.service_sabbath else "",
+                     t.get_channel_display(), t.get_direction_display(),
                      t.payer_name or (t.member.name if t.member else ""),
+                     t.member.name if t.member_id else "",
+                     t.payer_phone or (t.member.receipt_phone if t.member_id else "") or "",
                      t.department.name if t.department else
                      ("Excluded (via envelope)" if t.excluded_from_income else "Unallocated"),
-                     t.reference or "", t.get_allocation_status_display(),
+                     t.dev_group.label if t.dev_group_id else "",
+                     t.reference or "", t.mpesa_ref or "", t.core_ref or "",
+                     t.bank_receipt or "", t.get_allocation_status_display(),
+                     "Yes" if t.confirmed else "",
                      float(t.amount if t.direction == "CREDIT" else -t.amount)]
                     for t in qs]
             if export == "xlsx":
@@ -80,7 +87,7 @@ class TransactionListView(ReadAccessMixin, ListView):
         return super().get(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = (Transaction.objects.select_related("department", "member")
+        qs = (Transaction.objects.select_related("department", "member", "dev_group")
               .order_by("-date", "-id"))
         q = self.request.GET.get("q")
         channel = self.request.GET.get("channel")

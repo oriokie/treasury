@@ -83,6 +83,8 @@ class EnvelopeListView(ReadAccessMixin, View):
             "all_saturdays": saturdays,
             "grand_total": sum((s["total"] for s in visible), Decimal(0)),
             "month_locked": period_locked(first),
+            "sms_enabled": SiteConfig.get().sms_enabled,
+            "whatsapp_enabled": SiteConfig.get().whatsapp_enabled,
         })
 
 
@@ -453,11 +455,14 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
     def get(self, request):
         import io
         import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.worksheet.page import PageMargins
+        from core.models import SiteConfig
         try:
             sab = dt.date.fromisoformat(request.GET.get("date"))
         except (TypeError, ValueError):
             sab = _last_saturday()
+        church = SiteConfig.get().church_name or "Church Treasury"
         envs = [e for e in Envelope.objects.select_related("member")
                 .prefetch_related("lines__department").order_by("receipt_no")
                 if sabbath_bucket(e.date) == sab]
@@ -474,10 +479,19 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         head_fill = PatternFill("solid", fgColor="1F5F4F")
         amber = PatternFill("solid", fgColor="B07D2C")
         grey = PatternFill("solid", fgColor="E8E2D4")
+        thin = Side(style="thin", color="999999")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        ncols = 4 + len(funds) + 1
 
+        # church name + report title
+        ws.append([church])
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+        ws.cell(1, 1).font = Font(bold=True, size=15, color="1F5F4F")
+        ws.cell(1, 1).alignment = Alignment(horizontal="center")
         ws.append([f"Treasurer's Cash Statement — Sabbath {sab:%d %B %Y}"])
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4 + len(funds))
-        ws.cell(1, 1).font = Font(bold=True, size=13)
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
+        ws.cell(2, 1).font = Font(bold=True, size=12)
+        ws.cell(2, 1).alignment = Alignment(horizontal="center")
 
         header = ["No", "Contributor", "Receipt", "Channel"] + [f.name for f in funds] + ["Total"]
         ws.append(header)
@@ -485,7 +499,9 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         for c in range(1, len(header) + 1):
             cell = ws.cell(hr, c); cell.font = white; cell.fill = head_fill
             cell.alignment = Alignment(horizontal="center", wrap_text=True)
+            cell.border = border
 
+        first_data = ws.max_row + 1
         for i, e in enumerate(envs, start=1):
             amt = {l.department_id: l.amount for l in e.lines.all()}
             ws.append([i, e.contributor_name, e.receipt_no, e.get_channel_display()] +
@@ -501,8 +517,18 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                     totals[l.department_id] += l.amount
             grand += e.total
         ws.append(["", "TOTAL", "", ""] + [float(totals[f.id]) for f in funds] + [float(grand)])
+        last_data = ws.max_row
         for c in range(1, len(header) + 1):
-            ws.cell(ws.max_row, c).font = bold
+            ws.cell(last_data, c).font = bold
+            ws.cell(last_data, c).fill = grey
+
+        # borders + number format across the whole data grid (incl totals row)
+        for r in range(hr, last_data + 1):
+            for c in range(1, len(header) + 1):
+                cell = ws.cell(r, c)
+                cell.border = border
+                if c >= 5 and isinstance(cell.value, (int, float)):
+                    cell.number_format = "#,##0.00"
 
         # ---- summary block ----
         ws.append([])
@@ -524,12 +550,31 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         ws.append(["Total local funds", float(local_total)]); ws.cell(ws.max_row, 1).font = bold
         ws.append(["GRAND TOTAL GIVEN", float(grand)]); ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
 
+        # borders + number format on the summary value column
+        for r in range(first_data, ws.max_row + 1):
+            v = ws.cell(r, 2).value
+            if isinstance(v, (int, float)):
+                ws.cell(r, 2).number_format = "#,##0.00"
+
+        ws.column_dimensions["A"].width = 5
         ws.column_dimensions["B"].width = 26
-        for i in range(len(header)):
+        ws.column_dimensions["C"].width = 14
+        ws.column_dimensions["D"].width = 12
+        for i in range(4, len(header)):
             col = openpyxl.utils.get_column_letter(i + 1)
-            if i >= 4:
-                ws.column_dimensions[col].width = max(ws.column_dimensions[col].width or 10, 13)
-        ws.freeze_panes = "A3"
+            ws.column_dimensions[col].width = max(ws.column_dimensions[col].width or 10, 13)
+        ws.freeze_panes = "A4"
+
+        # ---- print setup: landscape, fit to one page wide, repeat headers ----
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_options.horizontalCentered = True
+        ws.page_margins = PageMargins(left=0.4, right=0.4, top=0.6, bottom=0.5,
+                                      header=0.3, footer=0.3)
+        ws.print_title_rows = "1:3"        # church + title + column header on every page
+        ws.oddFooter.center.text = f"{church} — Sabbath {sab:%d %b %Y} — Page &P of &N"
 
         buf = io.BytesIO(); wb.save(buf)
         from django.http import HttpResponse

@@ -34,7 +34,7 @@
     <td class="num mono">{{ r.engine|floatformat:2|intcomma }}</td>
     <td class="num mono">{{ r.ledger|floatformat:2|intcomma }}</td>
     <td class="num mono">{{ r.diff|floatformat:2|intcomma }}</td>
-    <td>{% if r.ok %}<span class="pill pill-green">✓</span>{% else %}<span class="pill pill-red">✗</span>{% endif %}</td>
+    <td>{% if r.ok %}<span class="pill pill-green">✓</span>{% else %}<a class="link" href="{% url 'ledger_fund_variance' r.fund.id %}" title="Show the entries causing this difference">✗ investigate</a>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="5" class="empty">No fund balances yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>

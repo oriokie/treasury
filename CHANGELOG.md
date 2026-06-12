@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.0.6
+- Transactions Excel export now includes M-Pesa ref, core ref, bank receipt,
+  member, phone, dev group, service Sabbath and confirmed status.
+- SMS and WhatsApp send buttons on the envelopes page appear only when those
+  channels are enabled in settings.
+- The per-Sabbath Excel sheet now carries the church name, has cell borders,
+  number formatting, and a print-ready landscape layout (fit-to-width, repeating
+  headers, page footer).
+- New reconciliation variance finder: when a fund's engine balance differs from
+  the general ledger, click "investigate" to see the actual transactions and
+  expenses causing the difference.
+- M-Pesa webhook ingest now normalises dedup keys to uppercase (collation-safe),
+  consistent with the statement importer.
+- Mobile layout: tables scroll within their cards instead of forcing the page
+  wide; tighter padding and wrapping on small screens.
+
 ## v1.0.5
 - Fixed a 500 error (FieldError on 'children') on the budget breakdown edit page,
   triggered when the Local Church Budget fund was matched by its full name rather

@@ -1,0 +1,42 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Variance · {{ dept.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Variance analysis — {{ dept.name }}</h1>
+  <div class="sub">Entries causing the difference between the fund engine and the general ledger</div>
+</div><a class="btn btn-ghost" href="{% url 'ledger_reconciliation' %}">← Reconciliation</a></div>
+
+<div class="card"><div class="bd">
+  <table class="ledger compact"><tbody>
+    <tr><td>Fund engine balance</td><td class="num mono">KSh {{ engine|floatformat:2|intcomma }}</td></tr>
+    <tr><td>General-ledger balance</td><td class="num mono">KSh {{ ledger|floatformat:2|intcomma }}</td></tr>
+    <tr><td><strong>Difference</strong></td><td class="num mono"><strong>KSh {{ diff|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td>Explained by entries below</td><td class="num mono">KSh {{ explained|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Unexplained remainder</td><td class="num mono {% if unexplained %}text-danger{% endif %}">KSh {{ unexplained|floatformat:2|intcomma }}</td></tr>
+  </tbody></table>
+</div></div>
+
+{% if issues %}
+<div class="card" style="margin-top:1rem"><div class="hd">Suspect entries ({{ issues|length }})</div><div class="bd">
+  <table class="ledger">
+    <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Reference</th><th class="num">Amount</th><th>Why</th><th></th></tr></thead>
+    <tbody>
+    {% for i in issues %}
+      <tr>
+        <td class="mono">{{ i.date|date:"d M Y" }}</td>
+        <td><span class="pill">{{ i.kind }}</span></td>
+        <td>{{ i.desc }}</td>
+        <td class="mono">{{ i.ref }}</td>
+        <td class="num mono">KSh {{ i.amount|floatformat:2|intcomma }}</td>
+        <td class="muted" style="font-size:.85rem">{{ i.reason }}</td>
+        <td>{% if i.url %}<a class="link" href="{{ i.url }}">open</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="help" style="margin-top:.8rem">Most variances are entries not yet posted to the ledger. Rebuilding the ledger (Chart of accounts → Rebuild) re-posts everything from source records and usually clears these.</div>
+</div></div>
+{% else %}
+<div class="empty" style="margin-top:1rem"><div class="big">✓</div>No specific suspect entries found. If a difference remains, it may be an opening-balance or manual-journal discrepancy.</div>
+{% endif %}
+{% endblock %}

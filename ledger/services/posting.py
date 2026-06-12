@@ -270,3 +270,61 @@ def ledger_for(account, start=None, end=None):
         rows.append({"date": ln.entry.date, "memo": ln.entry.memo,
                      "debit": ln.debit, "credit": ln.credit, "balance": bal})
     return rows
+
+
+def fund_variance_detail(dept):
+    """Explain why a fund's engine balance differs from its ledger balance by
+    finding the specific source records that are missing from, or inconsistent
+    with, the general ledger. Returns a list of dicts describing each suspect
+    entry. Used by the reconciliation drill-down so a treasurer can see the
+    actual transactions/expenses causing a variance rather than just the total.
+    """
+    from giving.models import Transaction
+    from cashbook.models import Expense
+
+    posted_txn_ids = set(JournalEntry.objects.filter(source_type="transaction")
+                         .values_list("source_id", flat=True))
+    posted_exp_ids = set(JournalEntry.objects.filter(source_type="expense")
+                         .values_list("source_id", flat=True))
+
+    issues = []
+
+    # credits/debits the fund engine counts but that have no ledger entry
+    txns = Transaction.objects.filter(department=dept).exclude(
+        excluded_from_income=True)
+    for t in txns:
+        if t.is_reversal or t.is_reversed:
+            continue
+        if t.pk not in posted_txn_ids:
+            issues.append({
+                "kind": "transaction", "id": t.pk, "date": t.date,
+                "desc": (t.payer_name or (t.member.name if t.member_id else "")
+                         or t.reference or "transaction"),
+                "amount": t.amount if t.direction == "CREDIT" else -t.amount,
+                "reason": "Not posted to the ledger",
+                "ref": t.mpesa_ref or t.core_ref or t.reference or "",
+                "url": f"/transactions/{t.pk}/edit/"})
+
+    # approved/paid expenses the engine counts but with no ledger entry
+    exps = Expense.objects.filter(department=dept,
+                                  status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+    for x in exps:
+        if x.pk not in posted_exp_ids:
+            issues.append({
+                "kind": "expense", "id": x.pk, "date": x.date,
+                "desc": x.description, "amount": -x.amount,
+                "reason": "Not posted to the ledger",
+                "ref": x.voucher_no or "", "url": "/expenses/"})
+
+    # ledger entries that point at a now-deleted/changed source (orphan postings)
+    for e in JournalEntry.objects.filter(source_type="transaction"):
+        if e.source_id and not Transaction.objects.filter(pk=e.source_id).exists():
+            issues.append({
+                "kind": "orphan", "id": e.source_id, "date": e.date,
+                "desc": e.memo or "orphaned ledger entry",
+                "amount": Decimal(0),
+                "reason": "Ledger entry for a transaction that no longer exists",
+                "ref": "", "url": ""})
+
+    issues.sort(key=lambda i: (i["date"] or dt.date.min), reverse=True)
+    return issues

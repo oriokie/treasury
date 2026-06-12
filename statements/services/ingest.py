@@ -28,13 +28,18 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
     require_confirm = cfg.require_import_confirmation
     bank_account = bank_account or BankAccount.get_default()
 
-    core_ref = (core_ref or "").strip() or None
-    bank_receipt = (bank_receipt or "").strip() or None
+    # normalise dedup keys to uppercase so deduplication is exact regardless of
+    # database collation (consistent with the statement importer/parser).
+    core_ref = (core_ref or "").strip().upper() or None
+    bank_receipt = (bank_receipt or "").strip().upper() or None
+    mpesa_ref = (mpesa_ref or "").strip().upper() or None
 
     # database-level dedup (the bank re-delivers until it gets a 2XX)
     if core_ref and Transaction.objects.filter(core_ref=core_ref).exists():
         return None, "duplicate"
     if bank_receipt and Transaction.objects.filter(bank_receipt=bank_receipt).exists():
+        return None, "duplicate"
+    if mpesa_ref and Transaction.objects.filter(mpesa_ref=mpesa_ref).exists():
         return None, "duplicate"
 
     is_credit = direction == Transaction.Direction.CREDIT

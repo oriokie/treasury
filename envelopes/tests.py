@@ -257,3 +257,46 @@ class CountBreakdownDBTests(TestCase):
         self.assertEqual(b["envelope"], Decimal("2000"))
         self.assertEqual(b["disbursed"], Decimal("300"))
         self.assertEqual(b["net"], Decimal("2700"))
+
+
+class EnvelopeSendButtonGatingTests(TestCase):
+    """SMS/WhatsApp send buttons appear only when those channels are enabled."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        from departments.models import Department
+        from envelopes.models import Envelope, EnvelopeLine
+        from core.utils import last_saturday
+        from decimal import Decimal
+        self.u = User.objects.create_user("eg", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+        # an envelope in the current month so a Sabbath section renders
+        d = Department.objects.create(name="Tithe", fund_type="TRUST",
+                                      category="OFFERING", is_trust=True)
+        sat = last_saturday()
+        env = Envelope.objects.create(date=sat, contributor_name="A",
+                                      recorded_by=self.u)
+        EnvelopeLine.objects.create(envelope=env, department=d,
+                                    amount=Decimal("100"))
+        self.month = f"{sat.year}-{sat.month:02d}"
+
+    def test_buttons_hidden_when_disabled(self):
+        from django.test import Client
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.sms_enabled = False; cfg.whatsapp_enabled = False; cfg.save()
+        c = Client(); c.force_login(self.u)
+        html = c.get(f"/envelopes/?month={self.month}").content.decode()
+        self.assertNotIn("SMS all", html)
+        self.assertNotIn("WhatsApp all", html)
+
+    def test_sms_button_shown_when_enabled(self):
+        from django.test import Client
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.sms_enabled = True; cfg.whatsapp_enabled = False; cfg.save()
+        c = Client(); c.force_login(self.u)
+        html = c.get(f"/envelopes/?month={self.month}").content.decode()
+        self.assertIn("SMS all", html)
+        self.assertNotIn("WhatsApp all", html)

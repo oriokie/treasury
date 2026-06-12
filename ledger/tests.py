@@ -180,3 +180,39 @@ class ChartOfAccountsManagementTests(TestCase):
         from ledger.services import posting
         _, tot = posting.trial_balance()
         self.assertEqual(tot["debit"], tot["credit"])  # stays balanced regardless of active flag
+
+
+class FundVarianceTests(TestCase):
+    """The variance drill-down identifies entries causing an engine-vs-ledger
+    difference for a fund."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        self.u = User.objects.create_user("fv", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+
+    def test_variance_page_loads(self):
+        from django.test import Client
+        from departments.models import Department
+        d = Department.objects.create(name="Youth", fund_type="LOCAL",
+                                      category="MINISTRY")
+        c = Client(); c.force_login(self.u)
+        r = c.get(f"/ledger/reconciliation/fund/{d.id}/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_unposted_transaction_flagged(self):
+        from departments.models import Department
+        from giving.models import Transaction
+        from ledger.services.posting import fund_variance_detail
+        import datetime as dt
+        from decimal import Decimal
+        d = Department.objects.create(name="Camp", fund_type="LOCAL",
+                                      category="MINISTRY")
+        # a confirmed credit with no ledger posting -> should be flagged
+        Transaction.objects.create(date=dt.date(2026, 6, 6), channel="BANK",
+            direction="CREDIT", amount=Decimal("1000"), allocation_status="MANUAL",
+            confirmed=True, department=d, core_ref="VAR1", payer_name="Test")
+        issues = fund_variance_detail(d)
+        self.assertTrue(any(i["kind"] == "transaction" and i["ref"] == "VAR1"
+                            for i in issues))
