@@ -646,3 +646,156 @@ class MarkProcessedImportTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r["Content-Type"])
         self.assertIn(b"reference", r.content)
+
+
+class MarkProcessedSplitFundTests(TestCase):
+    """A split-fund gift posts as several rows sharing the reference with divided
+    amounts. The importer must confirm the whole group by its TOTAL and mark
+    every part — not look for a single row equal to the lump sum."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from giving.models import Transaction
+        User.objects.create_superuser("mps", password="x")
+        self.client.login(username="mps", password="x")
+        self.trust = Department.objects.create(name="Combined Trust half",
+            fund_type=Department.FundType.TRUST, selectable=False)
+        self.local = Department.objects.create(name="Combined Local half",
+            fund_type=Department.FundType.LOCAL, selectable=False)
+        common = dict(date=dt.date(2026, 6, 1), channel="BANK", direction="CREDIT",
+                      reference="SPLITREF", confirmed=True, allocation_status="MANUAL")
+        # 2000 split 50/50 -> two 1000 rows sharing the reference
+        self.h1 = Transaction.objects.create(amount=Decimal("1000"),
+            department=self.trust, core_ref="SPCORE", bank_receipt="SPRC", **common)
+        self.h2 = Transaction.objects.create(amount=Decimal("1000"),
+            department=self.local, core_ref="SPCORE-S1", **common)
+
+    def _post(self, csv_text):
+        from django.urls import reverse
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("mark_processed_import"),
+            {"file": SimpleUploadedFile("p.csv", csv_text.encode())})
+
+    def test_total_marks_all_split_parts(self):
+        self._post("reference,amount\nSPLITREF,2000\n")     # the lump sum
+        self.h1.refresh_from_db(); self.h2.refresh_from_db()
+        self.assertTrue(self.h1.processed_via_envelope)
+        self.assertTrue(self.h2.processed_via_envelope)
+
+    def test_wrong_total_marks_nothing(self):
+        self._post("reference,amount\nSPLITREF,5000\n")
+        self.h1.refresh_from_db(); self.h2.refresh_from_db()
+        self.assertFalse(self.h1.processed_via_envelope)
+        self.assertFalse(self.h2.processed_via_envelope)
+
+    def test_three_way_split_by_total(self):
+        import datetime as dt
+        from decimal import Decimal
+        from departments.models import Department
+        from giving.models import Transaction
+        third = Department.objects.create(name="Combined Third",
+            fund_type=Department.FundType.LOCAL, selectable=False)
+        # add a third part so the group is 1000+1000+500 = 2500, ref TRIO
+        common = dict(date=dt.date(2026, 6, 3), channel="BANK", direction="CREDIT",
+                      reference="TRIO", confirmed=True, allocation_status="MANUAL")
+        a = Transaction.objects.create(amount=Decimal("1000"), department=self.trust,
+            core_ref="TRIOC", **common)
+        b = Transaction.objects.create(amount=Decimal("1000"), department=self.local,
+            core_ref="TRIOC-S1", **common)
+        c = Transaction.objects.create(amount=Decimal("500"), department=third,
+            core_ref="TRIOC-S2", **common)
+        self._post("reference,amount\nTRIO,2500\n")
+        for t in (a, b, c):
+            t.refresh_from_db()
+            self.assertTrue(t.processed_via_envelope)
+
+
+class MarkProcessedClearsQueueTests(TestCase):
+    """Marking an entry processed must also remove it from the review queue, and
+    cascade to all parts of a split gift."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from giving.models import Transaction
+        User.objects.create_superuser("mpq", password="x")
+        self.client.login(username="mpq", password="x")
+        self.trust = Department.objects.create(name="MPQ Trust",
+            fund_type=Department.FundType.TRUST, selectable=False)
+        self.local = Department.objects.create(name="MPQ Local",
+            fund_type=Department.FundType.LOCAL, selectable=False)
+
+    def _review_queue_ids(self):
+        from giving.models import Transaction
+        return set(Transaction.objects.filter(
+            allocation_status="REVIEW", direction="CREDIT"
+        ).values_list("id", flat=True))
+
+    def test_model_method_clears_review_status(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        t = Transaction.objects.create(date=dt.date(2026, 6, 1), channel="BANK",
+            direction="CREDIT", amount=Decimal("500"), reference="R1",
+            core_ref="C1", allocation_status="REVIEW", confirmed=True)
+        self.assertIn(t.id, self._review_queue_ids())
+        t.mark_processed_via_envelope()
+        t.refresh_from_db()
+        self.assertTrue(t.processed_via_envelope)
+        self.assertNotEqual(t.allocation_status, "REVIEW")
+        self.assertNotIn(t.id, self._review_queue_ids())
+
+    def test_cascade_clears_split_siblings_from_queue(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        common = dict(date=dt.date(2026, 6, 2), channel="BANK", direction="CREDIT",
+                      reference="SPLIT", confirmed=True, allocation_status="REVIEW")
+        h1 = Transaction.objects.create(amount=Decimal("1000"),
+            department=self.trust, core_ref="SC", **common)
+        h2 = Transaction.objects.create(amount=Decimal("1000"),
+            department=self.local, core_ref="SC-S1", **common)
+        # mark just one half via the model method with cascade
+        n = h1.mark_processed_via_envelope(cascade_split=True)
+        self.assertEqual(n, 2)                      # both parts marked
+        h1.refresh_from_db(); h2.refresh_from_db()
+        self.assertNotIn(h1.id, self._review_queue_ids())
+        self.assertNotIn(h2.id, self._review_queue_ids())
+
+    def test_bulk_import_removes_from_queue(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.urls import reverse
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from giving.models import Transaction
+        t = Transaction.objects.create(date=dt.date(2026, 6, 3), channel="BANK",
+            direction="CREDIT", amount=Decimal("750"), reference="BR1",
+            core_ref="BC1", allocation_status="REVIEW", confirmed=True)
+        self.assertIn(t.id, self._review_queue_ids())
+        self.client.post(reverse("mark_processed_import"),
+            {"file": SimpleUploadedFile("p.csv", b"reference,amount\nBR1,750\n")})
+        t.refresh_from_db()
+        self.assertNotIn(t.id, self._review_queue_ids())
+
+    def test_edit_checkbox_clears_queue_and_cascades(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        common = dict(date=dt.date(2026, 6, 4), channel="BANK", direction="CREDIT",
+                      reference="ESPLIT", confirmed=True, allocation_status="REVIEW")
+        h1 = Transaction.objects.create(amount=Decimal("1200"),
+            department=self.trust, core_ref="EC", **common)
+        h2 = Transaction.objects.create(amount=Decimal("1200"),
+            department=self.local, core_ref="EC-S1", **common)
+        self.client.post(f"/transactions/{h1.id}/edit/", {
+            "date": "2026-06-04", "channel": "BANK", "direction": "CREDIT",
+            "department": self.trust.id, "amount": "1200", "reference": "ESPLIT",
+            "allocation_status": "REVIEW", "processed_via_envelope": "on"})
+        h1.refresh_from_db(); h2.refresh_from_db()
+        self.assertNotIn(h1.id, self._review_queue_ids())
+        self.assertNotIn(h2.id, self._review_queue_ids())   # sibling cascaded

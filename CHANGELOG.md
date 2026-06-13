@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.5.0 — fund import, sub-accounts, and queue clearing
+- New dedicated fund/department structure importer (Funds and departments ->
+  Import funds and sub-accounts). Download a template that lists your existing
+  funds, add one row per fund, and set a Parent to make a row a sub-account.
+  Parents are created before their sub-accounts so row order does not matter, and
+  sub-accounts inherit their parent fund type. Existing funds are never modified.
+- The budget import template now comes pre-filled with one row per existing fund
+  (with the current year budget as a starting point where set), so you enter
+  amounts against funds already in the system instead of typing names.
+- Marking a bank entry processed via envelope (in the bulk tool or on the edit
+  page) now also removes it from the review queue, and cascades to every part of
+  a split gift so the whole gift leaves the queue together.
+
+## v1.4.2 — split funds in bulk mark-processed
+- The bulk "mark processed via envelope" tool now understands split offerings.
+  A split gift (e.g. Combined Offering) is posted as several ledger rows that
+  share the reference with the amount divided across funds. Uploading the
+  reference with the TOTAL the member gave now confirms the whole group by its
+  sum and marks every part processed together. A wrong total, or a reference that
+  matches unrelated rows, is still reported rather than applied.
+
 ## v1.4.1 — fixes
 - Settings: the SMS card was rendering on every tab (it had slipped outside its
   tab pane); it now shows only under the SMS tab.

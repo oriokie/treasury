@@ -10,6 +10,7 @@ urlpatterns = [
     path("dev-groups/<int:pk>/delete/", views.DevGroupDeleteView.as_view(), name="dev_group_delete"),
     path("budget/", views.BudgetView.as_view(), name="budget"),
     path("funds/bulk-import/", views.BulkFundImportView.as_view(), name="bulk_fund_import"),
+    path("funds/structure-import/", views.FundStructureImportView.as_view(), name="fund_structure_import"),
     path("budget/template/", views.BudgetTemplateDownloadView.as_view(), name="budget_template_download"),
     path("budget/<int:pk>/lines/", views.BudgetLinesView.as_view(), name="budget_lines"),
 ]

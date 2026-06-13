@@ -389,8 +389,22 @@ class TransactionUpdateView(DataEntryRequiredMixin, UpdateView):
         if _block_if_locked(self.request, form.instance.date) or \
            (original and _block_if_locked(self.request, original)):
             return redirect("transaction_list")
-        messages.success(self.request, "Entry updated.")
-        return super().form_valid(form)
+        # was the "processed via envelope" box newly ticked on this save?
+        newly_processed = ("processed_via_envelope" in form.changed_data
+                           and form.instance.processed_via_envelope)
+        response = super().form_valid(form)
+        if newly_processed:
+            # handled on paper: pull it (and any split siblings) out of the
+            # review / sabbath queues so it isn't entered twice
+            n = self.object.mark_processed_via_envelope(cascade_split=True)
+            if n > 1:
+                messages.success(self.request,
+                    f"Marked processed and cleared {n} split parts from the queue.")
+            else:
+                messages.success(self.request, "Entry updated.")
+        else:
+            messages.success(self.request, "Entry updated.")
+        return response
 
 
 # ---- Bank-statement debit handling ----
@@ -684,6 +698,13 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
 
         marked = already = not_found = mismatched = ambiguous = 0
         problems = []
+
+        def _mark(txn):
+            """Mark one transaction processed; return True if newly marked.
+            Cascade is off here because the importer has already matched the
+            full split group by its total and marks each row explicitly."""
+            return txn.mark_processed_via_envelope(cascade_split=False) > 0
+
         for ref, raw_amt in rows:
             # match a bank CREDIT by any of the reference-bearing fields
             qs = Transaction.objects.filter(
@@ -698,37 +719,57 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
                 if len(problems) < 12:
                     problems.append(f"“{ref}”: no matching bank entry")
                 continue
-            # if an amount was given, use it to disambiguate / confirm
+
+            # parse the confirming amount, if supplied
             amt = None
             if raw_amt not in (None, ""):
                 try:
                     amt = Decimal(str(raw_amt).replace(",", "").strip())
                 except Exception:
                     amt = None
-            if n > 1 and amt is not None:
-                qs2 = qs.filter(amount=amt)
-                if qs2.count() == 1:
-                    qs = qs2
-                    n = 1
-            if n > 1:
-                ambiguous += 1
-                if len(problems) < 12:
-                    problems.append(f"“{ref}”: matches {n} entries — add the amount to pinpoint it")
+
+            if n == 1:
+                txn = qs.first()
+                if amt is not None and txn.amount != amt:
+                    mismatched += 1
+                    if len(problems) < 12:
+                        problems.append(f"“{ref}”: amount {amt} ≠ recorded {txn.amount}")
+                    continue
+                if _mark(txn):
+                    marked += 1
+                else:
+                    already += 1
                 continue
-            txn = qs.first()
-            if amt is not None and txn.amount != amt:
-                mismatched += 1
-                if len(problems) < 12:
-                    problems.append(f"“{ref}”: amount {amt} ≠ recorded {txn.amount}")
+
+            # --- multiple matches: most often a SPLIT-FUND gift -----------------
+            # A split gift (e.g. Combined Offering) is posted as several rows that
+            # share the reference but divide the amount. The uploaded amount is the
+            # original lump sum, so it equals the SUM of the group, not any one row.
+            rows_qs = list(qs)
+            total = sum((t.amount for t in rows_qs), Decimal(0))
+            if amt is not None and total == amt:
+                # whole split group confirmed by its total — mark every part
+                newly = sum(1 for t in rows_qs if _mark(t))
+                if newly:
+                    marked += newly
+                else:
+                    already += 1
                 continue
-            if txn.processed_via_envelope:
-                already += 1
-                continue
-            txn.processed_via_envelope = True
-            # clear it from the review/sabbath-confirm flows; it's handled now
-            txn.sabbath_confirm_pending = False
-            txn.save(update_fields=["processed_via_envelope", "sabbath_confirm_pending"])
-            marked += 1
+            # otherwise, an exact single-row amount match still disambiguates
+            if amt is not None:
+                exact = [t for t in rows_qs if t.amount == amt]
+                if len(exact) == 1:
+                    if _mark(exact[0]):
+                        marked += 1
+                    else:
+                        already += 1
+                    continue
+            # genuinely ambiguous — report with both the count and the group total
+            ambiguous += 1
+            if len(problems) < 12:
+                hint = (f"sum is {total}" if amt is None
+                        else f"amount {amt} ≠ any row and ≠ split total {total}")
+                problems.append(f"“{ref}”: matches {n} entries — {hint}")
 
         parts = [f"{marked} marked processed (via envelope)"]
         if already:

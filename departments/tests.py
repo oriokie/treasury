@@ -119,3 +119,108 @@ class LcbFundLookupTests(TestCase):
         c = Client(); c.force_login(u)
         r = c.get(f"/budget/{d.id}/lines/?year=2026")
         self.assertEqual(r.status_code, 200)
+
+
+class FundStructureImportTests(TestCase):
+    """Dedicated fund/sub-account importer: template lists existing funds, and
+    apply creates parents then sub-accounts (which inherit the parent's type)."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.u = User.objects.create_superuser("fsi", password="x")
+        self.client.login(username="fsi", password="x")
+
+    def _file(self, rows):
+        import io
+        import openpyxl
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Funds"
+        ws.append(["Fund name", "Parent fund (blank = top level)", "Fund type",
+                   "Category", "Opening balance"])
+        for r in rows:
+            ws.append(r)
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        return buf.getvalue()
+
+    def test_template_downloads_with_existing_funds(self):
+        import io
+        import openpyxl
+        from departments.models import Department
+        Department.objects.create(name="EXISTING FUND",
+                                  fund_type=Department.FundType.LOCAL)
+        r = self.client.get("/funds/structure-import/?template=1")
+        self.assertEqual(r.status_code, 200)
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        self.assertIn("Funds", wb.sheetnames)
+        # existing fund should be listed on the Lists sheet
+        lists = list(wb["Lists"].iter_rows(values_only=True))
+        names = {row[0] for row in lists if row and row[0]}
+        self.assertIn("EXISTING FUND", names)
+
+    def test_creates_parent_and_subaccounts(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from departments.models import Department
+        data = self._file([
+            ["YOUTH MINISTRY", "", "Local", "Ministry", 0],
+            ["YOUTH POTLUCK", "YOUTH MINISTRY", "Local", "Ministry", 0],
+            ["YOUTH MISSION", "YOUTH MINISTRY", "Trust", "Development", 0],
+        ])
+        self.client.post("/funds/structure-import/",
+                         {"file": SimpleUploadedFile("f.xlsx", data)})
+        self.client.post("/funds/structure-import/", {"apply": "1"})
+        parent = Department.objects.get(name="YOUTH MINISTRY")
+        sub1 = Department.objects.get(name="YOUTH POTLUCK")
+        sub2 = Department.objects.get(name="YOUTH MISSION")
+        self.assertIsNone(parent.parent_id)
+        self.assertEqual(sub1.parent_id, parent.id)
+        self.assertEqual(sub2.parent_id, parent.id)
+        # sub-account inherits the parent's fund type (parent is Local)
+        self.assertEqual(sub2.fund_type, parent.fund_type)
+
+    def test_existing_fund_is_skipped(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from departments.models import Department
+        Department.objects.create(name="ALREADY HERE",
+                                  fund_type=Department.FundType.LOCAL)
+        before = Department.objects.count()
+        data = self._file([["ALREADY HERE", "", "Local", "Ministry", 0]])
+        self.client.post("/funds/structure-import/",
+                         {"file": SimpleUploadedFile("f.xlsx", data)})
+        self.client.post("/funds/structure-import/", {"apply": "1"})
+        self.assertEqual(Department.objects.count(), before)   # nothing created
+
+    def test_order_independent_parent_after_child(self):
+        # child row appears BEFORE its parent — should still link correctly
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from departments.models import Department
+        data = self._file([
+            ["CHILD FIRST", "PARENT LATER", "Local", "Ministry", 0],
+            ["PARENT LATER", "", "Local", "Ministry", 0],
+        ])
+        self.client.post("/funds/structure-import/",
+                         {"file": SimpleUploadedFile("f.xlsx", data)})
+        self.client.post("/funds/structure-import/", {"apply": "1"})
+        parent = Department.objects.get(name="PARENT LATER")
+        child = Department.objects.get(name="CHILD FIRST")
+        self.assertEqual(child.parent_id, parent.id)
+
+
+class BudgetTemplatePrefilledTests(TestCase):
+    """The budget template is pre-filled with one row per existing fund."""
+
+    def test_template_lists_existing_funds_as_rows(self):
+        import io
+        import openpyxl
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        User.objects.create_superuser("bt", password="x")
+        self.client.login(username="bt", password="x")
+        Department.objects.create(name="FUND ALPHA",
+            fund_type=Department.FundType.LOCAL, selectable=True)
+        Department.objects.create(name="FUND BETA",
+            fund_type=Department.FundType.LOCAL, selectable=True)
+        r = self.client.get("/budget/template/?year=2026")
+        wb = openpyxl.load_workbook(io.BytesIO(r.content))
+        ws = wb["Budget lines"]
+        names = {row[0] for row in ws.iter_rows(values_only=True) if row[0]}
+        self.assertIn("FUND ALPHA", names)
+        self.assertIn("FUND BETA", names)

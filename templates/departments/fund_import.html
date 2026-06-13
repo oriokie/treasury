@@ -1,0 +1,66 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Import funds &amp; sub-accounts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Import funds &amp; sub-accounts</h1>
+    <div class="ws-sub">Build the chart of accounts in bulk — funds and their sub-accounts</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'department_list' %}">← Funds &amp; departments</a></div>
+</div>
+
+{% if stage == "upload" %}
+<div class="card" style="max-width:760px"><div class="bd">
+  <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+    <li><strong>Download</strong> the template. It lists your existing funds so you can pick a parent.</li>
+    <li>Add one row per fund. Leave <strong>Parent</strong> blank for a top-level fund, or name a
+      parent to make the row a <strong>sub-account</strong> (e.g. Youth → Potluck, Mission).</li>
+    <li><strong>Upload</strong> it. Existing funds are left untouched; only new names are created.</li>
+  </ol>
+  <div class="btn-row" style="margin:.8rem 0"><a class="btn" href="?template=1">⤓ Download template (.xlsx)</a></div>
+  <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+    {% csrf_token %}
+    <div class="form-row" style="margin:.4rem 0"><label>Filled template (.xlsx)</label>
+      <input type="file" name="file" class="field" accept=".xlsx" required></div>
+    <button class="btn">Upload &amp; review</button>
+  </form>
+</div></div>
+
+{% elif stage == "review" %}
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="apply" value="1">
+  <div class="ws-summary">
+    <div class="ws-metric is-primary"><span class="wm-l">Rows</span><span class="wm-v">{{ plan|length }}</span></div>
+    <div class="ws-metric is-positive"><span class="wm-l">New funds</span><span class="wm-v">{{ new_count }}</span></div>
+    <div class="ws-metric"><span class="wm-l">Already exist</span><span class="wm-v">{{ existing_count }}</span></div>
+    <div class="ws-metric"><span class="wm-l">Sub-accounts</span><span class="wm-v">{{ sub_count }}</span></div>
+  </div>
+
+  {% if bad_parents %}
+  <div class="alert alert-warn" style="margin-bottom:1rem">
+    <strong>{{ bad_parents|length }} row(s)</strong> name a parent that isn't an existing fund or another row in the sheet — those rows will be skipped. Check the highlighted parents below.
+  </div>
+  {% endif %}
+
+  <div class="ws-table"><table class="ledger compact">
+    <thead><tr><th>Fund</th><th>Parent</th><th>Type</th><th>Category</th><th class="num">Opening</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for p in plan %}
+    <tr class="{% if not p.parent_ok %}row-warn{% endif %}">
+      <td><strong>{{ p.name }}</strong></td>
+      <td>{% if p.parent %}{% if p.parent_ok %}{{ p.parent }}{% else %}<span style="color:var(--danger)">{{ p.parent }} (unknown)</span>{% endif %}{% else %}<span class="muted">— top level —</span>{% endif %}</td>
+      <td>{{ p.ftype|title }}</td>
+      <td>{{ p.cat|title }}</td>
+      <td class="num mono">{{ p.opening|floatformat:0|intcomma }}</td>
+      <td>{% if p.exists %}<span class="pill pill-grey">exists · skip</span>{% elif not p.parent_ok %}<span class="pill pill-amber">skip · bad parent</span>{% else %}<span class="pill pill-green">create</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+
+  <div class="btn-row" style="margin-top:1rem">
+    <button class="btn">Create {{ new_count }} fund(s)</button>
+    <a class="btn btn-ghost" href="{% url 'fund_structure_import' %}">Start over</a>
+  </div>
+  <p class="help" style="margin-top:.6rem">Existing funds are never modified. Sub-accounts inherit their parent's fund type.</p>
+</form>
+{% endif %}
+{% endblock %}

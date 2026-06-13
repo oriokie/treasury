@@ -506,12 +506,24 @@ class BudgetTemplateDownloadView(TreasurerRequiredMixin, View):
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="1F5F4F")
             cell.alignment = Alignment(horizontal="center")
-        # a couple of worked example rows the treasurer can overwrite
-        ws.append(["YOUTH", "Youth camp transport", "Transport", 20000, ""])
-        ws.append(["YOUTH", "PA system hire", "Materials / supplies", 15000,
-                   "LCB – Local Church Budget"])
-        ws.append(["CHILDREN MINISTRY", "VBS materials", "Materials / supplies",
-                   8000, "YOUTH"])
+        # Pre-fill one row per existing fund so the treasurer just enters amounts
+        # against funds already in the system (rather than typing fund names).
+        # If a fund already has a budget for the year, show its current total as a
+        # starting point. Funds with no budget get a blank amount to fill in.
+        from .models import Budget
+        existing_budgets = {b.department_id: b.amount for b in
+                            Budget.objects.filter(year=year)}
+        if depts:
+            for d in depts:
+                amt = existing_budgets.get(d.id)
+                ws.append([d.name, "", "", (float(amt) if amt else None), ""])
+        else:
+            # no funds yet — fall back to worked examples
+            ws.append(["YOUTH", "Youth camp transport", "Transport", 20000, ""])
+            ws.append(["YOUTH", "PA system hire", "Materials / supplies", 15000,
+                       "LCB – Local Church Budget"])
+            ws.append(["CHILDREN MINISTRY", "VBS materials", "Materials / supplies",
+                       8000, "YOUTH"])
 
         # reference lists for the dropdowns
         ref = wb.create_sheet("Lists")
@@ -723,3 +735,251 @@ def _bulk_apply_line_items(view, request):
         f"{written} budget line(s) imported across {len(touched_budgets)} "
         f"department(s) for {year}." + (f" {skipped} skipped." if skipped else ""))
     return redirect("budget")
+
+
+# ===========================================================================
+# Dedicated fund / department structure importer (with sub-groups)
+# ===========================================================================
+class FundStructureImportView(TreasurerRequiredMixin, View):
+    """Build the chart of accounts in bulk: funds AND their sub-accounts, from a
+    simple template — separate from budgeting (no amounts beyond an optional
+    opening balance). Two-step wizard: upload → review (new vs existing) → apply.
+
+    The template has one row per fund:
+        Fund name | Parent fund | Fund type | Category | Opening balance
+    A blank Parent makes a top-level fund; naming an existing (or also-in-sheet)
+    fund as Parent makes the row a sub-account of it. Parents are created before
+    children so order in the sheet doesn't matter.
+    """
+    template_name = "departments/fund_import.html"
+
+    def get(self, request):
+        if request.GET.get("template"):
+            return self._template()
+        return render(request, self.template_name, {"stage": "upload"})
+
+    def post(self, request):
+        if request.POST.get("apply"):
+            return self._apply(request)
+        return self._parse(request)
+
+    # ---- template (pre-listing existing funds for the parent dropdown) ----
+    def _template(self):
+        import io
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from django.http import HttpResponse
+
+        existing = list(Department.objects.order_by("name"))
+        wb = openpyxl.Workbook()
+        ws = wb.active; ws.title = "Funds"
+        head = ["Fund name", "Parent fund (blank = top level)", "Fund type",
+                "Category", "Opening balance"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            cell = ws.cell(1, c)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1F5F4F")
+            cell.alignment = Alignment(horizontal="center")
+        # worked examples showing a parent and two sub-accounts
+        ws.append(["YOUTH", "", "Local", "Ministry", 0])
+        ws.append(["YOUTH POTLUCK", "YOUTH", "Local", "Ministry", 0])
+        ws.append(["YOUTH MISSION", "YOUTH", "Local", "Development", 0])
+        ws.append(["COMBINED OFFERING TRUST", "", "Trust", "Trust", 0])
+
+        # reference lists
+        ref = wb.create_sheet("Lists")
+        ref["A1"] = "Existing funds (use as Parent)"; ref["A1"].font = Font(bold=True)
+        for i, d in enumerate(existing, start=2):
+            ref.cell(i, 1, d.name)
+        ftypes = [lbl for _, lbl in Department.FundType.choices]
+        cats = [lbl for _, lbl in Department.Category.choices]
+        ref["B1"] = "Fund type"; ref["B1"].font = Font(bold=True)
+        for i, v in enumerate(ftypes, start=2):
+            ref.cell(i, 2, v)
+        ref["C1"] = "Category"; ref["C1"].font = Font(bold=True)
+        for i, v in enumerate(cats, start=2):
+            ref.cell(i, 3, v)
+
+        nrows = max(len(existing) + 20, 200)
+        last_parent = len(existing) + 1
+        if existing:
+            dv_parent = DataValidation(type="list",
+                formula1=f"=Lists!$A$2:$A${last_parent}", allow_blank=True)
+            ws.add_data_validation(dv_parent); dv_parent.add(f"B2:B{nrows}")
+        dv_ft = DataValidation(type="list",
+            formula1=f"=Lists!$B$2:$B${len(ftypes) + 1}", allow_blank=True)
+        dv_cat = DataValidation(type="list",
+            formula1=f"=Lists!$C$2:$C${len(cats) + 1}", allow_blank=True)
+        ws.add_data_validation(dv_ft); ws.add_data_validation(dv_cat)
+        dv_ft.add(f"C2:C{nrows}"); dv_cat.add(f"D2:D{nrows}")
+
+        for col, w in zip("ABCDE", (28, 30, 14, 16, 16)):
+            ws.column_dimensions[col].width = w
+
+        info = wb.create_sheet("How to fill this in")
+        for i, line in enumerate([
+            "Fund / department structure import",
+            "",
+            "One row per fund or sub-account.",
+            "  • Fund name — the fund's name (must be unique).",
+            "  • Parent fund — leave BLANK for a top-level fund. To make a",
+            "      sub-account, put the parent's exact name here (it can be an",
+            "      existing fund or another row in this sheet).",
+            "  • Fund type — Trust (remitted to the field) or Local (kept by the",
+            "      church). A sub-account inherits its parent's type automatically.",
+            "  • Category — Offering, Ministry, Development, Holding or Trust.",
+            "  • Opening balance — optional brought-forward balance (usually 0 for",
+            "      a new fund).",
+            "",
+            "Existing funds are NOT changed; a row whose name already exists is",
+            "skipped on import. Parents are created before their sub-accounts, so",
+            "the order of rows does not matter.",
+        ], start=1):
+            info.cell(i, 1, line)
+        info.column_dimensions["A"].width = 74
+
+        buf = io.BytesIO(); wb.save(buf)
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = 'attachment; filename="fund_structure_template.xlsx"'
+        return resp
+
+    # ---- step 1: parse + build plan ----
+    def _parse(self, request):
+        import openpyxl
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a spreadsheet to upload.")
+            return redirect("fund_structure_import")
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+        except Exception:
+            messages.error(request, "Could not read that file — please upload the .xlsx template.")
+            return redirect("fund_structure_import")
+        ws = wb["Funds"] if "Funds" in wb.sheetnames else wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            messages.error(request, "The sheet is empty.")
+            return redirect("fund_structure_import")
+        header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+
+        def col(*names):
+            for n in names:
+                if n in header:
+                    return header.index(n)
+            return None
+        c_name = col("fund name", "name")
+        c_parent = col("parent fund (blank = top level)", "parent fund", "parent")
+        c_type = col("fund type", "type")
+        c_cat = col("category")
+        c_open = col("opening balance", "opening", "b/f")
+        if c_name is None:
+            messages.error(request, "Couldn't find a 'Fund name' column — please use the template.")
+            return redirect("fund_structure_import")
+
+        ft_map = {lbl.lower(): val for val, lbl in Department.FundType.choices}
+        ft_map.update({val.lower(): val for val, _ in Department.FundType.choices})
+        cat_map = {lbl.lower(): val for val, lbl in Department.Category.choices}
+        cat_map.update({val.lower(): val for val, _ in Department.Category.choices})
+        existing_names = {d.name.upper() for d in Department.objects.all()}
+
+        def cell(r, idx):
+            if idx is None or idx >= len(r) or r[idx] in (None, ""):
+                return ""
+            return str(r[idx]).strip()
+
+        plan = []
+        for r in rows[1:]:
+            name = cell(r, c_name)
+            if not name:
+                continue
+            name_u = name.upper()
+            parent = cell(r, c_parent)
+            ftype_raw = cell(r, c_type).lower()
+            ftype = ft_map.get(ftype_raw, Department.FundType.LOCAL)
+            cat_raw = cell(r, c_cat).lower()
+            cat = cat_map.get(cat_raw, Department.Category.MINISTRY)
+            try:
+                opening = float(r[c_open]) if c_open is not None and c_open < len(r) \
+                    and r[c_open] not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                opening = 0.0
+            plan.append({
+                "name": name_u, "parent": parent.upper() if parent else "",
+                "ftype": ftype, "cat": cat, "opening": opening,
+                "exists": name_u in existing_names,
+            })
+
+        if not plan:
+            messages.error(request, "No fund rows with a name were found.")
+            return redirect("fund_structure_import")
+
+        # validate parents: a parent must be an existing fund or another row here
+        sheet_names = {p["name"] for p in plan}
+        for p in plan:
+            if p["parent"]:
+                p["parent_ok"] = (p["parent"] in existing_names
+                                  or p["parent"] in sheet_names)
+            else:
+                p["parent_ok"] = True
+
+        request.session["fund_structure_plan"] = plan
+        new_count = sum(1 for p in plan if not p["exists"])
+        sub_count = sum(1 for p in plan if p["parent"])
+        bad_parents = [p for p in plan if not p["parent_ok"]]
+        return render(request, self.template_name, {
+            "stage": "review", "plan": plan,
+            "new_count": new_count, "existing_count": len(plan) - new_count,
+            "sub_count": sub_count, "bad_parents": bad_parents,
+        })
+
+    # ---- step 2: apply (two-pass: parents first) ----
+    @db_tx.atomic
+    def _apply(self, request):
+        plan = request.session.get("fund_structure_plan")
+        if not plan:
+            messages.error(request, "Your import session expired — please upload again.")
+            return redirect("fund_structure_import")
+
+        created = skipped = subs = 0
+        # pass 1: create all top-level / parent funds (rows with no parent)
+        for p in plan:
+            if p["parent"]:
+                continue
+            if p["exists"]:
+                skipped += 1
+                continue
+            Department.objects.get_or_create(
+                name=p["name"],
+                defaults={"fund_type": p["ftype"], "category": p["cat"],
+                          "opening_balance": Decimal(str(p["opening"]))})
+            created += 1
+        # pass 2: create sub-accounts (parent now exists)
+        for p in plan:
+            if not p["parent"]:
+                continue
+            if p["exists"]:
+                skipped += 1
+                continue
+            parent = Department.objects.filter(name=p["parent"]).first()
+            if not parent:
+                skipped += 1
+                continue
+            # a sub-account inherits the parent's fund type
+            Department.objects.get_or_create(
+                name=p["name"],
+                defaults={"fund_type": parent.fund_type, "category": p["cat"],
+                          "parent": parent,
+                          "opening_balance": Decimal(str(p["opening"]))})
+            created += 1; subs += 1
+
+        request.session.pop("fund_structure_plan", None)
+        parts = [f"{created} fund(s) created"]
+        if subs:
+            parts.append(f"{subs} as sub-account(s)")
+        if skipped:
+            parts.append(f"{skipped} skipped (already existed)")
+        messages.success(request, ", ".join(parts) + ".")
+        return redirect("department_list")

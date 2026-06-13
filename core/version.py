@@ -38,6 +38,16 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.5.0": "A dedicated fund and sub-account importer: download a template "
+             "(which lists your existing funds), add funds and their sub-accounts, "
+             "and import the whole chart of accounts at once. The budget template "
+             "now comes pre-filled with a row for every existing fund. And marking "
+             "a bank entry processed via envelope now also removes it (and every "
+             "part of a split gift) from the review queue.",
+    "1.4.2": "The bulk mark-processed tool now handles split offerings. A split "
+             "gift (e.g. Combined Offering) appears in the ledger as several rows "
+             "with the amount divided; enter the total the member gave and every "
+             "part of that gift is marked processed together.",
     "1.4.1": "Three fixes: SMS settings no longer repeat on every settings tab; "
              "the bulk fund/department import is now linked from the Funds & "
              "departments page; and a new bulk tool marks bank entries as processed "

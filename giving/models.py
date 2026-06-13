@@ -258,6 +258,60 @@ class Transaction(models.Model):
             original=self, contra=contra, reason=reason, created_by=user)
         return contra
 
+    def split_siblings(self):
+        """Other ledger rows that are parts of the SAME split gift as this one.
+
+        A split offering (e.g. Combined Offering) is posted as several rows that
+        share the payment reference, with the lump sum divided across funds. We
+        group by the strongest shared identifier available: the bank core_ref
+        base (rows X, X-S1, X-S2 …), else the M-Pesa reference, else the plain
+        reference paired with the same date. Returns a queryset EXCLUDING self.
+        """
+        base = None
+        if self.core_ref:
+            base = self.core_ref.split("-S")[0]
+        q = models.Q(pk__in=[])  # empty
+        if base:
+            q |= models.Q(core_ref=base) | models.Q(core_ref__startswith=f"{base}-S")
+        if self.mpesa_ref:
+            q |= models.Q(mpesa_ref__iexact=self.mpesa_ref, date=self.date)
+        if self.reference:
+            q |= models.Q(reference__iexact=self.reference, date=self.date)
+        return Transaction.objects.filter(
+            q, channel=self.channel, direction=self.direction,
+            is_reversal=False, is_reversed=False).exclude(pk=self.pk)
+
+    def mark_processed_via_envelope(self, cascade_split=True):
+        """Mark this entry as handled through a physical envelope: keep it out of
+        receipting AND out of the review/sabbath queues so it isn't entered twice.
+        A REVIEW credit is moved to MANUAL so it leaves the allocation queue.
+
+        When `cascade_split` is on, every part of the same split gift is marked
+        too (so confirming one half of a Combined Offering clears the whole gift
+        from the queue). Returns the number of rows newly marked (incl. self).
+        """
+        def _apply(t):
+            changed = []
+            if not t.processed_via_envelope:
+                t.processed_via_envelope = True; changed.append("processed_via_envelope")
+            if t.sabbath_confirm_pending:
+                t.sabbath_confirm_pending = False; changed.append("sabbath_confirm_pending")
+            # a processed item is handled — it must not sit in the review queue
+            if t.allocation_status == Transaction.Status.REVIEW:
+                t.allocation_status = Transaction.Status.MANUAL
+                changed.append("allocation_status")
+            if changed:
+                t.save(update_fields=changed)
+                return True
+            return False
+
+        n = 1 if _apply(self) else 0
+        if cascade_split:
+            for sib in self.split_siblings():
+                if _apply(sib):
+                    n += 1
+        return n
+
     class Meta:
         ordering = ["-date", "-id"]
         indexes = [
