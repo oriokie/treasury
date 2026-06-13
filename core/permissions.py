@@ -17,6 +17,10 @@ class RoleRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
 
     def handle_no_permission(self):
         if self.request.user.is_authenticated:
+            # a departmental leader is bounced to their own scoped dashboard,
+            # never to a staff page they can't use
+            if roles.is_leader(self.request.user):
+                return redirect("leader_dashboard")
             messages.error(self.request, self.permission_message)
             return redirect("dashboard")
         return super().handle_no_permission()
@@ -32,5 +36,21 @@ class TreasurerRequiredMixin(RoleRequiredMixin):
     permission_message = "This action is restricted to Treasurers."
 
 
-class ReadAccessMixin(LoginRequiredMixin):
-    """Any authenticated user (incl. Auditor) may view."""
+class ReadAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
+    """Staff read access: Treasurer / Assistant / Auditor / admin.
+
+    Departmental leaders are deliberately EXCLUDED — they are read-only but only
+    over their own department, served by the dedicated, scoped leader views. This
+    is the security linchpin: it stops a leader account reaching any of the full,
+    unscoped office screens that use this mixin.
+    """
+    def test_func(self):
+        return roles.is_staff_role(self.request.user)
+
+    def handle_no_permission(self):
+        if self.request.user.is_authenticated:
+            if roles.is_leader(self.request.user):
+                return redirect("leader_dashboard")
+            messages.error(self.request, "You don't have permission to view that.")
+            return redirect("dashboard")
+        return super().handle_no_permission()

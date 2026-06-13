@@ -38,6 +38,38 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.4.0": "Department leader logins: a new read-only role that sees only its "
+             "own department(s) — collections, expenses, sub-accounts, development "
+             "groups and pledges — with contact numbers masked for privacy. Plus "
+             "configurable encryption: choose the key source, turn it on or off, and "
+             "rotate the key with a built-in re-encrypt command.",
+    "1.3.0": "Security and oversight release: automated, encrypted, off-site "
+             "nightly database backups (a cron-run command with rotation and "
+             "email); two-factor authentication for logins (authenticator app + "
+             "recovery codes, optionally required for treasurers); and a revamped "
+             "dashboard with a single Needs Attention panel surfacing allocations, "
+             "pending approvals, pledge drafts, and overdue remittances at a glance.",
+    "1.2.1": "Treasurer-only bulk pledge importer: download a template, upload "
+             "completed pledge cards, and the wizard matches members and campaigns "
+             "(prompting you to map or create any that do not match). Imported "
+             "pledges land as drafts for approval and never affect fund balances.",
+    "1.2.0": "Pledge matching now works inline: when a contribution arrives from a "
+             "member with an active pledge, the system can flag it for review or "
+             "apply it automatically (configurable in Settings to Pledges). New match "
+             "suggestions review queue. Plus an optional public link members can use "
+             "to submit a pledge themselves — submissions are held as unverified "
+             "drafts for treasurer approval and never touch fund balances.",
+    "1.1.0": "New Pledge Management module: pledge campaigns, member pledges with "
+             "installment schedules, approval workflow, automatic and manual matching "
+             "of real contributions to pledges, SMS/WhatsApp reminders, progress "
+             "reports and year-end member statements. Pledges are informational only "
+             "and never affect fund balances — money is recognised solely through "
+             "normal contributions, which are then matched to pledges.",
+    "1.0.19": "Downloadable budget template with per-department line items and a "
+              "funding source; tighter duplicate detection (same-Sabbath expenses, "
+              "same-channel offerings, envelope duplicates); remittance deadlines "
+              "default to the 1st of the next month and auto-mark remitted from "
+              "completed batches.",
     "1.0.18": "Names are kept in uppercase everywhere; expenses gained a search box "
               "and a category-only bulk re-import; the trust remittance dashboard now "
               "counts down to the reporting Sabbath using freely-set monthly deadlines; "

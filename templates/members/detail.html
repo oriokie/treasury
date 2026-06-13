@@ -29,4 +29,13 @@
   {% empty %}<tr><td colspan="5" class="empty">No giving recorded yet.</td></tr>{% endfor %}
   </tbody>
 </table></div></div>
+
+{% with member_pledges=member.pledges.all %}
+{% if member_pledges %}
+<div class="card" style="margin-top:1rem"><div class="hd"><strong>Pledges</strong><span class="muted"><a href="{% url 'pledge_member_statement' member.id %}">year-end statement →</a></span></div>
+<table class="ledger compact"><thead><tr><th>Campaign</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead><tbody>
+  {% for p in member_pledges %}{% if p.status != 'CANCELLED' %}<tr><td><a class="link" href="{% url 'pledge_detail' p.id %}">{{ p.campaign.name }}</a></td><td><span class="pill {% if p.status == 'FULFILLED' %}pill-green{% elif p.status == 'ACTIVE' %}pill-blue{% elif p.status == 'LAPSED' %}pill-red{% else %}pill-amber{% endif %}">{{ p.get_status_display }}</span></td><td class="num mono">{{ p.amount|floatformat:0 }}</td><td class="num mono">{{ p.paid|floatformat:0 }}</td><td class="num mono">{{ p.outstanding|floatformat:0 }}</td></tr>{% endif %}{% endfor %}
+  </tbody></table></div>
+{% endif %}
+{% endwith %}
 {% endblock %}

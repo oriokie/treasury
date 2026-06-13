@@ -19,6 +19,8 @@ def site_context(request):
         "is_treasurer": roles.is_treasurer(user) if user else False,
         "can_enter_data": roles.can_enter_data(user) if user else False,
         "is_auditor": roles.is_auditor(user) if user else False,
+        "is_leader": roles.is_leader(user) if user else False,
+        "is_staff_role": roles.is_staff_role(user) if user else False,
     }
     if user and user.is_authenticated:
         if user.is_superuser or user.groups.filter(name="Treasurer").exists():

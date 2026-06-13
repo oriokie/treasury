@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Two-factor verification{% endblock %}
+{% block content %}
+<div style="max-width:420px;margin:3rem auto">
+  <div class="card"><div class="bd">
+    <h1 style="margin-top:0;font-size:1.3rem">Enter your code</h1>
+    <p class="muted">Open your authenticator app and enter the current 6-digit code for {{ SITE_NAME }}.</p>
+    <form method="post">{% csrf_token %}
+      <div class="form-row"><input name="token" class="field" inputmode="numeric"
+        autocomplete="one-time-code" placeholder="123456" autofocus
+        style="width:100%;font-size:1.4rem;letter-spacing:.25em;text-align:center"></div>
+      <label style="display:flex;align-items:center;gap:.5rem;margin:.6rem 0;font-size:.85rem">
+        <input type="checkbox" name="recovery" value="1"> Use a recovery code instead</label>
+      <button class="btn" style="width:100%">Verify</button>
+    </form>
+  </div></div>
+  <p class="muted" style="text-align:center;font-size:.8rem;margin-top:1rem">
+    Lost your phone? Use one of the recovery codes you saved when setting up 2FA.</p>
+</div>
+{% endblock %}

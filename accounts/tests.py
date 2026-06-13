@@ -50,3 +50,64 @@ class UserManagementAccessTests(TestCase):
         self.client.force_login(u)
         r = self.client.get(reverse("user_list"))
         self.assertIn(r.status_code, (302, 403))
+
+
+class TwoFactorTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.u = User.objects.create_user("tfa", password="pw12345678")
+
+    def _enrol(self, client):
+        import pyotp
+        from accounts.models import TwoFactor
+        client.force_login(self.u)
+        client.get("/2fa/setup/")
+        tf = TwoFactor.objects.get(user=self.u)
+        client.post("/2fa/setup/", {"token": pyotp.TOTP(tf.secret).now()})
+        tf.refresh_from_db()
+        return tf
+
+    def test_enrolment_confirms_and_issues_codes(self):
+        from django.test import Client
+        tf = self._enrol(Client())
+        self.assertTrue(tf.confirmed)
+        self.assertEqual(len(tf.get_recovery_codes()), 10)
+
+    def test_login_requires_totp_when_enrolled(self):
+        import pyotp
+        from django.test import Client
+        from accounts.models import TwoFactor
+        self._enrol(Client())
+        tf = TwoFactor.objects.get(user=self.u)
+        c = Client()
+        r = c.post("/accounts/login/", {"username": "tfa", "password": "pw12345678"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/2fa/verify", r.url)        # not logged in yet
+        # wrong code stays on the gate
+        bad = c.post("/2fa/verify/", {"token": "000000"})
+        self.assertEqual(bad.status_code, 200)
+        # correct code completes login
+        good = c.post("/2fa/verify/", {"token": pyotp.TOTP(tf.secret).now()})
+        self.assertEqual(good.status_code, 302)
+
+    def test_recovery_code_single_use(self):
+        from django.test import Client
+        from accounts.models import TwoFactor
+        self._enrol(Client())
+        tf = TwoFactor.objects.get(user=self.u)
+        code = tf.get_recovery_codes()[0]
+        c = Client()
+        c.post("/accounts/login/", {"username": "tfa", "password": "pw12345678"})
+        r = c.post("/2fa/verify/", {"token": code, "recovery": "1"})
+        self.assertEqual(r.status_code, 302)
+        tf.refresh_from_db()
+        self.assertNotIn(code, tf.get_recovery_codes())   # consumed
+        self.assertEqual(len(tf.get_recovery_codes()), 9)
+
+    def test_no_2fa_means_normal_login(self):
+        from django.test import Client
+        c = Client()
+        r = c.post("/accounts/login/", {"username": "tfa", "password": "pw12345678"})
+        # no 2FA enrolled → straight in (redirect to next/dashboard, not the gate)
+        self.assertEqual(r.status_code, 302)
+        self.assertNotIn("/2fa/verify", r.url)

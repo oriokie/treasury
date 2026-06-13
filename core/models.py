@@ -221,6 +221,38 @@ class SiteConfig(models.Model):
         help_text="Shared bearer token the bank will present (sent as "
                   "'Authorization: Bearer <token>' or the 'X-Auth-Token' header).")
 
+    # --- Pledge matching parameters -----------------------------------------
+    class PledgeMatchMode(models.TextChoices):
+        OFF = "OFF", "Off — never match automatically"
+        SUGGEST = "SUGGEST", "Suggest — flag a likely pledge for review"
+        AUTO = "AUTO", "Auto — apply the match automatically"
+
+    pledge_match_mode = models.CharField(max_length=8,
+        choices=PledgeMatchMode.choices, default=PledgeMatchMode.SUGGEST,
+        help_text="What happens when a new contribution arrives from a member who "
+                  "has an active pledge: do nothing, flag it for a treasurer to "
+                  "confirm, or apply the match automatically.")
+    pledge_match_same_fund_only = models.BooleanField(default=True,
+        help_text="Only auto-match a contribution to a pledge when the gift's fund "
+                  "matches the campaign's target fund.")
+    pledge_match_window_days = models.PositiveIntegerField(default=400,
+        help_text="How many days after a pledge's end date a contribution may "
+                  "still be matched to it.")
+    pledge_public_form_enabled = models.BooleanField(default=False,
+        help_text="Allow members to submit a pledge from a public link. Submissions "
+                  "are held as unverified drafts for a treasurer to review and "
+                  "approve — they never post anywhere until approved.")
+
+    # --- Backups -------------------------------------------------------------
+    backup_email = models.CharField(max_length=200, blank=True, default="",
+        help_text="Email address(es) to send the nightly backup to, comma-separated. "
+                  "Leave blank to keep backups on the server only.")
+
+    # --- Security ------------------------------------------------------------
+    require_2fa_for_treasurers = models.BooleanField(default=False,
+        help_text="Require treasurers to set up two-factor authentication. They "
+                  "will be prompted to enrol at next login and cannot skip it.")
+
     # --- Opening cash position at the start of the financial year ------------
     # Lets the Statement of Financial Position open with the real split of cash
     # rather than implying everything sits in the bank.

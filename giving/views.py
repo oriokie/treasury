@@ -317,7 +317,16 @@ class CashEntryCreate(DataEntryRequiredMixin, CreateView):
         txn.allocation_status = Transaction.Status.MANUAL
         txn.sabbath_week = sabbath_week_of(txn.date)
         txn.save()
-        messages.success(self.request, "Entry recorded.")
+        # offer/apply a pledge match if this giver has an active pledge
+        try:
+            from pledges.services.matching import handle_new_contribution
+            note = handle_new_contribution(txn, user=self.request.user)
+        except Exception:
+            note = None
+        if note:
+            messages.success(self.request, f"Entry recorded — {note}.")
+        else:
+            messages.success(self.request, "Entry recorded.")
         return redirect(self.success_url)
 
 

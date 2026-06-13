@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Two-factor · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles"><h1>Two-factor authentication</h1>
+  <div class="ws-sub">This account is protected with an authenticator app</div></div></div>
+<div class="card" style="max-width:520px"><div class="bd">
+  <p>✅ Two-factor is <strong>on</strong>. You have <strong>{{ codes_remaining }}</strong> recovery code{{ codes_remaining|pluralize }} left.</p>
+  <div class="btn-row" style="margin-top:.8rem">
+    <form method="post" action="{% url 'twofactor_recovery_regen' %}">{% csrf_token %}<button class="btn btn-ghost btn-sm">Generate new recovery codes</button></form>
+    <form method="post" action="{% url 'twofactor_disable' %}" onsubmit="return confirm('Turn off two-factor for your account? Your login will only need a password.');">{% csrf_token %}<button class="btn btn-ghost btn-sm link-danger">Turn off 2FA</button></form>
+  </div>
+</div></div>
+{% endblock %}

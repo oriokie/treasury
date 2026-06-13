@@ -8,6 +8,7 @@
     <button type="button" class="tab active" data-tab="branding">Branding</button>
     <button type="button" class="tab" data-tab="features">Features</button>
     <button type="button" class="tab" data-tab="approvals">Approvals</button>
+    <button type="button" class="tab" data-tab="pledges">Pledges</button>
     <button type="button" class="tab" data-tab="sign">Signatories</button>
     <button type="button" class="tab" data-tab="assets">Assets</button>
   </div>
@@ -61,7 +62,40 @@
     </div></div>
   </section>
 
-  <section class="tabpane" data-pane="sms">
+  <section class="tabpane" data-pane="pledges">
+    <div class="card"><div class="hd">Pledge matching</div><div class="bd">
+      <div class="help" style="margin-bottom:.7rem">Pledges are commitments, not income — they never affect fund balances. These settings control what happens when a contribution arrives from a member who has an active pledge.</div>
+      <div class="form-grid">
+        {% for f in form %}{% if f.name == 'pledge_match_mode' %}
+          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_match_window_days' %}
+          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_match_same_fund_only' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+      </div>
+    </div></div>
+
+    <div class="card" style="margin-top:1rem"><div class="hd">Public pledge link</div><div class="bd">
+      <div class="form-grid">
+        {% for f in form %}{% if f.name == 'pledge_public_form_enabled' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label style="margin:0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+      </div>
+      {% if form.instance.pledge_public_form_enabled %}
+      <div class="help" style="margin-top:.7rem">Share this link with members (e.g. on a bulletin or WhatsApp):
+        <div class="mono" style="margin-top:.3rem;padding:.5rem .7rem;background:var(--paper-2);border-radius:6px;word-break:break-all">{{ request.scheme }}://{{ request.get_host }}/pledge/</div>
+      </div>
+      {% endif %}
+      <div class="help" style="margin-top:.7rem;line-height:1.6"><strong>How it's kept safe:</strong> the link only lets a member <em>submit</em> a pledge — it never shows any member data, balances, or other pledges. Every submission is held as an <strong>unverified draft</strong> a treasurer must review and approve before it counts anywhere, and a draft can never touch a fund balance. Submissions are protected by a spam honeypot, a submit-rate limit, and a manual approval step.</div>
+    </div></div>
+  </section>
     <div class="card"><div class="bd">
       <div class="help" style="margin-bottom:.6rem">Advanta bulk SMS (see <span class="mono">advantasms.com/bulksms-api</span>).</div>
       <div class="form-grid">

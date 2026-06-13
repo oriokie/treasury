@@ -971,7 +971,8 @@ class RemittanceCalendarView(ReadAccessMixin, TemplateView):
     template_name = "reports/remittance_calendar.html"
 
     def get_context_data(self, **kwargs):
-        from cashbook.models import RemittanceDeadline
+        from cashbook.models import RemittanceDeadline, RemittanceBatch
+        import calendar as _cal
         ctx = super().get_context_data(**kwargs)
         today = _dt.date.today()
         try:
@@ -979,6 +980,37 @@ class RemittanceCalendarView(ReadAccessMixin, TemplateView):
         except (TypeError, ValueError):
             year = today.year
         deadlines = list(RemittanceDeadline.objects.filter(year=year))
+
+        # auto-mark a period as remitted when a remitted batch covers it. A batch
+        # covers a month if its period overlaps that month, or (if it has no
+        # period set) if it was remitted within the month. This keeps the
+        # calendar honest without the treasurer ticking each box by hand.
+        remitted_batches = list(RemittanceBatch.objects.filter(
+            status=RemittanceBatch.Status.REMITTED))
+        auto_marked = 0
+        for d in deadlines:
+            if d.remitted:
+                continue
+            m_start = _dt.date(year, d.period_month, 1)
+            m_end = _dt.date(year, d.period_month,
+                             _cal.monthrange(year, d.period_month)[1])
+            covered = False
+            for b in remitted_batches:
+                ps, pe = b.period_start, b.period_end
+                if ps and pe:
+                    if ps <= m_end and pe >= m_start:
+                        covered = True; break
+                elif b.remitted_at and m_start <= b.remitted_at.date() <= m_end:
+                    covered = True; break
+            if covered:
+                d.remitted = True
+                d.save(update_fields=["remitted"])
+                auto_marked += 1
+        if auto_marked:
+            messages.info(self.request,
+                f"{auto_marked} period(s) marked remitted automatically from "
+                f"completed remittance batches.")
+
         ctx["year"] = year
         ctx["prev_year"] = year - 1
         ctx["next_year"] = year + 1
@@ -991,7 +1023,7 @@ class RemittanceCalendarView(ReadAccessMixin, TemplateView):
 
 class RemittanceCalendarGenerateView(TreasurerRequiredMixin, View):
     """Auto-generate a year's monthly remittance deadlines. The default deadline
-    is the 15th of the following month (adjustable afterwards). Existing periods
+    is the 1st of the following month (adjustable afterwards). Existing periods
     are left untouched."""
 
     def post(self, request):
@@ -1003,9 +1035,9 @@ class RemittanceCalendarGenerateView(TreasurerRequiredMixin, View):
         except (TypeError, ValueError):
             year = today.year
         try:
-            due_day = int(request.POST.get("due_day", 15))
+            due_day = int(request.POST.get("due_day", 1))
         except (TypeError, ValueError):
-            due_day = 15
+            due_day = 1
         due_day = min(max(due_day, 1), 28)
         created = 0
         for m in range(1, 13):

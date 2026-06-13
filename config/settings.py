@@ -49,6 +49,17 @@ SECRET_KEY = os.environ.get(
 )
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+
+# --- Application-layer encryption ------------------------------------------
+# Sensitive settings (API keys, SMS/Telegram credentials) and the automated
+# backups are encrypted with Fernet. The key material is configurable:
+#   * TREASURY_ENCRYPTION_KEY — set this to a long random secret in production
+#     so encryption does not depend on SECRET_KEY (which you may rotate).
+#   * If unset, the key falls back to SECRET_KEY so it works out of the box.
+# Encryption can be turned off (not recommended) for environments that handle
+# secrecy at another layer; existing encrypted values remain readable.
+ENCRYPTION_ENABLED = env_bool("TREASURY_ENCRYPTION_ENABLED", True)
+ENCRYPTION_KEY = os.environ.get("TREASURY_ENCRYPTION_KEY", "")
 CSRF_TRUSTED_ORIGINS = [
     o for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o
 ]
@@ -75,6 +86,8 @@ INSTALLED_APPS = [
     "reports",
     "assets",
     "ledger",
+    "pledges",
+    "leaders",
     # third party (must come after local apps)
     "axes",
 ]
@@ -88,6 +101,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.auth.TwoFactorMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",

@@ -205,3 +205,40 @@ def lcb_fund():
             or qs.filter(name__icontains="Local Church Budget").exclude(
                 subgroups__isnull=False).first()
             or qs.filter(name__icontains="LCB").first())
+
+
+class DepartmentLeadership(models.Model):
+    """Links a user (with the Leader role) to a department they lead. A leader
+    may lead more than one department; each gets a row. Leaders get a read-only,
+    scoped dashboard for exactly the departments listed here (plus those funds'
+    own sub-accounts and development groups)."""
+    user = models.ForeignKey("auth.User", on_delete=models.CASCADE,
+                             related_name="led_departments")
+    department = models.ForeignKey(Department, on_delete=models.CASCADE,
+                                   related_name="leaders")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "department"],
+                                    name="uniq_user_department_lead"),
+        ]
+        verbose_name_plural = "Department leaderships"
+
+    def __str__(self):
+        return f"{self.user} leads {self.department}"
+
+
+def departments_led_by(user):
+    """The set of Department objects a leader may see: the departments they are
+    assigned to, plus the sub-accounts of any of those. Returns a queryset.
+    Office staff (treasurer/assistant/auditor/admin) are not constrained here —
+    this is only used to scope the Leader role."""
+    led_ids = list(DepartmentLeadership.objects.filter(user=user)
+                   .values_list("department_id", flat=True))
+    if not led_ids:
+        return Department.objects.none()
+    # include sub-accounts of the led departments (closing balance rolls them up)
+    return Department.objects.filter(
+        models.Q(id__in=led_ids) | models.Q(parent_id__in=led_ids)
+    ).distinct()

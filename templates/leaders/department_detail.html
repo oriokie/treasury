@@ -1,0 +1,71 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ dept.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>{{ dept.name }}</h1>
+    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · read-only</div></div>
+  <form method="get" class="btn-row" style="align-items:flex-end">
+    <a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a>
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+    <button class="btn btn-sm">Apply</button>
+  </form>
+</div>
+
+{% if row %}
+<div class="ws-summary">
+  <div class="ws-metric"><span class="wm-l">Opening (B/F)</span><span class="wm-v"><span class="cur">KES</span>{{ row.opening|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Collections</span><span class="wm-v"><span class="cur">KES</span>{{ row.receipts|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-warn"><span class="wm-l">Expenses</span><span class="wm-v"><span class="cur">KES</span>{{ row.expenses_operating|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-primary"><span class="wm-l">Balance</span><span class="wm-v"><span class="cur">KES</span>{{ row.closing|floatformat:0|intcomma }}</span></div>
+</div>
+{% endif %}
+
+{% if subrows %}
+<div class="card" style="margin-bottom:1rem"><div class="hd">Sub-accounts</div><div class="bd" style="padding:0">
+  <table class="ledger compact"><thead><tr><th>Sub-account</th><th class="num">Collections</th><th class="num">Expenses</th><th class="num">Balance</th></tr></thead><tbody>
+  {% for s in subrows %}<tr><td>{{ s.department.name }}</td><td class="num mono">{{ s.receipts|floatformat:0|intcomma }}</td><td class="num mono">{{ s.expenses_operating|floatformat:0|intcomma }}</td><td class="num mono">{{ s.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+{% if dev_groups %}
+<div class="card" style="margin-bottom:1rem"><div class="hd">Development groups</div><div class="bd" style="padding:0">
+  <table class="ledger compact"><thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th>Progress</th></tr></thead><tbody>
+  {% for g in dev_groups %}<tr><td>{{ g.group }}</td><td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td><td class="num mono">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+    <td style="min-width:120px">{% if g.pct is not None %}<div class="pbar"><span style="width:{{ g.pct }}%"></span></div><span class="muted" style="font-size:.72rem">{{ g.pct }}%</span>{% else %}—{% endif %}</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
+  <div class="card"><div class="hd">Recent collections</div><div class="bd" style="padding:0">
+    <table class="ledger compact"><thead><tr><th>Date</th><th>From</th><th class="num">Amount</th></tr></thead><tbody>
+    {% for c in collections %}
+      <tr><td class="mono">{{ c.date|date:"d/m/y" }}</td>
+        <td>{{ c.who }}{% if c.phone %} <span class="muted mono" style="font-size:.72rem">{{ c.phone }}</span>{% endif %}</td>
+        <td class="num mono">{{ c.amount|floatformat:0|intcomma }}</td></tr>
+    {% empty %}<tr><td colspan="3" class="empty">No collections in this period.</td></tr>{% endfor %}
+    </tbody></table>
+  </div></div>
+
+  <div class="card"><div class="hd">Expenses</div><div class="bd" style="padding:0">
+    <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+    {% for e in expenses %}
+      <tr><td class="mono">{{ e.date|date:"d/m/y" }}</td><td>{{ e.description }}<br><span class="muted" style="font-size:.72rem">{{ e.get_category_display }} · {{ e.get_status_display }}</span></td><td class="num mono">{{ e.amount|floatformat:0|intcomma }}</td></tr>
+    {% empty %}<tr><td colspan="3" class="empty">No expenses in this period.</td></tr>{% endfor %}
+    </tbody></table>
+  </div></div>
+</div>
+
+{% if pledges %}
+<div class="card" style="margin-top:1rem"><div class="hd">Pledges to this department <span class="muted">total KES {{ pledge_total|floatformat:0|intcomma }}</span></div><div class="bd" style="padding:0">
+  <table class="ledger compact"><thead><tr><th>Member</th><th>Campaign</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead><tbody>
+  {% for p in pledges %}<tr><td>{{ p.member }}{% if p.phone %} <span class="muted mono" style="font-size:.72rem">{{ p.phone }}</span>{% endif %}</td><td>{{ p.campaign }}</td><td>{{ p.status }}</td><td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td><td class="num mono">{{ p.paid|floatformat:0|intcomma }}</td><td class="num mono">{{ p.outstanding|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+<p class="help" style="margin-top:1rem">Contact numbers are partly masked for privacy. This is a read-only view; for changes, contact the treasurer.</p>
+<style>.pbar{height:7px;background:var(--line);border-radius:4px;overflow:hidden}.pbar span{display:block;height:100%;background:var(--forest,#1f5f4f)}.subrow td{color:var(--muted)}</style>
+{% endblock %}

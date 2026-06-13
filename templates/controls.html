@@ -55,18 +55,19 @@
 </div></div>
 
 <div class="card" style="margin-top:1.2rem"><div class="hd">Possible duplicate expenses</div><div class="bd">
-  <table class="ledger compact"><thead><tr><th>Date</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
-  {% for d in dup_expenses %}<tr><td class="mono">{{ d.date|date:"M Y" }}</td><td>{{ d.fund }}</td><td>{{ d.description }} <span class="muted">· {{ d.claimant }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
+  <table class="ledger compact"><thead><tr><th>Sabbath</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
+  {% for d in dup_expenses %}<tr><td class="mono">{{ d.sabbath|date:"d/m/y" }}</td><td>{{ d.fund }}</td><td>{{ d.description }} <span class="muted">· {{ d.claimant }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
   {% empty %}<tr><td colspan="5" class="empty">No duplicate expenses detected.</td></tr>{% endfor %}
   </tbody></table>
+  <div class="help" style="margin-top:.6rem">Flags same-Sabbath repeats with the same fund, claimant, amount and description. Bank / M-Pesa charges are excluded.</div>
 </div></div>
 
 <div class="card" style="margin-top:1.2rem"><div class="hd">Possible duplicate offerings</div><div class="bd">
-  <table class="ledger compact"><thead><tr><th>Date</th><th>Payer</th><th>Reference</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
-  {% for d in dup_offerings %}<tr><td class="mono">{{ d.date|date:"d/m/y" }}</td><td>{{ d.payer }}</td><td class="mono muted">{{ d.reference }}</td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
-  {% empty %}<tr><td colspan="5" class="empty">No duplicate offerings detected.</td></tr>{% endfor %}
+  <table class="ledger compact"><thead><tr><th>Date</th><th>Payer</th><th>Reference</th><th>Channel</th><th>Signal</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
+  {% for d in dup_offerings %}<tr><td class="mono">{{ d.date|date:"d/m/y" }}</td><td>{{ d.payer }}</td><td class="mono muted">{{ d.reference }}</td><td>{% if d.channel == 'BANK' %}<span class="pill pill-blue">Bank/M-Pesa</span>{% elif d.channel == 'CASH' %}<span class="pill pill-green">Cash</span>{% elif d.channel == 'envelope' %}<span class="pill pill-grey">Envelope</span>{% else %}—{% endif %}</td><td><span class="muted" style="font-size:.78rem">{{ d.by }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
+  {% empty %}<tr><td colspan="7" class="empty">No duplicate offerings detected.</td></tr>{% endfor %}
   </tbody></table>
-  <div class="help" style="margin-top:.6rem">Bank statement imports are de-duplicated automatically by their unique bank reference, so re-importing a statement never double-counts.</div>
+  <div class="help" style="margin-top:.6rem">Flags a repeated M-Pesa reference, the same giver + amount on the <strong>same channel</strong> within 3 days, or a re-typed envelope (same giver + amount on one Sabbath). Bank statement imports are de-duplicated automatically by their unique bank reference.</div>
 </div></div>
 <style>
 .lock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.6rem}

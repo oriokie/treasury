@@ -12,7 +12,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction as db_tx
 
 from core.models import SiteConfig, SmsLog
-from core.roles import TREASURER, ASSISTANT, AUDITOR, ALL_ROLES
+from core.roles import TREASURER, ASSISTANT, AUDITOR, LEADER, ALL_ROLES
 from core.utils import sabbath_week_of
 from departments.models import Department, DevelopmentGroup
 from members.models import Member, MemberAlias
@@ -152,6 +152,14 @@ class Command(BaseCommand):
             PettyCashTopUp.objects.all().delete()
             RecurringExpense.objects.all().delete()
             StaffAdvance.objects.all().delete()        # PROTECT -> dept; remove before depts
+            # pledges reference members (PROTECT) and transactions, so clear them
+            # before those — pledges are informational and safe to wipe on reseed
+            from pledges.models import (PledgePayment, Pledge, PledgeCampaign,
+                                        PledgeReminderLog)
+            PledgeReminderLog.objects.all().delete()
+            PledgePayment.objects.all().delete()
+            Pledge.objects.all().delete()
+            PledgeCampaign.objects.all().delete()
             Expense.objects.all().delete()
             Transaction.objects.all().delete()
             BankAccount.objects.all().delete()
@@ -220,6 +228,18 @@ class Command(BaseCommand):
             funds[acct_name] = d
             added += 1
         self.stdout.write(self.style.SUCCESS(f"Chart-of-accounts funds: {added}"))
+
+        # a demo department leader: read-only, scoped to one development fund so
+        # the dev-group view is exercised. Falls back to any fund if needed.
+        from departments.models import DepartmentLeadership
+        leader = self._user("leader", "Leah", "Leader", "leader123", LEADER)
+        lead_dept = (Department.objects.filter(category=C.DEVELOPMENT,
+                                               parent__isnull=True).first()
+                     or Department.objects.filter(parent__isnull=True).first())
+        if lead_dept:
+            DepartmentLeadership.objects.get_or_create(user=leader, department=lead_dept)
+            self.stdout.write(self.style.SUCCESS(
+                f"Department leader: leader / leader123  (sees {lead_dept.name})"))
 
         # demo annual budgets for the current year (so Budget vs Actual has data)
         from departments.models import Budget, BudgetLine, lcb_fund

@@ -42,7 +42,9 @@ class UserEditRoleView(TreasurerRequiredMixin, View):
     def get(self, request, pk):
         user = get_object_or_404(User, pk=pk)
         current = next(iter(user_roles(user)), "Assistant")
-        form = EditRoleForm(initial={"role": current, "active": user.is_active})
+        led = list(user.led_departments.values_list("department_id", flat=True))
+        form = EditRoleForm(initial={"role": current, "active": user.is_active,
+                                     "led_departments": led})
         return self._render(request, user, form)
 
     def post(self, request, pk):
@@ -53,6 +55,7 @@ class UserEditRoleView(TreasurerRequiredMixin, View):
             user.groups.set([group])
             user.is_active = form.cleaned_data["active"]
             user.save()
+            form.sync_leaderships(user)
             messages.success(request, f"Updated {user.username}.")
             return redirect("user_list")
         return self._render(request, user, form)

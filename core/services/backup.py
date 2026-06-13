@@ -12,6 +12,50 @@ from django.conf import settings
 from django.http import FileResponse, HttpResponse
 
 
+def database_backup_bytes():
+    """Produce the raw backup as (filename, bytes), independent of any HTTP
+    response. Reused by the download view and the automated backup command.
+    Returns (filename, data) on success or raises RuntimeError with a message."""
+    import os
+    import subprocess
+    db = settings.DATABASES["default"]
+    engine = db["ENGINE"]
+    stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    if engine.endswith("sqlite3"):
+        db_path = db["NAME"]
+        if db_path is None or str(db_path).startswith("file:") \
+                or not os.path.exists(db_path):
+            raise RuntimeError("No on-disk database to back up.")
+        with open(db_path, "rb") as fh:
+            return f"treasury-backup-{stamp}.sqlite3", fh.read()
+
+    if engine.endswith("mysql"):
+        cmd = ["mysqldump", "--single-transaction", "--routines",
+               "-h", db.get("HOST") or "localhost",
+               "-P", str(db.get("PORT") or "3306"),
+               "-u", db["USER"], db["NAME"]]
+        env = dict(os.environ, MYSQL_PWD=db.get("PASSWORD", ""))
+        ext = "sql"
+    elif engine.endswith("postgresql"):
+        cmd = ["pg_dump", "-h", db.get("HOST") or "localhost",
+               "-p", str(db.get("PORT") or "5432"),
+               "-U", db["USER"], db["NAME"]]
+        env = dict(os.environ, PGPASSWORD=db.get("PASSWORD", ""))
+        ext = "sql"
+    else:
+        raise RuntimeError("Backup isn't supported for this database engine.")
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, env=env, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise RuntimeError(f"Could not run the database backup tool ({e}).")
+    if proc.returncode != 0:
+        raise RuntimeError("The database backup tool reported an error: "
+                           + (proc.stderr.decode("utf-8", "replace")[:300] or "unknown"))
+    return f"treasury-backup-{stamp}.{ext}", proc.stdout
+
+
 def database_backup_response():
     """Download a database backup, appropriate to the engine in use:
 
@@ -23,50 +67,16 @@ def database_backup_response():
     standard cPanel/WHM server). The Excel data export is always available as a
     fallback regardless of engine.
     """
-    import os
-    import subprocess
-    db = settings.DATABASES["default"]
-    engine = db["ENGINE"]
-    stamp = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    if engine.endswith("sqlite3"):
-        db_path = db["NAME"]
-        if not isinstance(db_path, (str, bytes)) or str(db_path).startswith("file:") \
-                or not os.path.exists(db_path):
-            return HttpResponse("No on-disk database to back up.",
-                                content_type="text/plain")
-        f = open(db_path, "rb")
-        return FileResponse(f, as_attachment=True,
-                            filename=f"treasury-backup-{stamp}.sqlite3")
-
-    if engine.endswith("mysql"):
-        cmd = ["mysqldump", "--single-transaction", "--routines",
-               "-h", db.get("HOST") or "localhost",
-               "-P", str(db.get("PORT") or "3306"),
-               "-u", db["USER"], db["NAME"]]
-        env = dict(os.environ, MYSQL_PWD=db.get("PASSWORD", ""))
-    elif engine.endswith("postgresql"):
-        cmd = ["pg_dump", "-h", db.get("HOST") or "localhost",
-               "-p", str(db.get("PORT") or "5432"),
-               "-U", db["USER"], db["NAME"]]
-        env = dict(os.environ, PGPASSWORD=db.get("PASSWORD", ""))
-    else:
-        return HttpResponse("Backup isn't supported for this database engine; "
-                            "use the Excel data export instead.",
-                            content_type="text/plain")
-
     try:
-        proc = subprocess.run(cmd, capture_output=True, env=env, timeout=300)
-    except (OSError, subprocess.SubprocessError) as e:
-        return HttpResponse(
-            f"Could not run the database backup tool ({e}). The Excel data "
-            f"export is available as an alternative.", content_type="text/plain")
-    if proc.returncode != 0:
-        return HttpResponse(
-            "The database backup tool reported an error. The Excel data export "
-            "is available as an alternative.", content_type="text/plain")
-    resp = HttpResponse(proc.stdout, content_type="application/sql")
-    resp["Content-Disposition"] = f'attachment; filename="treasury-backup-{stamp}.sql"'
+        filename, data = database_backup_bytes()
+    except RuntimeError as e:
+        return HttpResponse(f"{e} The Excel data export is available as an "
+                            f"alternative.", content_type="text/plain")
+    if filename.endswith(".sqlite3"):
+        import io
+        return FileResponse(io.BytesIO(data), as_attachment=True, filename=filename)
+    resp = HttpResponse(data, content_type="application/sql")
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp
 
 

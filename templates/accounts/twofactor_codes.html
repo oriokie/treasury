@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Recovery codes{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles"><h1>{% if regenerated %}New recovery codes{% else %}Save your recovery codes{% endif %}</h1>
+  <div class="ws-sub">Each code works once if you can't reach your authenticator</div></div></div>
+<div class="card" style="max-width:480px"><div class="bd">
+  <div class="alert alert-warn">Store these somewhere safe and private. They are shown <strong>once</strong>. Anyone with a code and your password can sign in.</div>
+  <div style="font-family:var(--mono,monospace);font-size:1.05rem;line-height:2;columns:2;margin:1rem 0">
+    {% for c in codes %}<div>{{ c }}</div>{% endfor %}
+  </div>
+  <a class="btn" href="/">Done — I've saved them</a>
+</div></div>
+{% endblock %}

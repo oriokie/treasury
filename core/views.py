@@ -16,6 +16,15 @@ from .utils import parse_period
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "dashboard.html"
 
+    def dispatch(self, request, *args, **kwargs):
+        # a departmental leader has no business on the full office dashboard —
+        # send them to their own scoped view
+        from core.roles import is_leader
+        if is_leader(request.user):
+            from django.shortcuts import redirect
+            return redirect("leader_dashboard")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         start, end = parse_period(self.request)
@@ -88,6 +97,56 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                                                 deadline__gte=_today - __import__("datetime").timedelta(days=60))
         ctx["remit_overdue"] = [d for d in _rd if d.is_overdue]
         ctx["remit_due_soon"] = [d for d in _rd if d.is_due_soon]
+
+        # --- pledge attention signals -----------------------------------------
+        # Pledges are informational, but drafts awaiting approval and lapsed/
+        # overdue pledges are things a treasurer should act on.
+        try:
+            from pledges.models import Pledge
+            ctx["pledge_draft_count"] = Pledge.objects.filter(
+                status=Pledge.Status.DRAFT).count()
+            _open = Pledge.objects.filter(
+                status__in=[Pledge.Status.ACTIVE, Pledge.Status.LAPSED]
+            ).select_related("member", "campaign")
+            ctx["pledge_overdue_count"] = sum(1 for p in _open if p.is_overdue)
+        except Exception:
+            ctx["pledge_draft_count"] = 0
+            ctx["pledge_overdue_count"] = 0
+
+        # --- consolidated "needs attention" list ------------------------------
+        # One place that surfaces everything quietly rotting, each with a count,
+        # tone and link. Only non-zero items appear.
+        from django.urls import reverse as _rev
+        attention = []
+        if ctx["queue_count"]:
+            attention.append({"label": "transactions need allocating",
+                "count": ctx["queue_count"], "tone": "warn",
+                "url": _rev("queue"), "icon": "◷"})
+        if ctx["pending_expenses"]:
+            attention.append({"label": "expenses awaiting approval",
+                "count": ctx["pending_expenses"], "tone": "warn",
+                "url": _rev("expense_list") + "?status=PENDING", "icon": "✓"})
+        if ctx["pledge_draft_count"]:
+            attention.append({"label": "pledges awaiting approval",
+                "count": ctx["pledge_draft_count"], "tone": "warn",
+                "url": _rev("pledge_list") + "?status=DRAFT", "icon": "♡"})
+        if ctx["remit_overdue"]:
+            attention.append({"label": "trust remittance(s) overdue",
+                "count": len(ctx["remit_overdue"]), "tone": "danger",
+                "url": _rev("remittance_dashboard"), "icon": "⚠"})
+        elif ctx["remit_due_soon"]:
+            attention.append({"label": "remittance(s) due soon",
+                "count": len(ctx["remit_due_soon"]), "tone": "warn",
+                "url": _rev("remittance_dashboard"), "icon": "⏲"})
+        if ctx["pledge_overdue_count"]:
+            attention.append({"label": "pledges overdue (past end date)",
+                "count": ctx["pledge_overdue_count"], "tone": "muted",
+                "url": _rev("pledge_list") + "?status=LAPSED", "icon": "♡"})
+        if ctx["dup_count"]:
+            attention.append({"label": "possible duplicate(s) to review",
+                "count": ctx["dup_count"], "tone": "muted",
+                "url": _rev("member_duplicates"), "icon": "⧉"})
+        ctx["attention"] = attention
 
         # multi-year trend: prior years (reference) + the current year so far
         import json, datetime as _dt
@@ -499,35 +558,50 @@ class ControlsView(TreasurerRequiredMixin, View):
 
 
 def _duplicate_expenses():
-    """Likely duplicate expenses: same month + same person paid (claimant) + same
-    amount + same fund + same description. Including the claimant and widening the
-    date to the month catches re-entered claims without flagging the common case of
-    several people legitimately paid the same amount for the same thing. Bank /
-    M-Pesa charges are excluded — they're naturally identical across many payments
-    and would flood the list with false positives."""
+    """Likely duplicate expenses: same Sabbath week + same person paid (claimant)
+    + same amount + same fund + same description. Grouping by the Sabbath (rather
+    than the whole month) keeps the flag tight — only re-entries within the same
+    counting week show up. Bank / M-Pesa charges are excluded — they're naturally
+    identical across many payments and would flood the list with false positives."""
     from django.db.models import Count, Min, Max
-    from django.db.models.functions import TruncMonth
     from cashbook.models import Expense
-    groups = (Expense.objects.exclude(category=Expense.Category.BANK_CHARGE)
-              .annotate(month=TruncMonth("date"))
-              .values("month", "amount", "department__name", "description", "claimant")
-              .annotate(n=Count("id"), first=Min("date"), last=Max("date"))
-              .filter(n__gt=1).order_by("-month"))
+    from core.models import service_sabbath_for
+    # group in Python by the service Sabbath of each expense's date, since the
+    # Sabbath is derived (not a stored column on Expense)
+    rows = list(Expense.objects.exclude(category=Expense.Category.BANK_CHARGE)
+                .values("id", "date", "amount", "department__name",
+                        "description", "claimant"))
+    buckets = {}
+    for r in rows:
+        sab = service_sabbath_for(r["date"])
+        key = (sab, r["amount"], r["department__name"], r["description"],
+               r["claimant"])
+        buckets.setdefault(key, []).append(r)
     out = []
-    for g in groups[:50]:
-        out.append({"date": g["last"], "first": g["first"], "amount": g["amount"],
-                    "fund": g["department__name"], "description": g["description"],
-                    "claimant": g["claimant"] or "—", "count": g["n"]})
-    return out
+    for key, grp in buckets.items():
+        if len(grp) < 2:
+            continue
+        sab, amount, fund, desc, claimant = key
+        dates = sorted(r["date"] for r in grp)
+        out.append({"date": dates[-1], "first": dates[0], "amount": amount,
+                    "fund": fund, "description": desc,
+                    "claimant": claimant or "—", "count": len(grp),
+                    "sabbath": sab})
+    out.sort(key=lambda c: c["date"], reverse=True)
+    return out[:50]
 
 
 def _duplicate_offerings():
-    """Likely duplicate offerings, by two signals:
+    """Likely duplicate offerings, by three signals:
 
     1. Same reference (M-Pesa receipt / paybill ref) appearing on more than one
        non-excluded credit — a near-certain double import of the same payment.
-    2. Same giver (order-insensitive name match) with the same amount within
-       3 days — a probable re-entry.
+    2. Same giver (order-insensitive name match) + same amount + **same channel**
+       within 3 days — a probable re-entry. Requiring the same channel avoids
+       flagging a giver who legitimately gave the same amount once by cash and
+       once by M-Pesa.
+    3. Same giver + same amount appearing more than once in the **envelopes** for
+       the same Sabbath — a re-typed envelope.
 
     Envelope detail rows of bank giving (excluded_from_income) and reversals are
     duplicates by design and are not flagged; the 3-day window avoids flagging a
@@ -551,19 +625,20 @@ def _duplicate_offerings():
         seen_refs.add(g["reference"])
         out.append({"date": g["last"], "first": g["first"], "amount": g["amount"],
                     "payer": g["payer"] or "—", "count": g["n"],
-                    "reference": g["reference"], "by": "reference"})
+                    "reference": g["reference"], "by": "reference",
+                    "channel": ""})
 
-    # 2) same giver + same amount within 3 days (skip refs already caught above)
+    # 2) same giver + same amount + same CHANNEL within 3 days (skip refs caught above)
     rows = list(base.exclude(payer_name="")
-                .values("date", "amount", "payer_name", "reference"))
+                .values("date", "amount", "payer_name", "reference", "channel"))
     byk = {}
     for r in rows:
         if r["reference"] and r["reference"] in seen_refs:
             continue
         nk = name_key(r["payer_name"])
         if nk:
-            byk.setdefault((nk, r["amount"]), []).append(r)
-    for (nk, amt), grp in byk.items():
+            byk.setdefault((nk, r["amount"], r["channel"]), []).append(r)
+    for (nk, amt, channel), grp in byk.items():
         if len(grp) < 2:
             continue
         grp.sort(key=lambda r: r["date"])
@@ -577,15 +652,43 @@ def _duplicate_offerings():
                 cluster = [cur]
         if len(cluster) > 1:
             out.append(_off_cluster(cluster))
+
+    # 3) duplicate envelopes: same giver + same amount on the same Sabbath
+    out.extend(_duplicate_envelopes())
+
     out.sort(key=lambda c: c["date"], reverse=True)
     return out[:80]
+
+
+def _duplicate_envelopes():
+    """Same giver + same total on the same Sabbath, recorded as more than one
+    envelope — a probable re-typed envelope."""
+    from envelopes.models import Envelope
+    from members.services.matching import name_key
+    rows = list(Envelope.objects.values("date", "total", "contributor_name",
+                                         "receipt_no"))
+    byk = {}
+    for r in rows:
+        nk = name_key(r["contributor_name"])
+        if nk and r["total"]:
+            byk.setdefault((nk, r["total"], r["date"]), []).append(r)
+    out = []
+    for (nk, amt, date), grp in byk.items():
+        if len(grp) < 2:
+            continue
+        out.append({"date": date, "first": date, "amount": amt,
+                    "payer": grp[0]["contributor_name"] or "—",
+                    "count": len(grp), "by": "envelope",
+                    "reference": ", ".join(r["receipt_no"] for r in grp if r["receipt_no"])[:40] or "—",
+                    "channel": "envelope"})
+    return out
 
 
 def _off_cluster(c):
     return {"date": c[-1]["date"], "first": c[0]["date"], "amount": c[0]["amount"],
             "payer": c[0]["payer_name"], "count": len(c),
             "reference": next((r["reference"] for r in c if r["reference"]), "—"),
-            "by": "name+amount"}
+            "by": "name+amount", "channel": c[0].get("channel", "")}
 
 
 class ExecutiveDashboardView(ReadAccessMixin, View):

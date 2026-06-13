@@ -1,0 +1,30 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Send pledge reminders · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles"><h1>Send pledge reminders</h1><div class="ws-sub">Gentle reminders to members with an outstanding pledge</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a></div></div>
+
+{% if not sms_enabled and not whatsapp_enabled %}
+<div class="alert alert-warn" style="margin-bottom:1rem">SMS and WhatsApp are both turned off in Settings → Messaging. Turn one on to send reminders.</div>
+{% endif %}
+
+<form method="get" class="ws-toolbar"><div class="f"><label>Campaign</label><select name="campaign" class="field--select" onchange="this.form.submit()"><option value="">All active</option>{% for c in campaigns %}<option value="{{ c.id }}" {% if campaign and campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div></form>
+
+<div class="ws-table"><table class="ledger compact">
+  <thead><tr><th>Member</th><th>Campaign</th><th>Phone</th><th class="num">Outstanding</th></tr></thead><tbody>
+  {% for p in targets %}
+    <tr><td>{{ p.member.name }}</td><td>{{ p.campaign.name }}</td><td class="mono">{{ p.member.receipt_phone|default:"— none —" }}</td><td class="num mono row-debit">{{ p.outstanding|floatformat:0|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="4"><div class="ws-empty"><div class="we-title">No one to remind</div><div class="we-hint">Everyone with a pledge is paid up, opted out, or has no balance.</div></div></td></tr>{% endfor %}
+  </tbody></table></div>
+
+{% if targets %}
+<form method="post" style="margin-top:1rem">{% csrf_token %}
+  <input type="hidden" name="campaign" value="{{ campaign.id|default:'' }}">
+  <div class="btn-row">
+    {% if sms_enabled %}<button class="btn" name="channel" value="SMS" onclick="return confirm('Send an SMS reminder to all {{ targets|length }} member(s) listed?');">✉ Send SMS to all ({{ targets|length }})</button>{% endif %}
+    {% if whatsapp_enabled %}<button class="btn btn-ghost" name="channel" value="WHATSAPP" onclick="return confirm('Send a WhatsApp reminder to all {{ targets|length }} member(s)?');">Send WhatsApp to all</button>{% endif %}
+  </div>
+</form>
+<p class="help" style="margin-top:.6rem">Members who opted out of reminders or have no phone on file are automatically skipped. Each reminder is logged.</p>
+{% endif %}
+{% endblock %}

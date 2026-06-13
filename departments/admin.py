@@ -19,3 +19,14 @@ class DevelopmentGroupAdmin(admin.ModelAdmin):
 from .models import Budget, BudgetLine
 admin.site.register(Budget)
 admin.site.register(BudgetLine)
+
+
+from .models import DepartmentLeadership
+
+
+@admin.register(DepartmentLeadership)
+class DepartmentLeadershipAdmin(admin.ModelAdmin):
+    list_display = ("user", "department", "created_at")
+    list_filter = ("department",)
+    search_fields = ("user__username", "department__name")
+    raw_id_fields = ("user", "department")

@@ -179,3 +179,86 @@ class RemittanceCalendarTests(TestCase):
             deadline=dt.date(2026, 7, 15))  # 2026-07-15 is a Wednesday
         self.assertEqual(d.deadline.weekday(), 2)
         self.assertEqual(d.reporting_sabbath, dt.date(2026, 7, 11))  # prev Saturday
+
+
+class RemittanceCalendarAutoTests(TestCase):
+    """Item 3: default deadline is the 1st of the following month, and periods
+    auto-mark as remitted when a remitted batch covers them."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        self.u = User.objects.create_user("rca", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+
+    def test_generate_defaults_to_first_of_next_month(self):
+        from django.test import Client
+        from cashbook.models import RemittanceDeadline
+        c = Client(); c.force_login(self.u)
+        c.post("/reports/trust/remittance/calendar/generate/", {"year": "2031"})
+        jan = RemittanceDeadline.objects.get(year=2031, period_month=1)
+        self.assertEqual(jan.deadline.day, 1)
+        self.assertEqual(jan.deadline.month, 2)
+
+    def test_auto_mark_remitted_from_batch(self):
+        import datetime as dt
+        from django.test import Client
+        from cashbook.models import RemittanceDeadline, RemittanceBatch
+        c = Client(); c.force_login(self.u)
+        c.post("/reports/trust/remittance/calendar/generate/", {"year": "2031"})
+        RemittanceBatch.objects.create(status="REMITTED",
+            period_start=dt.date(2031, 2, 1), period_end=dt.date(2031, 2, 28),
+            remitted_at=dt.datetime(2031, 3, 1), created_by=self.u)
+        c.get("/reports/trust/remittance/calendar/?year=2031")
+        self.assertTrue(RemittanceDeadline.objects.get(year=2031, period_month=2).remitted)
+        self.assertFalse(RemittanceDeadline.objects.get(year=2031, period_month=1).remitted)
+
+
+class DuplicateDetectionTests(TestCase):
+    """Item 2: offerings flagged only within the same channel; envelope
+    duplicates by giver+amount+Sabbath; expenses by Sabbath."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        self.u = User.objects.create_superuser("dd", password="x")
+        self.d = Department.objects.create(name="Tithe", fund_type="TRUST",
+                                           is_trust=True, category="OFFERING")
+
+    def test_same_channel_flagged_cross_channel_not(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        from core.views import _duplicate_offerings
+        # cross-channel same giver/amount — must NOT flag
+        Transaction.objects.create(date=dt.date(2026, 6, 8), channel="CASH",
+            direction="CREDIT", amount=Decimal("500"), department=self.d,
+            payer_name="Cross C", allocation_status="MANUAL", confirmed=True)
+        Transaction.objects.create(date=dt.date(2026, 6, 8), channel="BANK",
+            direction="CREDIT", amount=Decimal("500"), department=self.d,
+            payer_name="Cross C", allocation_status="MANUAL", confirmed=True,
+            core_ref="CC9")
+        # same-channel same giver/amount — must flag
+        Transaction.objects.create(date=dt.date(2026, 6, 8), channel="CASH",
+            direction="CREDIT", amount=Decimal("700"), department=self.d,
+            payer_name="Same C", allocation_status="MANUAL", confirmed=True)
+        Transaction.objects.create(date=dt.date(2026, 6, 9), channel="CASH",
+            direction="CREDIT", amount=Decimal("700"), department=self.d,
+            payer_name="Same C", allocation_status="MANUAL", confirmed=True)
+        payers = [x["payer"] for x in _duplicate_offerings()]
+        self.assertNotIn("CROSS C", payers)
+        self.assertIn("SAME C", payers)
+
+    def test_envelope_duplicate_flagged(self):
+        import datetime as dt
+        from decimal import Decimal
+        from envelopes.models import Envelope
+        from core.views import _duplicate_envelopes
+        sat = dt.date(2026, 6, 6)
+        Envelope.objects.create(date=sat, contributor_name="Env Giver",
+            receipt_no="EV1", total=Decimal("1000"), recorded_by=self.u)
+        Envelope.objects.create(date=sat, contributor_name="Env Giver",
+            receipt_no="EV2", total=Decimal("1000"), recorded_by=self.u)
+        flagged = [x for x in _duplicate_envelopes() if x["payer"] == "ENV GIVER"]
+        self.assertEqual(len(flagged), 1)
+        self.assertEqual(flagged[0]["count"], 2)

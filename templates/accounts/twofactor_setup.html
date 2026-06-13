@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Set up two-factor · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles"><h1>Set up two-factor authentication</h1>
+  <div class="ws-sub">Protect this account with a code from your phone</div></div></div>
+<div class="card" style="max-width:560px"><div class="bd">
+  <ol style="line-height:1.9;padding-left:1.1rem">
+    <li>Install an authenticator app (Google Authenticator, Authy, Microsoft Authenticator).</li>
+    <li>Scan this QR code, or enter the key manually.</li>
+    <li>Enter the 6-digit code it shows to confirm.</li>
+  </ol>
+  {% if qr %}<div style="text-align:center;margin:1rem 0"><img src="{{ qr }}" alt="2FA QR code" style="width:200px;height:200px;border:1px solid var(--line);border-radius:8px"></div>{% endif %}
+  <div style="text-align:center;margin-bottom:1rem">
+    <div class="muted" style="font-size:.8rem">Manual key</div>
+    <code style="font-size:1rem;letter-spacing:.05em;word-break:break-all">{{ secret }}</code>
+  </div>
+  <form method="post">{% csrf_token %}
+    <div class="form-row"><label>6-digit code</label>
+      <input name="token" class="field" inputmode="numeric" autocomplete="one-time-code"
+             pattern="[0-9 ]*" placeholder="123456" autofocus style="width:160px;font-size:1.2rem;letter-spacing:.2em"></div>
+    <div class="btn-row" style="margin-top:.8rem"><button class="btn">Confirm &amp; turn on</button>
+      <a class="btn btn-ghost" href="/">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

@@ -537,3 +537,72 @@ class GithubTokenAuthTests(TestCase):
     def test_no_token_no_auth_header(self):
         headers, rel = self._capture_headers()
         self.assertNotIn("Authorization", headers)
+
+
+class DashboardAttentionTests(TestCase):
+    """The dashboard 'needs attention' list surfaces actionable items with
+    correct counts and resolvable links, and stays empty when all is clear."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        self.u = User.objects.create_user("att", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        self.u.groups.add(g)
+
+    def _ctx(self):
+        from django.test import RequestFactory
+        from core.views import DashboardView
+        req = RequestFactory().get("/")
+        req.user = self.u
+        v = DashboardView(); v.request = req
+        return v.get_context_data()
+
+    def test_empty_when_nothing_pending(self):
+        ctx = self._ctx()
+        # a clean demo-less DB should have no attention items
+        self.assertEqual(ctx["attention"], [])
+
+    def test_pending_expense_surfaces(self):
+        from cashbook.models import Expense
+        from departments.models import Department
+        import datetime as dt
+        from decimal import Decimal
+        d = Department.objects.create(name="X", fund_type="LOCAL", category="OFFERING")
+        Expense.objects.create(date=dt.date(2026, 6, 1), department=d,
+            description="t", amount=Decimal("10"), status="PENDING",
+            recorded_by=self.u)
+        labels = [a["label"] for a in self._ctx()["attention"]]
+        self.assertTrue(any("awaiting approval" in l for l in labels))
+
+    def test_pledge_draft_surfaces(self):
+        from pledges.models import PledgeCampaign, Pledge
+        from members.models import Member
+        from decimal import Decimal
+        m = Member.objects.create(name="D Giver")
+        camp = PledgeCampaign.objects.create(name="C", status="ACTIVE")
+        Pledge.objects.create(campaign=camp, member=m, amount=Decimal("100"),
+                              status="DRAFT")
+        ctx = self._ctx()
+        self.assertEqual(ctx["pledge_draft_count"], 1)
+        self.assertTrue(any("pledges awaiting approval" in a["label"]
+                            for a in ctx["attention"]))
+
+    def test_all_attention_links_resolve(self):
+        # every link we might emit must be a real, resolvable path
+        from django.urls import resolve
+        from cashbook.models import Expense
+        from departments.models import Department
+        from pledges.models import PledgeCampaign, Pledge
+        from members.models import Member
+        import datetime as dt
+        from decimal import Decimal
+        d = Department.objects.create(name="Y", fund_type="LOCAL", category="OFFERING")
+        Expense.objects.create(date=dt.date(2026, 6, 1), department=d, description="t",
+            amount=Decimal("10"), status="PENDING", recorded_by=self.u)
+        m = Member.objects.create(name="E Giver")
+        camp = PledgeCampaign.objects.create(name="C2", status="ACTIVE")
+        Pledge.objects.create(campaign=camp, member=m, amount=Decimal("100"),
+                              status="DRAFT")
+        for a in self._ctx()["attention"]:
+            path = a["url"].split("?")[0]
+            self.assertTrue(resolve(path))  # raises if unresolvable

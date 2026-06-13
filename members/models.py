@@ -23,6 +23,19 @@ def name_key(raw):
     return " ".join(sorted(n.split()))
 
 
+def mask_phone(raw, visible=3):
+    """Mask a phone number for privacy, keeping only the last `visible` digits,
+    e.g. '254712345678' -> '*********678'. Used when a departmental leader views
+    member/pledge data — they should not see full contact numbers. Returns '' for
+    empty input."""
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    if len(s) <= visible:
+        return "*" * len(s)
+    return "*" * (len(s) - visible) + s[-visible:]
+
+
 class Member(models.Model):
     class Group(models.TextChoices):
         YOUTH = "YOUTH", "Youth"

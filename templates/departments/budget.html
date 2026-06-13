@@ -8,6 +8,7 @@
     {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
   </select>
   <a class="btn btn-sm btn-ghost" href="{% url 'report_budget_board' %}?year={{ year }}">📋 Board summary</a>
+  <a class="btn btn-sm btn-ghost" href="{% url 'budget_template_download' %}?year={{ year }}">⤓ Download template</a>
   <a class="btn btn-sm btn-ghost" href="{% url 'bulk_fund_import' %}">⬆ Bulk import</a></form></div>
 
 <div class="info-panel">

@@ -1,0 +1,56 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Pledges · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Pledges</h1><div class="ws-sub">Commitments tracked alongside the books — never counted as income until received</div></div>
+  <div class="ws-actions">
+    {% if can_enter_data %}<a class="btn" href="{% url 'pledge_create' %}">＋ New pledge</a>{% endif %}
+    {% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_create' %}">＋ Campaign</a>{% endif %}
+  </div>
+</div>
+
+<div class="ws-summary">
+  <div class="ws-metric is-primary"><span class="wm-l">Total pledged</span><span class="wm-v"><span class="cur">KES</span>{{ total_pledged|floatformat:0|intcomma }}</span><span class="wm-sub">{{ pledge_count }} pledge{{ pledge_count|pluralize }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Received</span><span class="wm-v"><span class="cur">KES</span>{{ total_received|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-warn"><span class="wm-l">Outstanding</span><span class="wm-v"><span class="cur">KES</span>{{ total_outstanding|floatformat:0|intcomma }}</span></div>
+  {% if draft_count %}<div class="ws-metric"><span class="wm-l">Awaiting approval</span><span class="wm-v">{{ draft_count }}</span></div>{% endif %}
+</div>
+
+{% if is_treasurer %}
+<div class="btn-row" style="margin-bottom:1rem">
+  <form method="post" action="{% url 'pledge_auto_match_all' %}" onsubmit="return confirm('Scan all active pledges and match any existing contributions from those givers? This only links existing giving — it never creates money.');">{% csrf_token %}<button class="btn btn-sm btn-ghost">⚡ Auto-match contributions</button></form>
+  {% if suggestion_count %}<a class="btn btn-sm" href="{% url 'pledge_suggestions' %}">🔎 Review {{ suggestion_count }} match suggestion{{ suggestion_count|pluralize }}</a>{% endif %}
+  {% if draft_count %}<a class="btn btn-sm btn-ghost" href="{% url 'pledge_list' %}?status=DRAFT">📝 {{ draft_count }} draft{{ draft_count|pluralize }} to approve</a>{% endif %}
+  <a class="btn btn-sm btn-ghost" href="{% url 'pledge_reminder_batch' %}">✉ Send reminders</a>
+  <a class="btn btn-sm btn-ghost" href="{% url 'pledge_report' %}">📊 Reports</a>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:1rem"><div class="hd">Campaigns</div><div class="bd" style="padding:0">
+  <table class="ledger compact"><thead><tr><th>Campaign</th><th>Status</th><th class="num">Goal</th><th class="num">Pledged</th><th class="num">Received</th><th>Progress</th></tr></thead><tbody>
+  {% for c in campaigns %}
+    <tr>
+      <td><a class="link" href="{% url 'pledge_campaign_detail' c.id %}">{{ c.name }}</a></td>
+      <td><span class="pill {% if c.status == 'ACTIVE' %}pill-green{% elif c.status == 'CLOSED' %}pill-grey{% else %}pill-amber{% endif %}">{{ c.get_status_display }}</span></td>
+      <td class="num mono">{{ c.goal_amount|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ c.total_pledged|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ c.total_received|floatformat:0|intcomma }}</td>
+      <td style="min-width:140px"><div class="pbar"><span style="width:{{ c.pct_received }}%"></span></div><span class="muted" style="font-size:.72rem">{{ c.pct_received }}% received</span></td>
+    </tr>
+  {% empty %}<tr><td colspan="6"><div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No campaigns yet</div><div class="we-hint">{% if is_treasurer %}<a href="{% url 'pledge_campaign_create' %}">Create a campaign</a> to start tracking pledges.{% else %}Campaigns will appear here.{% endif %}</div></div></td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+
+{% if overdue %}
+<div class="card"><div class="hd">Overdue pledges</div><div class="bd" style="padding:0">
+  <table class="ledger compact"><thead><tr><th>Member</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Outstanding</th><th>Due</th><th></th></tr></thead><tbody>
+  {% for p in overdue %}
+    <tr><td>{{ p.member.name }}</td><td>{{ p.campaign.name }}</td><td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td><td class="num mono row-debit">{{ p.outstanding|floatformat:0|intcomma }}</td><td class="mono">{{ p.end_date|date:"d/m/y" }}</td><td><a class="link" href="{% url 'pledge_detail' p.id %}">view</a></td></tr>
+  {% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+<p class="help" style="margin-top:1rem">Pledges are <strong>commitments, not income</strong>. They never change a fund balance — money is recognised only through normal contributions, which are then matched here. This keeps the accounts on a clean cash basis.</p>
+<style>.pbar{height:7px;background:var(--line);border-radius:4px;overflow:hidden;margin-bottom:.2rem}.pbar span{display:block;height:100%;background:var(--forest,#1f5f4f)}</style>
+{% endblock %}

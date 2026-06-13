@@ -1,0 +1,45 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}My departments · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>My departments</h1>
+    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · read-only overview</div></div>
+  <form method="get" class="btn-row" style="align-items:flex-end">
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+    <button class="btn btn-sm">Apply</button>
+  </form>
+</div>
+
+<div class="ws-summary">
+  <div class="ws-metric is-primary"><span class="wm-l">Departments</span><span class="wm-v">{{ dept_count }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Collections</span><span class="wm-v"><span class="cur">KES</span>{{ total_receipts|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-warn"><span class="wm-l">Expenses</span><span class="wm-v"><span class="cur">KES</span>{{ total_expenses|floatformat:0|intcomma }}</span></div>
+</div>
+
+<div class="ws-table"><table class="ledger compact">
+  <thead><tr><th>Department</th><th class="num">Opening</th><th class="num">Collections</th><th class="num">Expenses</th><th class="num">Balance</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}"><strong>{{ r.department.name }}</strong></a></td>
+      <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.expenses_operating|floatformat:0|intcomma }}</td>
+      <td class="num mono"><strong>{{ r.closing|floatformat:0|intcomma }}</strong></td>
+      <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">details →</a></td>
+    </tr>
+    {% for s in r.subrows %}
+    <tr class="subrow"><td style="padding-left:1.6rem">↳ {{ s.department.name }}</td>
+      <td class="num mono">{{ s.opening|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ s.receipts|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ s.expenses_operating|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ s.closing|floatformat:0|intcomma }}</td><td></td></tr>
+    {% endfor %}
+  {% empty %}
+    <tr><td colspan="6"><div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No departments assigned</div><div class="we-hint">Ask the treasurer to link your account to your department.</div></div></td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p class="help" style="margin-top:1rem">You have read-only access to the departments you lead. Contact the church treasurer for any changes or questions.</p>
+{% endblock %}

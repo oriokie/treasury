@@ -284,6 +284,8 @@ class BulkFundImportView(TreasurerRequiredMixin, View):
         return render(request, self.template_name, {"stage": "upload"})
 
     def post(self, request):
+        if request.POST.get("apply_lines"):
+            return _bulk_apply_line_items(self, request)
         if request.POST.get("apply"):
             return self._apply(request)
         return self._parse(request)
@@ -304,6 +306,12 @@ class BulkFundImportView(TreasurerRequiredMixin, View):
             year = int(request.POST.get("year") or _dt.date.today().year)
         except (TypeError, ValueError):
             year = _dt.date.today().year
+
+        # the line-item template (downloaded from the budget page) has a
+        # "Budget lines" sheet with Department / Line item / Amount columns —
+        # handle that shape directly, writing a BudgetLine per row.
+        if "Budget lines" in wb.sheetnames:
+            return _bulk_parse_line_items(self, request, wb["Budget lines"], year)
 
         ws = wb["DEPARTMENTS"] if "DEPARTMENTS" in wb.sheetnames else wb.active
         # find the header row + the columns we care about (NAME, B/F, projected,
@@ -458,3 +466,260 @@ class BulkFundImportView(TreasurerRequiredMixin, View):
             parts.append(f"{skipped} row(s) skipped")
         messages.success(request, ", ".join(parts) + ".")
         return redirect("budget")
+
+
+# ---------------------------------------------------------------------------
+# Budget template download + line-item budget import (item 1)
+# ---------------------------------------------------------------------------
+class BudgetTemplateDownloadView(TreasurerRequiredMixin, View):
+    """Download a ready-to-fill budget template (one sheet of line items). The
+    treasurer fills in a row per planned expense line for each department, says
+    where the money comes from (the funding department — blank means the
+    department's own funds), then re-imports it on the bulk-import screen.
+
+    The per-department budget total is the sum of its line items, and a line's
+    funding source is recorded so reports can show how much of each fund's plan
+    is financed by the LCB, by another fund, or from its own balance.
+    """
+
+    def get(self, request):
+        import io
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from cashbook.models import Expense
+        try:
+            year = int(request.GET.get("year") or _dt.date.today().year)
+        except (TypeError, ValueError):
+            year = _dt.date.today().year
+
+        depts = list(Department.objects.filter(active=True, selectable=True)
+                     .order_by("name"))
+        cats = [lbl for _, lbl in Expense.Category.choices]
+
+        wb = openpyxl.Workbook()
+        ws = wb.active; ws.title = "Budget lines"
+        head = ["Department", "Line item", "Category", "Amount", "Funded by"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            cell = ws.cell(1, c)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1F5F4F")
+            cell.alignment = Alignment(horizontal="center")
+        # a couple of worked example rows the treasurer can overwrite
+        ws.append(["YOUTH", "Youth camp transport", "Transport", 20000, ""])
+        ws.append(["YOUTH", "PA system hire", "Materials / supplies", 15000,
+                   "LCB – Local Church Budget"])
+        ws.append(["CHILDREN MINISTRY", "VBS materials", "Materials / supplies",
+                   8000, "YOUTH"])
+
+        # reference lists for the dropdowns
+        ref = wb.create_sheet("Lists")
+        ref["A1"] = "Departments"; ref["A1"].font = Font(bold=True)
+        for i, d in enumerate(depts, start=2):
+            ref.cell(i, 1, d.name)
+        ref["B1"] = "Funded by (blank = own funds)"; ref["B1"].font = Font(bold=True)
+        ref.cell(2, 2, "")           # own funds (blank)
+        for i, d in enumerate(depts, start=3):
+            ref.cell(i, 2, d.name)
+        ref["C1"] = "Categories"; ref["C1"].font = Font(bold=True)
+        for i, c in enumerate(cats, start=2):
+            ref.cell(i, 3, c)
+
+        nrows = max(len(depts) + 5, 200)
+        dv_dept = DataValidation(type="list",
+            formula1=f"=Lists!$A$2:$A${len(depts) + 1}", allow_blank=False)
+        dv_cat = DataValidation(type="list",
+            formula1=f"=Lists!$C$2:$C${len(cats) + 1}", allow_blank=True)
+        dv_src = DataValidation(type="list",
+            formula1=f"=Lists!$B$2:$B${len(depts) + 2}", allow_blank=True)
+        ws.add_data_validation(dv_dept); ws.add_data_validation(dv_cat)
+        ws.add_data_validation(dv_src)
+        dv_dept.add(f"A2:A{nrows}"); dv_cat.add(f"C2:C{nrows}")
+        dv_src.add(f"E2:E{nrows}")
+
+        ws.column_dimensions["A"].width = 28
+        ws.column_dimensions["B"].width = 32
+        ws.column_dimensions["C"].width = 22
+        ws.column_dimensions["D"].width = 14
+        ws.column_dimensions["E"].width = 28
+        # a short instructions block below the lists
+        ref["A1"].comment = None
+        info = wb.create_sheet("How to fill this in")
+        for i, line in enumerate([
+            f"Budget template for {year}",
+            "",
+            "One row per planned spending line.",
+            "  • Department — the fund the line belongs to (pick from the list).",
+            "  • Line item — a short description, e.g. 'Camp transport'.",
+            "  • Category — optional; lets reports compare plan vs actual by category.",
+            "  • Amount — the planned amount for the year.",
+            "  • Funded by — where the money comes from. Leave BLANK if the",
+            "      department pays from its own funds; otherwise pick the fund that",
+            "      finances it (often the Local Church Budget, or another department).",
+            "",
+            "The department's budget total is the sum of its line items.",
+            "A line funded by another department still counts in this department's",
+            "plan, and is also recorded against the funding department so reports",
+            "can show who finances whom.",
+            "",
+            "When done, go to Budgets → Bulk import and upload this file.",
+        ], start=1):
+            info.cell(i, 1, line)
+        info.column_dimensions["A"].width = 76
+
+        buf = io.BytesIO(); wb.save(buf)
+        from django.http import HttpResponse
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = f'attachment; filename="budget_template_{year}.xlsx"'
+        return resp
+
+
+# Line-item budget template handling (appended to BulkFundImportView via monkey
+# methods would be ugly; instead these live as module functions the view calls).
+def _li_match(name, depts):
+    return _match_department(name, depts)
+
+
+def _bulk_parse_line_items(view, request, ws, year):
+    """Parse the line-item budget template. Each row is a planned budget line for
+    a department, with an optional funding source. Build a review plan grouped by
+    department, flagging any department or funding source we can't match."""
+    from cashbook.models import Expense
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        messages.error(request, "The 'Budget lines' sheet is empty.")
+        return redirect("bulk_fund_import")
+    header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+    def col(*names):
+        for n in names:
+            if n in header:
+                return header.index(n)
+        return None
+    c_dept = col("department")
+    c_item = col("line item", "line", "description")
+    c_cat = col("category")
+    c_amt = col("amount")
+    c_src = col("funded by", "source", "funding source")
+    if c_dept is None or c_amt is None:
+        messages.error(request, "Couldn't find the Department and Amount columns — "
+                                "please use the downloaded template.")
+        return redirect("bulk_fund_import")
+
+    depts = list(Department.objects.all())
+    cat_by_label = {lbl.lower(): code for code, lbl in Expense.Category.choices}
+    cat_by_code = {code.upper(): code for code, _ in Expense.Category.choices}
+
+    lines = []
+    for r in rows[1:]:
+        if c_dept >= len(r) or not r[c_dept] or not str(r[c_dept]).strip():
+            continue
+        dname = str(r[c_dept]).strip()
+        try:
+            amt = float(r[c_amt]) if c_amt < len(r) and r[c_amt] not in (None, "") else 0.0
+        except (TypeError, ValueError):
+            amt = 0.0
+        if amt == 0:
+            continue
+        item = (str(r[c_item]).strip() if c_item is not None and c_item < len(r)
+                and r[c_item] else "Budget line")
+        raw_cat = (str(r[c_cat]).strip() if c_cat is not None and c_cat < len(r)
+                   and r[c_cat] else "")
+        cat_code = cat_by_code.get(raw_cat.upper()) or cat_by_label.get(raw_cat.lower()) or ""
+        raw_src = (str(r[c_src]).strip() if c_src is not None and c_src < len(r)
+                   and r[c_src] else "")
+        dept, dscore = _match_department(dname, depts)
+        if raw_src:
+            src, sscore = _match_department(raw_src, depts)
+        else:
+            src, sscore = None, 1.0   # blank = own funds
+        lines.append({
+            "dept_name": dname, "dept_id": dept.id if dept else None,
+            "dept_match": dept.name if dept else None,
+            "item": item, "amount": amt, "category": cat_code,
+            "src_name": raw_src, "src_id": src.id if src else None,
+            "src_match": src.name if src else None,
+            "src_blank": not raw_src,
+        })
+
+    if not lines:
+        messages.error(request, "No budget lines with an amount were found.")
+        return redirect("bulk_fund_import")
+
+    # group by department for a clean review, and gather any unmatched names
+    unmatched_depts = sorted({l["dept_name"] for l in lines if not l["dept_id"]})
+    unmatched_srcs = sorted({l["src_name"] for l in lines
+                             if l["src_name"] and not l["src_id"]})
+    request.session["bulk_line_plan"] = {"year": year, "lines": lines}
+    candidates = [{"id": d.id, "name": str(d)} for d in
+                  sorted(depts, key=lambda x: str(x))]
+    total = sum(l["amount"] for l in lines)
+    return render(request, "departments/bulk_import.html", {
+        "stage": "review_lines", "year": year, "lines": lines,
+        "candidates": candidates, "line_total": total,
+        "unmatched_depts": unmatched_depts, "unmatched_srcs": unmatched_srcs,
+        "fund_types": Department.FundType.choices,
+        "categories": Department.Category.choices,
+    })
+
+
+@db_tx.atomic
+def _bulk_apply_line_items(view, request):
+    data = request.session.get("bulk_line_plan")
+    if not data:
+        messages.error(request, "Your import session expired — please upload again.")
+        return redirect("bulk_fund_import")
+    year = data["year"]
+    lines = data["lines"]
+
+    # resolve any user-chosen department/source mappings from the review form
+    def resolve(prefix, i, fallback_id, raw_name):
+        choice = request.POST.get(f"{prefix}_{i}", "")
+        if choice.startswith("dept:"):
+            return Department.objects.filter(pk=choice.split(":", 1)[1]).first()
+        if choice == "create" and raw_name:
+            d, _ = Department.objects.get_or_create(
+                name=raw_name.upper().strip(),
+                defaults={"fund_type": Department.FundType.LOCAL,
+                          "category": Department.Category.MINISTRY})
+            return d
+        if fallback_id:
+            return Department.objects.filter(pk=fallback_id).first()
+        return None
+
+    from .models import Budget, BudgetLine
+    written = skipped = created = 0
+    touched_budgets = set()
+    for i, l in enumerate(lines):
+        dept = resolve("dept", i, l["dept_id"], l["dept_name"])
+        if not dept:
+            skipped += 1
+            continue
+        if l["src_blank"]:
+            src = None
+        else:
+            src = resolve("src", i, l["src_id"], l["src_name"])
+        budget, _ = Budget.objects.get_or_create(
+            year=year, department=dept,
+            defaults={"note": "From budget template"})
+        if budget.pk not in touched_budgets:
+            # clear previous template lines for a clean re-import per department
+            budget.lines.all().delete()
+            touched_budgets.add(budget.pk)
+        BudgetLine.objects.create(budget=budget, name=l["item"][:120],
+            category=l["category"], amount=Decimal(str(l["amount"])),
+            source_fund=src)
+        written += 1
+
+    # recompute each touched budget's headline to the sum of its lines
+    for bid in touched_budgets:
+        b = Budget.objects.get(pk=bid)
+        b.amount = b.lines_total
+        b.save(update_fields=["amount"])
+
+    request.session.pop("bulk_line_plan", None)
+    messages.success(request,
+        f"{written} budget line(s) imported across {len(touched_budgets)} "
+        f"department(s) for {year}." + (f" {skipped} skipped." if skipped else ""))
+    return redirect("budget")

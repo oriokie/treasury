@@ -293,4 +293,15 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     import_obj.failed = failed
     import_obj.status = StatementImport.Status.DONE
     import_obj.save()
+
+    # offer/apply pledge matches for the confirmed contributions just imported
+    # (respects SiteConfig.pledge_match_mode; best-effort, never breaks import)
+    try:
+        from pledges.services.matching import handle_new_contribution
+        for t in Transaction.objects.filter(statement_import=import_obj,
+                                             direction=Transaction.Direction.CREDIT,
+                                             confirmed=True):
+            handle_new_contribution(t)
+    except Exception:
+        pass
     return import_obj

@@ -21,6 +21,9 @@
       <div><b>{{ CHURCH_NAME }}</b><span>Treasury</span></div>
     </div>
     <nav class="nav" id="mainnav">
+      {% if is_leader %}
+      <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> My departments</a>
+      {% else %}
       <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
       <a href="{% url 'assistant' %}" class="{% if request.resolver_match.url_name == 'assistant' %}active{% endif %}"><span class="ic">💬</span> Ask the books</a>
@@ -60,6 +63,7 @@
         <summary><span class="ic">◉</span> People &amp; funds <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">Members</a>
+          <a href="{% url 'pledge_dashboard' %}" class="{% if 'pledge' in request.resolver_match.url_name %}active{% endif %}">Pledges</a>
           <a href="{% url 'department_list' %}" class="{% if 'department' in request.resolver_match.url_name %}active{% endif %}">Funds &amp; departments</a>
           <a href="{% url 'transfer_list' %}" class="{% if 'transfer' in request.resolver_match.url_name %}active{% endif %}">Fund transfers</a>
           <a href="{% url 'budget' %}" class="{% if request.resolver_match.url_name == 'budget' %}active{% endif %}">Budgeting</a>
@@ -105,6 +109,7 @@
         </div>
       </details>
       {% endif %}
+      {% endif %}{# end is_leader / staff nav #}
     </nav>
     <div class="nav-foot">
       <span><kbd>Ctrl</kbd>+<kbd>K</kbd> to search</span>
@@ -144,7 +149,7 @@
             <span class="avatar">{{ user.get_full_name|default:user.username|first|upper }}</span>
             <span class="who-meta">
               <strong>{{ user.get_full_name|default:user.username }}</strong>
-              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% else %}Read-only · Auditor / Board{% endif %}</span>
+              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% elif is_leader %}Department leader{% else %}Read-only · Auditor / Board{% endif %}</span>
             </span>
             <span class="chev">▾</span>
           </summary>
@@ -153,6 +158,8 @@
             {% if is_treasurer %}<a href="{% url 'settings' %}">Settings</a>
             <a href="{% url 'controls' %}">Period locks</a>{% endif %}
             <a href="{% url 'notifications' %}">Notifications</a>
+            <a href="{% url 'twofactor_setup' %}">Security &amp; 2FA</a>
+            <a href="{% url 'password_change' %}">Change password</a>
             <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="dd-signout">Sign out</button></form>
           </div>
         </details>

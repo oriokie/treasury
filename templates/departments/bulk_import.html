@@ -98,5 +98,68 @@ document.querySelectorAll(".map-select").forEach(function(s){
   syncRow(s);
 });
 </script>
+
+{% elif stage == "review_lines" %}
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="apply_lines" value="1">
+  <div class="ws-summary">
+    <div class="ws-metric is-primary"><span class="wm-l">Budget lines</span><span class="wm-v">{{ lines|length }}</span><span class="wm-sub">year {{ year }}</span></div>
+    <div class="ws-metric is-positive"><span class="wm-l">Total planned</span><span class="wm-v"><span class="cur">KES</span>{{ line_total|floatformat:0 }}</span></div>
+    <div class="ws-metric {% if unmatched_depts or unmatched_srcs %}is-warn{% endif %}"><span class="wm-l">Names to check</span><span class="wm-v">{{ unmatched_depts|length|add:unmatched_srcs|length }}</span></div>
+  </div>
+
+  {% if unmatched_depts or unmatched_srcs %}
+  <div class="alert alert-warn" style="margin-bottom:1rem">
+    <strong>Some names didn't match a department.</strong>
+    {% if unmatched_depts %}Departments: {{ unmatched_depts|join:", " }}. {% endif %}
+    {% if unmatched_srcs %}Funding sources: {{ unmatched_srcs|join:", " }}. {% endif %}
+    Map or create each below, or leave to skip that line.
+  </div>
+  {% endif %}
+
+  <div class="ws-table">
+  <table class="ledger compact">
+    <thead><tr><th>Department</th><th>Line item</th><th>Category</th><th class="num">Amount</th><th>Funded by</th></tr></thead>
+    <tbody>
+    {% for l in lines %}
+    <tr class="{% if not l.dept_id or l.src_name and not l.src_id %}row-warn{% endif %}">
+      <td>
+        {% if l.dept_id %}<strong>{{ l.dept_match }}</strong>{% if l.dept_name != l.dept_match %} <span class="muted" style="font-size:.78rem">({{ l.dept_name }})</span>{% endif %}
+        {% else %}
+          <strong style="color:var(--danger)">{{ l.dept_name }}</strong>
+          <select name="dept_{{ forloop.counter0 }}" class="field--select" style="margin-top:.25rem;min-width:200px">
+            <option value="">— skip this line —</option>
+            <option value="create">➕ Create “{{ l.dept_name }}”</option>
+            {% for c in candidates %}<option value="dept:{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        {% endif %}
+      </td>
+      <td>{{ l.item }}</td>
+      <td class="muted">{% if l.category %}{{ l.category }}{% else %}—{% endif %}</td>
+      <td class="num mono">{{ l.amount|floatformat:0 }}</td>
+      <td>
+        {% if l.src_blank %}<span class="muted">own funds</span>
+        {% elif l.src_id %}{{ l.src_match }}
+        {% else %}
+          <strong style="color:var(--danger)">{{ l.src_name }}</strong>
+          <select name="src_{{ forloop.counter0 }}" class="field--select" style="margin-top:.25rem;min-width:180px">
+            <option value="">— own funds —</option>
+            <option value="create">➕ Create “{{ l.src_name }}”</option>
+            {% for c in candidates %}<option value="dept:{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <div class="btn-row" style="margin-top:1rem">
+    <button class="btn">Apply {{ lines|length }} budget line(s) for {{ year }}</button>
+    <a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">Start over</a>
+  </div>
+  <p class="help" style="margin-top:.6rem">Re-importing replaces a department's existing budget lines for {{ year }}. Each department's budget total becomes the sum of its lines; a line funded by another department is recorded against that funding source too.</p>
+</form>
 {% endif %}
 {% endblock %}

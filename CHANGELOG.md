@@ -1,5 +1,102 @@
 # Changelog
 
+## v1.4.0 — Department leaders & configurable encryption
+- New "Department leader" role: a read-only login scoped to the department(s) a
+  leader is assigned. They get their own dashboard showing collections, expenses,
+  sub-accounts, development-group progress (for a development leader) and any
+  pledges toward their department. Scoping is enforced server-side — a leader
+  cannot reach another department or any office screen.
+- Privacy: contact phone numbers are masked (e.g. *********678) everywhere a
+  leader sees member, payer or pledge data.
+- Assign leaders from the user screen: set the role to "Leader" and pick the
+  department(s); changing the role away clears the links so access never goes
+  stale.
+- Configurable encryption: the application-layer key now comes from
+  TREASURY_ENCRYPTION_KEY (falling back to SECRET_KEY), encryption can be toggled
+  with TREASURY_ENCRYPTION_ENABLED, and a new check_encryption command reports
+  status and re-encrypts secrets after a key change (key rotation).
+- Pledges and the books are unaffected: all 44 financial-accuracy invariants pass.
+
+## v1.3.0 — Security & oversight
+- Automated encrypted backups: a `backup_db` management command for a nightly
+  cron job. Dumps the database, encrypts it with the application key, keeps the
+  newest N copies (rotating older ones away), and can email the backup off-site.
+  See deploy/AUTOMATED_BACKUPS.md. Set the off-site address in Settings.
+- Two-factor authentication (TOTP): enrol from the user menu (Security & 2FA)
+  with a QR code, then logins require a 6-digit code. One-time recovery codes are
+  issued for lost-phone access. A setting can require all treasurers to enrol.
+- Dashboard revamp: a single "Needs attention" panel replaces scattered alert
+  banners, surfacing — with counts and one-tap links — transactions to allocate,
+  expenses and pledges awaiting approval, overdue or soon-due trust remittances,
+  overdue pledges, and possible duplicates. Only non-zero items appear.
+- Pledges remain informational throughout: none of the above changes how money
+  is recognised, and all 44 financial-accuracy invariants still pass.
+
+## v1.2.1
+- Treasurer-only bulk pledge import (Pledges -> Import): downloadable template
+  with dropdowns; members matched by name or phone and campaigns by name, with a
+  review screen to map or create anything unmatched; rows with no campaign can be
+  assigned a default. Imported pledges are saved as DRAFTS for approval and, like
+  all pledges, never post to the ledger or change a fund balance.
+
+## v1.2.0 — Inline pledge matching + public pledge form
+- Inline matching: when a new contribution is recorded (manual entry or statement
+  import) from a member who has an active pledge, the system acts per a new
+  setting (Settings to Pledges to Pledge matching mode):
+    * OFF — do nothing;
+    * SUGGEST (default) — flag a likely match for a treasurer to confirm;
+    * AUTO — apply the match automatically, capped at the pledge's outstanding.
+  Two more parameters: restrict matching to the campaign's target fund, and how
+  many days after a pledge's end date a gift may still be matched.
+- New match-suggestions review queue (Pledges to Review suggestions) where a
+  treasurer confirms or dismisses each flagged match. Confirming links the
+  existing contribution to the pledge; it never moves money.
+- Optional public pledge link (/pledge/, off by default; enable in Settings to
+  Pledges). Members submit a pledge themselves; submissions are held as
+  UNVERIFIED DRAFTS for treasurer approval. The form is write-only — it never
+  exposes member data, balances, or other pledges — and is guarded by a spam
+  honeypot, a submit-rate limit, an amount ceiling, and mandatory manual approval.
+- ACCOUNTING unchanged: pledges remain informational. All 44 financial-accuracy
+  invariants continue to pass.
+
+## v1.1.0 — Pledge Management
+- New module for recording and tracking pledges, integrated with members,
+  contributions, SMS/WhatsApp, reporting, security and the audit trail.
+- Pledge campaigns (giving drives) with goals, target fund, and progress
+  (pledged vs received vs outstanding).
+- Member pledges with one-off or recurring (weekly / monthly / quarterly /
+  annual) frequencies and an informational installment schedule.
+- Approval workflow: an assistant's pledge is a draft a treasurer approves; a
+  treasurer's pledge is active immediately. Cancel / reactivate supported.
+- Fulfilment by matching real, confirmed contributions to a pledge — one click
+  auto-match per pledge, a bulk auto-match sweep, manual match of a specific
+  contribution (with split), or a directly-recorded payment. A contribution is
+  never matched twice, and auto-match never over-applies past the outstanding
+  balance.
+- Reminders reuse the existing SMS / WhatsApp services, respect a per-pledge
+  opt-out and missing phones, and are logged. Single or batch (per campaign).
+- Reports: campaign progress and pledges-by-status, exportable to Excel; plus a
+  printable year-end per-member pledge statement.
+- ACCOUNTING: pledges are commitments, not income. Nothing in the module posts
+  to the general ledger or changes a fund balance — only the matched real
+  contribution does, exactly as before. All 44 financial-accuracy invariants
+  continue to pass unchanged.
+
+## v1.0.19
+- Budgets: a Download template button produces a ready-to-fill spreadsheet with
+  one row per planned line (Department, Line item, Category, Amount, Funded by),
+  with dropdowns. Re-import it on the Bulk import screen and each department's
+  budget becomes the sum of its lines; a line financed by another fund (or from
+  the department's own funds) records that funding source.
+- Controls: duplicate detection tightened — duplicate expenses are now flagged
+  within the same Sabbath (not the whole month); M-Pesa / bank charges are
+  excluded; duplicate offerings are only flagged within the SAME channel (so a
+  giver who gave once by cash and once by M-Pesa is not flagged); and re-typed
+  envelopes (same giver + amount on one Sabbath) are now detected.
+- Remittance calendar: generated deadlines default to the 1st of the following
+  month; and a period is automatically marked remitted when a completed
+  remittance batch covers it.
+
 ## v1.0.18
 - Names are now stored in a consistent UPPERCASE register everywhere — bank
   imports, manual entry, and envelope entry — via the member, transaction and
