@@ -712,13 +712,16 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
             messages.error(request, f"{lk} is locked — reopen the period first.")
             return redirect("transaction_list")
 
-        # gather split siblings of the same gift so the receipt covers the full amount
+        # gather split siblings of the same gift so the receipt covers the full
+        # amount — but never pull in a sibling that is already receipted (flagged)
+        # or already has an envelope record, so we can't double-receipt a part.
         base_ref = ((txn.core_ref or "").split("-S")[0] or txn.mpesa_ref or str(txn.id))
         siblings = list(Transaction.objects.filter(
             channel=Transaction.Channel.BANK,
             direction=Transaction.Direction.CREDIT,
             processed_via_envelope=False, department__isnull=False,
             date=txn.date, payer_name=txn.payer_name)
+            .filter(envelope__isnull=True, envelope_lines__isnull=True)
             .select_related("department", "member"))
         txns = [t for t in siblings
                 if ((t.core_ref or "").split("-S")[0] or t.mpesa_ref or str(t.id)) == base_ref] or [txn]
@@ -816,7 +819,13 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
             sabbath_confirm_pending=False)
             .filter(
                 _Q(service_sabbath__year=year, service_sabbath__month=month) |
-                _Q(service_sabbath__isnull=True, date__year=year, date__month=month)))
+                _Q(service_sabbath__isnull=True, date__year=year, date__month=month))
+            # belt-and-braces: never re-receipt a gift that already has an envelope
+            # record, even if its processed flag somehow wasn't set (older data,
+            # a manual envelope, or a partially-receipted split). Matching on the
+            # flag alone misses these and would create a duplicate receipt.
+            .filter(envelope__isnull=True, envelope_lines__isnull=True)
+            .distinct())
         cfg = SiteConfig.get()
 
         # group transactions that belong to one gift (split offerings share these).

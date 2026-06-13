@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.1 — fix
+- Receipt bank giving: the bulk pull now excludes any gift that already has an
+  envelope record, not only those flagged processed-via-envelope. Previously, if
+  a gift had been receipted but its processed flag was not set (older data, a
+  manual envelope, or a partially-receipted split), the pull would receipt it
+  again. The single-gift receipt action was hardened the same way, so receipting
+  one part of a split can never re-add a part that is already receipted.
+
 ## v1.5.0 — fund import, sub-accounts, and queue clearing
 - New dedicated fund/department structure importer (Funds and departments ->
   Import funds and sub-accounts). Download a template that lists your existing

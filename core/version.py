@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.5.1": "Receipt bank giving no longer re-receipts a gift that is already "
+             "accounted for. Items that already carry an envelope record are now "
+             "excluded from the bank-giving pull even if their processed flag had "
+             "drifted, and the same guard applies when receipting one part of a "
+             "split gift — so nothing is receipted twice.",
     "1.5.0": "A dedicated fund and sub-account importer: download a template "
              "(which lists your existing funds), add funds and their sub-accounts, "
              "and import the whole chart of accounts at once. The budget template "

@@ -481,3 +481,75 @@ class BulkReceiptStartNumberTests(TestCase):
         env = Envelope.objects.filter(bank_transaction__core_ref="BS1").first()
         self.assertIsNotNone(env)
         self.assertEqual(env.receipt_no, "B700")
+
+
+class PullBankExcludesAlreadyReceiptedTests(TestCase):
+    """The bulk 'receipt bank giving' pull must not re-receipt a gift that is
+    already accounted for — whether flagged processed_via_envelope OR already
+    carrying an envelope record whose flag drifted out of sync."""
+
+    def setUp(self):
+        import datetime as dt
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        self.user = User.objects.create_superuser("pr", password="x")
+        self.client.login(username="pr", password="x")
+        self.dept = Department.objects.create(name="Tithe Pull",
+            fund_type=Department.FundType.TRUST)
+        self.d = dt.date(2026, 5, 30)
+
+    def _txn(self, ref, amt, **kw):
+        from giving.models import Transaction
+        return Transaction.objects.create(
+            date=self.d, service_sabbath=self.d, channel=Transaction.Channel.BANK,
+            direction=Transaction.Direction.CREDIT, amount=amt, department=self.dept,
+            payer_name="Payer", reference=ref, core_ref=ref + "C",
+            allocation_status=Transaction.Status.AUTO, **kw)
+
+    def test_flagged_item_is_excluded(self):
+        from django.urls import reverse
+        from envelopes.models import EnvelopeLine
+        t = self._txn("FLAGGED", 100, processed_via_envelope=True)
+        self.client.post(reverse("envelope_pull_bank"), {"month": "2026-05"})
+        self.assertEqual(EnvelopeLine.objects.filter(transaction=t).count(), 0)
+
+    def test_item_with_existing_envelope_but_unset_flag_is_excluded(self):
+        from django.urls import reverse
+        from envelopes.models import Envelope, EnvelopeLine
+        from core.utils import sabbath_week_of
+        t = self._txn("DRIFT", 200, processed_via_envelope=False)
+        env = Envelope.objects.create(date=self.d,
+            sabbath_week=sabbath_week_of(self.d), receipt_no="DRIFT-OLD",
+            contributor_name="Payer", channel=Envelope.Channel.BANK,
+            recorded_by=self.user)
+        EnvelopeLine.objects.create(envelope=env, department=self.dept,
+                                    amount=200, transaction=t)
+        self.client.post(reverse("envelope_pull_bank"), {"month": "2026-05"})
+        # still exactly one line — not double-receipted
+        self.assertEqual(EnvelopeLine.objects.filter(transaction=t).count(), 1)
+
+    def test_clean_item_is_still_pulled(self):
+        from django.urls import reverse
+        from envelopes.models import EnvelopeLine
+        t = self._txn("CLEAN", 300)
+        self.client.post(reverse("envelope_pull_bank"), {"month": "2026-05"})
+        self.assertEqual(EnvelopeLine.objects.filter(transaction=t).count(), 1)
+        t.refresh_from_db()
+        self.assertTrue(t.processed_via_envelope)
+
+    def test_partial_split_excludes_already_receipted_part(self):
+        # a split gift: part A already receipted (flagged), part B clean.
+        # Receipting via the single-receipt view on B must not re-add A.
+        from envelopes.models import EnvelopeLine
+        a = self._txn("SPLIT", 50, processed_via_envelope=True)
+        # part B shares the core_ref base + payer (a split sibling)
+        from giving.models import Transaction
+        b = Transaction.objects.create(date=self.d, service_sabbath=self.d,
+            channel=Transaction.Channel.BANK, direction=Transaction.Direction.CREDIT,
+            amount=50, department=self.dept, payer_name="Payer",
+            reference="SPLIT", core_ref="SPLITC-S1",
+            allocation_status=Transaction.Status.AUTO)
+        self.client.post(f"/transactions/{b.id}/receipt-envelope/", {})
+        # A must NOT gain an envelope line; B should have exactly one
+        self.assertEqual(EnvelopeLine.objects.filter(transaction=a).count(), 0)
+        self.assertEqual(EnvelopeLine.objects.filter(transaction=b).count(), 1)
