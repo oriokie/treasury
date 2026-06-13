@@ -567,3 +567,82 @@ class TransactionExportDetailTests(TestCase):
         self.assertIn("M-Pesa ref", header)
         self.assertIn("Core ref", header)
         self.assertIn("Sabbath", header)
+
+
+class MarkProcessedImportTests(TestCase):
+    """Bulk 'mark processed (via envelope)': matches a bank credit by reference,
+    confirms with the amount, sets processed_via_envelope, and reports problems
+    without applying bad rows. These entries are handled — not receipted."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from giving.models import Transaction
+        User.objects.create_superuser("mp", password="x")
+        self.client.login(username="mp", password="x")
+        self.d = Department.objects.create(name="Combined Offering",
+                                           fund_type=Department.FundType.LOCAL)
+        mk = lambda ref, amt: Transaction.objects.create(
+            date=dt.date(2026, 6, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal(amt), department=self.d, reference=ref,
+            allocation_status="AUTO", confirmed=True)
+        self.t1 = mk("REFAAA111", "1500")
+        self.t2 = mk("REFBBB222", "2000")
+
+    def _post(self, csv_text):
+        from django.urls import reverse
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return self.client.post(reverse("mark_processed_import"),
+            {"file": SimpleUploadedFile("p.csv", csv_text.encode())})
+
+    def test_match_marks_processed(self):
+        self._post("reference,amount\nREFAAA111,1500\n")
+        self.t1.refresh_from_db()
+        self.assertTrue(self.t1.processed_via_envelope)
+
+    def test_amount_mismatch_is_rejected(self):
+        self._post("reference,amount\nREFBBB222,9999\n")
+        self.t2.refresh_from_db()
+        self.assertFalse(self.t2.processed_via_envelope)   # wrong amount → skipped
+
+    def test_unknown_reference_is_skipped(self):
+        # should not raise, and nothing gets marked
+        self._post("reference,amount\nNOSUCHREF,100\n")
+        self.t1.refresh_from_db(); self.t2.refresh_from_db()
+        self.assertFalse(self.t1.processed_via_envelope)
+        self.assertFalse(self.t2.processed_via_envelope)
+
+    def test_amount_disambiguates_two_matches(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        # a second entry sharing the reference but a different amount
+        dup = Transaction.objects.create(date=dt.date(2026, 6, 2), channel="BANK",
+            direction="CREDIT", amount=Decimal("7777"), department=self.d,
+            reference="REFAAA111", allocation_status="AUTO", confirmed=True)
+        self._post("reference,amount\nREFAAA111,7777\n")
+        self.t1.refresh_from_db(); dup.refresh_from_db()
+        self.assertFalse(self.t1.processed_via_envelope)   # 1500 one untouched
+        self.assertTrue(dup.processed_via_envelope)        # 7777 one marked
+
+    def test_xlsx_upload_path(self):
+        import io
+        import openpyxl
+        from django.urls import reverse
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        wb = openpyxl.Workbook(); ws = wb.active
+        ws.append(["reference", "amount"]); ws.append(["REFAAA111", 1500])
+        buf = io.BytesIO(); wb.save(buf)
+        self.client.post(reverse("mark_processed_import"),
+            {"file": SimpleUploadedFile("p.xlsx", buf.getvalue())})
+        self.t1.refresh_from_db()
+        self.assertTrue(self.t1.processed_via_envelope)
+
+    def test_template_download(self):
+        from django.urls import reverse
+        r = self.client.get(reverse("mark_processed_import") + "?template=1")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/csv", r["Content-Type"])
+        self.assertIn(b"reference", r.content)

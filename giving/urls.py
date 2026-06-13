@@ -8,6 +8,7 @@ urlpatterns = [
     path("queue/", views.ReviewQueueView.as_view(), name="queue"),
     path("queue/export/", views.QueueExportView.as_view(), name="queue_export"),
     path("queue/import/", views.QueueImportView.as_view(), name="queue_import"),
+    path("transactions/mark-processed/", views.MarkProcessedImportView.as_view(), name="mark_processed_import"),
 
     path("queue/<int:pk>/claim/", views.ClaimResolveView.as_view(), name="queue_claim"),
     path("cash/new/", views.CashEntryCreate.as_view(), name="cash_new"),

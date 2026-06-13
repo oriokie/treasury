@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ws-head">
   <div class="ws-titles"><h1>{% if cash_only %}Cash entries{% else %}Ledger{% endif %}</h1><div class="ws-sub">{% if cash_only %}Cash collections — filter and check{% else %}Every receipt and bank movement{% endif %}</div></div>
-  <div class="ws-actions">{% if can_enter_data %}<a class="btn" href="{% url 'cash_new' %}">＋ Record entry</a>{% endif %}</div>
+  <div class="ws-actions">{% if can_enter_data %}<a class="btn" href="{% url 'cash_new' %}">＋ Record entry</a>{% if not cash_only %}<a class="btn btn-ghost btn-sm" href="{% url 'mark_processed_import' %}" title="Bulk-mark bank entries as processed (handled via a hand-written envelope; not receipted)">✓ Mark processed</a>{% endif %}{% endif %}</div>
 </div>
 
 <div class="ws-summary">
@@ -39,7 +39,7 @@
         <td class="mono">{{ t.date|date:"d/m/y" }}{% if t.service_sabbath and t.service_sabbath != t.date %}<br><span class="muted" style="font-size:.7rem" title="Counted on this Sabbath">→ {{ t.service_sabbath|date:"d/m" }}</span>{% endif %}</td>
         <td><span class="pill {% if t.channel == 'BANK' %}pill-blue{% elif t.channel == 'CASH' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_channel_display }}</span></td>
         <td>{% if t.member %}<a href="{% url 'member_detail' t.member.id %}">{{ t.payer_name|default:t.member.name }}</a>{% else %}{{ t.payer_name|default:"—" }}{% endif %}{% if t.payer_phone %}<br><span class="muted mono" style="font-size:.72rem">{{ t.payer_phone }}</span>{% endif %}</td>
-        <td>{% if t.department %}{{ t.department.name }}{% if t.dev_group %} <span class="muted" style="font-size:.75rem">· {{ t.dev_group.label }}</span>{% endif %}{% elif t.excluded_from_income %}<span class="pill pill-grey" title="Counted once via the envelope record; excluded from income to avoid double-counting">excluded · via envelope</span>{% else %}<span class="pill pill-amber" title="No fund assigned — needs allocation">needs allocation</span>{% endif %}</td>
+        <td>{% if t.department %}{{ t.department.name }}{% if t.dev_group %} <span class="muted" style="font-size:.75rem">· {{ t.dev_group.label }}</span>{% endif %}{% elif t.excluded_from_income %}<span class="pill pill-grey" title="Counted once via the envelope record; excluded from income to avoid double-counting">excluded · via envelope</span>{% else %}<span class="pill pill-amber" title="No fund assigned — needs allocation">needs allocation</span>{% endif %}{% if t.processed_via_envelope %} <span class="pill pill-grey" title="Marked processed: handled via a hand-written envelope, kept out of receipting to avoid double entry">processed · envelope</span>{% endif %}</td>
         <td class="mono muted">{{ t.reference|default:"—"|truncatechars:22 }}</td>
         {% if show_mpesa_ref %}<td class="mono muted">{{ t.mpesa_ref|default:"—" }}</td>{% endif %}
         <td><span class="pill {% if t.allocation_status == 'REVIEW' %}pill-amber{% elif t.allocation_status == 'AUTO' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_allocation_status_display }}</span></td>

@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.4.1": "Three fixes: SMS settings no longer repeat on every settings tab; "
+             "the bulk fund/department import is now linked from the Funds & "
+             "departments page; and a new bulk tool marks bank entries as processed "
+             "via a hand-written envelope (upload reference + amount) so they are "
+             "kept out of receipting without being entered twice.",
     "1.4.0": "Department leader logins: a new read-only role that sees only its "
              "own department(s) — collections, expenses, sub-accounts, development "
              "groups and pledges — with contact numbers masked for privacy. Plus "

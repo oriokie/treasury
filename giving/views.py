@@ -606,6 +606,146 @@ class QueueImportView(DataEntryRequiredMixin, View):
         return redirect("queue")
 
 
+class MarkProcessedImportView(DataEntryRequiredMixin, View):
+    """Bulk-mark bank entries as 'processed via envelope' — handled already, so
+    kept out of the receipting/review flow, but NOT receipted (no envelope record
+    is created). This is for gifts a member wrote on a physical envelope: the
+    money is on the bank statement, but it must not be receipted again.
+
+    Upload a small file with just a REFERENCE and an AMOUNT per row. The reference
+    finds the bank transaction; the amount confirms it's the right record (a
+    mismatch is reported, not applied). Accepts .csv or .xlsx.
+    """
+    template_name = "giving/mark_processed_import.html"
+
+    def get(self, request):
+        if request.GET.get("template"):
+            return self._template()
+        return render(request, self.template_name, {})
+
+    def _template(self):
+        from django.http import HttpResponse
+        resp = HttpResponse(content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="mark_processed_template.csv"'
+        w = _csv.writer(resp)
+        w.writerow(["reference", "amount"])
+        w.writerow(["UER2Q5NF2W", "1500"])
+        w.writerow(["AC0C40FD2E26", "2000"])
+        return resp
+
+    def _rows_from_upload(self, f):
+        """Yield (reference, amount_or_None) from a .csv or .xlsx upload, tolerant
+        of header names and column order."""
+        name = (getattr(f, "name", "") or "").lower()
+        rows = []
+        if name.endswith((".xlsx", ".xls")):
+            import openpyxl
+            wb = openpyxl.load_workbook(f, data_only=True)
+            ws = wb.active
+            data = list(ws.iter_rows(values_only=True))
+            if not data:
+                return rows
+            header = [str(c).strip().lower() if c is not None else "" for c in data[0]]
+            ref_i = next((i for i, h in enumerate(header)
+                          if h in ("reference", "ref", "core ref", "receipt")), 0)
+            amt_i = next((i for i, h in enumerate(header)
+                          if h in ("amount", "amt", "value")), 1)
+            for r in data[1:]:
+                ref = str(r[ref_i]).strip() if ref_i < len(r) and r[ref_i] not in (None, "") else ""
+                amt = r[amt_i] if amt_i < len(r) else None
+                if ref:
+                    rows.append((ref, amt))
+        else:
+            reader = _csv.DictReader(_io.TextIOWrapper(f.file, encoding="utf-8-sig"))
+            # normalise header keys
+            for raw in reader:
+                row = { (k or "").strip().lower(): v for k, v in raw.items() }
+                ref = (row.get("reference") or row.get("ref")
+                       or row.get("core ref") or row.get("receipt") or "").strip()
+                amt = row.get("amount") or row.get("amt") or row.get("value")
+                if ref:
+                    rows.append((ref, amt))
+        return rows
+
+    def post(self, request):
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a file with reference and amount columns.")
+            return redirect("mark_processed_import")
+        try:
+            rows = self._rows_from_upload(f)
+        except Exception:
+            messages.error(request, "Could not read that file — upload the .csv or "
+                                    ".xlsx from the template.")
+            return redirect("mark_processed_import")
+        if not rows:
+            messages.warning(request, "No rows with a reference were found.")
+            return redirect("mark_processed_import")
+
+        marked = already = not_found = mismatched = ambiguous = 0
+        problems = []
+        for ref, raw_amt in rows:
+            # match a bank CREDIT by any of the reference-bearing fields
+            qs = Transaction.objects.filter(
+                channel=Transaction.Channel.BANK,
+                direction=Transaction.Direction.CREDIT,
+                is_reversal=False, is_reversed=False).filter(
+                Q(reference__iexact=ref) | Q(core_ref__iexact=ref)
+                | Q(bank_receipt__iexact=ref) | Q(mpesa_ref__iexact=ref))
+            n = qs.count()
+            if n == 0:
+                not_found += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: no matching bank entry")
+                continue
+            # if an amount was given, use it to disambiguate / confirm
+            amt = None
+            if raw_amt not in (None, ""):
+                try:
+                    amt = Decimal(str(raw_amt).replace(",", "").strip())
+                except Exception:
+                    amt = None
+            if n > 1 and amt is not None:
+                qs2 = qs.filter(amount=amt)
+                if qs2.count() == 1:
+                    qs = qs2
+                    n = 1
+            if n > 1:
+                ambiguous += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: matches {n} entries — add the amount to pinpoint it")
+                continue
+            txn = qs.first()
+            if amt is not None and txn.amount != amt:
+                mismatched += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: amount {amt} ≠ recorded {txn.amount}")
+                continue
+            if txn.processed_via_envelope:
+                already += 1
+                continue
+            txn.processed_via_envelope = True
+            # clear it from the review/sabbath-confirm flows; it's handled now
+            txn.sabbath_confirm_pending = False
+            txn.save(update_fields=["processed_via_envelope", "sabbath_confirm_pending"])
+            marked += 1
+
+        parts = [f"{marked} marked processed (via envelope)"]
+        if already:
+            parts.append(f"{already} already marked")
+        if mismatched:
+            parts.append(f"{mismatched} amount mismatch")
+        if ambiguous:
+            parts.append(f"{ambiguous} ambiguous")
+        if not_found:
+            parts.append(f"{not_found} not found")
+        msg = ", ".join(parts) + "."
+        if problems:
+            msg += " Issues: " + "; ".join(problems)
+        (messages.success if marked else messages.warning)(request, msg)
+        return redirect("transaction_list")
+
+
 class TransactionReverseView(TreasurerRequiredMixin, View):
     """Reverse a ledger entry (treasury never deletes — it posts a contra entry).
     Blocked inside a locked period unless an admin overrides."""

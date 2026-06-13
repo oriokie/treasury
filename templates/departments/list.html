@@ -2,7 +2,8 @@
 {% block title %}Funds · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div class="ph-actions" style="margin-left:auto">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div><div><h1>Funds &amp; departments</h1><div class="sub">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div></div>
-{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a>{% endif %}</div>
+{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a>
+<a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">⬆ Bulk import / create</a>{% endif %}</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Name</th><th>Type</th><th>Category</th><th class="num">Opening</th><th class="num">Budget</th><th></th></tr></thead>
   <tbody>

@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.4.1 — fixes
+- Settings: the SMS card was rendering on every tab (it had slipped outside its
+  tab pane); it now shows only under the SMS tab.
+- Discoverability: the bulk fund/department import is now linked on the Funds &
+  departments page, not only on the budgeting page.
+- New bulk tool (Ledger -> Mark processed): for gifts written on a physical
+  envelope that also appear on the bank statement. Upload just a reference and an
+  amount; the reference finds the bank entry and the amount confirms it is the
+  right record. Matched entries are marked processed via envelope — kept out of
+  receipting and the review queue so they are not entered twice — without
+  creating a duplicate receipt. Amount mismatches and ambiguous or unknown
+  references are reported, not applied. The processed status now shows as a badge
+  on the ledger.
+
 ## v1.4.0 — Department leaders & configurable encryption
 - New "Department leader" role: a read-only login scoped to the department(s) a
   leader is assigned. They get their own dashboard showing collections, expenses,
