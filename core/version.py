@@ -38,6 +38,13 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.6.0": "Manual receipts are now a distinct state from system receipts. "
+             "Marking bank entries as a manual receipt (for gifts already "
+             "receipted on paper) keeps them out of both the review queue and the "
+             "receipt-bank-giving pull, and never creates a system envelope — so "
+             "they can't be receipted twice. It is reversible (untick to issue a "
+             "system receipt later), shown with its own label on the ledger, and "
+             "applies across every part of a split gift.",
     "1.5.1": "Receipt bank giving no longer re-receipts a gift that is already "
              "accounted for. Items that already carry an envelope record are now "
              "excluded from the bank-giving pull even if their processed flag had "

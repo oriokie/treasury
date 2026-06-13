@@ -104,7 +104,7 @@ class TransactionEditForm(StyledFormMixin, forms.ModelForm):
         model = Transaction
         fields = ["date", "channel", "direction", "department", "dev_group",
                   "member", "amount", "reference", "payer_name", "payer_phone",
-                  "mpesa_ref", "allocation_status", "processed_via_envelope"]
+                  "mpesa_ref", "allocation_status", "manual_receipt"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):

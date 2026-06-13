@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.6.0 — manual receipts vs system receipts
+- Split the single processed-via-envelope flag into two clear states:
+  - Manual receipt: the gift was receipted on paper (e.g. a hand-written
+    envelope) with no link to the ledger. No system envelope is created, and the
+    gift is kept out of BOTH the review queue and the receipt-bank-giving pull so
+    it is never receipted again. Reversible — untick manual receipt on the entry
+    to make it eligible for a system receipt later.
+  - Processed via envelope: a system envelope record exists (it was receipted in
+    the app).
+- The bulk Mark tool, the per-gift mark-only action, and the entry edit page now
+  set the manual-receipt state; all of them cascade across the parts of a split
+  gift. The two states show with distinct labels on the ledger.
+- A data migration splits existing flags: a previously-processed gift with no
+  envelope record becomes a manual receipt; one with an envelope stays a system
+  receipt. Income totals are unaffected (the bank entry remains the income).
+
 ## v1.5.1 — fix
 - Receipt bank giving: the bulk pull now excludes any gift that already has an
   envelope record, not only those flagged processed-via-envelope. Previously, if

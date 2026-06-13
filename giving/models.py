@@ -180,9 +180,18 @@ class Transaction(models.Model):
     mpesa_ref = models.CharField(max_length=30, blank=True, db_index=True,
                                  help_text="M-Pesa / channel reference from the statement.")
     processed_via_envelope = models.BooleanField(
-        default=False,
-        help_text="This bank entry was reconciled through a physical envelope; "
-                  "kept out of the review queue to avoid double entry.")
+        default=False, db_index=True,
+        help_text="A SYSTEM envelope record exists for this bank entry (it was "
+                  "receipted through the app). Set by the receipt-bank-giving pull "
+                  "and the per-gift receipt action. Kept out of the receipting flow "
+                  "so it isn't receipted twice.")
+    manual_receipt = models.BooleanField(
+        default=False, db_index=True,
+        help_text="This bank entry was receipted MANUALLY on paper (e.g. a "
+                  "hand-written envelope) with no link to the ledger. No system "
+                  "envelope is created. Kept out of both the review queue and the "
+                  "receipt-bank-giving pull so it is never receipted again. "
+                  "Reversible — untick to make it eligible for a system receipt.")
     sabbath_confirm_pending = models.BooleanField(
         default=False, db_index=True,
         help_text="Set by the statement importer when the gift's service Sabbath "
@@ -281,25 +290,30 @@ class Transaction(models.Model):
             q, channel=self.channel, direction=self.direction,
             is_reversal=False, is_reversed=False).exclude(pk=self.pk)
 
-    def mark_processed_via_envelope(self, cascade_split=True):
-        """Mark this entry as handled through a physical envelope: keep it out of
-        receipting AND out of the review/sabbath queues so it isn't entered twice.
-        A REVIEW credit is moved to MANUAL so it leaves the allocation queue.
+    def mark_manual_receipt(self, value=True, cascade_split=True):
+        """Mark this entry as receipted MANUALLY on paper: no system envelope is
+        created, and it is kept out of BOTH the review queue and the
+        receipt-bank-giving pull so it is never receipted again. A REVIEW credit
+        is moved to MANUAL so it leaves the allocation queue.
 
-        When `cascade_split` is on, every part of the same split gift is marked
-        too (so confirming one half of a Combined Offering clears the whole gift
-        from the queue). Returns the number of rows newly marked (incl. self).
+        Reversible: pass value=False to un-mark it (making it eligible for a
+        system receipt again). When `cascade_split` is on, every part of the same
+        split gift is marked/unmarked together (so handling one half of a Combined
+        Offering covers the whole gift). Returns the number of rows changed.
         """
         def _apply(t):
             changed = []
-            if not t.processed_via_envelope:
-                t.processed_via_envelope = True; changed.append("processed_via_envelope")
-            if t.sabbath_confirm_pending:
-                t.sabbath_confirm_pending = False; changed.append("sabbath_confirm_pending")
-            # a processed item is handled — it must not sit in the review queue
-            if t.allocation_status == Transaction.Status.REVIEW:
-                t.allocation_status = Transaction.Status.MANUAL
-                changed.append("allocation_status")
+            if t.manual_receipt != value:
+                t.manual_receipt = value
+                changed.append("manual_receipt")
+            if value:
+                # being marked: also pull it out of the sabbath/review queues
+                if t.sabbath_confirm_pending:
+                    t.sabbath_confirm_pending = False
+                    changed.append("sabbath_confirm_pending")
+                if t.allocation_status == Transaction.Status.REVIEW:
+                    t.allocation_status = Transaction.Status.MANUAL
+                    changed.append("allocation_status")
             if changed:
                 t.save(update_fields=changed)
                 return True

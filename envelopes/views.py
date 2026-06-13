@@ -677,6 +677,7 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
         eligible = (txn.channel == Transaction.Channel.BANK
                     and txn.direction == Transaction.Direction.CREDIT
                     and txn.department_id and not txn.processed_via_envelope
+                    and not txn.manual_receipt
                     and not txn.sabbath_confirm_pending
                     and not txn.is_reversed and not txn.is_reversal)
         nums = []
@@ -701,6 +702,11 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
         if txn.processed_via_envelope or hasattr(txn, "envelope"):
             messages.info(request, "That gift has already been receipted as an envelope.")
             return redirect("transaction_list")
+        if txn.manual_receipt:
+            messages.info(request, "That gift is marked as a manual (paper) receipt. "
+                                   "Untick 'manual receipt' on the entry first if you "
+                                   "want to issue a system receipt instead.")
+            return redirect("transaction_list")
         if txn.department_id is None:
             messages.error(request, "Allocate this gift to a fund before receipting it.")
             return redirect("transaction_list")
@@ -719,7 +725,8 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
         siblings = list(Transaction.objects.filter(
             channel=Transaction.Channel.BANK,
             direction=Transaction.Direction.CREDIT,
-            processed_via_envelope=False, department__isnull=False,
+            processed_via_envelope=False, manual_receipt=False,
+            department__isnull=False,
             date=txn.date, payer_name=txn.payer_name)
             .filter(envelope__isnull=True, envelope_lines__isnull=True)
             .select_related("department", "member"))
@@ -727,19 +734,16 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
                 if ((t.core_ref or "").split("-S")[0] or t.mpesa_ref or str(t.id)) == base_ref] or [txn]
 
         # "mark only" — the envelope was already written/typed by hand, so just flag
-        # the bank entry as receipted-via-envelope (keeps it out of the review queue)
-        # WITHOUT creating a duplicate envelope record. Income is unaffected — the
-        # "mark only" — the envelope was already written/typed by hand, so just flag
-        # the bank entry as receipted-via-envelope (keeps it out of the review queue)
-        # WITHOUT creating a duplicate envelope record. Income is unaffected — the
-        # bank transaction itself remains the income.
+        # "mark only" — the envelope was already written/typed by hand, so flag
+        # the bank entry as a MANUAL RECEIPT (paper): keep it out of the review
+        # queue and the receipt-bank-giving pull WITHOUT creating a system
+        # envelope. Income is unaffected — the bank transaction is the income.
         if request.POST.get("mark_only"):
             for t in txns:
-                t.processed_via_envelope = True
-                t.save(update_fields=["processed_via_envelope"])
-            messages.success(request, f"Marked as receipted via a manual envelope "
-                                      f"(KSh {sum(t.amount for t in txns):,.2f}). No new "
-                                      f"envelope record was created.")
+                t.mark_manual_receipt(value=True, cascade_split=False)
+            messages.success(request, f"Marked as a manual (paper) receipt "
+                                      f"(KSh {sum(t.amount for t in txns):,.2f}). No "
+                                      f"system envelope was created.")
             return redirect("transaction_list")
 
         # receipt number: user-supplied (hybrid manual) or auto-assigned
@@ -814,7 +818,8 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
             direction=Transaction.Direction.CREDIT,
             allocation_status__in=[Transaction.Status.AUTO, Transaction.Status.LEARNED,
                                    Transaction.Status.MANUAL],
-            processed_via_envelope=False, department__isnull=False,
+            processed_via_envelope=False, manual_receipt=False,
+            department__isnull=False,
             # gifts still awaiting a Sabbath decision are not receipted yet
             sabbath_confirm_pending=False)
             .filter(

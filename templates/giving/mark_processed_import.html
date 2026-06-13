@@ -1,16 +1,18 @@
 {% extends 'base.html' %}
 {% block title %}Mark entries processed · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Mark bank entries processed</h1>
-  <div class="sub">For gifts already written on a physical envelope — handled, but not to be receipted again</div></div></div>
+<div class="page-head"><div><h1>Mark bank entries as manual receipts</h1>
+  <div class="sub">For gifts already receipted on paper — kept out of receipting, no system envelope created</div></div></div>
 
 <div class="card" style="max-width:720px"><div class="bd">
   <div class="help" style="line-height:1.7;margin-bottom:.8rem">
-    Use this when members have <strong>hand-written envelopes</strong> for money that
-    also shows on the bank statement. Marking those bank entries
-    <strong>processed</strong> keeps them out of the receipting and review flow so they
-    aren't entered twice — but <strong>no envelope receipt is created</strong> (they were
-    receipted on paper).
+    Use this when members have <strong>hand-written envelopes</strong> (receipted on
+    paper) for money that also shows on the bank statement. Marking those bank
+    entries as <strong>manual receipts</strong> keeps them out of the review queue and
+    the "receipt bank giving" pull so they aren't receipted twice — and
+    <strong>no system envelope is created</strong> (they were receipted by hand). This
+    is reversible: untick "manual receipt" on an entry to make it eligible for a
+    system receipt later.
   </div>
   <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
     <li><strong>Download</strong> the template — two columns: <span class="mono">reference</span> and <span class="mono">amount</span>.</li>

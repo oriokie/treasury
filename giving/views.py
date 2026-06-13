@@ -148,10 +148,13 @@ class ReviewQueueView(ReadAccessMixin, ListView):
 
     def get_queryset(self):
         # Only credits (giving) awaiting allocation belong here; bank debits with a
-        # REVIEW status are handled in the separate bank-debit queue.
+        # REVIEW status are handled in the separate bank-debit queue. Anything
+        # already receipted (system envelope) or marked as a manual paper receipt
+        # is handled and must not appear here.
         return (Transaction.objects.filter(
                     allocation_status=Transaction.Status.REVIEW,
-                    direction=Transaction.Direction.CREDIT)
+                    direction=Transaction.Direction.CREDIT,
+                    processed_via_envelope=False, manual_receipt=False)
                 .select_related("member").order_by("date", "id"))
 
     def get_context_data(self, **kwargs):
@@ -389,19 +392,24 @@ class TransactionUpdateView(DataEntryRequiredMixin, UpdateView):
         if _block_if_locked(self.request, form.instance.date) or \
            (original and _block_if_locked(self.request, original)):
             return redirect("transaction_list")
-        # was the "processed via envelope" box newly ticked on this save?
-        newly_processed = ("processed_via_envelope" in form.changed_data
-                           and form.instance.processed_via_envelope)
+        # did the "manual receipt" box change on this save? (reversible both ways)
+        changed_manual = "manual_receipt" in form.changed_data
+        new_value = form.instance.manual_receipt
         response = super().form_valid(form)
-        if newly_processed:
-            # handled on paper: pull it (and any split siblings) out of the
-            # review / sabbath queues so it isn't entered twice
-            n = self.object.mark_processed_via_envelope(cascade_split=True)
-            if n > 1:
+        if changed_manual:
+            # marking on: pull it (and split siblings) out of the queues so it
+            # isn't receipted again. Un-marking: clear the flag on the whole gift
+            # so it becomes eligible for a system receipt once more.
+            n = self.object.mark_manual_receipt(value=new_value, cascade_split=True)
+            if new_value and n > 1:
                 messages.success(self.request,
-                    f"Marked processed and cleared {n} split parts from the queue.")
+                    f"Marked {n} split parts as manual receipts and cleared them "
+                    f"from the queue.")
+            elif new_value:
+                messages.success(self.request, "Marked as a manual receipt.")
             else:
-                messages.success(self.request, "Entry updated.")
+                messages.success(self.request,
+                    "Manual-receipt mark removed — this gift can be receipted again.")
         else:
             messages.success(self.request, "Entry updated.")
         return response
@@ -700,10 +708,10 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
         problems = []
 
         def _mark(txn):
-            """Mark one transaction processed; return True if newly marked.
-            Cascade is off here because the importer has already matched the
-            full split group by its total and marks each row explicitly."""
-            return txn.mark_processed_via_envelope(cascade_split=False) > 0
+            """Mark one transaction as a manual (paper) receipt; return True if
+            newly changed. Cascade is off because the importer has already matched
+            the full split group by its total and marks each row explicitly."""
+            return txn.mark_manual_receipt(value=True, cascade_split=False) > 0
 
         for ref, raw_amt in rows:
             # match a bank CREDIT by any of the reference-bearing fields
@@ -771,7 +779,7 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
                         else f"amount {amt} ≠ any row and ≠ split total {total}")
                 problems.append(f"“{ref}”: matches {n} entries — {hint}")
 
-        parts = [f"{marked} marked processed (via envelope)"]
+        parts = [f"{marked} marked as manual receipt"]
         if already:
             parts.append(f"{already} already marked")
         if mismatched:

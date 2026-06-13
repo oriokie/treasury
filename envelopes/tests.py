@@ -452,7 +452,11 @@ class MarkReceiptedOnlyTests(TestCase):
         c = Client(); c.force_login(u)
         c.post(f"/transactions/{t.id}/receipt-envelope/", {"mark_only": "1"})
         t.refresh_from_db()
-        self.assertTrue(t.processed_via_envelope)
+        # "mark only" now records a MANUAL (paper) receipt — no system envelope,
+        # and processed_via_envelope stays False (that flag means a system
+        # envelope exists)
+        self.assertTrue(t.manual_receipt)
+        self.assertFalse(t.processed_via_envelope)
         self.assertEqual(Envelope.objects.count(), before)
 
 
@@ -536,6 +540,18 @@ class PullBankExcludesAlreadyReceiptedTests(TestCase):
         self.assertEqual(EnvelopeLine.objects.filter(transaction=t).count(), 1)
         t.refresh_from_db()
         self.assertTrue(t.processed_via_envelope)
+
+    def test_manual_receipt_is_excluded(self):
+        # a gift marked as a manual (paper) receipt must never be pulled
+        from django.urls import reverse
+        from envelopes.models import EnvelopeLine
+        t = self._txn("MANUAL", 350, manual_receipt=True)
+        self.client.post(reverse("envelope_pull_bank"), {"month": "2026-05"})
+        self.assertFalse(EnvelopeLine.objects.filter(transaction=t).exists())
+        t.refresh_from_db()
+        # it stays a manual receipt; no system envelope was created
+        self.assertTrue(t.manual_receipt)
+        self.assertFalse(t.processed_via_envelope)
 
     def test_partial_split_excludes_already_receipted_part(self):
         # a split gift: part A already receipted (flagged), part B clean.

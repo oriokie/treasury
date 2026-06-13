@@ -571,7 +571,7 @@ class TransactionExportDetailTests(TestCase):
 
 class MarkProcessedImportTests(TestCase):
     """Bulk 'mark processed (via envelope)': matches a bank credit by reference,
-    confirms with the amount, sets processed_via_envelope, and reports problems
+    confirms with the amount, sets manual_receipt, and reports problems
     without applying bad rows. These entries are handled — not receipted."""
 
     def setUp(self):
@@ -600,19 +600,19 @@ class MarkProcessedImportTests(TestCase):
     def test_match_marks_processed(self):
         self._post("reference,amount\nREFAAA111,1500\n")
         self.t1.refresh_from_db()
-        self.assertTrue(self.t1.processed_via_envelope)
+        self.assertTrue(self.t1.manual_receipt)
 
     def test_amount_mismatch_is_rejected(self):
         self._post("reference,amount\nREFBBB222,9999\n")
         self.t2.refresh_from_db()
-        self.assertFalse(self.t2.processed_via_envelope)   # wrong amount → skipped
+        self.assertFalse(self.t2.manual_receipt)   # wrong amount → skipped
 
     def test_unknown_reference_is_skipped(self):
         # should not raise, and nothing gets marked
         self._post("reference,amount\nNOSUCHREF,100\n")
         self.t1.refresh_from_db(); self.t2.refresh_from_db()
-        self.assertFalse(self.t1.processed_via_envelope)
-        self.assertFalse(self.t2.processed_via_envelope)
+        self.assertFalse(self.t1.manual_receipt)
+        self.assertFalse(self.t2.manual_receipt)
 
     def test_amount_disambiguates_two_matches(self):
         import datetime as dt
@@ -624,8 +624,8 @@ class MarkProcessedImportTests(TestCase):
             reference="REFAAA111", allocation_status="AUTO", confirmed=True)
         self._post("reference,amount\nREFAAA111,7777\n")
         self.t1.refresh_from_db(); dup.refresh_from_db()
-        self.assertFalse(self.t1.processed_via_envelope)   # 1500 one untouched
-        self.assertTrue(dup.processed_via_envelope)        # 7777 one marked
+        self.assertFalse(self.t1.manual_receipt)   # 1500 one untouched
+        self.assertTrue(dup.manual_receipt)        # 7777 one marked
 
     def test_xlsx_upload_path(self):
         import io
@@ -638,7 +638,7 @@ class MarkProcessedImportTests(TestCase):
         self.client.post(reverse("mark_processed_import"),
             {"file": SimpleUploadedFile("p.xlsx", buf.getvalue())})
         self.t1.refresh_from_db()
-        self.assertTrue(self.t1.processed_via_envelope)
+        self.assertTrue(self.t1.manual_receipt)
 
     def test_template_download(self):
         from django.urls import reverse
@@ -682,14 +682,14 @@ class MarkProcessedSplitFundTests(TestCase):
     def test_total_marks_all_split_parts(self):
         self._post("reference,amount\nSPLITREF,2000\n")     # the lump sum
         self.h1.refresh_from_db(); self.h2.refresh_from_db()
-        self.assertTrue(self.h1.processed_via_envelope)
-        self.assertTrue(self.h2.processed_via_envelope)
+        self.assertTrue(self.h1.manual_receipt)
+        self.assertTrue(self.h2.manual_receipt)
 
     def test_wrong_total_marks_nothing(self):
         self._post("reference,amount\nSPLITREF,5000\n")
         self.h1.refresh_from_db(); self.h2.refresh_from_db()
-        self.assertFalse(self.h1.processed_via_envelope)
-        self.assertFalse(self.h2.processed_via_envelope)
+        self.assertFalse(self.h1.manual_receipt)
+        self.assertFalse(self.h2.manual_receipt)
 
     def test_three_way_split_by_total(self):
         import datetime as dt
@@ -710,7 +710,7 @@ class MarkProcessedSplitFundTests(TestCase):
         self._post("reference,amount\nTRIO,2500\n")
         for t in (a, b, c):
             t.refresh_from_db()
-            self.assertTrue(t.processed_via_envelope)
+            self.assertTrue(t.manual_receipt)
 
 
 class MarkProcessedClearsQueueTests(TestCase):
@@ -744,9 +744,9 @@ class MarkProcessedClearsQueueTests(TestCase):
             direction="CREDIT", amount=Decimal("500"), reference="R1",
             core_ref="C1", allocation_status="REVIEW", confirmed=True)
         self.assertIn(t.id, self._review_queue_ids())
-        t.mark_processed_via_envelope()
+        t.mark_manual_receipt()
         t.refresh_from_db()
-        self.assertTrue(t.processed_via_envelope)
+        self.assertTrue(t.manual_receipt)
         self.assertNotEqual(t.allocation_status, "REVIEW")
         self.assertNotIn(t.id, self._review_queue_ids())
 
@@ -761,7 +761,7 @@ class MarkProcessedClearsQueueTests(TestCase):
         h2 = Transaction.objects.create(amount=Decimal("1000"),
             department=self.local, core_ref="SC-S1", **common)
         # mark just one half via the model method with cascade
-        n = h1.mark_processed_via_envelope(cascade_split=True)
+        n = h1.mark_manual_receipt(cascade_split=True)
         self.assertEqual(n, 2)                      # both parts marked
         h1.refresh_from_db(); h2.refresh_from_db()
         self.assertNotIn(h1.id, self._review_queue_ids())
@@ -795,7 +795,7 @@ class MarkProcessedClearsQueueTests(TestCase):
         self.client.post(f"/transactions/{h1.id}/edit/", {
             "date": "2026-06-04", "channel": "BANK", "direction": "CREDIT",
             "department": self.trust.id, "amount": "1200", "reference": "ESPLIT",
-            "allocation_status": "REVIEW", "processed_via_envelope": "on"})
+            "allocation_status": "REVIEW", "manual_receipt": "on"})
         h1.refresh_from_db(); h2.refresh_from_db()
         self.assertNotIn(h1.id, self._review_queue_ids())
         self.assertNotIn(h2.id, self._review_queue_ids())   # sibling cascaded
