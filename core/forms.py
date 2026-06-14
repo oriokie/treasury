@@ -32,6 +32,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "pledge_match_mode", "pledge_match_same_fund_only",
             "pledge_match_window_days", "pledge_public_form_enabled",
             "backup_email", "require_2fa_for_treasurers",
+            "error_alerts_enabled", "error_alert_phone",
             "opening_bank_balance", "opening_cash_on_hand", "opening_unremitted_trust",
             "telegram_enabled", "telegram_bot_token", "telegram_pin",
             "telegram_session_minutes", "telegram_run_in_app",

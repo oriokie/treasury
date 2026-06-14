@@ -33,6 +33,28 @@ def _email(users, message):
         send_email("Church treasury notification", message, addrs)
 
 
+def alert_admins_error(summary, detail=""):
+    """Alert the admin that an unexpected error occurred, via whichever channels
+    are enabled (in-app + email always; SMS / WhatsApp if turned on and a number
+    is set). Never raises into the caller — error handling must not error."""
+    try:
+        cfg = SiteConfig.get()
+        msg = f"Treasury error: {summary}"[:255]
+        # always record an in-app notification for treasurers
+        notify("ERROR", msg, email=cfg.error_alerts_enabled and cfg.notify_email_enabled)
+        if not cfg.error_alerts_enabled:
+            return
+        phone = (cfg.error_alert_phone or "").strip()
+        if phone and cfg.sms_enabled:
+            from core.services.sms import send_sms
+            send_sms(phone, msg, cfg)
+        if phone and cfg.whatsapp_enabled:
+            from core.services.whatsapp import send_whatsapp
+            send_whatsapp(phone, msg, cfg)
+    except Exception:
+        pass
+
+
 def unread_count(user):
     if not getattr(user, "is_authenticated", False):
         return 0

@@ -69,18 +69,38 @@ class TwoFactor(models.Model):
             return True
         return False
 
+    @property
+    def secret_readable(self):
+        """True only if the stored secret decrypts to a usable base32 secret.
+        A failed decryption (e.g. the encryption key changed after enrolment)
+        leaves the ciphertext in place; we must not feed that to pyotp."""
+        s = self.secret
+        if not s:
+            return False
+        try:
+            import base64
+            base64.b32decode(s, casefold=True)
+            return True
+        except Exception:
+            return False
+
     # --- verification ---
     def verify(self, token):
-        """True if the 6-digit token is currently valid (±1 step tolerance)."""
+        """True if the 6-digit token is currently valid (±1 step tolerance).
+        Never raises — an unreadable secret simply fails to verify."""
         import pyotp
-        if not self.secret:
+        from django.utils import timezone
+        if not self.secret_readable:
             return False
         token = (token or "").strip().replace(" ", "")
         if not token:
             return False
-        ok = pyotp.TOTP(self.secret).verify(token, valid_window=1)
+        try:
+            ok = pyotp.TOTP(self.secret).verify(token, valid_window=1)
+        except Exception:
+            return False
         if ok:
-            self.last_used_at = dt.datetime.now()
+            self.last_used_at = timezone.now()
             self.save(update_fields=["last_used_at"])
         return ok
 
@@ -89,5 +109,8 @@ class TwoFactor(models.Model):
         from core.models import SiteConfig
         issuer = SiteConfig.get().church_name or "Church Treasury"
         label = self.user.get_username()
-        return pyotp.TOTP(self.secret).provisioning_uri(name=label,
-                                                        issuer_name=issuer)
+        try:
+            return pyotp.TOTP(self.secret).provisioning_uri(name=label,
+                                                            issuer_name=issuer)
+        except Exception:
+            return ""

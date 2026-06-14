@@ -794,14 +794,28 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
     def post(self, request):
         from collections import defaultdict
         today = dt.date.today()
+        from core.utils import sabbath_of as _sof
+        # Item 4: an optional specific Sabbath to receipt. If given, we receipt
+        # only that Sabbath's bank giving; if not, the original whole-month logic
+        # is used.
+        raw_sab = (request.POST.get("sabbath") or "").strip()
+        one_sabbath = None
+        if raw_sab:
+            try:
+                one_sabbath = _sof(dt.date.fromisoformat(raw_sab))
+            except ValueError:
+                one_sabbath = None
+
         raw = request.POST.get("month")
         try:
             year, month = (int(x) for x in raw.split("-")) if raw else (today.year, today.month)
         except (ValueError, AttributeError):
             year, month = today.year, today.month
+        if one_sabbath:
+            year, month = one_sabbath.year, one_sabbath.month
 
         from core.models import period_locked
-        _lk = period_locked(dt.date(year, month, 1))
+        _lk = period_locked(one_sabbath or dt.date(year, month, 1))
         if _lk:
             messages.error(request, f"{_lk} is locked — reopen the period before "
                                     "receipting bank giving into it.")
@@ -812,7 +826,16 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
         # the Sabbath it is counted on, which may fall in a different month.
         # Fall back to the transaction date for gifts with no service Sabbath set.
         from django.db.models import Q as _Q
-        from core.utils import sabbath_of as _sof
+        if one_sabbath:
+            # a single Sabbath: match its exact service_sabbath, or (for gifts with
+            # no Sabbath set) a transaction date within that Sabbath's week
+            week_start = one_sabbath - dt.timedelta(days=6)
+            period_q = (_Q(service_sabbath=one_sabbath) |
+                        _Q(service_sabbath__isnull=True,
+                           date__range=(week_start, one_sabbath)))
+        else:
+            period_q = (_Q(service_sabbath__year=year, service_sabbath__month=month) |
+                        _Q(service_sabbath__isnull=True, date__year=year, date__month=month))
         eligible = (Transaction.objects.filter(
             channel=Transaction.Channel.BANK,
             direction=Transaction.Direction.CREDIT,
@@ -822,9 +845,7 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
             department__isnull=False,
             # gifts still awaiting a Sabbath decision are not receipted yet
             sabbath_confirm_pending=False)
-            .filter(
-                _Q(service_sabbath__year=year, service_sabbath__month=month) |
-                _Q(service_sabbath__isnull=True, date__year=year, date__month=month))
+            .filter(period_q)
             # belt-and-braces: never re-receipt a gift that already has an envelope
             # record, even if its processed flag somehow wasn't set (older data,
             # a manual envelope, or a partially-receipted split). Matching on the
@@ -832,6 +853,7 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
             .filter(envelope__isnull=True, envelope_lines__isnull=True)
             .distinct())
         cfg = SiteConfig.get()
+
 
         # group transactions that belong to one gift (split offerings share these).
         # NOTE: a sibling created by split_into shares the core_ref base, but may
@@ -975,15 +997,24 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
     def _breakdown(self, sabbath):
         """Transparent components of expected cash on hand for the Sabbath. Groups
         by each gift's *service Sabbath*, so a gift sent after the count closed is
-        credited to the next Sabbath and never reopens this one."""
+        credited to the next Sabbath and never reopens this one.
+
+        Crucially, this is a count of PHYSICAL CASH only. Bank/M-Pesa giving lives
+        on the statement (channel=BANK) and is never included. We also subtract any
+        'cash envelope' (an ENVELOPE-channel row) that turns out to duplicate a
+        bank gift for the same contributor this Sabbath — i.e. money that arrived
+        in the bank but was also keyed on the cash envelope sheet. Counting it as
+        cash would overstate the float and make the count impossible to balance."""
         from django.db.models import Sum, Case, When, DecimalField
         from giving.models import Transaction
         from cashbook.models import Expense
+        from members.services.matching import name_key
         zero = DecimalField(max_digits=14, decimal_places=2)
         agg = (Transaction.objects.filter(
                     channel__in=[Transaction.Channel.CASH, Transaction.Channel.ENVELOPE],
                     direction=Transaction.Direction.CREDIT, confirmed=True,
                     is_reversed=False, is_reversal=False,
+                    excluded_from_income=False,
                     service_sabbath=sabbath)
                .aggregate(
                     cash=Sum(Case(When(channel=Transaction.Channel.CASH, then="amount"),
@@ -992,14 +1023,43 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
                                       default=Decimal(0), output_field=zero))))
         cash = agg["cash"] or Decimal(0)
         envelope = agg["envelope"] or Decimal(0)
+
+        # --- exclude bank giving that was also keyed as a cash envelope ---------
+        # Build a multiset of this Sabbath's BANK gifts by (contributor, amount);
+        # any ENVELOPE-channel row that matches one is the same money entered twice
+        # and must not count toward physical cash.
+        bank_sig = {}
+        for b in Transaction.objects.filter(
+                channel=Transaction.Channel.BANK,
+                direction=Transaction.Direction.CREDIT, confirmed=True,
+                is_reversed=False, is_reversal=False,
+                service_sabbath=sabbath).values("member_id", "payer_name", "amount"):
+            who = b["member_id"] or name_key(b["payer_name"]) or ""
+            bank_sig[(who, b["amount"])] = bank_sig.get((who, b["amount"]), 0) + 1
+        bank_as_cash = Decimal(0)
+        if bank_sig:
+            for e in Transaction.objects.filter(
+                    channel=Transaction.Channel.ENVELOPE,
+                    direction=Transaction.Direction.CREDIT, confirmed=True,
+                    is_reversed=False, is_reversal=False,
+                    excluded_from_income=False,
+                    service_sabbath=sabbath).values("member_id", "payer_name", "amount"):
+                who = e["member_id"] or name_key(e["payer_name"]) or ""
+                key = (who, e["amount"])
+                if bank_sig.get(key, 0) > 0:
+                    bank_sig[key] -= 1            # consume one match
+                    bank_as_cash += e["amount"]
+        envelope_cash = envelope - bank_as_cash
+
         window_start = sabbath - dt.timedelta(days=6)
         disbursed = (Expense.objects.filter(
                         method=Expense.Method.CASH,
                         status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
                         date__range=(window_start, sabbath))
                      .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        return {"cash": cash, "envelope": envelope, "disbursed": disbursed,
-                "net": cash + envelope - disbursed}
+        return {"cash": cash, "envelope": envelope_cash, "envelope_raw": envelope,
+                "bank_as_cash": bank_as_cash, "disbursed": disbursed,
+                "net": cash + envelope_cash - disbursed}
 
     def get(self, request):
         try:
@@ -1274,3 +1334,71 @@ class SabbathCloseView(DataEntryRequiredMixin, View):
             messages.success(request, f"Sabbath {sab:%d %b %Y} closed. Later gifts for "
                                       f"it will be credited to the next open Sabbath.")
         return redirect(back)
+
+
+class SabbathReconciliationView(ReadAccessMixin, View):
+    """Item 1: reconcile a Sabbath's bank giving (receipted + manual) against the
+    envelopes counted for it, with fuzzy name matching and a balance check."""
+    template_name = "envelopes/reconcile_sabbath.html"
+
+    def get(self, request):
+        from envelopes.reconcile import reconcile_sabbath, unsabbathed_bank_count
+        try:
+            sab = sabbath_of(dt.date.fromisoformat(request.GET["date"]))
+        except (KeyError, ValueError):
+            sab = _last_saturday()
+        rec = reconcile_sabbath(sab)
+        rec["unsabbathed"] = unsabbathed_bank_count()
+        return render(request, self.template_name, rec)
+
+
+class ReconcileApplyView(DataEntryRequiredMixin, View):
+    """Item 1: apply selected reconciliation matches. Each selected pair is
+    'env:<envelope_id>:bank:<txn_id>'. Applying marks the matched envelope as a
+    BANK item (it was bank money), links it to the bank gift when free, and
+    neutralises the duplicate cash income the envelope created so the money is
+    counted once — via the bank transaction."""
+
+    @db_tx.atomic
+    def post(self, request):
+        from giving.models import Transaction
+        pairs = request.POST.getlist("pair")
+        sab = request.POST.get("date", "")
+        applied = 0
+        for token in pairs:
+            try:
+                _, env_id, _, txn_id = token.split(":")
+                env_id, txn_id = int(env_id), int(txn_id)
+            except (ValueError, AttributeError):
+                continue
+            env = Envelope.objects.filter(pk=env_id).first()
+            txn = Transaction.objects.filter(pk=txn_id).first()
+            if not env or not txn:
+                continue
+            changed = False
+            # 1) mark the receipted entry (envelope) as a BANK item
+            if env.channel != Envelope.Channel.BANK:
+                env.channel = Envelope.Channel.BANK
+                changed = True
+            # 2) link it to the bank gift if neither side is already linked
+            if env.bank_transaction_id is None and not hasattr(txn, "envelope"):
+                env.bank_transaction = txn
+                changed = True
+            if changed:
+                env.save(update_fields=["channel", "bank_transaction"])
+            # 3) neutralise duplicate income: any ENVELOPE-channel transaction this
+            #    envelope created is the same money as the bank gift — exclude it
+            #    from income (the bank transaction is the income).
+            for line in env.lines.select_related("transaction").all():
+                lt = line.transaction
+                if lt and lt.channel == Transaction.Channel.ENVELOPE \
+                        and not lt.excluded_from_income:
+                    lt.excluded_from_income = True
+                    lt.save(update_fields=["excluded_from_income"])
+            applied += 1
+        if applied:
+            messages.success(request, f"Applied {applied} match(es): marked as bank "
+                                      "giving and removed the duplicate cash entry.")
+        else:
+            messages.info(request, "No matches were selected.")
+        return redirect(f"{reverse('sabbath_reconcile')}?date={sab}")

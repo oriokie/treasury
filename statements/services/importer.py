@@ -131,7 +131,8 @@ def verify_running_balance(rows):
                   f"across {len(have)} rows.")
 
 
-def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_account=None):
+def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_account=None,
+               force_sabbath=None):
     import_obj.status = StatementImport.Status.PROCESSING
     import_obj.save(update_fields=["status"])
 
@@ -215,22 +216,29 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                 from core.models import service_sabbath_for, SiteConfig
                 from core.utils import sabbath_of as _sof, sabbath_week_of as _swk
                 _today = dt.date.today()
-                natural_sab = _sof(row["date"])
-                svc_sab = service_sabbath_for(row["date"], as_of=_today)
-                # Held for confirmation when the gift's natural Sabbath had already
-                # passed by import day and so was rolled forward — the treasurer
-                # confirms it really belongs to the next Sabbath (or pulls it back).
-                rolled = bool(is_credit and svc_sab and natural_sab
-                              and svc_sab != natural_sab and natural_sab <= _today)
-                # Only the funds we normally receipt (Trust + LCB) need confirming,
-                # unless the setting says all. A split fund always has a trust half,
-                # so it qualifies. Items outside scope just post by date silently.
-                _scope = SiteConfig.get().sabbath_confirm_scope
-                if rolled and _scope == SiteConfig.SabbathConfirmScope.RECEIPTABLE:
-                    in_scope = bool(split_fund is not None or _is_receiptable_fund(dept))
+                if force_sabbath:
+                    # Treasurer explicitly chose the Sabbath these entries belong
+                    # to (e.g. a late import). It takes precedence and there is
+                    # nothing to confirm — they have already decided.
+                    svc_sab = _sof(force_sabbath)
+                    sab_pending = False
                 else:
-                    in_scope = True
-                sab_pending = rolled and in_scope
+                    natural_sab = _sof(row["date"])
+                    svc_sab = service_sabbath_for(row["date"], as_of=_today)
+                    # Held for confirmation when the gift's natural Sabbath had already
+                    # passed by import day and so was rolled forward — the treasurer
+                    # confirms it really belongs to the next Sabbath (or pulls it back).
+                    rolled = bool(is_credit and svc_sab and natural_sab
+                                  and svc_sab != natural_sab and natural_sab <= _today)
+                    # Only the funds we normally receipt (Trust + LCB) need confirming,
+                    # unless the setting says all. A split fund always has a trust half,
+                    # so it qualifies. Items outside scope just post by date silently.
+                    _scope = SiteConfig.get().sabbath_confirm_scope
+                    if rolled and _scope == SiteConfig.SabbathConfirmScope.RECEIPTABLE:
+                        in_scope = bool(split_fund is not None or _is_receiptable_fund(dept))
+                    else:
+                        in_scope = True
+                    sab_pending = rolled and in_scope
                 common = dict(
                     date=row["date"], sabbath_week=_swk(svc_sab),
                     service_sabbath=svc_sab, sabbath_confirm_pending=sab_pending,

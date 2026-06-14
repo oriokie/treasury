@@ -6,6 +6,11 @@
 <div class="card form-card" style="max-width:660px"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    {% if overspend_warning %}<div class="alert alert-warn" style="margin-bottom:1rem">
+      <strong>Not saved yet.</strong> This expense is larger than the fund's available
+      balance, so nothing has been recorded. Your entry below is intact — tick
+      <strong>override</strong> at the bottom and save again to record it anyway, or
+      change the fund or amount.</div>{% endif %}
     <div class="form-grid">
       <div class="form-row">
         <label>Fund / department</label>

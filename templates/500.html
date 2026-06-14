@@ -1,0 +1,15 @@
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Something went wrong</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head><body>
+<div class="error-page" style="max-width:640px;margin:5rem auto;padding:0 1.2rem;text-align:center">
+  <div class="error-code" style="font-family:'IBM Plex Mono',monospace;font-size:3.5rem;color:var(--brass);font-weight:700">500</div>
+  <h1 style="font-family:Fraunces,Georgia,serif">The books didn't balance just now.</h1>
+  <p style="color:var(--muted);line-height:1.7">An unexpected error tripped us up on this page — nothing you did wrong. The
+  ledger itself is safe; this was a hiccup on our side. The administrator has been
+  notified. Please try again in a moment.</p>
+  <div style="margin-top:1.4rem"><a href="/" style="display:inline-block;background:var(--forest);color:#fff;padding:.6rem 1.1rem;border-radius:8px;text-decoration:none;font-weight:600">← Back to safety</a></div>
+</div>
+</body></html>

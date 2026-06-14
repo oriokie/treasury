@@ -32,7 +32,7 @@ class TwoFactorSetupView(LoginRequiredMixin, View):
         if tf.confirmed:
             return render(request, "accounts/twofactor_manage.html",
                           {"tf": tf, "codes_remaining": len(tf.get_recovery_codes())})
-        if not tf.secret:
+        if not tf.secret or not tf.secret_readable:
             import pyotp
             tf.set_secret(pyotp.random_base32())
             tf.save()
@@ -77,9 +77,12 @@ class TwoFactorVerifyView(View):
         tf = getattr(user, "two_factor", None)
         ok = False
         if tf:
-            ok = tf.verify(request.POST.get("token", ""))
-            if not ok and request.POST.get("recovery"):
-                ok = tf.consume_recovery_code(request.POST.get("token", ""))
+            token = request.POST.get("token", "")
+            ok = tf.verify(token)
+            if not ok:
+                # accept a recovery code in the same box (no toggle needed) — this
+                # gives a second, always-available form of authentication
+                ok = tf.consume_recovery_code(token)
         if ok:
             user.backend = "django.contrib.auth.backends.ModelBackend"
             login(request, user)
@@ -87,9 +90,16 @@ class TwoFactorVerifyView(View):
             request.session.pop(PENDING_USER, None)
             nxt = request.session.pop("2fa_next", None)
             return redirect(nxt or "/")
+        # If the secret can't be read at all (e.g. the encryption key changed
+        # after enrolment), TOTP can never succeed — let a recovery code through,
+        # and otherwise tell the user plainly rather than failing forever.
+        secret_lost = bool(tf and not tf.secret_readable)
         messages.error(request, "Invalid code. You can use a recovery code if you "
-                                "can't reach your authenticator.")
-        return render(request, self.template_name, {})
+                                "can't reach your authenticator." +
+                                (" (Your authenticator secret can't be read on this "
+                                 "server — please sign in with a recovery code, then "
+                                 "re-enrol two-factor.)" if secret_lost else ""))
+        return render(request, self.template_name, {"secret_lost": secret_lost})
 
 
 class TwoFactorDisableView(LoginRequiredMixin, View):

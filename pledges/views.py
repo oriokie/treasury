@@ -618,12 +618,21 @@ class PledgeImportView(TreasurerRequiredMixin, View):
         "ANNUAL": "ANNUAL", "ANNUALLY": "ANNUAL", "YEARLY": "ANNUAL", "YEAR": "ANNUAL",
     }
 
-    def get(self, request):
+    def dispatch(self, request, *args, **kwargs):
+        # Item 5: when reached via a campaign page, every imported pledge is
+        # scoped to that campaign (no Campaign column needed).
+        self.campaign = None
+        if kwargs.get("pk"):
+            self.campaign = PledgeCampaign.objects.filter(pk=kwargs["pk"]).first()
+        return super().dispatch(request, *args, **kwargs)
+
+    def get(self, request, *args, **kwargs):
         if request.GET.get("download"):
             return self._download(request)
-        return render(request, self.template_name, {"stage": "upload"})
+        return render(request, self.template_name,
+                      {"stage": "upload", "campaign": self.campaign})
 
-    def post(self, request):
+    def post(self, request, *args, **kwargs):
         if request.POST.get("apply"):
             return self._apply(request)
         return self._parse(request)
@@ -810,6 +819,15 @@ class PledgeImportView(TreasurerRequiredMixin, View):
             return redirect("pledge_import")
 
         request.session["pledge_import_plan"] = plan
+        if self.campaign:
+            # campaign-scoped import: every row belongs to this campaign
+            for p in plan:
+                p["campaign_id"] = self.campaign.id
+                p["campaign_match"] = self.campaign.name
+                p["campaign_raw"] = ""
+            request.session["pledge_forced_campaign"] = self.campaign.id
+        else:
+            request.session.pop("pledge_forced_campaign", None)
         unmatched_members = sum(1 for p in plan if not p["member_id"])
         unmatched_camps = sorted({p["campaign_raw"] for p in plan
                                   if p["campaign_raw"] and not p["campaign_id"]})
@@ -820,7 +838,7 @@ class PledgeImportView(TreasurerRequiredMixin, View):
                                PledgeCampaign.objects.exclude(
                                    status=PledgeCampaign.Status.CLOSED).order_by("name")]
         return render(request, self.template_name, {
-            "stage": "review", "plan": plan,
+            "stage": "review", "plan": plan, "campaign": self.campaign,
             "total": sum(p["amount"] for p in plan),
             "unmatched_members": unmatched_members,
             "unmatched_camps": unmatched_camps,
@@ -841,6 +859,10 @@ class PledgeImportView(TreasurerRequiredMixin, View):
         created = skipped = new_members = new_camps = 0
         # a single "default campaign" choice can cover rows with no campaign
         default_campaign_id = request.POST.get("default_campaign") or None
+        # campaign-scoped import: this campaign wins for every row
+        forced_campaign_id = request.session.get("pledge_forced_campaign")
+        forced_campaign = (PledgeCampaign.objects.filter(pk=forced_campaign_id).first()
+                           if forced_campaign_id else None)
 
         for i, p in enumerate(plan):
             # resolve member
@@ -863,7 +885,9 @@ class PledgeImportView(TreasurerRequiredMixin, View):
             # resolve campaign
             cchoice = request.POST.get(f"campaign_{i}", "")
             campaign = None
-            if cchoice.startswith("campaign:"):
+            if forced_campaign:
+                campaign = forced_campaign
+            elif cchoice.startswith("campaign:"):
                 campaign = PledgeCampaign.objects.filter(pk=cchoice.split(":", 1)[1]).first()
             elif cchoice == "create" and p["campaign_raw"]:
                 campaign, was = PledgeCampaign.objects.get_or_create(
@@ -893,6 +917,7 @@ class PledgeImportView(TreasurerRequiredMixin, View):
             created += 1
 
         request.session.pop("pledge_import_plan", None)
+        forced = request.session.pop("pledge_forced_campaign", None)
         parts = [f"{created} pledge(s) imported as drafts"]
         if new_members:
             parts.append(f"{new_members} new member(s)")
@@ -902,6 +927,8 @@ class PledgeImportView(TreasurerRequiredMixin, View):
             parts.append(f"{skipped} row(s) skipped")
         messages.success(request, ", ".join(parts) +
                          ". Review and approve them on the pledge list.")
+        if forced:
+            return redirect("pledge_campaign_detail", pk=forced)
         return redirect(f"{reverse('pledge_list')}?status=DRAFT")
 
     @staticmethod

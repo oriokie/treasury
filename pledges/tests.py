@@ -368,3 +368,48 @@ class PledgeImportTests(TestCase):
                       balances.department_summary(None, None, consolidated=False)
                       if r["department"].id == dept.id), Decimal("0"))
         self.assertEqual(after, before)  # importing pledges moves no money
+
+
+class CampaignScopedImportTests(TestCase):
+    """Item 5: importing pledges from a campaign page scopes every row to that
+    campaign — no Campaign column needed."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        u = User.objects.create_user("trez", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        self.client.login(username="trez", password="x")
+        from pledges.models import PledgeCampaign
+        self.camp = PledgeCampaign.objects.create(name="Scoped Fund",
+            status="ACTIVE", created_by=u)
+
+    def _file(self):
+        import io, openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Pledges"
+        ws.append(["Member name", "Phone", "Amount", "Frequency"])
+        ws.append(["ALICE SCOPE", "0712345678", 30000, "Monthly"])
+        ws.append(["BOB SCOPE", "", 10000, "One-off"])
+        buf = io.BytesIO(); wb.save(buf)
+        return SimpleUploadedFile("p.xlsx", buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    def test_scoped_import_attaches_all_to_campaign(self):
+        from pledges.models import Pledge
+        url = f"/pledges/campaigns/{self.camp.id}/import/"
+        r = self.client.post(url, {"file": self._file()})
+        self.assertEqual(r.status_code, 200)
+        plan = self.client.session.get("pledge_import_plan")
+        self.assertTrue(plan)
+        post = {"apply": "1"}
+        for i, p in enumerate(plan):
+            post[f"member_{i}"] = "create" if not p["member_id"] else f"member:{p['member_id']}"
+        self.client.post(url, post)
+        self.assertEqual(Pledge.objects.filter(campaign=self.camp).count(), 2)
+        self.assertTrue(all(p.status == Pledge.Status.DRAFT
+                            for p in Pledge.objects.filter(campaign=self.camp)))
+
+    def test_campaign_page_has_import_link(self):
+        r = self.client.get(f"/pledges/campaigns/{self.camp.id}/")
+        self.assertContains(r, f"/pledges/campaigns/{self.camp.id}/import/")

@@ -164,7 +164,72 @@ class ReviewQueueView(ReadAccessMixin, ListView):
         ctx["departments"] = Department.objects.filter(active=True, selectable=True)
         ctx["split_funds"] = SplitFund.objects.filter(active=True).order_by("name")
         ctx["dev_groups"] = DevelopmentGroup.objects.filter(active=True).order_by("number")
+        # item 5: gifts in the ledger that still need a fund but aren't in the queue
+        ctx["unallocated_in_ledger"] = FetchUnallocatedView.pending_qs().count()
         return ctx
+
+
+class BulkAllocateView(DataEntryRequiredMixin, View):
+    """Item 1: allocate several review-queue gifts to one fund in a single action,
+    for faster clearing of the queue. Optionally sets a development group when the
+    chosen fund is a development fund."""
+
+    def post(self, request):
+        from departments.models import DevelopmentGroup
+        ids = request.POST.getlist("txn")
+        dept = Department.objects.filter(pk=request.POST.get("department"),
+                                         active=True).first()
+        if not dept or not ids:
+            messages.error(request, "Pick a fund and at least one gift to allocate.")
+            return redirect("queue")
+        grp = None
+        if dept.category == Department.Category.DEVELOPMENT:
+            grp = DevelopmentGroup.objects.filter(pk=request.POST.get("dev_group")).first()
+        qs = Transaction.objects.filter(
+            id__in=ids, allocation_status=Transaction.Status.REVIEW,
+            direction=Transaction.Direction.CREDIT,
+            processed_via_envelope=False, manual_receipt=False)
+        n = 0
+        for txn in qs:
+            txn.department = dept
+            txn.dev_group = grp if grp else None
+            txn.allocation_status = Transaction.Status.MANUAL
+            txn.claimed_by = request.user
+            txn.claimed_at = timezone.now()
+            txn.save(update_fields=["department", "dev_group", "allocation_status",
+                                    "claimed_by", "claimed_at"])
+            n += 1
+        if n:
+            label = dept.name + (f" · {grp.label}" if grp else "")
+            messages.success(request, f"Allocated {n} gift(s) to {label}.")
+        else:
+            messages.info(request, "No matching gifts to allocate.")
+        return redirect("queue")
+
+
+class FetchUnallocatedView(DataEntryRequiredMixin, View):
+    """Item 5: pull credits that still need a fund — sitting in the ledger without
+    a department but not currently in the review queue — into the queue so they
+    can be allocated. A gift can fall out of REVIEW (e.g. imported already
+    'confirmed' but with no fund); this gathers them back for allocation."""
+
+    @staticmethod
+    def pending_qs():
+        return Transaction.objects.filter(
+            direction=Transaction.Direction.CREDIT, department__isnull=True,
+            processed_via_envelope=False, manual_receipt=False,
+            is_reversal=False, is_reversed=False,
+            excluded_from_income=False).exclude(
+            allocation_status=Transaction.Status.REVIEW)
+
+    def post(self, request):
+        n = self.pending_qs().update(allocation_status=Transaction.Status.REVIEW)
+        if n:
+            messages.success(request,
+                f"Fetched {n} unallocated gift(s) from the ledger into the queue.")
+        else:
+            messages.info(request, "No unallocated gifts found in the ledger.")
+        return redirect("queue")
 
 
 class ClaimResolveView(DataEntryRequiredMixin, View):
@@ -337,6 +402,11 @@ class RuleListView(DataEntryRequiredMixin, ListView):
     model = AllocationRule
     template_name = "giving/rule_list.html"
     context_object_name = "rules"
+    paginate_by = 50
+
+    def get_queryset(self):
+        return (AllocationRule.objects.select_related("department", "split_fund")
+                .order_by("reference", "id"))
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)

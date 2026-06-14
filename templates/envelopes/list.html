@@ -6,6 +6,7 @@
   <div class="ws-actions">
     {% if can_enter_data %}<a class="btn" href="{% url 'envelope_ledger' %}">＋ Record</a>
     <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'sabbath_reconcile' %}{% if month_value %}?date={{ month_value }}-07{% endif %}" title="Reconcile a Sabbath's bank giving against its envelopes">⚖ Reconcile Sabbath</a>
   </div>
 </div>
 
@@ -23,9 +24,10 @@
   <span class="month-title">{{ month_label }}</span>
   <span class="grow"></span>
   {% if can_enter_data %}
-  <form method="post" action="{% url 'envelope_pull_bank' %}" onsubmit="var s=prompt('Starting receipt number for these bank receipts?\n\nLeave blank to continue automatically from the last receipt.',''); if(s===null){return false;} this.querySelector('.startrcpt').value=s.trim(); return confirm('Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
+  <form method="post" action="{% url 'envelope_pull_bank' %}" style="display:inline-flex;align-items:center;gap:.4rem" onsubmit="var s=prompt('Starting receipt number for these bank receipts?\n\nLeave blank to continue automatically from the last receipt.',''); if(s===null){return false;} this.querySelector('.startrcpt').value=s.trim(); var sb=this.querySelector('.sabpick').value; return confirm(sb ? ('Receipt bank giving for the Sabbath of '+sb+' as envelopes? Money is counted once.') : 'Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
     {% csrf_token %}<input type="hidden" name="month" value="{{ month_value }}"><input type="hidden" name="start_receipt" class="startrcpt" value="">
-    <button class="btn btn-sm btn-ghost" title="Create envelopes from bank giving, counted once (you can set a starting receipt number)">⤓ Receipt bank giving</button>
+    <input type="date" name="sabbath" class="sabpick field" style="width:auto;font-size:.8rem;padding:.2rem .4rem" title="Optional: receipt only this Sabbath's bank giving. Leave blank to receipt the whole month.">
+    <button class="btn btn-sm btn-ghost" title="Create envelopes from bank giving, counted once. Pick a Sabbath to limit it, or leave blank for the whole month.">⤓ Receipt bank giving</button>
   </form>
   {% endif %}
 </div>

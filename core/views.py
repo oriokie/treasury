@@ -40,6 +40,16 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["field_name"] = SiteConfig.get().field_name or "conference"
         ctx["by_group"] = balances.giving_by_group(start, end)
         ctx["by_channel"] = balances.income_by_channel(start, end)
+        # Item 4: a clearer "how giving arrives" card — channel mix with shares
+        from decimal import Decimal as _D
+        _ch_labels = {"BANK": "Bank / M-Pesa", "CASH": "Cash", "ENVELOPE": "Envelopes"}
+        _ch_total = sum((r["total"] or _D(0)) for r in ctx["by_channel"]) or _D(0)
+        ctx["channel_mix"] = sorted([{
+            "label": _ch_labels.get(r["channel"], r["channel"] or "Other"),
+            "total": r["total"] or _D(0), "count": r["count"],
+            "pct": int(round((r["total"] or _D(0)) / _ch_total * 100)) if _ch_total else 0,
+        } for r in ctx["by_channel"]], key=lambda x: x["total"], reverse=True)
+        ctx["channel_total"] = _ch_total
         ctx["tithe"] = balances.tithe_total(start, end)
 
         # --- extra dashboard insight data (item 6) ---
@@ -571,6 +581,16 @@ def _duplicate_expenses():
     rows = list(Expense.objects.exclude(category=Expense.Category.BANK_CHARGE)
                 .values("id", "date", "amount", "department__name",
                         "description", "claimant"))
+    # Bank / M-Pesa charges are naturally identical across many payments and would
+    # flood the list with false positives. We already drop the BANK_CHARGE
+    # category above; also drop anything whose description reads as a transaction
+    # charge, in case a charge was recorded under a different category.
+    def _is_charge(desc):
+        d = (desc or "").lower()
+        return ("transaction charge" in d or "m-pesa charge" in d
+                or "mpesa charge" in d or "bank charge" in d
+                or "withdrawal charge" in d or "paybill charge" in d)
+    rows = [r for r in rows if not _is_charge(r["description"])]
     buckets = {}
     for r in rows:
         sab = service_sabbath_for(r["date"])
@@ -656,8 +676,75 @@ def _duplicate_offerings():
     # 3) duplicate envelopes: same giver + same amount on the same Sabbath
     out.extend(_duplicate_envelopes())
 
-    out.sort(key=lambda c: c["date"], reverse=True)
-    return out[:80]
+    # 4) NEAR-match givers: same amount + same channel within 3 days where the
+    #    names are *almost* equal — catches a manual receipt typed with a slightly
+    #    misspelt name (e.g. "Jon Mwangi" vs "John Mwangi") that the exact
+    #    order-insensitive key in (2) would miss.
+    out.extend(_fuzzy_name_duplicates(base, seen_refs))
+
+    # de-duplicate clusters that more than one signal produced (same payer+amount+date)
+    deduped, sig_seen = [], set()
+    for c in out:
+        sig = (c.get("payer"), c.get("amount"), c.get("first"), c.get("last"),
+               c.get("by"))
+        if sig in sig_seen:
+            continue
+        sig_seen.add(sig)
+        deduped.append(c)
+    # sort by payer (the user reviews these name-by-name), then most recent first
+    deduped.sort(key=lambda c: ((c.get("payer") or "~").upper(), c["date"]),
+                 reverse=False)
+    return deduped[:80]
+
+
+def _fuzzy_name_duplicates(base, seen_refs, threshold=0.86):
+    """Clusters of credits with the SAME amount + channel within 3 days whose
+    payer names are near-matches (above a similarity threshold) but not identical.
+    Surfaces probable re-entries where a name was misspelt on a manual receipt."""
+    from difflib import SequenceMatcher
+    from members.services.matching import name_key
+    rows = list(base.exclude(payer_name="")
+                .values("date", "amount", "payer_name", "reference", "channel"))
+    # bucket by amount + channel so we only compare plausibly-related gifts
+    buckets = {}
+    for r in rows:
+        if r["reference"] and r["reference"] in seen_refs:
+            continue
+        if not (r["payer_name"] or "").strip():
+            continue
+        buckets.setdefault((r["amount"], r["channel"]), []).append(r)
+
+    def close(a, b):
+        ka, kb = name_key(a), name_key(b)
+        if not ka or not kb or ka == kb:
+            return False                      # identical handled by exact pass (2)
+        return SequenceMatcher(None, ka, kb).ratio() >= threshold
+
+    out = []
+    for (amt, channel), grp in buckets.items():
+        if len(grp) < 2:
+            continue
+        grp.sort(key=lambda r: r["date"])
+        used = [False] * len(grp)
+        for i in range(len(grp)):
+            if used[i]:
+                continue
+            cluster = [grp[i]]
+            for j in range(i + 1, len(grp)):
+                if used[j]:
+                    continue
+                if abs((grp[j]["date"] - grp[i]["date"]).days) <= 3 \
+                        and close(grp[i]["payer_name"], grp[j]["payer_name"]):
+                    cluster.append(grp[j]); used[j] = True
+            if len(cluster) > 1:
+                used[i] = True
+                names = sorted({c["payer_name"] for c in cluster})
+                dates = sorted(c["date"] for c in cluster)
+                out.append({"date": dates[-1], "first": dates[0], "amount": amt,
+                            "payer": " / ".join(names), "count": len(cluster),
+                            "reference": "", "by": "near-match name",
+                            "channel": channel})
+    return out
 
 
 def _duplicate_envelopes():
@@ -907,3 +994,25 @@ class HealthCheckView(View):
         return JsonResponse({"status": "ok" if db_ok else "degraded",
                              "database": db_ok, "version": get_version()},
                             status=status)
+
+
+# ---- custom error handlers (witty pages + admin alert on 500) --------------
+def error_500(request):
+    """500 handler: alert the admin (best-effort) then render the friendly page."""
+    from django.shortcuts import render
+    try:
+        from core.services.notifications import alert_admins_error
+        alert_admins_error(f"server error on {request.path}")
+    except Exception:
+        pass
+    return render(request, "500.html", status=500)
+
+
+def error_404(request, exception=None):
+    from django.shortcuts import render
+    return render(request, "404.html", status=404)
+
+
+def error_403(request, exception=None):
+    from django.shortcuts import render
+    return render(request, "403.html", status=403)

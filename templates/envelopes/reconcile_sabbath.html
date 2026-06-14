@@ -1,0 +1,84 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Sabbath reconciliation · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Sabbath reconciliation</h1>
+    <div class="ws-sub">Bank giving vs envelopes counted for {{ sabbath|date:"j M Y" }}</div></div>
+  <form method="get" class="btn-row" style="align-items:flex-end">
+    <a class="btn btn-ghost btn-sm" href="{% url 'envelope_list' %}">← Envelopes</a>
+    <input type="date" name="date" value="{{ sabbath|date:'Y-m-d' }}" class="field" style="width:auto">
+    <button class="btn btn-sm">Show</button>
+  </form>
+</div>
+
+{% if unsabbathed %}
+<div class="alert alert-warn" style="margin-bottom:1rem">
+  {{ unsabbathed }} recent bank entr{{ unsabbathed|pluralize:"y,ies" }} {{ unsabbathed|pluralize:"isn't,aren't" }} assigned to any Sabbath, so they can't be reconciled until a Sabbath is set on them.
+</div>
+{% endif %}
+
+<div class="ws-summary" style="margin-bottom:1rem">
+  <div class="ws-metric is-primary"><span class="wm-l">Bank giving</span><span class="wm-v">{{ bank_total|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Bank envelopes</span><span class="wm-v">{{ env_bank_total|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric {% if balanced %}is-positive{% else %}is-warn{% endif %}">
+    <span class="wm-l">{% if balanced %}Balanced{% else %}Difference{% endif %}</span>
+    <span class="wm-v">{% if balanced %}✓{% else %}{{ difference|floatformat:0|intcomma }}{% endif %}</span></div>
+  <div class="ws-metric"><span class="wm-l">Cash envelopes</span><span class="wm-v">{{ env_cash_total|floatformat:0|intcomma }}</span></div>
+</div>
+
+<div class="help" style="margin-bottom:1rem">
+  Bank giving for this Sabbath = receipted {{ bank_receipted|floatformat:2|intcomma }} + manual receipts {{ bank_manual|floatformat:2|intcomma }}{% if bank_unreceipted %} + <span style="color:var(--amber)">unreceipted {{ bank_unreceipted|floatformat:2|intcomma }}</span>{% endif %}. It should equal the bank-channel envelopes counted for the Sabbath.
+</div>
+
+{% if suggestion %}
+<form method="post" action="{% url 'reconcile_apply' %}" class="alert" style="background:var(--brass-soft);border:1px solid var(--line);margin-bottom:1rem">
+  {% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}">
+  <label style="display:flex;align-items:center;gap:.5rem"><input type="checkbox" name="pair" value="env:{{ suggestion.env.id }}:bank:{{ suggestion.bank.id }}">
+  <span><strong>Possible match:</strong> bank gift <em>{{ suggestion.bank.who }}</em> ({{ suggestion.bank.amount|floatformat:2|intcomma }}) and envelope <em>{{ suggestion.env.who }}</em> ({{ suggestion.env.amount|floatformat:2|intcomma }}) are the only unmatched items left{% if suggestion.same_amount %} and are the same amount{% else %} — note the amounts differ{% endif %}. They are likely the same gift.</span></label>
+  {% if can_enter_data %}<div style="margin-top:.6rem"><button class="btn btn-sm">Apply match as bank giving</button></div>{% endif %}
+</form>
+{% endif %}
+
+{% if matched %}
+<form method="post" action="{% url 'reconcile_apply' %}">
+  {% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}">
+  <div class="card" style="margin-bottom:1rem"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Matched ({{ matched|length }}){% if can_enter_data %}<button class="btn btn-sm" type="submit">Apply selected as bank giving</button>{% endif %}</div><div class="bd" style="padding:0">
+  <table class="ledger compact">
+    <thead><tr>{% if can_enter_data %}<th style="width:34px"></th>{% endif %}<th>Bank giver</th><th>Envelope contributor</th><th>Match</th><th class="num">Amount</th></tr></thead>
+    <tbody>{% for m in matched %}<tr>
+      {% if can_enter_data %}<td>{% if not m.env.is_bank %}<input type="checkbox" name="pair" value="env:{{ m.env.id }}:bank:{{ m.bank.id }}" title="Mark this envelope as bank giving">{% else %}<span class="pill pill-blue" style="font-size:.6rem" title="Already a bank item">bank</span>{% endif %}</td>{% endif %}
+      <td>{{ m.bank.who }}{% if m.bank.reference %} <span class="mono muted" style="font-size:.7rem">{{ m.bank.reference }}</span>{% endif %}</td>
+      <td>{{ m.env.who }} <span class="muted mono" style="font-size:.7rem">#{{ m.env.receipt }}</span></td>
+      <td>{% if m.confidence == 'exact' %}<span class="pill pill-green">exact</span>{% else %}<span class="pill pill-amber" title="Names are close but not identical — likely a spelling difference">fuzzy {{ m.ratio }}</span>{% endif %}</td>
+      <td class="num mono">{{ m.bank.amount|floatformat:2|intcomma }}</td>
+    </tr>{% endfor %}</tbody>
+  </table>
+  </div></div>
+  {% if can_enter_data %}<p class="help" style="margin:-.4rem 0 1rem">Applying marks the envelope as a bank item and removes the duplicate cash entry, so the gift is counted once via the bank.</p>{% endif %}
+</form>
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
+  <div class="card"><div class="hd">Unmatched bank gifts ({{ bank_unmatched|length }})</div><div class="bd" style="padding:0">
+    <table class="ledger compact">
+      <thead><tr><th>Giver</th><th>Status</th><th class="num">Amount</th></tr></thead>
+      <tbody>{% for b in bank_unmatched %}<tr>
+        <td>{{ b.who }}{% if b.reference %} <span class="mono muted" style="font-size:.7rem">{{ b.reference }}</span>{% endif %}</td>
+        <td>{% if b.status == 'receipted' %}<span class="pill pill-grey">receipted</span>{% elif b.status == 'manual' %}<span class="pill pill-brass">manual</span>{% else %}<span class="pill pill-amber">unreceipted</span>{% endif %}</td>
+        <td class="num mono">{{ b.amount|floatformat:2|intcomma }}</td>
+      </tr>{% empty %}<tr><td colspan="3" class="muted">All bank gifts matched.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div></div>
+
+  <div class="card"><div class="hd">Unmatched envelopes ({{ env_unmatched|length }})</div><div class="bd" style="padding:0">
+    <table class="ledger compact">
+      <thead><tr><th>Contributor</th><th>Channel</th><th class="num">Amount</th></tr></thead>
+      <tbody>{% for e in env_unmatched %}<tr>
+        <td>{{ e.who }} <span class="muted mono" style="font-size:.7rem">#{{ e.receipt }}</span></td>
+        <td><span class="pill {% if e.is_bank %}pill-blue{% else %}pill-green{% endif %}">{{ e.channel }}</span></td>
+        <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+      </tr>{% empty %}<tr><td colspan="3" class="muted">All envelopes matched.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ dept.name }} expenses · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>{{ dept.name }} — expenses</h1>
+    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · {{ count }} item{{ count|pluralize }} · read-only</div></div>
+  <form method="get" class="btn-row" style="align-items:flex-end">
+    <a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+    <button class="btn btn-sm">Apply</button>
+  </form>
+</div>
+<div class="btn-row no-print" style="margin-bottom:1rem">
+  <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">⬇ CSV</a>
+  <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">⬇ Excel</a>
+</div>
+<div class="card"><div class="bd" style="padding:0">
+  <table class="ledger compact">
+    <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Claimant</th><th>Method</th><th>Status</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for e in expenses %}<tr>
+      <td class="mono">{{ e.date|date:"d M Y" }}</td>
+      <td>{{ e.description }}</td>
+      <td>{{ e.get_category_display }}</td>
+      <td>{{ e.claimant|default:"—" }}</td>
+      <td>{{ e.get_method_display }}</td>
+      <td><span class="pill {% if e.status == 'PAID' %}pill-green{% elif e.status == 'PENDING' %}pill-amber{% elif e.status == 'REJECTED' %}pill-grey{% else %}pill-blue{% endif %}">{{ e.get_status_display }}</span></td>
+      <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    </tr>{% empty %}<tr><td colspan="7" class="muted">No expenses in this period.</td></tr>{% endfor %}
+    </tbody>
+    {% if expenses %}<tfoot><tr><th colspan="6" class="num">Total</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>{% endif %}
+  </table>
+</div></div>
+{% endblock %}

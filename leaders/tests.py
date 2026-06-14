@@ -123,3 +123,61 @@ class MaskPhoneHelperTests(TestCase):
         self.assertEqual(mask_phone(""), "")
         self.assertEqual(mask_phone(None), "")
         self.assertEqual(mask_phone("254712345678", visible=4), "********5678")
+
+
+class LeaderDetailPagesTests(TestCase):
+    """Item 2: detailed, downloadable leader pages — collections, expenses, and
+    development-group drill-down — all scoped and read-only."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        from departments.models import DevelopmentGroup
+        self.dev = Department.objects.create(name="Dev Fund", fund_type="LOCAL",
+                                             category="DEVELOPMENT")
+        self.other = Department.objects.create(name="Not Mine", fund_type="LOCAL",
+                                               category="MINISTRY")
+        self.leader = _make_leader("devlead", self.dev)
+        self.client.login(username="devlead", password="x")
+        self.grp = DevelopmentGroup.objects.create(number=1, name="Group One",
+                                                   target=Decimal("10000"))
+        Transaction.objects.create(date=dt.date(2026, 3, 7), channel="CASH",
+            direction="CREDIT", amount=Decimal("500"), department=self.dev,
+            dev_group=self.grp, payer_name="Giver A", confirmed=True,
+            allocation_status="MANUAL", core_ref="LD1")
+
+    def test_collections_page_and_downloads(self):
+        url = f"/leader/department/{self.dev.id}/collections/"
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.get(url + "?export=csv").status_code, 200)
+        r = self.client.get(url + "?export=xlsx")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("spreadsheet", r["Content-Type"])
+
+    def test_expenses_page_and_download(self):
+        url = f"/leader/department/{self.dev.id}/expenses/"
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.get(url + "?export=csv").status_code, 200)
+
+    def test_group_drilldown_and_download(self):
+        url = f"/leader/group/{self.grp.id}/"
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(self.client.get(url + "?export=csv").status_code, 200)
+
+    def test_cannot_access_other_department(self):
+        # not led by this leader -> redirected away, no data leak
+        r = self.client.get(f"/leader/department/{self.other.id}/collections/")
+        self.assertEqual(r.status_code, 302)
+        r = self.client.get(f"/leader/department/{self.other.id}/expenses/")
+        self.assertEqual(r.status_code, 302)
+
+    def test_non_development_leader_cannot_drilldown_groups(self):
+        from departments.models import DevelopmentGroup
+        # a leader of a ministry (non-dev) dept can't see group drill-downs
+        ministry = Department.objects.create(name="Choir", fund_type="LOCAL",
+                                             category="MINISTRY")
+        _make_leader("minlead", ministry)
+        self.client.logout(); self.client.login(username="minlead", password="x")
+        r = self.client.get(f"/leader/group/{self.grp.id}/")
+        self.assertEqual(r.status_code, 302)

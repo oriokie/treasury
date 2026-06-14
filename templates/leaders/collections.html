@@ -1,0 +1,35 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ dept.name }} collections · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>{{ dept.name }} — collections</h1>
+    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · {{ count }} gift{{ count|pluralize }} · read-only</div></div>
+  <form method="get" class="btn-row" style="align-items:flex-end">
+    <a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+    <button class="btn btn-sm">Apply</button>
+  </form>
+</div>
+<div class="btn-row no-print" style="margin-bottom:1rem">
+  <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">⬇ CSV</a>
+  <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">⬇ Excel</a>
+</div>
+<div class="card"><div class="bd" style="padding:0">
+  <table class="ledger compact">
+    <thead><tr><th>Date</th><th>Contributor</th><th>Phone</th><th>Reference</th><th>Channel</th><th>Group</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for r in rows %}<tr>
+      <td class="mono">{{ r.date|date:"d M Y" }}</td>
+      <td>{{ r.who }}</td>
+      <td class="mono muted">{{ r.phone|default:"—" }}</td>
+      <td class="mono">{{ r.reference|default:"—" }}</td>
+      <td>{{ r.channel }}</td>
+      <td>{{ r.group|default:"—" }}</td>
+      <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+    </tr>{% empty %}<tr><td colspan="7" class="muted">No collections in this period.</td></tr>{% endfor %}
+    </tbody>
+    {% if rows %}<tfoot><tr><th colspan="6" class="num">Total</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>{% endif %}
+  </table>
+</div></div>
+{% endblock %}

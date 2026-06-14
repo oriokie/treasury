@@ -38,6 +38,31 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.9.0": "The Sabbath reconciliation can now apply a match in one click — "
+             "selected pairs are marked as bank giving and the duplicate cash "
+             "entry is removed, so the gift is counted once. Statement import can "
+             "force the Sabbath every entry counts under, for imports done after "
+             "the day. The dashboard swaps 'Giving by group' for a 'How giving "
+             "arrives' card (bank / cash / envelope mix) and the local-funds table "
+             "gets a one-click JPEG download. Pledges can be imported straight into "
+             "a campaign from its page.",
+    "1.8.0": "Per-Sabbath reconciliation matches bank giving (receipted and "
+             "manually receipted) against the envelopes counted for that Sabbath, "
+             "with fuzzy name matching for misspelt names and a balance check. "
+             "Leaders get detailed, downloadable collections and expense pages plus "
+             "a development-group drill-down. Two-factor sign-in no longer errors "
+             "when a saved authenticator secret can't be read, and a recovery code "
+             "now works in the same box. 'Receipt bank giving' can be limited to a "
+             "single Sabbath.",
+    "1.7.0": "A batch of fixes and queue improvements: bulk-allocate gifts in the "
+             "review queue and fetch unallocated gifts from the ledger; trust "
+             "'to remit' now counts trust funds only; the expense form no longer "
+             "silently drops an entry that exceeds a fund's balance; M-Pesa charges "
+             "are kept out of duplicate detection; possible duplicates are sorted by "
+             "payer with fuzzy near-match for misspelt names; the rules list is "
+             "paginated; friendly error pages with admin alerts; and the Sabbath cash "
+             "count now reflects physical cash only, excluding bank giving keyed on "
+             "the cash sheet.",
     "1.6.0": "Manual receipts are now a distinct state from system receipts. "
              "Marking bank entries as a manual receipt (for gifts already "
              "receipted on paper) keeps them out of both the review queue and the "

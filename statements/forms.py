@@ -10,6 +10,12 @@ class UploadForm(StyledFormMixin, forms.Form):
     bank_account = forms.ModelChoiceField(
         queryset=None, required=False, label="Bank account",
         help_text="Which account this statement is for. Defaults to the main account.")
+    service_sabbath = forms.DateField(
+        required=False, label="Sabbath these entries belong to (optional)",
+        widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Force every entry in this statement to count under this Sabbath "
+                  "— useful when importing later than the Saturday it was counted. "
+                  "Leave blank to let the system assign each entry's Sabbath by date.")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

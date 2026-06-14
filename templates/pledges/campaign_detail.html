@@ -2,7 +2,7 @@
 {% block title %}{{ campaign.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>{{ campaign.name }}</h1><div class="ws-sub">{% if campaign.target_department %}Lands in {{ campaign.target_department.name }} · {% endif %}{{ campaign.get_status_display }}</div></div>
-  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_edit' campaign.id %}">Edit</a>{% endif %}{% if can_enter_data %}<a class="btn" href="{% url 'pledge_create' %}?campaign={{ campaign.id }}">＋ Pledge</a>{% endif %}</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_edit' campaign.id %}">Edit</a><a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_import' campaign.id %}">⬆ Import pledges</a>{% endif %}{% if can_enter_data %}<a class="btn" href="{% url 'pledge_create' %}?campaign={{ campaign.id }}">＋ Pledge</a>{% endif %}</div></div>
 
 <div class="ws-summary">
   {% if campaign.goal_amount %}<div class="ws-metric"><span class="wm-l">Goal</span><span class="wm-v"><span class="cur">KES</span>{{ campaign.goal_amount|floatformat:0|intcomma }}</span>{% if campaign.pct_to_goal is not None %}<span class="wm-sub">{{ campaign.pct_to_goal }}% reached</span>{% endif %}</div>{% endif %}

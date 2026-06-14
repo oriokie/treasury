@@ -78,9 +78,11 @@
     {% else %}<div class="muted" style="padding:2rem 0;text-align:center">No fund receipts in range</div>{% endif %}</div></div>
 </div>
 
-<div class="section-title">Local funds <span class="muted" style="font-weight:400;font-size:.8rem">— {{ local_rows|length }} fund(s)</span></div>
+<div class="section-title" style="display:flex;align-items:center;gap:.6rem">Local funds <span class="muted" style="font-weight:400;font-size:.8rem">— {{ local_rows|length }} fund(s)</span>
+  <button type="button" class="btn btn-sm btn-ghost no-print" style="margin-left:auto" onclick="downloadLocalFundsJpeg()" title="Download this table as a JPEG image">⤓ JPEG</button>
+</div>
 <div class="table-wrap" style="margin-bottom:1.4rem">
-  <table class="ledger">
+  <table class="ledger" id="localFundsTable" data-period="{{ start|date:'j M Y' }} – {{ end|date:'j M Y' }}" data-church="{{ CHURCH_NAME|default:SITE_NAME }}">
     <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
     <tbody>
     {% for r in local_rows %}
@@ -103,6 +105,74 @@
   </table>
 </div>
 
+<script>
+function downloadLocalFundsJpeg(){
+  var table = document.getElementById('localFundsTable');
+  if(!table){ return; }
+  var scale = 2;
+  var pad = 18*scale, rowH = 30*scale, font = 13*scale, titleH = 50*scale;
+  function rowCells(tr){
+    var foot = tr.parentElement.tagName === 'TFOOT';
+    var head = tr.parentElement.tagName === 'THEAD';
+    return Array.prototype.map.call(tr.children, function(td){
+      return { text: (td.innerText||'').trim(),
+               num: td.classList.contains('num'),
+               bold: head || foot || td.querySelector('strong') !== null };
+    });
+  }
+  var headRows = table.tHead ? Array.prototype.map.call(table.tHead.rows, rowCells) : [];
+  var bodyRows = Array.prototype.map.call(table.tBodies[0].rows, rowCells);
+  var footRows = table.tFoot ? Array.prototype.map.call(table.tFoot.rows, rowCells) : [];
+  var ncols = (headRows[0]||bodyRows[0]||[]).length;
+  if(!ncols){ return; }
+  var meas = document.createElement('canvas').getContext('2d');
+  meas.font = font + 'px sans-serif';
+  var colW = []; for(var i=0;i<ncols;i++){ colW.push(0); }
+  headRows.concat(bodyRows, footRows).forEach(function(r){
+    r.forEach(function(c,i){ var w = meas.measureText(c.text).width; if(w>colW[i]){ colW[i]=w; } });
+  });
+  colW = colW.map(function(w){ return Math.ceil(w + 26*scale); });
+  var bodyW = colW.reduce(function(a,b){ return a+b; }, 0);
+  var totalW = bodyW + pad*2;
+  var nRows = headRows.length + bodyRows.length + footRows.length;
+  var totalH = titleH + nRows*rowH + pad*2;
+  var canvas = document.createElement('canvas');
+  canvas.width = totalW; canvas.height = totalH;
+  var ctx = canvas.getContext('2d');
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f4f1e8'; ctx.fillRect(0,0,totalW,totalH);
+  // titles
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#1f5f4f'; ctx.font = 'bold ' + (19*scale) + 'px Georgia, serif';
+  ctx.fillText((table.dataset.church || 'Local funds') + ' — Local funds', pad, pad + 16*scale);
+  ctx.fillStyle = '#7a7568'; ctx.font = (11*scale) + 'px sans-serif';
+  ctx.fillText(table.dataset.period || '', pad, pad + 36*scale);
+  var y = pad + titleH;
+  function drawRow(cells, opt){
+    if(opt.headerBg){ ctx.fillStyle = '#1f5f4f'; ctx.fillRect(pad, y, bodyW, rowH); }
+    else if(opt.zebra){ ctx.fillStyle = '#eceadf'; ctx.fillRect(pad, y, bodyW, rowH); }
+    if(opt.topBorder){ ctx.strokeStyle = '#cfc9ba'; ctx.lineWidth = 2*scale;
+      ctx.beginPath(); ctx.moveTo(pad, y+1); ctx.lineTo(pad+bodyW, y+1); ctx.stroke(); }
+    var x = pad;
+    cells.forEach(function(c,i){
+      ctx.font = (c.bold ? 'bold ' : '') + font + 'px sans-serif';
+      ctx.fillStyle = opt.headerBg ? '#ffffff' : '#2b2b2b';
+      if(c.num){ ctx.textAlign = 'right'; ctx.fillText(c.text, x + colW[i] - 13*scale, y + rowH/2); }
+      else { ctx.textAlign = 'left'; ctx.fillText(c.text, x + 13*scale, y + rowH/2); }
+      x += colW[i];
+    });
+    y += rowH;
+  }
+  headRows.forEach(function(r){ drawRow(r, {headerBg:true}); });
+  bodyRows.forEach(function(r,idx){ drawRow(r, {zebra: idx%2===1}); });
+  footRows.forEach(function(r){ drawRow(r, {topBorder:true}); });
+  var link = document.createElement('a');
+  link.download = 'local-funds.jpg';
+  link.href = canvas.toDataURL('image/jpeg', 0.95);
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+}
+</script>
+
 <div class="split">
   <div>
     <div class="section-title">Trust funds (remit to {{ field_name|default:"conference" }})</div>
@@ -121,11 +191,15 @@
     </div>
   </div>
   <div>
-    <div class="section-title">Giving by group</div>
+    <div class="section-title">How giving arrives</div>
     <div class="card"><div class="bd">
-      {% for g, total in by_group.items %}
-        <div class="kv"><span>{{ g|title }}</span><span class="mono">{{ total|floatformat:2|intcomma }}</span></div>
-      {% empty %}<div class="muted">No group-tagged giving yet.</div>{% endfor %}
+      {% for c in channel_mix %}
+        <div style="margin-bottom:.7rem">
+          <div class="kv" style="margin-bottom:.25rem"><span>{{ c.label }} <span class="muted" style="font-size:.74rem">· {{ c.count }} gift{{ c.count|pluralize }}</span></span><span class="mono">{{ c.total|floatformat:2|intcomma }}</span></div>
+          <div class="pbar" title="{{ c.pct }}% of giving"><span style="width:{{ c.pct }}%"></span></div>
+        </div>
+      {% empty %}<div class="muted">No giving recorded in this period yet.</div>{% endfor %}
+      {% if channel_total %}<div class="kv" style="border-top:1px solid var(--line);padding-top:.5rem;margin-top:.2rem"><span class="muted">Total</span><span class="mono">{{ channel_total|floatformat:2|intcomma }}</span></div>{% endif %}
     </div></div>
   </div>
 </div>

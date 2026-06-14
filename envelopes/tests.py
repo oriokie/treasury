@@ -569,3 +569,213 @@ class PullBankExcludesAlreadyReceiptedTests(TestCase):
         # A must NOT gain an envelope line; B should have exactly one
         self.assertEqual(EnvelopeLine.objects.filter(transaction=a).count(), 0)
         self.assertEqual(EnvelopeLine.objects.filter(transaction=b).count(), 1)
+
+
+class CashCountExcludesBankTwinsTests(TestCase):
+    """Item 7: the Sabbath cash count must reflect physical cash only. A cash
+    envelope that duplicates a bank gift for the same contributor (money that
+    arrived in the bank but was also keyed on the cash sheet) is excluded from
+    the expected total, so the count can balance."""
+
+    def setUp(self):
+        import datetime as dt
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from core.utils import sabbath_of
+        User.objects.create_superuser("cc", password="x")
+        self.client.login(username="cc", password="x")
+        self.d = Department.objects.create(name="Cash Count Fund",
+            fund_type=Department.FundType.LOCAL)
+        self.sab = sabbath_of(dt.date(2026, 3, 7))
+
+    def _txn(self, channel, amount, payer, **kw):
+        from giving.models import Transaction
+        return Transaction.objects.create(
+            date=self.sab, service_sabbath=self.sab, channel=channel,
+            direction="CREDIT", amount=amount, department=self.d,
+            payer_name=payer, confirmed=True, allocation_status="MANUAL",
+            core_ref=f"{channel}{payer}{amount}", **kw)
+
+    def _breakdown(self):
+        from envelopes.views import CountSessionCreate
+        return CountSessionCreate()._breakdown(self.sab)
+
+    def test_bank_twin_cash_envelope_excluded(self):
+        from decimal import Decimal
+        self._txn("ENVELOPE", Decimal("300"), "Mary Cash")           # real cash
+        self._txn("BANK", Decimal("500"), "John Bank", manual_receipt=True)
+        self._txn("ENVELOPE", Decimal("500"), "John Bank")           # the duplicate
+        b = self._breakdown()
+        self.assertEqual(b["bank_as_cash"], Decimal("500"))
+        self.assertEqual(b["envelope"], Decimal("300"))
+        self.assertEqual(b["net"], Decimal("300"))
+
+    def test_pure_cash_unaffected(self):
+        from decimal import Decimal
+        self._txn("CASH", Decimal("120"), "Loose Offering")
+        self._txn("ENVELOPE", Decimal("80"), "Ann Cash")
+        b = self._breakdown()
+        self.assertEqual(b["bank_as_cash"], Decimal("0"))
+        self.assertEqual(b["net"], Decimal("200"))
+
+    def test_same_person_genuine_cash_and_bank_only_excludes_matched_amount(self):
+        # Peter gave 200 cash (genuine) and 700 by bank; only a 700 cash-envelope
+        # twin would be excluded — his genuine 200 cash envelope stays counted.
+        from decimal import Decimal
+        self._txn("ENVELOPE", Decimal("200"), "Peter")               # genuine cash
+        self._txn("BANK", Decimal("700"), "Peter", manual_receipt=True)
+        b = self._breakdown()
+        self.assertEqual(b["bank_as_cash"], Decimal("0"))            # no 700 cash twin
+        self.assertEqual(b["net"], Decimal("200"))
+
+
+class SabbathReconciliationTests(TestCase):
+    """Item 1: reconcile a Sabbath's bank giving against its envelopes, with
+    fuzzy name matching, a singleton suggestion, and a balance check."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from core.utils import sabbath_of, sabbath_week_of
+        self.u = User.objects.create_superuser("rec", password="x")
+        self.client.login(username="rec", password="x")
+        self.d = Department.objects.create(name="Rec Fund", fund_type="LOCAL")
+        self.sab = sabbath_of(dt.date(2026, 2, 7))
+
+    def _bank(self, who, amt, **kw):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        return Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
+            channel="BANK", direction="CREDIT", amount=Decimal(amt), department=self.d,
+            payer_name=who, confirmed=True, allocation_status="MANUAL",
+            core_ref=f"REC{who}{amt}", **kw)
+
+    def _env(self, who, amt, channel="BANK"):
+        from decimal import Decimal
+        from envelopes.models import Envelope, EnvelopeLine
+        from core.utils import sabbath_week_of
+        e = Envelope.objects.create(date=self.sab,
+            sabbath_week=sabbath_week_of(self.sab), receipt_no=f"REC{who}{amt}",
+            contributor_name=who, channel=channel, recorded_by=self.u)
+        EnvelopeLine.objects.create(envelope=e, department=self.d, amount=Decimal(amt))
+        e.recompute_total(); e.save(); return e
+
+    def _rec(self):
+        from envelopes.reconcile import reconcile_sabbath
+        return reconcile_sabbath(self.sab)
+
+    def test_exact_and_fuzzy_match(self):
+        self._bank("John Doe", 500, processed_via_envelope=True)
+        self._env("John Doe", 500)
+        self._bank("Mary Wanjiku", 300, manual_receipt=True)
+        self._env("Mary Wanjuku", 300)            # misspelt
+        rec = self._rec()
+        self.assertEqual(len(rec["matched"]), 2)
+        self.assertEqual(sorted(m["confidence"] for m in rec["matched"]),
+                         ["exact", "fuzzy"])
+
+    def test_balanced_when_bank_equals_bank_envelopes(self):
+        from decimal import Decimal
+        self._bank("A", 200, processed_via_envelope=True); self._env("A", 200)
+        rec = self._rec()
+        self.assertTrue(rec["balanced"])
+        self.assertEqual(rec["difference"], Decimal("0"))
+
+    def test_singleton_suggestion(self):
+        # two leftover items the fuzzy pass can't pair -> suggested
+        self._bank("Peter K", 700, manual_receipt=True)
+        self._env("Pita Kamau", 700)
+        rec = self._rec()
+        self.assertIsNotNone(rec["suggestion"])
+        self.assertTrue(rec["suggestion"]["same_amount"])
+
+    def test_cash_envelopes_excluded_from_balance(self):
+        from decimal import Decimal
+        # a cash envelope is the church's own cash; it must NOT be expected to
+        # match a bank gift
+        self._env("Cash Giver", 999, channel="CASH")
+        rec = self._rec()
+        self.assertEqual(rec["env_bank_total"], Decimal("0"))
+        self.assertEqual(rec["env_cash_total"], Decimal("999"))
+
+    def test_page_renders(self):
+        self._bank("X", 100, processed_via_envelope=True); self._env("X", 100)
+        r = self.client.get("/envelopes/reconcile/?date=2026-02-07")
+        self.assertEqual(r.status_code, 200)
+
+
+class ReconcileApplyTests(TestCase):
+    """Item 1: one-click apply of a reconciliation match marks the matched
+    envelope as a bank item and removes the duplicate cash income, so a bank gift
+    keyed as a cash envelope is counted once."""
+
+    def setUp(self):
+        import datetime as dt
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from core.utils import sabbath_of
+        self.u = User.objects.create_superuser("ra", password="x")
+        self.client.login(username="ra", password="x")
+        self.d = Department.objects.create(name="Apply Fund", fund_type="LOCAL")
+        self.sab = sabbath_of(dt.date(2026, 1, 3))
+
+    def _setup_dup(self):
+        from decimal import Decimal
+        from giving.models import Transaction
+        from envelopes.models import Envelope, EnvelopeLine
+        from core.utils import sabbath_week_of
+        bank = Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
+            channel="BANK", direction="CREDIT", amount=Decimal("600"),
+            department=self.d, payer_name="Sam Apply", confirmed=True,
+            manual_receipt=True, allocation_status="MANUAL", core_ref="RABANK")
+        env = Envelope.objects.create(date=self.sab,
+            sabbath_week=sabbath_week_of(self.sab), receipt_no="RAENV",
+            contributor_name="Sam Apply", channel="CASH", recorded_by=self.u)
+        envtxn = Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
+            channel="ENVELOPE", direction="CREDIT", amount=Decimal("600"),
+            department=self.d, payer_name="Sam Apply", confirmed=True,
+            allocation_status="MANUAL", core_ref="RAENVTXN")
+        EnvelopeLine.objects.create(envelope=env, department=self.d,
+            amount=Decimal("600"), transaction=envtxn)
+        env.recompute_total(); env.save()
+        return bank, env, envtxn
+
+    def test_apply_marks_bank_and_neutralises_income(self):
+        from envelopes.models import Envelope
+        bank, env, envtxn = self._setup_dup()
+        self.client.post("/envelopes/reconcile/apply/",
+            {"date": self.sab.isoformat(),
+             "pair": [f"env:{env.id}:bank:{bank.id}"]})
+        env.refresh_from_db(); envtxn.refresh_from_db()
+        self.assertEqual(env.channel, Envelope.Channel.BANK)
+        self.assertTrue(envtxn.excluded_from_income)
+        self.assertEqual(env.bank_transaction_id, bank.id)
+
+    def test_apply_fixes_cash_count(self):
+        from decimal import Decimal
+        from envelopes.views import CountSessionCreate
+        bank, env, envtxn = self._setup_dup()
+        self.client.post("/envelopes/reconcile/apply/",
+            {"date": self.sab.isoformat(),
+             "pair": [f"env:{env.id}:bank:{bank.id}"]})
+        b = CountSessionCreate()._breakdown(self.sab)
+        self.assertEqual(b["net"], Decimal("0"))
+
+    def test_apply_requires_data_entry_role(self):
+        from django.contrib.auth.models import User
+        from envelopes.models import Envelope
+        bank, env, envtxn = self._setup_dup()
+        User.objects.create_user("ra_aud", password="x")
+        from django.contrib.auth.models import Group
+        g, _ = Group.objects.get_or_create(name="Auditor")
+        User.objects.get(username="ra_aud").groups.add(g)
+        self.client.logout(); self.client.login(username="ra_aud", password="x")
+        self.client.post("/envelopes/reconcile/apply/",
+            {"date": self.sab.isoformat(),
+             "pair": [f"env:{env.id}:bank:{bank.id}"]})
+        env.refresh_from_db()
+        # auditor (read-only) must not have changed anything
+        self.assertEqual(env.channel, Envelope.Channel.CASH)

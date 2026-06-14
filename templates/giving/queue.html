@@ -7,11 +7,46 @@
   <div class="btn-row no-print">
     <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
     {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
+    {% if can_enter_data and unallocated_in_ledger %}
+    <form method="post" action="{% url 'queue_fetch_unallocated' %}" style="display:inline"
+          onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated gift(s) from the ledger into the queue for allocation?');">
+      {% csrf_token %}
+      <button class="btn btn-brass btn-sm" title="Gifts in the ledger with no fund assigned that aren't in the queue">⤵ Fetch {{ unallocated_in_ledger }} unallocated from ledger</button>
+    </form>{% endif %}
   </div>
 </div>
 
+{% if can_enter_data and items %}
+<form id="bulkAllocForm" method="post" action="{% url 'queue_bulk_allocate' %}" class="bulk-bar no-print"
+      onsubmit="return document.querySelectorAll('.bulk-check:checked').length>0 || (alert('Tick at least one gift first.'),false);">
+  {% csrf_token %}
+  <label class="bulk-bar-lbl"><input type="checkbox" id="bulkAll"> Select all on this page</label>
+  <span class="bulk-count muted"><span id="bulkN">0</span> selected</span>
+  <select name="department" class="field--select" required style="max-width:280px">
+    <option value="">Allocate selected to fund…</option>
+    {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+  </select>
+  <select name="dev_group" class="field--select" style="max-width:240px">
+    <option value="">Development group № (if applicable)…</option>
+    {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }} — {{ g.label|truncatechars:28 }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-sm">Allocate selected</button>
+</form>
+<script>
+(function(){
+  var all=document.getElementById("bulkAll"), n=document.getElementById("bulkN");
+  function checks(){return Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));}
+  function refresh(){ if(n) n.textContent=checks().filter(function(c){return c.checked;}).length; }
+  if(all) all.addEventListener("change", function(){ checks().forEach(function(c){c.checked=all.checked;}); refresh(); });
+  document.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("bulk-check")) refresh(); });
+  refresh();
+})();
+</script>
+{% endif %}
+
 {% for t in items %}
 <div class="q-card">
+  {% if can_enter_data %}<label class="q-check no-print"><input type="checkbox" class="bulk-check" name="txn" value="{{ t.id }}" form="bulkAllocForm"></label>{% endif %}
   <div class="q-info">
     <div class="q-amt-row">
       <span class="q-amt mono">KSh {{ t.amount|floatformat:2|intcomma }}</span>

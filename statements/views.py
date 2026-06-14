@@ -30,13 +30,15 @@ class StatementUploadView(DataEntryRequiredMixin, FormView):
     def form_valid(self, form):
         f = form.cleaned_data["file"]
         bank_account = form.cleaned_data.get("bank_account")
+        force_sabbath = form.cleaned_data.get("service_sabbath")
         imp = StatementImport.objects.create(
             uploaded_by=self.request.user, filename=f.name, file=f,
             bank_account=bank_account)
         # synchronous import (swap for a Celery task for very large files)
         imp.file.seek(0)
         content = imp.file.read()
-        run_import(imp, content, f.name, bank_account=bank_account)
+        run_import(imp, content, f.name, bank_account=bank_account,
+                   force_sabbath=force_sabbath)
         if imp.status == StatementImport.Status.FAILED:
             messages.error(self.request, f"Import failed: {imp.error_detail}")
         else:

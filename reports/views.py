@@ -131,10 +131,14 @@ class DevGroupUnassignedView(TreasurerRequiredMixin, TemplateView):
             return redirect("dev_unassigned")
         n = (Transaction.objects.filter(id__in=ids, dev_group__isnull=True)
              .update(dev_group=grp))
-        # keep the linked envelope lines in step
-        from envelopes.models import EnvelopeLine
-        EnvelopeLine.objects.filter(transaction_id__in=ids,
-                                    dev_group__isnull=True).update(dev_group=grp)
+        # keep the linked envelope lines in step (guarded: tolerate older schemas
+        # where EnvelopeLine has no dev_group column)
+        try:
+            from envelopes.models import EnvelopeLine
+            EnvelopeLine.objects.filter(transaction_id__in=ids,
+                                        dev_group__isnull=True).update(dev_group=grp)
+        except Exception:
+            pass
         messages.success(request, f"Assigned {n} development gift(s) to {grp.label}.")
         return redirect("dev_unassigned")
 

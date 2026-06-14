@@ -253,6 +253,14 @@ class SiteConfig(models.Model):
         help_text="Require treasurers to set up two-factor authentication. They "
                   "will be prompted to enrol at next login and cannot skip it.")
 
+    # --- Error alerts --------------------------------------------------------
+    error_alerts_enabled = models.BooleanField(default=False,
+        help_text="If on, the admin is alerted when an unexpected error occurs, "
+                  "via whichever of email / SMS / WhatsApp are enabled.")
+    error_alert_phone = models.CharField(max_length=32, blank=True, default="",
+        help_text="Phone number to receive SMS / WhatsApp error alerts "
+                  "(uses the SMS and WhatsApp settings already configured).")
+
     # --- Opening cash position at the start of the financial year ------------
     # Lets the Statement of Financial Position open with the real split of cash
     # rather than implying everything sits in the bank.

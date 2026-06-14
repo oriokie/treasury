@@ -1,5 +1,63 @@
 # Changelog
 
+## v1.9.0 — reconciliation apply, statement Sabbath, dashboard refresh, campaign pledge import
+- Sabbath reconciliation: a one-click 'apply match' on selected pairs (and the
+  singleton suggestion) marks the matched envelope as a bank item, links it to the
+  bank gift, and neutralises the duplicate cash income so the money is counted once
+  via the bank (item 1).
+- Statement import: an optional Sabbath that every entry in the file counts under,
+  for imports done later than the Saturday. It takes precedence over the by-date
+  assignment and isn't held for confirmation; leave it blank for the current
+  per-date behaviour (item 2).
+- Dashboard: the local-funds table has a small button to download it as a JPEG
+  image (item 3); the 'Giving by group' card is replaced by 'How giving arrives',
+  showing the bank / M-Pesa vs cash vs envelope mix with gift counts and shares
+  (item 4).
+- Pledges: an Import button on a campaign page loads pledges straight into that
+  campaign — no Campaign column needed — reusing the review-and-approve flow, with
+  pledges landing as drafts (item 5).
+
+## v1.8.0 — Sabbath reconciliation, leader pages, 2FA fix
+- New per-Sabbath reconciliation (Envelopes -> Reconcile Sabbath): lists a
+  Sabbath's bank giving (receipted + manual) and the envelopes counted for it,
+  matches them by contributor and amount with fuzzy matching to catch misspelt
+  manual-receipt names, suggests the last unmatched pair when only one remains on
+  each side, excludes cash envelopes from the bank balance, and flags bank entries
+  that aren't assigned to any Sabbath (item 1).
+- Leaders get detailed pages: a full, downloadable collections list (contributor,
+  masked phone, reference, channel, amount), a downloadable expenses list, and a
+  development-group drill-down with each group's performance and a downloadable
+  per-contributor list — all scoped to the leader's departments and read-only
+  (item 2).
+- Two-factor authentication: signing in no longer throws a server error when the
+  stored authenticator secret can't be read (e.g. after an encryption-key change);
+  a recovery code now works directly in the verification box as a second form of
+  sign-in, and a broken secret is regenerated on re-enrol (item 3).
+- 'Receipt bank giving' can optionally be limited to a single Sabbath; leave the
+  date blank to keep the whole-month behaviour (item 4).
+
+## v1.7.0 — queue tools, trust accuracy, cash-count control, error pages
+- Review queue: select several gifts and allocate them to one fund at once
+  (item 1); a button fetches unallocated gifts sitting in the ledger (no fund,
+  not in the queue) back into the queue for allocation (item 5).
+- Trust 'to remit' now keys off the authoritative fund type, so a stale flag can
+  no longer pull a local fund into the remittance total; a migration re-syncs the
+  flag on existing data (item 4).
+- Expense form: an entry larger than the fund's available balance is no longer
+  silently dropped — a clear notice keeps the entry intact and offers the
+  override, so M-Pesa charges and other expenses don't 'disappear' (item 3).
+- M-Pesa / bank charges are kept out of duplicate-expense detection even when
+  recorded under another category (item 8).
+- Possible duplicates are sorted by payer and now include fuzzy near-matches, to
+  catch a manual receipt typed with a slightly misspelt name (item 9).
+- The allocation rules list is paginated, shows the match type, and drops the
+  source column (item 6).
+- Friendly 404 / 403 / 500 pages with a way back to the app; the admin can be
+  alerted on an unexpected error by email, SMS or WhatsApp (item 2).
+- Sabbath cash count reflects physical cash only: a cash-envelope row that
+  duplicates a bank gift for the same contributor that Sabbath is excluded from
+  the expected total, so the count can balance (item 7).
+
 ## v1.6.0 — manual receipts vs system receipts
 - Split the single processed-via-envelope flag into two clear states:
   - Manual receipt: the gift was receipted on paper (e.g. a hand-written

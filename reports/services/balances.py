@@ -125,7 +125,7 @@ def department_summary(start=None, end=None, consolidated=True):
                          "transfers_in": ti, "transfers_out": to,
                          "net_transfer": ti - to,
                          "closing": op + rcv - exp + ti - to,
-                         "is_trust": dept.is_trust, "children": []})
+                         "is_trust": dept.fund_type == Department.FundType.TRUST, "children": []})
         return rows
 
     kids = defaultdict(list)
@@ -151,7 +151,7 @@ def department_summary(start=None, end=None, consolidated=True):
                      "transfers_in": ti, "transfers_out": to,
                      "net_transfer": ti - to,
                      "closing": op + rcv - exp + ti - to,
-                     "is_trust": dept.is_trust, "children": children})
+                     "is_trust": dept.fund_type == Department.FundType.TRUST, "children": children})
     return rows
 
 
@@ -242,7 +242,8 @@ def trust_summary(start=None, end=None):
         remit_f &= Q(date__lte=end)
     remitted_map = {r["department"]: (r["total"] or Decimal(0)) for r in
                     Expense.objects.filter(remit_f).values("department").annotate(total=Sum("amount"))}
-    for dept in Department.objects.filter(is_trust=True, active=True):
+    for dept in Department.objects.filter(
+            fund_type=Department.FundType.TRUST, active=True):
         collected = receipts.get(dept.id, Decimal(0))
         remitted = remitted_map.get(dept.id, Decimal(0))
         rows.append({"department": dept, "collected": collected,
