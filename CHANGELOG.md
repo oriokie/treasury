@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.11.0 — leader dashboard revamp
+- The department-leader page is now an insights dashboard: headline KPIs (closing
+  balance, collections, expenses, net), a monthly collections-vs-expenses chart,
+  an income-by-channel breakdown, top contributors, budget-vs-actual and
+  pledge-fulfilment cards, and development-group standings with drilldown.
+- Added an "Explore" set of quick links and a dedicated, downloadable pledges page
+  (CSV/Excel) to sit beside the existing collections and expenses pages.
+- All leader views remain strictly read-only and scoped to the leader's own
+  departments; contributor phone numbers are masked on detail pages and not shown
+  on the overview at all.
+
+## v1.10.2 — two-factor verify page renders in all states
+- The 2FA code-entry page is now fully standalone (it no longer extends the main
+  layout). It previously went blank when reached while already logged in but not
+  yet verified (the middleware path), because the main layout only fills its body
+  for verified users. It now renders for fresh logins and re-verification alike.
+
 ## v1.10.1 — two-factor sign-in fixes
 - The 2FA code-entry page no longer renders blank. It is shown before the user is
   logged in, so it now uses the unauthenticated sign-in layout (the authenticated

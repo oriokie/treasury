@@ -1,23 +1,36 @@
-{% extends 'base.html' %}
-{% block title %}Two-factor verification · {{ SITE_NAME }}{% endblock %}
-{% block auth %}
-<div class="auth">
-  <div class="auth-card">
-    <div class="mark">₳</div>
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two-factor verification</title>
+<link rel="stylesheet" href="{% static 'css/app.css' %}">
+<style>
+  .tfa-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:var(--paper,#f4f1e8)}
+  .tfa-card{width:100%;max-width:400px;background:#fff;border:1px solid var(--line,#e4dfd2);border-radius:14px;padding:1.8rem;box-shadow:0 8px 30px rgba(0,0,0,.06);text-align:center}
+  .tfa-mark{font-size:2rem;color:var(--forest,#1f5f4f)}
+  .tfa-card h1{font-size:1.3rem;margin:.4rem 0 .2rem}
+  .tfa-card p{color:var(--muted,#7a7568);font-size:.9rem;margin:.2rem 0 1rem}
+  .tfa-card input[name=token]{width:100%;font-size:1.2rem;letter-spacing:.12em;text-align:center;padding:.6rem;border:1px solid var(--line,#e4dfd2);border-radius:8px}
+  .tfa-card button{width:100%;margin-top:.9rem;padding:.65rem;background:var(--forest,#1f5f4f);color:#fff;border:0;border-radius:8px;font-size:1rem;cursor:pointer}
+  .tfa-flash{padding:.55rem .7rem;border-radius:8px;margin-bottom:.8rem;font-size:.85rem;background:#fbeaea;color:#8a2b2b;border:1px solid #e7c3c3}
+  .tfa-hint{font-size:.78rem;margin-top:1rem}
+  .tfa-foot{text-align:center;margin-top:1rem}
+  .tfa-foot a{color:var(--muted,#7a7568);font-size:.8rem}
+</style>
+</head><body>
+<div class="tfa-wrap">
+  <div class="tfa-card">
+    <div class="tfa-mark">₳</div>
     <h1>Enter your code</h1>
-    <p class="sub">Open your authenticator app and enter the current 6-digit code{% if secret_lost %}, or use a recovery code{% endif %}.</p>
-    {% if messages %}{% for m in messages %}<div class="flash {{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
-    <form method="post">{% csrf_token %}
-      <div class="form-row">
-        <input name="token" class="field" inputmode="text" autocomplete="one-time-code"
-          placeholder="123456 or recovery code" autofocus
-          style="width:100%;font-size:1.2rem;letter-spacing:.12em;text-align:center">
-      </div>
-      <button class="btn" style="width:100%;justify-content:center">Verify</button>
+    <p>Open your authenticator app and enter the current 6-digit code{% if secret_lost %}, or use a recovery code{% endif %}.</p>
+    {% if messages %}{% for m in messages %}<div class="tfa-flash">{{ m }}</div>{% endfor %}{% endif %}
+    <form method="post" action="{% url 'twofactor_verify' %}">{% csrf_token %}
+      <input name="token" inputmode="text" autocomplete="one-time-code"
+        placeholder="123456 or recovery code" autofocus>
+      <button type="submit">Verify</button>
     </form>
-    <p class="sub" style="margin-top:1rem;font-size:.8rem">
-      Lost your phone? Enter one of the recovery codes you saved when setting up
-      two-factor — it works in the same box.</p>
+    <p class="tfa-hint">Lost your phone? Enter one of the recovery codes you saved
+      when setting up two-factor — it works in the same box.</p>
   </div>
 </div>
-{% endblock %}
+<div class="tfa-foot"><a href="{% url 'logout' %}">Sign in as a different user</a></div>
+</body></html>

@@ -164,3 +164,34 @@ class TwoFactorSetupQrTests(TestCase):
         uri = "otpauth://totp/Test:user?secret=ABCDEFGHIJKLMNOP&issuer=Test"
         out = _qr_data_uri(uri)
         self.assertTrue(out.startswith("data:image/svg+xml;base64,"))
+
+
+class TwoFactorVerifyBothStatesTests(TestCase):
+    """Regression: the verify page must render whether the user arrives
+    unauthenticated (fresh login) or authenticated-but-unverified (middleware),
+    so it is a standalone page not tied to base.html's auth-gated blocks."""
+
+    def setUp(self):
+        import pyotp
+        from django.contrib.auth.models import User
+        from accounts.models import TwoFactor
+        self.u = User.objects.create_user("v2both", password="pw12345")
+        self.sec = pyotp.random_base32()
+        tf = TwoFactor.objects.create(user=self.u, confirmed=True)
+        tf.set_secret(self.sec); tf.save()
+
+    def test_fresh_login_renders_form(self):
+        c = self.client
+        c.post("/accounts/login/", {"username": "v2both", "password": "pw12345"})
+        r = c.get("/2fa/verify/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'name="token"')
+
+    def test_authenticated_unverified_renders_form(self):
+        from accounts.twofactor import PENDING_USER, VERIFIED
+        c = self.client
+        c.force_login(self.u)
+        s = c.session; s[PENDING_USER] = self.u.pk; s[VERIFIED] = False; s.save()
+        r = c.get("/2fa/verify/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'name="token"')

@@ -9,6 +9,8 @@ urlpatterns = [
          name="leader_collections"),
     path("leader/department/<int:pk>/expenses/", views.LeaderExpensesView.as_view(),
          name="leader_expenses"),
+    path("leader/department/<int:pk>/pledges/", views.LeaderPledgesView.as_view(),
+         name="leader_pledges"),
     path("leader/group/<int:pk>/", views.LeaderGroupDetailView.as_view(),
          name="leader_group_detail"),
 ]

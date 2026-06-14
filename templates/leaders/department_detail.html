@@ -1,9 +1,9 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize static %}
 {% block title %}{{ dept.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
   <div class="ws-titles"><h1>{{ dept.name }}</h1>
-    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · read-only</div></div>
+    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · your department · read-only</div></div>
   <form method="get" class="btn-row" style="align-items:flex-end">
     <a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a>
     <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
@@ -12,60 +12,187 @@
   </form>
 </div>
 
-{% if row %}
-<div class="ws-summary">
-  <div class="ws-metric"><span class="wm-l">Opening (B/F)</span><span class="wm-v"><span class="cur">KES</span>{{ row.opening|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric is-positive"><span class="wm-l">Collections</span><span class="wm-v"><span class="cur">KES</span>{{ row.receipts|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric is-warn"><span class="wm-l">Expenses</span><span class="wm-v"><span class="cur">KES</span>{{ row.expenses_operating|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric is-primary"><span class="wm-l">Balance</span><span class="wm-v"><span class="cur">KES</span>{{ row.closing|floatformat:0|intcomma }}</span></div>
+<!-- Headline KPIs -->
+<div class="ld-kpis">
+  <div class="stat accent"><div class="label">Closing balance</div>
+    <div class="value"><span class="ksh">KSh</span>{{ kpi.closing|floatformat:0|intcomma }}</div>
+    <div class="foot">Opening + receipts − expenses</div></div>
+  <div class="stat"><div class="label">Collections</div>
+    <div class="value"><span class="ksh">KSh</span>{{ kpi.receipts|floatformat:0|intcomma }}</div>
+    <div class="foot">{{ kpi.gifts }} gift{{ kpi.gifts|pluralize }} this period</div></div>
+  <div class="stat warn"><div class="label">Expenses</div>
+    <div class="value"><span class="ksh">KSh</span>{{ kpi.spend|floatformat:0|intcomma }}</div>
+    <div class="foot">Approved &amp; paid</div></div>
+  <div class="stat {% if kpi.net >= 0 %}brass{% endif %}"><div class="label">Net this period</div>
+    <div class="value"><span class="ksh">KSh</span>{{ kpi.net|floatformat:0|intcomma }}</div>
+    <div class="foot">Collections − expenses</div></div>
 </div>
-{% endif %}
 
-{% if subrows %}
-<div class="card" style="margin-bottom:1rem"><div class="hd">Sub-accounts</div><div class="bd" style="padding:0">
-  <table class="ledger compact"><thead><tr><th>Sub-account</th><th class="num">Collections</th><th class="num">Expenses</th><th class="num">Balance</th></tr></thead><tbody>
-  {% for s in subrows %}<tr><td>{{ s.department.name }}</td><td class="num mono">{{ s.receipts|floatformat:0|intcomma }}</td><td class="num mono">{{ s.expenses_operating|floatformat:0|intcomma }}</td><td class="num mono">{{ s.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
-  </tbody></table>
-</div></div>
-{% endif %}
+<!-- Explore: dedicated pages -->
+<div class="section-title">Explore</div>
+<div class="ld-links">
+  <a class="ld-link" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
+    <span class="ic">📥</span><span class="t">Collections</span>
+    <span class="s">{{ kpi.gifts }} gift{{ kpi.gifts|pluralize }} · view names &amp; download</span></a>
+  <a class="ld-link" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
+    <span class="ic">🧾</span><span class="t">Expenses</span>
+    <span class="s">KSh {{ kpi.spend|floatformat:0|intcomma }} · full list &amp; download</span></a>
+  {% if pledge_summary %}
+  <a class="ld-link" href="{% url 'leader_pledges' dept.id %}">
+    <span class="ic">🤝</span><span class="t">Pledges</span>
+    <span class="s">{{ pledge_summary.count }} pledge{{ pledge_summary.count|pluralize }} · {{ pledge_summary.pct }}% fulfilled</span></a>
+  {% endif %}
+</div>
 
+<!-- Insight charts -->
+<div class="ld-charts">
+  {% if has_monthly %}
+  <div class="card"><div class="hd">Collections vs expenses</div><div class="bd">
+    <canvas id="ldMonthly" height="200"></canvas></div></div>
+  {% endif %}
+  {% if has_channel %}
+  <div class="card"><div class="hd">How giving arrives</div><div class="bd">
+    <canvas id="ldChannel" height="200"></canvas></div></div>
+  {% endif %}
+</div>
+
+<!-- Insights row: top givers + budget -->
+<div class="ld-charts">
+  <div class="card"><div class="hd">Top contributors</div><div class="bd" style="padding:0">
+    <table class="ledger compact">
+      <tbody>
+      {% for g in top_givers %}<tr>
+        <td>{{ g.who }} <span class="muted" style="font-size:.72rem">· {{ g.n }} gift{{ g.n|pluralize }}</span></td>
+        <td class="num mono">{{ g.total|floatformat:0|intcomma }}</td>
+      </tr>{% empty %}<tr><td class="muted">No giving in this period.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+
+  {% if budget %}
+  <div class="card"><div class="hd">Budget vs actual</div><div class="bd">
+    <div class="kv" style="margin-bottom:.4rem"><span>Spent</span><span class="mono">{{ budget.spent|floatformat:0|intcomma }}</span></div>
+    <div class="progress" style="height:14px"><span style="width:{{ budget.pct }}%;{% if budget.over %}background:var(--danger){% endif %}"></span></div>
+    <div class="kv" style="margin-top:.4rem"><span class="muted">Annual budget</span><span class="mono">{{ budget.budget|floatformat:0|intcomma }}</span></div>
+    {% if budget.over %}<p class="help" style="color:var(--danger);margin:.5rem 0 0">Over budget for the year.</p>
+    {% else %}<p class="help" style="margin:.5rem 0 0">{{ budget.pct }}% of the annual budget used.</p>{% endif %}
+  </div></div>
+  {% elif pledge_summary %}
+  <div class="card"><div class="hd">Pledge fulfilment</div><div class="bd">
+    <div class="kv" style="margin-bottom:.4rem"><span>Paid</span><span class="mono">{{ pledge_summary.paid|floatformat:0|intcomma }}</span></div>
+    <div class="progress" style="height:14px"><span style="width:{{ pledge_summary.pct }}%"></span></div>
+    <div class="kv" style="margin-top:.4rem"><span class="muted">Pledged</span><span class="mono">{{ pledge_summary.pledged|floatformat:0|intcomma }}</span></div>
+    <div class="kv"><span class="muted">Outstanding</span><span class="mono">{{ pledge_summary.outstanding|floatformat:0|intcomma }}</span></div>
+    <p class="help" style="margin:.5rem 0 0"><a class="link" href="{% url 'leader_pledges' dept.id %}">See all pledges →</a></p>
+  </div></div>
+  {% endif %}
+</div>
+
+<!-- Development groups -->
 {% if dev_groups %}
-<div class="card" style="margin-bottom:1rem"><div class="hd">Development groups</div><div class="bd" style="padding:0">
-  <table class="ledger compact"><thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th>Progress</th></tr></thead><tbody>
-  {% for g in dev_groups %}<tr><td><a class="link" href="{% url 'leader_group_detail' g.group.id %}">{{ g.group }}</a></td><td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td><td class="num mono">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
-    <td style="min-width:120px">{% if g.pct is not None %}<div class="pbar"><span style="width:{{ g.pct }}%"></span></div><span class="muted" style="font-size:.72rem">{{ g.pct }}%</span>{% else %}—{% endif %}</td></tr>{% endfor %}
-  </tbody></table>
+<div class="section-title">Development groups <span class="muted" style="font-weight:400;font-size:.8rem">— KSh {{ dev_collected|floatformat:0|intcomma }} collected</span></div>
+<div class="card" style="margin-bottom:1.4rem"><div class="bd" style="padding:0">
+  <table class="ledger compact">
+    <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th style="width:160px">Progress</th></tr></thead>
+    <tbody>
+    {% for g in dev_groups %}<tr>
+      <td><a class="link" href="{% url 'leader_group_detail' g.group.id %}">{{ g.group }}</a></td>
+      <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
+      <td class="num mono">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td>{% if g.pct is not None %}<div class="progress"><span style="width:{{ g.pct }}%"></span></div><span class="muted" style="font-size:.72rem">{{ g.pct }}%</span>{% else %}—{% endif %}</td>
+    </tr>{% endfor %}
+    </tbody>
+  </table>
 </div></div>
 {% endif %}
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
-  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Recent collections <a class="link" style="font-size:.78rem" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all &amp; download →</a></div><div class="bd" style="padding:0">
-    <table class="ledger compact"><thead><tr><th>Date</th><th>From</th><th class="num">Amount</th></tr></thead><tbody>
-    {% for c in collections %}
-      <tr><td class="mono">{{ c.date|date:"d/m/y" }}</td>
-        <td>{{ c.who }}{% if c.phone %} <span class="muted mono" style="font-size:.72rem">{{ c.phone }}</span>{% endif %}</td>
-        <td class="num mono">{{ c.amount|floatformat:0|intcomma }}</td></tr>
-    {% empty %}<tr><td colspan="3" class="empty">No collections in this period.</td></tr>{% endfor %}
-    </tbody></table>
+<!-- Recent activity previews -->
+<div class="ld-charts">
+  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Recent collections <a class="link" style="font-size:.78rem" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd" style="padding:0">
+    <table class="ledger compact">
+      <tbody>
+      {% for c in collections %}<tr>
+        <td class="mono" style="white-space:nowrap">{{ c.date|date:"d M" }}</td>
+        <td>{{ c.who }}</td>
+        <td class="num mono">{{ c.amount|floatformat:0|intcomma }}</td>
+      </tr>{% empty %}<tr><td colspan="3" class="muted">No collections yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
   </div></div>
-
-  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Expenses <a class="link" style="font-size:.78rem" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all &amp; download →</a></div><div class="bd" style="padding:0">
-    <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
-    {% for e in expenses %}
-      <tr><td class="mono">{{ e.date|date:"d/m/y" }}</td><td>{{ e.description }}<br><span class="muted" style="font-size:.72rem">{{ e.get_category_display }} · {{ e.get_status_display }}</span></td><td class="num mono">{{ e.amount|floatformat:0|intcomma }}</td></tr>
-    {% empty %}<tr><td colspan="3" class="empty">No expenses in this period.</td></tr>{% endfor %}
-    </tbody></table>
+  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Recent expenses <a class="link" style="font-size:.78rem" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd" style="padding:0">
+    <table class="ledger compact">
+      <tbody>
+      {% for e in expenses %}<tr>
+        <td class="mono" style="white-space:nowrap">{{ e.date|date:"d M" }}</td>
+        <td>{{ e.description }}</td>
+        <td class="num mono">{{ e.amount|floatformat:0|intcomma }}</td>
+      </tr>{% empty %}<tr><td colspan="3" class="muted">No expenses yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
   </div></div>
 </div>
 
-{% if pledges %}
-<div class="card" style="margin-top:1rem"><div class="hd">Pledges to this department <span class="muted">total KES {{ pledge_total|floatformat:0|intcomma }}</span></div><div class="bd" style="padding:0">
-  <table class="ledger compact"><thead><tr><th>Member</th><th>Campaign</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead><tbody>
-  {% for p in pledges %}<tr><td>{{ p.member }}{% if p.phone %} <span class="muted mono" style="font-size:.72rem">{{ p.phone }}</span>{% endif %}</td><td>{{ p.campaign }}</td><td>{{ p.status }}</td><td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td><td class="num mono">{{ p.paid|floatformat:0|intcomma }}</td><td class="num mono">{{ p.outstanding|floatformat:0|intcomma }}</td></tr>{% endfor %}
-  </tbody></table>
+<!-- Sub-accounts -->
+{% if subrows %}
+<div class="section-title">Sub-accounts</div>
+<div class="card" style="margin-bottom:1.4rem"><div class="bd" style="padding:0">
+  <table class="ledger compact">
+    <thead><tr><th>Fund</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
+    <tbody>
+    {% for r in subrows %}<tr>
+      <td>{{ r.department.name }}</td>
+      <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td>
+    </tr>{% endfor %}
+    </tbody>
+  </table>
 </div></div>
 {% endif %}
 
-<p class="help" style="margin-top:1rem">Contact numbers are partly masked for privacy. This is a read-only view; for changes, contact the treasurer.</p>
-<style>.pbar{height:7px;background:var(--line);border-radius:4px;overflow:hidden}.pbar span{display:block;height:100%;background:var(--forest,#1f5f4f)}.subrow td{color:var(--muted)}</style>
+<style>
+.ld-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin-bottom:1.4rem}
+.ld-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem;margin-bottom:1.4rem}
+.ld-link{display:flex;flex-direction:column;gap:.15rem;padding:1rem 1.1rem;background:var(--paper);border:1px solid var(--line);border-radius:14px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
+.ld-link:hover{border-color:var(--forest);transform:translateY(-2px)}
+.ld-link .ic{font-size:1.4rem}
+.ld-link .t{font-weight:600;font-family:var(--font-display,inherit)}
+.ld-link .s{font-size:.8rem;color:var(--muted)}
+.ld-charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.4rem;align-items:start}
+@media(max-width:820px){.ld-kpis{grid-template-columns:repeat(2,1fr)}.ld-charts{grid-template-columns:1fr}}
+</style>
+<script src="{% static 'vendor/chart.umd.js' %}"></script>
+<script>
+(function(){
+  var css = getComputedStyle(document.documentElement);
+  var forest = (css.getPropertyValue('--forest')||'#1f5f4f').trim();
+  var brass = (css.getPropertyValue('--brass')||'#b07d2c').trim();
+  var danger = (css.getPropertyValue('--danger')||'#a23b3b').trim();
+  var muted = (css.getPropertyValue('--muted')||'#7a7568').trim();
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.font.family = "'Public Sans',sans-serif";
+  Chart.defaults.color = muted;
+  {% if has_monthly %}
+  var mo = {{ monthly_json|safe }};
+  new Chart(document.getElementById('ldMonthly'), {
+    type: 'bar',
+    data: { labels: mo.labels, datasets: [
+      { label: 'Collections', data: mo.receipts, backgroundColor: forest, borderRadius: 4 },
+      { label: 'Expenses', data: mo.expenses, backgroundColor: danger, borderRadius: 4 } ]},
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } },
+      scales: { y: { beginAtZero: true } } }
+  });
+  {% endif %}
+  {% if has_channel %}
+  var ch = {{ channel_json|safe }};
+  new Chart(document.getElementById('ldChannel'), {
+    type: 'doughnut',
+    data: { labels: ch.map(function(d){return d.label;}),
+      datasets: [{ data: ch.map(function(d){return d.value;}),
+        backgroundColor: [forest, brass, muted, danger] }]},
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+  });
+  {% endif %}
+})();
+</script>
 {% endblock %}

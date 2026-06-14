@@ -83,9 +83,13 @@ class LeaderPhoneMaskingTests(TestCase):
             direction="CREDIT", amount=Decimal("500"), department=dept, member=m,
             allocation_status="MANUAL", confirmed=True)
         c = Client(); c.force_login(leader)
+        # the overview dashboard never shows the full number
         body = c.get(f"/leader/department/{dept.id}/").content.decode()
-        self.assertNotIn("254712345678", body)        # full number never shown
-        self.assertIn(mask_phone("254712345678"), body)  # masked form shown
+        self.assertNotIn("254712345678", body)
+        # the dedicated collections page shows the masked form, never the full one
+        page = c.get(f"/leader/department/{dept.id}/collections/").content.decode()
+        self.assertNotIn("254712345678", page)
+        self.assertIn(mask_phone("254712345678"), page)
 
     def test_pledge_phone_is_masked(self):
         from pledges.models import PledgeCampaign, Pledge
@@ -98,9 +102,13 @@ class LeaderPhoneMaskingTests(TestCase):
         Pledge.objects.create(campaign=camp, member=m, amount=Decimal("1000"),
                               status="ACTIVE")
         c = Client(); c.force_login(leader)
+        # the dedicated pledges page shows the member, masks the phone
+        page = c.get(f"/leader/department/{dept.id}/pledges/").content.decode()
+        self.assertNotIn("254700111222", page)
+        self.assertIn("DON OR", page)                  # name shown (uppercased), phone masked
+        # the overview dashboard never leaks the full number either
         body = c.get(f"/leader/department/{dept.id}/").content.decode()
         self.assertNotIn("254700111222", body)
-        self.assertIn("DON OR", body)                  # name shown (uppercased), phone masked
 
 
 class LeaderReadOnlyTests(TestCase):
@@ -181,3 +189,62 @@ class LeaderDetailPagesTests(TestCase):
         self.client.logout(); self.client.login(username="minlead", password="x")
         r = self.client.get(f"/leader/group/{self.grp.id}/")
         self.assertEqual(r.status_code, 302)
+
+
+class LeaderDashboardRevampTests(TestCase):
+    """The revamped leader department page: insights dashboard + dedicated pages."""
+
+    def setUp(self):
+        self.dept = Department.objects.create(name="Camp Dev", fund_type="LOCAL",
+                                              category="DEVELOPMENT", annual_budget=100000)
+        self.leader = _make_leader("ldrev", self.dept)
+        self.c = Client(); self.c.force_login(self.leader)
+
+    def test_dashboard_renders_insights(self):
+        r = self.c.get(f"/leader/department/{self.dept.id}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Closing balance")
+        self.assertContains(r, "Collections")
+        self.assertContains(r, "Top contributors")
+        self.assertContains(r, "Explore")
+        # dedicated-page links are present
+        self.assertContains(r, f"/leader/department/{self.dept.id}/collections/")
+        self.assertContains(r, f"/leader/department/{self.dept.id}/expenses/")
+
+    def test_kpis_reflect_giving_and_spend(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        from cashbook.models import Expense
+        d = dt.date.today()
+        Transaction.objects.create(date=d, channel="CASH", direction="CREDIT",
+            amount=Decimal("1000"), department=self.dept, payer_name="Giver A",
+            confirmed=True, allocation_status="MANUAL")
+        Expense.objects.create(date=d, department=self.dept, description="Tents",
+            amount=Decimal("300"), category="MATERIALS", status="APPROVED",
+            recorded_by=self.leader)
+        r = self.c.get(f"/leader/department/{self.dept.id}/")
+        self.assertEqual(r.status_code, 200)
+        ctx = r.context
+        self.assertEqual(ctx["kpi"]["receipts"], Decimal("1000"))
+        self.assertEqual(ctx["kpi"]["spend"], Decimal("300"))
+        self.assertEqual(ctx["kpi"]["net"], Decimal("700"))
+        self.assertEqual(ctx["top_givers"][0]["who"].upper(), "GIVER A")
+        # budget card present (annual_budget set)
+        self.assertIsNotNone(ctx["budget"])
+
+    def test_pledges_page_and_export(self):
+        r = self.c.get(f"/leader/department/{self.dept.id}/pledges/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Pledged")
+        self.assertEqual(
+            self.c.get(f"/leader/department/{self.dept.id}/pledges/?export=csv").status_code, 200)
+        self.assertEqual(
+            self.c.get(f"/leader/department/{self.dept.id}/pledges/?export=xlsx").status_code, 200)
+
+    def test_pledges_page_guarded(self):
+        other = Department.objects.create(name="Not Mine", fund_type="LOCAL",
+                                          category="MINISTRY")
+        r = self.c.get(f"/leader/department/{other.id}/pledges/")
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/leader/", r["Location"])

@@ -38,6 +38,16 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.11.0": "Department leaders get a redesigned dashboard for the area they "
+              "lead: headline figures (balance, collections, expenses, net), a "
+              "collections-vs-expenses chart, how giving arrives, top contributors, "
+              "budget and pledge progress, and development-group standings. Each "
+              "area — collections, expenses, pledges — now has its own focused, "
+              "downloadable page. Everything stays read-only and scoped to the "
+              "leader's own departments.",
+    "1.10.2": "The two-factor code page is now a fully self-contained page, so it "
+              "always renders — including when an existing session needs "
+              "re-verifying, which previously showed a blank screen.",
     "1.10.1": "Fixes two-factor sign-in: the code-entry page rendered blank "
               "(it runs before you are logged in, so it now uses the sign-in "
               "layout), and the enrolment QR code now displays without needing "
