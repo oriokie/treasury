@@ -1011,3 +1011,45 @@ class CashEntryDeleteTests(TestCase):
             confirmed=True, allocation_status="MANUAL", core_ref="CD1-S1")
         self.client.post(f"/cash/{base.id}/delete/")
         self.assertFalse(Transaction.objects.filter(id__in=[base.id, part.id]).exists())
+
+
+class NumberedFundFamilyTests(TestCase):
+    """A single 'numbered fund family' config routes EXPENSE<n> -> fund CAMP_<n>
+    for every group, handling narration variations, without a rule per group."""
+
+    def setUp(self):
+        from core.models import SiteConfig
+        from departments.models import Department
+        cfg = SiteConfig.get()
+        cfg.numbered_fund_families = "expense, exp, expe = CAMP_{n}"
+        cfg.dev_group_extra_prefixes = ""
+        cfg.save()
+        for n in (1, 2, 10, 30):
+            Department.objects.create(name=f"CAMP_{n}", fund_type="LOCAL",
+                                      category="DEVELOPMENT", selectable=True)
+
+    def test_variations_route_to_group_1(self):
+        from giving.services.allocation import allocate
+        for ref in ["EXPENSE1", "exp1", "expe1", "expense1", "EXPENSE 1", "EXPENSE_1"]:
+            res, st = allocate(ref)
+            self.assertEqual(getattr(res, "name", res), "CAMP_1", ref)
+            self.assertEqual(st, "AUTO")
+
+    def test_distinguishes_one_from_ten(self):
+        from giving.services.allocation import allocate
+        self.assertEqual(getattr(allocate("EXPENSE10")[0], "name", None), "CAMP_10")
+        self.assertEqual(getattr(allocate("EXPENSE30")[0], "name", None), "CAMP_30")
+        self.assertEqual(getattr(allocate("expense2")[0], "name", None), "CAMP_2")
+
+    def test_missing_fund_falls_through(self):
+        from giving.services.allocation import allocate
+        res, st = allocate("expense99")          # no CAMP_99 fund exists
+        self.assertEqual(res, "UNALLOCATED")
+        self.assertEqual(st, "REVIEW")
+
+    def test_no_config_means_no_routing(self):
+        from core.models import SiteConfig
+        from giving.services.allocation import allocate
+        cfg = SiteConfig.get(); cfg.numbered_fund_families = ""; cfg.save()
+        res, st = allocate("expense1")
+        self.assertEqual(res, "UNALLOCATED")

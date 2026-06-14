@@ -252,7 +252,7 @@
 
     <div class="card" style="margin-top:1rem"><div class="hd">Allocation &amp; categories</div><div class="bd">
       <div class="form-grid">
-      {% for f in form %}{% if f.name == 'dev_group_extra_prefixes' %}
+      {% for f in form %}{% if f.name == 'dev_group_extra_prefixes' or f.name == 'numbered_fund_families' %}
         <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>

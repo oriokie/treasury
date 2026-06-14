@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.13.0 — numbered fund families (easy camp/expense-group routing)
+- Added a 'numbered fund family' setting: one line such as
+  'expense, exp, expe = CAMP_{n}' routes EXPENSE1 / exp1 / expe1 to the fund named
+  CAMP_1, EXPENSE30 to CAMP_30, and so on for all groups — no rule per group.
+  Handles narration variations, distinguishes EXPENSE1 from EXPENSE10, and only
+  applies when the target fund exists (otherwise the gift goes to review).
+- This resolves ahead of the generic development-group prefix matcher so a
+  configured family is not intercepted and sent to a development group by mistake.
+- The allocation-rules page now points to this instead of per-group regex rules.
+
 ## v1.12.0 — period-aware leader insights, fair trend, cash delete
 - Leader dashboard: development-group collected figures now respect the selected
   period (previously all-time), in step with the other cards, and a per-period

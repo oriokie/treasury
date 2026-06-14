@@ -63,6 +63,17 @@ def allocate(reference, date=None):
     if m and 1 <= int(m.group(1)) <= 99:
         return f"DEV_GROUP_{int(m.group(1))}", "AUTO"
 
+    # church-configured numbered fund families, e.g. EXPENSE<n> -> fund "CAMP_<n>".
+    # One config line covers every group; resolves only when that fund exists.
+    for prefixes, template in _numbered_fund_families():
+        fm = re.search(r"(?:%s)[ _-]*0*(\d+)" % "|".join(prefixes), s)
+        if fm:
+            from departments.models import Department
+            name = template.replace("{n}", str(int(fm.group(1))))
+            dept = Department.objects.filter(name__iexact=name).first()
+            if dept:
+                return dept, "AUTO"
+
     # church-configured extra prefixes (e.g. "project", "phase")
     extra = _extra_dev_prefixes()
     if extra:
@@ -127,3 +138,34 @@ def _extra_dev_prefixes():
         if p:
             out.append(re.escape(p))
     return out
+
+
+def _numbered_fund_families():
+    """Parse SiteConfig.numbered_fund_families into [(prefixes, template), ...].
+
+    Each non-empty line is 'prefix1, prefix2 = NAME_TEMPLATE'. Prefixes are
+    normalised (letters/digits only) and sorted longest-first so 'expense' is
+    tried before 'exp'. Tolerant: malformed lines are skipped, never fatal.
+    """
+    try:
+        from core.models import SiteConfig
+        raw = SiteConfig.get().numbered_fund_families or ""
+    except Exception:
+        return []
+    families = []
+    for line in raw.splitlines():
+        if "=" not in line:
+            continue
+        left, template = line.split("=", 1)
+        template = template.strip()
+        if "{n}" not in template:
+            continue
+        prefixes = []
+        for part in left.split(","):
+            p = re.sub(r"[^a-z0-9]", "", part.strip().lower())
+            if p:
+                prefixes.append(re.escape(p))
+        if prefixes:
+            prefixes.sort(key=len, reverse=True)
+            families.append((prefixes, template))
+    return families

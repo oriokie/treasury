@@ -171,6 +171,12 @@ class SiteConfig(models.Model):
         help_text="Extra words (comma-separated) that mean a development group in "
                   "bank references, e.g. 'project, phase'. The common 'grp/devgroup' "
                   "spellings are always recognised.")
+    numbered_fund_families = models.TextField(blank=True, default="",
+        help_text="Route numbered narrations straight to numbered funds, one family "
+                  "per line as 'prefixes = NAME_TEMPLATE'. {n} is the number found. "
+                  "e.g. 'expense, exp, expe = CAMP_{n}' sends EXPENSE1/exp1/expe1 to "
+                  "the fund named CAMP_1, EXPENSE30 to CAMP_30, and so on — no need "
+                  "for a rule per group. Only applies when that fund exists.")
 
     # --- Outgoing email (SMTP) ---
     email_enabled = models.BooleanField(default=False,

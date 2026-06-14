@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.13.0": "New: numbered fund families. Set one line in Settings — for "
+              "example 'expense, exp, expe = CAMP_{n}' — and giving narrated "
+              "EXPENSE1, exp1 or expe1 is sent to the fund CAMP_1, EXPENSE30 to "
+              "CAMP_30, and so on for every group at once. No more a rule per group, "
+              "and EXPENSE1 is correctly kept apart from EXPENSE10.",
     "1.12.0": "Leader dashboard: development-group figures now follow the period "
               "you pick, and you can download a group summary for that period. The "
               "multi-year trend now compares January-to-the-current-month of each "
