@@ -111,3 +111,56 @@ class TwoFactorTests(TestCase):
         # no 2FA enrolled → straight in (redirect to next/dashboard, not the gate)
         self.assertEqual(r.status_code, 302)
         self.assertNotIn("/2fa/verify", r.url)
+
+
+class TwoFactorVerifyPageRendersTests(TestCase):
+    """Regression: the 2FA verify page is shown while the user is NOT yet logged
+    in, so it must render via the unauthenticated layout. A blank verify page
+    (content gated behind authentication) locks everyone out."""
+
+    def setUp(self):
+        import pyotp
+        from django.contrib.auth.models import User
+        from accounts.models import TwoFactor
+        self.u = User.objects.create_user("v2fa", password="pw12345")
+        self.sec = pyotp.random_base32()
+        tf = TwoFactor.objects.create(user=self.u, confirmed=True)
+        tf.set_secret(self.sec); tf.save()
+
+    def test_verify_page_renders_form_when_not_authenticated(self):
+        c = self.client
+        r = c.post("/accounts/login/", {"username": "v2fa", "password": "pw12345"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/2fa/verify/", r["Location"])
+        r = c.get("/2fa/verify/")
+        self.assertEqual(r.status_code, 200)
+        # the form must actually be in the body, not gated away
+        self.assertContains(r, 'name="token"')
+        self.assertContains(r, "Enter your code")
+
+    def test_valid_code_logs_in(self):
+        import pyotp
+        c = self.client
+        c.post("/accounts/login/", {"username": "v2fa", "password": "pw12345"})
+        r = c.post("/2fa/verify/", {"token": pyotp.TOTP(self.sec).now()})
+        self.assertEqual(r.status_code, 302)
+
+
+class TwoFactorSetupQrTests(TestCase):
+    """Regression: the enrolment QR must render without Pillow (it's not installed
+    in production), or the treasurer can't scan to enrol."""
+
+    def test_setup_page_shows_qr(self):
+        from django.contrib.auth.models import User
+        u = User.objects.create_user("qruser", password="pw12345")
+        self.client.force_login(u)
+        r = self.client.get("/2fa/setup/")
+        self.assertEqual(r.status_code, 200)
+        # an inline QR image must be present (SVG data URI, Pillow-free)
+        self.assertIn(b"data:image/svg+xml;base64,", r.content)
+
+    def test_qr_helper_returns_svg(self):
+        from accounts.twofactor import _qr_data_uri
+        uri = "otpauth://totp/Test:user?secret=ABCDEFGHIJKLMNOP&issuer=Test"
+        out = _qr_data_uri(uri)
+        self.assertTrue(out.startswith("data:image/svg+xml;base64,"))

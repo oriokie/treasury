@@ -12,11 +12,26 @@ VERIFIED = "2fa_verified"                 # set true once TOTP passed this sessi
 
 
 def _qr_data_uri(uri):
-    """Render the otpauth URI as an inline PNG data URI (no external request)."""
+    """Render the otpauth URI as an inline QR data URI (no external request).
+
+    Uses qrcode's pure-Python SVG factory so it works without Pillow; falls back
+    to a PNG if Pillow happens to be installed."""
+    if not uri:
+        return None
+    # 1) SVG path image — needs no Pillow, so it always works
     try:
+        import io, base64
         import qrcode
-        import io
-        import base64
+        import qrcode.image.svg
+        img = qrcode.make(uri, image_factory=qrcode.image.svg.SvgPathImage)
+        buf = io.BytesIO(); img.save(buf)
+        return "data:image/svg+xml;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        pass
+    # 2) PNG fallback (only if Pillow is available)
+    try:
+        import io, base64
+        import qrcode
         img = qrcode.make(uri)
         buf = io.BytesIO(); img.save(buf, format="PNG")
         return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()

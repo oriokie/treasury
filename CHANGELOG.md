@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.10.1 — two-factor sign-in fixes
+- The 2FA code-entry page no longer renders blank. It is shown before the user is
+  logged in, so it now uses the unauthenticated sign-in layout (the authenticated
+  layout suppressed its body, which locked everyone out).
+- The enrolment QR code now renders using a pure-Python SVG generator, so it shows
+  even though the image library (Pillow) isn't installed on the server.
+- A recovery code continues to work directly in the verification box.
+
 ## v1.10.0 — importers, regex rules, reconciliation, fixes
 - Allocation rules: bulk Excel import (template + review), and a new REGEX match
   type so one rule covers many narration variations like EXPENSE_1 / exp1 / expe1

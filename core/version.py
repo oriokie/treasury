@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.10.1": "Fixes two-factor sign-in: the code-entry page rendered blank "
+              "(it runs before you are logged in, so it now uses the sign-in "
+              "layout), and the enrolment QR code now displays without needing "
+              "an image library on the server. A recovery code still works in the "
+              "same box.",
     "1.10.0": "Two new Excel importers — allocation rules and expenses — each "
               "with a template and review step. Allocation rules gain a regex match "
               "type so one rule covers narration variations (EXPENSE_1 / exp1 / "
