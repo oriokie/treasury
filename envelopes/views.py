@@ -1,3 +1,4 @@
+import io
 import datetime as dt
 import json
 from decimal import Decimal, InvalidOperation
@@ -343,9 +344,8 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
 
     @db_tx.atomic
     def post(self, request):
-        import openpyxl
-        from giving.models import SplitFund
-        cfg = SiteConfig.get()
+        if request.POST.get("resolve"):
+            return self._resolve(request)
         try:
             sab = dt.date.fromisoformat(request.POST.get("date"))
         except (TypeError, ValueError):
@@ -360,16 +360,118 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
         if not f:
             messages.error(request, "Choose an .xlsx file to import.")
             return redirect("envelope_import")
+        content = f.read()
+        # Item 7: detect fund columns in the sheet that don't match a known fund.
+        # Rather than silently dropping them, ask the treasurer to map or create.
+        unknown, err = self._scan_unknown(content)
+        if err:
+            messages.error(request, err)
+            return redirect("envelope_import")
+        if unknown:
+            import base64
+            request.session["env_import_b64"] = base64.b64encode(content).decode("ascii")
+            request.session["env_import_date"] = sab.isoformat()
+            return render(request, self.template_name, {
+                "stage": "resolve", "unknown_cols": unknown, "sab": sab,
+                "funds": Department.objects.filter(active=True, selectable=True).order_by("name"),
+            })
+        return self._import(request, sab, content)
 
-        funds = {d.id: d for d in Department.objects.filter(active=True)}
-        splits = {s.id: s for s in SplitFund.objects.filter(active=True)}
+    def _scan_unknown(self, content):
+        """Return (unknown_columns, error). An unknown column is a header that is
+        neither a recognised meta column nor a known fund, but does carry numbers
+        (so it's a fund the sheet expects but we don't have)."""
+        import openpyxl
+        label_to_key = self._fund_label_map()
+        meta = {"contributor name", "name", "phone", "receipt no", "receipt",
+                "channel", "group", "group number", "dev group",
+                "no", "no.", "s/no", "sno", "s/n", "#", "serial", "index", "row"}
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
+        except Exception:
+            return None, "Could not read that file — is it a valid .xlsx?"
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return None, "The sheet is empty."
+        header = [str(h).strip() if h is not None else "" for h in rows[0]]
+        unknown = []
+        for i, h in enumerate(header):
+            hl = h.lower()
+            if not hl or hl in meta or hl in label_to_key:
+                continue
+            has_num = False
+            for r in rows[1:]:
+                if i < len(r) and r[i] not in (None, ""):
+                    try:
+                        float(str(r[i]).replace(",", ""))
+                        has_num = True
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            if has_num:
+                unknown.append({"index": i, "name": h})
+        return unknown, None
+
+    def _fund_label_map(self):
         label_to_key = {c["label"].lower(): c["key"] for c in column_catalog(for_import=True)}
-        # also accept the bare fund name (without the "(split)" suffix)
         for c in column_catalog(for_import=True):
             label_to_key.setdefault(c["name"].lower(), c["key"])
+        return label_to_key
+
+    def _resolve(self, request):
+        """Apply the treasurer's decisions for unknown columns, then import."""
+        import base64
+        b64 = request.session.get("env_import_b64")
+        sab_raw = request.session.get("env_import_date")
+        if not b64 or not sab_raw:
+            messages.error(request, "Your import session expired — please upload again.")
+            return redirect("envelope_import")
+        content = base64.b64decode(b64)
+        sab = dt.date.fromisoformat(sab_raw)
+        extra_cols = {}      # {col_index: department_id}
+        created_funds = 0
+        for k in list(request.POST.keys()):
+            if not k.startswith("col_"):
+                continue
+            try:
+                i = int(k[4:])
+            except ValueError:
+                continue
+            choice = request.POST.get(k, "ignore")
+            if choice.startswith("existing:"):
+                try:
+                    extra_cols[i] = int(choice.split(":", 1)[1])
+                except ValueError:
+                    pass
+            elif choice == "create":
+                name = (request.POST.get(f"name_{i}") or "").strip()
+                if name:
+                    dept = Department.objects.filter(name__iexact=name).first()
+                    if not dept:
+                        dept = Department.objects.create(
+                            name=name, fund_type=Department.FundType.LOCAL,
+                            category=Department.Category.OFFERING, selectable=True)
+                        created_funds += 1
+                    extra_cols[i] = dept.id
+            # "ignore" -> leave out
+        request.session.pop("env_import_b64", None)
+        request.session.pop("env_import_date", None)
+        if created_funds:
+            messages.success(request, f"Created {created_funds} new fund(s).")
+        return self._import(request, sab, content, extra_cols=extra_cols)
+
+    def _import(self, request, sab, content, extra_cols=None):
+        import openpyxl
+        from giving.models import SplitFund
+        extra_cols = extra_cols or {}
+        cfg = SiteConfig.get()
+        funds = {d.id: d for d in Department.objects.filter(active=True)}
+        splits = {s.id: s for s in SplitFund.objects.filter(active=True)}
+        label_to_key = self._fund_label_map()
 
         try:
-            wb = openpyxl.load_workbook(f, data_only=True)
+            wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
         except Exception:
             messages.error(request, "Could not read that file — is it a valid .xlsx?")
             return redirect("envelope_import")
@@ -386,13 +488,15 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
         rcpt_i = idx.get("receipt no", idx.get("receipt"))
         chan_i = idx.get("channel")
         group_i = idx.get("group", idx.get("group number", idx.get("dev group")))
-        # which columns are fund columns
         fund_cols = []  # (col_index, key)
         for h, i in idx.items():
             if h in label_to_key:
                 fund_cols.append((i, label_to_key[h]))
+        # resolved unknown columns map straight to a department id (its own key)
+        for i, dept_id in extra_cols.items():
+            if dept_id in funds:
+                fund_cols.append((i, str(dept_id)))
 
-        # next receipt seed for blanks
         nums = []
         for r in Envelope.objects.values_list("receipt_no", flat=True):
             d = "".join(ch for ch in str(r) if ch.isdigit())

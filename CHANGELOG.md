@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.10.0 — importers, regex rules, reconciliation, fixes
+- Allocation rules: bulk Excel import (template + review), and a new REGEX match
+  type so one rule covers many narration variations like EXPENSE_1 / exp1 / expe1
+  for camp/expense groups (items 1, 2).
+- Split funds are selectable in the bulk-allocate dropdown and split each gift
+  into its parts (item 3).
+- Sabbath reconciliation: split-fund bank parts are regrouped into one gift so the
+  total matches the single envelope, matched/unmatched envelopes show their fund
+  allocation (Tithe, Development, ...), and selected matches can be applied in one
+  click to mark them as bank giving (items 1, 4 across releases).
+- Expenses: bulk Excel import at /expenses/ with a template, review, and the
+  approval setting honoured (item 5).
+- Remittance dashboard: recent batches labelled as last 10; a note clarifies that
+  Outstanding is the cumulative running balance. The underlying fix makes trust
+  'to remit' a true running liability (opening + collected to date - remitted to
+  date), so cross-month timing reconciles (items 6, 8).
+- Envelope import: an unrecognised fund column is no longer dropped silently — you
+  map it to a fund, create one, or ignore it before importing (item 7).
+- Fixes: loose cash dated to a closed Sabbath now counts for that Sabbath (not the
+  next one); a reset_2fa management command recovers users locked out by an
+  encryption-key change (set a stable TREASURY_ENCRYPTION_KEY in .env).
+
 ## v1.9.0 — reconciliation apply, statement Sabbath, dashboard refresh, campaign pledge import
 - Sabbath reconciliation: a one-click 'apply match' on selected pairs (and the
   singleton suggestion) marks the matched envelope as a bank item, links it to the

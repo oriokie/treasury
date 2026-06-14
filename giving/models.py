@@ -77,6 +77,7 @@ class AllocationRule(models.Model):
         STARTS = "STARTS", "Starts with"
         ENDS = "ENDS", "Ends with"
         CONTAINS = "CONTAINS", "Contains"
+        REGEX = "REGEX", "Matches a pattern (regex)"
 
     match_type = models.CharField(max_length=8, choices=MatchType.choices,
                                   default=MatchType.EXACT)

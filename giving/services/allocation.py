@@ -88,9 +88,15 @@ def allocate(reference, date=None):
         ref = r.reference
         if not ref:
             continue
-        hit = ((r.match_type == AllocationRule.MatchType.STARTS and s.startswith(ref))
-               or (r.match_type == AllocationRule.MatchType.ENDS and s.endswith(ref))
-               or (r.match_type == AllocationRule.MatchType.CONTAINS and ref in s))
+        if r.match_type == AllocationRule.MatchType.REGEX:
+            try:
+                hit = bool(re.search(ref, s))
+            except re.error:
+                hit = False        # a malformed pattern never matches (and never crashes)
+        else:
+            hit = ((r.match_type == AllocationRule.MatchType.STARTS and s.startswith(ref))
+                   or (r.match_type == AllocationRule.MatchType.ENDS and s.endswith(ref))
+                   or (r.match_type == AllocationRule.MatchType.CONTAINS and ref in s))
         if hit:
             matched.append(r)
     # prefer a period rule covering the date, keeping the most-specific match order

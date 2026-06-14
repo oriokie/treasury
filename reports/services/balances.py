@@ -232,22 +232,38 @@ def dev_group_progress(start=None, end=None):
 def trust_summary(start=None, end=None):
     rows = []
     receipts = receipts_by_department(start, end)
+    # Cumulative receipts through the period end — the outstanding remittance is a
+    # running liability, not a single month's figure, so a trust collected in one
+    # month and remitted the next still reconciles.
+    cum_receipts = receipts_by_department(None, end)
     # A remittance reduces the trust liability once it is APPROVED or PAID — the
     # same basis the fund reports and general ledger use, so all three agree.
-    remit_f = Q(category=Expense.Category.REMITTANCE,
-                status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+    remit_base = Q(category=Expense.Category.REMITTANCE,
+                   status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+    remit_f = Q(remit_base)
     if start:
         remit_f &= Q(date__gte=start)
     if end:
         remit_f &= Q(date__lte=end)
     remitted_map = {r["department"]: (r["total"] or Decimal(0)) for r in
                     Expense.objects.filter(remit_f).values("department").annotate(total=Sum("amount"))}
+    # cumulative remitted through the period end (for the running balance)
+    cum_remit_f = Q(remit_base)
+    if end:
+        cum_remit_f &= Q(date__lte=end)
+    cum_remitted_map = {r["department"]: (r["total"] or Decimal(0)) for r in
+                        Expense.objects.filter(cum_remit_f).values("department").annotate(total=Sum("amount"))}
     for dept in Department.objects.filter(
             fund_type=Department.FundType.TRUST, active=True):
         collected = receipts.get(dept.id, Decimal(0))
         remitted = remitted_map.get(dept.id, Decimal(0))
+        # outstanding = opening liability + everything collected to date − everything
+        # remitted to date (this is what is genuinely still owed to the conference)
+        outstanding = ((dept.opening_balance or Decimal(0))
+                       + cum_receipts.get(dept.id, Decimal(0))
+                       - cum_remitted_map.get(dept.id, Decimal(0)))
         rows.append({"department": dept, "collected": collected,
-                     "remitted": remitted, "to_remit": collected - remitted})
+                     "remitted": remitted, "to_remit": outstanding})
     return rows
 
 

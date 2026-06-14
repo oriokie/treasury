@@ -38,35 +38,75 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
     sabbath = sabbath_of(sabbath)
 
     # --- bank side -----------------------------------------------------------
+    # A split gift (e.g. Combined Offering) is posted as several rows sharing a
+    # core_ref base (X, X-S1, X-S2 …). For reconciliation we regroup those parts
+    # into one bank gift so its full amount lines up with the single envelope the
+    # giver was issued — otherwise a 1,000 envelope never matches a 600/400 split.
     bank_qs = (Transaction.objects.filter(
                    channel=Transaction.Channel.BANK,
                    direction=Transaction.Direction.CREDIT,
                    confirmed=True, is_reversal=False, is_reversed=False,
                    service_sabbath=sabbath)
-               .select_related("member", "department"))
-    bank = []
+               .select_related("member", "department").order_by("id"))
+
+    def _split_key(t):
+        if t.core_ref:
+            return ("c", t.core_ref.split("-S")[0])
+        if t.mpesa_ref:
+            return ("m", t.mpesa_ref.lower(), t.date)
+        if t.reference:
+            return ("r", t.reference.lower(), t.date)
+        return ("id", t.id)
+
+    groups = {}
+    order = []
     for t in bank_qs:
-        if t.processed_via_envelope:
-            status = "receipted"
-        elif t.manual_receipt:
-            status = "manual"
-        else:
-            status = "unreceipted"
+        k = _split_key(t)
+        if k not in groups:
+            groups[k] = []
+            order.append(k)
+        groups[k].append(t)
+
+    bank = []
+    for k in order:
+        parts = groups[k]
+        head = parts[0]
+        total = sum((p.amount for p in parts), Decimal(0))
+        # status: receipted if any part is, else manual if any, else unreceipted
+        statuses = {("receipted" if p.processed_via_envelope else
+                     "manual" if p.manual_receipt else "unreceipted") for p in parts}
+        status = ("receipted" if "receipted" in statuses else
+                  "manual" if "manual" in statuses else "unreceipted")
+        funds = []
+        for p in parts:
+            if p.department_id and p.department.name not in funds:
+                funds.append(p.department.name)
         bank.append({
-            "id": t.id, "amount": t.amount,
-            "who": t.member.name if t.member_id else (t.payer_name or "—"),
-            "phone": mask_phone(t.member.phone if t.member_id else t.payer_phone),
-            "reference": t.reference or "", "status": status,
-            "fund": t.department.name if t.department_id else "",
+            "id": head.id, "amount": total,
+            "who": head.member.name if head.member_id else (head.payer_name or "—"),
+            "phone": mask_phone(head.member.phone if head.member_id else head.payer_phone),
+            "reference": head.reference or "", "status": status,
+            "fund": ", ".join(funds), "is_split": len(parts) > 1,
         })
 
     # --- envelope side -------------------------------------------------------
-    env_qs = Envelope.objects.filter(date=sabbath).order_by("receipt_no")
-    envelopes = [{
-        "id": e.id, "amount": e.total, "who": e.contributor_name or "—",
-        "channel": e.channel, "receipt": e.receipt_no,
-        "is_bank": e.channel == Envelope.Channel.BANK,
-    } for e in env_qs]
+    # Show each envelope's fund allocation (Tithe, Development, …) to aid the
+    # treasurer's confirmation of a match.
+    env_qs = (Envelope.objects.filter(date=sabbath)
+              .prefetch_related("lines__department").order_by("receipt_no"))
+    envelopes = []
+    for e in env_qs:
+        funds = []
+        for ln in e.lines.all():
+            nm = ln.department.name if ln.department_id else None
+            if nm and nm not in funds:
+                funds.append(nm)
+        envelopes.append({
+            "id": e.id, "amount": e.total, "who": e.contributor_name or "—",
+            "channel": e.channel, "receipt": e.receipt_no,
+            "is_bank": e.channel == Envelope.Channel.BANK,
+            "funds": ", ".join(funds),
+        })
 
     # --- match bank gifts to envelopes (amount must agree) -------------------
     matched = []

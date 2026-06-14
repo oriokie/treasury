@@ -25,6 +25,7 @@
   <select name="department" class="field--select" required style="max-width:280px">
     <option value="">Allocate selected to fund…</option>
     {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    {% if split_funds %}<optgroup label="Split funds">{% for s in split_funds %}<option value="sf:{{ s.id }}">{{ s.name }} (split)</option>{% endfor %}</optgroup>{% endif %}
   </select>
   <select name="dev_group" class="field--select" style="max-width:240px">
     <option value="">Development group № (if applicable)…</option>

@@ -743,3 +743,64 @@ class TrustDueDateAlertTests(TestCase):
         # only assert if we're past day 1 of the month (always true except the 1st)
         if dt.date.today().day > 1:
             self.assertIn("remittance overdue", titles.lower())
+
+
+class ExpenseImportTests(TestCase):
+    """Item 5: bulk import of expenses from a spreadsheet."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        from core.models import SiteConfig
+        u = User.objects.create_user("ei", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        self.client.login(username="ei", password="x")
+        from departments.models import Department
+        self.fund = Department.objects.create(name="EI Fund", fund_type="LOCAL",
+                                              selectable=True, category="MINISTRY")
+        cfg = SiteConfig.get(); cfg.require_expense_approval = False; cfg.save()
+
+    def _file(self, rows):
+        import io, openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Expenses"
+        ws.append(["Date", "Fund", "Description", "Amount", "Category", "Method",
+                   "Claimant", "Voucher no"])
+        for r in rows:
+            ws.append(r)
+        buf = io.BytesIO(); wb.save(buf)
+        return SimpleUploadedFile("e.xlsx", buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    def test_template_downloads(self):
+        r = self.client.get("/expenses/import/?download=1")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("spreadsheet", r["Content-Type"])
+
+    def test_import_creates_expenses(self):
+        from cashbook.models import Expense
+        f = self._file([
+            ["2026-06-06", self.fund.name, "Mic", 4500, "Materials", "Cash", "J M", "V1"],
+            ["2026-06-07", "NoSuchFund", "Orphan", 999, "Other", "Cash", "", ""],
+        ])
+        self.client.post("/expenses/import/", {"file": f})
+        self.client.post("/expenses/import/", {"apply": "1"})
+        e = Expense.objects.filter(description="Mic").first()
+        self.assertIsNotNone(e)
+        self.assertEqual(e.category, "MATERIALS")
+        self.assertEqual(e.method, "CASH")
+        self.assertEqual(e.department_id, self.fund.id)
+        # auto-approve since approval not required
+        self.assertEqual(e.status, Expense.Status.APPROVED)
+        # orphan fund skipped
+        self.assertFalse(Expense.objects.filter(description="Orphan").exists())
+
+    def test_pending_when_approval_required(self):
+        from cashbook.models import Expense
+        from core.models import SiteConfig
+        cfg = SiteConfig.get(); cfg.require_expense_approval = True; cfg.save()
+        f = self._file([["2026-06-06", self.fund.name, "Pend", 100, "Other", "Cash", "", ""]])
+        self.client.post("/expenses/import/", {"file": f})
+        self.client.post("/expenses/import/", {"apply": "1"})
+        e = Expense.objects.filter(description="Pend").first()
+        self.assertEqual(e.status, Expense.Status.PENDING)

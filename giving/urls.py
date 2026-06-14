@@ -19,6 +19,7 @@ urlpatterns = [
     path("transactions/<int:pk>/split/", views.TransactionSplitView.as_view(), name="transaction_split"),
     path("transactions/<int:pk>/shift-sabbath/", views.TransactionShiftSabbathView.as_view(), name="transaction_shift_sabbath"),
     path("rules/", views.RuleListView.as_view(), name="rule_list"),
+    path("rules/import/", views.RuleImportView.as_view(), name="rule_import"),
     path("rules/new/", views.RuleCreateView.as_view(), name="rule_create"),
     path("rules/<int:pk>/delete/", views.RuleDeleteView.as_view(), name="rule_delete"),
     path("debits/", views.DebitQueueView.as_view(), name="debit_queue"),

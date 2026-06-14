@@ -779,3 +779,126 @@ class ReconcileApplyTests(TestCase):
         env.refresh_from_db()
         # auditor (read-only) must not have changed anything
         self.assertEqual(env.channel, Envelope.Channel.CASH)
+
+
+class ReconcileSplitFundTests(TestCase):
+    """Item 4: split-fund bank parts are regrouped into one gift so the total
+    matches the single envelope; matched envelopes show their fund allocation."""
+
+    def setUp(self):
+        import datetime as dt
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from core.utils import sabbath_of
+        self.u = User.objects.create_superuser("rs", password="x")
+        self.trust = Department.objects.create(name="RS Trust", fund_type="TRUST",
+                                               selectable=True, category="TRUST")
+        self.local = Department.objects.create(name="RS Local", fund_type="LOCAL",
+                                               selectable=True, category="OFFERING")
+        self.sab = sabbath_of(dt.date(2026, 5, 2))
+
+    def _rec(self):
+        from envelopes.reconcile import reconcile_sabbath
+        return reconcile_sabbath(self.sab)
+
+    def test_split_grouped_to_one_bank_gift_and_matches(self):
+        from decimal import Decimal
+        from giving.models import Transaction
+        from envelopes.models import Envelope, EnvelopeLine
+        from core.utils import sabbath_week_of
+        Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
+            channel="BANK", direction="CREDIT", amount=Decimal("600"),
+            department=self.trust, payer_name="Split Giver", reference="SR",
+            core_ref="RSBASE", processed_via_envelope=True, confirmed=True,
+            allocation_status="MANUAL")
+        Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
+            channel="BANK", direction="CREDIT", amount=Decimal("400"),
+            department=self.local, payer_name="Split Giver", reference="SR",
+            core_ref="RSBASE-S1", processed_via_envelope=True, confirmed=True,
+            allocation_status="MANUAL")
+        e = Envelope.objects.create(date=self.sab,
+            sabbath_week=sabbath_week_of(self.sab), receipt_no="RSENV",
+            contributor_name="Split Giver", channel="BANK", recorded_by=self.u)
+        EnvelopeLine.objects.create(envelope=e, department=self.trust, amount=Decimal("600"))
+        EnvelopeLine.objects.create(envelope=e, department=self.local, amount=Decimal("400"))
+        e.recompute_total(); e.save()
+        rec = self._rec()
+        # the two split parts collapse into one bank gift of 1000
+        self.assertEqual(len(rec["bank"]), 1)
+        self.assertEqual(rec["bank"][0]["amount"], Decimal("1000"))
+        self.assertTrue(rec["bank"][0]["is_split"])
+        # which matches the single 1000 envelope
+        self.assertEqual(len(rec["matched"]), 1)
+        self.assertEqual(rec["bank_total"], Decimal("1000"))
+        self.assertTrue(rec["balanced"])
+        # the matched envelope exposes its fund allocation
+        self.assertIn("RS Trust", rec["matched"][0]["env"]["funds"])
+        self.assertIn("RS Local", rec["matched"][0]["env"]["funds"])
+
+
+class EnvelopeImportUnknownFundTests(TestCase):
+    """Item 7: an unknown fund column is not silently dropped — the treasurer is
+    asked to map it to a fund or create one before anything is imported."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        self.u = User.objects.create_superuser("e7", password="x")
+        self.client.login(username="e7", password="x")
+        self.known = Department.objects.create(name="E7 Tithe", fund_type="LOCAL",
+                                               selectable=True, category="OFFERING")
+
+    def _file(self, headers, row):
+        import io, openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        wb = openpyxl.Workbook(); ws = wb.active
+        ws.append(headers); ws.append(row)
+        buf = io.BytesIO(); wb.save(buf)
+        return SimpleUploadedFile("e.xlsx", buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    def test_unknown_column_triggers_resolve_not_silent_drop(self):
+        from envelopes.models import Envelope
+        f = self._file(["Contributor name", "Receipt no", self.known.name, "Camp Special"],
+                       ["Ann", "R1", 500, 300])
+        r = self.client.post("/envelopes/import/", {"date": "2026-03-07", "file": f})
+        self.assertContains(r, "Camp Special")
+        self.assertContains(r, "Create new fund")
+        # nothing imported yet
+        self.assertFalse(Envelope.objects.filter(contributor_name__iexact="Ann").exists())
+
+    def test_resolve_create_makes_fund_and_imports(self):
+        from envelopes.models import Envelope
+        from departments.models import Department
+        f = self._file(["Contributor name", "Receipt no", self.known.name, "Camp Special"],
+                       ["Ben", "R2", 500, 300])
+        self.client.post("/envelopes/import/", {"date": "2026-03-07", "file": f})
+        # the unknown column is at index 3
+        self.client.post("/envelopes/import/",
+            {"resolve": "1", "col_3": "create", "name_3": "Camp Special Fund"})
+        self.assertTrue(Department.objects.filter(name="Camp Special Fund").exists())
+        e = Envelope.objects.filter(contributor_name__iexact="Ben").first()
+        self.assertIsNotNone(e)
+        funds = {ln.department.name for ln in e.lines.all()}
+        self.assertIn("Camp Special Fund", funds)
+        self.assertIn("E7 Tithe", funds)
+
+    def test_resolve_map_to_existing(self):
+        from envelopes.models import Envelope
+        f = self._file(["Contributor name", "Receipt no", "Strange Column"],
+                       ["Cy", "R3", 400])
+        self.client.post("/envelopes/import/", {"date": "2026-03-07", "file": f})
+        self.client.post("/envelopes/import/",
+            {"resolve": "1", "col_2": f"existing:{self.known.id}"})
+        e = Envelope.objects.filter(contributor_name__iexact="Cy").first()
+        self.assertIsNotNone(e)
+        self.assertEqual({ln.department.name for ln in e.lines.all()}, {"E7 Tithe"})
+
+    def test_known_only_sheet_imports_directly(self):
+        from envelopes.models import Envelope
+        f = self._file(["Contributor name", "Receipt no", self.known.name],
+                       ["Di", "R4", 250])
+        r = self.client.post("/envelopes/import/", {"date": "2026-03-07", "file": f},
+                             follow=True)
+        # no resolve needed
+        self.assertTrue(Envelope.objects.filter(contributor_name__iexact="Di").exists())

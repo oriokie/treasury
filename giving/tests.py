@@ -799,3 +799,165 @@ class MarkProcessedClearsQueueTests(TestCase):
         h1.refresh_from_db(); h2.refresh_from_db()
         self.assertNotIn(h1.id, self._review_queue_ids())
         self.assertNotIn(h2.id, self._review_queue_ids())   # sibling cascaded
+
+
+class CashEntrySabbathTests(TestCase):
+    """Bug: loose cash dated to a Sabbath that has been closed was rolling forward
+    to the next Sabbath in the cash count. Manually-dated cash must count for the
+    Sabbath the treasurer assigned it to."""
+
+    def setUp(self):
+        import datetime as dt
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from core.models import SabbathClose
+        self.u = User.objects.create_superuser("cs", password="x")
+        self.client.login(username="cs", password="x")
+        self.d = Department.objects.create(name="Cash Sabbath Fund",
+            fund_type="LOCAL", selectable=True)
+        # the 13th is a Saturday; close it (as on the live system)
+        SabbathClose.objects.create(sabbath=dt.date(2026, 6, 13), closed_by=self.u)
+
+    def test_cash_dated_closed_sabbath_counts_for_that_sabbath(self):
+        import datetime as dt
+        from giving.models import Transaction
+        self.client.post("/cash/new/", {
+            "date": "2026-06-13", "department": str(self.d.id),
+            "channel": "CASH", "amount": "450", "payer_name": "Loose 13th",
+            "confirm_duplicate": "1"})
+        t = Transaction.objects.filter(payer_name="LOOSE 13TH",
+                                       channel="CASH").first()
+        self.assertIsNotNone(t)
+        self.assertEqual(t.service_sabbath, dt.date(2026, 6, 13))
+
+
+class BulkAllocateSplitFundTests(TestCase):
+    """Item 3: split funds must be selectable in the bulk-allocate dropdown and
+    split each selected gift into its parts."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.contrib.auth.models import User
+        from departments.models import Department
+        from giving.models import SplitFund, SplitComponent
+        self.u = User.objects.create_superuser("bs", password="x")
+        self.client.login(username="bs", password="x")
+        trust = Department.objects.create(name="BS Trust", fund_type="TRUST",
+                                          selectable=True, category="TRUST")
+        local = Department.objects.create(name="BS Local", fund_type="LOCAL",
+                                          selectable=True, category="OFFERING")
+        self.sf = SplitFund.objects.create(name="BS Combined", active=True)
+        SplitComponent.objects.create(split_fund=self.sf, department=trust,
+                                          percent=Decimal("50"))
+        SplitComponent.objects.create(split_fund=self.sf, department=local,
+                                          percent=Decimal("50"))
+
+    def test_split_fund_in_queue_dropdown(self):
+        r = self.client.get("/queue/")
+        self.assertContains(r, f"sf:{self.sf.id}")
+
+    def test_bulk_allocate_splits_each_gift(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        t = Transaction.objects.create(date=dt.date(2026, 3, 7), channel="BANK",
+            direction="CREDIT", amount=Decimal("1000"), payer_name="BSX",
+            reference="BSX1", core_ref="BSX1", allocation_status="REVIEW",
+            confirmed=True)
+        self.client.post("/queue/bulk-allocate/",
+            {"txn": [str(t.id)], "department": f"sf:{self.sf.id}"})
+        self.assertGreaterEqual(
+            Transaction.objects.filter(core_ref__startswith="BSX1").count(), 2)
+
+
+class RuleImportTests(TestCase):
+    """Item 1: bulk import of allocation rules from a spreadsheet."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User, Group
+        u = User.objects.create_user("ri", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        self.client.login(username="ri", password="x")
+        from departments.models import Department
+        self.fund = Department.objects.create(name="RI Tithe", fund_type="LOCAL",
+                                              selectable=True, category="OFFERING")
+
+    def _file(self, rows):
+        import io, openpyxl
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Rules"
+        ws.append(["Reference", "Match type", "Fund", "Split fund", "Valid from", "Valid to"])
+        for r in rows:
+            ws.append(r)
+        buf = io.BytesIO(); wb.save(buf)
+        return SimpleUploadedFile("r.xlsx", buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    def test_template_downloads(self):
+        r = self.client.get("/rules/import/?download=1")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("spreadsheet", r["Content-Type"])
+
+    def test_import_creates_rules_with_match_type(self):
+        from giving.models import AllocationRule
+        f = self._file([["camprule", "Contains", self.fund.name, "", "", ""],
+                        ["norfund", "Exact", "", "", "", ""]])
+        self.client.post("/rules/import/", {"file": f})
+        self.client.post("/rules/import/", {"apply": "1"})
+        rule = AllocationRule.objects.filter(reference="camprule").first()
+        self.assertIsNotNone(rule)
+        self.assertEqual(rule.match_type, "CONTAINS")
+        self.assertEqual(rule.department_id, self.fund.id)
+        # row with no fund is skipped
+        self.assertFalse(AllocationRule.objects.filter(reference="norfund").exists())
+
+    def test_existing_rule_updated(self):
+        from giving.models import AllocationRule
+        AllocationRule.objects.create(reference="dup", department=self.fund,
+                                      match_type="EXACT")
+        f = self._file([["dup", "Starts with", self.fund.name, "", "", ""]])
+        self.client.post("/rules/import/", {"file": f})
+        self.client.post("/rules/import/", {"apply": "1"})
+        self.assertEqual(AllocationRule.objects.filter(reference="dup").count(), 1)
+        self.assertEqual(AllocationRule.objects.get(reference="dup").match_type, "STARTS")
+
+
+class RegexAllocationRuleTests(TestCase):
+    """Item 2: a REGEX match type lets one rule cover many narration variations
+    (EXPENSE_1, exp1, expe1, expense1) for a camp/expense group."""
+
+    def setUp(self):
+        from departments.models import Department
+        self.d = Department.objects.create(name="Camp Group 1", fund_type="LOCAL",
+                                           selectable=True, category="DEVELOPMENT")
+
+    def test_one_regex_matches_all_variations(self):
+        from giving.models import AllocationRule
+        from giving.services.allocation import allocate
+        AllocationRule.objects.create(reference=r"exp(e|ense)?_?0*1\b",
+            match_type="REGEX", department=self.d, source="SEED")
+        for ref in ["EXPENSE_1", "exp1", "expe1", "expense1"]:
+            res, status = allocate(ref)
+            self.assertEqual(getattr(res, "name", res), self.d.name,
+                             f"{ref} should map to the camp group")
+        # must not catch group 10
+        res, _ = allocate("expense10")
+        self.assertNotEqual(getattr(res, "name", res), self.d.name)
+
+    def test_invalid_regex_never_crashes(self):
+        from giving.models import AllocationRule
+        from giving.services.allocation import allocate
+        # a deliberately broken pattern is stored but simply never matches
+        AllocationRule.objects.create(reference="exp[1", match_type="REGEX",
+            department=self.d, source="SEED")
+        res, status = allocate("anything")
+        self.assertEqual(status, "REVIEW")   # no crash, falls through to review
+
+    def test_form_rejects_bad_regex(self):
+        from giving.forms import RuleForm
+        f = RuleForm(data={"reference": "exp[1", "match_type": "REGEX",
+                           "department": str(self.d.id), "source": "SEED"})
+        self.assertFalse(f.is_valid())
+        self.assertIn("reference", f.errors)

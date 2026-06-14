@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="page-head"><div><h1>Allocation rules</h1><div class="sub">References the importer maps to funds automatically</div></div></div>
+<div class="page-head"><div><h1>Allocation rules</h1><div class="sub">References the importer maps to funds automatically</div></div><div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'rule_import' %}">⬆ Import rules</a></div></div>
 <div class="info-panel">
   <strong>Development groups are matched automatically</strong> — references like
   <span class="mono">DEVGR7</span>, <span class="mono">devgrp 11</span>,
@@ -32,6 +32,7 @@
   {% if can_enter_data %}
   <div style="flex:1">
     <div class="card"><div class="hd"><h3>Add rule</h3></div><div class="bd">
+      <p class="help" style="margin:0 0 .6rem">Match type can be exact, starts/ends-with, contains, or a <strong>pattern (regex)</strong> for trickier cases — e.g. <span class="mono">exp(e|ense)?_?0*1\b</span> catches EXPENSE_1, exp1, expe1 and expense1 for camp group 1. For numbered development or camp groups, you can instead add prefixes (like <span class="mono">exp,expe,expense</span>) under Settings, and any number after them routes automatically.</p>
       <form method="post" action="{% url 'rule_create' %}">{% csrf_token %}{% include 'partials/form_fields.html' %}<button class="btn btn-sm">Save rule</button></form>
     </div></div>
   </div>

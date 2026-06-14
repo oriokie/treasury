@@ -5,6 +5,7 @@
   <div class="ws-titles"><h1>Expenses</h1><div class="ws-sub">Payments and the approval workflow</div></div>
   <div class="ws-actions">
     {% if can_enter_data %}<a class="btn" href="{% url 'expense_create' %}">＋ New expense</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'expense_import' %}">⬆ Import</a>
     <a class="btn btn-ghost btn-sm" href="{% url 'recurring_list' %}">↻ Recurring</a>{% endif %}
   </div>
 </div>

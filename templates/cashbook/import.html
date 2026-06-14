@@ -1,0 +1,59 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Import expenses · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Import expenses</h1><div class="ws-sub">Bulk-load expenses from a spreadsheet</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'expense_list' %}">← Expenses</a></div>
+</div>
+
+{% if stage == "upload" %}
+<div class="card" style="max-width:760px"><div class="hd">How it works</div><div class="bd">
+  <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+    <li><strong>Download</strong> the template and fill one row per expense.</li>
+    <li><strong>Upload</strong> it. You'll see a preview; rows missing a date, fund,
+      description or amount are flagged before anything is saved.</li>
+    <li>If approval is on, imported expenses arrive as <strong>pending</strong>;
+      otherwise they're approved automatically.</li>
+  </ol>
+  <div class="btn-row" style="margin:.8rem 0"><a class="btn" href="?download=1">⤓ Download template (.xlsx)</a></div>
+  <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+    {% csrf_token %}
+    <div class="form-row" style="margin:.4rem 0"><label>Filled spreadsheet</label>
+      <input type="file" name="file" class="field" accept=".xlsx" required></div>
+    <button class="btn">Upload &amp; review</button>
+  </form>
+</div></div>
+
+{% elif stage == "review" %}
+<div class="ws-summary" style="margin-bottom:1rem">
+  <div class="ws-metric is-primary"><span class="wm-l">Ready</span><span class="wm-v">{{ ready }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">KES</span>{{ total|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric {% if problems %}is-warn{% endif %}"><span class="wm-l">Need attention</span><span class="wm-v">{{ problems }}</span></div>
+</div>
+{% if problems %}<div class="alert alert-warn" style="margin-bottom:1rem">Rows missing a date, fund, description or amount will be skipped.</div>{% endif %}
+{% if auto_approve %}<div class="help" style="margin-bottom:1rem">Approval isn't required, so these will be imported as <strong>approved</strong>.</div>{% else %}<div class="help" style="margin-bottom:1rem">These will arrive as <strong>pending approval</strong>.</div>{% endif %}
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="apply" value="1">
+  <div class="card"><div class="bd" style="padding:0">
+    <table class="ledger compact">
+      <thead><tr><th>Date</th><th>Fund</th><th>Description</th><th>Category</th><th>Method</th><th class="num">Amount</th><th></th></tr></thead>
+      <tbody>
+      {% for p in plan %}<tr>
+        <td class="mono">{{ p.date|default:"—" }}</td>
+        <td>{% if p.fund_name %}{{ p.fund_name }}{% else %}<span class="muted">{{ p.fund_raw|default:"—" }}</span>{% endif %}</td>
+        <td>{{ p.description|default:"—" }}</td>
+        <td>{{ p.category|title }}</td>
+        <td>{{ p.method|title }}</td>
+        <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+        <td>{% if p.ok %}<span class="pill pill-green">ok</span>{% else %}<span class="pill pill-amber">skip</span>{% endif %}</td>
+      </tr>{% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  <div class="btn-row" style="margin-top:1rem">
+    <a class="btn btn-ghost" href="{% url 'expense_import' %}">Cancel</a>
+    <button class="btn">Import {{ ready }} expense{{ ready|pluralize }}</button>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

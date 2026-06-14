@@ -90,6 +90,17 @@ class RuleForm(StyledFormMixin, forms.ModelForm):
         cleaned = super().clean()
         if not cleaned.get("department") and not cleaned.get("split_fund"):
             raise forms.ValidationError("Choose a fund or a split fund to allocate to.")
+        # a regex rule must be a valid pattern, or it can never match
+        if cleaned.get("match_type") == AllocationRule.MatchType.REGEX:
+            import re as _re
+            ref = (cleaned.get("reference") or "").strip().lower()
+            if len(ref) > 60:
+                self.add_error("reference", "Keep the pattern under 60 characters.")
+            try:
+                _re.compile(ref)
+            except _re.error as e:
+                self.add_error("reference", f"That isn't a valid pattern: {e}")
+        return cleaned
         if cleaned.get("department") and cleaned.get("split_fund"):
             raise forms.ValidationError("Pick either a fund or a split fund, not both.")
         vf, vt = cleaned.get("valid_from"), cleaned.get("valid_to")

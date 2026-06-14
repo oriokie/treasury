@@ -54,6 +54,7 @@
   {% empty %}<tr><td colspan="6" class="empty">No trust funds.</td></tr>{% endfor %}
   </tbody>
 </table></div>
+<p class="help" style="margin:.3rem 0 0">Collected and Remitted are for the selected period; <strong>Outstanding</strong> is the full running balance still owed (everything collected to date less everything remitted to date), so it won't equal this month's collected minus remitted.</p>
 {% if is_treasurer %}
 <div class="btn-row">
   <button class="btn" name="_sel" value="1">Generate batch for selected</button>
@@ -61,7 +62,7 @@
 </div>{% endif %}
 </form>
 
-<h2 style="margin-top:1.6rem">Recent batches</h2>
+<h2 style="margin-top:1.6rem">Recent batches <span class="muted" style="font-weight:400;font-size:.8rem">— last 10</span></h2>
 <div class="table-wrap"><table class="ledger compact">
   <thead><tr><th>Batch</th><th>Date</th><th class="num">Total</th><th>Status</th><th>Cheque</th></tr></thead>
   <tbody>

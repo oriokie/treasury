@@ -5,7 +5,36 @@
 <div class="sub">Fill the template offline, then upload it here. Fund columns are matched by their header name.</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'envelope_ledger' %}">← Back to ledger</a></div>
 
-<div class="imp-grid">
+{% if stage == "resolve" %}
+<div class="alert alert-warn" style="margin-bottom:1rem">Your sheet has {{ unknown_cols|length }} fund column{{ unknown_cols|length|pluralize }} that {{ unknown_cols|length|pluralize:"doesn't,don't" }} match a fund here. Tell me what to do with each — nothing is imported until you decide.</div>
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="resolve" value="1">
+  <div class="card"><div class="bd">
+  {% for u in unknown_cols %}
+    <div style="padding:.7rem 0;border-bottom:1px solid var(--line)">
+      <div style="font-weight:600;margin-bottom:.4rem">Column “{{ u.name }}”</div>
+      <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:.35rem"><input type="radio" name="col_{{ u.index }}" value="existing:" onclick="this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=false;this.closest('div').querySelector('.newname-{{ u.index }}').disabled=true;" checked>
+          Map to existing fund</label>
+        <select name="_ex_{{ u.index }}" class="field--select exsel-{{ u.index }}" style="max-width:240px" onchange="var r=this.closest('form').querySelector('[name=col_{{ u.index }}][value^=existing]'); r.value='existing:'+this.value;">
+          <option value="">— choose —</option>
+          {% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+        </select>
+        <label style="display:flex;align-items:center;gap:.35rem"><input type="radio" name="col_{{ u.index }}" value="create" onclick="this.closest('div').querySelector('.newname-{{ u.index }}').disabled=false;this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=true;">
+          Create new fund</label>
+        <input type="text" name="name_{{ u.index }}" class="field newname-{{ u.index }}" value="{{ u.name }}" placeholder="New fund name" style="max-width:200px" disabled>
+        <label style="display:flex;align-items:center;gap:.35rem"><input type="radio" name="col_{{ u.index }}" value="ignore" onclick="this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=true;this.closest('div').querySelector('.newname-{{ u.index }}').disabled=true;">
+          Ignore this column</label>
+      </div>
+    </div>
+  {% endfor %}
+  </div></div>
+  <div class="btn-row" style="margin-top:1rem">
+    <a class="btn btn-ghost" href="{% url 'envelope_import' %}">Cancel</a>
+    <button class="btn">Continue import</button>
+  </div>
+</form>
+{% else %}
   <!-- Step 1 -->
   <div class="card"><div class="hd"><span class="step-no">1</span> Choose columns &amp; download the template</div><div class="bd">
     <p class="help" style="margin-top:0">Tick the funds you collect this Sabbath, then download the spreadsheet. Untick the rest to keep the sheet small.</p>
@@ -66,4 +95,5 @@ dz.addEventListener("drop",ev=>{ if(ev.dataTransfer.files.length){ inp.files=ev.
 .dz-icon{font-size:1.8rem;color:var(--forest)}
 .dz-name{font-size:.82rem;margin-top:.2rem}
 </style>
+{% endif %}
 {% endblock %}

@@ -48,7 +48,7 @@
     <tbody>{% for m in matched %}<tr>
       {% if can_enter_data %}<td>{% if not m.env.is_bank %}<input type="checkbox" name="pair" value="env:{{ m.env.id }}:bank:{{ m.bank.id }}" title="Mark this envelope as bank giving">{% else %}<span class="pill pill-blue" style="font-size:.6rem" title="Already a bank item">bank</span>{% endif %}</td>{% endif %}
       <td>{{ m.bank.who }}{% if m.bank.reference %} <span class="mono muted" style="font-size:.7rem">{{ m.bank.reference }}</span>{% endif %}</td>
-      <td>{{ m.env.who }} <span class="muted mono" style="font-size:.7rem">#{{ m.env.receipt }}</span></td>
+      <td>{{ m.env.who }} <span class="muted mono" style="font-size:.7rem">#{{ m.env.receipt }}</span>{% if m.env.funds %}<br><span class="muted" style="font-size:.72rem">{{ m.env.funds }}</span>{% endif %}</td>
       <td>{% if m.confidence == 'exact' %}<span class="pill pill-green">exact</span>{% else %}<span class="pill pill-amber" title="Names are close but not identical — likely a spelling difference">fuzzy {{ m.ratio }}</span>{% endif %}</td>
       <td class="num mono">{{ m.bank.amount|floatformat:2|intcomma }}</td>
     </tr>{% endfor %}</tbody>
@@ -74,7 +74,7 @@
     <table class="ledger compact">
       <thead><tr><th>Contributor</th><th>Channel</th><th class="num">Amount</th></tr></thead>
       <tbody>{% for e in env_unmatched %}<tr>
-        <td>{{ e.who }} <span class="muted mono" style="font-size:.7rem">#{{ e.receipt }}</span></td>
+        <td>{{ e.who }} <span class="muted mono" style="font-size:.7rem">#{{ e.receipt }}</span>{% if e.funds %}<br><span class="muted" style="font-size:.72rem">{{ e.funds }}</span>{% endif %}</td>
         <td><span class="pill {% if e.is_bank %}pill-blue{% else %}pill-green{% endif %}">{{ e.channel }}</span></td>
         <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
       </tr>{% empty %}<tr><td colspan="3" class="muted">All envelopes matched.</td></tr>{% endfor %}</tbody>

@@ -974,3 +974,237 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
             msg += " Unrecognised: " + "; ".join(bad_rows)
         (messages.success if updated else messages.warning)(request, msg)
         return redirect("expense_list")
+
+
+# ===========================================================================
+# Bulk expense import (item 5)
+# ===========================================================================
+class ExpenseImportView(DataEntryRequiredMixin, View):
+    """Bulk-load expenses from a spreadsheet: date, fund, description, amount,
+    category, method, claimant, voucher. Honours the approval setting (auto-approve
+    when approval isn't required, otherwise lands as pending)."""
+    template_name = "cashbook/import.html"
+
+    CATEGORY_LABELS = {c.label.upper(): c.value for c in Expense.Category}
+    CATEGORY_LABELS.update({c.value: c.value for c in Expense.Category})
+    # friendly aliases
+    CATEGORY_LABELS.update({
+        "ALLOWANCE": "ALLOWANCE", "HONORARIA": "ALLOWANCE", "TRANSPORT": "TRANSPORT",
+        "FARE": "TRANSPORT", "REFRESHMENTS": "REFRESHMENTS", "CATERING": "REFRESHMENTS",
+        "FOOD": "REFRESHMENTS", "MATERIALS": "MATERIALS", "SUPPLIES": "MATERIALS",
+        "STATIONERY": "STATIONERY", "PRINTING": "STATIONERY", "UTILITIES": "UTILITIES",
+        "POWER": "UTILITIES", "WATER": "UTILITIES", "MAINTENANCE": "MAINTENANCE",
+        "REPAIRS": "MAINTENANCE", "CONSTRUCTION": "CONSTRUCTION", "EVANGELISM": "EVANGELISM",
+        "MISSION": "EVANGELISM", "BENEVOLENCE": "BENEVOLENCE", "WELFARE": "BENEVOLENCE",
+        "BANK CHARGE": "BANK_CHARGE", "BANK CHARGES": "BANK_CHARGE", "CHARGES": "BANK_CHARGE",
+        "REMITTANCE": "REMITTANCE", "OTHER": "OTHER",
+    })
+    METHOD_LABELS = {"CASH": "CASH", "BANK": "BANK", "CHEQUE": "CHEQUE", "CHECK": "CHEQUE",
+                     "MPESA": "MPESA", "M-PESA": "MPESA", "MOBILE": "MPESA"}
+
+    def get(self, request):
+        if request.GET.get("download"):
+            return self._download()
+        return render(request, self.template_name, {"stage": "upload"})
+
+    def post(self, request):
+        if request.POST.get("apply"):
+            return self._apply(request)
+        return self._parse(request)
+
+    def _download(self):
+        import io, openpyxl
+        from openpyxl.styles import Font, PatternFill
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from django.http import HttpResponse
+        from departments.models import Department
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Expenses"
+        head = ["Date", "Fund", "Description", "Amount", "Category", "Method",
+                "Claimant", "Voucher no"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
+            ws.cell(1, c).fill = PatternFill("solid", fgColor="1F5F4F")
+        ws.append(["2026-06-06", "LCB", "Pulpit microphone", 4500, "Materials",
+                   "Cash", "J. Mwangi", "V-001"])
+        ws.append(["2026-06-07", "YOUTH", "Bus fare for rally", 2000, "Transport",
+                   "M-Pesa", "S. Achieng", "V-002"])
+        ref = wb.create_sheet("Lists")
+        ref["A1"] = "Funds"; ref["A1"].font = Font(bold=True)
+        funds = list(Department.objects.filter(active=True, selectable=True).order_by("name"))
+        for i, d in enumerate(funds, start=2):
+            ref.cell(i, 1, d.name)
+        ref["B1"] = "Category"; ref["B1"].font = Font(bold=True)
+        cats = [c.label for c in Expense.Category]
+        for i, c in enumerate(cats, start=2):
+            ref.cell(i, 2, c)
+        ref["C1"] = "Method"; ref["C1"].font = Font(bold=True)
+        for i, m in enumerate([mm.label for mm in Expense.Method], start=2):
+            ref.cell(i, 3, m)
+        nrows = 500
+        if funds:
+            dv = DataValidation(type="list", formula1=f"=Lists!$A$2:$A${len(funds)+1}", allow_blank=True)
+            ws.add_data_validation(dv); dv.add(f"B2:B{nrows}")
+        dvc = DataValidation(type="list", formula1=f"=Lists!$B$2:$B${len(cats)+1}", allow_blank=True)
+        ws.add_data_validation(dvc); dvc.add(f"E2:E{nrows}")
+        dvm = DataValidation(type="list", formula1="=Lists!$C$2:$C$5", allow_blank=True)
+        ws.add_data_validation(dvm); dvm.add(f"F2:F{nrows}")
+        ws.column_dimensions["C"].width = 30
+        ws.column_dimensions["B"].width = 18
+        info = wb.create_sheet("How to fill this in")
+        for i, line in enumerate([
+            "Expense import",
+            "",
+            "One row per expense.",
+            "  - Date — YYYY-MM-DD (required).",
+            "  - Fund — the fund charged (pick from the list, required).",
+            "  - Description — what it was for (required).",
+            "  - Amount — required, > 0.",
+            "  - Category — Allowance / Transport / Materials / ... (defaults to Other).",
+            "  - Method — Cash / Bank / Cheque / M-Pesa (defaults to Cash).",
+            "  - Claimant — who was paid (optional).",
+            "  - Voucher no — optional reference.",
+            "",
+            "If approval is required, imported expenses arrive as Pending for you to",
+            "approve. If it isn't, they are approved automatically.",
+        ], start=1):
+            info.cell(i, 1, line)
+        info.column_dimensions["A"].width = 74
+        buf = io.BytesIO(); wb.save(buf)
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = 'attachment; filename="expense_import_template.xlsx"'
+        return resp
+
+    def _parse(self, request):
+        import openpyxl, datetime as _dt
+        from departments.models import Department
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a spreadsheet to upload.")
+            return redirect("expense_import")
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+        except Exception:
+            messages.error(request, "Could not read that file — please upload a .xlsx.")
+            return redirect("expense_import")
+        ws = wb["Expenses"] if "Expenses" in wb.sheetnames else wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            messages.error(request, "The sheet is empty.")
+            return redirect("expense_import")
+        header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+
+        def col(*names):
+            for n in names:
+                if n in header:
+                    return header.index(n)
+            return None
+        c_date = col("date")
+        c_fund = col("fund", "department")
+        c_desc = col("description", "details", "expense")
+        c_amt = col("amount", "value")
+        c_cat = col("category")
+        c_method = col("method", "paid by", "payment")
+        c_claim = col("claimant", "payee", "paid to")
+        c_vouch = col("voucher no", "voucher", "ref")
+        if c_date is None or c_amt is None or c_desc is None:
+            messages.error(request, "Need at least Date, Description and Amount columns "
+                                    "— please use the template.")
+            return redirect("expense_import")
+
+        funds = {d.name.strip().lower(): d for d in Department.objects.all()}
+
+        def cell(r, idx):
+            if idx is None or idx >= len(r) or r[idx] in (None, ""):
+                return ""
+            return str(r[idx]).strip()
+
+        def pdate(v):
+            if isinstance(v, _dt.datetime):
+                return v.date().isoformat()
+            if isinstance(v, _dt.date):
+                return v.isoformat()
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%m/%d/%Y"):
+                try:
+                    return _dt.datetime.strptime(str(v).strip(), fmt).date().isoformat()
+                except (ValueError, TypeError):
+                    continue
+            return None
+
+        plan = []
+        for r in rows[1:]:
+            desc = cell(r, c_desc)
+            d = pdate(r[c_date]) if c_date < len(r) else None
+            try:
+                amt = float(r[c_amt]) if c_amt < len(r) and r[c_amt] not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                amt = 0.0
+            if not desc and not d and amt <= 0:
+                continue
+            fund_raw = cell(r, c_fund)
+            fund = funds.get(fund_raw.lower()) if fund_raw else None
+            cat = self.CATEGORY_LABELS.get(cell(r, c_cat).upper(), "OTHER")
+            method = self.METHOD_LABELS.get(cell(r, c_method).upper(), "CASH")
+            plan.append({
+                "date": d, "fund_raw": fund_raw,
+                "fund_id": fund.id if fund else None,
+                "fund_name": fund.name if fund else None,
+                "description": desc[:200], "amount": amt,
+                "category": cat, "method": method,
+                "claimant": cell(r, c_claim)[:120], "voucher": cell(r, c_vouch)[:30],
+                "ok": bool(d and desc and amt > 0 and fund),
+            })
+        if not plan:
+            messages.error(request, "No expense rows were found.")
+            return redirect("expense_import")
+        request.session["expense_import_plan"] = plan
+        from core.models import SiteConfig
+        return render(request, self.template_name, {
+            "stage": "review", "plan": plan,
+            "ready": sum(1 for p in plan if p["ok"]),
+            "problems": sum(1 for p in plan if not p["ok"]),
+            "total": sum(p["amount"] for p in plan if p["ok"]),
+            "auto_approve": not SiteConfig.get().require_expense_approval,
+        })
+
+    @db_tx.atomic
+    def _apply(self, request):
+        from departments.models import Department
+        from core.models import SiteConfig
+        from core.utils import sabbath_of
+        plan = request.session.get("expense_import_plan")
+        if not plan:
+            messages.error(request, "Your import session expired — please upload again.")
+            return redirect("expense_import")
+        auto = not SiteConfig.get().require_expense_approval
+        created = skipped = 0
+        for p in plan:
+            if not p["ok"]:
+                skipped += 1
+                continue
+            fund = Department.objects.filter(pk=p["fund_id"]).first()
+            if not fund:
+                skipped += 1
+                continue
+            from decimal import Decimal as D
+            import datetime as _dt
+            d = _dt.date.fromisoformat(p["date"])
+            exp = Expense(
+                date=d, department=fund, description=p["description"],
+                amount=D(str(p["amount"])), category=p["category"],
+                method=p["method"], claimant=p["claimant"], voucher_no=p["voucher"],
+                recorded_by=request.user,
+                sabbath_week=sabbath_week_of(d))
+            if auto:
+                exp.status = Expense.Status.APPROVED
+                exp.approved_by = request.user
+            exp.save()
+            created += 1
+        request.session.pop("expense_import_plan", None)
+        state = "approved" if auto else "pending approval"
+        parts = [f"{created} expense(s) imported ({state})"]
+        if skipped:
+            parts.append(f"{skipped} row(s) skipped (missing date, fund, description or amount)")
+        messages.success(request, ", ".join(parts) + ".")
+        return redirect("expense_list")

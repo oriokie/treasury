@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.db import transaction as db_tx
 
 def _cash_duplicate(d, dept, amount, name=None):
     """True if a near-identical manual cash entry already exists. A duplicate must
@@ -177,20 +178,52 @@ class BulkAllocateView(DataEntryRequiredMixin, View):
     def post(self, request):
         from departments.models import DevelopmentGroup
         ids = request.POST.getlist("txn")
-        dept = Department.objects.filter(pk=request.POST.get("department"),
-                                         active=True).first()
-        if not dept or not ids:
+        raw_dept = request.POST.get("department", "")
+        if not ids:
+            messages.error(request, "Pick a fund and at least one gift to allocate.")
+            return redirect("queue")
+
+        base_qs = Transaction.objects.filter(
+            id__in=ids, allocation_status=Transaction.Status.REVIEW,
+            direction=Transaction.Direction.CREDIT,
+            processed_via_envelope=False, manual_receipt=False)
+
+        # --- split fund (e.g. Combined Offering = Trust + Local) -------------
+        if raw_dept.startswith("sf:"):
+            from giving.models import SplitFund
+            sf = SplitFund.objects.filter(pk=raw_dept[3:], active=True).first()
+            if not sf:
+                messages.error(request, "That split fund is no longer available.")
+                return redirect("queue")
+            n = 0
+            for txn in base_qs:
+                parts = [(d, amt, None) for d, amt in sf.split(txn.amount)]
+                try:
+                    txn.split_into(parts, user=request.user)
+                except (ValueError, ArithmeticError):
+                    continue
+                txn.claimed_by = request.user
+                txn.claimed_at = timezone.now()
+                txn.save(update_fields=["claimed_by", "claimed_at"])
+                n += 1
+            if n:
+                messages.success(request, f"Allocated {n} gift(s) to {sf.name} — "
+                                          "each split into its parts; the trust "
+                                          "portion is queued for receipting.")
+            else:
+                messages.info(request, "No matching gifts to allocate.")
+            return redirect("queue")
+
+        # --- ordinary fund ----------------------------------------------------
+        dept = Department.objects.filter(pk=raw_dept, active=True).first()
+        if not dept:
             messages.error(request, "Pick a fund and at least one gift to allocate.")
             return redirect("queue")
         grp = None
         if dept.category == Department.Category.DEVELOPMENT:
             grp = DevelopmentGroup.objects.filter(pk=request.POST.get("dev_group")).first()
-        qs = Transaction.objects.filter(
-            id__in=ids, allocation_status=Transaction.Status.REVIEW,
-            direction=Transaction.Direction.CREDIT,
-            processed_via_envelope=False, manual_receipt=False)
         n = 0
-        for txn in qs:
+        for txn in base_qs:
             txn.department = dept
             txn.dev_group = grp if grp else None
             txn.allocation_status = Transaction.Status.MANUAL
@@ -370,12 +403,15 @@ class CashEntryCreate(DataEntryRequiredMixin, CreateView):
         split = form.split_fund
         if split:
             base = form.save(commit=False)
+            from core.utils import sabbath_of as _sof
+            _svc = _sof(base.date) if base.date else None
             for dept, amt in split.split(base.amount):
                 Transaction.objects.create(
                     date=base.date, channel=base.channel,
                     direction=Transaction.Direction.CREDIT,
                     allocation_status=Transaction.Status.MANUAL,
                     sabbath_week=sabbath_week_of(base.date),
+                    service_sabbath=_svc,
                     amount=amt, department=dept, member=base.member,
                     reference=base.reference, payer_name=base.payer_name)
             messages.success(self.request, f"Entry recorded and split across {split.name}.")
@@ -384,6 +420,12 @@ class CashEntryCreate(DataEntryRequiredMixin, CreateView):
         txn.direction = Transaction.Direction.CREDIT
         txn.allocation_status = Transaction.Status.MANUAL
         txn.sabbath_week = sabbath_week_of(txn.date)
+        # the treasurer dated this cash to a specific Sabbath; honour it directly
+        # rather than rolling a "closed" Sabbath forward (that roll is for bank
+        # gifts that physically arrive after a Sabbath, not counted cash).
+        from core.utils import sabbath_of as _sof
+        if txn.date and txn.service_sabbath is None:
+            txn.service_sabbath = _sof(txn.date)
         txn.save()
         # offer/apply a pledge match if this giver has an active pledge
         try:
@@ -1047,3 +1089,219 @@ class SabbathConfirmQueueView(DataEntryRequiredMixin, View):
                 n += 1
             messages.success(request, f"Moved {n} gift(s) to the next Sabbath.")
         return redirect("sabbath_queue")
+
+
+# ===========================================================================
+# Allocation-rules Excel import (item 1)
+# ===========================================================================
+class RuleImportView(TreasurerRequiredMixin, View):
+    """Bulk-load allocation rules from a spreadsheet: reference, match type, the
+    fund (or split fund) to allocate to, and optional valid-from/to dates."""
+    template_name = "giving/rule_import.html"
+
+    MATCH_LABELS = {
+        "EXACT": "EXACT", "EXACTLY": "EXACT", "MATCHES EXACTLY": "EXACT", "IS": "EXACT",
+        "STARTS": "STARTS", "STARTS WITH": "STARTS", "BEGINS": "STARTS", "PREFIX": "STARTS",
+        "ENDS": "ENDS", "ENDS WITH": "ENDS", "SUFFIX": "ENDS",
+        "CONTAINS": "CONTAINS", "INCLUDES": "CONTAINS", "HAS": "CONTAINS",
+        "REGEX": "REGEX", "PATTERN": "REGEX", "MATCHES A PATTERN (REGEX)": "REGEX",
+    }
+
+    def get(self, request):
+        if request.GET.get("download"):
+            return self._download()
+        return render(request, self.template_name, {"stage": "upload"})
+
+    def post(self, request):
+        if request.POST.get("apply"):
+            return self._apply(request)
+        return self._parse(request)
+
+    def _download(self):
+        import io, openpyxl
+        from openpyxl.styles import Font, PatternFill
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from django.http import HttpResponse
+        from departments.models import Department
+        from giving.models import SplitFund
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Rules"
+        head = ["Reference", "Match type", "Fund", "Split fund", "Valid from", "Valid to"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
+            ws.cell(1, c).fill = PatternFill("solid", fgColor="1F5F4F")
+        ws.append(["tithe", "Exact", "TITHE", "", "", ""])
+        ws.append(["grp12dev", "Exact", "DEVELOPMENT", "", "", ""])
+        ws.append(["expense1", "Starts with", "", "Combined Offering", "", ""])
+        ref = wb.create_sheet("Lists")
+        ref["A1"] = "Funds"; ref["A1"].font = Font(bold=True)
+        funds = list(Department.objects.filter(active=True, selectable=True).order_by("name"))
+        for i, d in enumerate(funds, start=2):
+            ref.cell(i, 1, d.name)
+        ref["B1"] = "Match types"; ref["B1"].font = Font(bold=True)
+        for i, m in enumerate(["Exact", "Starts with", "Ends with", "Contains"], start=2):
+            ref.cell(i, 2, m)
+        ref["C1"] = "Split funds"; ref["C1"].font = Font(bold=True)
+        splits = list(SplitFund.objects.filter(active=True).order_by("name"))
+        for i, s in enumerate(splits, start=2):
+            ref.cell(i, 3, s.name)
+        nrows = 400
+        if funds:
+            dv = DataValidation(type="list", formula1=f"=Lists!$A$2:$A${len(funds)+1}", allow_blank=True)
+            ws.add_data_validation(dv); dv.add(f"C2:C{nrows}")
+        dvm = DataValidation(type="list", formula1="=Lists!$B$2:$B$5", allow_blank=True)
+        ws.add_data_validation(dvm); dvm.add(f"B2:B{nrows}")
+        if splits:
+            dvs = DataValidation(type="list", formula1=f"=Lists!$C$2:$C${len(splits)+1}", allow_blank=True)
+            ws.add_data_validation(dvs); dvs.add(f"D2:D{nrows}")
+        ws.column_dimensions["A"].width = 24
+        ws.column_dimensions["C"].width = 22
+        ws.column_dimensions["D"].width = 20
+        info = wb.create_sheet("How to fill this in")
+        for i, line in enumerate([
+            "Allocation rules import",
+            "",
+            "One row per rule. A rule sends a payment reference to a fund.",
+            "  - Reference — the M-Pesa/bank reference text (e.g. tithe, grp12dev).",
+            "      It is matched case- and space-insensitively.",
+            "  - Match type — Exact / Starts with / Ends with / Contains. Use",
+            "      'Contains' to catch variations (e.g. exp1, expense1 all contain 'exp1'?",
+            "      pick the common fragment).",
+            "  - Fund — the fund to allocate to (pick from the list). Leave blank if",
+            "      you are using a Split fund instead.",
+            "  - Split fund — if the reference should split across funds (e.g. a",
+            "      combined offering), name it here and leave Fund blank.",
+            "  - Valid from / Valid to — optional (YYYY-MM-DD). Leave both blank for a",
+            "      permanent rule.",
+            "",
+            "Give either a Fund or a Split fund on each row, not both.",
+            "Existing rules with the same reference are updated.",
+        ], start=1):
+            info.cell(i, 1, line)
+        info.column_dimensions["A"].width = 76
+        buf = io.BytesIO(); wb.save(buf)
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = 'attachment; filename="allocation_rules_template.xlsx"'
+        return resp
+
+    def _parse(self, request):
+        import openpyxl, datetime as dt
+        from departments.models import Department
+        from giving.models import SplitFund
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a spreadsheet to upload.")
+            return redirect("rule_import")
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+        except Exception:
+            messages.error(request, "Could not read that file — please upload a .xlsx.")
+            return redirect("rule_import")
+        ws = wb["Rules"] if "Rules" in wb.sheetnames else wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            messages.error(request, "The sheet is empty.")
+            return redirect("rule_import")
+        header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+
+        def col(*names):
+            for n in names:
+                if n in header:
+                    return header.index(n)
+            return None
+        c_ref = col("reference", "ref")
+        c_match = col("match type", "match", "type")
+        c_fund = col("fund", "department")
+        c_split = col("split fund", "split")
+        c_from = col("valid from", "from")
+        c_to = col("valid to", "to")
+        if c_ref is None:
+            messages.error(request, "Couldn't find a Reference column — use the template.")
+            return redirect("rule_import")
+
+        funds = {d.name.strip().lower(): d for d in Department.objects.all()}
+        splits = {s.name.strip().lower(): s for s in SplitFund.objects.all()}
+
+        def cell(r, idx):
+            if idx is None or idx >= len(r) or r[idx] in (None, ""):
+                return ""
+            return str(r[idx]).strip()
+
+        def pdate(r, idx):
+            if idx is None or idx >= len(r) or r[idx] in (None, ""):
+                return None
+            v = r[idx]
+            if isinstance(v, dt.datetime):
+                return v.date().isoformat()
+            if isinstance(v, dt.date):
+                return v.isoformat()
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+                try:
+                    return dt.datetime.strptime(str(v).strip(), fmt).date().isoformat()
+                except ValueError:
+                    continue
+            return None
+
+        plan = []
+        for r in rows[1:]:
+            ref = normalize_reference(cell(r, c_ref))
+            if not ref:
+                continue
+            match = self.MATCH_LABELS.get(cell(r, c_match).upper(), "EXACT")
+            fund_raw = cell(r, c_fund)
+            split_raw = cell(r, c_split)
+            fund = funds.get(fund_raw.lower()) if fund_raw else None
+            split = splits.get(split_raw.lower()) if split_raw else None
+            plan.append({
+                "reference": ref, "match_type": match,
+                "fund_raw": fund_raw, "fund_id": fund.id if fund else None,
+                "fund_name": fund.name if fund else None,
+                "split_raw": split_raw, "split_id": split.id if split else None,
+                "split_name": split.name if split else None,
+                "valid_from": pdate(r, c_from), "valid_to": pdate(r, c_to),
+                "ok": bool(fund or split) and not (fund and split),
+            })
+        if not plan:
+            messages.error(request, "No rules with a reference were found.")
+            return redirect("rule_import")
+        request.session["rule_import_plan"] = plan
+        return render(request, self.template_name, {
+            "stage": "review", "plan": plan,
+            "ready": sum(1 for p in plan if p["ok"]),
+            "problems": sum(1 for p in plan if not p["ok"]),
+        })
+
+    @db_tx.atomic
+    def _apply(self, request):
+        from departments.models import Department
+        from giving.models import SplitFund
+        plan = request.session.get("rule_import_plan")
+        if not plan:
+            messages.error(request, "Your import session expired — please upload again.")
+            return redirect("rule_import")
+        created = updated = skipped = 0
+        for p in plan:
+            if not p["ok"]:
+                skipped += 1
+                continue
+            fund = Department.objects.filter(pk=p["fund_id"]).first() if p["fund_id"] else None
+            split = SplitFund.objects.filter(pk=p["split_id"]).first() if p["split_id"] else None
+            if not fund and not split:
+                skipped += 1
+                continue
+            obj, was_created = AllocationRule.objects.update_or_create(
+                reference=p["reference"],
+                defaults={"match_type": p["match_type"], "department": fund,
+                          "split_fund": split, "source": AllocationRule.Source.SEED,
+                          "valid_from": p["valid_from"], "valid_to": p["valid_to"]})
+            created += 1 if was_created else 0
+            updated += 0 if was_created else 1
+        request.session.pop("rule_import_plan", None)
+        parts = [f"{created} rule(s) created"]
+        if updated:
+            parts.append(f"{updated} updated")
+        if skipped:
+            parts.append(f"{skipped} skipped (no fund, or both fund and split set)")
+        messages.success(request, ", ".join(parts) + ".")
+        return redirect("rule_list")

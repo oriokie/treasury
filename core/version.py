@@ -38,6 +38,16 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.10.0": "Two new Excel importers — allocation rules and expenses — each "
+              "with a template and review step. Allocation rules gain a regex match "
+              "type so one rule covers narration variations (EXPENSE_1 / exp1 / "
+              "expe1). Split funds are now selectable when bulk-allocating, and the "
+              "Sabbath reconciliation regroups split parts and shows each envelope's "
+              "fund allocation, with one-click apply. The envelope import asks what "
+              "to do with unrecognised fund columns instead of dropping them. Trust "
+              "outstanding remittance is now a true running balance, loose cash keeps "
+              "the Sabbath you date it to, and a reset_2fa command recovers locked-out "
+              "sign-ins.",
     "1.9.0": "The Sabbath reconciliation can now apply a match in one click — "
              "selected pairs are marked as bank giving and the duplicate cash "
              "entry is removed, so the gift is counted once. Statement import can "
