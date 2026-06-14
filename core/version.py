@@ -38,6 +38,12 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.12.0": "Leader dashboard: development-group figures now follow the period "
+              "you pick, and you can download a group summary for that period. The "
+              "multi-year trend now compares January-to-the-current-month of each "
+              "year, so a year in progress is judged fairly. The cash page can now "
+              "delete an entry (it is the same record as its ledger row); edits "
+              "still happen at the ledger.",
     "1.11.0": "Department leaders get a redesigned dashboard for the area they "
               "lead: headline figures (balance, collections, expenses, net), a "
               "collections-vs-expenses chart, how giving arrives, top contributors, "

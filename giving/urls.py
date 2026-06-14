@@ -15,6 +15,7 @@ urlpatterns = [
     path("queue/<int:pk>/claim/", views.ClaimResolveView.as_view(), name="queue_claim"),
     path("cash/new/", views.CashEntryCreate.as_view(), name="cash_new"),
     path("cash/", views.CashEntryListView.as_view(), name="cash_list"),
+    path("cash/<int:pk>/delete/", views.CashEntryDeleteView.as_view(), name="cash_delete"),
     path("transactions/<int:pk>/edit/", views.TransactionUpdateView.as_view(), name="transaction_edit"),
     path("transactions/<int:pk>/split/", views.TransactionSplitView.as_view(), name="transaction_split"),
     path("transactions/<int:pk>/shift-sabbath/", views.TransactionShiftSabbathView.as_view(), name="transaction_shift_sabbath"),

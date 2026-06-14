@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.0 — period-aware leader insights, fair trend, cash delete
+- Leader dashboard: development-group collected figures now respect the selected
+  period (previously all-time), in step with the other cards, and a per-period
+  group summary can be downloaded as CSV or Excel.
+- Multi-year trend now compares January-to-current-month of every year (prior
+  years from monthly history, the current year from the live ledger, annual-only
+  years pro-rated and flagged), so a part-year is not measured against full years.
+- Cash entries page gains delete. A cash entry is the same record as its ledger
+  row, so deleting it removes the single entry (split parts together); bank,
+  reversed, and envelope-receipted rows are protected, and edits remain at the
+  ledger.
+
 ## v1.11.0 — leader dashboard revamp
 - The department-leader page is now an insights dashboard: headline KPIs (closing
   balance, collections, expenses, net), a monthly collections-vs-expenses chart,

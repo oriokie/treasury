@@ -59,7 +59,43 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
             # not their department — refuse, send back to their dashboard
             return redirect("leader_dashboard")
         self.dept = dept
+        export = request.GET.get("export")
+        if export in ("groups_csv", "groups_xlsx"):
+            return self._export_groups(request, export)
         return super().get(request, *args, **kwargs)
+
+    def _dev_group_rows(self, start, end):
+        from decimal import Decimal
+        from django.db.models import Sum
+        from giving.models import Transaction
+        rows = []
+        for g in DevelopmentGroup.objects.filter(active=True):
+            collected = (Transaction.objects.filter(dev_group=g,
+                            direction=Transaction.Direction.CREDIT, confirmed=True,
+                            is_reversal=False, is_reversed=False,
+                            date__gte=start, date__lte=end)
+                         .aggregate(s=Sum("amount"))["s"] or Decimal(0))
+            tgt = g.target or Decimal(0)
+            pct = int(min(collected / tgt * 100, 100)) if tgt else None
+            rows.append({"group": g, "collected": collected, "target": tgt, "pct": pct})
+        rows.sort(key=lambda r: r["collected"], reverse=True)
+        return rows
+
+    def _export_groups(self, request, export):
+        from reports.exports import csv_response, xlsx_response
+        from core.models import SiteConfig
+        start, end = parse_period(request)
+        rows = self._dev_group_rows(start, end)
+        header = ["Group", "Collected", "Target", "% of target"]
+        data = [[str(r["group"]), float(r["collected"]), float(r["target"]),
+                 (r["pct"] if r["pct"] is not None else "")] for r in rows]
+        title = (f"{self.dept.name} — development groups, "
+                 f"{start:%d %b %Y} to {end:%d %b %Y}")
+        fn = f"dev_groups_{self.dept.slug or self.dept.id}_{start:%Y%m%d}_{end:%Y%m%d}"
+        if export == "groups_xlsx":
+            return xlsx_response(f"{fn}.xlsx", header, data, title=title,
+                                 church=SiteConfig.get().church_name)
+        return csv_response(f"{fn}.csv", header, data)
 
     def get_context_data(self, **kwargs):
         import json
@@ -164,20 +200,9 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
 
         # --- development groups (for a development leader) -------------------
         if dept.category == Department.Category.DEVELOPMENT:
-            groups = DevelopmentGroup.objects.filter(active=True)
-            dg_rows = []
-            for g in groups:
-                collected = (Transaction.objects.filter(dev_group=g,
-                                direction=Transaction.Direction.CREDIT,
-                                confirmed=True, is_reversal=False, is_reversed=False)
-                             .aggregate(s=Sum("amount"))["s"] or Decimal(0))
-                tgt = g.target or Decimal(0)
-                pct = int(min(collected / tgt * 100, 100)) if tgt else None
-                dg_rows.append({"group": g, "collected": collected,
-                                "target": tgt, "pct": pct})
-            dg_rows.sort(key=lambda r: r["collected"], reverse=True)
-            ctx["dev_groups"] = dg_rows
-            ctx["dev_collected"] = sum((r["collected"] for r in dg_rows), Decimal(0))
+            ctx["dev_groups"] = self._dev_group_rows(start, end)
+            ctx["dev_collected"] = sum((r["collected"] for r in ctx["dev_groups"]),
+                                       Decimal(0))
         else:
             ctx["dev_groups"] = None
 

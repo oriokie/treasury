@@ -1305,3 +1305,43 @@ class RuleImportView(TreasurerRequiredMixin, View):
             parts.append(f"{skipped} skipped (no fund, or both fund and split set)")
         messages.success(request, ", ".join(parts) + ".")
         return redirect("rule_list")
+
+
+class CashEntryDeleteView(DataEntryRequiredMixin, View):
+    """Delete a loose cash entry. A cash entry IS its ledger row (one Transaction),
+    so this removes the single record — there's no separate copy to fall out of
+    sync. Split cash entries delete all their parts together. Edits still happen
+    at the ledger. Guarded: only manual CASH credits that aren't reconciled,
+    reversed, receipted via an envelope, or in a locked period."""
+
+    def post(self, request, pk):
+        txn = get_object_or_404(Transaction, pk=pk)
+        # only loose cash credits may be deleted here
+        if txn.channel != Transaction.Channel.CASH or \
+           txn.direction != Transaction.Direction.CREDIT:
+            messages.error(request, "Only cash collections can be deleted here. "
+                           "Use the ledger for other entries.")
+            return redirect("cash_list")
+        if _block_if_locked(request, txn.date):
+            return redirect("cash_list")
+        # don't delete something tied to other records or already reversed
+        blockers = []
+        if txn.is_reversed or txn.is_reversal:
+            blockers.append("it has already been reversed")
+        if getattr(txn, "processed_via_envelope", False):
+            blockers.append("it was receipted via an envelope")
+        if txn.envelope_lines.exists():
+            blockers.append("it is linked to an envelope")
+        if blockers:
+            messages.error(request, "Can't delete this cash entry because "
+                           + " and ".join(blockers) + ". Reverse it at the ledger instead.")
+            return redirect("cash_list")
+        siblings = list(txn.split_siblings()) + [txn]
+        n = len(siblings)
+        with db_tx.atomic():
+            for s in siblings:
+                s.delete()
+        messages.success(request,
+            f"Cash entry deleted{f' ({n} split parts)' if n > 1 else ''}. "
+            "The ledger row was removed with it.")
+        return redirect("cash_list")

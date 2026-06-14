@@ -158,34 +158,58 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 "url": _rev("member_duplicates"), "icon": "⧉"})
         ctx["attention"] = attention
 
-        # multi-year trend: prior years (reference) + the current year so far
-        import json, datetime as _dt
+        # multi-year trend, compared like-for-like THROUGH THE CURRENT MONTH so a
+        # year still in progress isn't measured against full prior years.
+        import json, datetime as _dt, calendar as _cal
         from decimal import Decimal
         from django.db.models import Sum
-        from core.models import HistoricalYear
-        trend = [{"year": h.year, "collection": float(h.collection),
-                  "trust": float(h.trust_fund), "expenditure": float(h.expenditure)}
-                 for h in HistoricalYear.objects.all()]
-        cur_year = _dt.date.today().year
-        if not any(t["year"] == cur_year for t in trend):
-            ys, ye = _dt.date(cur_year, 1, 1), _dt.date(cur_year, 12, 31)
+        from core.models import HistoricalYear, HistoricalMonth
+        MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
+              "Oct", "Nov", "Dec"]
+        today = _dt.date.today()
+        cur_year, cur_month = today.year, today.month
+
+        def _txn_through_month(year):
+            ys = _dt.date(year, 1, 1)
+            ye = _dt.date(year, cur_month, _cal.monthrange(year, cur_month)[1])
             cc = (Transaction.objects.confirmed_credits().filter(
                   date__gte=ys, date__lte=ye, excluded_from_income=False)
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+            ct = (Transaction.objects.confirmed_credits().filter(
+                  date__gte=ys, date__lte=ye, department__fund_type="TRUST",
+                  excluded_from_income=False).aggregate(t=Sum("amount"))["t"] or Decimal(0))
             ce = (Expense.objects.filter(status__in=[Expense.Status.APPROVED,
                   Expense.Status.PAID], date__gte=ys, date__lte=ye)
                   .exclude(category=Expense.Category.REMITTANCE)
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-            ct = (Transaction.objects.confirmed_credits().filter(
-                  date__gte=ys, date__lte=ye, department__fund_type="TRUST",
-                  excluded_from_income=False)
-                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-            if cc or ce or ct:
-                trend.append({"year": cur_year, "collection": float(cc),
+            return cc, ct, ce
+
+        hist_years = {h.year: h for h in HistoricalYear.objects.all()}
+        hm_years = set(HistoricalMonth.objects.values_list("year", flat=True).distinct())
+        trend, approx = [], False
+        for y in sorted(set(hist_years) | hm_years | {cur_year}):
+            if y == cur_year:
+                cc, ct, ce = _txn_through_month(y)
+            elif y in hm_years:
+                a = (HistoricalMonth.objects.filter(year=y, month__lte=cur_month)
+                     .aggregate(c=Sum("collection"), t=Sum("trust_fund"),
+                                e=Sum("expenditure")))
+                cc, ct, ce = (a["c"] or Decimal(0), a["t"] or Decimal(0),
+                              a["e"] or Decimal(0))
+            else:
+                # annual-only history: pro-rate to the elapsed share of the year
+                h = hist_years[y]; frac = Decimal(cur_month) / Decimal(12)
+                cc, ct, ce = (h.collection * frac, h.trust_fund * frac,
+                              h.expenditure * frac)
+                approx = True
+            if cc or ct or ce:
+                trend.append({"year": y, "collection": float(cc),
                               "trust": float(ct), "expenditure": float(ce)})
         trend.sort(key=lambda t: t["year"])
         ctx["trend_json"] = json.dumps(trend)
         ctx["has_trend"] = len(trend) >= 2
+        ctx["trend_through"] = MN[cur_month - 1]
+        ctx["trend_approx"] = approx
         return ctx
 
 

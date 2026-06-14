@@ -606,3 +606,50 @@ class DashboardAttentionTests(TestCase):
         for a in self._ctx()["attention"]:
             path = a["url"].split("?")[0]
             self.assertTrue(resolve(path))  # raises if unresolvable
+
+
+class MultiYearTrendThroughMonthTests(TestCase):
+    """Item 4: the multi-year trend compares January–current-month of each year,
+    not full prior years vs a part-year-in-progress."""
+
+    def setUp(self):
+        import datetime as dt
+        from django.contrib.auth.models import User
+        from core.models import SiteConfig, HistoricalMonth
+        u = User.objects.create_superuser("trend", password="x")
+        cfg = SiteConfig.get(); cfg.require_2fa_for_treasurers = False; cfg.save()
+        self.client.force_login(u)
+        self.cur_month = dt.date.today().month
+        self.prev_year = dt.date.today().year - 1
+        # prior year: 1,000 in every month -> through current month = cur_month*1000
+        for m in range(1, 13):
+            HistoricalMonth.objects.create(year=self.prev_year, month=m,
+                collection=1000, trust_fund=100, expenditure=200)
+
+    def test_prior_year_truncated_to_current_month(self):
+        r = self.client.get("/")
+        self.assertEqual(r.status_code, 200)
+        td = {t["year"]: t for t in __import__("json").loads(r.context["trend_json"])}
+        self.assertIn(self.prev_year, td)
+        # only months <= current month are counted (not the full 12,000)
+        self.assertEqual(td[self.prev_year]["collection"], self.cur_month * 1000)
+        self.assertEqual(td[self.prev_year]["expenditure"], self.cur_month * 200)
+
+    def test_current_year_is_year_to_date(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        from departments.models import Department
+        d = Department.objects.create(name="TY Fund", fund_type="LOCAL",
+                                      category="OFFERING", selectable=True)
+        today = dt.date.today()
+        Transaction.objects.create(date=dt.date(today.year, 1, 15), channel="CASH",
+            direction="CREDIT", amount=Decimal("5000"), department=d,
+            confirmed=True, allocation_status="MANUAL")
+        r = self.client.get("/")
+        td = {t["year"]: t for t in __import__("json").loads(r.context["trend_json"])}
+        self.assertIn(today.year, td)
+        self.assertEqual(td[today.year]["collection"], 5000.0)
+        # label reflects the cut-off month
+        self.assertEqual(r.context["trend_through"],
+            ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][self.cur_month-1])

@@ -90,7 +90,10 @@
 
 <!-- Development groups -->
 {% if dev_groups %}
-<div class="section-title">Development groups <span class="muted" style="font-weight:400;font-size:.8rem">— KSh {{ dev_collected|floatformat:0|intcomma }} collected</span></div>
+<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
+  <span>Development groups <span class="muted" style="font-weight:400;font-size:.8rem">— KSh {{ dev_collected|floatformat:0|intcomma }} collected this period</span></span>
+  <span class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=groups_csv">⬇ CSV</a><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=groups_xlsx">⬇ Excel</a></span>
+</div>
 <div class="card" style="margin-bottom:1.4rem"><div class="bd" style="padding:0">
   <table class="ledger compact">
     <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th style="width:160px">Progress</th></tr></thead>

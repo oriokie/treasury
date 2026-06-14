@@ -205,10 +205,10 @@ function downloadLocalFundsJpeg(){
 </div>
 
 {% if has_trend %}
-<div class="section-title">Multi-year trend</div>
+<div class="section-title">Multi-year trend <span class="muted" style="font-weight:400;font-size:.8rem">— January–{{ trend_through }}, each year</span></div>
 <div class="card" style="margin-bottom:1.4rem"><div class="bd">
   <canvas id="trendChart" height="110"></canvas>
-  <p class="help" style="margin-top:.6rem">Collection, trust fund, and expenditure by year. Prior years are reference figures; the current year updates from the live ledger.</p>
+  <p class="help" style="margin-top:.6rem">Collection, trust fund, and expenditure for January–{{ trend_through }} of each year, so the year in progress is compared like-for-like. The current year updates from the live ledger.{% if trend_approx %} Years held only as an annual total are pro-rated to this point.{% endif %}</p>
 </div></div>
 {% endif %}
 

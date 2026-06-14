@@ -961,3 +961,53 @@ class RegexAllocationRuleTests(TestCase):
                            "department": str(self.d.id), "source": "SEED"})
         self.assertFalse(f.is_valid())
         self.assertIn("reference", f.errors)
+
+
+class CashEntryDeleteTests(TestCase):
+    """Item 3: a cash entry is its ledger row; deleting it removes the one record.
+    Bank, reversed, or envelope-receipted rows are protected here."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from django.contrib.auth.models import User, Group
+        from departments.models import Department
+        from giving.models import Transaction
+        u = User.objects.create_user("cashdel", password="x")
+        g, _ = Group.objects.get_or_create(name="Treasurer")
+        u.groups.add(g)
+        self.client.login(username="cashdel", password="x")
+        self.fund = Department.objects.create(name="CD Fund", fund_type="LOCAL",
+                                              category="OFFERING", selectable=True)
+        self.cash = Transaction.objects.create(date=dt.date(2026, 6, 6), channel="CASH",
+            direction="CREDIT", amount=Decimal("250"), department=self.fund,
+            confirmed=True, allocation_status="MANUAL")
+
+    def test_delete_cash_entry_removes_ledger_row(self):
+        from giving.models import Transaction
+        r = self.client.post(f"/cash/{self.cash.id}/delete/")
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(Transaction.objects.filter(id=self.cash.id).exists())
+
+    def test_bank_row_not_deletable_here(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        b = Transaction.objects.create(date=dt.date(2026, 6, 6), channel="BANK",
+            direction="CREDIT", amount=Decimal("500"), department=self.fund,
+            confirmed=True, allocation_status="MANUAL")
+        self.client.post(f"/cash/{b.id}/delete/")
+        self.assertTrue(Transaction.objects.filter(id=b.id).exists())
+
+    def test_split_cash_parts_deleted_together(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        base = Transaction.objects.create(date=dt.date(2026, 6, 6), channel="CASH",
+            direction="CREDIT", amount=Decimal("600"), department=self.fund,
+            confirmed=True, allocation_status="MANUAL", core_ref="CD1")
+        part = Transaction.objects.create(date=dt.date(2026, 6, 6), channel="CASH",
+            direction="CREDIT", amount=Decimal("400"), department=self.fund,
+            confirmed=True, allocation_status="MANUAL", core_ref="CD1-S1")
+        self.client.post(f"/cash/{base.id}/delete/")
+        self.assertFalse(Transaction.objects.filter(id__in=[base.id, part.id]).exists())

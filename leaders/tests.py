@@ -248,3 +248,44 @@ class LeaderDashboardRevampTests(TestCase):
         r = self.c.get(f"/leader/department/{other.id}/pledges/")
         self.assertEqual(r.status_code, 302)
         self.assertIn("/leader/", r["Location"])
+
+
+class LeaderDevGroupPeriodTests(TestCase):
+    """Item 1: development-group figures honour the selected period, and the
+    group summary can be spooled to CSV/Excel for that period."""
+
+    def setUp(self):
+        import datetime as dt
+        from decimal import Decimal
+        from departments.models import Department, DevelopmentGroup
+        from giving.models import Transaction
+        self.dept = Department.objects.create(name="Dev Lead", fund_type="LOCAL",
+                                              category="DEVELOPMENT")
+        self.leader = _make_leader("ldgrp", self.dept)
+        self.c = Client(); self.c.force_login(self.leader)
+        self.g = DevelopmentGroup.objects.create(number=7, name="Group 7", target=10000)
+        # one gift inside June 2026, one in 2025 (outside a June-2026 window)
+        Transaction.objects.create(date=dt.date(2026, 6, 3), channel="CASH",
+            direction="CREDIT", amount=Decimal("400"), department=self.dept,
+            dev_group=self.g, confirmed=True, allocation_status="MANUAL")
+        Transaction.objects.create(date=dt.date(2025, 6, 3), channel="CASH",
+            direction="CREDIT", amount=Decimal("900"), department=self.dept,
+            dev_group=self.g, confirmed=True, allocation_status="MANUAL")
+
+    def test_dev_collected_respects_period(self):
+        narrow = self.c.get(f"/leader/department/{self.dept.id}/"
+                            f"?start=2026-06-01&end=2026-06-30")
+        wide = self.c.get(f"/leader/department/{self.dept.id}/"
+                          f"?start=2025-01-01&end=2026-12-31")
+        from decimal import Decimal
+        self.assertEqual(narrow.context["dev_collected"], Decimal("400"))
+        self.assertEqual(wide.context["dev_collected"], Decimal("1300"))
+
+    def test_group_summary_exports(self):
+        for ext in ("groups_csv", "groups_xlsx"):
+            r = self.c.get(f"/leader/department/{self.dept.id}/"
+                           f"?export={ext}&start=2026-06-01&end=2026-06-30")
+            self.assertEqual(r.status_code, 200)
+        csv = self.c.get(f"/leader/department/{self.dept.id}/"
+                         f"?export=groups_csv&start=2026-06-01&end=2026-06-30")
+        self.assertIn("Group 7", csv.content.decode())
