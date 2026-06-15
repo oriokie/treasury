@@ -74,7 +74,13 @@ def parse_period(text):
 
 def _credit_filter(start, end):
     from giving.models import Transaction
-    f = Q(direction=Transaction.Direction.CREDIT)
+    # Recognised-income basis, matching every report: confirmed credits, excluding
+    # reversed originals and their contra entries, and excluding the envelope-twin
+    # rows (bank gifts later receipted as envelopes). Without the last condition the
+    # same money is counted twice — the system's most common figure error.
+    f = (Q(direction=Transaction.Direction.CREDIT) & Q(confirmed=True)
+         & Q(is_reversed=False) & Q(is_reversal=False)
+         & Q(excluded_from_income=False))
     if start:
         f &= Q(date__gte=start)
     if end:
@@ -126,8 +132,8 @@ def _data_context():
     today = _dt.date.today()
     y0 = _dt.date(today.year, 1, 1)
     lines = [f"Today: {today}. Currency: KES. Financial year: {today.year}."]
-    ytd = (Transaction.objects.filter(direction=Transaction.Direction.CREDIT,
-           date__gte=y0, date__lte=today).aggregate(t=Sum("amount"))["t"] or 0)
+    ytd = (Transaction.objects.filter(_credit_filter(y0, today))
+           .aggregate(t=Sum("amount"))["t"] or 0)
     lines.append(f"Collections year-to-date: {ytd}.")
     # fund balances (carried-forward, includes transfers)
     rows = balances.department_summary(None, None)
@@ -160,6 +166,15 @@ def _data_context():
         from assets.models import FixedAsset
         nbv = sum((a.net_book_value(today) for a in FixedAsset.objects.filter(disposed=False)), _D(0))
         lines.append(f"Fixed assets net book value: {nbv}.")
+    except Exception:
+        pass
+    try:
+        from core.version import get_version, WHATS_NEW
+        notes = "; ".join(f"v{v}: {n}" for v, n in list(WHATS_NEW.items())[:3])
+        lines.append(f"Software version: v{get_version()}. Recent updates — {notes}")
+        lines.append("Terminology note: member giving is called 'contributions' in this "
+                     "system. All collection/income figures above are recognised income "
+                     "(confirmed, no reversed or double-counted envelope-twin rows).")
     except Exception:
         pass
     return "\n".join(lines)
@@ -337,6 +352,16 @@ def _answer_rules(question, user=None):
         return {"text": "I can answer questions from the treasury data. For example:",
                 "suggestions": SUGGESTIONS}
 
+    # what's new / recent updates
+    if ("what's new" in t or "whats new" in t or "what is new" in t
+            or "recent update" in t or "new feature" in t or "what changed" in t
+            or "changelog" in t or "latest version" in t):
+        from core.version import WHATS_NEW, get_version
+        items = list(WHATS_NEW.items())[:5]
+        rows = [(f"v{ver}", note) for ver, note in items]
+        return {"text": f"Recent updates (current version v{get_version()}):",
+                "rows": rows or [("—", "No release notes recorded.")]}
+
     start, end, label = parse_period(q)
 
     # fund balance
@@ -509,7 +534,7 @@ def _answer_rules(question, user=None):
     # ---- recent activity ----
     if "recent" in t or "latest" in t or "lately" in t or "what happened" in t or "last few" in t:
         from cashbook.models import Expense
-        rcv = Transaction.objects.filter(direction=Transaction.Direction.CREDIT).order_by("-date", "-id")[:4]
+        rcv = Transaction.objects.filter(_credit_filter(None, None)).order_by("-date", "-id")[:4]
         exp = Expense.objects.order_by("-date", "-id")[:4]
         rows = [(f"↓ {r.date:%d/%m} {r.payer_name or r.reference or 'Receipt'}", _money(r.amount)) for r in rcv]
         rows += [(f"↑ {x.date:%d/%m} {x.description}", _money(x.amount)) for x in exp]
@@ -596,8 +621,8 @@ def _answer_rules(question, user=None):
         grp = DevelopmentGroup.objects.filter(number=num).first()
         if not grp:
             return {"text": f"There's no development group {num}."}
-        total = (Transaction.objects.filter(dev_group=grp,
-                 direction=Transaction.Direction.CREDIT).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        total = (Transaction.objects.filter(_credit_filter(None, None), dev_group=grp)
+                 .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         target = grp.target or Decimal(0)
         pct = (total / target * 100) if target else None
         msg = f"{grp.label} has collected {_money(total)}"
@@ -647,6 +672,7 @@ SUGGESTIONS = [
     "Recent activity",
     "Top givers this year",
     "What's in the review queue?",
+    "What's new?",
 ]
 
 # Grouped prompts shown on the empty chat screen

@@ -12,6 +12,48 @@ from django.conf import settings
 from django.http import FileResponse, HttpResponse
 
 
+def _mysql_host(db):
+    """The app (PyMySQL) connects over TCP even for 'localhost'; the command-line
+    dump/restore tools treat 'localhost' as a Unix socket, which can match a
+    different grant and be denied even though the app authenticates fine. Force
+    the same TCP host the app uses so authentication is consistent."""
+    host = db.get("HOST") or "127.0.0.1"
+    return "127.0.0.1" if host == "localhost" else host
+
+
+def _write_mysql_defaults_file(db):
+    """Write a temporary my.cnf-style [client] file carrying the app's exact
+    credentials over TCP. Passing them via --defaults-extra-file is the reliable,
+    documented way to authenticate the dump tool and it overrides any stray
+    ~/.my.cnf that could otherwise supply the wrong user/password. Caller deletes
+    the file. Returns its path."""
+    import os
+    import tempfile
+    pw = str(db.get("PASSWORD", "")).replace("\\", "\\\\").replace('"', '\\"')
+    fd = tempfile.NamedTemporaryFile("w", suffix=".cnf", delete=False)
+    fd.write("[client]\n")
+    fd.write(f"host={_mysql_host(db)}\n")
+    fd.write(f"port={db.get('PORT') or 3306}\n")
+    fd.write(f"user={db['USER']}\n")
+    fd.write(f'password="{pw}"\n')
+    fd.write("protocol=TCP\n")
+    fd.close()
+    os.chmod(fd.name, 0o600)
+    return fd.name
+
+
+def _mysql_tool(*names):
+    """Resolve a MySQL/MariaDB command-line tool, preferring the modern MariaDB
+    name (so we don't trip the 'mysqldump: Deprecated program name' notice) and
+    falling back to the classic name."""
+    import shutil
+    for n in names:
+        found = shutil.which(n)
+        if found:
+            return found
+    return names[-1]
+
+
 def database_backup_bytes():
     """Produce the raw backup as (filename, bytes), independent of any HTTP
     response. Reused by the download view and the automated backup command.
@@ -30,12 +72,16 @@ def database_backup_bytes():
         with open(db_path, "rb") as fh:
             return f"treasury-backup-{stamp}.sqlite3", fh.read()
 
+    defaults_file = None
     if engine.endswith("mysql"):
-        cmd = ["mysqldump", "--single-transaction", "--routines",
-               "-h", db.get("HOST") or "localhost",
-               "-P", str(db.get("PORT") or "3306"),
-               "-u", db["USER"], db["NAME"]]
-        env = dict(os.environ, MYSQL_PWD=db.get("PASSWORD", ""))
+        defaults_file = _write_mysql_defaults_file(db)
+        # --no-tablespaces avoids needing the PROCESS privilege (shared hosting
+        # users rarely have it); we drop --routines for the same reason — a church
+        # database has no stored procedures.
+        cmd = [_mysql_tool("mariadb-dump", "mysqldump"),
+               f"--defaults-extra-file={defaults_file}",
+               "--single-transaction", "--no-tablespaces", db["NAME"]]
+        env = dict(os.environ)
         ext = "sql"
     elif engine.endswith("postgresql"):
         cmd = ["pg_dump", "-h", db.get("HOST") or "localhost",
@@ -50,6 +96,12 @@ def database_backup_bytes():
         proc = subprocess.run(cmd, capture_output=True, env=env, timeout=300)
     except (OSError, subprocess.SubprocessError) as e:
         raise RuntimeError(f"Could not run the database backup tool ({e}).")
+    finally:
+        if defaults_file:
+            try:
+                os.unlink(defaults_file)
+            except OSError:
+                pass
     if proc.returncode != 0:
         raise RuntimeError("The database backup tool reported an error: "
                            + (proc.stderr.decode("utf-8", "replace")[:300] or "unknown"))
@@ -349,19 +401,27 @@ def database_restore(uploaded_file):
         if engine.endswith("mysql"):
             # safety dump of current state
             safety = f"/tmp/treasury-pre-restore-{stamp}.sql"
-            env = dict(os.environ, MYSQL_PWD=db.get("PASSWORD", ""))
-            host = db.get("HOST") or "localhost"
-            port = str(db.get("PORT") or "3306")
-            with open(safety, "wb") as out:
-                subprocess.run(["mysqldump", "--single-transaction", "-h", host,
-                                "-P", port, "-u", db["USER"], db["NAME"]],
-                               stdout=out, env=env, timeout=300, check=True)
-            # load the uploaded dump
-            with open(tmp.name, "rb") as src:
-                proc = subprocess.run(["mysql", "-h", host, "-P", port,
-                                       "-u", db["USER"], db["NAME"]],
-                                      stdin=src, env=env, timeout=600,
-                                      capture_output=True)
+            defaults_file = _write_mysql_defaults_file(db)
+            env = dict(os.environ)
+            try:
+                with open(safety, "wb") as out:
+                    subprocess.run([_mysql_tool("mariadb-dump", "mysqldump"),
+                                    f"--defaults-extra-file={defaults_file}",
+                                    "--single-transaction", "--no-tablespaces",
+                                    db["NAME"]],
+                                   stdout=out, env=env, timeout=300, check=True)
+                # load the uploaded dump
+                with open(tmp.name, "rb") as src:
+                    proc = subprocess.run([_mysql_tool("mariadb", "mysql"),
+                                           f"--defaults-extra-file={defaults_file}",
+                                           db["NAME"]],
+                                          stdin=src, env=env, timeout=600,
+                                          capture_output=True)
+            finally:
+                try:
+                    os.unlink(defaults_file)
+                except OSError:
+                    pass
             if proc.returncode != 0:
                 return False, ("Restore failed while loading the backup. Your data "
                                "was not changed beyond the safety dump at "

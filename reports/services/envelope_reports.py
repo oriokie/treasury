@@ -41,8 +41,12 @@ def sabbath_statement(date):
         cells = {}
         for line in env.lines.all():
             d = line.department
-            if d.subgroups.exists():         # skip umbrella/parent funds
-                continue
+            # Note: a fund that has sub-accounts is normally an umbrella that
+            # giving doesn't land on directly — but when money IS given straight
+            # to it (e.g. VBS), that is real giving and must be listed, or the
+            # column totals stop matching the envelope totals. Funds with no
+            # direct giving are dropped below by the non-zero `present` filter,
+            # so umbrella funds without direct lines still won't appear.
             cells[d.id] = cells.get(d.id, Decimal(0)) + line.amount
             fund_totals[d.id] += line.amount
             fund_obj[d.id] = d
@@ -73,8 +77,10 @@ def monthly_summary(year, month):
         for env in _envelopes_for_bucket(sat):
             for line in env.lines.all():
                 d = line.department
-                if d.subgroups.exists():
-                    continue
+                # Include direct giving even to umbrella/parent funds (see
+                # sabbath_statement): dropping it loses real money and breaks the
+                # reconciliation against the envelope totals. Umbrella funds with
+                # no direct giving are excluded by the non-zero `present` filter.
                 grid[d.id][sat] += line.amount
                 fund_obj[d.id] = d
 

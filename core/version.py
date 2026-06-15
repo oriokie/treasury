@@ -38,6 +38,21 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.25.2": "Two fixes: the database backup now connects the same reliable way "
+              "the app does (fixing the mysqldump access-denied error) and uses the "
+              "current MariaDB tool name; and the Ledger date filter now reads dates "
+              "more robustly so From/To always apply and a stray value can never break "
+              "the page.",
+    "1.25.1": "The Ledger check page now offers a one-click Rebuild when any fund "
+              "does not tie to the general ledger — for example a contribution that "
+              "was counted by the fund but not yet posted. Treasurers see the fix "
+              "button; others see a note to ask a treasurer.",
+    "1.25.0": "Three fixes: the envelope/offering summary now lists funds that were "
+              "given to directly even when they have sub-accounts (e.g. VBS), so the "
+              "totals match the envelopes counted; the Ledger search box now also finds "
+              "entries by amount and by M-Pesa code; and the assistant chatbot now "
+              "reports recognised income only (no double-counted rows) and can answer "
+              "What is new.",
     "1.24.0": "Wording: everywhere the app used to say gift or gifts it now says "
               "contribution or contributions — on the dashboard, the review queue, "
               "receipts, leader views, reports and spreadsheet exports — for language "

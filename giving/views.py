@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.db import transaction as db_tx
 
 def _cash_duplicate(d, dept, amount, name=None):
@@ -95,8 +95,20 @@ class TransactionListView(ReadAccessMixin, ListView):
         status = self.request.GET.get("status")
         dept = self.request.GET.get("department")
         if q:
-            qs = qs.filter(Q(payer_name__icontains=q) | Q(reference__icontains=q) |
-                           Q(core_ref__icontains=q) | Q(raw_narration__icontains=q))
+            cond = (Q(payer_name__icontains=q) | Q(reference__icontains=q) |
+                    Q(core_ref__icontains=q) | Q(raw_narration__icontains=q) |
+                    Q(mpesa_ref__icontains=q) | Q(bank_receipt__icontains=q))
+            # let the same box find an entry by its amount, e.g. "250" or "1,250.50"
+            try:
+                qstr = q.replace(",", "").strip()
+                amt = Decimal(qstr)
+                if "." in qstr:
+                    cond |= Q(amount=amt)            # decimals: exact
+                else:
+                    cond |= Q(amount__gte=amt) & Q(amount__lt=amt + 1)  # "1234" finds 1234.x
+            except (InvalidOperation, AttributeError):
+                pass
+            qs = qs.filter(cond)
         if channel:
             qs = qs.filter(channel=channel)
         if status:
@@ -107,10 +119,15 @@ class TransactionListView(ReadAccessMixin, ListView):
             qs = qs.filter(department_id=dept)
         date_from = self.request.GET.get("date_from")
         date_to = self.request.GET.get("date_to")
-        if date_from:
-            qs = qs.filter(date__gte=date_from)
-        if date_to:
-            qs = qs.filter(date__lte=date_to)
+        # parse defensively: an invalid date string would otherwise raise and
+        # break the page; ignore anything that isn't a real YYYY-MM-DD date.
+        from django.utils.dateparse import parse_date
+        df = parse_date(date_from) if date_from else None
+        dtv = parse_date(date_to) if date_to else None
+        if df:
+            qs = qs.filter(date__gte=df)
+        if dtv:
+            qs = qs.filter(date__lte=dtv)
         return qs
 
     def get_context_data(self, **kwargs):

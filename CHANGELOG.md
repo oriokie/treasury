@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.25.2 — backup authentication & ledger date filter
+- Database backup/restore: the dump and restore tools now authenticate via a
+  temporary [client] defaults file over TCP to the same host the application uses.
+  Previously they passed -h localhost, which the command-line client treats as a
+  Unix socket and can be denied even when the app connects fine — the cause of the
+  'Access denied for user ... when trying to connect' error. They now also prefer
+  the modern mariadb-dump/mariadb tools (clearing the deprecation notice) and drop
+  options that need privileges shared-hosting users usually lack (--routines,
+  tablespaces). Credentials are written to a 0600 temp file and deleted immediately.
+- Ledger date filter: From/To dates are now parsed into real date objects before
+  filtering (more reliable across database drivers) and malformed values are
+  ignored instead of raising, so the filter always applies cleanly.
+
+## v1.25.1 — one-click ledger rebuild from the Ledger check
+When any fund does not tie to the general ledger, the Ledger check overview now
+shows a clear explanation and a Rebuild button (treasurers only; others get a note
+to ask a treasurer). This is the direct fix for an entry that is counted by a fund
+but missing from the general ledger — it now both surfaces on the overview and is
+fixable in one click, without drilling into each fund. Template-only change.
+
+## v1.25.0 — summary reconciliation, amount search, accurate assistant
+- Envelope/Offering summary: funds that received giving directly are now always
+  listed, even if they also have sub-accounts (e.g. VBS). Previously such direct
+  giving was silently dropped, so the summary total did not match the envelopes
+  counted for the Sabbath. Both the per-Sabbath statement and the monthly summary
+  are fixed; funds with no direct giving still do not appear.
+- Ledger search: the search box now also matches by amount (type 1250 or 1,250.50)
+  and by M-Pesa / bank receipt code, alongside name and reference.
+- Assistant: all collection, tithe, giving, top-giver and development-group figures
+  now use the recognised-income basis (confirmed credits, excluding reversed and
+  double-counted envelope-twin rows) so they agree with the reports. Added a
+  What is new answer that lists recent releases.
+
 ## v1.24.0 — wording: gift to contribution
 Every user-facing use of the word gift or gifts now reads contribution or
 contributions: dashboard, review queue, receipts, leader and department views,

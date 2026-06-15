@@ -16,7 +16,21 @@
   </div>
 </div>
 
-<div class="card u-mb"><div class="hd">Entity position (from the ledger)</div><div class="bd">
+{% if not all_tie %}
+<div class="alert alert-amber u-mb">
+  <div>Some funds don't tie to the general ledger. This usually means entries were
+  added, edited, re-allocated or excluded after the ledger was last posted — for
+  example a contribution counted by the fund but not yet posted. {% if is_treasurer %}Rebuilding re-posts
+  everything from the current records and clears these (manual journal adjustments
+  are preserved).{% else %}Ask a treasurer to rebuild the ledger to clear these.{% endif %}</div>
+  {% if is_treasurer %}
+  <form method="post" action="{% url 'ledger_rebuild' %}" class="u-mt-sm"
+        onsubmit="return confirm('Rebuild the general ledger from all current source records? Manual journal adjustments are preserved.');">{% csrf_token %}
+    <button class="btn">↻ Rebuild ledger to fix these</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
   <table class="ledger compact"><tbody>
     <tr><td>Assets (cash &amp; bank, fixed assets)</td><td class="num mono">{{ eq.assets|floatformat:2|intcomma }}</td></tr>
     <tr><td>Less: liabilities (trust funds payable)</td><td class="num mono">{{ eq.liabilities|floatformat:2|intcomma }}</td></tr>
