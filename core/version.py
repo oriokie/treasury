@@ -38,6 +38,12 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.28.0": "Fixed the trust/collections discrepancy: bank envelopes entered by hand "
+              "now create a ledger transaction like cash envelopes do, so the money reaches "
+              "the cash book and collections instead of showing only in the offering summary. "
+              "Run backfill_envelope_transactions to repair past entries, then rebuild the "
+              "ledger. (To receipt money already imported from the bank statement, use the "
+              "receipt-as-envelope action on that transaction, which links instead.)",
     "1.27.1": "New diagnostic: run 'python manage.py trust_reconcile YEAR MONTH' to see "
               "exactly why the Offering Summary trust total and the Collections Summary trust "
               "total differ for a month — orphan envelope lines, excluded transactions, or a "

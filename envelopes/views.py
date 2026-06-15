@@ -202,16 +202,19 @@ def _save_envelope(*, date, name, receipt, channel, lines, member, user, cfg):
     for line in lines:
         dept, amt = line[0], line[1]
         dev_group = line[2] if len(line) > 2 else None
-        txn = None
-        if env.channel == Envelope.Channel.CASH:
-            txn = Transaction.objects.create(
-                date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
-                channel=Transaction.Channel.ENVELOPE,
-                direction=Transaction.Direction.CREDIT, amount=amt,
-                department=dept, dev_group=dev_group, member=member, payer_name=name,
-                reference=f"envelope {receipt}",
-                allocation_status=Transaction.Status.MANUAL,
-                raw_narration=f"ENVELOPE {receipt}")
+        # Every envelope line must create exactly one ledger transaction so the
+        # money reaches the cash book / collections — for BANK envelopes too.
+        # (To receipt money ALREADY imported from the bank statement, use the
+        # "receipt as envelope" action on that transaction, which links instead
+        # of creating, so nothing is double-counted.)
+        txn = Transaction.objects.create(
+            date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
+            channel=Transaction.Channel.ENVELOPE,
+            direction=Transaction.Direction.CREDIT, amount=amt,
+            department=dept, dev_group=dev_group, member=member, payer_name=name,
+            reference=f"envelope {receipt}",
+            allocation_status=Transaction.Status.MANUAL,
+            raw_narration=f"ENVELOPE {receipt}")
         EnvelopeLine.objects.create(envelope=env, department=dept, amount=amt,
                                     dev_group=dev_group, transaction=txn)
     env.recompute_total()

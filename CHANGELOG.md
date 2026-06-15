@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.28.0 — bank envelopes reach the ledger (trust/collections discrepancy)
+- Root cause (found via trust_reconcile): manually-entered BANK envelopes created an
+  envelope line with no ledger transaction, so the money appeared in the offering
+  summary but never reached the cash book / collections / general ledger — the entire
+  trust gap was these orphan lines.
+- envelopes _save_envelope now creates one ENVELOPE-channel transaction per line for
+  bank envelopes too (matching cash), so the money always reaches the ledger. To
+  receipt money already imported from the bank statement, use the receipt-as-envelope
+  action on that transaction (it links to the existing credit, so nothing doubles).
+- New command backfill_envelope_transactions (report, or --fix) creates and links the
+  missing transaction for existing orphan envelope lines. Run trust_reconcile first to
+  confirm the orphan total, then rebuild the ledger after backfilling.
+
 ## v1.27.1 — trust reconciliation diagnostic
 - New management command trust_reconcile <year> <month> reconciles the Offering
   Summary trust total (envelope lines, by Sabbath) against the Collections Summary
