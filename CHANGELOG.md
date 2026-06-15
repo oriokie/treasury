@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.27.1 — trust reconciliation diagnostic
+- New management command trust_reconcile <year> <month> reconciles the Offering
+  Summary trust total (envelope lines, by Sabbath) against the Collections Summary
+  trust total (transactions, by date) and itemises the difference: envelope lines
+  with no ledger transaction, lines whose transaction is excluded or dates to
+  another month, and trust collected with no envelope line or counted on another
+  month's Sabbath. Both reports already use the same is_trust classification, so
+  this isolates timing/data differences from genuine errors.
+
 ## v1.27.0 — reconciliation delete/recompute + split-fund allocation guard
 - Bank reconciliations can be deleted within a week of creation (treasurer only,
   with a confirm). Older worksheets are protected. Reconciliations do not post to

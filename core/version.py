@@ -38,6 +38,10 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.27.1": "New diagnostic: run 'python manage.py trust_reconcile YEAR MONTH' to see "
+              "exactly why the Offering Summary trust total and the Collections Summary trust "
+              "total differ for a month — orphan envelope lines, excluded transactions, or a "
+              "Sabbath/month-boundary timing difference — each with an amount.",
     "1.27.0": "Reconciliation & allocation improvements: delete a bank reconciliation "
               "within a week of creating it; a reconciliation can now recompute its "
               "cash-book balance from the ledger in one click (and confirms when saved); "
