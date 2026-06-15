@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.27.0 — reconciliation delete/recompute + split-fund allocation guard
+- Bank reconciliations can be deleted within a week of creation (treasurer only,
+  with a confirm). Older worksheets are protected. Reconciliations do not post to
+  the ledger, so deletion is safe.
+- Reconciliation detail: a one-click "Recompute from ledger" button refreshes a
+  stale cash-book balance to the current figure as of the statement date, and the
+  manual "Update book balance" now confirms when it saves.
+- Allocation-rule form: the fund picker now lists only directly-allocatable funds,
+  excluding the internal halves of a split offering, so a rule cannot send split
+  giving entirely to one component. Rules should target the split fund itself.
+  Also fixed unreachable validation in the rule form (the not-both-targets and
+  date-range checks now run).
+
+## v1.26.0 — trust classification single source of truth
+Trust vs local was read from two places: the authoritative fund_type field (reports,
+balance engine) and a cached is_trust flag (general ledger posting, envelope summary,
+some pickers). If the two drifted — a bulk update or import that bypassed save() —
+trust money could post to an income account instead of the trust liability, the
+reports and the envelope summary disagreed, and the reconciliation couldn't balance.
+- The general ledger now classifies trust strictly by fund_type (single _is_trust
+  helper), so the ledger and the balance engine can never disagree. Once a fund's
+  Fund Type is correct, every figure agrees and the reconciliation balances.
+- New command, audit_funds, reports any fund whose Fund Type and envelope-summary
+  classification disagree, and repairs in the direction you confirm:
+    audit_funds                # report only
+    audit_funds --from-cache   # trust the envelope summary: set Fund Type from it
+    audit_funds --fix          # trust the Fund Type settings: set the cache from it
+  No classification is changed automatically — you choose which source is correct.
+- Regression test pins that a trust credit posts to the trust liability even if the
+  cache is stale.
+After repairing, rebuild the general ledger (Ledger check -> Rebuild) so existing
+entries re-post under the corrected classification.
+
 ## v1.25.2 — backup authentication & ledger date filter
 - Database backup/restore: the dump and restore tools now authenticate via a
   temporary [client] defaults file over TCP to the same host the application uses.

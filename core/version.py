@@ -38,6 +38,17 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.27.0": "Reconciliation & allocation improvements: delete a bank reconciliation "
+              "within a week of creating it; a reconciliation can now recompute its "
+              "cash-book balance from the ledger in one click (and confirms when saved); "
+              "and allocation rules can no longer be pointed at the internal half of a "
+              "split offering — pick the split fund itself so split giving divides "
+              "correctly.",
+    "1.26.0": "Trust fund fix: the whole app now classifies a fund as trust from "
+              "one authoritative setting (its Fund Type), so the reports, the general "
+              "ledger and the reconciliation always agree. A new audit_funds check finds "
+              "any fund whose Fund Type disagrees with the envelope summary and fixes it "
+              "in the direction you confirm. Rebuild the ledger after repairing.",
     "1.25.2": "Two fixes: the database backup now connects the same reliable way "
               "the app does (fixing the mysqldump access-denied error) and uses the "
               "current MariaDB tool name; and the Ledger date filter now reads dates "

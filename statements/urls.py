@@ -15,6 +15,7 @@ urlpatterns = [
     path("reconciliations/", views.ReconciliationListView.as_view(), name="reconciliation_list"),
     path("reconciliations/new/", views.ReconciliationCreateView.as_view(), name="reconciliation_new"),
     path("reconciliations/<int:pk>/", views.ReconciliationDetailView.as_view(), name="reconciliation_detail"),
+    path("reconciliations/<int:pk>/delete/", views.ReconciliationDeleteView.as_view(), name="reconciliation_delete"),
     path("reconciliations/auto/", views.AutoReconcileView.as_view(), name="auto_reconcile"),
     path("reconciliations/auto/run/", views.AutoReconcileRunView.as_view(), name="auto_reconcile_run"),
     path("reconciliations/auto/<int:pk>/confirm/", views.AutoReconcileConfirmView.as_view(), name="auto_reconcile_confirm"),

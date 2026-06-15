@@ -96,6 +96,15 @@ def _post_pair(date, memo, stype, sid, debit_acct, credit_acct, amount, dept=Non
 
 # ---- Posting individual documents ----------------------------------------
 @db_tx.atomic
+def _is_trust(dept):
+    """Authoritative trust test. Always read the fund_type field, never the
+    cacheable is_trust flag, so the ledger classifies a fund exactly as the
+    balance engine does and the two can never disagree (which would break the
+    reconciliation)."""
+    from departments.models import Department
+    return dept is not None and dept.fund_type == Department.FundType.TRUST
+
+
 def post_transaction(txn):
     """Income receipt. Skips bank-debit-direction rows (represented by expenses)."""
     from giving.models import Transaction
@@ -105,7 +114,7 @@ def post_transaction(txn):
         return
     cash = _acct("CASH")
     dept = txn.department
-    if dept is not None and dept.is_trust:
+    if _is_trust(dept):
         credit = _acct("TRUST_PAYABLE")
     else:
         credit = _acct(_income_key_for(dept)) if dept else _acct("INC_OTHER")
@@ -159,7 +168,7 @@ def post_opening():
         if not ob:
             continue
         lines.append((cash, ob, Decimal(0), d))
-        lines.append((trust if d.is_trust else accum, Decimal(0), ob, d))
+        lines.append((trust if _is_trust(d) else accum, Decimal(0), ob, d))
     if not lines:
         return
     from giving.models import Transaction
@@ -195,7 +204,7 @@ def fund_balance_from_ledger(dept):
     equity effect of any inter-fund transfers.
     """
     from django.db.models import Sum
-    if dept.is_trust:
+    if _is_trust(dept):
         agg = (JournalLine.objects.filter(department=dept, account__system_key="TRUST_PAYABLE")
                .aggregate(d=Sum("debit"), c=Sum("credit")))
         return (agg["c"] or Decimal(0)) - (agg["d"] or Decimal(0))
@@ -292,7 +301,7 @@ def fund_variance_detail(dept):
     # ---- transactions: compare engine contribution vs ledger posting ----
     # What the ledger currently holds per transaction, for THIS fund.
     ledger_txn = {}
-    if dept.is_trust:
+    if _is_trust(dept):
         rows = (JournalLine.objects.filter(department=dept,
                 entry__source_type="transaction",
                 account__system_key="TRUST_PAYABLE")

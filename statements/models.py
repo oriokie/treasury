@@ -125,6 +125,16 @@ class BankReconciliation(models.Model):
         return total
 
     @property
+    def can_delete(self):
+        """A reconciliation may be removed within a week of being created — a
+        guard against deleting settled historical worksheets."""
+        from django.utils import timezone
+        import datetime as _dt
+        if not self.created_at:
+            return True
+        return timezone.now() - self.created_at <= _dt.timedelta(days=7)
+
+    @property
     def adjusted_balance(self):
         return self.bank_balance + self.adjustments
 

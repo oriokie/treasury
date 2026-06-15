@@ -5,7 +5,7 @@
 <div class="page-head"><div><h1>Bank reconciliations</h1><div class="sub">Reconcile the bank statement to the cash book</div></div>
 {% if can_enter_data %}<a class="btn" href="{% url 'reconciliation_new' %}">＋ New reconciliation</a>{% endif %}</div>
 <div class="table-wrap"><table class="ledger">
-  <thead><tr><th>Statement date</th><th class="num">Bank balance</th><th class="num">Adjusted</th><th class="num">Book balance</th><th>Status</th></tr></thead>
+  <thead><tr><th>Statement date</th><th class="num">Bank balance</th><th class="num">Adjusted</th><th class="num">Book balance</th><th>Status</th>{% if is_treasurer %}<th class="no-print"></th>{% endif %}</tr></thead>
   <tbody>
   {% for r in reconciliations %}
     <tr>
@@ -14,8 +14,9 @@
       <td class="num mono">{{ r.adjusted_balance|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ r.book_balance|floatformat:2|intcomma }}</td>
       <td>{% if r.is_reconciled %}<span class="pill pill-green">Reconciled</span>{% elif r.difference != None %}<span class="pill pill-amber">Diff {{ r.difference|floatformat:2|intcomma }}</span>{% else %}<span class="pill pill-grey">In progress</span>{% endif %}</td>
+      {% if is_treasurer %}<td class="no-print num">{% if r.can_delete %}<form method="post" action="{% url 'reconciliation_delete' r.id %}" onsubmit="return confirm('Delete the reconciliation for {{ r.statement_date|date:'d M Y' }}? This cannot be undone.');" class="u-inline">{% csrf_token %}<button class="btn btn-xs btn-ghost">✕ Delete</button></form>{% endif %}</td>{% endif %}
     </tr>
-  {% empty %}<tr><td colspan="5" class="empty"><div class="big">⇄</div>No reconciliations yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="{% if is_treasurer %}6{% else %}5{% endif %}" class="empty"><div class="big">⇄</div>No reconciliations yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% endblock %}

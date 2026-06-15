@@ -246,3 +246,30 @@ class VarianceReallocationTests(TestCase):
         posting.rebuild()
         self.assertEqual(posting.fund_variance_detail(a), [])
         self.assertEqual(posting.fund_variance_detail(b), [])
+
+
+class TrustClassificationByFundTypeTests(TestCase):
+    """Regression: the general ledger must classify trust funds by the
+    authoritative fund_type, not the cacheable is_trust flag, so a stale cache
+    can never post trust money to income or break the reconciliation."""
+
+    def test_trust_credit_posts_to_liability_even_if_cache_drifts(self):
+        import datetime as dt
+        from decimal import Decimal
+        from departments.models import Department
+        from giving.models import Transaction
+        from ledger.models import JournalEntry
+        from ledger.services import posting
+        posting.ensure_chart()
+        d = Department.objects.create(name="Reg Trust", slug="reg-trust",
+                                      fund_type="TRUST", category="TRUST")
+        # drift the cache the wrong way (bypassing save)
+        Department.objects.filter(id=d.id).update(is_trust=False)
+        d.refresh_from_db()
+        self.assertFalse(d.is_trust)
+        t = Transaction.objects.create(date=dt.date.today(), channel="CASH",
+            direction="CREDIT", allocation_status="MANUAL", amount=Decimal("1000"),
+            department=d, confirmed=True)
+        je = JournalEntry.objects.filter(source_type="transaction", source_id=t.id).first()
+        credit_keys = [l.account.system_key for l in je.lines.all() if l.credit]
+        self.assertEqual(credit_keys, ["TRUST_PAYABLE"])  # not an INC_* account

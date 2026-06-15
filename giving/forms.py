@@ -74,7 +74,12 @@ class RuleForm(StyledFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["department"].queryset = Department.objects.filter(active=True)
+        # Only funds a gift can be allocated to directly. Excludes the internal
+        # halves of a split offering (selectable=False) — a rule must target the
+        # split fund itself (via the split-fund field), never one component half,
+        # or split giving lands entirely in the wrong fund.
+        self.fields["department"].queryset = Department.objects.filter(
+            active=True, selectable=True)
         self.fields["department"].required = False
         self.fields["split_fund"].required = False
         self.fields["valid_from"].required = False
@@ -100,7 +105,6 @@ class RuleForm(StyledFormMixin, forms.ModelForm):
                 _re.compile(ref)
             except _re.error as e:
                 self.add_error("reference", f"That isn't a valid pattern: {e}")
-        return cleaned
         if cleaned.get("department") and cleaned.get("split_fund"):
             raise forms.ValidationError("Pick either a fund or a split fund, not both.")
         vf, vt = cleaned.get("valid_from"), cleaned.get("valid_to")

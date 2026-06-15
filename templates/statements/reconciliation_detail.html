@@ -57,7 +57,11 @@
     <input type="hidden" name="action" value="set_book">
     <div class="f"><label>Cash-book balance</label><input name="book_balance" class="field" value="{{ rec.book_balance|floatformat:2 }}"></div>
     <button class="btn btn-sm btn-ghost">Update book balance</button>
-    <span class="help">Suggested from ledger: {{ suggested_book|floatformat:2|intcomma }}</span>
+  </form>
+  <form method="post" class="u-inline u-mt-0" style="margin-top:.4rem">{% csrf_token %}
+    <input type="hidden" name="action" value="recompute_book">
+    <button class="btn btn-sm">↻ Recompute from ledger ({{ suggested_book|floatformat:2|intcomma }})</button>
+    <span class="help">Pulls the current cash-book balance as of {{ rec.statement_date }} — use this to refresh a stale figure.</span>
   </form>
 </div></div>
 {% endif %}

@@ -162,6 +162,21 @@ class ReconciliationCreateView(DataEntryRequiredMixin, View):
         return render(request, self.template_name, {"form": form})
 
 
+class ReconciliationDeleteView(TreasurerRequiredMixin, View):
+    """Remove a reconciliation worksheet (and its items) within a week of
+    creation. Reconciliations don't post to the ledger, so deletion is safe."""
+    def post(self, request, pk):
+        rec = get_object_or_404(BankReconciliation, pk=pk)
+        if not rec.can_delete:
+            messages.error(request, "This reconciliation is more than a week old "
+                                    "and can no longer be deleted.")
+            return redirect("reconciliation_detail", pk=rec.pk)
+        when = rec.statement_date
+        rec.delete()
+        messages.success(request, f"Deleted the reconciliation for {when}.")
+        return redirect("reconciliation_list")
+
+
 class ReconciliationDetailView(ReadAccessMixin, View):
     template_name = "statements/reconciliation_detail.html"
 
@@ -195,8 +210,18 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             try:
                 rec.book_balance = Decimal(request.POST.get("book_balance"))
                 rec.save(update_fields=["book_balance"])
+                messages.success(request, "Cash-book balance updated.")
             except Exception:
                 messages.error(request, "Enter a valid book balance.")
+        elif action == "recompute_book":
+            # refresh the stored cash-book balance from the current ledger, as of
+            # this reconciliation's statement date (older worksheets can go stale
+            # after later edits/imports — this pulls the up-to-date figure).
+            rec.book_balance = _ledger_bank_balance(rec.statement_date)
+            rec.save(update_fields=["book_balance"])
+            messages.success(request,
+                f"Cash-book balance recomputed from the ledger: "
+                f"KSh {rec.book_balance:,.2f}.")
         return redirect("reconciliation_detail", pk=rec.pk)
 
 
