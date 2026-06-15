@@ -16,15 +16,15 @@
       <tbody>{% for r in rules %}<tr>
         <td class="mono">{{ r.reference }}</td>
         <td>{% if r.split_fund %}{{ r.split_fund.name }} <span class="pill pill-brass" style="font-size:.65rem">split</span>{% else %}{{ r.department.name }}{% endif %}</td>
-        <td>{% if r.is_period %}<span class="pill pill-blue" style="font-size:.7rem">{{ r.valid_from|date:"d M y"|default:"…" }} – {{ r.valid_to|date:"d M y"|default:"…" }}</span>{% else %}<span class="muted" style="font-size:.78rem">Permanent</span>{% endif %}</td>
-        <td><span class="pill pill-grey" style="font-size:.72rem">{{ r.get_match_type_display }}</span></td>
+        <td>{% if r.is_period %}<span class="pill pill-blue u-xs">{{ r.valid_from|date:"d M y"|default:"…" }} – {{ r.valid_to|date:"d M y"|default:"…" }}</span>{% else %}<span class="muted u-xs">Permanent</span>{% endif %}</td>
+        <td><span class="pill pill-grey u-xs">{{ r.get_match_type_display }}</span></td>
         {% if is_treasurer %}<td><a class="btn btn-sm btn-danger" href="{% url 'rule_delete' r.id %}" onclick="return confirm('Delete this rule?')">Delete</a></td>{% endif %}
       </tr>{% empty %}<tr><td colspan="5" class="muted">No rules yet — they're created when you tick "remember" in the queue.</td></tr>{% endfor %}</tbody>
     </table></div>
     {% if is_paginated %}
     <div class="pager no-print" style="display:flex;gap:.5rem;align-items:center;justify-content:center;margin-top:1rem">
       {% if page_obj.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page_obj.previous_page_number }}">← Prev</a>{% endif %}
-      <span class="muted" style="font-size:.85rem">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} rule{{ page_obj.paginator.count|pluralize }}</span>
+      <span class="muted u-small">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} rule{{ page_obj.paginator.count|pluralize }}</span>
       {% if page_obj.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
     </div>
     {% endif %}

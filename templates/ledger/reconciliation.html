@@ -1,22 +1,22 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Ledger reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head no-print"><div><h1>Ledger reconciliation</h1>
-<div class="sub">Proof the general ledger ties exactly to the fund reports</div></div>
-<button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div>
+<div class="ws-head no-print"><div class="ws-titles"><h1>Ledger reconciliation</h1>
+  <div class="ws-sub">Proof the general ledger ties exactly to the fund reports</div></div>
+  <div class="toolbar"><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 
-<div class="card" style="margin-bottom:1rem"><div class="bd" style="display:flex;gap:1.4rem;flex-wrap:wrap;align-items:center">
-  <div>
-    <div class="muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.04em">Fund balances</div>
-    <div style="font-size:1.05rem;margin-top:.2rem">{% if all_tie %}<span class="pill pill-green">✓ All funds reconcile</span>{% else %}<span class="pill pill-red">Differences found</span>{% endif %}</div>
+<div class="kpi-grid">
+  <div class="stat {% if all_tie %}accent{% else %}warn{% endif %}">
+    <div class="label">Fund balances</div>
+    <div class="value">{% if all_tie %}<span class="pill pill-green">✓ All funds reconcile</span>{% else %}<span class="pill pill-red">Differences found</span>{% endif %}</div>
   </div>
-  <div>
-    <div class="muted" style="font-size:.8rem;text-transform:uppercase;letter-spacing:.04em">Accounting equation</div>
-    <div style="font-size:1.05rem;margin-top:.2rem">{% if eq.balanced %}<span class="pill pill-green">✓ Assets = Liabilities + Funds</span>{% else %}<span class="pill pill-red">Out of balance</span>{% endif %}</div>
+  <div class="stat {% if eq.balanced %}accent{% else %}warn{% endif %}">
+    <div class="label">Accounting equation</div>
+    <div class="value">{% if eq.balanced %}<span class="pill pill-green">✓ Assets = Liabilities + Funds</span>{% else %}<span class="pill pill-red">Out of balance</span>{% endif %}</div>
   </div>
-</div></div>
+</div>
 
-<div class="card" style="margin-bottom:1rem"><div class="hd">Entity position (from the ledger)</div><div class="bd">
+<div class="card u-mb"><div class="hd">Entity position (from the ledger)</div><div class="bd">
   <table class="ledger compact"><tbody>
     <tr><td>Assets (cash &amp; bank, fixed assets)</td><td class="num mono">{{ eq.assets|floatformat:2|intcomma }}</td></tr>
     <tr><td>Less: liabilities (trust funds payable)</td><td class="num mono">{{ eq.liabilities|floatformat:2|intcomma }}</td></tr>
@@ -26,7 +26,7 @@
   <p class="help">In a balanced double-entry ledger, assets always equal liabilities plus fund balances.</p>
 </div></div>
 
-<div class="table-wrap"><table class="ledger">
+<div class="table-wrap sticky"><table class="ledger">
   <thead><tr><th>Fund</th><th class="num">Per fund report</th><th class="num">Per general ledger</th><th class="num">Difference</th><th></th></tr></thead>
   <tbody>
   {% for r in rows %}<tr>
@@ -38,5 +38,4 @@
   </tr>{% empty %}<tr><td colspan="5" class="empty">No fund balances yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>
-<style>.total-row td{border-top:2px solid var(--forest)}</style>
 {% endblock %}

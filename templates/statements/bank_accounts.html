@@ -14,15 +14,15 @@
 </tr>{% empty %}<tr><td colspan="6" class="empty">No accounts yet — all imports use one undifferentiated pool. Add accounts to track them separately.</td></tr>{% endfor %}</tbody>
 </table>
 
-<form method="post" style="margin-top:1rem">{% csrf_token %}
+<form method="post" class="u-mt">{% csrf_token %}
   <div class="form-grid" style="display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr auto;gap:.6rem;align-items:end">
-    <div class="form-row" style="margin:0"><label>Name</label><input name="name" class="field" placeholder="e.g. Co-op Current"></div>
-    <div class="form-row" style="margin:0"><label>Bank</label><input name="bank_name" class="field" placeholder="Cooperative Bank"></div>
-    <div class="form-row" style="margin:0"><label>Account number</label><input name="account_number" class="field"></div>
-    <div class="form-row" style="margin:0"><label>Type</label><select name="kind" class="field--select">{% for v,l in kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+    <div class="form-row u-m-0"><label>Name</label><input name="name" class="field" placeholder="e.g. Co-op Current"></div>
+    <div class="form-row u-m-0"><label>Bank</label><input name="bank_name" class="field" placeholder="Cooperative Bank"></div>
+    <div class="form-row u-m-0"><label>Account number</label><input name="account_number" class="field"></div>
+    <div class="form-row u-m-0"><label>Type</label><select name="kind" class="field--select">{% for v,l in kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
     <button class="btn">Add</button>
   </div>
-  <label class="check-row" style="margin-top:.5rem"><input type="checkbox" name="is_default"> Make this the default account</label>
+  <label class="check-row u-mt-sm"><input type="checkbox" name="is_default"> Make this the default account</label>
 </form>
 </div></div>
 {% endblock %}

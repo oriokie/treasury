@@ -2,11 +2,11 @@
 {% block title %}Import statement · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Import a statement</h1><div class="sub">CSV, XLSX or XLS — the columns are detected automatically</div></div></div>
-<div class="card" style="max-width:640px"><div class="bd">
+<div class="card u-narrow-md"><div class="bd">
   <form method="post" enctype="multipart/form-data"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
     <div class="btn-row"><button class="btn">Upload &amp; import</button><a class="btn btn-ghost" href="{% url 'statement_list' %}">Cancel</a></div>
   </form>
-  <div class="note" style="margin-top:1rem">
+  <div class="note u-mt">
     <strong>How matching works.</strong> Each row's <span class="mono">Core Ref</span> is the unique key, so re-importing the same file skips rows already captured. Payers are matched to members by phone first, then name; anything ambiguous lands in the review queue.
   </div>
 </div></div>

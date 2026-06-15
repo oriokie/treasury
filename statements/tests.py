@@ -280,7 +280,7 @@ class SabbathCloseTests(TestCase):
 
 
 class ImportedAfterSabbathTests(TestCase):
-    """A gift whose Sabbath has already passed by import day rolls forward and is
+    """A contribution whose Sabbath has already passed by import day rolls forward and is
     flagged for confirmation — regardless of whether that Sabbath was closed.
     Tithe is a trust fund, so it is within the default (Trust+LCB) confirm scope."""
 
@@ -336,7 +336,7 @@ class ImportedAfterSabbathTests(TestCase):
 
 
 class MonthEndTimingTests(TestCase):
-    """A trust gift received after the month's last Sabbath but before month-end
+    """A trust contribution received after the month's last Sabbath but before month-end
     (e.g. Tue 31st, last Sabbath was 28th) must:
       * sit in the cash-book balance and reconcile to the 31st bank statement
         (by TRANSACTION DATE — it is real money at the bank on the 31st), and

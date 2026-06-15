@@ -2,7 +2,7 @@
 {% block title %}{% if object %}Edit group{% else %}New group{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{% if object %}Edit Group {{ object.number }}{% else %}New development group{% endif %}</h1><div class="sub">Number, optional name and fund-raising target</div></div></div>
-<div class="card" style="max-width:560px"><div class="bd">
+<div class="card u-narrow"><div class="bd">
   <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
     <div class="btn-row"><button class="btn">Save</button><a class="btn btn-ghost" href="{% url 'department_list' %}">Cancel</a></div>
   </form>

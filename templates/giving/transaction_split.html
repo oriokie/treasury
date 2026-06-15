@@ -4,7 +4,7 @@
 <div class="page-head"><div><h1>Split entry</h1>
   <div class="sub">Divide one lump sum across several funds or development groups. The parts must add up to the entry total.</div></div></div>
 
-<div class="card" style="margin-top:1rem"><div class="bd">
+<div class="card u-mt"><div class="bd">
   <table class="ledger"><tbody>
     <tr><td><strong>Payer</strong></td><td>{{ txn.payer_name|default:"—" }}</td></tr>
     <tr><td><strong>Date</strong></td><td>{{ txn.date }}</td></tr>
@@ -13,14 +13,14 @@
   </tbody></table>
 </div></div>
 
-<form method="post" class="card" style="margin-top:1rem"><div class="bd">{% csrf_token %}
+<form method="post" class="card u-mt"><div class="bd">{% csrf_token %}
   <table class="ledger" id="rows"><thead><tr><th>Fund</th><th>Development group</th><th class="num">Amount</th><th></th></tr></thead>
   <tbody id="rowBody"></tbody></table>
-  <div class="btn-row" style="margin-top:.6rem">
+  <div class="btn-row u-mt-sm">
     <button type="button" class="btn btn-sm" id="addRow">＋ Add part</button>
     <span class="help" style="margin-left:1rem">Allocated: <span id="alloc" class="mono">0</span> / <span class="mono">{{ txn.amount }}</span> &nbsp; Remaining: <span id="remain" class="mono">{{ txn.amount }}</span></span>
   </div>
-  <div class="btn-row" style="margin-top:1rem"><button class="btn" type="submit">Save split</button>
+  <div class="btn-row u-mt"><button class="btn" type="submit">Save split</button>
     <a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a></div>
 </div></form>
 

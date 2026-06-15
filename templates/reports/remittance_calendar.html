@@ -10,13 +10,13 @@
 </div>
 
 {% if overdue %}
-<div class="alert alert-danger" style="margin-bottom:.8rem">
+<div class="alert alert-danger u-mb-sm">
   <strong>⚠ {{ overdue|length }} remittance{{ overdue|pluralize }} overdue.</strong>
   {% for d in overdue %}{{ d.get_period_display }}{% if not forloop.last %}, {% endif %}{% endfor %}.
 </div>
 {% endif %}
 {% if due_soon %}
-<div class="alert alert-warn" style="margin-bottom:.8rem">
+<div class="alert alert-warn u-mb-sm">
   <strong>⏰ Due within 7 days:</strong>
   {% for d in due_soon %}{{ d.get_period_display }} (by {{ d.deadline|date:"d M" }}, report on Sabbath {{ d.reporting_sabbath|date:"d M" }}){% if not forloop.last %}; {% endif %}{% endfor %}.
 </div>
@@ -31,7 +31,7 @@
     <div class="f"><label>Starting due day (a suggestion)</label><input type="number" name="due_day" value="1" min="1" max="28" class="field" style="width:90px"></div>
     <button class="btn">Generate {{ year }} deadlines</button>
   </form>
-  <p class="help" style="margin-top:.5rem">Creates one row per month as a starting point. The conference sets each month's actual remittance date separately, so <strong>edit each deadline</strong> once you have it — the reporting Sabbath updates automatically.</p>
+  <p class="help u-mt-sm">Creates one row per month as a starting point. The conference sets each month's actual remittance date separately, so <strong>edit each deadline</strong> once you have it — the reporting Sabbath updates automatically.</p>
   {% endif %}
 </div></div>
 {% else %}
@@ -40,11 +40,11 @@
   <tbody>
   {% for d in deadlines %}
     <tr class="{% if d.is_overdue %}row-danger{% elif d.is_due_soon %}row-warn{% endif %}">
-      <td>{{ d.get_period_display }}{% if d.notes %}<br><span class="muted" style="font-size:.8rem">{{ d.notes }}</span>{% endif %}</td>
+      <td>{{ d.get_period_display }}{% if d.notes %}<br><span class="muted u-small">{{ d.notes }}</span>{% endif %}</td>
       <td class="mono">{{ d.deadline|date:"D, d M Y" }}
         {% if not d.deadline_is_sabbath %}<br><span class="pill pill-grey" style="font-size:.65rem" title="The deadline is not a Sabbath, so the previous Sabbath is the reporting Sabbath">not a Sabbath</span>{% endif %}</td>
       <td class="mono"><strong>{{ d.reporting_sabbath|date:"d M Y" }}</strong>
-        <br><span class="muted" style="font-size:.78rem">count all giving up to this Sabbath</span></td>
+        <br><span class="muted u-xs">count all giving up to this Sabbath</span></td>
       <td>
         {% if d.remitted %}<span class="pill pill-green">✓ remitted</span>
         {% elif d.is_overdue %}<span class="pill pill-red">overdue {{ d.days_until|stringformat:"+d" }}d</span>
@@ -52,7 +52,7 @@
         {% else %}<span class="pill pill-grey">{{ d.days_until }}d to go</span>{% endif %}
       </td>
       {% if is_treasurer %}
-      <td style="white-space:nowrap">
+      <td class="u-nowrap">
         <details class="inline-edit"><summary class="link">edit</summary>
           <form method="post" action="{% url 'remittance_deadline_update' d.id %}" style="margin-top:.4rem;display:flex;flex-direction:column;gap:.3rem;min-width:200px">
             {% csrf_token %}
@@ -62,7 +62,7 @@
             <button class="btn btn-sm">Save</button>
           </form>
         </details>
-        <form method="post" action="{% url 'remittance_deadline_update' d.id %}" style="display:inline">
+        <form method="post" action="{% url 'remittance_deadline_update' d.id %}" class="u-inline">
           {% csrf_token %}<input type="hidden" name="toggle_remitted" value="1">
           <button class="link">{% if d.remitted %}unmark{% else %}mark remitted{% endif %}</button>
         </form>
@@ -72,6 +72,6 @@
   {% endfor %}
   </tbody>
 </table></div>
-<p class="help" style="margin-top:.7rem">The <strong>reporting Sabbath</strong> is the most recent Saturday on or before the deadline. If a deadline falls midweek (say a Wednesday), the previous Sabbath's count is the one that must be in the remittance. Trust funds collected up to that Sabbath should be remitted by the deadline.</p>
+<p class="help u-mt-sm">The <strong>reporting Sabbath</strong> is the most recent Saturday on or before the deadline. If a deadline falls midweek (say a Wednesday), the previous Sabbath's count is the one that must be in the remittance. Trust funds collected up to that Sabbath should be remitted by the deadline.</p>
 {% endif %}
 {% endblock %}

@@ -3,13 +3,13 @@
 {% block content %}
 <div class="page-head"><div><h1>Issue a staff advance</h1><div class="sub">Record cash given to staff ahead of expenses</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div>
-<form method="post" class="card form-card" style="max-width:640px"><div class="bd">{% csrf_token %}
+<form method="post" class="card form-card u-narrow-md"><div class="bd">{% csrf_token %}
   <div class="form-row"><label>Staff name</label><input name="staff_name" class="field" required></div>
   <div class="form-row"><label>Fund charged</label><select name="department" class="field--select" required><option value="">Choose…</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
   <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.7rem">
-    <div class="form-row" style="margin:0"><label>Amount</label><input name="amount" class="field mono" style="text-align:right" required></div>
-    <div class="form-row" style="margin:0"><label>Date issued</label><input type="date" name="date_issued" value="{{ today }}" class="field"></div>
-    <div class="form-row" style="margin:0"><label>Method</label><select name="method" class="field--select"><option>CASH</option><option>BANK</option><option>CHEQUE</option><option>MPESA</option></select></div>
+    <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right" required></div>
+    <div class="form-row u-m-0"><label>Date issued</label><input type="date" name="date_issued" value="{{ today }}" class="field"></div>
+    <div class="form-row u-m-0"><label>Method</label><select name="method" class="field--select"><option>CASH</option><option>BANK</option><option>CHEQUE</option><option>MPESA</option></select></div>
   </div>
   <div class="form-row"><label>Purpose</label><input name="purpose" class="field" placeholder="e.g. Advance for camp meeting travel"></div>
   <div class="form-row"><label>Reference (optional)</label><input name="reference" class="field"></div>

@@ -8,17 +8,17 @@
 </div>
 
 {% if stage == "upload" %}
-<div class="card" style="max-width:760px"><div class="bd">
-  <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+<div class="card u-narrow-xl"><div class="bd">
+  <ol class="u-list-loose">
     <li><strong>Download</strong> the template. It lists your existing funds so you can pick a parent.</li>
     <li>Add one row per fund. Leave <strong>Parent</strong> blank for a top-level fund, or name a
       parent to make the row a <strong>sub-account</strong> (e.g. Youth → Potluck, Mission).</li>
     <li><strong>Upload</strong> it. Existing funds are left untouched; only new names are created.</li>
   </ol>
-  <div class="btn-row" style="margin:.8rem 0"><a class="btn" href="?template=1">⤓ Download template (.xlsx)</a></div>
-  <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+  <div class="btn-row u-my"><a class="btn" href="?template=1">⤓ Download template (.xlsx)</a></div>
+  <form method="post" enctype="multipart/form-data" class="u-section-top">
     {% csrf_token %}
-    <div class="form-row" style="margin:.4rem 0"><label>Filled template (.xlsx)</label>
+    <div class="form-row u-my-sm"><label>Filled template (.xlsx)</label>
       <input type="file" name="file" class="field" accept=".xlsx" required></div>
     <button class="btn">Upload &amp; review</button>
   </form>
@@ -35,7 +35,7 @@
   </div>
 
   {% if bad_parents %}
-  <div class="alert alert-warn" style="margin-bottom:1rem">
+  <div class="alert alert-warn u-mb">
     <strong>{{ bad_parents|length }} row(s)</strong> name a parent that isn't an existing fund or another row in the sheet — those rows will be skipped. Check the highlighted parents below.
   </div>
   {% endif %}
@@ -46,7 +46,7 @@
     {% for p in plan %}
     <tr class="{% if not p.parent_ok %}row-warn{% endif %}">
       <td><strong>{{ p.name }}</strong></td>
-      <td>{% if p.parent %}{% if p.parent_ok %}{{ p.parent }}{% else %}<span style="color:var(--danger)">{{ p.parent }} (unknown)</span>{% endif %}{% else %}<span class="muted">— top level —</span>{% endif %}</td>
+      <td>{% if p.parent %}{% if p.parent_ok %}{{ p.parent }}{% else %}<span class="text-danger">{{ p.parent }} (unknown)</span>{% endif %}{% else %}<span class="muted">— top level —</span>{% endif %}</td>
       <td>{{ p.ftype|title }}</td>
       <td>{{ p.cat|title }}</td>
       <td class="num mono">{{ p.opening|floatformat:0|intcomma }}</td>
@@ -56,11 +56,11 @@
     </tbody>
   </table></div>
 
-  <div class="btn-row" style="margin-top:1rem">
+  <div class="btn-row u-mt">
     <button class="btn">Create {{ new_count }} fund(s)</button>
     <a class="btn btn-ghost" href="{% url 'fund_structure_import' %}">Start over</a>
   </div>
-  <p class="help" style="margin-top:.6rem">Existing funds are never modified. Sub-accounts inherit their parent's fund type.</p>
+  <p class="help u-mt-sm">Existing funds are never modified. Sub-accounts inherit their parent's fund type.</p>
 </form>
 {% endif %}
 {% endblock %}

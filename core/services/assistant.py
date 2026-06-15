@@ -557,7 +557,7 @@ def _answer_rules(question, user=None):
     # a person's giving: "how much did <name> give"
     m = re.search(r"(?:how much did|giving (?:for|by)|what did)\s+(.+?)\s+(?:give|given|contribute|donate)", t)
     if not m:
-        m = re.search(r"(?:giving for|statement for|gifts? (?:of|for))\s+(.+)$", t)
+        m = re.search(r"(?:giving for|statement for|contributions? (?:of|for))\s+(.+)$", t)
     if m:
         name = m.group(1).strip().strip("?").title()
         member = (Member.objects.filter(name__icontains=name).first()

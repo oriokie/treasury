@@ -99,6 +99,41 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["fund_count"] = Department.objects.filter(active=True).count()
         ctx["recent_imports"] = StatementImport.objects.all()[:5]
 
+        # --- "This Sabbath" snapshot: the latest Sabbath's recognised collection,
+        # compared to the one before, with a short fund breakdown. Uses the same
+        # income basis as the rest of the app (recognised credits, excluding the
+        # envelope-twin rows) so it can never double-count. All grouped queries.
+        from core.utils import sabbath_of  # noqa
+        import datetime as dt
+        today = dt.date.today()
+        last_sab = today - dt.timedelta(days=(today.weekday() - 5) % 7)  # most recent Sat
+        prev_sab = last_sab - dt.timedelta(days=7)
+        sab_base = (Transaction.objects.confirmed_credits()
+                    .filter(excluded_from_income=False))
+        from django.db.models import Sum as _SumAgg
+        sab_this = (sab_base.filter(service_sabbath=last_sab)
+                    .aggregate(t=_SumAgg("amount"))["t"] or Decimal(0))
+        sab_prev = (sab_base.filter(service_sabbath=prev_sab)
+                    .aggregate(t=_SumAgg("amount"))["t"] or Decimal(0))
+        sab_delta = sab_this - sab_prev
+        sab_pct = (float(sab_delta) / float(sab_prev) * 100) if sab_prev else None
+        sab_funds = list(
+            sab_base.filter(service_sabbath=last_sab, department__isnull=False)
+            .values("department__name").annotate(t=_SumAgg("amount")).order_by("-t")[:4])
+        sab_gifts = sab_base.filter(service_sabbath=last_sab).count()
+        try:
+            from envelopes.models import Envelope
+            sab_envelopes = Envelope.objects.filter(date=last_sab).count()
+        except Exception:
+            sab_envelopes = 0
+        ctx["sabbath"] = {
+            "date": last_sab, "prev_date": prev_sab,
+            "total": sab_this, "prev_total": sab_prev,
+            "delta": sab_delta, "pct": sab_pct,
+            "up": sab_delta >= 0, "funds": sab_funds,
+            "gifts": sab_gifts, "envelopes": sab_envelopes,
+            "has_data": bool(sab_this or sab_gifts),
+        }
         # remittance deadline alerts (item 5): surface overdue / due-soon trust
         # remittances so the treasurer is reminded ahead of the deadline.
         from cashbook.models import RemittanceDeadline

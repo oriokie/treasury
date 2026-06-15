@@ -118,8 +118,8 @@ def auto_match_all(user=None, campaign=None):
 # ---------------------------------------------------------------------------
 def active_pledges_for_contribution(txn, cfg=None):
     """Active, unpaid pledges this contribution could plausibly fulfil: same
-    member (FK or name key), gift dated within the pledge window, and — when the
-    setting requires it — the gift's fund matching the campaign's target fund."""
+    member (FK or name key), contribution dated within the pledge window, and — when the
+    setting requires it — the contribution's fund matching the campaign's target fund."""
     from core.models import SiteConfig
     cfg = cfg or SiteConfig.get()
     if txn.direction != Transaction.Direction.CREDIT or not txn.confirmed:

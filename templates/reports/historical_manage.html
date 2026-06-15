@@ -5,7 +5,7 @@
   <div class="sub">Prior-year totals for trend comparison. Closed years are captured automatically; add earlier years (e.g. 2025) by hand here.</div></div>
   <a class="btn btn-ghost" href="{% url 'report_annual' %}">← Back to annual report</a></div>
 
-<div class="card" style="margin-top:1rem"><div class="hd">Recorded years</div><div class="bd">
+<div class="card u-mt"><div class="hd">Recorded years</div><div class="bd">
   <table class="ledger"><thead><tr><th>Year</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th><th>Note</th><th></th></tr></thead>
   <tbody>
   {% for h in years %}
@@ -15,7 +15,7 @@
       <td class="num mono">{{ h.trust_fund|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ h.expenditure|floatformat:2|intcomma }}</td>
       <td class="help">{{ h.note }}</td>
-      <td><form method="post" style="margin:0" onsubmit="return confirm('Remove {{ h.year }}?');">{% csrf_token %}
+      <td><form method="post" class="u-m-0" onsubmit="return confirm('Remove {{ h.year }}?');">{% csrf_token %}
         <input type="hidden" name="action" value="delete"><input type="hidden" name="pk" value="{{ h.pk }}">
         <button class="link link-danger">✕</button></form></td>
     </tr>
@@ -23,7 +23,7 @@
   </tbody></table>
 </div></div>
 
-<div class="card" style="margin-top:1rem"><div class="hd">Add or update a year</div><div class="bd">
+<div class="card u-mt"><div class="hd">Add or update a year</div><div class="bd">
   <form method="post"><div class="form-grid">{% csrf_token %}
     <div class="form-row"><label>Year</label><input class="field mono" name="year" inputmode="numeric" placeholder="2025" required></div>
     <div class="form-row"><label>Collection</label><input class="field num mono" name="collection" inputmode="decimal" value="0"></div>
@@ -31,8 +31,8 @@
     <div class="form-row"><label>Expenditure</label><input class="field num mono" name="expenditure" inputmode="decimal" value="0"></div>
     <div class="form-row" style="grid-column:1/-1"><label>Note</label><input class="field" name="note" placeholder="e.g. From 2025 audited accounts"></div>
   </div>
-  <div class="btn-row" style="margin-top:1rem"><button class="btn">Save year</button></div>
-  <p class="help" style="margin-top:.5rem">Entering an existing year updates it. Amounts are reference figures only and never affect the live ledger.</p>
+  <div class="btn-row u-mt"><button class="btn">Save year</button></div>
+  <p class="help u-mt-sm">Entering an existing year updates it. Amounts are reference figures only and never affect the live ledger.</p>
   </form>
 </div></div>
 {% endblock %}

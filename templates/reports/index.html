@@ -74,7 +74,7 @@
   <a class="report-card" href="{% url 'report_audit' %}"><div class="rc-ic">⚿</div><strong>Audit log</strong><span>Every change to transactions, expenses &amp; members.</span></a>
 </div></section>
 
-<div class="note" style="margin-top:1.2rem">Fund ledgers and member statements open from the <a class="link" href="{% url 'department_list' %}">Funds</a> and <a class="link" href="{% url 'member_list' %}">Members</a> pages.</div>
+<div class="note u-mt">Fund ledgers and member statements open from the <a class="link" href="{% url 'department_list' %}">Funds</a> and <a class="link" href="{% url 'member_list' %}">Members</a> pages.</div>
 <script>
 document.querySelectorAll("#rtabs .tab").forEach(b=>b.addEventListener("click",()=>{
   document.querySelectorAll("#rtabs .tab").forEach(x=>x.classList.remove("active"));

@@ -38,6 +38,63 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.24.0": "Wording: everywhere the app used to say gift or gifts it now says "
+              "contribution or contributions — on the dashboard, the review queue, "
+              "receipts, leader views, reports and spreadsheet exports — for language "
+              "that fits the church better. No figures or behaviour changed.",
+    "1.23.0": "The dashboard now opens with a Latest Sabbath snapshot — what came in "
+              "on the most recent Sabbath, how it compares with the week before, the "
+              "number of contributions and envelopes, and the top funds — so you can see the "
+              "week at a glance before drilling in.",
+    "1.22.0": "Faster data entry. In the weekly envelope grid you can now move between "
+              "rows with the Up/Down arrow keys (as well as Enter), and the grid is "
+              "easier to use on a phone or tablet — bigger tap targets, smooth scrolling "
+              "and full-width buttons. On the cash and expense forms the member, fund "
+              "and claimant lookups are now fully keyboard-driven: arrow to highlight, "
+              "Enter to pick, Escape to close.",
+    "1.21.0": "Reports now print properly. Use the Print button (or Ctrl/Cmd-P) on any "
+              "report and you get a clean document — a church letterhead with the report "
+              "title, period and date, no on-screen menus or buttons, table headers "
+              "repeated on every page, and signature lines on the monthly, remittance "
+              "and board reports. Long fund ledgers now print in full.",
+    "1.20.0": "Final consistency polish: the design-system utility classes now cover "
+              "the import wizards, executive summary, controls and remaining tools, so "
+              "the whole interface shares one spacing, type and layout language. The "
+              "only styling left inline is dynamic (e.g. progress widths) or stateful.",
+    "1.19.0": "Consistency rollout: the shared design-system classes now extend "
+              "across the secondary screens too (settings, fund and member pages, "
+              "imports, remittance and ledger tools), so spacing, type and layout are "
+              "uniform throughout. Behaviour is unchanged.",
+    "1.18.0": "UI modernization sweep complete: the Fund Ledger, Journal, Bank "
+              "Reconciliation and Contributions/Receipts screens now use the same "
+              "component library as the rest of the app — consistent headers, stat "
+              "tiles, sticky table headers and spacing. All ten priority screens are "
+              "now free of ad-hoc styling, with accounting logic unchanged.",
+    "1.17.0": "UI modernization sweep (part 1): the Dashboard, Transactions, "
+              "Expenses list, Expense detail (now with inline approve/pay actions), "
+              "Pledges and Reports screens were rebuilt on a shared component library "
+              "— responsive KPI tiles, consistent alerts, filters and toolbars, and "
+              "sticky table headers on long ledgers. Accounting logic is unchanged.",
+    "1.16.0": "Polish + hardening pass: the app now refuses to start in production "
+              "on an insecure secret key, and warns about other risky settings. The "
+              "error pages (403/404/500) and sign-in share one cleaner, branded look. "
+              "Added reusable page-header, stat-card and empty-state building blocks "
+              "and shared spacing/layout utilities, plus a safeguard so wide tables "
+              "scroll instead of overflowing on phones.",
+    "1.15.0": "Two-factor sign-in can now send your code by SMS or email, not just "
+              "an authenticator app. Choose your method when setting up two-factor; "
+              "at sign-in we send a 6-digit code (valid 5 minutes) and you can resend "
+              "it. SMS uses the church's Advanta account; email uses the mail server. "
+              "Recovery codes still work for every method.",
+    "1.14.0": "Group leaders: assigning the parent fund (e.g. CAMP MEETING) now "
+              "gives the leader its whole tree — every subgroup (CAMP_1..CAMP_30) "
+              "with drill-down to each. A leader can also be assigned a single "
+              "subgroup. Performance: the dashboard, leader pages, and fund ledger "
+              "no longer slow down as the number of groups/sub-accounts grows.",
+    "1.13.1": "Fix: the rule that stops the same contribution being matched to a "
+              "pledge twice is now enforced on the production database too (the "
+              "previous form was silently ignored by MariaDB). Adding numbered fund "
+              "families for any department remains a Settings change, no code needed.",
     "1.13.0": "New: numbered fund families. Set one line in Settings — for "
               "example 'expense, exp, expe = CAMP_{n}' — and giving narrated "
               "EXPENSE1, exp1 or expe1 is sent to the fund CAMP_1, EXPENSE30 to "
@@ -76,7 +133,7 @@ WHATS_NEW = {
               "sign-ins.",
     "1.9.0": "The Sabbath reconciliation can now apply a match in one click — "
              "selected pairs are marked as bank giving and the duplicate cash "
-             "entry is removed, so the gift is counted once. Statement import can "
+             "entry is removed, so the contribution is counted once. Statement import can "
              "force the Sabbath every entry counts under, for imports done after "
              "the day. The dashboard swaps 'Giving by group' for a 'How giving "
              "arrives' card (bank / cash / envelope mix) and the local-funds table "
@@ -90,8 +147,8 @@ WHATS_NEW = {
              "when a saved authenticator secret can't be read, and a recovery code "
              "now works in the same box. 'Receipt bank giving' can be limited to a "
              "single Sabbath.",
-    "1.7.0": "A batch of fixes and queue improvements: bulk-allocate gifts in the "
-             "review queue and fetch unallocated gifts from the ledger; trust "
+    "1.7.0": "A batch of fixes and queue improvements: bulk-allocate contributions in the "
+             "review queue and fetch unallocated contributions from the ledger; trust "
              "'to remit' now counts trust funds only; the expense form no longer "
              "silently drops an entry that exceeds a fund's balance; M-Pesa charges "
              "are kept out of duplicate detection; possible duplicates are sorted by "
@@ -100,27 +157,27 @@ WHATS_NEW = {
              "count now reflects physical cash only, excluding bank giving keyed on "
              "the cash sheet.",
     "1.6.0": "Manual receipts are now a distinct state from system receipts. "
-             "Marking bank entries as a manual receipt (for gifts already "
+             "Marking bank entries as a manual receipt (for contributions already "
              "receipted on paper) keeps them out of both the review queue and the "
              "receipt-bank-giving pull, and never creates a system envelope — so "
              "they can't be receipted twice. It is reversible (untick to issue a "
              "system receipt later), shown with its own label on the ledger, and "
-             "applies across every part of a split gift.",
-    "1.5.1": "Receipt bank giving no longer re-receipts a gift that is already "
+             "applies across every part of a split contribution.",
+    "1.5.1": "Receipt bank giving no longer re-receipts a contribution that is already "
              "accounted for. Items that already carry an envelope record are now "
              "excluded from the bank-giving pull even if their processed flag had "
              "drifted, and the same guard applies when receipting one part of a "
-             "split gift — so nothing is receipted twice.",
+             "split contribution — so nothing is receipted twice.",
     "1.5.0": "A dedicated fund and sub-account importer: download a template "
              "(which lists your existing funds), add funds and their sub-accounts, "
              "and import the whole chart of accounts at once. The budget template "
              "now comes pre-filled with a row for every existing fund. And marking "
              "a bank entry processed via envelope now also removes it (and every "
-             "part of a split gift) from the review queue.",
+             "part of a split contribution) from the review queue.",
     "1.4.2": "The bulk mark-processed tool now handles split offerings. A split "
-             "gift (e.g. Combined Offering) appears in the ledger as several rows "
+             "contribution (e.g. Combined Offering) appears in the ledger as several rows "
              "with the amount divided; enter the total the member gave and every "
-             "part of that gift is marked processed together.",
+             "part of that contribution is marked processed together.",
     "1.4.1": "Three fixes: SMS settings no longer repeat on every settings tab; "
              "the bulk fund/department import is now linked from the Funds & "
              "departments page; and a new bulk tool marks bank entries as processed "
@@ -195,7 +252,7 @@ WHATS_NEW = {
     "1.0.9": "New bank-position report: compares the system bank balance to the "
              "statement closing balance to catch entries that never made it into "
              "the app.",
-    "1.0.8": "Receipt a single bank/M-Pesa gift as an envelope on demand, with an "
+    "1.0.8": "Receipt a single bank/M-Pesa contribution as an envelope on demand, with an "
              "optional hand-written receipt number — without double-counting.",
     "1.0.7": "Reconciliation variance finder now detects re-allocated, edited, "
              "excluded and reversed entries (not just unposted ones) and offers a "

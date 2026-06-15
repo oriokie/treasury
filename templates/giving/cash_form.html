@@ -4,19 +4,19 @@
 <div class="page-head"><div><h1>Record cash / envelope entry</h1>
 <div class="sub">Loose offering, envelope counts, or any manual receipt</div></div></div>
 
-<div class="info-panel" style="max-width:640px">
+<div class="info-panel u-narrow-md">
   <strong>Member vs payer:</strong> a <em>member</em> is a saved person whose
   giving history is tracked — start typing to pick one. A <em>payer name</em> is
   free text for someone not in the register (a visitor, or “loose offering”).
   Pick a member where you can; use payer name otherwise.
 </div>
 
-<div class="card form-card" style="max-width:640px"><div class="bd">
+<div class="card form-card u-narrow-md"><div class="bd">
   <form method="post"><div class="form-grid">{% csrf_token %}
-    {% if form.non_field_errors %}<div class="errorlist" style="grid-column:1/-1">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    {% if form.non_field_errors %}<div class="errorlist u-col-span">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-row">
       <label>Member</label>
-      <div style="position:relative">
+      <div class="pos-rel">
         <input id="memberSearch" class="field" autocomplete="off" placeholder="Start typing a member's name…">
         <input type="hidden" id="memberHidden">
         <div class="ac-box" id="memberAc"></div>
@@ -26,7 +26,7 @@
     </div>
     <div class="form-row">
       <label>Fund</label>
-      <div style="position:relative">
+      <div class="pos-rel">
         <input id="fundSearch" class="field" autocomplete="off" placeholder="Start typing a fund… (split offerings appear as one)">
         <div class="ac-box" id="fundAc"></div>
       </div>
@@ -42,7 +42,7 @@
       </div>
     {% endif %}{% endfor %}
     </div>
-    {% if duplicate_warning %}<label class="check-row" style="color:var(--amber)"><input type="checkbox" name="confirm_duplicate" value="1"> This is not a duplicate — save anyway</label>{% endif %}
+    {% if duplicate_warning %}<label class="check-row text-amber"><input type="checkbox" name="confirm_duplicate" value="1"> This is not a duplicate — save anyway</label>{% endif %}
     <div class="btn-row"><button class="btn">Save entry</button><a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a></div>
   </form>
 </div></div>
@@ -59,8 +59,10 @@ inp.addEventListener("input",()=>{ clearTimeout(t); hidden.value=""; pick.style.
     ac.innerHTML=""; if(!d.results.length){ ac.style.display="none"; return; }
     d.results.forEach(m=>{ const it=document.createElement("div"); it.className="ac-item";
       it.innerHTML=`${m.name}${m.type?' <span class="muted">· '+m.type+'</span>':''}${m.phone?' <span class="muted">· '+m.phone+'</span>':''}`;
-      it.addEventListener("mousedown",e=>{ e.preventDefault(); inp.value=m.name; hidden.value=m.id;
-        pick.textContent="Linked to member: "+m.name; pick.style.display="block"; ac.style.display="none"; });
+      const doPick=()=>{ inp.value=m.name; hidden.value=m.id;
+        pick.textContent="Linked to member: "+m.name; pick.style.display="block"; ac.style.display="none"; };
+      it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
+      it._pick=doPick;
       ac.appendChild(it); });
     ac.style.display="block";
   }catch(e){ ac.style.display="none"; } },170);
@@ -76,16 +78,45 @@ fs.addEventListener("input",()=>{ clearTimeout(ft); fkey.value=""; const q=fs.va
     fac.innerHTML=""; if(!d.results.length){ fac.style.display="none"; return; }
     d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
       it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
-      it.addEventListener("mousedown",e=>{ e.preventDefault(); fs.value=r.label; fkey.value=r.key; fac.style.display="none"; });
+      const doPick=()=>{ fs.value=r.label; fkey.value=r.key; fac.style.display="none"; };
+      it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
+      it._pick=doPick;
       fac.appendChild(it); });
     fac.style.display="block";
   }catch(e){ fac.style.display="none"; } },160);
 });
-fs.addEventListener("blur",()=>setTimeout(()=>fac.style.display="none",150));
+fs.addEventListener("blur",()=>setTimeout(()=>fac.style.display=="block"&&(fac.style.display="none"),150));
+
+// Keyboard navigation for the autocompletes: ↑/↓ to highlight, Enter to choose,
+// Esc to dismiss — so the form is fully usable without a mouse.
+function acKeyNav(input, box){
+  input.addEventListener("keydown",e=>{
+    const open = box.style.display==="block";
+    const items=[...box.querySelectorAll(".ac-item")];
+    if(e.key==="Enter" && open && items.length){
+      const act=box.querySelector(".ac-item.ac-active")||items[0];
+      e.preventDefault(); if(act._pick) act._pick(); return;
+    }
+    if(!open || !items.length) return;
+    let idx=items.findIndex(i=>i.classList.contains("ac-active"));
+    if(e.key==="ArrowDown"){ e.preventDefault(); idx=(idx+1)%items.length; }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); idx=(idx-1+items.length)%items.length; }
+    else if(e.key==="Escape"){ box.style.display="none"; return; }
+    else return;
+    items.forEach(i=>i.classList.remove("ac-active"));
+    items[idx].classList.add("ac-active");
+    items[idx].scrollIntoView({block:"nearest"});
+  });
+}
+acKeyNav(inp, ac);
+acKeyNav(fs, fac);
+// Land in the first field ready to type.
+window.addEventListener("load",()=>{ try{ inp.focus(); }catch(e){} });
+
 </script>
 <style>
 .ac-box{display:none;position:absolute;z-index:30;left:0;right:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.12);max-height:220px;overflow:auto}
 .ac-item{padding:.4rem .6rem;cursor:pointer;font-size:.88rem}
-.ac-item:hover{background:var(--accent-soft)}
+.ac-item:hover,.ac-item.ac-active{background:var(--accent-soft)}
 </style>
 {% endblock %}

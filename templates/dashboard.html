@@ -1,17 +1,15 @@
 {% extends 'base.html' %}{% load humanize static %}
 {% block title %}Dashboard · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <h1>Dashboard</h1>
-    <div class="sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</div>
-  </div>
-  <form method="get" class="btn-row" style="align-items:flex-end">
-    <div class="f filters" style="margin:0;border:none;padding:0;background:none;gap:.5rem">
-      <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
-      <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
-      <button class="btn btn-sm">Apply</button>
-    </div>
+<div class="ws-head">
+  <div class="ws-titles"><h1>Dashboard</h1>
+    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</div></div>
+  <form method="get" class="toolbar">
+    <div class="fb-field"><label>From</label>
+      <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field"></div>
+    <div class="fb-field"><label>To</label>
+      <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field"></div>
+    <button class="btn btn-sm">Apply</button>
   </form>
 </div>
 
@@ -40,48 +38,60 @@
 </div>
 {% endif %}
 
-<div class="grid cols-4" style="margin-bottom:1.4rem">
-  <div class="stat accent"><div class="label">Total receipts</div>
-    <div class="value"><span class="ksh">KSh</span>{{ totals.receipts|floatformat:2|intcomma }}</div>
-    <div class="foot">Across {{ fund_count }} active funds</div></div>
-  <div class="stat warn"><div class="label">Expenses</div>
-    <div class="value"><span class="ksh">KSh</span>{{ totals.expenses_operating|floatformat:2|intcomma }}</div>
-    <div class="foot">Approved &amp; paid · excl. trust remittances</div></div>
-  <a class="stat brass" href="{% url 'remittance_dashboard' %}" style="display:block">
-    <div class="label">Trust to remit</div>
-    <div class="value"><span class="ksh">KSh</span>{{ trust_to_remit|floatformat:2|intcomma }}</div>
-    <div class="foot">All trust funds (incl. tithe) → conference</div></a>
-  <div class="stat"><div class="label">Closing balance</div>
-    <div class="value"><span class="ksh">KSh</span>{{ totals.closing|floatformat:2|intcomma }}</div>
-    <div class="foot">Opening + receipts − expenses</div></div>
+{% url 'remittance_dashboard' as remit_url %}
+<div class="kpi-grid">
+  {% include "ui/stat.html" with label="Total receipts" prefix="KSh" value=totals.receipts|floatformat:2|intcomma accent="accent" foot="Across active funds" %}
+  {% include "ui/stat.html" with label="Expenses" prefix="KSh" value=totals.expenses_operating|floatformat:2|intcomma accent="warn" foot="Approved & paid · excl. trust remittances" %}
+  {% include "ui/stat.html" with label="Trust to remit" prefix="KSh" value=trust_to_remit|floatformat:2|intcomma accent="brass" foot="All trust funds (incl. tithe) → conference" href=remit_url %}
+  {% include "ui/stat.html" with label="Closing balance" prefix="KSh" value=totals.closing|floatformat:2|intcomma foot="Opening + receipts − expenses" %}
 </div>
 
-{% if queue_count or pending_expenses or dup_count %}
-<div class="card" style="margin-bottom:1.4rem;border-left:3px solid var(--brass)">
-  <div class="bd btn-row" style="align-items:center">
-    <strong style="font-family:Fraunces,serif">Needs attention:</strong>
-    {% if queue_count %}<a class="pill pill-amber" href="{% url 'queue' %}">⚑ {{ queue_count }} item(s) to allocate</a>{% endif %}
-    {% if pending_expenses %}<a class="pill pill-brass" href="{% url 'expense_list' %}?status=PENDING">⊟ {{ pending_expenses }} expense(s) to approve</a>{% endif %}
-    {% if dup_count %}<a class="pill pill-red" href="{% url 'member_duplicates' %}">☺ {{ dup_count }} possible duplicate(s)</a>{% endif %}
+{% if sabbath.has_data %}
+<div class="card sabbath-snap u-mb-lg"><div class="bd">
+  <div class="ss-head">
+    <div><div class="ss-eyebrow">Latest Sabbath</div>
+      <div class="ss-date">{{ sabbath.date|date:"l, j M Y" }}</div></div>
+    <div class="ss-total">
+      <span class="ksh">KSh</span>{{ sabbath.total|floatformat:0|intcomma }}
+      {% if sabbath.pct != None %}<span class="ss-delta {% if sabbath.up %}up{% else %}down{% endif %}">
+        {% if sabbath.up %}▲{% else %}▼{% endif %} {{ sabbath.pct|floatformat:0 }}%</span>{% endif %}
+    </div>
   </div>
+  <div class="ss-meta">
+    {{ sabbath.gifts }} contribution{{ sabbath.gifts|pluralize }}{% if sabbath.envelopes %} · {{ sabbath.envelopes }} envelope{{ sabbath.envelopes|pluralize }} recorded{% endif %}
+    · vs previous Sabbath KSh {{ sabbath.prev_total|floatformat:0|intcomma }}
+  </div>
+  {% if sabbath.funds %}
+  <div class="ss-funds">
+    {% for f in sabbath.funds %}<span class="ss-fund">{{ f.department__name }} <b>{{ f.t|floatformat:0|intcomma }}</b></span>{% endfor %}
+  </div>{% endif %}
+</div></div>
+{% endif %}
+
+{% if queue_count or pending_expenses or dup_count %}
+<div class="alert alert-brass">
+  <span class="alert-title">Needs attention:</span>
+  {% if queue_count %}<a class="pill pill-amber" href="{% url 'queue' %}">⚑ {{ queue_count }} item(s) to allocate</a>{% endif %}
+  {% if pending_expenses %}<a class="pill pill-brass" href="{% url 'expense_list' %}?status=PENDING">⊟ {{ pending_expenses }} expense(s) to approve</a>{% endif %}
+  {% if dup_count %}<a class="pill pill-red" href="{% url 'member_duplicates' %}">☺ {{ dup_count }} possible duplicate(s)</a>{% endif %}
 </div>
 {% endif %}
 
-<div class="grid cols-3" style="margin-bottom:1.4rem">
-  <div class="card"><div class="hd">Income by channel</div><div class="bd" style="display:flex;justify-content:center">
+<div class="grid cols-3 u-mb-lg">
+  <div class="card"><div class="hd">Income by channel</div><div class="bd chart-center">
     <canvas id="channelChart" height="200"></canvas></div></div>
   <div class="card"><div class="hd">Receipts vs expenses by month</div><div class="bd">
     {% if has_monthly %}<canvas id="monthlyChart" height="200"></canvas>
-    {% else %}<div class="muted" style="padding:2rem 0;text-align:center">Not enough months in range</div>{% endif %}</div></div>
+    {% else %}<div class="chart-empty">Not enough months in range</div>{% endif %}</div></div>
   <div class="card"><div class="hd">Top funds by receipts</div><div class="bd">
     {% if has_topfunds %}<canvas id="topFundsChart" height="200"></canvas>
-    {% else %}<div class="muted" style="padding:2rem 0;text-align:center">No fund receipts in range</div>{% endif %}</div></div>
+    {% else %}<div class="chart-empty">No fund receipts in range</div>{% endif %}</div></div>
 </div>
 
-<div class="section-title" style="display:flex;align-items:center;gap:.6rem">Local funds <span class="muted" style="font-weight:400;font-size:.8rem">— {{ local_rows|length }} fund(s)</span>
-  <button type="button" class="btn btn-sm btn-ghost no-print" style="margin-left:auto" onclick="downloadLocalFundsJpeg()" title="Download this table as a JPEG image">⤓ JPEG</button>
+<div class="section-title section-head">Local funds <span class="muted">— {{ local_rows|length }} fund(s)</span>
+  <button type="button" class="btn btn-sm btn-ghost no-print toolbar right" onclick="downloadLocalFundsJpeg()" title="Download this table as a JPEG image">⤓ JPEG</button>
 </div>
-<div class="table-wrap" style="margin-bottom:1.4rem">
+<div class="table-wrap u-mb-lg">
   <table class="ledger" id="localFundsTable" data-period="{{ start|date:'j M Y' }} – {{ end|date:'j M Y' }}" data-church="{{ CHURCH_NAME|default:SITE_NAME }}">
     <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
     <tbody>
@@ -95,7 +105,7 @@
       </tr>
     {% empty %}<tr><td colspan="5" class="muted">No local funds yet.</td></tr>{% endfor %}
     </tbody>
-    <tfoot><tr style="border-top:2px solid var(--line);font-weight:700">
+    <tfoot><tr class="tfoot-total">
       <td>Total local</td>
       <td class="num mono">{{ local_totals.opening|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ local_totals.receipts|floatformat:2|intcomma }}</td>
@@ -194,21 +204,21 @@ function downloadLocalFundsJpeg(){
     <div class="section-title">How giving arrives</div>
     <div class="card"><div class="bd">
       {% for c in channel_mix %}
-        <div style="margin-bottom:.7rem">
-          <div class="kv" style="margin-bottom:.25rem"><span>{{ c.label }} <span class="muted" style="font-size:.74rem">· {{ c.count }} gift{{ c.count|pluralize }}</span></span><span class="mono">{{ c.total|floatformat:2|intcomma }}</span></div>
+        <div class="bar-item">
+          <div class="kv"><span>{{ c.label }} <span class="cnt">· {{ c.count }} contribution{{ c.count|pluralize }}</span></span><span class="mono">{{ c.total|floatformat:2|intcomma }}</span></div>
           <div class="pbar" title="{{ c.pct }}% of giving"><span style="width:{{ c.pct }}%"></span></div>
         </div>
       {% empty %}<div class="muted">No giving recorded in this period yet.</div>{% endfor %}
-      {% if channel_total %}<div class="kv" style="border-top:1px solid var(--line);padding-top:.5rem;margin-top:.2rem"><span class="muted">Total</span><span class="mono">{{ channel_total|floatformat:2|intcomma }}</span></div>{% endif %}
+      {% if channel_total %}<div class="kv channel-total"><span class="muted">Total</span><span class="mono">{{ channel_total|floatformat:2|intcomma }}</span></div>{% endif %}
     </div></div>
   </div>
 </div>
 
 {% if has_trend %}
-<div class="section-title">Multi-year trend <span class="muted" style="font-weight:400;font-size:.8rem">— January–{{ trend_through }}, each year</span></div>
-<div class="card" style="margin-bottom:1.4rem"><div class="bd">
+<div class="section-title section-head">Multi-year trend <span class="muted">— January–{{ trend_through }}, each year</span></div>
+<div class="card u-mb-lg"><div class="bd">
   <canvas id="trendChart" height="110"></canvas>
-  <p class="help" style="margin-top:.6rem">Collection, trust fund, and expenditure for January–{{ trend_through }} of each year, so the year in progress is compared like-for-like. The current year updates from the live ledger.{% if trend_approx %} Years held only as an annual total are pro-rated to this point.{% endif %}</p>
+  <p class="help u-mt-sm">Collection, trust fund, and expenditure for January–{{ trend_through }} of each year, so the year in progress is compared like-for-like. The current year updates from the live ledger.{% if trend_approx %} Years held only as an annual total are pro-rated to this point.{% endif %}</p>
 </div></div>
 {% endif %}
 

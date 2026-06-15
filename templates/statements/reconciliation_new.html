@@ -2,7 +2,7 @@
 {% block title %}New reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>New bank reconciliation</h1><div class="sub">Enter the bank statement closing balance to start</div></div></div>
-<div class="card" style="max-width:560px"><div class="bd">
+<div class="card u-narrow"><div class="bd">
   <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
     <p class="help">Leave the book balance blank to auto-fill it from the cash book up to the statement date — you can adjust it later.</p>
     <div class="btn-row"><button class="btn">Start reconciliation</button><a class="btn btn-ghost" href="{% url 'reconciliation_list' %}">Cancel</a></div>

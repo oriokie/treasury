@@ -14,7 +14,7 @@
 </div>
 
 {% for t in debits %}
-<div class="card" style="margin-bottom:.8rem"><div class="bd">
+<div class="card u-mb-sm"><div class="bd">
   <div class="split" style="gap:1rem;align-items:flex-start;flex-wrap:wrap">
     <div style="flex:1;min-width:220px">
       <div><strong class="mono">KES {{ t.amount|floatformat:2|intcomma }}</strong> · {{ t.date|date:"d M Y" }}</div>

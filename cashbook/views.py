@@ -517,6 +517,13 @@ class ExpenseDetailView(ReadAccessMixin, DetailView):
     template_name = "cashbook/expense_detail.html"
     context_object_name = "expense"
 
+    def get_context_data(self, **kwargs):
+        from core.models import SiteConfig
+        ctx = super().get_context_data(**kwargs)
+        # same source as the list, so the dual-approval gate behaves identically
+        ctx["dual_threshold"] = SiteConfig.get().dual_approval_threshold or 0
+        return ctx
+
 
 class ExpenseAttachmentUpload(DataEntryRequiredMixin, View):
     ALLOWED_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")

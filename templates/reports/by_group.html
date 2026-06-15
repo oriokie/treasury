@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>Giving by group</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div></div>
 {% include 'partials/period_filter.html' %}
-<div class="table-wrap" style="margin-top:1rem"><table class="ledger">
+<div class="table-wrap u-mt"><table class="ledger">
   <thead><tr><th>Demographic group</th><th class="num">Total given</th><th class="num">Share</th></tr></thead>
   <tbody>
   {% for r in rows %}

@@ -6,17 +6,17 @@
 <a class="btn btn-ghost btn-sm" href="{% url 'remittance_batch_list' %}">All batches</a></div>
 
 <form method="get" class="filter-bar" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="form-row" style="margin:0"><label style="font-size:.78rem">Month</label>
+  <div class="form-row u-m-0"><label class="u-xs">Month</label>
     <input class="field mono" type="month" name="month" value="{{ period_month|default:'' }}"></div>
   <span class="help" style="padding-bottom:.5rem">or range</span>
-  <div class="form-row" style="margin:0"><label style="font-size:.78rem">From</label>
+  <div class="form-row u-m-0"><label class="u-xs">From</label>
     <input class="field mono" type="date" name="start" value="{{ period_start|date:'Y-m-d' }}"></div>
-  <div class="form-row" style="margin:0"><label style="font-size:.78rem">To</label>
+  <div class="form-row u-m-0"><label class="u-xs">To</label>
     <input class="field mono" type="date" name="end" value="{{ period_end|date:'Y-m-d' }}"></div>
   <button class="btn btn-sm">Apply</button>
   {% if period_active %}<a class="btn btn-ghost btn-sm" href="{% url 'remittance_dashboard' %}">Clear</a>{% endif %}
 </form>
-{% if period_active %}<div class="callout" style="margin-bottom:1rem">Showing trust collected{% if period_month %} for {{ period_month }}{% else %} from {{ period_start|date:'d M Y' }} to {{ period_end|date:'d M Y' }}{% endif %}. A batch created now will be stamped to this period and dated within it — the normal lump-sum-per-period workflow.</div>{% endif %}
+{% if period_active %}<div class="callout u-mb">Showing trust collected{% if period_month %} for {{ period_month }}{% else %} from {{ period_start|date:'d M Y' }} to {{ period_end|date:'d M Y' }}{% endif %}. A batch created now will be stamped to this period and dated within it — the normal lump-sum-per-period workflow.</div>{% endif %}
 
 <div class="kpi-row">
   <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|floatformat:0|intcomma }}</div></div>
@@ -26,12 +26,12 @@
   <div class="kpi {% if days_to_sabbath < 0 %}kpi-danger{% elif days_to_sabbath <= 7 %}kpi-warn{% endif %}">
     <div class="kpi-label">Countdown to reporting Sabbath</div>
     <div class="kpi-val">{% if days_to_sabbath < 0 %}{{ days_to_sabbath|stringformat:"+d" }}<span class="kpi-unit"> days</span>{% elif days_to_sabbath == 0 %}Today{% else %}{{ days_to_sabbath }}<span class="kpi-unit"> day{{ days_to_sabbath|pluralize }}</span>{% endif %}</div>
-    <div class="kpi-sub" style="font-size:.72rem;color:var(--muted)">Sabbath {{ reporting_sabbath|date:"d M" }} · {{ deadline_period }}</div>
+    <div class="kpi-sub u-meta">Sabbath {{ reporting_sabbath|date:"d M" }} · {{ deadline_period }}</div>
   </div>
-  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Remittance deadline</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div><div class="kpi-sub" style="font-size:.72rem;color:var(--muted)">{% if days_to_deadline < 0 %}overdue by {{ days_to_deadline|stringformat:"d"|cut:"-" }} days{% else %}in {{ days_to_deadline }} day{{ days_to_deadline|pluralize }}{% endif %} · <a href="{% url 'remittance_calendar' %}">calendar</a></div></div>
+  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Remittance deadline</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div><div class="kpi-sub u-meta">{% if days_to_deadline < 0 %}overdue by {{ days_to_deadline|stringformat:"d"|cut:"-" }} days{% else %}in {{ days_to_deadline }} day{{ days_to_deadline|pluralize }}{% endif %} · <a href="{% url 'remittance_calendar' %}">calendar</a></div></div>
   {% else %}
   <div class="kpi {% if max_days > 30 %}kpi-danger{% endif %}"><div class="kpi-label">Oldest outstanding</div><div class="kpi-val">{{ max_days }}<span class="kpi-unit"> days</span></div></div>
-  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Next remittance due</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div><div class="kpi-sub" style="font-size:.72rem;color:var(--muted)"><a href="{% url 'remittance_calendar' %}">set monthly deadlines →</a></div></div>
+  <div class="kpi {% if due_overdue %}kpi-danger{% endif %}"><div class="kpi-label">Next remittance due</div><div class="kpi-val" style="font-size:1.15rem">{{ due_date|date:"d M Y" }}</div><div class="kpi-sub u-meta"><a href="{% url 'remittance_calendar' %}">set monthly deadlines →</a></div></div>
   {% endif %}
 </div>
 
@@ -62,7 +62,7 @@
 </div>{% endif %}
 </form>
 
-<h2 style="margin-top:1.6rem">Recent batches <span class="muted" style="font-weight:400;font-size:.8rem">— last 10</span></h2>
+<h2 style="margin-top:1.6rem">Recent batches <span class="muted u-subtle">— last 10</span></h2>
 <div class="table-wrap"><table class="ledger compact">
   <thead><tr><th>Batch</th><th>Date</th><th class="num">Total</th><th>Status</th><th>Cheque</th></tr></thead>
   <tbody>

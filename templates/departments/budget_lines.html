@@ -7,8 +7,8 @@
 
 {% if not lines and prior_has_lines %}
 <div class="info-panel">No lines yet for {{ year }}. You can start from last year's plan.
-  <form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}">
-    <button name="action" value="copy_prior" class="btn btn-sm btn-brass" style="margin-left:.5rem">Copy {{ prior_year }} breakdown</button></form></div>
+  <form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}">
+    <button name="action" value="copy_prior" class="btn btn-sm btn-brass u-ml-sm">Copy {{ prior_year }} breakdown</button></form></div>
 {% endif %}
 
 <div class="card"><div class="bd">
@@ -21,24 +21,24 @@
             {% elif ln.source_kind == 'OTHER' %}<span class="pill pill-blue">{{ ln.source_fund.name }}</span>
             {% else %}<span class="muted">{{ dept.name }} (own funds)</span>{% endif %}</td>
         <td class="num mono">{{ ln.amount|floatformat:2|intcomma }}</td>
-        <td><form method="post" style="display:inline" onsubmit="return confirm('Remove this line?');">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="line" value="{{ ln.id }}"><button name="action" value="delete" class="link link-danger">Delete</button></form></td></tr>
+        <td><form method="post" class="u-inline" onsubmit="return confirm('Remove this line?');">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="line" value="{{ ln.id }}"><button name="action" value="delete" class="link link-danger">Delete</button></form></td></tr>
     {% empty %}<tr><td colspan="5" class="empty">No breakdown lines yet.</td></tr>{% endfor %}
     </tbody>
     {% if lines %}<tfoot><tr><td colspan="3"><strong>Total</strong></td><td class="num mono"><strong>{{ budget.lines_total|floatformat:2|intcomma }}</strong></td><td></td></tr></tfoot>{% endif %}
   </table>
 
-  <form method="post" style="margin-top:1rem">{% csrf_token %}
+  <form method="post" class="u-mt">{% csrf_token %}
     <input type="hidden" name="year" value="{{ year }}">
     <div class="form-grid" style="display:grid;grid-template-columns:1.4fr 1fr 1.4fr .8fr auto;gap:.6rem;align-items:end">
-      <div class="form-row" style="margin:0"><label>Line name</label><input name="name" class="field" placeholder="e.g. Choir uniforms"></div>
-      <div class="form-row" style="margin:0"><label>Category</label><select name="category" class="field--select"><option value="">— none —</option>{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
-      <div class="form-row" style="margin:0"><label>Source of funds</label>
+      <div class="form-row u-m-0"><label>Line name</label><input name="name" class="field" placeholder="e.g. Choir uniforms"></div>
+      <div class="form-row u-m-0"><label>Category</label><select name="category" class="field--select"><option value="">— none —</option>{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+      <div class="form-row u-m-0"><label>Source of funds</label>
         <select name="source_fund" class="field--select">
           <option value="">{{ dept.name }} (own funds)</option>
           {% if lcb and lcb.id != dept.id %}<option value="{{ lcb.id }}">Local Church Budget (LCB)</option>{% endif %}
           {% for f in other_funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
         </select></div>
-      <div class="form-row" style="margin:0"><label>Amount</label><input name="amount" class="field mono" style="text-align:right"></div>
+      <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right"></div>
       <button name="action" value="add" class="btn">Add line</button>
     </div>
     <p class="help">Leave “Source of funds” as the department's own funds, or charge a line to the Local Church Budget or another fund. The board report summarises how much each source (especially LCB) will incur.</p>

@@ -10,7 +10,7 @@ from django.db.models import Q
 
 
 class Command(BaseCommand):
-    help = "Fill blank member phones from their transactions; link orphan gifts."
+    help = "Fill blank member phones from their transactions; link orphan contributions."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
@@ -53,4 +53,4 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f"{'[dry-run] ' if dry else ''}Filled {filled} member phone(s); "
-            f"linked {linked} orphan gift(s); created {created} member(s)."))
+            f"linked {linked} orphan contribution(s); created {created} member(s)."))

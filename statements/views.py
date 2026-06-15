@@ -99,7 +99,7 @@ def _ledger_bank_balance(up_to_date):
 
 def _recon_diagnostic(up_to_date):
     """Explain the cash-book balance and surface the things that most often make a
-    post-import reconciliation refuse to balance: gifts received into the bank that
+    post-import reconciliation refuse to balance: contributions received into the bank that
     are not (yet) in the book — still in the review queue, awaiting Sabbath
     confirmation, or unconfirmed — and bank money excluded as envelope detail."""
     from core.models import SiteConfig

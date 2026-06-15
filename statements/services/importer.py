@@ -19,7 +19,7 @@ from statements.services.parser import read_rows
 
 def _is_receiptable_fund(dept):
     """True for funds we normally turn into envelope receipts: any Trust fund and
-    the Local Church Budget (LCB) family. Used to decide which late-imported gifts
+    the Local Church Budget (LCB) family. Used to decide which late-imported contributions
     enter the Sabbath confirmations queue."""
     if dept is None:
         return False

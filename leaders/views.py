@@ -28,16 +28,18 @@ class LeaderDashboardView(LeaderRequiredMixin, TemplateView):
         start, end = parse_period(self.request)
         ctx["start"], ctx["end"] = start, end
         rows = _scoped_rows(self.request.user, start, end)
-        # only the directly-led departments head the list; their sub-accounts are
-        # shown nested under them
-        led_ids = set(allowed_departments(self.request.user)
-                      .filter(parent__isnull=True).values_list("id", flat=True))
-        # group sub-accounts under their parent
+        # A row heads the list (is a "top") when its parent is NOT also in the
+        # leader's set — i.e. it's a root of the leader's allowed tree. So a leader
+        # assigned the parent fund sees it with its sub-accounts nested; a leader
+        # assigned a single subgroup directly still sees that subgroup at the top
+        # (it isn't hidden under a parent they don't lead).
+        allowed_ids = set(allowed_departments(self.request.user)
+                          .values_list("id", flat=True))
         by_parent = {}
         tops = []
         for r in rows:
             d = r["department"]
-            if d.parent_id:
+            if d.parent_id and d.parent_id in allowed_ids:
                 by_parent.setdefault(d.parent_id, []).append(r)
             else:
                 tops.append(r)
@@ -68,13 +70,16 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         from decimal import Decimal
         from django.db.models import Sum
         from giving.models import Transaction
+        # one grouped query for all groups, not an aggregate per group
+        collected_map = {r["dev_group"]: (r["s"] or Decimal(0)) for r in
+            Transaction.objects.filter(
+                direction=Transaction.Direction.CREDIT, confirmed=True,
+                is_reversal=False, is_reversed=False, dev_group__isnull=False,
+                date__gte=start, date__lte=end)
+            .values("dev_group").annotate(s=Sum("amount"))}
         rows = []
         for g in DevelopmentGroup.objects.filter(active=True):
-            collected = (Transaction.objects.filter(dev_group=g,
-                            direction=Transaction.Direction.CREDIT, confirmed=True,
-                            is_reversal=False, is_reversed=False,
-                            date__gte=start, date__lte=end)
-                         .aggregate(s=Sum("amount"))["s"] or Decimal(0))
+            collected = collected_map.get(g.id, Decimal(0))
             tgt = g.target or Decimal(0)
             pct = int(min(collected / tgt * 100, 100)) if tgt else None
             rows.append({"group": g, "collected": collected, "target": tgt, "pct": pct})
@@ -350,7 +355,7 @@ class LeaderGroupDetailView(LeaderRequiredMixin, TemplateView):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
             data_obj = balances.dev_group_members(self.group, start, end)
-            header = ["Contributor", "Phone", "Gifts", "Total"]
+            header = ["Contributor", "Phone", "Contributions", "Total"]
             data = [[r["name"], mask_phone(r["phone"]), r["count"], float(r["total"])]
                     for r in data_obj["rows"]]
             title = f"{self.group.label} contributions {start:%d %b %Y}–{end:%d %b %Y}"

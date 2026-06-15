@@ -2,7 +2,7 @@
 {% block title %}Mark entries processed · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Mark bank entries as manual receipts</h1>
-  <div class="sub">For gifts already receipted on paper — kept out of receipting, no system envelope created</div></div></div>
+  <div class="sub">For contributions already receipted on paper — kept out of receipting, no system envelope created</div></div></div>
 
 <div class="card" style="max-width:720px"><div class="bd">
   <div class="help" style="line-height:1.7;margin-bottom:.8rem">
@@ -14,22 +14,22 @@
     is reversible: untick "manual receipt" on an entry to make it eligible for a
     system receipt later.
   </div>
-  <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+  <ol class="u-list-loose">
     <li><strong>Download</strong> the template — two columns: <span class="mono">reference</span> and <span class="mono">amount</span>.</li>
     <li>Fill one row per envelope: the reference (M-Pesa code or bank reference) and the amount.</li>
     <li><strong>Upload</strong> it. The reference finds the bank entry; the amount confirms it's the right record. A mismatch is reported, not applied.</li>
   </ol>
-  <div class="btn-row" style="margin:.8rem 0">
+  <div class="btn-row u-my">
     <a class="btn btn-ghost" href="?template=1">⤓ Download template (.csv)</a>
   </div>
-  <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+  <form method="post" enctype="multipart/form-data" class="u-section-top">
     {% csrf_token %}
-    <div class="form-row" style="margin:.4rem 0"><label>Reference + amount file (.csv or .xlsx)</label>
+    <div class="form-row u-my-sm"><label>Reference + amount file (.csv or .xlsx)</label>
       <input type="file" name="file" class="field" accept=".csv,.xlsx,.xls" required></div>
     <button class="btn">Upload &amp; mark processed</button>
     <a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a>
   </form>
-  <div class="help" style="margin-top:.7rem">Only <strong>bank credit</strong> entries are matched. An entry that's already marked, or whose amount doesn't match, is skipped and reported so you can check it.</div>
-  <div class="help" style="margin-top:.5rem"><strong>Split offerings</strong> (e.g. Combined Offering) appear in the ledger as several rows with the amount divided. Enter the <strong>total</strong> the member gave (the lump sum) — all parts of that gift are marked together.</div>
+  <div class="help u-mt-sm">Only <strong>bank credit</strong> entries are matched. An entry that's already marked, or whose amount doesn't match, is skipped and reported so you can check it.</div>
+  <div class="help u-mt-sm"><strong>Split offerings</strong> (e.g. Combined Offering) appear in the ledger as several rows with the amount divided. Enter the <strong>total</strong> the member gave (the lump sum) — all parts of that contribution are marked together.</div>
 </div></div>
 {% endblock %}

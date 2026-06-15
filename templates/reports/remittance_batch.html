@@ -1,6 +1,8 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}{{ batch.batch_number }} · {{ SITE_NAME }}{% endblock %}
+{% block title %}{{ batch.batch_number }} · {{ SITE_NAME }}{% include "ui/print_signatures.html" %}
+{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Conference Remittance Schedule" %}
 <div class="page-head"><div><h1>Remittance {{ batch.batch_number }}</h1>
 <div class="sub">Created {{ batch.date|date:"d M Y" }} · to {{ field_name }}</div></div>
 <span class="pill {% if batch.status == 'REMITTED' %}pill-green{% elif batch.status == 'APPROVED' %}pill-blue{% elif batch.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}" style="font-size:.9rem">{{ batch.get_status_display }}</span></div>
@@ -30,7 +32,7 @@
   {% if batch.status == 'DRAFT' %}
     <form method="post" action="{% url 'remittance_batch_approve' batch.id %}">{% csrf_token %}<button class="btn">Approve batch</button></form>
   {% elif batch.status == 'APPROVED' %}
-    <form method="post" action="{% url 'remittance_batch_remit' batch.id %}" style="display:inline-flex;gap:.4rem;align-items:center" onsubmit="return confirm('Mark this batch as remitted? This records the funds as sent to the field.');">{% csrf_token %}
+    <form method="post" action="{% url 'remittance_batch_remit' batch.id %}" class="u-inline-flex" onsubmit="return confirm('Mark this batch as remitted? This records the funds as sent to the field.');">{% csrf_token %}
       <input name="cheque_no" class="field" placeholder="Cheque no." style="width:130px">
       <input type="date" name="cheque_date" class="field" style="width:150px">
       <button class="btn">Mark remitted</button>

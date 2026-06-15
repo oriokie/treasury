@@ -9,19 +9,19 @@
   </div>
 </div>
 
-<div class="ws-summary" style="margin-bottom:1rem">
+<div class="ws-summary u-mb">
   <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ pledged|floatformat:0|intcomma }}</span></div>
   <div class="ws-metric"><span class="wm-l">Paid</span><span class="wm-v">{{ paid|floatformat:0|intcomma }}</span></div>
   <div class="ws-metric"><span class="wm-l">Outstanding</span><span class="wm-v">{{ outstanding|floatformat:0|intcomma }}</span></div>
   <div class="ws-metric {% if pct >= 100 %}is-positive{% endif %}"><span class="wm-l">Fulfilled</span><span class="wm-v">{{ pct }}%</span></div>
 </div>
 
-<div class="btn-row no-print" style="margin-bottom:1rem">
+<div class="btn-row no-print u-mb">
   <a class="btn btn-sm btn-ghost" href="?export=csv">⬇ CSV</a>
   <a class="btn btn-sm btn-ghost" href="?export=xlsx">⬇ Excel</a>
 </div>
 
-<div class="card"><div class="bd" style="padding:0">
+<div class="card"><div class="bd bd-flush">
   <table class="ledger compact">
     <thead><tr><th>Member</th><th>Phone</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th style="width:140px">Progress</th><th>Status</th></tr></thead>
     <tbody>

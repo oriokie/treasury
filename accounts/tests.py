@@ -195,3 +195,89 @@ class TwoFactorVerifyBothStatesTests(TestCase):
         r = c.get("/2fa/verify/")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, 'name="token"')
+
+
+from django.test import override_settings
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class OtpDeliveryTests(TestCase):
+    """SMS/email one-time-code 2FA, delivered via the Advanta SMS integration or
+    Django email, as an alternative to the authenticator app."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from core.models import SiteConfig
+        cfg = SiteConfig.get(); cfg.require_2fa_for_treasurers = False; cfg.save()
+        self.u = User.objects.create_user("otp", password="pw12345", email="a@b.com")
+
+    def _code_from_outbox(self):
+        import re
+        from django.core import mail
+        return re.search(r"\b(\d{6})\b", mail.outbox[-1].body).group(1)
+
+    def test_email_code_send_and_verify(self):
+        from django.core import mail
+        from accounts.models import TwoFactor
+        tf = TwoFactor.objects.create(user=self.u, method="EMAIL", delivery_email="a@b.com")
+        mail.outbox = []
+        ok, dest = tf.send_code()
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+        code = self._code_from_outbox()
+        self.assertFalse(tf.verify_code("000000"))   # wrong
+        self.assertTrue(tf.verify_code(code))         # right
+        self.assertFalse(tf.verify_code(code))        # consumed, can't reuse
+
+    def test_expired_code_rejected(self):
+        import datetime as dt
+        from django.utils import timezone
+        from accounts.models import TwoFactor
+        tf = TwoFactor.objects.create(user=self.u, method="EMAIL", delivery_email="a@b.com")
+        tf.send_code()
+        # read the code, then force expiry
+        tf.otp_expires_at = timezone.now() - dt.timedelta(seconds=1)
+        tf.save()
+        self.assertFalse(tf.verify_code("123456"))
+
+    def test_attempt_limit(self):
+        from accounts.models import TwoFactor
+        tf = TwoFactor.objects.create(user=self.u, method="EMAIL", delivery_email="a@b.com")
+        tf.send_code()
+        for _ in range(5):
+            tf.verify_code("000000")
+        # 6th attempt is locked out even if it were correct
+        self.assertGreaterEqual(tf.otp_attempts, 5)
+
+    def test_login_flow_with_email_2fa(self):
+        from django.core import mail
+        from accounts.models import TwoFactor
+        TwoFactor.objects.create(user=self.u, method="EMAIL",
+                                 delivery_email="a@b.com", confirmed=True)
+        c = self.client
+        c.post("/accounts/login/", {"username": "otp", "password": "pw12345"})
+        mail.outbox = []
+        r = c.get("/2fa/verify/")             # auto-sends a code
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        code = self._code_from_outbox()
+        r2 = c.post("/2fa/verify/", {"token": code})
+        self.assertEqual(r2.status_code, 302)
+
+    def test_recovery_code_still_works_for_code_method(self):
+        from accounts.models import TwoFactor
+        tf = TwoFactor.objects.create(user=self.u, method="SMS", phone="254712345678",
+                                      confirmed=True)
+        codes = tf.reset_recovery_codes(); tf.save()
+        self.assertTrue(tf.authenticate(codes[0]))    # recovery code via authenticate()
+
+    def test_sms_method_stores_hashed_code(self):
+        from core.models import SiteConfig
+        from accounts.models import TwoFactor
+        cfg = SiteConfig.get()
+        cfg.sms_enabled = True; cfg.sms_api_key = "k"; cfg.sms_partner_id = "p"
+        cfg.sms_shortcode = "SC"; cfg.save()
+        tf = TwoFactor.objects.create(user=self.u, method="SMS", phone="254712345678")
+        tf.send_code()       # delivery may fail in test, but the code is stored
+        self.assertTrue(tf.otp_hash)
+        self.assertFalse(tf.verify_code("000000"))

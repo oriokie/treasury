@@ -1,6 +1,8 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}Statement of financial position · {{ SITE_NAME }}{% endblock %}
+{% block title %}Statement of financial position · {{ SITE_NAME }}{% include "ui/print_signatures.html" %}
+{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Statement of Financial Position" %}
 <div class="page-head no-print"><div><h1>Statement of Financial Position</h1><div class="sub">As at {{ as_of|date:"d M Y" }} · fund-accounting basis</div></div>
 <div class="btn-row"><a class="btn btn-ghost btn-sm" href="?as_of={{ as_of|date:'Y-m-d' }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?as_of={{ as_of|date:'Y-m-d' }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 <form method="get" class="filters no-print"><div class="f"><label>As at</label><input type="date" name="as_of" value="{{ as_of|date:'Y-m-d' }}" class="field"></div><button class="btn btn-sm">View</button></form>
@@ -38,7 +40,7 @@
     <tr class="subtotal"><td><strong>Total net assets</strong></td><td class="num mono"><strong>{{ net_assets|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
 
-  <table class="ledger compact" style="margin-top:.6rem"><tbody>
+  <table class="ledger compact u-mt-sm"><tbody>
     <tr class="grand"><td><strong>TOTAL LIABILITIES &amp; NET ASSETS</strong></td><td class="num mono"><strong>{{ total_liab_and_na|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
   <p class="bal-line">{% if balanced %}<span class="pill pill-green">✓ Balanced</span> Total assets equal total liabilities plus net assets.{% else %}<span class="pill pill-red">Out of balance</span> by {{ total_assets|floatformat:2|intcomma }} vs {{ total_liab_and_na|floatformat:2|intcomma }}.{% endif %}</p>

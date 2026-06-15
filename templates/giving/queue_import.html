@@ -3,16 +3,16 @@
 {% block content %}
 <div class="page-head"><div><h1>Import queue allocations</h1>
 <div class="sub">Allocate the review queue offline, then upload</div></div></div>
-<div class="card" style="max-width:620px"><div class="bd">
+<div class="card u-narrow-md"><div class="bd">
   <ol class="help" style="margin-top:0;line-height:1.7">
     <li><a class="link" href="{% url 'queue_export' %}">Download the review queue CSV</a>.</li>
     <li>Fill the <span class="mono">allocate_to_fund</span> column with a fund name (exactly as it appears under Funds).</li>
     <li>Save as CSV and upload here.</li>
   </ol>
-  <form method="post" enctype="multipart/form-data" style="margin-top:1rem">{% csrf_token %}
+  <form method="post" enctype="multipart/form-data" class="u-mt">{% csrf_token %}
     <div class="form-grid">
       <div class="form-row"><label>Filled CSV</label><input type="file" name="file" accept=".csv" class="field"></div>
-      <div class="form-row"><div class="check-row"><input type="checkbox" name="remember" value="1"> <label style="margin:0">Remember a rule for each reference</label></div></div>
+      <div class="form-row"><div class="check-row"><input type="checkbox" name="remember" value="1"> <label class="u-m-0">Remember a rule for each reference</label></div></div>
     </div>
     <div class="btn-row"><button class="btn">Import allocations</button><a class="btn btn-ghost" href="{% url 'queue' %}">Cancel</a></div>
   </form>

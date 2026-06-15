@@ -6,30 +6,30 @@
 <a class="btn btn-ghost btn-sm" href="{% url 'envelope_ledger' %}">← Back to ledger</a></div>
 
 {% if stage == "resolve" %}
-<div class="alert alert-warn" style="margin-bottom:1rem">Your sheet has {{ unknown_cols|length }} fund column{{ unknown_cols|length|pluralize }} that {{ unknown_cols|length|pluralize:"doesn't,don't" }} match a fund here. Tell me what to do with each — nothing is imported until you decide.</div>
+<div class="alert alert-warn u-mb">Your sheet has {{ unknown_cols|length }} fund column{{ unknown_cols|length|pluralize }} that {{ unknown_cols|length|pluralize:"doesn't,don't" }} match a fund here. Tell me what to do with each — nothing is imported until you decide.</div>
 <form method="post">
   {% csrf_token %}<input type="hidden" name="resolve" value="1">
   <div class="card"><div class="bd">
   {% for u in unknown_cols %}
     <div style="padding:.7rem 0;border-bottom:1px solid var(--line)">
-      <div style="font-weight:600;margin-bottom:.4rem">Column “{{ u.name }}”</div>
+      <div class="u-strong u-mb-xs">Column “{{ u.name }}”</div>
       <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center">
-        <label style="display:flex;align-items:center;gap:.35rem"><input type="radio" name="col_{{ u.index }}" value="existing:" onclick="this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=false;this.closest('div').querySelector('.newname-{{ u.index }}').disabled=true;" checked>
+        <label class="u-row-sm"><input type="radio" name="col_{{ u.index }}" value="existing:" onclick="this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=false;this.closest('div').querySelector('.newname-{{ u.index }}').disabled=true;" checked>
           Map to existing fund</label>
         <select name="_ex_{{ u.index }}" class="field--select exsel-{{ u.index }}" style="max-width:240px" onchange="var r=this.closest('form').querySelector('[name=col_{{ u.index }}][value^=existing]'); r.value='existing:'+this.value;">
           <option value="">— choose —</option>
           {% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
         </select>
-        <label style="display:flex;align-items:center;gap:.35rem"><input type="radio" name="col_{{ u.index }}" value="create" onclick="this.closest('div').querySelector('.newname-{{ u.index }}').disabled=false;this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=true;">
+        <label class="u-row-sm"><input type="radio" name="col_{{ u.index }}" value="create" onclick="this.closest('div').querySelector('.newname-{{ u.index }}').disabled=false;this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=true;">
           Create new fund</label>
         <input type="text" name="name_{{ u.index }}" class="field newname-{{ u.index }}" value="{{ u.name }}" placeholder="New fund name" style="max-width:200px" disabled>
-        <label style="display:flex;align-items:center;gap:.35rem"><input type="radio" name="col_{{ u.index }}" value="ignore" onclick="this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=true;this.closest('div').querySelector('.newname-{{ u.index }}').disabled=true;">
+        <label class="u-row-sm"><input type="radio" name="col_{{ u.index }}" value="ignore" onclick="this.closest('div').querySelector('.exsel-{{ u.index }}').disabled=true;this.closest('div').querySelector('.newname-{{ u.index }}').disabled=true;">
           Ignore this column</label>
       </div>
     </div>
   {% endfor %}
   </div></div>
-  <div class="btn-row" style="margin-top:1rem">
+  <div class="btn-row u-mt">
     <a class="btn btn-ghost" href="{% url 'envelope_import' %}">Cancel</a>
     <button class="btn">Continue import</button>
   </div>
@@ -37,15 +37,15 @@
 {% else %}
   <!-- Step 1 -->
   <div class="card"><div class="hd"><span class="step-no">1</span> Choose columns &amp; download the template</div><div class="bd">
-    <p class="help" style="margin-top:0">Tick the funds you collect this Sabbath, then download the spreadsheet. Untick the rest to keep the sheet small.</p>
+    <p class="help u-mt-0">Tick the funds you collect this Sabbath, then download the spreadsheet. Untick the rest to keep the sheet small.</p>
     <div class="cp-grid">
       {% for c in columns %}
       <label class="cp-item"><input type="checkbox" class="colcb" value="{{ c.key }}" {% if c.default %}checked{% endif %}>
-        <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber" style="font-size:.6rem">T</span>{% endif %}</span></label>
+        <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber u-xxs">T</span>{% endif %}</span></label>
       {% endfor %}
     </div>
-    <div class="btn-row" style="margin-top:.4rem"><a class="btn" id="tplLink" href="{% url 'envelope_template' %}">⬇ Download template (.xlsx)</a></div>
-    <ol class="help" style="line-height:1.7;margin-bottom:0">
+    <div class="btn-row u-mt-xs"><a class="btn" id="tplLink" href="{% url 'envelope_template' %}">⬇ Download template (.xlsx)</a></div>
+    <ol class="help lh-loose u-mb-0">
       <li>Type one contributor per row.</li>
       <li>Leave <span class="mono">Receipt No</span> blank to auto-number, or enter your own.</li>
       <li>Channel is <span class="mono">CASH</span> or <span class="mono">BANK</span> (defaults to cash).</li>
@@ -63,9 +63,9 @@
         <div class="dz-text"><strong>Choose your filled <span class="mono">.xlsx</span></strong><br><span class="muted">or drag &amp; drop it here</span></div>
         <div class="dz-name muted" id="dzName"></div>
       </label>
-      <div class="btn-row" style="margin-top:1rem"><button class="btn">Import envelopes</button></div>
+      <div class="btn-row u-mt"><button class="btn">Import envelopes</button></div>
     </form>
-    <p class="help">Headers in your file are matched to fund columns by name. Trust funds (<span class="pill pill-amber" style="font-size:.6rem">T</span>) are remitted to {{ FIELD_NAME }}; split offerings divide automatically.</p>
+    <p class="help">Headers in your file are matched to fund columns by name. Trust funds (<span class="pill pill-amber u-xxs">T</span>) are remitted to {{ FIELD_NAME }}; split offerings divide automatically.</p>
   </div></div>
 </div>
 

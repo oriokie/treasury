@@ -1,0 +1,9 @@
+{% comment %}
+Reusable empty state. Usage:
+  {% include "ui/empty.html" with title="No transactions yet" hint="Record giving to see it here." mark="◷" %}
+{% endcomment %}
+<div class="ws-empty">
+  <div class="we-mark">{{ mark|default:"◷" }}</div>
+  <div class="we-title">{{ title|default:"Nothing here yet" }}</div>
+  {% if hint %}<div class="we-hint">{{ hint }}</div>{% endif %}
+</div>

@@ -289,3 +289,44 @@ class LeaderDevGroupPeriodTests(TestCase):
         csv = self.c.get(f"/leader/department/{self.dept.id}/"
                          f"?export=groups_csv&start=2026-06-01&end=2026-06-30")
         self.assertIn("Group 7", csv.content.decode())
+
+
+class LeaderSubgroupScopingTests(TestCase):
+    """Item 1: assigning a parent fund grants its whole sub-tree (with drill-down),
+    and a leader assigned a single subgroup sees only that subgroup."""
+
+    def setUp(self):
+        from departments.models import Department
+        self.parent = Department.objects.create(name="Camp Meeting", fund_type="LOCAL",
+                                                category="DEVELOPMENT")
+        self.c1 = Department.objects.create(name="CAMP_1", fund_type="LOCAL",
+                                            category="DEVELOPMENT", parent=self.parent)
+        self.c2 = Department.objects.create(name="CAMP_2", fund_type="LOCAL",
+                                            category="DEVELOPMENT", parent=self.parent)
+        self.grand = Department.objects.create(name="CAMP_1_A", fund_type="LOCAL",
+                                               category="DEVELOPMENT", parent=self.c1)
+
+    def test_parent_assignment_grants_descendants(self):
+        from departments.models import departments_led_by
+        leader = _make_leader("camp_parent", self.parent)
+        names = set(departments_led_by(leader).values_list("name", flat=True))
+        self.assertEqual(names, {"Camp Meeting", "CAMP_1", "CAMP_2", "CAMP_1_A"})
+
+    def test_leader_can_drill_into_children(self):
+        leader = _make_leader("camp_parent2", self.parent)
+        c = Client(); c.force_login(leader)
+        self.assertEqual(c.get(f"/leader/department/{self.c1.id}/").status_code, 200)
+        self.assertEqual(c.get(f"/leader/department/{self.grand.id}/").status_code, 200)
+        # landing page links through to a child
+        self.assertContains(c.get("/leader/"),
+                            f"/leader/department/{self.c1.id}/")
+
+    def test_subgroup_leader_sees_only_their_subgroup(self):
+        leader = _make_leader("camp_sub", self.c2)   # assigned CAMP_2 directly
+        c = Client(); c.force_login(leader)
+        body = c.get("/leader/").content.decode()
+        self.assertNotIn("No departments assigned", body)   # not blank
+        self.assertIn("CAMP_2", body)
+        self.assertNotIn("CAMP_1", body)                    # no siblings
+        # and cannot drill into a sibling
+        self.assertEqual(c.get(f"/leader/department/{self.c1.id}/").status_code, 302)

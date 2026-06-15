@@ -11,7 +11,7 @@
   <div class="ws-metric is-warn"><span class="wm-l">Outstanding</span><span class="wm-v"><span class="cur">KES</span>{{ campaign.total_outstanding|floatformat:0|intcomma }}</span></div>
 </div>
 
-{% if campaign.description %}<p class="help" style="margin-bottom:1rem">{{ campaign.description }}</p>{% endif %}
+{% if campaign.description %}<p class="help u-mb">{{ campaign.description }}</p>{% endif %}
 
 <div class="ws-table"><table class="ledger compact">
   <thead><tr><th>Member</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th>Progress</th></tr></thead><tbody>

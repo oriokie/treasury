@@ -20,7 +20,7 @@
 </div></div>
 {% endif %}
 
-<div class="grid cols-3" style="margin-bottom:1rem">
+<div class="grid cols-3 u-mb">
   <div class="stat"><div class="lbl">Counted</div><div class="val mono">KES {{ cs.counted_total|floatformat:2|intcomma }}</div></div>
   <div class="stat"><div class="lbl">Expected</div><div class="val mono">KES {{ cs.expected_total|floatformat:2|intcomma }}</div></div>
   <div class="stat"><div class="lbl">Discrepancy</div><div class="val mono" style="color:{% if cs.has_discrepancy %}var(--red,#b00){% else %}var(--forest){% endif %}">KES {{ cs.discrepancy|floatformat:2|intcomma }}</div></div>
@@ -30,10 +30,10 @@
 <div class="card"><div class="hd">Denomination breakdown</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Denomination</th><th class="num">Count</th><th class="num">Subtotal</th></tr></thead>
 <tbody>{% for d in cs.denominations.all %}<tr><td class="mono">KES {{ d.denomination|floatformat:0 }}</td><td class="num mono">{{ d.count }}</td><td class="num mono">{{ d.subtotal|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody>
-<tfoot><tr><td colspan="2" style="text-align:right"><strong>Total counted</strong></td><td class="num mono"><strong>{{ cs.counted_total|floatformat:2|intcomma }}</strong></td></tr></tfoot>
+<tfoot><tr><td colspan="2" class="u-right"><strong>Total counted</strong></td><td class="num mono"><strong>{{ cs.counted_total|floatformat:2|intcomma }}</strong></td></tr></tfoot>
 </table></div></div>
 
-<div class="card" style="margin-top:1rem"><div class="hd">Counters / witnesses</div><div class="bd">
+<div class="card u-mt"><div class="hd">Counters / witnesses</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Name</th><th>Role</th><th>Signature</th></tr></thead>
 <tbody>{% for w in cs.witnesses.all %}<tr><td>{{ w.name }}</td><td class="muted">{{ w.role|default:"—" }}</td><td>{% if w.signed %}✓ signed{% else %}<span class="muted">________________</span>{% endif %}</td></tr>
 {% empty %}<tr><td colspan="3" class="muted">No witnesses recorded.</td></tr>{% endfor %}</tbody>

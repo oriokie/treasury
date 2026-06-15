@@ -4,7 +4,7 @@
 <div class="page-head"><div><h1>Edit envelope</h1>
   <div class="sub">{{ env.date }} · receipt #{{ env.receipt_no }}</div></div></div>
 
-<form method="post" class="card" style="margin-top:1rem"><div class="bd">{% csrf_token %}
+<form method="post" class="card u-mt"><div class="bd">{% csrf_token %}
   <div class="form-grid">
     <div class="form-row"><label>Contributor name</label>
       <input class="field" name="contributor_name" value="{{ env.contributor_name }}"></div>
@@ -12,7 +12,7 @@
       <input class="field mono" name="receipt_no" value="{{ env.receipt_no }}"></div>
   </div>
 
-  <table class="ledger" style="margin-top:1rem"><thead><tr>
+  <table class="ledger u-mt"><thead><tr>
     <th>Fund</th><th>Development group</th><th class="num">Amount</th></tr></thead>
   <tbody>
   {% for l in lines %}
@@ -27,8 +27,8 @@
     </tr>
   {% endfor %}
   </tbody></table>
-  <p class="help" style="margin-top:.5rem">Set an amount to 0 to remove that fund line. Changes update the matching ledger entries.</p>
-  <div class="btn-row" style="margin-top:1rem"><button class="btn" type="submit">Save changes</button>
+  <p class="help u-mt-sm">Set an amount to 0 to remove that fund line. Changes update the matching ledger entries.</p>
+  <div class="btn-row u-mt"><button class="btn" type="submit">Save changes</button>
     <a class="btn btn-ghost" href="{% url 'envelope_detail' env.id %}">Cancel</a></div>
 </div></form>
 {% endblock %}

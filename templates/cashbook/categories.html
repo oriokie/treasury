@@ -8,17 +8,17 @@
 <tbody>{% for c in custom %}<tr>
   <td class="mono">{{ c.code }}</td><td>{{ c.label }}</td>
   <td>{% if c.active %}<span class="pill pill-green">Active</span>{% else %}<span class="muted">Inactive</span>{% endif %}</td>
-  <td><form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><button name="action" value="toggle" class="link">{% if c.active %}Deactivate{% else %}Activate{% endif %}</button></form></td>
+  <td><form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><button name="action" value="toggle" class="link">{% if c.active %}Deactivate{% else %}Activate{% endif %}</button></form></td>
 </tr>{% empty %}<tr><td colspan="4" class="empty">No custom categories yet.</td></tr>{% endfor %}</tbody>
 </table>
-<form method="post" style="margin-top:1rem">{% csrf_token %}
+<form method="post" class="u-mt">{% csrf_token %}
   <div class="form-grid" style="display:grid;grid-template-columns:1fr 1.4fr auto;gap:.6rem;align-items:end">
-    <div class="form-row" style="margin:0"><label>Code</label><input name="code" class="field mono" placeholder="e.g. MUSIC"></div>
-    <div class="form-row" style="margin:0"><label>Label</label><input name="label" class="field" placeholder="e.g. Music ministry"></div>
+    <div class="form-row u-m-0"><label>Code</label><input name="code" class="field mono" placeholder="e.g. MUSIC"></div>
+    <div class="form-row u-m-0"><label>Label</label><input name="label" class="field" placeholder="e.g. Music ministry"></div>
     <button name="action" value="add" class="btn">Add category</button>
   </div>
 </form>
-<div class="section-title" style="margin-top:1.2rem">Built-in categories</div>
+<div class="section-title u-mt-lg">Built-in categories</div>
 <div class="help">{% for v,l in builtin %}<span class="pill pill-grey" style="margin:.1rem">{{ l }}</span>{% endfor %}</div>
 </div></div>
 {% endblock %}

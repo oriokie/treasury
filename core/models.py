@@ -45,7 +45,7 @@ class SiteConfig(models.Model):
     sabbath_confirm_scope = models.CharField(
         max_length=12, choices=SabbathConfirmScope.choices,
         default=SabbathConfirmScope.RECEIPTABLE,
-        help_text="Which late-imported gifts appear in the Sabbath confirmations "
+        help_text="Which late-imported contributions appear in the Sabbath confirmations "
                   "queue. By default only the funds you normally receipt (Trust "
                   "funds and the Local Church Budget) — others just post by date.")
 
@@ -124,7 +124,7 @@ class SiteConfig(models.Model):
         help_text="Default depreciation method for new assets.")
     sabbath_cutoff_enabled = models.BooleanField(default=True,
         help_text="When a Sabbath has been closed (counted & receipted), credit any "
-                  "later gift for that Sabbath to the next OPEN Sabbath, so a closed "
+                  "later contribution for that Sabbath to the next OPEN Sabbath, so a closed "
                   "count is never reopened. Close a Sabbath from its cash-count page.")
 
     trust_remit_due_day = models.PositiveSmallIntegerField(
@@ -239,7 +239,7 @@ class SiteConfig(models.Model):
                   "has an active pledge: do nothing, flag it for a treasurer to "
                   "confirm, or apply the match automatically.")
     pledge_match_same_fund_only = models.BooleanField(default=True,
-        help_text="Only auto-match a contribution to a pledge when the gift's fund "
+        help_text="Only auto-match a contribution to a pledge when the contribution's fund "
                   "matches the campaign's target fund.")
     pledge_match_window_days = models.PositiveIntegerField(default=400,
         help_text="How many days after a pledge's end date a contribution may "
@@ -365,7 +365,7 @@ class TelegramSession(models.Model):
 
 class SabbathClose(models.Model):
     """A counted-and-receipted Sabbath. Closing a Sabbath fixes its offering/count
-    figures: any gift that arrives later for a closed Sabbath is credited to the
+    figures: any contribution that arrives later for a closed Sabbath is credited to the
     next OPEN Sabbath instead, so a closed count is never reopened. This is an
     event (you close when you finish pooling/counting), not a fixed clock time."""
     sabbath = models.DateField(unique=True)        # the Saturday
@@ -413,12 +413,12 @@ def next_open_sabbath(natural):
 
 
 def service_sabbath_for(date, as_of=None):
-    """The Sabbath a gift dated `date` should be credited to: its natural Sabbath
+    """The Sabbath a contribution dated `date` should be credited to: its natural Sabbath
     (the Saturday of its week), rolled forward past any closed Sabbaths.
 
-    When `as_of` is given (the day the gift is being entered/imported) and the
-    natural Sabbath already fell on or before it, the gift is rolled to the next
-    open Sabbath — a gift can never be credited to a Sabbath that has already
+    When `as_of` is given (the day the contribution is being entered/imported) and the
+    natural Sabbath already fell on or before it, the contribution is rolled to the next
+    open Sabbath — a contribution can never be credited to a Sabbath that has already
     happened at the time it is recorded. This is what makes a 6th-dated row
     imported on the 11th schedule to the 13th, exactly like a Sunday row does."""
     import datetime as _dt

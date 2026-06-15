@@ -7,7 +7,7 @@ from members.models import Member, MemberAlias, PossibleDuplicate, normalize_pho
 @transaction.atomic
 def match_or_create_member(payer_name, payer_phone):
     """Return (member, outcome) where outcome is one of:
-    'matched_phone' | 'matched_name' | 'created'. Never orphans a gift.
+    'matched_phone' | 'matched_name' | 'created'. Never orphans a contribution.
     """
     ph = normalize_phone(payer_phone)
     key = name_key(payer_name)

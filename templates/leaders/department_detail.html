@@ -4,10 +4,10 @@
 <div class="ws-head">
   <div class="ws-titles"><h1>{{ dept.name }}</h1>
     <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · your department · read-only</div></div>
-  <form method="get" class="btn-row" style="align-items:flex-end">
+  <form method="get" class="btn-row u-items-end">
     <a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a>
-    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
-    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto">
     <button class="btn btn-sm">Apply</button>
   </form>
 </div>
@@ -19,7 +19,7 @@
     <div class="foot">Opening + receipts − expenses</div></div>
   <div class="stat"><div class="label">Collections</div>
     <div class="value"><span class="ksh">KSh</span>{{ kpi.receipts|floatformat:0|intcomma }}</div>
-    <div class="foot">{{ kpi.gifts }} gift{{ kpi.gifts|pluralize }} this period</div></div>
+    <div class="foot">{{ kpi.gifts }} contribution{{ kpi.gifts|pluralize }} this period</div></div>
   <div class="stat warn"><div class="label">Expenses</div>
     <div class="value"><span class="ksh">KSh</span>{{ kpi.spend|floatformat:0|intcomma }}</div>
     <div class="foot">Approved &amp; paid</div></div>
@@ -33,7 +33,7 @@
 <div class="ld-links">
   <a class="ld-link" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
     <span class="ic">📥</span><span class="t">Collections</span>
-    <span class="s">{{ kpi.gifts }} gift{{ kpi.gifts|pluralize }} · view names &amp; download</span></a>
+    <span class="s">{{ kpi.gifts }} contribution{{ kpi.gifts|pluralize }} · view names &amp; download</span></a>
   <a class="ld-link" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
     <span class="ic">🧾</span><span class="t">Expenses</span>
     <span class="s">KSh {{ kpi.spend|floatformat:0|intcomma }} · full list &amp; download</span></a>
@@ -58,11 +58,11 @@
 
 <!-- Insights row: top givers + budget -->
 <div class="ld-charts">
-  <div class="card"><div class="hd">Top contributors</div><div class="bd" style="padding:0">
+  <div class="card"><div class="hd">Top contributors</div><div class="bd bd-flush">
     <table class="ledger compact">
       <tbody>
       {% for g in top_givers %}<tr>
-        <td>{{ g.who }} <span class="muted" style="font-size:.72rem">· {{ g.n }} gift{{ g.n|pluralize }}</span></td>
+        <td>{{ g.who }} <span class="muted u-xs">· {{ g.n }} contribution{{ g.n|pluralize }}</span></td>
         <td class="num mono">{{ g.total|floatformat:0|intcomma }}</td>
       </tr>{% empty %}<tr><td class="muted">No giving in this period.</td></tr>{% endfor %}
       </tbody>
@@ -71,30 +71,30 @@
 
   {% if budget %}
   <div class="card"><div class="hd">Budget vs actual</div><div class="bd">
-    <div class="kv" style="margin-bottom:.4rem"><span>Spent</span><span class="mono">{{ budget.spent|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mb-xs"><span>Spent</span><span class="mono">{{ budget.spent|floatformat:0|intcomma }}</span></div>
     <div class="progress" style="height:14px"><span style="width:{{ budget.pct }}%;{% if budget.over %}background:var(--danger){% endif %}"></span></div>
-    <div class="kv" style="margin-top:.4rem"><span class="muted">Annual budget</span><span class="mono">{{ budget.budget|floatformat:0|intcomma }}</span></div>
-    {% if budget.over %}<p class="help" style="color:var(--danger);margin:.5rem 0 0">Over budget for the year.</p>
-    {% else %}<p class="help" style="margin:.5rem 0 0">{{ budget.pct }}% of the annual budget used.</p>{% endif %}
+    <div class="kv u-mt-xs"><span class="muted">Annual budget</span><span class="mono">{{ budget.budget|floatformat:0|intcomma }}</span></div>
+    {% if budget.over %}<p class="help text-danger u-mt-sm">Over budget for the year.</p>
+    {% else %}<p class="help u-mt-sm">{{ budget.pct }}% of the annual budget used.</p>{% endif %}
   </div></div>
   {% elif pledge_summary %}
   <div class="card"><div class="hd">Pledge fulfilment</div><div class="bd">
-    <div class="kv" style="margin-bottom:.4rem"><span>Paid</span><span class="mono">{{ pledge_summary.paid|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mb-xs"><span>Paid</span><span class="mono">{{ pledge_summary.paid|floatformat:0|intcomma }}</span></div>
     <div class="progress" style="height:14px"><span style="width:{{ pledge_summary.pct }}%"></span></div>
-    <div class="kv" style="margin-top:.4rem"><span class="muted">Pledged</span><span class="mono">{{ pledge_summary.pledged|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mt-xs"><span class="muted">Pledged</span><span class="mono">{{ pledge_summary.pledged|floatformat:0|intcomma }}</span></div>
     <div class="kv"><span class="muted">Outstanding</span><span class="mono">{{ pledge_summary.outstanding|floatformat:0|intcomma }}</span></div>
-    <p class="help" style="margin:.5rem 0 0"><a class="link" href="{% url 'leader_pledges' dept.id %}">See all pledges →</a></p>
+    <p class="help u-mt-sm"><a class="link" href="{% url 'leader_pledges' dept.id %}">See all pledges →</a></p>
   </div></div>
   {% endif %}
 </div>
 
 <!-- Development groups -->
 {% if dev_groups %}
-<div class="section-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
-  <span>Development groups <span class="muted" style="font-weight:400;font-size:.8rem">— KSh {{ dev_collected|floatformat:0|intcomma }} collected this period</span></span>
+<div class="section-title u-between">
+  <span>Development groups <span class="muted u-subtle">— KSh {{ dev_collected|floatformat:0|intcomma }} collected this period</span></span>
   <span class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=groups_csv">⬇ CSV</a><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=groups_xlsx">⬇ Excel</a></span>
 </div>
-<div class="card" style="margin-bottom:1.4rem"><div class="bd" style="padding:0">
+<div class="card u-mb-lg"><div class="bd bd-flush">
   <table class="ledger compact">
     <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th style="width:160px">Progress</th></tr></thead>
     <tbody>
@@ -102,7 +102,7 @@
       <td><a class="link" href="{% url 'leader_group_detail' g.group.id %}">{{ g.group }}</a></td>
       <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
       <td class="num mono">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
-      <td>{% if g.pct is not None %}<div class="progress"><span style="width:{{ g.pct }}%"></span></div><span class="muted" style="font-size:.72rem">{{ g.pct }}%</span>{% else %}—{% endif %}</td>
+      <td>{% if g.pct is not None %}<div class="progress"><span style="width:{{ g.pct }}%"></span></div><span class="muted u-xs">{{ g.pct }}%</span>{% else %}—{% endif %}</td>
     </tr>{% endfor %}
     </tbody>
   </table>
@@ -111,22 +111,22 @@
 
 <!-- Recent activity previews -->
 <div class="ld-charts">
-  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Recent collections <a class="link" style="font-size:.78rem" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd" style="padding:0">
+  <div class="card"><div class="hd u-between">Recent collections <a class="link u-xs" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd bd-flush">
     <table class="ledger compact">
       <tbody>
       {% for c in collections %}<tr>
-        <td class="mono" style="white-space:nowrap">{{ c.date|date:"d M" }}</td>
+        <td class="mono u-nowrap">{{ c.date|date:"d M" }}</td>
         <td>{{ c.who }}</td>
         <td class="num mono">{{ c.amount|floatformat:0|intcomma }}</td>
       </tr>{% empty %}<tr><td colspan="3" class="muted">No collections yet.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div></div>
-  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">Recent expenses <a class="link" style="font-size:.78rem" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd" style="padding:0">
+  <div class="card"><div class="hd u-between">Recent expenses <a class="link u-xs" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd bd-flush">
     <table class="ledger compact">
       <tbody>
       {% for e in expenses %}<tr>
-        <td class="mono" style="white-space:nowrap">{{ e.date|date:"d M" }}</td>
+        <td class="mono u-nowrap">{{ e.date|date:"d M" }}</td>
         <td>{{ e.description }}</td>
         <td class="num mono">{{ e.amount|floatformat:0|intcomma }}</td>
       </tr>{% empty %}<tr><td colspan="3" class="muted">No expenses yet.</td></tr>{% endfor %}
@@ -138,15 +138,16 @@
 <!-- Sub-accounts -->
 {% if subrows %}
 <div class="section-title">Sub-accounts</div>
-<div class="card" style="margin-bottom:1.4rem"><div class="bd" style="padding:0">
+<div class="card u-mb-lg"><div class="bd bd-flush">
   <table class="ledger compact">
-    <thead><tr><th>Fund</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
+    <thead><tr><th>Fund</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th><th></th></tr></thead>
     <tbody>
     {% for r in subrows %}<tr>
-      <td>{{ r.department.name }}</td>
+      <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">{{ r.department.name }}</a></td>
       <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td>
+      <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">drill in →</a></td>
     </tr>{% endfor %}
     </tbody>
   </table>

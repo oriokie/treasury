@@ -96,7 +96,7 @@ class GroupGivingView(PeriodMixin, TemplateView):
 
 
 class DevGroupUnassignedView(TreasurerRequiredMixin, TemplateView):
-    """Development gifts sitting on the parent Development fund without a specific
+    """Development contributions sitting on the parent Development fund without a specific
     group — list them and reassign to the correct group for accurate per-group
     totals."""
     template_name = "reports/dev_unassigned.html"
@@ -127,7 +127,7 @@ class DevGroupUnassignedView(TreasurerRequiredMixin, TemplateView):
             ids = list(self._qs().values_list("id", flat=True))
         grp = DevelopmentGroup.objects.filter(pk=gid).first()
         if not grp or not ids:
-            messages.error(request, "Choose a group and at least one gift to assign.")
+            messages.error(request, "Choose a group and at least one contribution to assign.")
             return redirect("dev_unassigned")
         n = (Transaction.objects.filter(id__in=ids, dev_group__isnull=True)
              .update(dev_group=grp))
@@ -139,7 +139,7 @@ class DevGroupUnassignedView(TreasurerRequiredMixin, TemplateView):
                                         dev_group__isnull=True).update(dev_group=grp)
         except Exception:
             pass
-        messages.success(request, f"Assigned {n} development gift(s) to {grp.label}.")
+        messages.success(request, f"Assigned {n} development contribution(s) to {grp.label}.")
         return redirect("dev_unassigned")
 
 
@@ -330,29 +330,42 @@ class FundLedgerView(PeriodMixin, TemplateView):
         ctx["opening"] = dept.opening_balance or Decimal(0)
         ctx["closing"] = running
 
-        # roll up any sub-accounts beneath this fund
-        subs = []
+        # roll up any sub-accounts beneath this fund (two grouped queries, not 2/sub)
+        subs = list(dept.subgroups.all())
+        sub_ids = [x.id for x in subs]
+        sub_rec = {r["department"]: (r["t"] or Decimal(0)) for r in
+                   Transaction.objects.filter(
+                       department_id__in=sub_ids,
+                       direction=Transaction.Direction.CREDIT,
+                       date__gte=s, date__lte=e)
+                   .values("department").annotate(t=Sum("amount"))}
+        sub_pay = {r["department"]: (r["t"] or Decimal(0)) for r in
+                   Expense.objects.filter(
+                       department_id__in=sub_ids, date__gte=s, date__lte=e,
+                       status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+                   .values("department").annotate(t=Sum("amount"))}
+        subs_rows = []
         sub_total = Decimal(0)
-        for sub in dept.subgroups.all():
-            r = (Transaction.objects.filter(
-                department=sub, direction=Transaction.Direction.CREDIT,
-                date__gte=s, date__lte=e).aggregate(t=Sum("amount"))["t"] or Decimal(0))
-            p = (Expense.objects.filter(
-                department=sub, date__gte=s, date__lte=e,
-                status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-                .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        for sub in subs:
+            r = sub_rec.get(sub.id, Decimal(0))
+            p = sub_pay.get(sub.id, Decimal(0))
             closing = (sub.opening_balance or Decimal(0)) + r - p
-            subs.append({"sub": sub, "receipts": r, "payments": p, "closing": closing})
+            subs_rows.append({"sub": sub, "receipts": r, "payments": p, "closing": closing})
             sub_total += closing
+        subs = subs_rows
 
-        # development groups are sub-accounts of the Development fund
+        # development groups are sub-accounts of the Development fund (one query)
         from departments.models import DevelopmentGroup
         dev_rows = []
         if dept.name.lower() == "development":
+            dev_map = {r["dev_group"]: (r["t"] or Decimal(0)) for r in
+                       Transaction.objects.filter(
+                           dev_group__isnull=False,
+                           direction=Transaction.Direction.CREDIT,
+                           date__gte=s, date__lte=e)
+                       .values("dev_group").annotate(t=Sum("amount"))}
             for grp in DevelopmentGroup.objects.filter(active=True):
-                r = (Transaction.objects.filter(
-                    dev_group=grp, direction=Transaction.Direction.CREDIT,
-                    date__gte=s, date__lte=e).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+                r = dev_map.get(grp.id, Decimal(0))
                 dev_rows.append({"group": grp, "receipts": r})
                 sub_total += r
         ctx["dev_rows"] = dev_rows
@@ -757,7 +770,7 @@ from core.utils import sabbath_week_of
 def _days_outstanding(dept):
     """Days since the oldest *unremitted* trust receipt for a fund. Receipts up to
     the last remittance's period are already settled, so we count only from the
-    first receipt after it — not the first gift ever (which made everything look
+    first receipt after it — not the first contribution ever (which made everything look
     months overdue even right after remitting)."""
     from cashbook.models import RemittanceBatch
     last = (RemittanceBatch.objects.filter(
@@ -1824,7 +1837,7 @@ class DevGroupMembersView(PeriodMixin, TemplateView):
     def get(self, request, *args, **kwargs):
         ctx = self.get_context_data(**kwargs)
         if request.GET.get("export") in ("csv", "xlsx"):
-            header = ["Member", "Phone", "Gifts", "Total"]
+            header = ["Member", "Phone", "Contributions", "Total"]
             rows = [[r["name"], r["phone"], r["count"], r["total"]] for r in ctx["rows"]]
             rows.append(["TOTAL", "", "", ctx["grand_total"]])
             return _export(request, f"devgroup_{ctx['group'].number}_members",
@@ -1880,7 +1893,7 @@ class DevGroupAllExcelView(ReadAccessMixin, View):
             title = ("G%d" % g.number)[:28]
             ws = wb.create_sheet(title=title)
             ws.append([g.label + (" — " + g.leader_name if g.leader_name else "")])
-            ws.append(["Member", "Phone", "Gifts", "Total"])
+            ws.append(["Member", "Phone", "Contributions", "Total"])
             for r in data["rows"]:
                 ws.append([r["name"], r["phone"], r["count"], float(r["total"])])
             ws.append(["TOTAL", "", "", float(data["total"])])

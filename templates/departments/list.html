@@ -10,7 +10,7 @@
   <tbody>
   {% for node in fund_tree %}
     <tr>
-      <td><strong>{{ node.fund.name }}</strong>{% if not node.fund.active %} <span class="pill pill-grey">inactive</span>{% endif %}{% if node.subs %} <span class="muted" style="font-size:.8rem">({{ node.subs|length }} sub-account{{ node.subs|length|pluralize }})</span>{% endif %}</td>
+      <td><strong>{{ node.fund.name }}</strong>{% if not node.fund.active %} <span class="pill pill-grey">inactive</span>{% endif %}{% if node.subs %} <span class="muted u-small">({{ node.subs|length }} sub-account{{ node.subs|length|pluralize }})</span>{% endif %}</td>
       <td>{% if node.fund.is_trust %}<span class="pill pill-amber">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
       <td class="muted">{{ node.fund.get_category_display }}</td>
       <td class="num mono">{{ node.fund.opening_balance|floatformat:2|intcomma }}</td>
@@ -19,7 +19,7 @@
     </tr>
     {% for s in node.subs %}
     <tr>
-      <td style="padding-left:1.8rem" class="muted">↳ {{ s.name }}{% if not s.active %} <span class="pill pill-grey">inactive</span>{% endif %}</td>
+      <td class="u-indent-3" class="muted">↳ {{ s.name }}{% if not s.active %} <span class="pill pill-grey">inactive</span>{% endif %}</td>
       <td><span class="pill {% if s.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.7">{% if s.is_trust %}Trust{% else %}Local{% endif %}</span></td>
       <td class="muted">sub-account</td>
       <td class="num mono">{{ s.opening_balance|floatformat:2|intcomma }}</td>
@@ -29,7 +29,7 @@
     {% endfor %}
     {% for g in node.dev_groups %}
     <tr>
-      <td style="padding-left:1.8rem" class="muted">↳ {{ g.label }} <span class="pill pill-grey" style="font-size:.65rem">dev group</span></td>
+      <td class="u-indent-3" class="muted">↳ {{ g.label }} <span class="pill pill-grey" style="font-size:.65rem">dev group</span></td>
       <td><span class="pill pill-grey" style="opacity:.7">Local</span></td>
       <td class="muted">sub-account</td>
       <td class="num mono muted">—</td>
@@ -38,13 +38,13 @@
     </tr>
     {% endfor %}
     {% if node.dev_groups and is_treasurer %}
-    <tr><td style="padding-left:1.8rem" colspan="6"><a class="link" href="{% url 'dev_group_create' %}">＋ Add development group</a></td></tr>
+    <tr><td class="u-indent-3" colspan="6"><a class="link" href="{% url 'dev_group_create' %}">＋ Add development group</a></td></tr>
     {% endif %}
   {% empty %}<tr><td colspan="6" class="empty"><div class="big">◉</div>No funds defined.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 
-<div class="page-head" style="margin-top:1.6rem"><div><h2 style="margin:0">Split offerings</h2><div class="sub">Lump sums that divide automatically across funds (e.g. 50% trust / 50% local)</div></div></div>
+<div class="page-head" style="margin-top:1.6rem"><div><h2 class="u-m-0">Split offerings</h2><div class="sub">Lump sums that divide automatically across funds (e.g. 50% trust / 50% local)</div></div></div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Collection</th><th>Splits into</th><th>Status</th></tr></thead>
   <tbody>

@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Statement of cash flows · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Statement of Cash Flows" %}
 <div class="page-head no-print"><div><h1>Statement of Cash Flows</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · operating · investing · financing</div></div>
 <div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Statement of Cash Flows</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
@@ -28,7 +29,7 @@
     <tr class="subtotal"><td><strong>Net cash from financing activities</strong></td><td class="num mono"><strong>{{ net_financing|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
 
-  <table class="ledger compact" style="margin-top:.7rem"><tbody>
+  <table class="ledger compact u-mt-sm"><tbody>
     <tr><td><strong>Net increase/(decrease) in cash</strong></td><td class="num mono"><strong>{{ net_change|floatformat:2|intcomma }}</strong></td></tr>
     <tr><td>Cash &amp; bank at beginning of period</td><td class="num mono">{{ cash_open|floatformat:2|intcomma }}</td></tr>
     <tr class="grand"><td><strong>Cash &amp; bank at end of period</strong></td><td class="num mono"><strong>{{ cash_end_calc|floatformat:2|intcomma }}</strong></td></tr>

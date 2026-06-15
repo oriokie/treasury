@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Budget vs Actual · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Budget vs Actual" %}
 <div class="page-head no-print"><div><h1>Budget vs Actual</h1><div class="sub">{{ d.label }}</div></div>
 <div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">Export CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
 

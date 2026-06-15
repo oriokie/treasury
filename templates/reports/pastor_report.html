@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Pastor's report · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Pastor's Financial Summary" %}
 <div class="page-head no-print"><div><h1>Pastor's report</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
 <div class="btn-row"><button class="btn btn-sm" onclick="window.print()">⎙ Print / PDF</button></div></div>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Pastor's Stewardship Report</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>

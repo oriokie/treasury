@@ -5,15 +5,15 @@
   <div class="sub">Development giving recorded on the parent fund but not yet tagged to a specific group</div></div>
   <a class="btn btn-ghost" href="{% url 'report_dev_groups' %}">← Back to dev groups</a></div>
 
-<div class="grid-3" style="margin:1rem 0">
+<div class="grid-3 u-my">
   <div class="stat"><div class="lbl">Offerings not assigned</div><div class="val mono">{{ count }}</div></div>
   <div class="stat"><div class="lbl">Total value</div><div class="val mono">{{ total|floatformat:2|intcomma }}</div></div>
 </div>
 
 {% if items %}
 <form method="post">{% csrf_token %}
-  <div class="card" style="margin-bottom:1rem"><div class="bd" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
-    <div class="form-row" style="margin:0"><label>Assign selected to group</label>
+  <div class="card u-mb"><div class="bd" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
+    <div class="form-row u-m-0"><label>Assign selected to group</label>
       <select name="dev_group" class="field--select" required>
         <option value="">Choose a group…</option>
         {% for g in groups %}<option value="{{ g.id }}">{{ g.label }}</option>{% endfor %}

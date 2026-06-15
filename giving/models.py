@@ -153,8 +153,8 @@ class Transaction(models.Model):
     date = models.DateField(db_index=True)
     sabbath_week = models.PositiveSmallIntegerField(null=True, blank=True)
     service_sabbath = models.DateField(null=True, blank=True, db_index=True,
-        help_text="The Sabbath this gift is credited to (honours the count cutoff). "
-                  "May differ from the transaction date for late/after-cutoff gifts.)")  # 1..5
+        help_text="The Sabbath this contribution is credited to (honours the count cutoff). "
+                  "May differ from the transaction date for late/after-cutoff contributions.)")  # 1..5
     channel = models.CharField(max_length=8, choices=Channel.choices)
     direction = models.CharField(max_length=6, choices=Direction.choices,
                                  default=Direction.CREDIT)
@@ -184,7 +184,7 @@ class Transaction(models.Model):
         default=False, db_index=True,
         help_text="A SYSTEM envelope record exists for this bank entry (it was "
                   "receipted through the app). Set by the receipt-bank-giving pull "
-                  "and the per-gift receipt action. Kept out of the receipting flow "
+                  "and the per-contribution receipt action. Kept out of the receipting flow "
                   "so it isn't receipted twice.")
     manual_receipt = models.BooleanField(
         default=False, db_index=True,
@@ -195,7 +195,7 @@ class Transaction(models.Model):
                   "Reversible — untick to make it eligible for a system receipt.")
     sabbath_confirm_pending = models.BooleanField(
         default=False, db_index=True,
-        help_text="Set by the statement importer when the gift's service Sabbath "
+        help_text="Set by the statement importer when the contribution's service Sabbath "
                   "had already passed on the day of import; the treasurer confirms "
                   "whether it stays on that Sabbath or moves to the next.")
     statement_import = models.ForeignKey("statements.StatementImport", null=True,
@@ -269,7 +269,7 @@ class Transaction(models.Model):
         return contra
 
     def split_siblings(self):
-        """Other ledger rows that are parts of the SAME split gift as this one.
+        """Other ledger rows that are parts of the SAME split contribution as this one.
 
         A split offering (e.g. Combined Offering) is posted as several rows that
         share the payment reference, with the lump sum divided across funds. We
@@ -299,8 +299,8 @@ class Transaction(models.Model):
 
         Reversible: pass value=False to un-mark it (making it eligible for a
         system receipt again). When `cascade_split` is on, every part of the same
-        split gift is marked/unmarked together (so handling one half of a Combined
-        Offering covers the whole gift). Returns the number of rows changed.
+        split contribution is marked/unmarked together (so handling one half of a Combined
+        Offering covers the whole contribution). Returns the number of rows changed.
         """
         def _apply(t):
             changed = []

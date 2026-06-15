@@ -2,7 +2,7 @@
 {% block title %}New allocation rule · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>New allocation rule</h1><div class="sub">Map a payment reference to a fund so future imports allocate automatically</div></div></div>
-<div class="card" style="max-width:560px"><div class="bd">
+<div class="card u-narrow"><div class="bd">
   <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
     <div class="btn-row"><button class="btn">Save rule</button><a class="btn btn-ghost" href="{% url 'rule_list' %}">Cancel</a></div>
   </form>

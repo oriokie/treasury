@@ -47,14 +47,14 @@
   </div>
 </form>
 
-<div class="ws-table">
+<div class="ws-table sticky">
   <table class="ledger compact">
   <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if is_treasurer %}<th>Action</th>{% endif %}</tr></thead>
   <tbody>
   {% for e in expenses %}
     <tr>
       <td class="mono">{{ e.date|date:"d/m/y" }}</td>
-      <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted" style="font-size:.78rem">· {{ e.claimant }}</span>{% endif %}{% if e.attachments.exists %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
+      <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted u-xs">· {{ e.claimant }}</span>{% endif %}{% if e.attachments.exists %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
       <td>{{ e.department.name }}</td>
       <td class="muted">{{ e.get_category_display }}</td>
       <td>{% if e.expenditure_type == 'CAPITAL' %}<span class="pill pill-brass">Capital</span>{% else %}<span class="pill pill-grey">Recurrent</span>{% endif %}</td>
@@ -62,7 +62,7 @@
       <td class="num mono row-debit">({{ e.amount|floatformat:2|intcomma }})</td>
       {% if is_treasurer %}<td class="actions">
         {% if e.status == 'PENDING' or e.status == 'APPROVED' %}
-        <form method="post" action="{% url 'expense_approve' e.id %}" style="display:inline-flex;gap:.3rem">{% csrf_token %}
+        <form method="post" action="{% url 'expense_approve' e.id %}" class="u-inline-flex">{% csrf_token %}
           {% if e.status == 'PENDING' %}<button name="action" value="approve" class="btn btn-xs">Approve</button>
           <button name="action" value="reject" class="btn btn-xs btn-ghost">Reject</button>{% endif %}
           {% if e.status == 'APPROVED' %}
@@ -73,7 +73,7 @@
           {% endif %}
         </form>{% endif %}
         {% if can_enter_data %}<a class="link" href="{% url 'expense_edit' e.id %}">Edit</a>{% endif %}
-        {% if is_treasurer %}<form method="post" action="{% url 'expense_delete' e.id %}" style="display:inline" onsubmit="return confirm('Delete this expense permanently? This cannot be undone (an audit-log record is kept).');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}
+        {% if is_treasurer %}<form method="post" action="{% url 'expense_delete' e.id %}" class="u-inline" onsubmit="return confirm('Delete this expense permanently? This cannot be undone (an audit-log record is kept).');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}
       </td>{% endif %}
     </tr>
   {% empty %}<tr><td colspan="8"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}

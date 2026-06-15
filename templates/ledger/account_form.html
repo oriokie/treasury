@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>{% if object %}Edit account{% else %}New account{% endif %}</h1>
 <div class="sub">{% if object.system_key %}Built-in account — name, parent and status can be changed{% else %}Chart of accounts{% endif %}</div></div></div>
-<div class="card" style="max-width:560px"><div class="bd">
+<div class="card u-narrow"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-grid">

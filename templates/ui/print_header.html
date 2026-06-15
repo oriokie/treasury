@@ -1,0 +1,14 @@
+{% comment %}
+Print-only letterhead for reports. Visible only when printing.
+Usage: {% include "ui/print_header.html" with title="Monthly Treasurer's Report" period=period_label %}
+Falls back to church/site name and the current period from context if not passed.
+{% endcomment %}
+{% load humanize %}
+<div class="print-head">
+  <div class="ph-church">{{ CHURCH_NAME|default:SITE_NAME }}</div>
+  {% if title %}<div class="ph-title">{{ title }}</div>{% endif %}
+  <div class="ph-meta">
+    {% if period %}{{ period }}{% elif start and end %}{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}{% endif %}
+    · Generated {% now "j M Y" %}{% if request.user.is_authenticated %} by {{ request.user.get_username }}{% endif %}
+  </div>
+</div>

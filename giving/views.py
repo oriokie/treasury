@@ -171,7 +171,7 @@ class ReviewQueueView(ReadAccessMixin, ListView):
 
 
 class BulkAllocateView(DataEntryRequiredMixin, View):
-    """Item 1: allocate several review-queue gifts to one fund in a single action,
+    """Item 1: allocate several review-queue contributions to one fund in a single action,
     for faster clearing of the queue. Optionally sets a development group when the
     chosen fund is a development fund."""
 
@@ -180,7 +180,7 @@ class BulkAllocateView(DataEntryRequiredMixin, View):
         ids = request.POST.getlist("txn")
         raw_dept = request.POST.get("department", "")
         if not ids:
-            messages.error(request, "Pick a fund and at least one gift to allocate.")
+            messages.error(request, "Pick a fund and at least one contribution to allocate.")
             return redirect("queue")
 
         base_qs = Transaction.objects.filter(
@@ -207,17 +207,17 @@ class BulkAllocateView(DataEntryRequiredMixin, View):
                 txn.save(update_fields=["claimed_by", "claimed_at"])
                 n += 1
             if n:
-                messages.success(request, f"Allocated {n} gift(s) to {sf.name} — "
+                messages.success(request, f"Allocated {n} contribution(s) to {sf.name} — "
                                           "each split into its parts; the trust "
                                           "portion is queued for receipting.")
             else:
-                messages.info(request, "No matching gifts to allocate.")
+                messages.info(request, "No matching contributions to allocate.")
             return redirect("queue")
 
         # --- ordinary fund ----------------------------------------------------
         dept = Department.objects.filter(pk=raw_dept, active=True).first()
         if not dept:
-            messages.error(request, "Pick a fund and at least one gift to allocate.")
+            messages.error(request, "Pick a fund and at least one contribution to allocate.")
             return redirect("queue")
         grp = None
         if dept.category == Department.Category.DEVELOPMENT:
@@ -234,16 +234,16 @@ class BulkAllocateView(DataEntryRequiredMixin, View):
             n += 1
         if n:
             label = dept.name + (f" · {grp.label}" if grp else "")
-            messages.success(request, f"Allocated {n} gift(s) to {label}.")
+            messages.success(request, f"Allocated {n} contribution(s) to {label}.")
         else:
-            messages.info(request, "No matching gifts to allocate.")
+            messages.info(request, "No matching contributions to allocate.")
         return redirect("queue")
 
 
 class FetchUnallocatedView(DataEntryRequiredMixin, View):
     """Item 5: pull credits that still need a fund — sitting in the ledger without
     a department but not currently in the review queue — into the queue so they
-    can be allocated. A gift can fall out of REVIEW (e.g. imported already
+    can be allocated. A contribution can fall out of REVIEW (e.g. imported already
     'confirmed' but with no fund); this gathers them back for allocation."""
 
     @staticmethod
@@ -259,9 +259,9 @@ class FetchUnallocatedView(DataEntryRequiredMixin, View):
         n = self.pending_qs().update(allocation_status=Transaction.Status.REVIEW)
         if n:
             messages.success(request,
-                f"Fetched {n} unallocated gift(s) from the ledger into the queue.")
+                f"Fetched {n} unallocated contribution(s) from the ledger into the queue.")
         else:
-            messages.info(request, "No unallocated gifts found in the ledger.")
+            messages.info(request, "No unallocated contributions found in the ledger.")
         return redirect("queue")
 
 
@@ -521,7 +521,7 @@ class TransactionUpdateView(DataEntryRequiredMixin, UpdateView):
                 messages.success(self.request, "Marked as a manual receipt.")
             else:
                 messages.success(self.request,
-                    "Manual-receipt mark removed — this gift can be receipted again.")
+                    "Manual-receipt mark removed — this contribution can be receipted again.")
         else:
             messages.success(self.request, "Entry updated.")
         return response
@@ -743,7 +743,7 @@ class QueueImportView(DataEntryRequiredMixin, View):
 class MarkProcessedImportView(DataEntryRequiredMixin, View):
     """Bulk-mark bank entries as 'processed via envelope' — handled already, so
     kept out of the receipting/review flow, but NOT receipted (no envelope record
-    is created). This is for gifts a member wrote on a physical envelope: the
+    is created). This is for contributions a member wrote on a physical envelope: the
     money is on the bank statement, but it must not be receipted again.
 
     Upload a small file with just a REFERENCE and an AMOUNT per row. The reference
@@ -1000,7 +1000,7 @@ class TransactionSplitView(TreasurerRequiredMixin, View):
 
 
 class TransactionShiftSabbathView(TreasurerRequiredMixin, View):
-    """Move a gift to the next or previous Sabbath WITHOUT changing its real
+    """Move a contribution to the next or previous Sabbath WITHOUT changing its real
     transaction date — used for late/after-cutoff items so a closed Sabbath is
     never altered. Audit-tracked via history."""
     def post(self, request, pk):
@@ -1024,13 +1024,13 @@ class TransactionShiftSabbathView(TreasurerRequiredMixin, View):
         t.service_sabbath = new
         t.sabbath_week = sabbath_week_of(new)
         t.save(update_fields=["service_sabbath", "sabbath_week"])
-        messages.success(request, f"Gift moved to the Sabbath of {new:%d %b %Y} "
+        messages.success(request, f"Contribution moved to the Sabbath of {new:%d %b %Y} "
                                   f"(transaction date unchanged: {t.date:%d %b %Y}).")
         return redirect(request.META.get("HTTP_REFERER", reverse("transaction_list")))
 
 
 class SabbathConfirmQueueView(DataEntryRequiredMixin, View):
-    """Gifts imported after their service Sabbath had already passed — confirm
+    """Contributions imported after their service Sabbath had already passed — confirm
     whether each stays on that Sabbath or moves to the next one. Grouped per
     Sabbath so a whole import can be confirmed in one click."""
     template_name = "giving/sabbath_queue.html"
@@ -1073,13 +1073,13 @@ class SabbathConfirmQueueView(DataEntryRequiredMixin, View):
         n = 0
         if action == "keep":
             n = qs.update(sabbath_confirm_pending=False)
-            messages.success(request, f"Kept {n} gift(s) on their original Sabbath.")
+            messages.success(request, f"Kept {n} contribution(s) on their original Sabbath.")
         elif action == "move":
             for t in qs:
                 target = next_open_sabbath(t.service_sabbath + _dt.timedelta(days=7))
                 why = entry_blocked(target)
                 if why:
-                    messages.error(request, f"Could not move a gift: {why}")
+                    messages.error(request, f"Could not move a contribution: {why}")
                     continue
                 t.service_sabbath = target
                 t.sabbath_week = _swk(target)
@@ -1087,7 +1087,7 @@ class SabbathConfirmQueueView(DataEntryRequiredMixin, View):
                 t.save(update_fields=["service_sabbath", "sabbath_week",
                                       "sabbath_confirm_pending"])
                 n += 1
-            messages.success(request, f"Moved {n} gift(s) to the next Sabbath.")
+            messages.success(request, f"Moved {n} contribution(s) to the next Sabbath.")
         return redirect("sabbath_queue")
 
 

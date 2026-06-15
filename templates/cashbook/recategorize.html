@@ -7,10 +7,10 @@
   <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'expense_list' %}">← Back to expenses</a></div>
 </div>
 
-<div class="card" style="max-width:760px">
+<div class="card u-narrow-xl">
   <div class="hd">How it works</div>
   <div class="bd">
-    <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+    <ol class="u-list-loose">
       <li><strong>Download</strong> the current expenses as a spreadsheet.</li>
       <li>Edit only the <strong>“New category”</strong> column — type a category label
         (e.g. <span class="mono">Transport</span>) or its code. The other columns are
@@ -18,13 +18,13 @@
       <li><strong>Upload</strong> the edited file. Only the category is updated, matched
         by the expense ID; amounts, dates and descriptions are never touched.</li>
     </ol>
-    <div class="btn-row" style="margin:.8rem 0">
+    <div class="btn-row u-my">
       <a class="btn" href="?download=1">⤓ Download expenses (.xlsx)</a>
     </div>
 
-    <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+    <form method="post" enctype="multipart/form-data" class="u-section-top">
       {% csrf_token %}
-      <div class="form-row" style="margin:.4rem 0"><label>Edited spreadsheet</label>
+      <div class="form-row u-my-sm"><label>Edited spreadsheet</label>
         <input type="file" name="file" class="field" accept=".xlsx" required></div>
       <button class="btn">Upload &amp; update categories</button>
     </form>
@@ -34,7 +34,7 @@
 <div class="card" style="max-width:760px;margin-top:1rem">
   <div class="hd">Valid categories</div>
   <div class="bd">
-    <p class="help" style="margin-top:0">Use any of these in the “New category” column (the label or the code):</p>
+    <p class="help u-mt-0">Use any of these in the “New category” column (the label or the code):</p>
     <div style="display:flex;flex-wrap:wrap;gap:.4rem">
       {% for code, label in categories %}<span class="pill pill-grey" title="code: {{ code }}">{{ label }}</span>{% endfor %}
     </div>

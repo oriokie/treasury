@@ -43,10 +43,8 @@ def env_bool(key, default=False):
 
 
 # --- Core ------------------------------------------------------------------
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "dev-insecure-key-change-me-in-production-0123456789abcdef",
-)
+_DEV_SECRET_KEY = "dev-insecure-key-change-me-in-production-0123456789abcdef"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", _DEV_SECRET_KEY)
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
@@ -63,6 +61,37 @@ ENCRYPTION_KEY = os.environ.get("TREASURY_ENCRYPTION_KEY", "")
 CSRF_TRUSTED_ORIGINS = [
     o for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o
 ]
+
+# --- Fail loudly on unsafe production configuration ------------------------
+# In production (DEBUG off) we must never run on the shipped dev secret, and we
+# warn about settings that silently weaken security or risk data loss. These
+# checks run at import time so a misconfigured deploy is caught before it serves
+# a single request, rather than degrading quietly.
+if not DEBUG:
+    import warnings
+    from django.core.exceptions import ImproperlyConfigured
+
+    if SECRET_KEY == _DEV_SECRET_KEY:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY is not set: the application is using the built-in "
+            "development key, which is public. Set DJANGO_SECRET_KEY to a long "
+            "random secret in the environment before running in production."
+        )
+    if ALLOWED_HOSTS == ["*"]:
+        warnings.warn(
+            "DJANGO_ALLOWED_HOSTS is '*' (any host). Set it to your actual "
+            "domain(s), e.g. 'kws.oriokie.com', to prevent Host-header attacks.",
+            stacklevel=2,
+        )
+    if ENCRYPTION_ENABLED and not ENCRYPTION_KEY:
+        warnings.warn(
+            "TREASURY_ENCRYPTION_KEY is not set, so encryption falls back to "
+            "SECRET_KEY. If SECRET_KEY ever changes, all encrypted data (including "
+            "two-factor secrets) becomes unreadable and users get locked out. Set a "
+            "stable TREASURY_ENCRYPTION_KEY in the environment.",
+            stacklevel=2,
+        )
+
 
 INSTALLED_APPS = [
     "django.contrib.admin",

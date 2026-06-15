@@ -6,15 +6,15 @@
   <a class="btn btn-ghost" href="{% url 'report_member' member.id %}">Statement</a>
   {% if can_enter_data %}<a class="btn" href="{% url 'member_edit' member.id %}">Edit</a>{% endif %}
 </div></div>
-<div class="grid-3" style="margin-bottom:1rem">
+<div class="grid-3 u-mb">
   <div class="stat"><div class="lbl">Total given (lifetime)</div><div class="val mono">{{ total_given|floatformat:2|intcomma }}</div></div>
   <div class="stat"><div class="lbl">Member type</div><div class="val" style="font-size:1.1rem">{{ member.get_member_type_display|default:"—" }}</div></div>
   <div class="stat"><div class="lbl">Source</div><div class="val" style="font-size:1.1rem">{{ member.get_source_display }}</div></div>
 </div>
 {% if aliases %}
-<div class="card" style="margin-bottom:1rem"><div class="bd">
+<div class="card u-mb"><div class="bd">
   <strong>Known aliases</strong>
-  <div style="margin-top:.4rem">{% for a in aliases %}<span class="pill pill-grey" style="margin:.15rem">{{ a.name }}</span>{% endfor %}</div>
+  <div class="u-mt-xs">{% for a in aliases %}<span class="pill pill-grey" style="margin:.15rem">{{ a.name }}</span>{% endfor %}</div>
 </div></div>
 {% endif %}
 <div class="card"><div class="hd"><strong>Recent giving</strong><span class="muted">last {{ transactions|length }}</span></div>
@@ -32,7 +32,7 @@
 
 {% with member_pledges=member.pledges.all %}
 {% if member_pledges %}
-<div class="card" style="margin-top:1rem"><div class="hd"><strong>Pledges</strong><span class="muted"><a href="{% url 'pledge_member_statement' member.id %}">year-end statement →</a></span></div>
+<div class="card u-mt"><div class="hd"><strong>Pledges</strong><span class="muted"><a href="{% url 'pledge_member_statement' member.id %}">year-end statement →</a></span></div>
 <table class="ledger compact"><thead><tr><th>Campaign</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead><tbody>
   {% for p in member_pledges %}{% if p.status != 'CANCELLED' %}<tr><td><a class="link" href="{% url 'pledge_detail' p.id %}">{{ p.campaign.name }}</a></td><td><span class="pill {% if p.status == 'FULFILLED' %}pill-green{% elif p.status == 'ACTIVE' %}pill-blue{% elif p.status == 'LAPSED' %}pill-red{% else %}pill-amber{% endif %}">{{ p.get_status_display }}</span></td><td class="num mono">{{ p.amount|floatformat:0 }}</td><td class="num mono">{{ p.paid|floatformat:0 }}</td><td class="num mono">{{ p.outstanding|floatformat:0 }}</td></tr>{% endif %}{% endfor %}
   </tbody></table></div>

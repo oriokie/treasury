@@ -1,0 +1,10 @@
+{% comment %}
+Reusable page header. Usage:
+  {% include "ui/page_header.html" with title="Transactions" subtitle="All recorded giving and payments" %}
+Optional: pass actions_html (already-safe HTML) for right-aligned buttons, or
+wrap your own actions by not using this partial. Keeps page titles consistent.
+{% endcomment %}
+<div class="ws-head"><div class="ws-titles">
+  <h1>{{ title }}</h1>
+  {% if subtitle %}<div class="ws-sub">{{ subtitle }}</div>{% endif %}
+</div>{% if actions_html %}<div class="ws-actions">{{ actions_html|safe }}</div>{% endif %}</div>

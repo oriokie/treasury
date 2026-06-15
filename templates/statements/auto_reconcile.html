@@ -15,12 +15,12 @@
     <tr>
       <td>{{ m.transaction.date|date:"d/m/y" }} · <span class="muted mono">{{ m.transaction.raw_narration|default:m.transaction.reference|truncatechars:30 }}</span></td>
       <td>{% if m.expense %}{{ m.expense.description|truncatechars:28 }}<div class="muted" style="font-size:.76rem">{{ m.expense.department.name }}{% if m.expense.claimant %} · {{ m.expense.claimant }}{% endif %}</div>{% else %}—{% endif %}</td>
-      <td class="muted" style="font-size:.8rem">{{ m.reason }}</td>
+      <td class="muted u-small">{{ m.reason }}</td>
       <td class="num mono">{{ m.transaction.amount|floatformat:2|intcomma }}</td>
-      <td class="num"><span class="pill {% if m.confidence >= 90 %}pill-green{% elif m.confidence >= 70 %}pill-blue{% else %}pill-amber{% endif %}">{{ m.confidence }}%</span>{% if m.status == 'AUTO' %}<div class="muted" style="font-size:.7rem">auto-linked</div>{% endif %}</td>
-      {% if is_treasurer %}<td style="white-space:nowrap">
-        {% if m.status == 'REVIEW' %}<form method="post" action="{% url 'auto_reconcile_confirm' m.id %}" style="display:inline">{% csrf_token %}<button class="btn btn-xs">Confirm</button></form>{% endif %}
-        <form method="post" action="{% url 'auto_reconcile_reject' m.id %}" style="display:inline">{% csrf_token %}<button class="link link-danger">Reject</button></form>
+      <td class="num"><span class="pill {% if m.confidence >= 90 %}pill-green{% elif m.confidence >= 70 %}pill-blue{% else %}pill-amber{% endif %}">{{ m.confidence }}%</span>{% if m.status == 'AUTO' %}<div class="muted u-xs">auto-linked</div>{% endif %}</td>
+      {% if is_treasurer %}<td class="u-nowrap">
+        {% if m.status == 'REVIEW' %}<form method="post" action="{% url 'auto_reconcile_confirm' m.id %}" class="u-inline">{% csrf_token %}<button class="btn btn-xs">Confirm</button></form>{% endif %}
+        <form method="post" action="{% url 'auto_reconcile_reject' m.id %}" class="u-inline">{% csrf_token %}<button class="link link-danger">Reject</button></form>
       </td>{% endif %}
     </tr>
   {% empty %}<tr><td colspan="{% if is_treasurer %}6{% else %}5{% endif %}" class="empty">No suggestions. Run auto-reconciliation to find matches.</td></tr>{% endfor %}
@@ -29,7 +29,7 @@
 </div></div>
 
 {% if recent %}
-<div class="card" style="margin-top:1.2rem"><div class="hd">Recently confirmed</div><div class="bd">
+<div class="card u-mt-lg"><div class="hd">Recently confirmed</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Date</th><th>Expense</th><th class="num">Amount</th><th class="num">Confidence</th></tr></thead><tbody>
 {% for m in recent %}<tr><td class="mono">{{ m.transaction.date|date:"d/m/y" }}</td><td>{{ m.expense.description|default:"—"|truncatechars:30 }}</td><td class="num mono">{{ m.transaction.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-green">{{ m.confidence }}%</span></td></tr>{% endfor %}
 </tbody></table>

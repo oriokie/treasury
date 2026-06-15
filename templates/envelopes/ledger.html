@@ -21,7 +21,7 @@
     <div class="cp-grid">
       {% for c in columns %}
       <label class="cp-item"><input type="checkbox" class="colcb" value="{{ c.key }}" data-label="{{ c.label }}" {% if c.default %}checked{% endif %}>
-        <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber" style="font-size:.6rem">T</span>{% endif %}</span></label>
+        <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber pill-xs">T</span>{% endif %}</span></label>
       {% endfor %}
     </div>
     <div class="btn-row"><button type="button" class="btn btn-sm" id="applyCols">Apply</button></div>
@@ -32,8 +32,8 @@
       <thead><tr id="headRow">
         <th class="rownum">#</th>
         <th class="sticky-name">Contributor</th>
-        <th style="width:104px">Receipt</th>
-        <th style="width:84px">Channel</th>
+        <th class="col-receipt">Receipt</th>
+        <th class="col-channel">Channel</th>
         <th class="num">Total</th><th class="rm-col"></th>
       </tr></thead>
       <tbody id="envBody"></tbody>
@@ -50,7 +50,7 @@
     <div class="es-funds" id="esFunds"></div>
   </div>
 
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically (e.g. 50% trust / 50% local). Press Enter to move down a column; the last row adds a new one.</p>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically (e.g. 50% trust / 50% local). Use <strong>↑ / ↓ or Enter</strong> to move between rows in a column; Enter on the last row adds a new one.</p>
   <div class="btn-row entry-actions">
     <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
     <button class="btn btn-save">Save envelopes <span id="saveTotal" class="save-total"></span></button>
@@ -137,7 +137,7 @@ function makeRow(receipt, data){
   const tr=document.createElement("tr");
   let cells=`
     <td class="rownum"></td>
-    <td class="sticky-name" style="position:relative">
+    <td class="sticky-name pos-rel">
       <input class="field cname" autocomplete="off" placeholder="name…" value="${data.name||''}">
       <input type="hidden" class="mid" value="${data.mid||''}">
       <div class="ac-box"></div>
@@ -146,7 +146,7 @@ function makeRow(receipt, data){
     <td><select class="field--select chan"><option value="CASH">Cash</option><option value="BANK" ${data.chan==='BANK'?'selected':''}>Bank</option></select></td>`;
   COLS.forEach(c=>{ const v=(data.amounts&&data.amounts[c.key])||'';
     if(c.key===DEV_FUND_KEY && DEV_GROUPS.length){
-      cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"><select class="field--select devgrp" style="margin-top:.2rem;font-size:.8rem">${devGroupOptions(data.dev_group_id||'')}</select></td>`;
+      cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"><select class="field--select devgrp devgrp-select">${devGroupOptions(data.dev_group_id||'')}</select></td>`;
     } else {
       cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"></td>`;
     } });
@@ -180,15 +180,22 @@ function makeRow(receipt, data){
 
   tr.querySelectorAll("input,select").forEach(inp=>{
     inp.addEventListener("keydown",e=>{
-      if(e.key==="Enter"){ e.preventDefault();
+      const isSelect = e.target.tagName === "SELECT";
+      const move=(off)=>{
         const all=Array.from(document.querySelectorAll("#envBody tr"));
         const ri=all.indexOf(tr);
-        if(ri===all.length-1) addRow();
         const cells=Array.from(tr.querySelectorAll("input,select"));
         const ci=cells.indexOf(e.target);
-        const next=document.querySelectorAll("#envBody tr")[ri+1];
-        if(next){ const t=next.querySelectorAll("input,select")[ci]; if(t) t.focus(); }
-      }
+        if(off>0 && ri===all.length-1) addRow();
+        const next=document.querySelectorAll("#envBody tr")[ri+off];
+        if(next){ const t=next.querySelectorAll("input,select")[ci];
+          if(t){ t.focus(); if(t.select) t.select(); } }
+      };
+      // Enter and ArrowDown move down a column; ArrowUp moves up. Arrows are left
+      // to their normal behaviour inside <select> (which uses them to change value).
+      if(e.key==="Enter"){ e.preventDefault(); move(1); }
+      else if(e.key==="ArrowDown" && !isSelect){ e.preventDefault(); move(1); }
+      else if(e.key==="ArrowUp" && !isSelect){ e.preventDefault(); move(-1); }
     });
   });
   return tr;
@@ -230,7 +237,7 @@ document.getElementById("envForm").addEventListener("submit",function(){
 .cp-title{font-weight:600;margin-bottom:.6rem;font-size:.9rem}
 .cp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.3rem .8rem;margin-bottom:.7rem}
 .cp-item{display:flex;align-items:center;gap:.4rem;font-size:.88rem;cursor:pointer}
-.xl-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:8px}
+.xl-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch}
 .xl-grid{border-collapse:separate;border-spacing:0;min-width:max-content}
 .xl-grid th,.xl-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0}
 .xl-grid thead th{position:sticky;top:0;z-index:5;background:var(--accent,#1f5f4f);color:#fff;padding:.25rem .35rem;font-size:.7rem;white-space:nowrap;text-align:right;max-width:88px}
@@ -278,6 +285,17 @@ document.getElementById("envForm").addEventListener("submit",function(){
 @media(max-width:760px){
   .entry-summary{gap:1rem}.es-num{font-size:1.15rem}
   .es-funds{justify-content:flex-start;width:100%}
+  /* full-width toolbar fields and action buttons for easy tapping */
+  .entry-toolbar{gap:.6rem}
+  .entry-toolbar .tb-field{flex:1 1 100%}
+  .entry-toolbar .tb-field .field{min-width:0;width:100%}
+  .entry-toolbar .tb-spacer{display:none}
+  .entry-actions{flex-direction:column;align-items:stretch}
+  .entry-actions .btn{width:100%;padding:.6rem}
+  /* larger touch targets inside the grid cells */
+  .xl-grid td .field,.xl-grid td .field--select{padding:.45rem .3rem;min-height:40px;font-size:.82rem}
+  .cp-grid{grid-template-columns:1fr 1fr}
+  .cp-item{min-height:34px}
 }
 </style>
 {% endblock %}

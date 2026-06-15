@@ -107,7 +107,7 @@ def collections_summary(year):
     """Per month: total collections, trust-fund collections, and expenditure.
     Mirrors the church's collection definition exactly — excludes rows flagged
     excluded_from_income (e.g. bank M-Pesa lines that are also receipted as
-    envelopes), so the same gift is never counted twice."""
+    envelopes), so the same contribution is never counted twice."""
     base = Transaction.objects.confirmed_credits().filter(excluded_from_income=False)
     credit = (base.filter(date__year=year)
               .annotate(m=TruncMonth("date")).values("m")

@@ -17,7 +17,7 @@
       <button class="btn btn-sm" name="action" value="keep" title="These offerings were given for this Sabbath — keep them on it">✓ Keep all on this Sabbath</button>
       <button class="btn btn-sm btn-ghost" name="action" value="move" title="These arrived too late — count them under the next Sabbath" onclick="return confirm('Move ALL {{ g.count }} offering(s) to the Sabbath after {{ g.sabbath|date:'d M' }}?')">→ Move all to next Sabbath</button>
     </span></div>
-  <div class="bd" style="padding:0">
+  <div class="bd bd-flush">
   <div class="table-wrap"><table class="ledger compact">
     <thead><tr><th style="width:30px"><input type="checkbox" onclick="this.closest('form').querySelectorAll('input[name=txn]').forEach(c=>c.checked=this.checked)"></th>
       <th>Date given</th><th>Payer</th><th>Fund / reference</th><th class="num">Amount</th></tr></thead>

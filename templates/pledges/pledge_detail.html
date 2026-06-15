@@ -15,26 +15,26 @@
 </div>
 
 {% if pledge.status == 'DRAFT' and is_treasurer %}
-<div class="alert alert-warn" style="margin-bottom:1rem"><strong>Awaiting approval.</strong> This pledge was recorded by an assistant.
+<div class="alert alert-warn u-mb"><strong>Awaiting approval.</strong> This pledge was recorded by an assistant.
   <form method="post" action="{% url 'pledge_approve' pledge.id %}" style="display:inline;margin-left:.5rem">{% csrf_token %}<input type="hidden" name="action" value="approve"><button class="btn btn-xs">Approve</button></form>
-  <form method="post" action="{% url 'pledge_approve' pledge.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn btn-xs btn-ghost">Reject</button></form>
+  <form method="post" action="{% url 'pledge_approve' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn btn-xs btn-ghost">Reject</button></form>
 </div>
 {% endif %}
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
-  <div class="card"><div class="hd">Payments matched</div><div class="bd" style="padding:0">
+  <div class="card"><div class="hd">Payments matched</div><div class="bd bd-flush">
     <table class="ledger compact"><thead><tr><th>Date</th><th>Source</th><th class="num">Amount</th>{% if is_treasurer %}<th></th>{% endif %}</tr></thead><tbody>
     {% for pp in payments %}
       <tr><td class="mono">{{ pp.date|date:"d/m/y" }}</td>
         <td>{% if pp.transaction %}<a class="link" href="{% url 'transaction_list' %}?q={{ pp.transaction.reference }}" title="{{ pp.transaction.reference }}">{{ pp.get_source_display }}</a>{% else %}<span title="Recorded directly, not yet linked to a ledger contribution">{{ pp.get_source_display }} (unlinked)</span>{% endif %}</td>
         <td class="num mono">{{ pp.amount|floatformat:2|intcomma }}</td>
-        {% if is_treasurer %}<td><form method="post" action="{% url 'pledge_payment_delete' pp.id %}" style="display:inline" onsubmit="return confirm('Remove this match? The contribution stays in the ledger; only the link to this pledge is removed.');">{% csrf_token %}<button class="link link-danger">remove</button></form></td>{% endif %}
+        {% if is_treasurer %}<td><form method="post" action="{% url 'pledge_payment_delete' pp.id %}" class="u-inline" onsubmit="return confirm('Remove this match? The contribution stays in the ledger; only the link to this pledge is removed.');">{% csrf_token %}<button class="link link-danger">remove</button></form></td>{% endif %}
       </tr>
     {% empty %}<tr><td colspan="4" class="empty">No contributions matched yet.</td></tr>{% endfor %}
     </tbody></table>
   </div></div>
 
-  <div class="card"><div class="hd">Expected schedule</div><div class="bd" style="padding:0">
+  <div class="card"><div class="hd">Expected schedule</div><div class="bd bd-flush">
     <table class="ledger compact"><thead><tr><th>Due</th><th class="num">Amount</th></tr></thead><tbody>
     {% for s in schedule %}<tr><td class="mono">{{ s.due|date:"d/m/y" }}</td><td class="num mono">{{ s.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
     </tbody></table>
@@ -43,9 +43,9 @@
 </div>
 
 {% if is_treasurer %}
-<div class="card" style="margin-top:1rem"><div class="hd">Match a contribution</div><div class="bd">
+<div class="card u-mt"><div class="hd">Match a contribution</div><div class="bd">
   {% if suggestions %}
-  <p class="help" style="margin-top:0">These confirmed contributions from {{ pledge.member.name }} could fulfil this pledge:</p>
+  <p class="help u-mt-0">These confirmed contributions from {{ pledge.member.name }} could fulfil this pledge:</p>
   <table class="ledger compact"><thead><tr><th>Date</th><th>Fund</th><th>Reference</th><th class="num">Available</th><th></th></tr></thead><tbody>
   {% for s in suggestions %}
     <tr><td class="mono">{{ s.txn.date|date:"d/m/y" }}</td><td>{{ s.txn.department.name|default:"—" }}</td><td class="mono muted">{{ s.txn.reference|default:"—"|truncatechars:20 }}</td><td class="num mono">{{ s.free|floatformat:2|intcomma }}</td>
@@ -53,9 +53,9 @@
     </tr>
   {% endfor %}
   </tbody></table>
-  <form method="post" action="{% url 'pledge_match' pledge.id %}" style="margin-top:.6rem">{% csrf_token %}<input type="hidden" name="action" value="auto"><button class="btn btn-sm btn-ghost">⚡ Auto-match up to outstanding</button></form>
+  <form method="post" action="{% url 'pledge_match' pledge.id %}" class="u-mt-sm">{% csrf_token %}<input type="hidden" name="action" value="auto"><button class="btn btn-sm btn-ghost">⚡ Auto-match up to outstanding</button></form>
   {% else %}
-  <p class="help" style="margin-top:0">No unmatched contributions found from this member. You can record a payment directly (e.g. a cash gift not yet in the ledger):</p>
+  <p class="help u-mt-0">No unmatched contributions found from this member. You can record a payment directly (e.g. a cash contribution not yet in the ledger):</p>
   {% endif %}
   <form method="post" action="{% url 'pledge_match' pledge.id %}" style="margin-top:.8rem;border-top:1px solid var(--line);padding-top:.8rem;display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">{% csrf_token %}
     <input type="hidden" name="action" value="manual">
@@ -63,19 +63,19 @@
     <div class="f grow"><label>Note</label><input type="text" name="note" class="field" placeholder="e.g. cash received at service"></div>
     <button class="btn btn-sm">Record</button>
   </form>
-  <p class="help" style="margin-top:.5rem">A direct payment is still informational — it does not post to the ledger. Prefer matching a real contribution where one exists.</p>
+  <p class="help u-mt-sm">A direct payment is still informational — it does not post to the ledger. Prefer matching a real contribution where one exists.</p>
 </div></div>
 
-<div class="card" style="margin-top:1rem"><div class="hd">Reminders &amp; actions</div><div class="bd">
+<div class="card u-mt"><div class="hd">Reminders &amp; actions</div><div class="bd">
   <div class="btn-row">
-    <form method="post" action="{% url 'pledge_remind' pledge.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="channel" value="SMS"><button class="btn btn-sm btn-ghost" {% if not pledge.member.receipt_phone %}disabled title="No phone on file"{% endif %}>✉ SMS reminder</button></form>
-    <form method="post" action="{% url 'pledge_remind' pledge.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="channel" value="WHATSAPP"><button class="btn btn-sm btn-ghost" {% if not pledge.member.receipt_phone %}disabled{% endif %}>WhatsApp reminder</button></form>
-    {% if pledge.status != 'CANCELLED' %}<form method="post" action="{% url 'pledge_approve' pledge.id %}" style="display:inline" onsubmit="return confirm('Cancel this pledge?');">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn btn-sm btn-ghost link-danger">Cancel pledge</button></form>{% else %}<form method="post" action="{% url 'pledge_approve' pledge.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="action" value="reactivate"><button class="btn btn-sm btn-ghost">Reactivate</button></form>{% endif %}
+    <form method="post" action="{% url 'pledge_remind' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="SMS"><button class="btn btn-sm btn-ghost" {% if not pledge.member.receipt_phone %}disabled title="No phone on file"{% endif %}>✉ SMS reminder</button></form>
+    <form method="post" action="{% url 'pledge_remind' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="WHATSAPP"><button class="btn btn-sm btn-ghost" {% if not pledge.member.receipt_phone %}disabled{% endif %}>WhatsApp reminder</button></form>
+    {% if pledge.status != 'CANCELLED' %}<form method="post" action="{% url 'pledge_approve' pledge.id %}" class="u-inline" onsubmit="return confirm('Cancel this pledge?');">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn btn-sm btn-ghost link-danger">Cancel pledge</button></form>{% else %}<form method="post" action="{% url 'pledge_approve' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="reactivate"><button class="btn btn-sm btn-ghost">Reactivate</button></form>{% endif %}
   </div>
-  {% if reminders %}<div class="help" style="margin-top:.7rem">Recent reminders: {% for r in reminders %}{{ r.channel }} {{ r.sent_at|date:"d/m" }}{% if r.ok %} ✓{% else %} ✗{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+  {% if reminders %}<div class="help u-mt-sm">Recent reminders: {% for r in reminders %}{{ r.channel }} {{ r.sent_at|date:"d/m" }}{% if r.ok %} ✓{% else %} ✗{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
 </div></div>
 {% endif %}
 
-{% if pledge.note %}<p class="help" style="margin-top:1rem">Note: {{ pledge.note }}</p>{% endif %}
+{% if pledge.note %}<p class="help u-mt">Note: {{ pledge.note }}</p>{% endif %}
 <style>.btn-xs{padding:.12rem .5rem;font-size:.75rem}</style>
 {% endblock %}

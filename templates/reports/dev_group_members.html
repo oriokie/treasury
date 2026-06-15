@@ -11,12 +11,12 @@
 {% include 'partials/period_filter.html' %}
 
 {% if is_treasurer %}
-<form method="post" style="margin:.6rem 0">{% csrf_token %}
+<form method="post" class="u-my-sm">{% csrf_token %}
   {% if group.leader_email %}<button class="btn btn-sm">✉ Email this report to {{ group.leader_email }}</button>
   {% else %}<span class="help">Set a leader email on the <a class="link" href="{% url 'dev_group_edit' group.id %}">group settings</a> to email this report.</span>{% endif %}
 </form>{% endif %}
 
-<div class="table-wrap" style="margin-top:.6rem"><table class="ledger">
+<div class="table-wrap u-mt-sm"><table class="ledger">
   <thead><tr><th>Member</th><th>Phone</th><th class="num">Donations</th><th class="num">Total (KES)</th></tr></thead>
   <tbody>
   {% for r in rows %}<tr>

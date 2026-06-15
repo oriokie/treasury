@@ -2,10 +2,10 @@
 {% block title %}Bank feed log · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Real-time bank feed</h1><div class="sub">Events pushed by the bank's Core Banking System</div></div></div>
-<div class="grid-3" style="margin-top:1rem">
+<div class="grid-3 u-mt">
   {% for label, n in counts.items %}<div class="stat"><div class="lbl">{{ label }}</div><div class="val mono">{{ n }}</div></div>{% endfor %}
 </div>
-<table class="ledger" style="margin-top:1rem"><thead><tr>
+<table class="ledger u-mt"><thead><tr>
   <th>Received</th><th>Transaction ID</th><th>Account</th><th>Type</th><th class="num">Amount</th><th>Status</th><th>Linked</th>
 </tr></thead><tbody>
 {% for e in events %}

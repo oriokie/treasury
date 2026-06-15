@@ -343,7 +343,7 @@ def fund_variance_detail(dept):
             "date": t.date if t else None,
             "desc": (t.payer_name if t else "removed transaction") or "transaction",
             "amount": Decimal(0) - ledger_amt,
-            "reason": f"Ledger still credits this fund but the gift is now under "
+            "reason": f"Ledger still credits this fund but the contribution is now under "
                       f"{moved_to} — rebuild the ledger to re-post it",
             "ref": (t.mpesa_ref or t.core_ref if t else "") or "",
             "url": f"/transactions/{src_id}/edit/" if t else ""})

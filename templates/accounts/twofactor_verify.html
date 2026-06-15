@@ -10,9 +10,12 @@
   .tfa-card h1{font-size:1.3rem;margin:.4rem 0 .2rem}
   .tfa-card p{color:var(--muted,#7a7568);font-size:.9rem;margin:.2rem 0 1rem}
   .tfa-card input[name=token]{width:100%;font-size:1.2rem;letter-spacing:.12em;text-align:center;padding:.6rem;border:1px solid var(--line,#e4dfd2);border-radius:8px}
-  .tfa-card button{width:100%;margin-top:.9rem;padding:.65rem;background:var(--forest,#1f5f4f);color:#fff;border:0;border-radius:8px;font-size:1rem;cursor:pointer}
+  .tfa-card button.primary{width:100%;margin-top:.9rem;padding:.65rem;background:var(--forest,#1f5f4f);color:#fff;border:0;border-radius:8px;font-size:1rem;cursor:pointer}
   .tfa-flash{padding:.55rem .7rem;border-radius:8px;margin-bottom:.8rem;font-size:.85rem;background:#fbeaea;color:#8a2b2b;border:1px solid #e7c3c3}
+  .tfa-flash.success{background:#e8f3ec;color:#1f5f4f;border-color:#bcd9c6}
+  .tfa-flash.info{background:#eef2f7;color:#3a4a5a;border-color:#cdd8e3}
   .tfa-hint{font-size:.78rem;margin-top:1rem}
+  .tfa-resend{background:none;border:0;color:var(--forest,#1f5f4f);text-decoration:underline;cursor:pointer;font-size:.82rem;margin-top:.6rem}
   .tfa-foot{text-align:center;margin-top:1rem}
   .tfa-foot a{color:var(--muted,#7a7568);font-size:.8rem}
 </style>
@@ -21,15 +24,27 @@
   <div class="tfa-card">
     <div class="tfa-mark">₳</div>
     <h1>Enter your code</h1>
-    <p>Open your authenticator app and enter the current 6-digit code{% if secret_lost %}, or use a recovery code{% endif %}.</p>
-    {% if messages %}{% for m in messages %}<div class="tfa-flash">{{ m }}</div>{% endfor %}{% endif %}
+    {% if method == "SMS" %}
+      <p>We sent a 6-digit code by text to <strong>{{ dest }}</strong>. Enter it below{% if secret_lost %}, or use a recovery code{% endif %}.</p>
+    {% elif method == "EMAIL" %}
+      <p>We emailed a 6-digit code to <strong>{{ dest }}</strong>. Enter it below{% if secret_lost %}, or use a recovery code{% endif %}.</p>
+    {% else %}
+      <p>Open your authenticator app and enter the current 6-digit code{% if secret_lost %}, or use a recovery code{% endif %}.</p>
+    {% endif %}
+    {% if messages %}{% for m in messages %}<div class="tfa-flash {{ m.tags }}">{{ m }}</div>{% endfor %}{% endif %}
     <form method="post" action="{% url 'twofactor_verify' %}">{% csrf_token %}
       <input name="token" inputmode="text" autocomplete="one-time-code"
         placeholder="123456 or recovery code" autofocus>
-      <button type="submit">Verify</button>
+      <button type="submit" class="primary">Verify</button>
     </form>
-    <p class="tfa-hint">Lost your phone? Enter one of the recovery codes you saved
-      when setting up two-factor — it works in the same box.</p>
+    {% if method == "SMS" or method == "EMAIL" %}
+    <form method="post" action="{% url 'twofactor_verify' %}">{% csrf_token %}
+      <input type="hidden" name="action" value="resend">
+      <button type="submit" class="tfa-resend">Didn't get it? Send a new code</button>
+    </form>
+    {% endif %}
+    <p class="tfa-hint">Lost access? Enter one of the recovery codes you saved when
+      setting up two-factor — it works in the same box.</p>
   </div>
 </div>
 <div class="tfa-foot"><a href="{% url 'logout' %}">Sign in as a different user</a></div>

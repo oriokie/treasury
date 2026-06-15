@@ -16,7 +16,7 @@
       <td class="num mono">{{ r.a.cost|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ r.acc|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ r.nbv|floatformat:2|intcomma }}</td>
-      {% if is_treasurer %}<td style="white-space:nowrap"><a class="link" href="{% url 'asset_edit' r.a.id %}">Edit</a>
+      {% if is_treasurer %}<td class="u-nowrap"><a class="link" href="{% url 'asset_edit' r.a.id %}">Edit</a>
         {% if not r.a.disposed %}<a class="link" href="{% url 'asset_detail' r.a.id %}">Manage / dispose</a>{% endif %}
       </td>{% endif %}
     </tr>

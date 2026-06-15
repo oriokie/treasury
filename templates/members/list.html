@@ -20,12 +20,12 @@
   {% if can_enter_data %}
   <div class="bulk-bar">
     <span class="muted"><span id="selCount">0</span> selected</span>
-    <select name="field" class="field--select" id="bulkField" style="width:auto">
+    <select name="field" class="field--select" id="bulkField" class="u-w-auto">
       <option value="group">Set group</option>
       <option value="member_type">Set member type</option>
       <option value="active">Set status</option>
     </select>
-    <select name="value" class="field--select" id="bulkValue" style="width:auto"></select>
+    <select name="value" class="field--select" id="bulkValue" class="u-w-auto"></select>
     <button class="btn btn-sm" onclick="return document.querySelectorAll('.rowcb:checked').length>0 || (alert('Select members first'),false);">Apply to selected</button>
   </div>
   {% endif %}

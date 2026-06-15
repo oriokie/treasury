@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load humanize static %}
 {% block title %}Annual summary · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Annual Summary" %}
 <div class="page-head"><div><h1>Annual summary</h1><div class="sub">Income, expenditure &amp; net by year</div></div>
 <button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
 <div class="table-wrap"><table class="ledger">
@@ -32,7 +33,7 @@
 {% if has_season %}
 <div class="card" style="margin-top:1.5rem"><div class="hd">Seasonality — average by month (historical)</div><div class="bd">
   <canvas id="seasonChart" height="120"></canvas>
-  <p class="help" style="margin-top:.6rem">Average collection, trust fund, and expenditure for each calendar month across the recorded historical years — useful for spotting camp-meeting peaks, December giving, and lean months when budgeting.</p>
+  <p class="help u-mt-sm">Average collection, trust fund, and expenditure for each calendar month across the recorded historical years — useful for spotting camp-meeting peaks, December giving, and lean months when budgeting.</p>
 </div></div>
 {% endif %}
 {% endblock %}

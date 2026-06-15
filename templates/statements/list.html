@@ -14,9 +14,9 @@
       <td><span class="pill {% if imp.status == 'DONE' %}pill-green{% elif imp.status == 'FAILED' %}pill-red{% elif imp.status == 'PURGED' %}pill-grey{% else %}pill-amber{% endif %}">{{ imp.get_status_display }}</span>
         {% if imp.balance_check == 'OK' %}<span class="pill pill-green" title="Running balance verified — no rows missing or duplicated">✓ balanced</span>{% elif imp.balance_check == 'BROKEN' %}<span class="pill pill-red" title="Running balance does not reconcile — a row may be missing or duplicated">⚠ check</span>{% endif %}
         {% if is_treasurer and imp.status != 'PURGED' and imp.uploaded_at|date:'Y-m-d' == today_str %}
-        <form method="post" action="{% url 'statement_purge' imp.id %}" style="display:inline">{% csrf_token %}
-          <button class="btn btn-xs btn-ghost" style="color:var(--danger)" title="Same-day undo of this import" onclick="return confirm('Purge this import? Every transaction it created (and any bank envelopes receipted from them) will be removed so the file can be re-uploaded. This is only possible today.');">⌫ Purge</button>
-          <button name="unlink_expenses" value="1" class="btn btn-xs btn-ghost" style="color:var(--danger)" title="Purge even if expenses are linked — clears the reconciliation links (expenses are kept)" onclick="return confirm('Unlink any linked expenses and purge this import? The expenses themselves are kept; only their link to these bank debits is cleared. This is only possible today.');">⌫ Unlink &amp; purge</button>
+        <form method="post" action="{% url 'statement_purge' imp.id %}" class="u-inline">{% csrf_token %}
+          <button class="btn btn-xs btn-ghost text-danger" title="Same-day undo of this import" onclick="return confirm('Purge this import? Every transaction it created (and any bank envelopes receipted from them) will be removed so the file can be re-uploaded. This is only possible today.');">⌫ Purge</button>
+          <button name="unlink_expenses" value="1" class="btn btn-xs btn-ghost text-danger" title="Purge even if expenses are linked — clears the reconciliation links (expenses are kept)" onclick="return confirm('Unlink any linked expenses and purge this import? The expenses themselves are kept; only their link to these bank debits is cleared. This is only possible today.');">⌫ Unlink &amp; purge</button>
         </form>{% endif %}</td>
       <td class="num mono">{{ imp.total_rows }}</td>
       <td class="num mono">{{ imp.imported }}</td>

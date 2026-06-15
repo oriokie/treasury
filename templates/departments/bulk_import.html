@@ -8,10 +8,10 @@
 </div>
 
 {% if stage == "upload" %}
-<div class="card" style="max-width:760px">
+<div class="card u-narrow-xl">
   <div class="hd">Upload a budget workbook</div>
   <div class="bd">
-    <p class="help" style="margin-top:0">Upload a spreadsheet with a <strong>DEPARTMENTS</strong> sheet containing
+    <p class="help u-mt-0">Upload a spreadsheet with a <strong>DEPARTMENTS</strong> sheet containing
       <span class="mono">NAME</span>, <span class="mono">B/F</span>,
       <span class="mono">PROJECTED INCOME</span> and <span class="mono">PROJECTED EXPENSES</span> columns,
       and optionally a monthly <span class="mono">JAN…DEC</span> breakdown. Each fund is matched to an
@@ -38,7 +38,7 @@
   </div>
 
   {% if unmatched_count %}
-  <div class="alert alert-warn" style="margin-bottom:1rem">
+  <div class="alert alert-warn u-mb">
     <strong>{{ unmatched_count }} fund{{ unmatched_count|pluralize }} didn't match an existing department.</strong>
     For each, pick the department it belongs to, choose <em>Create new fund</em>, or skip it.
   </div>
@@ -64,9 +64,9 @@
           <option value="skip" {% if not p.match_id %}selected{% endif %}>— Skip this row —</option>
         </select>
         <div class="create-opts" id="create-opts-{{ forloop.counter0 }}" style="display:none;margin-top:.35rem;gap:.3rem;flex-wrap:wrap">
-          <select name="ftype_{{ forloop.counter0 }}" class="field--select" style="width:auto">{% for v,l in fund_types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
-          <select name="cat_{{ forloop.counter0 }}" class="field--select" style="width:auto">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
-          <select name="parent_{{ forloop.counter0 }}" class="field--select" style="width:auto"><option value="">No parent (top-level fund)</option>{% for c in candidates %}<option value="{{ c.id }}">↳ under {{ c.name }}</option>{% endfor %}</select>
+          <select name="ftype_{{ forloop.counter0 }}" class="field--select u-w-auto">{% for v,l in fund_types %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+          <select name="cat_{{ forloop.counter0 }}" class="field--select u-w-auto">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+          <select name="parent_{{ forloop.counter0 }}" class="field--select u-w-auto"><option value="">No parent (top-level fund)</option>{% for c in candidates %}<option value="{{ c.id }}">↳ under {{ c.name }}</option>{% endfor %}</select>
         </div>
       </td>
     </tr>
@@ -80,7 +80,7 @@
       <input type="checkbox" name="with_months" value="1" checked>
       <span>Also import the monthly breakdown as budget lines (Jan–Dec)</span>
     </label>
-    <div class="btn-row" style="margin-top:.9rem">
+    <div class="btn-row u-mt-sm">
       <button class="btn">Apply import for {{ year }}</button>
       <a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">Start over</a>
     </div>
@@ -110,7 +110,7 @@ document.querySelectorAll(".map-select").forEach(function(s){
   </div>
 
   {% if unmatched_depts or unmatched_srcs %}
-  <div class="alert alert-warn" style="margin-bottom:1rem">
+  <div class="alert alert-warn u-mb">
     <strong>Some names didn't match a department.</strong>
     {% if unmatched_depts %}Departments: {{ unmatched_depts|join:", " }}. {% endif %}
     {% if unmatched_srcs %}Funding sources: {{ unmatched_srcs|join:", " }}. {% endif %}
@@ -125,9 +125,9 @@ document.querySelectorAll(".map-select").forEach(function(s){
     {% for l in lines %}
     <tr class="{% if not l.dept_id or l.src_name and not l.src_id %}row-warn{% endif %}">
       <td>
-        {% if l.dept_id %}<strong>{{ l.dept_match }}</strong>{% if l.dept_name != l.dept_match %} <span class="muted" style="font-size:.78rem">({{ l.dept_name }})</span>{% endif %}
+        {% if l.dept_id %}<strong>{{ l.dept_match }}</strong>{% if l.dept_name != l.dept_match %} <span class="muted u-xs">({{ l.dept_name }})</span>{% endif %}
         {% else %}
-          <strong style="color:var(--danger)">{{ l.dept_name }}</strong>
+          <strong class="text-danger">{{ l.dept_name }}</strong>
           <select name="dept_{{ forloop.counter0 }}" class="field--select" style="margin-top:.25rem;min-width:200px">
             <option value="">— skip this line —</option>
             <option value="create">➕ Create “{{ l.dept_name }}”</option>
@@ -142,7 +142,7 @@ document.querySelectorAll(".map-select").forEach(function(s){
         {% if l.src_blank %}<span class="muted">own funds</span>
         {% elif l.src_id %}{{ l.src_match }}
         {% else %}
-          <strong style="color:var(--danger)">{{ l.src_name }}</strong>
+          <strong class="text-danger">{{ l.src_name }}</strong>
           <select name="src_{{ forloop.counter0 }}" class="field--select" style="margin-top:.25rem;min-width:180px">
             <option value="">— own funds —</option>
             <option value="create">➕ Create “{{ l.src_name }}”</option>
@@ -155,11 +155,11 @@ document.querySelectorAll(".map-select").forEach(function(s){
     </tbody>
   </table>
   </div>
-  <div class="btn-row" style="margin-top:1rem">
+  <div class="btn-row u-mt">
     <button class="btn">Apply {{ lines|length }} budget line(s) for {{ year }}</button>
     <a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">Start over</a>
   </div>
-  <p class="help" style="margin-top:.6rem">Re-importing replaces a department's existing budget lines for {{ year }}. Each department's budget total becomes the sum of its lines; a line funded by another department is recorded against that funding source too.</p>
+  <p class="help u-mt-sm">Re-importing replaces a department's existing budget lines for {{ year }}. Each department's budget total becomes the sum of its lines; a line funded by another department is recorded against that funding source too.</p>
 </form>
 {% endif %}
 {% endblock %}

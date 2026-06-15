@@ -428,7 +428,7 @@ class SabbathExcelCleanupTests(TestCase):
 
 
 class MarkReceiptedOnlyTests(TestCase):
-    """Item 3: flag a bank gift as receipted (manual envelope already written)
+    """Item 3: flag a bank contribution as receipted (manual envelope already written)
     without creating a new envelope record."""
 
     def test_mark_only(self):
@@ -488,7 +488,7 @@ class BulkReceiptStartNumberTests(TestCase):
 
 
 class PullBankExcludesAlreadyReceiptedTests(TestCase):
-    """The bulk 'receipt bank giving' pull must not re-receipt a gift that is
+    """The bulk 'receipt bank giving' pull must not re-receipt a contribution that is
     already accounted for — whether flagged processed_via_envelope OR already
     carrying an envelope record whose flag drifted out of sync."""
 
@@ -573,7 +573,7 @@ class PullBankExcludesAlreadyReceiptedTests(TestCase):
 
 class CashCountExcludesBankTwinsTests(TestCase):
     """Item 7: the Sabbath cash count must reflect physical cash only. A cash
-    envelope that duplicates a bank gift for the same contributor (money that
+    envelope that duplicates a bank contribution for the same contributor (money that
     arrived in the bank but was also keyed on the cash sheet) is excluded from
     the expected total, so the count can balance."""
 
@@ -709,7 +709,7 @@ class SabbathReconciliationTests(TestCase):
 
 class ReconcileApplyTests(TestCase):
     """Item 1: one-click apply of a reconciliation match marks the matched
-    envelope as a bank item and removes the duplicate cash income, so a bank gift
+    envelope as a bank item and removes the duplicate cash income, so a bank contribution
     keyed as a cash envelope is counted once."""
 
     def setUp(self):
@@ -782,7 +782,7 @@ class ReconcileApplyTests(TestCase):
 
 
 class ReconcileSplitFundTests(TestCase):
-    """Item 4: split-fund bank parts are regrouped into one gift so the total
+    """Item 4: split-fund bank parts are regrouped into one contribution so the total
     matches the single envelope; matched envelopes show their fund allocation."""
 
     def setUp(self):

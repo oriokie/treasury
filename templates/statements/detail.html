@@ -3,20 +3,20 @@
 {% block content %}
 <div class="page-head"><div><h1>Import result</h1><div class="sub">{{ imp.filename }} · {{ imp.uploaded_at|date:"d M Y H:i" }}</div></div>
 <a class="btn btn-ghost" href="{% url 'statement_list' %}">← All imports</a></div>
-<div style="margin-bottom:1rem"><span class="pill {% if imp.status == 'DONE' %}pill-green{% elif imp.status == 'FAILED' %}pill-red{% else %}pill-amber{% endif %}" style="font-size:.9rem">{{ imp.get_status_display }}</span></div>
+<div class="u-mb"><span class="pill {% if imp.status == 'DONE' %}pill-green{% elif imp.status == 'FAILED' %}pill-red{% else %}pill-amber{% endif %}" style="font-size:.9rem">{{ imp.get_status_display }}</span></div>
 {% if imp.error_detail %}<div class="flash error">{{ imp.error_detail }}</div>{% endif %}
 <div class="grid-4">
   <div class="stat"><div class="lbl">Rows read</div><div class="val mono">{{ imp.total_rows }}</div></div>
   <div class="stat"><div class="lbl">Imported</div><div class="val mono" style="color:var(--green)">{{ imp.imported }}</div></div>
-  <div class="stat"><div class="lbl">Queued for review</div><div class="val mono" style="color:var(--amber)">{{ imp.queued_for_review }}</div></div>
+  <div class="stat"><div class="lbl">Queued for review</div><div class="val mono text-amber">{{ imp.queued_for_review }}</div></div>
   <div class="stat"><div class="lbl">Duplicates skipped</div><div class="val mono muted">{{ imp.duplicates_skipped }}</div></div>
 </div>
 
 {% if imp.balance_check == 'OK' %}
-<div class="flash success" style="margin-top:1rem">
+<div class="flash success u-mt">
   <strong>✓ Running-balance check passed.</strong> {{ imp.balance_detail }} No rows are missing or duplicated.</div>
 {% elif imp.balance_check == 'BROKEN' %}
-<div class="flash error" style="margin-top:1rem">
+<div class="flash error u-mt">
   <strong>⚠ Running-balance check failed — please review before relying on this import.</strong>
   The statement's own balance column doesn't reconcile, which usually means a row is missing, duplicated, or has a mis-keyed amount:
   <pre style="white-space:pre-wrap;margin:.5rem 0 0;font-size:.82rem">{{ imp.balance_detail }}</pre></div>
@@ -26,7 +26,7 @@
 {% endif %}
 {% if auto_pending %}<div class="flash" style="background:#fff7e6;border:1px solid var(--amber);margin-top:1rem">
   <strong>{{ auto_pending }} auto-allocated entr{{ auto_pending|pluralize:"y,ies" }}</strong> are awaiting your confirmation and are not yet affecting balances.</div>{% endif %}
-<div class="btn-row" style="margin-top:1.2rem">
+<div class="btn-row u-mt-lg">
   {% if auto_pending %}<a class="btn" href="{% url 'statement_auto_review' imp.id %}">Review {{ auto_pending }} auto-allocated →</a>{% endif %}
   {% if imp.queued_for_review %}<a class="btn" href="{% url 'queue' %}">Resolve {{ imp.queued_for_review }} queued →</a>{% endif %}
   <a class="btn btn-ghost" href="{% url 'transaction_list' %}">View ledger</a>

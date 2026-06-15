@@ -17,7 +17,7 @@
 </div>
 
 {% if is_treasurer %}
-<div class="btn-row" style="margin-bottom:1rem">
+<div class="btn-row u-mb">
   <form method="post" action="{% url 'pledge_auto_match_all' %}" onsubmit="return confirm('Scan all active pledges and match any existing contributions from those givers? This only links existing giving — it never creates money.');">{% csrf_token %}<button class="btn btn-sm btn-ghost">⚡ Auto-match contributions</button></form>
   {% if suggestion_count %}<a class="btn btn-sm" href="{% url 'pledge_suggestions' %}">🔎 Review {{ suggestion_count }} match suggestion{{ suggestion_count|pluralize }}</a>{% endif %}
   {% if draft_count %}<a class="btn btn-sm btn-ghost" href="{% url 'pledge_list' %}?status=DRAFT">📝 {{ draft_count }} draft{{ draft_count|pluralize }} to approve</a>{% endif %}
@@ -26,7 +26,7 @@
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:1rem"><div class="hd">Campaigns</div><div class="bd" style="padding:0">
+<div class="card u-mb"><div class="hd">Campaigns</div><div class="bd bd-flush">
   <table class="ledger compact"><thead><tr><th>Campaign</th><th>Status</th><th class="num">Goal</th><th class="num">Pledged</th><th class="num">Received</th><th>Progress</th></tr></thead><tbody>
   {% for c in campaigns %}
     <tr>
@@ -35,14 +35,14 @@
       <td class="num mono">{{ c.goal_amount|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ c.total_pledged|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ c.total_received|floatformat:0|intcomma }}</td>
-      <td style="min-width:140px"><div class="pbar"><span style="width:{{ c.pct_received }}%"></span></div><span class="muted" style="font-size:.72rem">{{ c.pct_received }}% received</span></td>
+      <td class="u-minw"><div class="pbar"><span style="width:{{ c.pct_received }}%"></span></div><span class="muted u-xs">{{ c.pct_received }}% received</span></td>
     </tr>
   {% empty %}<tr><td colspan="6"><div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No campaigns yet</div><div class="we-hint">{% if is_treasurer %}<a href="{% url 'pledge_campaign_create' %}">Create a campaign</a> to start tracking pledges.{% else %}Campaigns will appear here.{% endif %}</div></div></td></tr>{% endfor %}
   </tbody></table>
 </div></div>
 
 {% if overdue %}
-<div class="card"><div class="hd">Overdue pledges</div><div class="bd" style="padding:0">
+<div class="card"><div class="hd">Overdue pledges</div><div class="bd bd-flush">
   <table class="ledger compact"><thead><tr><th>Member</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Outstanding</th><th>Due</th><th></th></tr></thead><tbody>
   {% for p in overdue %}
     <tr><td>{{ p.member.name }}</td><td>{{ p.campaign.name }}</td><td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td><td class="num mono row-debit">{{ p.outstanding|floatformat:0|intcomma }}</td><td class="mono">{{ p.end_date|date:"d/m/y" }}</td><td><a class="link" href="{% url 'pledge_detail' p.id %}">view</a></td></tr>
@@ -51,6 +51,6 @@
 </div></div>
 {% endif %}
 
-<p class="help" style="margin-top:1rem">Pledges are <strong>commitments, not income</strong>. They never change a fund balance — money is recognised only through normal contributions, which are then matched here. This keeps the accounts on a clean cash basis.</p>
+<p class="help u-mt">Pledges are <strong>commitments, not income</strong>. They never change a fund balance — money is recognised only through normal contributions, which are then matched here. This keeps the accounts on a clean cash basis.</p>
 <style>.pbar{height:7px;background:var(--line);border-radius:4px;overflow:hidden;margin-bottom:.2rem}.pbar span{display:block;height:100%;background:var(--forest,#1f5f4f)}</style>
 {% endblock %}

@@ -1,0 +1,10 @@
+{% comment %}
+Reusable KPI stat card. Usage:
+  {% include "ui/stat.html" with label="Total receipts" value="1,234,567" prefix="KSh" accent="accent" foot="This month" %}
+Optional href makes the whole tile a link. accent ∈ "accent"|"brass"|"warn".
+{% endcomment %}
+{% if href %}<a class="stat {{ accent }}" href="{{ href }}" style="display:block">{% else %}<div class="stat {{ accent }}">{% endif %}
+  <div class="label">{{ label }}</div>
+  <div class="value">{% if prefix %}<span class="ksh">{{ prefix }}</span>{% endif %}{{ value }}</div>
+  {% if foot %}<div class="foot">{{ foot }}</div>{% endif %}
+{% if href %}</a>{% else %}</div>{% endif %}

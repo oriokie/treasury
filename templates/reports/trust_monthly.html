@@ -7,7 +7,7 @@
   <thead><tr><th>Trust account</th>{% for m,lbl in d.months %}<th class="num">{{ lbl }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
   <tbody>
   {% for r in d.rows %}
-    <tr><td {% if r.dept.parent_id %}style="padding-left:1.4rem" class="muted"{% endif %}>{% if r.dept.parent_id %}↳ {{ r.dept.name }}{% else %}<strong>{{ r.dept.name }}</strong>{% endif %}</td>
+    <tr><td {% if r.dept.parent_id %}class="u-indent-1" class="muted"{% endif %}>{% if r.dept.parent_id %}↳ {{ r.dept.name }}{% else %}<strong>{{ r.dept.name }}</strong>{% endif %}</td>
       {% for c in r.cells %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}
       <td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>
   {% empty %}<tr><td colspan="14" class="empty">No trust funds defined.</td></tr>{% endfor %}

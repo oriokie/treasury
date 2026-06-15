@@ -1,11 +1,11 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}Receipt bank gift · {{ SITE_NAME }}{% endblock %}
+{% block title %}Receipt bank contribution · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Receipt bank gift as envelope</h1>
-  <div class="sub">Creates an envelope receipt for this bank/M-Pesa gift without double-counting it</div></div>
+<div class="page-head"><div><h1>Receipt bank contribution as envelope</h1>
+  <div class="sub">Creates an envelope receipt for this bank/M-Pesa contribution without double-counting it</div></div>
   <a class="btn btn-ghost" href="{% url 'transaction_list' %}">← Transactions</a></div>
 
-<div class="card" style="max-width:560px"><div class="bd">
+<div class="card u-narrow"><div class="bd">
   <table class="ledger compact"><tbody>
     <tr><td>Date</td><td class="mono">{{ txn.date|date:"d M Y" }}</td></tr>
     <tr><td>Contributor</td><td>{{ txn.payer_name|default:"(bank)" }}{% if txn.member %} · {{ txn.member.name }}{% endif %}</td></tr>
@@ -15,21 +15,21 @@
   </tbody></table>
 
   {% if eligible %}
-  <form method="post" style="margin-top:1rem">{% csrf_token %}
-    <div class="form-row" style="margin-bottom:.6rem">
+  <form method="post" class="u-mt">{% csrf_token %}
+    <div class="form-row u-mb-sm">
       <label>Receipt number <span class="muted">(optional — for hybrid manual receipting)</span></label>
       <input type="text" name="receipt_no" class="field mono" placeholder="{{ next_no }} (auto)" autocomplete="off">
       <span class="help">Leave blank to auto-assign <span class="mono">{{ next_no }}</span>. Enter your own number to match a hand-written receipt/envelope.</span>
     </div>
-    <button class="btn">Receipt this gift</button>
+    <button class="btn">Receipt this contribution</button>
   </form>
-  <form method="post" style="margin-top:.6rem">{% csrf_token %}
+  <form method="post" class="u-mt-sm">{% csrf_token %}
     <input type="hidden" name="mark_only" value="1">
     <button class="btn btn-ghost" title="The envelope was already written/typed by hand — just flag this bank entry as receipted, without creating a new envelope record.">Mark as receipted only (envelope already written)</button>
   </form>
-  <div class="help" style="margin-top:1rem;line-height:1.6">The bank transaction is the income; this envelope is the member-level record of the same money, so it is <strong>not</strong> counted twice. After receipting, you can print the receipt or write the envelope by hand. Use <em>Mark as receipted only</em> when you have already written the envelope by hand and just want to clear this entry from the queue.</div>
+  <div class="help u-mt">The bank transaction is the income; this envelope is the member-level record of the same money, so it is <strong>not</strong> counted twice. After receipting, you can print the receipt or write the envelope by hand. Use <em>Mark as receipted only</em> when you have already written the envelope by hand and just want to clear this entry from the queue.</div>
   {% else %}
-  <div class="info-panel" style="margin-top:1rem">This gift can't be receipted as an envelope. It must be a bank/M-Pesa credit, allocated to a fund, with its Sabbath confirmed, and not already receipted or reversed.</div>
+  <div class="info-panel u-mt">This contribution can't be receipted as an envelope. It must be a bank/M-Pesa credit, allocated to a fund, with its Sabbath confirmed, and not already receipted or reversed.</div>
   {% endif %}
 </div></div>
 {% endblock %}

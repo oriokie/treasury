@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>Board budget summary — {{ year }}</h1>
 <div class="sub">Planned budget by department and source of funds, for the church board</div></div>
-<form method="get" style="display:inline-flex;gap:.4rem;align-items:center">
+<form method="get" class="u-inline-flex">
   <select name="year" class="field--select" onchange="this.form.submit()">
     {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
   </select>
@@ -19,12 +19,12 @@
   {% if totals.other %}<div class="stat"><div class="kpi-label">Other funds</div><div class="kpi-val mono">KES {{ totals.other|floatformat:2|intcomma }}</div></div>{% endif %}
 </div>
 
-<div class="card"><div class="hd">Budget by department &amp; source of funds</div><div class="bd" style="padding:.3rem 1rem">
+<div class="card"><div class="hd">Budget by department &amp; source of funds</div><div class="bd u-pad-cell">
 <table class="ledger compact">
   <thead><tr><th>Department</th><th class="num">Own funds</th><th class="num">Local Church Budget</th><th class="num">Other</th><th class="num">Total {{ year }}</th><th class="num">{{ year|add:"-1" }}</th></tr></thead>
   <tbody>
   {% for r in data.rows %}<tr>
-    <td>{{ r.dept.name }}{% if r.is_trust %} <span class="pill pill-amber" style="font-size:.6rem">Trust</span>{% endif %}</td>
+    <td>{{ r.dept.name }}{% if r.is_trust %} <span class="pill pill-amber u-xxs">Trust</span>{% endif %}</td>
     <td class="num mono">{{ r.own|floatformat:2|intcomma }}</td>
     <td class="num mono">{% if r.lcb %}{{ r.lcb|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
     <td class="num mono">{% if r.other %}{{ r.other|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
@@ -41,7 +41,7 @@
 </table>
 </div></div>
 
-<div class="card" style="margin-top:1rem"><div class="hd">Local Church Budget — departmental allocations <span class="muted">(what LCB is likely to incur)</span></div><div class="bd" style="padding:.3rem 1rem">
+<div class="card u-mt"><div class="hd">Local Church Budget — departmental allocations <span class="muted">(what LCB is likely to incur)</span></div><div class="bd u-pad-cell">
 <table class="ledger compact">
   <thead><tr><th>Department</th><th class="num">Allocation from LCB</th><th class="num">% of LCB outlay</th></tr></thead>
   <tbody>

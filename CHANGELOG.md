@@ -1,5 +1,154 @@
 # Changelog
 
+## v1.24.0 — wording: gift to contribution
+Every user-facing use of the word gift or gifts now reads contribution or
+contributions: dashboard, review queue, receipts, leader and department views,
+reports, and spreadsheet/CSV export headers. The change is purely wording — no
+totals, accounting rules, or behaviour were touched, and the underlying data keys
+were left intact so all figures render exactly as before. Includes a no-op field
+help-text migration.
+
+## v1.23.0 — Latest Sabbath dashboard snapshot
+The executive dashboard now leads with a Latest Sabbath card: the most recent
+Sabbath's recognised collection, the change versus the previous Sabbath (up/down),
+the number of gifts and envelopes recorded, and the top funds for that Sabbath. It
+uses the same recognised-income basis as every other report (confirmed credits,
+excluding the envelope-twin rows) so it never double-counts, and it is built from
+grouped queries. Shown only when there is data for the latest Sabbath.
+
+## v1.22.0 — keyboard-friendly entry & mobile receipting grid
+Weekly envelope receipting grid:
+- Spreadsheet-style keyboard navigation — Up/Down arrows move between rows in a
+  column (Enter still moves down and adds a row at the bottom); the focused cell
+  selects its contents so you can overtype immediately. Arrow keys are left alone
+  inside dropdowns.
+- Mobile/tablet: momentum scrolling, larger touch targets in cells, full-width
+  toolbar fields and action buttons, and a two-column fund picker.
+Cash and expense entry forms:
+- The member, fund and claimant lookups were mouse-only; they are now fully
+  keyboard-navigable (Up/Down to highlight, Enter to choose without submitting the
+  form, Escape to dismiss), and the cash form lands focused in the first field.
+No accounting or posting logic changed; 185 entry-related tests pass.
+
+## v1.21.0 — professional print / PDF output for reports
+- A comprehensive print stylesheet: printing any page (or saving to PDF) now hides
+  all on-screen chrome — sidebar, top bar, filters, buttons, toolbars, action items
+  and the on-screen page header — and lays the document out full width in black on
+  white, ink-friendly (no shadows or solid fills; status pills print as outlines).
+- Tables repeat their header row on every printed page and never split a row across
+  a page break.
+- Fix: the new sticky-header scroll caps were undone for printing, so long fund
+  ledgers and journals print in full instead of being cut off at one screen.
+- Reports now carry a print-only letterhead (church name, report title, period and
+  the date/user it was generated) on 18 key reports, and a print-only signature
+  block (prepared / checked / approved) on the monthly statement, remittance
+  schedule, board report and financial position.
+On-screen layout is unchanged — all of this applies only when printing.
+
+## v1.20.0 — final design-system polish
+Continued the rollout into the import wizards, executive summary, controls and the
+remaining secondary tools. App-wide inline styles fell from ~370 to ~242; of those,
+19 are JS-toggled visibility and 18 are dynamic templated values that must stay
+inline, leaving ~205 genuine one-offs. (Since the modernization began the codebase
+has gone from ~908 inline styles to ~242.) 117 pages verified rendering under
+production settings with no failures; no behaviour or accounting logic changed.
+
+## v1.19.0 — design-system rollout across secondary screens
+Extended the component/utility adoption from the ten priority screens to the rest of
+the app. Repetitive inline styling was replaced with shared utility classes
+(merging into existing classes), cutting app-wide inline styles from ~908 at the
+start of the sweep to ~370 — the remainder being data-driven values (e.g.
+progress-bar widths) and a few genuine one-offs (bespoke backgrounds, JS-toggled
+visibility, fixed pixel widths). Notable: settings 64->9, leader department detail
+33->6, accruals 39->13, pledge detail 25->8. 117 pages verified rendering under
+production settings; no behaviour or accounting logic changed.
+
+## v1.18.0 — UI modernization & component-adoption sweep (part 2 of 2)
+Completes the ten-screen sweep begun in 1.17.0.
+- Fund Ledger — utilities + sticky running-ledger header.
+- Journal Entries — modernized header and sticky headers.
+- Bank Reconciliation — status summary rebuilt as stat tiles; the inline total-row
+  style moved to the stylesheet; sticky comparison table.
+- Contributions / Receipts (weekly receipting ledger + bank-gift receipting) —
+  converted to utilities/components; the frozen member-name column behaviour is
+  preserved exactly.
+Across all ten priority screens, the only inline styles that remain are data-driven
+values (e.g. progress-bar widths). Verified: ledger reconciliation, journal balance,
+fund balances and the dual-approval gate are all unchanged (129 tests pass).
+
+## v1.17.0 — UI modernization & component-adoption sweep (part 1 of 2)
+Shared design-system components (reused across screens): toolbars, alerts/callouts,
+filter bars, a responsive KPI grid, sticky table headers, and a set of spacing/layout
+utility classes — plus reusable page-header, stat-card and empty-state partials.
+
+Screens rebuilt on the component library (inline styles removed; only data-driven
+values like progress-bar widths remain inline):
+- Executive Dashboard — responsive KPI tiles, alert-style action items, cleaner charts.
+- Transactions list — utilities + sticky headers; filters unchanged.
+- Expenses list — utilities + sticky headers; approval/delete actions unchanged.
+- Expense detail & approval — rebuilt with components; now shows inline Approve / Reject
+  / 2nd-approve / Mark-paid actions that reuse the existing endpoint and enforce the
+  same dual-approval threshold (no logic change).
+- Pledges dashboard and Reports dashboard — converted to utilities/components.
+
+All accounting behaviour, filters, and the dual-approval gate verified unchanged.
+Remaining screens (Contributions/Receipts, Fund Ledger, Journal Entries, Bank
+Reconciliation) follow in part 2.
+
+## v1.16.0 — design-system foundation, security hardening & responsive polish
+Security & stability
+- Production now fails loudly if DJANGO_SECRET_KEY is unset (no more silently
+  running on the shipped development key), and warns when ALLOWED_HOSTS is a
+  wildcard or TREASURY_ENCRYPTION_KEY is missing (the latter is what previously
+  risked locking users out of two-factor if SECRET_KEY rotated). Dev is unchanged.
+UI consistency & code quality
+- Added reusable template partials (ui/page_header, ui/stat, ui/empty) and a set of
+  spacing/layout/text utility classes, so pages can drop ad-hoc inline styles for
+  named, consistent ones. Adopted on representative pages to establish the pattern.
+Branding & visual polish
+- The 403, 404 and 500 pages now share one premium, centred-card design with the
+  church brand mark, consistent with the sign-in screen. The 500 page keeps inline
+  fallback styling so it still looks right even if the stylesheet cannot load.
+Mobile & responsiveness
+- Added a defensive rule so any wide data table scrolls horizontally on small
+  screens instead of stretching the page (the main ledgers already scrolled).
+Tests
+- Added a production-mode (DEBUG=False) render guard for the sign-in, error, and
+  dashboard pages.
+
+## v1.15.0 — SMS / email one-time codes for two-factor
+- Two-factor authentication now offers three delivery methods: authenticator app
+  (TOTP, as before), text message (SMS, via the existing Advanta integration), or
+  email (via the configured mail server). Each user picks their method when setting
+  up two-factor.
+- At sign-in, SMS/email users land on a 'code sent to ***' screen with a
+  rate-limited resend button. Codes are 6 digits, stored only as a hash, expire
+  after 5 minutes, and lock out after 5 wrong attempts. Recovery codes continue to
+  work for every method.
+- SMS and email options only appear when they are configured (SMS credentials in
+  Settings; a mail server for email).
+
+## v1.14.0 — leader sub-group access + performance
+- Group leaders: assigning a parent fund now grants its entire sub-tree at any
+  depth (CAMP MEETING -> CAMP_1..CAMP_30 and deeper), with drill-down links from
+  the leader landing page and department dashboard into each subgroup. A leader can
+  still be assigned a single subgroup directly.
+- Fixed: a leader assigned only a subgroup no longer sees a blank dashboard (their
+  subgroup now heads the list); siblings remain out of scope.
+- Performance: removed per-group / per-sub-account query loops that scaled with the
+  number of development groups and sub-accounts. Development-group progress, the
+  leader dashboard, and the Fund Ledger report now use single grouped queries
+  (e.g. 46 groups went from 47 queries to 2), so the dashboard and reports stay
+  fast as the CAMP_1..CAMP_30 structure grows.
+
+## v1.13.1 — production constraint fix
+- Fixed a MariaDB warning (W036): the unique guard on PledgePayment
+  (pledge, transaction) used a condition MariaDB can't create, so on production it
+  was silently skipped and the same contribution could be matched to a pledge more
+  than once. Replaced with a plain unique constraint that behaves identically on
+  SQLite, MariaDB, and Postgres (all treat NULL as distinct), so it blocks
+  duplicates while still allowing many manual no-transaction payments.
+
 ## v1.13.0 — numbered fund families (easy camp/expense-group routing)
 - Added a 'numbered fund family' setting: one line such as
   'expense, exp, expe = CAMP_{n}' routes EXPENSE1 / exp1 / expe1 to the fund named

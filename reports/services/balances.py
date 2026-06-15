@@ -213,14 +213,17 @@ def dev_group_progress(start=None, end=None):
     from departments.models import DevelopmentGroup
     rows = []
     f = dict(direction=Transaction.Direction.CREDIT, confirmed=True,
-             is_reversed=False, is_reversal=False)
+             is_reversed=False, is_reversal=False, dev_group__isnull=False)
     if start:
         f["date__gte"] = start
     if end:
         f["date__lte"] = end
+    # one grouped query for every group, instead of an aggregate per group
+    collected_map = {r["dev_group"]: (r["t"] or Decimal(0)) for r in
+                     Transaction.objects.filter(**f).values("dev_group")
+                     .annotate(t=Sum("amount"))}
     for grp in DevelopmentGroup.objects.filter(active=True):
-        collected = (Transaction.objects.filter(dev_group=grp, **f)
-                     .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        collected = collected_map.get(grp.id, Decimal(0))
         target = grp.target or Decimal(0)
         pct = round(float(collected) / float(target) * 100, 1) if target else 0
         rows.append({"group": grp, "collected": collected,

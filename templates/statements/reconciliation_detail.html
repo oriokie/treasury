@@ -4,7 +4,7 @@
 <div class="page-head"><div><h1>Bank reconciliation</h1><div class="sub">{{ CHURCH_NAME }} · statement dated {{ rec.statement_date|date:"d M Y" }}</div></div>
 <button class="btn btn-ghost btn-sm no-print" onclick="window.print()">⎙ Print</button></div>
 
-<div class="recon-sheet card" style="max-width:680px"><div class="bd">
+<div class="recon-sheet card u-narrow-md"><div class="bd">
   <table class="ledger">
     <tbody>
       <tr><td>Balance as per bank statement</td><td class="num mono">{{ rec.bank_balance|floatformat:2|intcomma }}</td><td></td></tr>
@@ -12,7 +12,7 @@
       <tr>
         <td>{% if it.effect == 'ADD' %}＋{% else %}−{% endif %} {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
         <td class="num mono {% if it.effect == 'SUBTRACT' %}row-debit{% endif %}">{% if it.effect == 'SUBTRACT' %}({{ it.amount|floatformat:2|intcomma }}){% else %}{{ it.amount|floatformat:2|intcomma }}{% endif %}</td>
-        <td class="num">{% if can_enter_data %}<form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% endif %}</td>
+        <td class="num">{% if can_enter_data %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% endif %}</td>
       </tr>
       {% endfor %}
       <tr class="total-row"><td><strong>Adjusted bank balance</strong></td><td class="num mono"><strong>{{ rec.adjusted_balance|floatformat:2|intcomma }}</strong></td><td></td></tr>
@@ -26,7 +26,7 @@
 
   {% if not rec.is_reconciled and rec.difference != None %}
   <div class="card" style="margin-top:1rem;border-left:3px solid var(--amber)"><div class="hd">Why might this not balance?</div><div class="bd">
-    <p class="help" style="margin-top:0">The cash-book balance of <strong class="mono">{{ diag.book|floatformat:2|intcomma }}</strong> = opening {{ diag.opening|floatformat:2|intcomma }} + confirmed giving {{ diag.income|floatformat:2|intcomma }} − payments {{ diag.expenses|floatformat:2|intcomma }}. These bank receipts have <em>not</em> reached the cash book yet, and usually explain a difference right after an import:</p>
+    <p class="help u-mt-0">The cash-book balance of <strong class="mono">{{ diag.book|floatformat:2|intcomma }}</strong> = opening {{ diag.opening|floatformat:2|intcomma }} + confirmed giving {{ diag.income|floatformat:2|intcomma }} − payments {{ diag.expenses|floatformat:2|intcomma }}. These bank receipts have <em>not</em> reached the cash book yet, and usually explain a difference right after an import:</p>
     <table class="ledger compact"><tbody>
       {% if diag.in_review %}<tr><td>In the review queue (unallocated)</td><td class="num mono">{{ diag.in_review|floatformat:2|intcomma }}</td><td><a class="link" href="{% url 'queue' %}">Allocate →</a></td></tr>{% endif %}
       {% if diag.sab_pending %}<tr><td class="muted">Awaiting Sabbath confirmation <span class="muted">(already in the cash book — Sabbath label only)</span></td><td class="num mono muted">{{ diag.sab_pending|floatformat:2|intcomma }}</td><td><a class="link" href="{% url 'sabbath_queue' %}">Review →</a></td></tr>{% endif %}
@@ -40,7 +40,7 @@
 </div></div>
 
 {% if can_enter_data %}
-<div class="card no-print" style="max-width:680px;margin-top:1rem"><div class="hd">Add a reconciling item</div><div class="bd">
+<div class="card no-print u-narrow-md u-mt"><div class="hd">Add a reconciling item</div><div class="bd">
   <form method="post" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
     <input type="hidden" name="action" value="add_item">
     <div class="f"><label>Type</label>{{ item_form.kind }}</div>
@@ -52,7 +52,7 @@
   <p class="help">Examples: unpresented cheques &amp; bank charges subtract from the bank balance; deposits in transit and cash at hand add to it.</p>
 </div></div>
 
-<div class="card no-print" style="max-width:680px;margin-top:1rem"><div class="bd">
+<div class="card no-print u-narrow-md u-mt"><div class="bd">
   <form method="post" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
     <input type="hidden" name="action" value="set_book">
     <div class="f"><label>Cash-book balance</label><input name="book_balance" class="field" value="{{ rec.book_balance|floatformat:2 }}"></div>

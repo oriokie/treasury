@@ -87,7 +87,7 @@ class MergeTests(TestCase):
 
 class MemberPhoneBackfillTests(TestCase):
     """Phones parsed from the bank narration onto transactions should reach the
-    member, and orphan bank gifts should be linked to a matched/created member."""
+    member, and orphan bank contributions should be linked to a matched/created member."""
 
     def test_backfill_fills_blank_phone(self):
         from django.core.management import call_command

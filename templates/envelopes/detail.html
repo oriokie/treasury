@@ -5,11 +5,11 @@
 <div class="sub">{{ envelope.contributor_name }} · {{ envelope.date|date:"d M Y" }} · {{ envelope.get_channel_display }}</div></div>
 <div class="btn-row"><a class="btn btn-sm" href="{% url 'envelope_receipt' envelope.id %}" target="_blank">🧾 Print receipt</a>
 <a class="btn btn-ghost btn-sm" href="{% url 'envelope_receipt' envelope.id %}?format=etr&print=1" target="_blank">ETR receipt</a></div></div>
-<div class="card" style="max-width:560px"><div class="bd">
+<div class="card u-narrow"><div class="bd">
   <table class="ledger"><thead><tr><th>Fund</th><th class="num">Amount</th></tr></thead><tbody>
   {% for l in envelope.lines.all %}<tr><td>{{ l.department.name }}{% if l.department.is_trust %} <span class="pill pill-amber">Trust</span>{% endif %}</td><td class="num mono">{{ l.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
   <tr><td><strong>Total</strong></td><td class="num mono"><strong>{{ envelope.total|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
-  {% if envelope.bank_transaction %}<div class="help" style="margin-top:.6rem">Reconciled against bank entry {{ envelope.bank_transaction.mpesa_ref }} (processed via envelope).</div>{% endif %}
+  {% if envelope.bank_transaction %}<div class="help u-mt-sm">Reconciled against bank entry {{ envelope.bank_transaction.mpesa_ref }} (processed via envelope).</div>{% endif %}
 </div></div>
 {% endblock %}

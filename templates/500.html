@@ -3,13 +3,29 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Something went wrong</title>
 <link rel="stylesheet" href="{% static 'css/app.css' %}">
+<style>
+/* Inline fallback: a 500 can fire before/without the stylesheet loading. */
+body{margin:0;font-family:'Public Sans',system-ui,sans-serif;background:#f4f1e8;color:#26211a}
+.fb{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:2rem}
+.fb-card{max-width:520px;background:#fffdf8;border:1px solid #e6e0d2;border-radius:18px;
+  box-shadow:0 12px 34px rgba(0,0,0,.08);padding:2.6rem 2.4rem;text-align:center}
+.fb-mark{width:54px;height:54px;border-radius:15px;margin:0 auto 1.1rem;display:grid;
+  place-items:center;font-family:Fraunces,Georgia,serif;font-size:1.7rem;font-weight:700;
+  color:#fff;background:linear-gradient(150deg,#24705d,#143a31)}
+.fb-code{font-family:'IBM Plex Mono',monospace;font-size:2.2rem;color:#b07d2c;font-weight:700}
+.fb h1{font-family:Fraunces,Georgia,serif;font-size:1.45rem;margin:.5rem 0 .8rem}
+.fb p{color:#7a8a83;line-height:1.7;font-size:.95rem}
+.fb a{display:inline-block;margin-top:1.4rem;background:#1f5f4f;color:#fff;padding:.6rem 1.1rem;
+  border-radius:9px;text-decoration:none;font-weight:600}
+</style>
 </head><body>
-<div class="error-page" style="max-width:640px;margin:5rem auto;padding:0 1.2rem;text-align:center">
-  <div class="error-code" style="font-family:'IBM Plex Mono',monospace;font-size:3.5rem;color:var(--brass);font-weight:700">500</div>
-  <h1 style="font-family:Fraunces,Georgia,serif">The books didn't balance just now.</h1>
-  <p style="color:var(--muted);line-height:1.7">An unexpected error tripped us up on this page — nothing you did wrong. The
+<div class="fb"><div class="fb-card">
+  <div class="fb-mark">₳</div>
+  <div class="fb-code">500</div>
+  <h1>The books didn't balance just now.</h1>
+  <p>An unexpected error tripped us up on this page — nothing you did wrong. The
   ledger itself is safe; this was a hiccup on our side. The administrator has been
   notified. Please try again in a moment.</p>
-  <div style="margin-top:1.4rem"><a href="/" style="display:inline-block;background:var(--forest);color:#fff;padding:.6rem 1.1rem;border-radius:8px;text-decoration:none;font-weight:600">← Back to safety</a></div>
-</div>
+  <a href="/">← Back to safety</a>
+</div></div>
 </body></html>

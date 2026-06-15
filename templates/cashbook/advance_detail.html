@@ -5,7 +5,7 @@
 <div class="sub">{{ adv.department.name }} · issued {{ adv.date_issued|date:"d M Y" }} · {{ adv.get_status_display }}</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div>
 
-<div class="grid cols-3" style="margin-bottom:1rem">
+<div class="grid cols-3 u-mb">
   <div class="stat"><div class="lbl">Advanced</div><div class="val mono">KES {{ adv.amount|floatformat:2|intcomma }}</div></div>
   <div class="stat"><div class="lbl">Settled by receipts</div><div class="val mono">KES {{ adv.settled_total|floatformat:2|intcomma }}</div></div>
   <div class="stat"><div class="lbl">{% if adv.balance >= 0 %}Surplus to recover{% else %}Shortfall to reimburse{% endif %}</div>
@@ -22,13 +22,13 @@
 </table>
 
 {% if can_enter_data and adv.status != 'CLOSED' %}
-<form method="post" action="{% url 'advance_add_expense' adv.id %}" style="margin-top:1rem">{% csrf_token %}
+<form method="post" action="{% url 'advance_add_expense' adv.id %}" class="u-mt">{% csrf_token %}
   <div class="section-title">Record a settling expense</div>
   <div class="form-grid" style="display:grid;grid-template-columns:120px 1.6fr 1fr .8fr auto;gap:.6rem;align-items:end">
-    <div class="form-row" style="margin:0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
-    <div class="form-row" style="margin:0"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, hotel"></div>
-    <div class="form-row" style="margin:0"><label>Category</label><select name="category" class="field--select">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
-    <div class="form-row" style="margin:0"><label>Amount</label><input name="amount" class="field mono" style="text-align:right"></div>
+    <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
+    <div class="form-row u-m-0"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, hotel"></div>
+    <div class="form-row u-m-0"><label>Category</label><select name="category" class="field--select">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
+    <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right"></div>
     <button class="btn">Add</button>
   </div>
 </form>
@@ -36,7 +36,7 @@
 </div></div>
 
 {% if is_treasurer and adv.status != 'CLOSED' %}
-<form method="post" action="{% url 'advance_close' adv.id %}" style="margin-top:1rem" onsubmit="return confirm('Close this advance? The surplus/shortfall should already be recovered or reimbursed.');">{% csrf_token %}
+<form method="post" action="{% url 'advance_close' adv.id %}" class="u-mt" onsubmit="return confirm('Close this advance? The surplus/shortfall should already be recovered or reimbursed.');">{% csrf_token %}
   <input name="note" class="field" placeholder="Closing note (e.g. surplus KES 500 returned to cashier)" style="max-width:480px;display:inline-block">
   <button class="btn btn-ghost">Close advance</button>
 </form>{% endif %}

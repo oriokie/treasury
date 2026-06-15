@@ -13,13 +13,13 @@
       <td class="mono muted">{{ s.transaction.department.name|default:"—" }} · {{ s.transaction.amount|floatformat:0|intcomma }}</td>
       <td><a class="link" href="{% url 'pledge_detail' s.pledge.id %}">{{ s.pledge.member.name }}</a> · {{ s.pledge.campaign.name }}</td>
       <td class="num mono">{{ s.amount|floatformat:0|intcomma }}</td>
-      <td style="white-space:nowrap">
-        <form method="post" action="{% url 'pledge_suggestion_action' s.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="action" value="confirm"><button class="btn btn-xs">Confirm</button></form>
-        <form method="post" action="{% url 'pledge_suggestion_action' s.id %}" style="display:inline">{% csrf_token %}<input type="hidden" name="action" value="dismiss"><button class="btn btn-xs btn-ghost">Dismiss</button></form>
+      <td class="u-nowrap">
+        <form method="post" action="{% url 'pledge_suggestion_action' s.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="confirm"><button class="btn btn-xs">Confirm</button></form>
+        <form method="post" action="{% url 'pledge_suggestion_action' s.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="dismiss"><button class="btn btn-xs btn-ghost">Dismiss</button></form>
       </td>
     </tr>
   {% empty %}<tr><td colspan="6"><div class="ws-empty"><div class="we-mark">✓</div><div class="we-title">Nothing to review</div><div class="we-hint">New contributions from members with active pledges will appear here for confirmation.</div></div></td></tr>{% endfor %}
   </tbody></table></div>
-<p class="help" style="margin-top:1rem">Confirming a suggestion links the existing contribution to the pledge. It never moves money — the gift is already in the ledger.</p>
+<p class="help u-mt">Confirming a suggestion links the existing contribution to the pledge. It never moves money — the contribution is already in the ledger.</p>
 <style>.btn-xs{padding:.12rem .5rem;font-size:.75rem}</style>
 {% endblock %}

@@ -7,21 +7,21 @@
 
 <form method="post" class="card"><div class="bd">{% csrf_token %}
   <div class="form-grid" style="display:grid;grid-template-columns:160px 1fr;gap:.8rem">
-    <div class="form-row" style="margin:0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field" required></div>
-    <div class="form-row" style="margin:0"><label>Narration</label><input name="memo" class="field" placeholder="e.g. Correct 2025 opening balance for Building Fund" required></div>
+    <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field" required></div>
+    <div class="form-row u-m-0"><label>Narration</label><input name="memo" class="field" placeholder="e.g. Correct 2025 opening balance for Building Fund" required></div>
   </div>
 
-  <table class="ledger compact" style="margin-top:1rem" id="jlines">
+  <table class="ledger compact u-mt" id="jlines">
     <thead><tr><th>Account</th><th>Fund (optional)</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
     <tbody>
     {% for i in "12345" %}<tr>
       <td><select name="account" class="field--select"><option value="">—</option>{% for a in accounts %}<option value="{{ a.id }}">{{ a.code }} · {{ a.name }}</option>{% endfor %}</select></td>
       <td><select name="dept" class="field--select"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></td>
-      <td><input name="debit" class="field mono dr" inputmode="decimal" style="text-align:right" value=""></td>
-      <td><input name="credit" class="field mono cr" inputmode="decimal" style="text-align:right" value=""></td>
+      <td><input name="debit" class="field mono dr" inputmode="decimal" class="u-right" value=""></td>
+      <td><input name="credit" class="field mono cr" inputmode="decimal" class="u-right" value=""></td>
     </tr>{% endfor %}
     </tbody>
-    <tfoot><tr><td colspan="2" style="text-align:right"><strong>Totals</strong></td>
+    <tfoot><tr><td colspan="2" class="u-right"><strong>Totals</strong></td>
       <td class="num mono"><strong id="totDr">0.00</strong></td><td class="num mono"><strong id="totCr">0.00</strong></td></tr>
       <tr><td colspan="4" id="balMsg" class="help"></td></tr></tfoot>
   </table>

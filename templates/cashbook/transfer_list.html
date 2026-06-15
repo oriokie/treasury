@@ -12,10 +12,10 @@
       <td class="mono">{{ t.date|date:"d/m/y" }}</td>
       <td>{{ t.source.name }}</td>
       <td>{{ t.destination.name }}</td>
-      <td>{{ t.reason|default:"—" }}{% if t.reference %} <span class="muted mono" style="font-size:.78rem">· {{ t.reference }}</span>{% endif %}</td>
+      <td>{{ t.reason|default:"—" }}{% if t.reference %} <span class="muted mono u-xs">· {{ t.reference }}</span>{% endif %}</td>
       <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
-      {% if is_treasurer %}<td style="white-space:nowrap">
-        {% if not t.is_reversal and not t.is_reversed %}<form method="post" action="{% url 'transfer_reverse' t.id %}" style="display:inline" onsubmit="return confirm('Reverse this transfer? A mirror entry is posted and both stay on record.');">{% csrf_token %}<button class="link link-danger">Reverse</button></form>{% endif %}
+      {% if is_treasurer %}<td class="u-nowrap">
+        {% if not t.is_reversal and not t.is_reversed %}<form method="post" action="{% url 'transfer_reverse' t.id %}" class="u-inline" onsubmit="return confirm('Reverse this transfer? A mirror entry is posted and both stay on record.');">{% csrf_token %}<button class="link link-danger">Reverse</button></form>{% endif %}
         {% if t.is_reversed %}<span class="pill pill-grey">reversed</span>{% endif %}{% if t.is_reversal %}<span class="pill pill-amber">reversal</span>{% endif %}
       </td>{% endif %}
     </tr>

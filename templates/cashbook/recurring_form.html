@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>{% if object %}Edit{% else %}New{% endif %} recurring expense</h1>
 <div class="sub">A predetermined payment on a fixed cadence</div></div></div>
-<div class="card" style="max-width:620px"><div class="bd">
+<div class="card u-narrow-md"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-row"><label>Description</label>{{ form.description }}{% for e in form.description.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>

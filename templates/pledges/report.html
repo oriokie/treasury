@@ -4,7 +4,7 @@
 <div class="ws-head"><div class="ws-titles"><h1>Pledge reports</h1><div class="ws-sub">Commitments vs receipts — informational, never part of fund balances</div></div>
   <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a><a class="btn btn-ghost btn-sm" href="?export=xlsx">⤓ Excel</a></div></div>
 
-<div class="card" style="margin-bottom:1rem"><div class="hd">Campaign progress</div><div class="bd" style="padding:0">
+<div class="card u-mb"><div class="hd">Campaign progress</div><div class="bd bd-flush">
   <table class="ledger compact"><thead><tr><th>Campaign</th><th>Status</th><th class="num">Goal</th><th class="num">Pledged</th><th class="num">Received</th><th class="num">Outstanding</th><th class="num">% recd</th></tr></thead><tbody>
   {% for c in campaigns %}
     <tr><td>{{ c.name }}</td><td>{{ c.get_status_display }}</td><td class="num mono">{{ c.goal_amount|floatformat:0|intcomma }}</td><td class="num mono">{{ c.total_pledged|floatformat:0|intcomma }}</td><td class="num mono">{{ c.total_received|floatformat:0|intcomma }}</td><td class="num mono">{{ c.total_outstanding|floatformat:0|intcomma }}</td><td class="num">{{ c.pct_received }}%</td></tr>
@@ -12,7 +12,7 @@
   </tbody></table>
 </div></div>
 
-<div class="card"><div class="hd">Pledges by status</div><div class="bd" style="padding:0">
+<div class="card"><div class="hd">Pledges by status</div><div class="bd bd-flush">
   <table class="ledger compact"><thead><tr><th>Status</th><th class="num">Count</th><th class="num">Total pledged</th></tr></thead><tbody>
   {% for r in status_rows %}<tr><td>{{ r.status }}</td><td class="num">{{ r.n }}</td><td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>{% endfor %}
   </tbody></table>

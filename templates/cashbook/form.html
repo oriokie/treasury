@@ -6,7 +6,7 @@
 <div class="card form-card" style="max-width:660px"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
-    {% if overspend_warning %}<div class="alert alert-warn" style="margin-bottom:1rem">
+    {% if overspend_warning %}<div class="alert alert-warn u-mb">
       <strong>Not saved yet.</strong> This expense is larger than the fund's available
       balance, so nothing has been recorded. Your entry below is intact — tick
       <strong>override</strong> at the bottom and save again to record it anyway, or
@@ -14,7 +14,7 @@
     <div class="form-grid">
       <div class="form-row">
         <label>Fund / department</label>
-        <div style="position:relative">
+        <div class="pos-rel">
           <input id="deptSearch" class="field" autocomplete="off" placeholder="Start typing a fund…" data-current="{{ form.instance.department.name|default:'' }}">
           <div class="ac-box" id="deptAc"></div>
         </div>
@@ -30,7 +30,7 @@
         </div>
       {% endif %}{% endfor %}
     </div>
-    {% if overspend_warning %}<label class="check-row" style="color:var(--amber)"><input type="checkbox" name="override_balance" value="1"> Override — record this expense even though it exceeds the fund's available balance</label>{% endif %}
+    {% if overspend_warning %}<label class="check-row text-amber"><input type="checkbox" name="override_balance" value="1"> Override — record this expense even though it exceeds the fund's available balance</label>{% endif %}
     <div class="btn-row"><button class="btn">Save expense</button><a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a></div>
   </form>
 </div></div>
@@ -58,12 +58,35 @@ deptSearch.addEventListener("input",()=>{ clearTimeout(dt); deptHidden.value="";
     deptAc.innerHTML=""; if(!d.results.length){ deptAc.style.display="none"; return; }
     d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
       it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
-      it.addEventListener("mousedown",e=>{ e.preventDefault(); deptSearch.value=r.label; deptHidden.value=r.id; deptAc.style.display="none"; showBal(); });
+      const doPick=()=>{ deptSearch.value=r.label; deptHidden.value=r.id; deptAc.style.display="none"; showBal(); };
+      it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
+      it._pick=doPick;
       deptAc.appendChild(it); });
     deptAc.style.display="block";
   }catch(e){ deptAc.style.display="none"; } },160);
 });
 deptSearch.addEventListener("blur",()=>setTimeout(()=>deptAc.style.display="none",150));
+// keyboard navigation for the fund autocomplete (↑/↓/Enter/Esc)
+function acKeyNav(input, box){
+  input.addEventListener("keydown",e=>{
+    const open = box.style.display==="block";
+    const items=[...box.querySelectorAll(".ac-item")];
+    if(e.key==="Enter" && open && items.length){
+      const act=box.querySelector(".ac-item.ac-active")||items[0];
+      e.preventDefault(); if(act._pick) act._pick(); return;
+    }
+    if(!open || !items.length) return;
+    let idx=items.findIndex(i=>i.classList.contains("ac-active"));
+    if(e.key==="ArrowDown"){ e.preventDefault(); idx=(idx+1)%items.length; }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); idx=(idx-1+items.length)%items.length; }
+    else if(e.key==="Escape"){ box.style.display="none"; return; }
+    else return;
+    items.forEach(i=>i.classList.remove("ac-active"));
+    items[idx].classList.add("ac-active");
+    items[idx].scrollIntoView({block:"nearest"});
+  });
+}
+acKeyNav(deptSearch, deptAc);
 // preselect on edit
 if(deptHidden.value){ deptSearch.value = deptSearch.dataset.current || "(current fund)"; showBal(); }
 
@@ -79,12 +102,15 @@ if(cl){ const wrap=document.createElement("div"); wrap.style.position="relative"
       acb.innerHTML=""; if(!d.results.length){ acb.style.display="none"; return; }
       d.results.forEach(m=>{ const it=document.createElement("div"); it.className="ac-item";
         it.innerHTML=`${m.name}${m.type?' <span class="muted">· '+m.type+'</span>':''}${m.phone?' <span class="muted">· '+m.phone+'</span>':''}`;
-        it.addEventListener("mousedown",e=>{ e.preventDefault(); cl.value=m.name; acb.style.display="none"; });
+        const doPick=()=>{ cl.value=m.name; acb.style.display="none"; };
+        it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
+        it._pick=doPick;
         acb.appendChild(it); });
       acb.style.display="block";
     }catch(e){ acb.style.display="none"; } },170);
   });
   cl.addEventListener("blur",()=>setTimeout(()=>acb.style.display="none",150));
+  acKeyNav(cl, acb);
 }
 
 // transaction-charge only for M-Pesa / Bank

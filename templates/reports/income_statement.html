@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Statement of financial activity · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Income & Expenditure Statement" %}
 <div class="page-head no-print"><div><h1>Statement of Financial Activity</h1><div class="sub">Income &amp; expenditure · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · local (operating) basis</div></div>
 <div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Statement of Financial Activity</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>

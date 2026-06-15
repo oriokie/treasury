@@ -19,8 +19,8 @@
     {% for t in rows %}<tr>
       <td><input type="checkbox" name="confirm" value="{{ t.id }}" checked></td>
       <td class="mono">{{ t.date|date:"d M y" }}</td>
-      <td>{{ t.payer_name|default:"—" }}{% if t.payer_phone %} <span class="muted" style="font-size:.78rem">{{ t.payer_phone }}</span>{% endif %}</td>
-      <td class="mono" style="font-size:.8rem">{{ t.reference|default:"—" }}</td>
+      <td>{{ t.payer_name|default:"—" }}{% if t.payer_phone %} <span class="muted u-xs">{{ t.payer_phone }}</span>{% endif %}</td>
+      <td class="mono u-small">{{ t.reference|default:"—" }}</td>
       <td class="num mono">{% if t.dev_group %}<span class="pill pill-brass" title="{{ t.dev_group.label }}">{{ t.dev_group.number }}</span>{% else %}—{% endif %}</td>
       <td><select name="dept_{{ t.id }}" class="field--select" style="min-width:200px">
         {% for d in funds %}<option value="{{ d.id }}" {% if d.id == t.department_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
@@ -30,7 +30,7 @@
     </tr>{% endfor %}
     </tbody>
   </table></div>
-  <div class="btn-row" style="margin-top:1rem">
+  <div class="btn-row u-mt">
     <button class="btn" name="confirm_all" value="1" onclick="return confirm('Confirm all auto-allocated entries? They will affect balances.');">Confirm all</button>
     <button class="btn btn-ghost">Confirm ticked &amp; save fund changes</button>
   </div>

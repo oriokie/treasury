@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>Annual budgeting</h1>
 <div class="sub">Set each fund's annual budget and brought-forward opening balance</div></div>
-<form method="get" style="display:inline-flex;gap:.4rem;align-items:center">
+<form method="get" class="u-inline-flex">
   <select name="year" class="field--select" onchange="this.form.submit()">
     {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
   </select>
@@ -23,10 +23,10 @@
   <tbody>
   {% for r in rows %}
     <tr>
-      <td {% if r.child %}style="padding-left:1.6rem" class="muted"{% endif %}>{% if r.child %}↳ {% endif %}{{ r.d.name }}</td>
+      <td {% if r.child %}class="u-indent-2" class="muted"{% endif %}>{% if r.child %}↳ {% endif %}{{ r.d.name }}</td>
       <td><span class="pill {% if r.d.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.75">{% if r.d.is_trust %}Trust{% else %}Local{% endif %}</span></td>
       <td class="num"><input name="opening_{{ r.d.id }}" value="{{ r.d.opening_balance|stringformat:'.2f' }}" class="field mono" style="width:130px;text-align:right"></td>
-      <td class="num mono">{% if r.budget != None %}{{ r.budget|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}{% if r.from_lines %} <span class="pill pill-blue" style="font-size:.6rem">from breakdown</span>{% endif %}</td>
+      <td class="num mono">{% if r.budget != None %}{{ r.budget|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}{% if r.from_lines %} <span class="pill pill-blue u-xxs">from breakdown</span>{% endif %}</td>
       <td><a class="link" href="{% url 'budget_lines' r.d.id %}?year={{ year }}">Edit breakdown…</a></td>
     </tr>
   {% endfor %}

@@ -262,9 +262,13 @@ class PledgePayment(models.Model):
     class Meta:
         ordering = ["-date", "-id"]
         constraints = [
+            # Unique per (pledge, transaction). No condition: MariaDB can't create
+            # conditional constraints, and all of SQLite/MariaDB/Postgres treat NULL
+            # as distinct in a unique index, so this still allows many manual
+            # payments with no transaction while blocking the same contribution
+            # being matched to a pledge twice.
             models.UniqueConstraint(fields=["pledge", "transaction"],
-                                    name="uniq_pledge_transaction",
-                                    condition=models.Q(transaction__isnull=False)),
+                                    name="uniq_pledge_transaction"),
         ]
 
     def __str__(self):

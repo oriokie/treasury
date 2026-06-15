@@ -12,7 +12,7 @@
 </div>
 
 {% for row in rows %}
-<div class="card" style="margin-bottom:.8rem"><div class="bd">
+<div class="card u-mb-sm"><div class="bd">
   <div class="split" style="align-items:flex-start;gap:1rem">
     <div style="flex:1">
       <strong>{{ row.member.name }}</strong> <span class="pill pill-amber">flagged</span>
@@ -31,7 +31,7 @@
         <button class="btn btn-sm">Merge these two</button>
         {% endwith %}
       {% else %}
-        <div class="form-row" style="margin-bottom:.5rem"><label>Merge this record into ({{ row.candidates|length }} matches)</label>
+        <div class="form-row u-mb-sm"><label>Merge this record into ({{ row.candidates|length }} matches)</label>
           <select name="keep" class="field--select" required>
             <option value="">Choose the record to keep…</option>
             {% for c in row.candidates %}<option value="{{ c.id }}">{{ c.name }} — {{ c.phone|default:"no phone" }} ({{ c.get_source_display }})</option>{% endfor %}

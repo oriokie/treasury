@@ -7,32 +7,32 @@
 </div>
 
 {% if stage == "upload" %}
-<div class="card" style="max-width:760px"><div class="hd">How it works</div><div class="bd">
-  <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+<div class="card u-narrow-xl"><div class="hd">How it works</div><div class="bd">
+  <ol class="u-list-loose">
     <li><strong>Download</strong> the template and fill one row per rule: the
       reference, how it should match, and the fund (or split fund) it allocates to.</li>
     <li><strong>Upload</strong> it. You'll see a preview; anything missing a fund is
       flagged before anything is saved.</li>
     <li>Existing rules with the same reference are updated.</li>
   </ol>
-  <div class="btn-row" style="margin:.8rem 0"><a class="btn" href="?download=1">⤓ Download template (.xlsx)</a></div>
-  <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+  <div class="btn-row u-my"><a class="btn" href="?download=1">⤓ Download template (.xlsx)</a></div>
+  <form method="post" enctype="multipart/form-data" class="u-section-top">
     {% csrf_token %}
-    <div class="form-row" style="margin:.4rem 0"><label>Filled spreadsheet</label>
+    <div class="form-row u-my-sm"><label>Filled spreadsheet</label>
       <input type="file" name="file" class="field" accept=".xlsx" required></div>
     <button class="btn">Upload &amp; review</button>
   </form>
 </div></div>
 
 {% elif stage == "review" %}
-<div class="ws-summary" style="margin-bottom:1rem">
+<div class="ws-summary u-mb">
   <div class="ws-metric is-primary"><span class="wm-l">Ready to import</span><span class="wm-v">{{ ready }}</span></div>
   <div class="ws-metric {% if problems %}is-warn{% endif %}"><span class="wm-l">Need attention</span><span class="wm-v">{{ problems }}</span></div>
 </div>
-{% if problems %}<div class="alert alert-warn" style="margin-bottom:1rem">Rows without a fund (or with both a fund and a split fund) will be skipped. Fix them in the sheet and re-upload if needed.</div>{% endif %}
+{% if problems %}<div class="alert alert-warn u-mb">Rows without a fund (or with both a fund and a split fund) will be skipped. Fix them in the sheet and re-upload if needed.</div>{% endif %}
 <form method="post">
   {% csrf_token %}<input type="hidden" name="apply" value="1">
-  <div class="card"><div class="bd" style="padding:0">
+  <div class="card"><div class="bd bd-flush">
     <table class="ledger compact">
       <thead><tr><th>Reference</th><th>Match</th><th>Allocates to</th><th>Valid</th><th></th></tr></thead>
       <tbody>
@@ -40,13 +40,13 @@
         <td class="mono">{{ p.reference }}</td>
         <td>{{ p.match_type|title }}</td>
         <td>{% if p.fund_name %}{{ p.fund_name }}{% elif p.split_name %}{{ p.split_name }} <span class="muted">(split)</span>{% else %}<span class="muted">{{ p.fund_raw|default:p.split_raw|default:"—" }}</span>{% endif %}</td>
-        <td class="muted" style="font-size:.78rem">{% if p.valid_from or p.valid_to %}{{ p.valid_from|default:"…" }} → {{ p.valid_to|default:"…" }}{% else %}permanent{% endif %}</td>
+        <td class="muted u-xs">{% if p.valid_from or p.valid_to %}{{ p.valid_from|default:"…" }} → {{ p.valid_to|default:"…" }}{% else %}permanent{% endif %}</td>
         <td>{% if p.ok %}<span class="pill pill-green">ok</span>{% else %}<span class="pill pill-amber">skip</span>{% endif %}</td>
       </tr>{% endfor %}
       </tbody>
     </table>
   </div></div>
-  <div class="btn-row" style="margin-top:1rem">
+  <div class="btn-row u-mt">
     <a class="btn btn-ghost" href="{% url 'rule_import' %}">Cancel</a>
     <button class="btn">Import {{ ready }} rule{{ ready|pluralize }}</button>
   </div>

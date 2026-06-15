@@ -17,7 +17,7 @@
 </div></div>
 
 {% if issues %}
-<div class="card" style="margin-top:1rem"><div class="hd">Suspect entries ({{ issues|length }})</div><div class="bd">
+<div class="card u-mt"><div class="hd">Suspect entries ({{ issues|length }})</div><div class="bd">
   <table class="ledger">
     <thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Reference</th><th class="num">Amount</th><th>Why</th><th></th></tr></thead>
     <tbody>
@@ -28,20 +28,20 @@
         <td>{{ i.desc }}</td>
         <td class="mono">{{ i.ref }}</td>
         <td class="num mono">KSh {{ i.amount|floatformat:2|intcomma }}</td>
-        <td class="muted" style="font-size:.85rem">{{ i.reason }}</td>
+        <td class="muted u-small">{{ i.reason }}</td>
         <td>{% if i.url %}<a class="link" href="{{ i.url }}">open</a>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
-  <div class="help" style="margin-top:.8rem">Most variances are entries that were re-allocated, edited, or excluded after the ledger was last posted. Rebuilding the general ledger re-posts everything from the current source records and clears these.</div>
+  <div class="help u-mt-sm">Most variances are entries that were re-allocated, edited, or excluded after the ledger was last posted. Rebuilding the general ledger re-posts everything from the current source records and clears these.</div>
   {% if is_treasurer %}
-  <form method="post" action="{% url 'ledger_rebuild' %}" style="margin-top:.8rem" onsubmit="return confirm('Rebuild the general ledger from all current source records? Manual journal adjustments are preserved.');">{% csrf_token %}
+  <form method="post" action="{% url 'ledger_rebuild' %}" class="u-mt-sm" onsubmit="return confirm('Rebuild the general ledger from all current source records? Manual journal adjustments are preserved.');">{% csrf_token %}
     <button class="btn">↻ Rebuild ledger to fix these</button>
   </form>
   {% endif %}
 </div></div>
 {% else %}
-<div class="empty" style="margin-top:1rem"><div class="big">✓</div>No specific suspect entries found. If a difference remains, it may be an opening-balance or manual-journal discrepancy.</div>
+<div class="empty u-mt"><div class="big">✓</div>No specific suspect entries found. If a difference remains, it may be an opening-balance or manual-journal discrepancy.</div>
 {% endif %}
 {% endblock %}

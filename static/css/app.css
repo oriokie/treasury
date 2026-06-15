@@ -365,11 +365,36 @@ input[type=checkbox],input[type=radio]{accent-color:var(--forest)}
 }
 
 @media print{
-  .sidebar,.topbar,.filters,.btn,.btn-row,.no-print{display:none!important}
-  .shell{display:block}.content{padding:0;max-width:none;animation:none}
-  .print-head{display:block;margin-bottom:1rem;border-bottom:2px solid var(--ink);padding-bottom:.5rem}
-  body{background:#fff;background-image:none}.card,.table-wrap{box-shadow:none}
-  .period-bar,.role-key,.report-card{break-inside:avoid}
+  @page{margin:14mm}
+  /* hide all interactive chrome so only the document prints */
+  .sidebar,.topbar,.sidebar-scrim,.searchbox,.palette,.dd-new,.nav-foot,
+  .filters,.filter-bar,.btn,.btn-row,.toolbar,.no-print,.flash,.alert,
+  .quick-actions,.attention-card,.pagination,nav,form.toolbar,
+  .page-head,.ws-head{display:none!important}
+  .shell{display:block}
+  .main{display:block}
+  .content{padding:0;max-width:none;margin:0;animation:none}
+  body{background:#fff;color:#000;font-size:11pt}
+  a{color:#000;text-decoration:none}
+  /* ink-friendly surfaces — keep structure, drop shadows/fills */
+  .card,.table-wrap,.ws-table,.stat{box-shadow:none!important;border-color:#999}
+  .card .hd{background:none}
+  /* CRITICAL: undo on-screen sticky scroll caps so long ledgers print in full */
+  .table-wrap.sticky,.ws-table.sticky{max-height:none!important;overflow:visible!important}
+  table.ledger thead th{position:static!important}
+  /* tables: repeat the header on every page, never split a row */
+  table.ledger thead{display:table-header-group}
+  table.ledger tr,.card,.stat,.net-line,.kpi-grid,.section-title{break-inside:avoid}
+  table.ledger th{background:#eee!important;color:#000;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* pills print as light outlines rather than solid ink blocks */
+  .pill{background:none!important;color:#000!important;border:1px solid #999}
+  /* the print-only letterhead + page-break helpers */
+  .print-head{display:block!important}
+  .screen-only{display:none!important}
+  .page-break{break-before:page}
+  h1{font-size:1.4rem}
+  .kpi-grid{grid-template-columns:repeat(4,1fr)}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
@@ -667,8 +692,187 @@ a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px va
 .btn-brass{background:var(--brass);color:#fff;border-color:var(--brass)}
 
 /* error pages */
-.error-page{max-width:640px;margin:3.5rem auto;text-align:center;padding:0 1.2rem}
-.error-page .error-code{font-family:'IBM Plex Mono',monospace;font-size:3.5rem;color:var(--brass);font-weight:700;line-height:1}
-.error-page h1{font-family:Fraunces,Georgia,serif;margin:.4rem 0 .8rem}
-.error-page .error-lead{color:var(--muted);line-height:1.7;margin-bottom:1.4rem}
+.error-page{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;text-align:center;padding:2rem 1.2rem;
+  background:radial-gradient(120% 90% at 50% -10%,var(--forest-tint) 0%,var(--paper) 55%)}
+.error-page .ep-card{max-width:520px;background:var(--paper);border:1px solid var(--line);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-md);padding:2.6rem 2.4rem}
+.error-page .ep-mark{width:54px;height:54px;border-radius:15px;margin:0 auto 1.1rem;
+  display:grid;place-items:center;font-family:Fraunces,Georgia,serif;font-size:1.7rem;
+  font-weight:700;color:#fff;background:linear-gradient(150deg,var(--forest-2),var(--forest-deep));
+  box-shadow:0 6px 18px rgba(20,58,49,.28)}
+.error-page .error-code{font-family:'IBM Plex Mono',monospace;font-size:2.2rem;color:var(--brass);
+  font-weight:700;line-height:1;letter-spacing:.04em}
+.error-page h1{font-family:Fraunces,Georgia,serif;font-size:1.45rem;margin:.5rem 0 .8rem}
+.error-page .error-lead{color:var(--muted);line-height:1.7;margin-bottom:1.5rem;font-size:.95rem}
 .error-page .btn-row{justify-content:center}
+@media(max-width:560px){.error-page .ep-card{padding:2rem 1.4rem}}
+
+/* ============================================================================
+   Reusable utilities — added in the design-system pass (v1.16.0).
+   These exist so templates can drop ad-hoc inline styles in favour of named,
+   consistent classes. Spacing uses the same rhythm throughout the app.
+   ========================================================================== */
+/* spacing */
+.u-mt-0{margin-top:0}.u-mt{margin-top:1rem}.u-mt-sm{margin-top:.5rem}.u-mt-lg{margin-top:1.6rem}
+.u-mb-0{margin-bottom:0}.u-mb{margin-bottom:1rem}.u-mb-sm{margin-bottom:.5rem}.u-mb-lg{margin-bottom:1.6rem}
+/* constrained reading/forms width, centred */
+.u-narrow{max-width:560px}.u-narrow-sm{max-width:440px}.u-narrow-lg{max-width:720px}
+/* flex helpers */
+.u-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.u-row-end{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
+.u-between{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
+.u-grow{flex:1 1 auto;min-width:0}
+/* text */
+.u-right{text-align:right}.u-center{text-align:center}
+.u-small{font-size:.82rem}.u-strong{font-weight:600}
+/* a thin section divider, replacing inline hr styles */
+.u-divider{border:none;border-top:1px solid var(--line);margin:1.4rem 0}
+
+/* Defensive responsive safeguard: on small screens, any ledger table that was
+   NOT placed inside a scroll wrapper (.ws-table / .table-wrap already scroll)
+   still gets horizontal scroll instead of forcing the whole page wider. */
+@media(max-width:760px){
+  .card .bd > table.ledger,
+  .card .bd > table.table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    white-space:nowrap}
+}
+
+/* ============================================================================
+   Shared UI components — adoption sweep (v1.17.0).
+   Toolbars, alerts, filter bars, KPI grid, sticky table headers. Used across
+   the dashboard, list, ledger and reconciliation screens for one consistent,
+   premium accounting-platform feel.
+   ========================================================================== */
+
+/* Action toolbar: a right-aligned cluster of buttons next to a heading. */
+.toolbar{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.toolbar.right{justify-content:flex-end;margin-left:auto}
+
+/* Alerts / callouts: a bordered notice with a coloured left rule + soft tint. */
+.alert{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;padding:.85rem 1.1rem;
+  border:1px solid var(--line);border-left:3px solid var(--forest);border-radius:var(--radius-sm);
+  background:var(--paper);margin-bottom:1.4rem;font-size:.9rem}
+.alert .alert-title{font-family:Fraunces,Georgia,serif;font-weight:600}
+.alert-info{border-left-color:#3a6ea5;background:#f1f5fa}
+.alert-success{border-left-color:var(--forest);background:var(--forest-tint)}
+.alert-amber{border-left-color:var(--amber,#b7791f);background:#fbf5e9}
+.alert-brass{border-left-color:var(--brass);background:var(--brass-soft)}
+.alert-danger{border-left-color:var(--danger);background:#fbeeee}
+
+/* Filter bar: a consistent inline filter form that wraps gracefully on mobile. */
+.filter-bar{display:flex;align-items:flex-end;gap:.6rem;flex-wrap:wrap;
+  background:var(--paper-2);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.8rem .9rem;margin-bottom:1.4rem}
+.filter-bar .fb-field{display:flex;flex-direction:column;gap:.25rem}
+.filter-bar .fb-field label{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);font-weight:700}
+.filter-bar .field,.filter-bar input,.filter-bar select{margin:0}
+.filter-bar .fb-spacer{flex:1 1 auto}
+
+/* KPI grid: responsive auto-fit metric tiles (replaces fixed cols on the dash). */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:1rem;margin-bottom:1.4rem}
+
+/* Sticky table headers: opt-in via .sticky on a scroll wrapper. The body scrolls
+   inside a capped height while the header row stays pinned — the behaviour used
+   by Xero/QuickBooks for long ledgers. */
+.table-wrap.sticky,.ws-table.sticky{max-height:70vh;overflow:auto}
+.table-wrap.sticky thead th,.ws-table.sticky thead th{position:sticky;top:0;z-index:3}
+
+/* dashboard helpers */
+.chart-center{display:flex;justify-content:center}
+.chart-empty{padding:2rem 0;text-align:center;color:var(--muted)}
+.section-head{display:flex;align-items:center;gap:.6rem}
+.section-head .muted{font-weight:400;font-size:.8rem}
+
+/* table totals row + channel-mix bars (dashboard / reports) */
+.ledger tfoot tr.tfoot-total td{border-top:2px solid var(--line-strong);font-weight:700}
+.bar-item{margin-bottom:.7rem}
+.bar-item .kv{margin-bottom:.25rem}
+.bar-item .kv .cnt{font-size:.74rem;color:var(--muted)}
+.channel-total{border-top:1px solid var(--line);padding-top:.5rem;margin-top:.2rem}
+
+/* micro-utilities for table helper text + inline action forms */
+.u-xs{font-size:.72rem}
+.u-nowrap{white-space:nowrap}
+.u-inline{display:inline}
+.u-inline-flex{display:inline-flex;gap:.3rem;align-items:center}
+.pill-xs{font-size:.62rem;padding:.05rem .4rem}
+.attach-text{white-space:pre-wrap;font-size:.78rem;color:var(--muted);margin-top:.2rem}
+.detail-card{max-width:680px}
+.bd-flush{padding:0}
+.u-minw{min-width:140px}
+.ledger tr.total-row td{border-top:2px solid var(--forest);font-weight:600}
+.stat .value .pill{font-size:.82rem;vertical-align:middle}
+.pos-rel{position:relative}
+.col-receipt{width:104px}
+.col-channel{width:84px}
+.devgrp-select{margin-top:.2rem;font-size:.8rem}
+
+/* additional spacing utilities for the wider rollout */
+.u-m-0{margin:0}
+.u-my{margin:1rem 0}.u-my-sm{margin:.6rem 0}
+.u-mt-xs{margin-top:.3rem}.u-mb-xs{margin-bottom:.3rem}
+.u-ml-sm{margin-left:.5rem}
+.lh-loose{line-height:1.7}
+
+/* rollout batch — more utilities */
+.u-w-auto{width:auto}
+.text-danger{color:var(--danger)}
+.u-subtle{font-weight:400;font-size:.8rem}
+.u-items-end{align-items:flex-end}
+.u-p{padding:1rem}
+
+/* rollout polish — recurring patterns from secondary screens */
+.u-nolink{text-decoration:none}
+.u-bt{border-top:1px solid var(--line)}
+.u-xxs{font-size:.6rem}
+.u-row-sm{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.u-mr-sm{margin-right:.5rem}
+.u-narrow-xl{max-width:760px}
+.u-strike{text-decoration:line-through;opacity:.55}
+
+/* rollout polish — container widths, separators, indents, meta text */
+.u-narrow-md{max-width:660px}
+.u-pad-cell{padding:.3rem 1rem}
+.u-section-top{margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem}
+.u-list-loose{line-height:1.8;margin:0 0 .6rem 1.1rem}
+.text-amber{color:var(--amber)}
+.u-indent-1{padding-left:1.4rem}.u-indent-2{padding-left:1.6rem}.u-indent-3{padding-left:1.8rem}
+.u-meta{font-size:.72rem;color:var(--muted)}
+
+/* Print letterhead — hidden on screen, shown by the @media print rules above. */
+.print-head{display:none}
+@media print{
+  .print-head{margin:0 0 1rem;padding-bottom:.6rem;border-bottom:2px solid #000;text-align:center}
+  .print-head .ph-church{font-family:Fraunces,Georgia,serif;font-size:1.5rem;font-weight:700;line-height:1.2}
+  .print-head .ph-title{font-size:1.05rem;margin-top:.15rem}
+  .print-head .ph-meta{font-size:.8rem;color:#333;margin-top:.25rem}
+  /* print-only signature block for approval/remittance documents */
+  .print-sign{display:flex!important;gap:3rem;margin-top:2.4rem;break-inside:avoid}
+  .print-sign .sig{flex:1;border-top:1px solid #000;padding-top:.3rem;font-size:.82rem}
+}
+.print-sign{display:none}
+.u-col-span{grid-column:1/-1}
+.ac-item.ac-active{background:var(--accent-soft)}
+
+/* "Latest Sabbath" dashboard snapshot */
+.sabbath-snap{border-left:3px solid var(--brass)}
+.sabbath-snap .ss-head{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:1rem;flex-wrap:wrap}
+.sabbath-snap .ss-eyebrow{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--muted);font-weight:700}
+.sabbath-snap .ss-date{font-family:Fraunces,Georgia,serif;font-size:1.2rem;margin-top:.1rem}
+.sabbath-snap .ss-total{font-family:"IBM Plex Mono",monospace;font-size:1.55rem;font-weight:600;
+  color:var(--forest);white-space:nowrap}
+.sabbath-snap .ss-total .ksh{font-size:.7rem;color:var(--muted);margin-right:.2rem;font-weight:600}
+.sabbath-snap .ss-delta{font-size:.78rem;font-weight:700;margin-left:.4rem}
+.sabbath-snap .ss-delta.up{color:var(--forest)}
+.sabbath-snap .ss-delta.down{color:var(--danger)}
+.sabbath-snap .ss-meta{font-size:.82rem;color:var(--muted);margin-top:.4rem}
+.sabbath-snap .ss-funds{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.7rem}
+.sabbath-snap .ss-fund{font-size:.76rem;background:var(--forest-tint);border-radius:20px;
+  padding:.2rem .65rem;white-space:nowrap}
+.sabbath-snap .ss-fund b{color:var(--forest);font-weight:600}
+@media(max-width:560px){.sabbath-snap .ss-total{font-size:1.3rem}}

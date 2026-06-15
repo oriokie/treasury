@@ -17,7 +17,7 @@
     {% empty %}<tr><td colspan="2" class="empty">None.</td></tr>{% endfor %}</tbody></table>
   </div>
 </div>
-<h3 class="sec" style="margin-top:1.4rem">Outstanding (pending &amp; approved-unpaid)</h3>
+<h3 class="sec u-mt-lg">Outstanding (pending &amp; approved-unpaid)</h3>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Status</th><th class="num">Amount</th></tr></thead><tbody>
   {% for e in outstanding %}<tr><td class="mono">{{ e.date|date:"d/m/y" }}</td><td>{{ e.description }}</td><td>{{ e.department.name }}</td>

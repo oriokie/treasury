@@ -1,44 +1,70 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Expense · {{ expense.description }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ expense.description }}</h1><div class="sub">{{ expense.date|date:"d M Y" }} · {{ expense.department.name }}</div></div>
-<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'expense_list' %}">← Expenses</a></div></div>
+<div class="ws-head">
+  <div class="ws-titles"><h1>{{ expense.description }}</h1>
+    <div class="ws-sub">{{ expense.date|date:"d M Y" }} · {{ expense.department.name }}</div></div>
+  <div class="toolbar">
+    {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'expense_edit' expense.id %}">Edit</a>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'expense_list' %}">← Expenses</a>
+  </div>
+</div>
 
-<div class="card" style="max-width:680px"><div class="bd">
+{% comment %}Approval toolbar — same endpoint/params and dual-approval rule as the list.{% endcomment %}
+{% if is_treasurer and expense.status == 'PENDING' or is_treasurer and expense.status == 'APPROVED' %}
+<div class="alert {% if expense.status == 'PENDING' %}alert-amber{% else %}alert-info{% endif %}">
+  <span class="alert-title">
+    {% if expense.status == 'PENDING' %}Awaiting approval{% else %}Approved — ready for the next step{% endif %}</span>
+  <form method="post" action="{% url 'expense_approve' expense.id %}" class="toolbar right">{% csrf_token %}
+    {% if expense.status == 'PENDING' %}
+      <button name="action" value="approve" class="btn btn-sm">Approve</button>
+      <button name="action" value="reject" class="btn btn-sm btn-ghost">Reject</button>
+    {% endif %}
+    {% if expense.status == 'APPROVED' %}
+      {% if dual_threshold and expense.amount >= dual_threshold and not expense.second_approved_by %}
+        <button name="action" value="second_approve" class="btn btn-sm btn-brass" title="A second, different treasurer must co-approve">2nd approve</button>
+        <span class="pill pill-amber" title="Needs a second treasurer before payment">2 needed</span>
+      {% else %}<button name="action" value="pay" class="btn btn-sm">Mark paid</button>{% endif %}
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+
+<div class="card detail-card"><div class="bd">
   <table class="ledger"><tbody>
     <tr><td class="muted">Amount</td><td class="num mono">KES {{ expense.amount|floatformat:2|intcomma }}</td></tr>
     <tr><td class="muted">Category</td><td>{{ expense.get_category_display }}</td></tr>
     <tr><td class="muted">Type</td><td>{{ expense.get_expenditure_type_display }}</td></tr>
     <tr><td class="muted">Method</td><td>{{ expense.get_method_display }}{% if expense.paid_from_petty_cash %} · petty cash{% endif %}</td></tr>
     <tr><td class="muted">Claimant</td><td>{{ expense.claimant|default:"—" }}</td></tr>
-    <tr><td class="muted">Status</td><td><span class="pill">{{ expense.get_status_display }}</span></td></tr>
+    <tr><td class="muted">Status</td><td><span class="pill {% if expense.status == 'PAID' %}pill-green{% elif expense.status == 'APPROVED' %}pill-blue{% elif expense.status == 'REJECTED' %}pill-red{% else %}pill-amber{% endif %}">{{ expense.get_status_display }}</span></td></tr>
     {% if expense.voucher_no %}<tr><td class="muted">Voucher</td><td>{{ expense.voucher_no }}</td></tr>{% endif %}
   </tbody></table>
 </div></div>
 
-<div class="card" style="max-width:680px;margin-top:1rem"><div class="hd">Receipts &amp; supporting documents</div><div class="bd">
+<div class="card detail-card u-mt"><div class="hd">Receipts &amp; supporting documents</div><div class="bd">
   {% if expense.attachments.all %}
   <table class="ledger compact"><tbody>
     {% for a in expense.attachments.all %}<tr>
-      <td>{% if a.file %}<a class="link" href="{{ a.file.url }}" target="_blank">{{ a.label|default:a.file.name }}</a> <span class="pill pill-grey" style="font-size:.62rem">file</span>
-        {% elif a.link %}<a class="link" href="{{ a.link }}" target="_blank">{{ a.label|default:a.link }}</a> <span class="pill pill-blue" style="font-size:.62rem">link</span>
-        {% else %}<div>{% if a.label %}<strong>{{ a.label }}</strong> {% endif %}<span class="pill pill-brass" style="font-size:.62rem">text</span></div>
-          <div class="mono" style="white-space:pre-wrap;font-size:.78rem;color:var(--muted);margin-top:.2rem">{{ a.text }}</div>{% endif %}</td>
+      <td>{% if a.file %}<a class="link" href="{{ a.file.url }}" target="_blank">{{ a.label|default:a.file.name }}</a> <span class="pill pill-grey pill-xs">file</span>
+        {% elif a.link %}<a class="link" href="{{ a.link }}" target="_blank">{{ a.label|default:a.link }}</a> <span class="pill pill-blue pill-xs">link</span>
+        {% else %}<div>{% if a.label %}<strong>{{ a.label }}</strong> {% endif %}<span class="pill pill-brass pill-xs">text</span></div>
+          <div class="mono attach-text">{{ a.text }}</div>{% endif %}</td>
       <td class="muted">{{ a.uploaded_at|date:"d M Y" }}</td>
-      {% if can_enter_data %}<td style="text-align:right"><form method="post" action="{% url 'expense_attachment_delete' expense.id a.id %}" style="display:inline" onsubmit="return confirm('Remove this receipt?');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
+      {% if can_enter_data %}<td class="u-right"><form method="post" action="{% url 'expense_attachment_delete' expense.id a.id %}" class="u-inline" onsubmit="return confirm('Remove this receipt?');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
     </tr>{% endfor %}
   </tbody></table>
-  {% else %}<p class="empty" style="padding:1rem">⎘ No receipt yet.</p>{% endif %}
+  {% else %}{% include "ui/empty.html" with mark="⎘" title="No receipt yet" hint="Attach a photo/PDF, an e-receipt link, or a pasted text/SMS receipt below." %}{% endif %}
   {% if can_enter_data %}
-  <form method="post" action="{% url 'expense_attachment_upload' expense.id %}" enctype="multipart/form-data" style="margin-top:.8rem">
+  <form method="post" action="{% url 'expense_attachment_upload' expense.id %}" enctype="multipart/form-data" class="u-mt-sm">
     {% csrf_token %}
-    <div class="form-row" style="margin:0 0 .5rem"><label>Label <span class="muted">(optional)</span></label><input name="label" class="field" placeholder="e.g. M-Pesa confirmation, Supermarket receipt"></div>
-    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
-      <div class="form-row" style="margin:0"><label>Upload a file</label><input type="file" name="file" class="field"></div>
-      <div class="form-row" style="margin:0"><label>…or a link (e-receipt)</label><input name="link" class="field" placeholder="https://…"></div>
+    <div class="form-row u-mb-sm"><label>Label <span class="muted">(optional)</span></label><input name="label" class="field" placeholder="e.g. M-Pesa confirmation, Supermarket receipt"></div>
+    <div class="form-grid">
+      <div class="form-row u-mb-0"><label>Upload a file</label><input type="file" name="file" class="field"></div>
+      <div class="form-row u-mb-0"><label>…or a link (e-receipt)</label><input name="link" class="field" placeholder="https://…"></div>
     </div>
-    <div class="form-row" style="margin:.5rem 0 0"><label>…or paste a text receipt (e.g. an M-Pesa SMS)</label><textarea name="text" class="field" rows="2" placeholder="e.g. QGT5… Confirmed. Ksh1,200.00 paid to …"></textarea></div>
-    <div class="btn-row" style="margin-top:.5rem"><button class="btn">Add receipt</button></div>
+    <div class="form-row u-mt-sm"><label>…or paste a text receipt (e.g. an M-Pesa SMS)</label><textarea name="text" class="field" rows="2" placeholder="e.g. QGT5… Confirmed. Ksh1,200.00 paid to …"></textarea></div>
+    <div class="toolbar u-mt-sm"><button class="btn">Add receipt</button></div>
     <p class="help">Attach any one of these — a photo/PDF file, an online receipt link, or a pasted text/SMS receipt.</p>
   </form>{% endif %}
 </div></div>

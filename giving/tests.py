@@ -649,7 +649,7 @@ class MarkProcessedImportTests(TestCase):
 
 
 class MarkProcessedSplitFundTests(TestCase):
-    """A split-fund gift posts as several rows sharing the reference with divided
+    """A split-fund contribution posts as several rows sharing the reference with divided
     amounts. The importer must confirm the whole group by its TOTAL and mark
     every part — not look for a single row equal to the lump sum."""
 
@@ -715,7 +715,7 @@ class MarkProcessedSplitFundTests(TestCase):
 
 class MarkProcessedClearsQueueTests(TestCase):
     """Marking an entry processed must also remove it from the review queue, and
-    cascade to all parts of a split gift."""
+    cascade to all parts of a split contribution."""
 
     def setUp(self):
         import datetime as dt
@@ -833,7 +833,7 @@ class CashEntrySabbathTests(TestCase):
 
 class BulkAllocateSplitFundTests(TestCase):
     """Item 3: split funds must be selectable in the bulk-allocate dropdown and
-    split each selected gift into its parts."""
+    split each selected contribution into its parts."""
 
     def setUp(self):
         import datetime as dt

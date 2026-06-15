@@ -1,10 +1,11 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Offering summary · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Sabbath Offering Summary" %}
 <div class="page-head"><div><h1>Offering summary</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · by Sabbath</div></div>
 <button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
 {% include 'partials/period_filter.html' %}
-<div class="table-wrap" style="margin-top:1rem"><table class="ledger">
+<div class="table-wrap u-mt"><table class="ledger">
   <thead><tr><th>Fund</th>{% for s in sabbaths %}<th class="num">{{ s|date:"d M" }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
   <tbody>
   {% for name, row in rows.items %}

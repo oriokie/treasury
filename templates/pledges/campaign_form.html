@@ -3,17 +3,17 @@
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>{% if obj %}Edit campaign{% else %}New campaign{% endif %}</h1>
   <div class="ws-sub">A giving drive members can pledge toward</div></div></div>
-<form method="post" class="card" style="max-width:640px"><div class="bd">
+<form method="post" class="card u-narrow-md"><div class="bd">
   {% csrf_token %}
   {% for field in form %}
-    <div class="form-row" style="margin:.5rem 0">
+    <div class="form-row u-my-sm">
       <label>{{ field.label }}{% if field.field.required %} *{% endif %}</label>
       {{ field }}
       {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
-      {% if field.errors %}<div class="help" style="color:var(--danger)">{{ field.errors|striptags }}</div>{% endif %}
+      {% if field.errors %}<div class="help text-danger">{{ field.errors|striptags }}</div>{% endif %}
     </div>
   {% endfor %}
-  <div class="btn-row" style="margin-top:.8rem"><button class="btn">Save campaign</button><a class="btn btn-ghost" href="{% url 'pledge_dashboard' %}">Cancel</a></div>
+  <div class="btn-row u-mt-sm"><button class="btn">Save campaign</button><a class="btn btn-ghost" href="{% url 'pledge_dashboard' %}">Cancel</a></div>
 </div></form>
 <style>.form-row .field,.form-row select,.form-row input,.form-row textarea{width:100%}</style>
 {% endblock %}

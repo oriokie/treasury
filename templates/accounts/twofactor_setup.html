@@ -1,25 +1,72 @@
 {% extends 'base.html' %}
 {% block title %}Set up two-factor · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head"><div class="ws-titles"><h1>Set up two-factor authentication</h1>
-  <div class="ws-sub">Protect this account with a code from your phone</div></div></div>
-<div class="card" style="max-width:560px"><div class="bd">
-  <ol style="line-height:1.9;padding-left:1.1rem">
-    <li>Install an authenticator app (Google Authenticator, Authy, Microsoft Authenticator).</li>
-    <li>Scan this QR code, or enter the key manually.</li>
-    <li>Enter the 6-digit code it shows to confirm.</li>
-  </ol>
-  {% if qr %}<div style="text-align:center;margin:1rem 0"><img src="{{ qr }}" alt="2FA QR code" style="width:200px;height:200px;border:1px solid var(--line);border-radius:8px"></div>{% endif %}
-  <div style="text-align:center;margin-bottom:1rem">
-    <div class="muted" style="font-size:.8rem">Manual key</div>
-    <code style="font-size:1rem;letter-spacing:.05em;word-break:break-all">{{ secret }}</code>
-  </div>
-  <form method="post">{% csrf_token %}
+{% include "ui/page_header.html" with title="Set up two-factor authentication" subtitle="Add a second step at sign-in — choose how you'd like to receive your code" %}
+
+{% if awaiting_code %}
+<!-- A code was just sent (SMS/email): confirm enrolment -->
+<div class="card u-narrow"><div class="bd">
+  <p>We sent a 6-digit code to <strong>{{ dest }}</strong>. Enter it below to turn on two-factor by {{ method|lower }}.</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm">
     <div class="form-row"><label>6-digit code</label>
       <input name="token" class="field" inputmode="numeric" autocomplete="one-time-code"
-             pattern="[0-9 ]*" placeholder="123456" autofocus style="width:160px;font-size:1.2rem;letter-spacing:.2em"></div>
-    <div class="btn-row" style="margin-top:.8rem"><button class="btn">Confirm &amp; turn on</button>
-      <a class="btn btn-ghost" href="/">Cancel</a></div>
+             placeholder="123456" autofocus style="width:160px;font-size:1.2rem;letter-spacing:.2em"></div>
+    <div class="btn-row u-mt-sm"><button class="btn">Confirm &amp; turn on</button>
+      <a class="btn btn-ghost" href="{% url 'twofactor_setup' %}">Start over</a></div>
+  </form>
+  <form method="post" class="u-mt-sm">{% csrf_token %}
+    <input type="hidden" name="action" value="{% if method == 'SMS' %}send_sms{% else %}send_email{% endif %}">
+    {% if method == 'SMS' %}<input type="hidden" name="phone" value="{{ tf.phone }}">{% else %}<input type="hidden" name="email" value="{{ tf.delivery_email }}">{% endif %}
+    <button class="link" type="submit">Send a new code</button>
   </form>
 </div></div>
+
+{% else %}
+<!-- Method chooser -->
+<div class="card u-narrow"><div class="bd">
+  <div class="section-title">Option 1 — Authenticator app <span class="muted u-subtle">(recommended)</span></div>
+  <p class="help">Use Google Authenticator, Authy, or Microsoft Authenticator. Works without phone signal or network.</p>
+  {% if qr %}<div class="u-center u-my"><img src="{{ qr }}" alt="2FA QR code" style="width:180px;height:180px;border:1px solid var(--line);border-radius:8px"></div>{% endif %}
+  <div class="u-center u-mb-sm">
+    <div class="muted u-small">Manual key</div>
+    <code style="font-size:.95rem;letter-spacing:.05em;word-break:break-all">{{ secret }}</code>
+  </div>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm">
+    <div class="form-row"><label>Code from the app</label>
+      <input name="token" class="field" inputmode="numeric" autocomplete="one-time-code"
+             placeholder="123456" style="width:160px;font-size:1.2rem;letter-spacing:.2em"></div>
+    <div class="btn-row u-mt-sm"><button class="btn">Confirm &amp; turn on</button></div>
+  </form>
+
+  {% if sms_ok %}
+  <hr class="u-divider">
+  <div class="section-title">Option 2 — Text message (SMS)</div>
+  <p class="help">We'll text a fresh code to your phone each time you sign in.</p>
+  <form method="post" class="btn-row" style="align-items:flex-end;gap:.6rem">{% csrf_token %}
+    <input type="hidden" name="action" value="send_sms">
+    <div class="form-row u-m-0"><label>Phone number</label>
+      <input name="phone" class="field" placeholder="07XX XXX XXX" style="width:200px"></div>
+    <button class="btn btn-ghost">Send a test code →</button>
+  </form>
+  {% endif %}
+
+  {% if email_ok %}
+  <hr class="u-divider">
+  <div class="section-title">Option 3 — Email</div>
+  <p class="help">We'll email a fresh code to you each time you sign in.</p>
+  <form method="post" class="btn-row" style="align-items:flex-end;gap:.6rem">{% csrf_token %}
+    <input type="hidden" name="action" value="send_email">
+    <div class="form-row u-m-0"><label>Email address</label>
+      <input name="email" class="field" type="email" value="{{ default_email }}" style="width:220px"></div>
+    <button class="btn btn-ghost">Send a test code →</button>
+  </form>
+  {% endif %}
+
+  {% if not sms_ok and not email_ok %}
+  <p class="help u-mt">SMS and email delivery aren't configured on this server, so only the authenticator app is available. A treasurer can enable SMS under Settings, or set up email on the server.</p>
+  {% endif %}
+
+  <div class="btn-row u-mt-lg"><a class="btn btn-ghost" href="/">Cancel</a></div>
+</div></div>
+{% endif %}
 {% endblock %}

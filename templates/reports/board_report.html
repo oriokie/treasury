@@ -1,11 +1,13 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}Board report · {{ SITE_NAME }}{% endblock %}
+{% block title %}Board report · {{ SITE_NAME }}{% include "ui/print_signatures.html" %}
+{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Board Financial Report" %}
 <div class="page-head no-print"><div><h1>Board financial report</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
 <div class="btn-row">{% include 'partials/period_filter.html' %}<button class="btn btn-sm" onclick="window.print()">⎙ Print / PDF</button></div></div>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Board Financial Report</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
 
-<div class="card" style="margin-bottom:1.2rem"><div class="hd">Board narrative
+<div class="card u-mb-lg"><div class="hd">Board narrative
   <span class="pill {% if narrative_source == 'ai' %}pill-green{% else %}pill-grey{% endif %} no-print" style="float:right;font-weight:600">{% if narrative_source == 'ai' %}AI-generated{% else %}Auto (rule-based){% endif %}</span></div>
   <div class="bd">
     {% if ai_error and not ai_enabled %}<p class="help no-print">AI assistant off — showing the built-in summary. Enable it in Settings → Assistant for a richer narrative.</p>
@@ -40,7 +42,7 @@
   </div></div>
 </div>
 
-<div class="section-title" style="margin-top:1.2rem">Fund summaries</div>
+<div class="section-title u-mt-lg">Fund summaries</div>
 <div class="table-wrap"><table class="ledger compact">
   <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
   <tbody>
@@ -63,8 +65,8 @@
   </tbody>
 </table></div>
 
-<div class="section-title" style="margin-top:1.2rem">Trend analysis (by year){{ trend_ytd_label }}</div>
-<div class="table-wrap" style="max-width:640px"><table class="ledger compact">
+<div class="section-title u-mt-lg">Trend analysis (by year){{ trend_ytd_label }}</div>
+<div class="table-wrap u-narrow-md"><table class="ledger compact">
   <thead><tr><th>Year</th><th class="num">Income</th><th class="num">Expenditure</th><th class="num">Net</th></tr></thead>
   <tbody>
   {% for t in trend %}<tr><td class="mono">{{ t.year }}</td>

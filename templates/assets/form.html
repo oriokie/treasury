@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div><h1>{% if object %}Edit asset{% else %}Add asset{% endif %}</h1>
 <div class="sub">Leave method/rate blank to use the category's depreciation rule</div></div></div>
-<div class="card" style="max-width:640px"><div class="bd">
+<div class="card u-narrow-md"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-grid">

@@ -4,28 +4,28 @@
 <div class="ws-head">
   <div class="ws-titles"><h1>№ {{ group.number }} — {{ group.label }}</h1>
     <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · contribution detail · read-only</div></div>
-  <form method="get" class="btn-row" style="align-items:flex-end">
+  <form method="get" class="btn-row u-items-end">
     <a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a>
-    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" style="width:auto">
-    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" style="width:auto">
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto">
     <button class="btn btn-sm">Apply</button>
   </form>
 </div>
 
-<div class="ws-summary" style="margin-bottom:1rem">
+<div class="ws-summary u-mb">
   <div class="ws-metric is-primary"><span class="wm-l">Collected</span><span class="wm-v">{{ total|floatformat:0|intcomma }}</span></div>
   {% if target %}<div class="ws-metric"><span class="wm-l">Target</span><span class="wm-v">{{ target|floatformat:0|intcomma }}</span></div>
   <div class="ws-metric {% if pct >= 100 %}is-positive{% endif %}"><span class="wm-l">Progress</span><span class="wm-v">{{ pct }}%</span></div>{% endif %}
   <div class="ws-metric"><span class="wm-l">Contributors</span><span class="wm-v">{{ rows|length }}</span></div>
 </div>
 
-<div class="btn-row no-print" style="margin-bottom:1rem">
+<div class="btn-row no-print u-mb">
   <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">⬇ CSV</a>
   <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">⬇ Excel</a>
 </div>
-<div class="card"><div class="bd" style="padding:0">
+<div class="card"><div class="bd bd-flush">
   <table class="ledger compact">
-    <thead><tr><th>Contributor</th><th>Phone</th><th class="num">Gifts</th><th class="num">Total</th></tr></thead>
+    <thead><tr><th>Contributor</th><th>Phone</th><th class="num">Contributions</th><th class="num">Total</th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
       <td>{{ r.name }}</td>

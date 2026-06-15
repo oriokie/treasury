@@ -4,7 +4,7 @@
 <div class="page-head"><div><h1>{{ asset.name }}</h1><div class="sub">{{ asset.get_category_display }} · acquired {{ asset.acquired_on|date:"d M Y" }}{% if asset.reference %} · {{ asset.reference }}{% endif %}</div></div>
 <div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">← Assets</a>{% if is_treasurer and not asset.disposed %}<a class="btn btn-ghost btn-sm" href="{% url 'asset_edit' asset.id %}">Edit</a>{% endif %}</div></div>
 
-<div class="card" style="max-width:680px"><div class="bd">
+<div class="card u-narrow-md"><div class="bd">
   <table class="ledger"><tbody>
     <tr><td class="muted">Cost</td><td class="num mono">KES {{ asset.cost|floatformat:2|intcomma }}</td></tr>
     <tr><td class="muted">Accumulated depreciation</td><td class="num mono">{{ accum|floatformat:2|intcomma }}</td></tr>
@@ -20,7 +20,7 @@
 </div></div>
 
 {% if is_treasurer and not asset.disposed %}
-<div class="card" style="max-width:680px;margin-top:1rem"><div class="hd">Dispose of this asset</div><div class="bd">
+<div class="card u-narrow-md u-mt"><div class="hd">Dispose of this asset</div><div class="bd">
   <form method="post" action="{% url 'asset_dispose' asset.id %}">{% csrf_token %}
     <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
       <div class="form-row"><label>Date</label><input type="date" name="disposed_on" value="{{ today|date:'Y-m-d' }}" class="field"></div>
@@ -34,21 +34,21 @@
 </div></div>
 {% endif %}
 
-<div class="card" style="max-width:680px;margin-top:1rem"><div class="hd">Documents — receipts, warranty, photos</div><div class="bd">
+<div class="card u-narrow-md u-mt"><div class="hd">Documents — receipts, warranty, photos</div><div class="bd">
   {% if asset.attachments.all %}
   <table class="ledger compact"><tbody>
     {% for a in asset.attachments.all %}<tr>
       <td><a class="link" href="{{ a.file.url }}" target="_blank">{{ a.label|default:a.file.name }}</a></td>
       <td class="muted">{{ a.uploaded_at|date:"d M Y" }}</td>
-      {% if can_enter_data %}<td style="text-align:right"><form method="post" action="{% url 'asset_attachment_delete' asset.id a.id %}" style="display:inline" onsubmit="return confirm('Remove?');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
+      {% if can_enter_data %}<td class="u-right"><form method="post" action="{% url 'asset_attachment_delete' asset.id a.id %}" class="u-inline" onsubmit="return confirm('Remove?');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
     </tr>{% endfor %}
   </tbody></table>
-  {% else %}<p class="empty" style="padding:1rem">⎘ No documents attached yet.</p>{% endif %}
+  {% else %}<p class="empty u-p">⎘ No documents attached yet.</p>{% endif %}
   {% if can_enter_data %}
   <form method="post" action="{% url 'asset_attachment_upload' asset.id %}" enctype="multipart/form-data" style="margin-top:.8rem;display:flex;gap:.6rem;flex-wrap:wrap;align-items:end">
     {% csrf_token %}
-    <div class="form-row" style="margin:0"><label>Label</label><input name="label" class="field" placeholder="e.g. Purchase receipt / Warranty"></div>
-    <div class="form-row" style="margin:0"><label>File</label><input type="file" name="file" class="field" required></div>
+    <div class="form-row u-m-0"><label>Label</label><input name="label" class="field" placeholder="e.g. Purchase receipt / Warranty"></div>
+    <div class="form-row u-m-0"><label>File</label><input type="file" name="file" class="field" required></div>
     <button class="btn">Attach document</button>
   </form>{% endif %}
 </div></div>

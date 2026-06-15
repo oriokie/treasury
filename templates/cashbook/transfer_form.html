@@ -2,7 +2,7 @@
 {% block title %}New transfer · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>New inter-fund transfer</h1><div class="sub">Reallocate money from one fund to another</div></div></div>
-<div class="card form-card" style="max-width:560px"><div class="bd">
+<div class="card form-card u-narrow"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-grid">

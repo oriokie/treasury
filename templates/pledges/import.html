@@ -9,8 +9,8 @@
 {% if campaign %}<div class="alert" style="background:var(--brass-soft);border:1px solid var(--line);margin-bottom:1rem">Every pledge in this file will be added to <strong>{{ campaign.name }}</strong> — you can leave the Campaign column blank.</div>{% endif %}
 
 {% if stage == "upload" %}
-<div class="card" style="max-width:760px"><div class="hd">How it works</div><div class="bd">
-  <ol style="line-height:1.8;margin:0 0 .6rem 1.1rem">
+<div class="card u-narrow-xl"><div class="hd">How it works</div><div class="bd">
+  <ol class="u-list-loose">
     <li><strong>Download</strong> the template and fill one row per pledge.</li>
     <li>Each member is matched by name or phone; each campaign by name. Anything
       that doesn't match, you'll map or create on the next screen.</li>
@@ -18,10 +18,10 @@
       <strong>drafts</strong> for a treasurer to approve — nothing posts to the
       ledger, and no pledge becomes active without a review.</li>
   </ol>
-  <div class="btn-row" style="margin:.8rem 0"><a class="btn" href="?download=1">⤓ Download template (.xlsx)</a></div>
-  <form method="post" enctype="multipart/form-data" style="margin-top:1rem;border-top:1px solid var(--line);padding-top:1rem">
+  <div class="btn-row u-my"><a class="btn" href="?download=1">⤓ Download template (.xlsx)</a></div>
+  <form method="post" enctype="multipart/form-data" class="u-section-top">
     {% csrf_token %}
-    <div class="form-row" style="margin:.4rem 0"><label>Filled spreadsheet</label>
+    <div class="form-row u-my-sm"><label>Filled spreadsheet</label>
       <input type="file" name="file" class="field" accept=".xlsx" required></div>
     <button class="btn">Upload &amp; review</button>
   </form>
@@ -48,7 +48,7 @@
   {% endif %}
 
   {% if unmatched_members or unmatched_camps %}
-  <div class="alert alert-warn" style="margin-bottom:1rem">
+  <div class="alert alert-warn u-mb">
     {% if unmatched_members %}<strong>{{ unmatched_members }} member(s)</strong> didn't match — map each to an existing member, create new, or leave to skip. {% endif %}
     {% if unmatched_camps %}Unmatched campaigns: {{ unmatched_camps|join:", " }}. {% endif %}
   </div>
@@ -60,9 +60,9 @@
     {% for p in plan %}
     <tr class="{% if not p.member_id or p.campaign_raw and not p.campaign_id %}row-warn{% endif %}">
       <td>
-        {% if p.member_id %}<strong>{{ p.member_match }}</strong>{% if p.name != p.member_match %} <span class="muted" style="font-size:.78rem">({{ p.name }})</span>{% endif %}
+        {% if p.member_id %}<strong>{{ p.member_match }}</strong>{% if p.name != p.member_match %} <span class="muted u-xs">({{ p.name }})</span>{% endif %}
         {% else %}
-          <strong style="color:var(--danger)">{{ p.name }}</strong>{% if p.phone %} <span class="muted mono" style="font-size:.75rem">{{ p.phone }}</span>{% endif %}
+          <strong class="text-danger">{{ p.name }}</strong>{% if p.phone %} <span class="muted mono u-xs">{{ p.phone }}</span>{% endif %}
           <select name="member_{{ forloop.counter0 }}" class="field--select" style="margin-top:.25rem;min-width:200px">
             <option value="create">➕ Create “{{ p.name }}”</option>
             <option value="">— skip this row —</option>
@@ -73,7 +73,7 @@
       <td>
         {% if p.campaign_id %}{{ p.campaign_match }}
         {% elif p.campaign_raw %}
-          <strong style="color:var(--danger)">{{ p.campaign_raw }}</strong>
+          <strong class="text-danger">{{ p.campaign_raw }}</strong>
           <select name="campaign_{{ forloop.counter0 }}" class="field--select" style="margin-top:.25rem;min-width:180px">
             <option value="create">➕ Create “{{ p.campaign_raw }}”</option>
             <option value="">— use default / skip —</option>
@@ -83,17 +83,17 @@
       </td>
       <td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td>
       <td>{{ p.frequency|title }}</td>
-      <td class="mono" style="font-size:.78rem">{{ p.start|default:"—" }}{% if p.end %} → {{ p.end }}{% endif %}</td>
+      <td class="mono u-xs">{{ p.start|default:"—" }}{% if p.end %} → {{ p.end }}{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>
   </table></div>
 
-  <div class="btn-row" style="margin-top:1rem">
+  <div class="btn-row u-mt">
     <button class="btn">Import {{ plan|length }} pledge(s) as drafts</button>
     <a class="btn btn-ghost" href="{% url 'pledge_import' %}">Start over</a>
   </div>
-  <p class="help" style="margin-top:.6rem">Imported pledges are drafts. Approve them from the pledge list (filtered to Drafts) once you've checked them.</p>
+  <p class="help u-mt-sm">Imported pledges are drafts. Approve them from the pledge list (filtered to Drafts) once you've checked them.</p>
 </form>
 {% endif %}
 {% endblock %}

@@ -1,0 +1,10 @@
+{% comment %}
+Print-only signature lines for documents that need sign-off (treasurer's report,
+remittance schedule). Visible only when printing.
+Usage: {% include "ui/print_signatures.html" %}  or pass roles="Treasurer,Auditor,Pastor"
+{% endcomment %}
+<div class="print-sign">
+  <div class="sig">Prepared by — Treasurer</div>
+  <div class="sig">Checked by — Auditor</div>
+  <div class="sig">Approved by — Pastor / Board</div>
+</div>

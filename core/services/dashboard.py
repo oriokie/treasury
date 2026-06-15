@@ -145,7 +145,7 @@ def charts():
 
 def insights():
     """Richer executive analytics beyond the headline cards: month-on-month
-    movement, giving concentration, channel mix, expense ratio, average gift,
+    movement, giving concentration, channel mix, expense ratio, average contribution,
     and the top givers — each returned as a small dict the template renders as
     a tile. All figures respect the trust/local split and exclude double-counted
     envelope detail."""

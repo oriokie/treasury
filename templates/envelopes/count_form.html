@@ -7,10 +7,10 @@
 
 <form method="post" class="card"><div class="bd">{% csrf_token %}
   <div class="form-grid" style="display:grid;grid-template-columns:200px 1fr;gap:.8rem;align-items:end">
-    <div class="form-row" style="margin:0"><label>Sabbath</label><input type="date" name="date" value="{{ sabbath|date:'Y-m-d' }}" class="field" onchange="this.form.action='';this.form.method='get';this.form.submit()"></div>
+    <div class="form-row u-m-0"><label>Sabbath</label><input type="date" name="date" value="{{ sabbath|date:'Y-m-d' }}" class="field" onchange="this.form.action='';this.form.method='get';this.form.submit()"></div>
     <div class="help">Expected (physical cash for this Sabbath): <strong class="mono">KES {{ expected|floatformat:2|intcomma }}</strong>
-      <br><span style="font-size:.82rem">= cash entries {{ breakdown.cash|floatformat:2|intcomma }} + cash envelopes {{ breakdown.envelope|floatformat:2|intcomma }} − cash disbursed {{ breakdown.disbursed|floatformat:2|intcomma }} (bank / M-Pesa giving excluded)</span>
-      {% if breakdown.bank_as_cash %}<br><span style="font-size:.82rem;color:var(--amber)">Excluded {{ breakdown.bank_as_cash|floatformat:2|intcomma }} of cash-envelope rows that match a bank gift this Sabbath — that money arrived in the bank, not as cash.</span>{% endif %}</div>
+      <br><span class="u-small">= cash entries {{ breakdown.cash|floatformat:2|intcomma }} + cash envelopes {{ breakdown.envelope|floatformat:2|intcomma }} − cash disbursed {{ breakdown.disbursed|floatformat:2|intcomma }} (bank / M-Pesa giving excluded)</span>
+      {% if breakdown.bank_as_cash %}<br><span style="font-size:.82rem;color:var(--amber)">Excluded {{ breakdown.bank_as_cash|floatformat:2|intcomma }} of cash-envelope rows that match a bank contribution this Sabbath — that money arrived in the bank, not as cash.</span>{% endif %}</div>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1rem">
@@ -22,7 +22,7 @@
           <td><input name="d_{{ d }}" class="field mono dcount" data-denom="{{ d }}" inputmode="numeric" style="width:90px;text-align:right" value=""></td>
           <td class="num mono sub" id="sub_{{ d }}">0.00</td></tr>{% endfor %}
         </tbody>
-        <tfoot><tr><td colspan="2" style="text-align:right"><strong>Counted total</strong></td><td class="num mono"><strong id="counted">0.00</strong></td></tr>
+        <tfoot><tr><td colspan="2" class="u-right"><strong>Counted total</strong></td><td class="num mono"><strong id="counted">0.00</strong></td></tr>
           <tr><td colspan="3" id="disc" class="help"></td></tr></tfoot>
       </table>
     </div>
@@ -32,7 +32,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:.5rem;margin-bottom:.5rem;align-items:center">
         <input name="w_name" class="field" placeholder="Counter name">
         <input name="w_role" class="field" placeholder="Role (e.g. deacon)">
-        <label class="check-row" style="white-space:nowrap"><input type="checkbox" name="w_signed_{{ forloop.counter0 }}"> Signed</label>
+        <label class="check-row u-nowrap"><input type="checkbox" name="w_signed_{{ forloop.counter0 }}"> Signed</label>
       </div>
       {% endfor %}
       <div class="form-row"><label>Note (optional)</label><input name="note" class="field" placeholder="e.g. KES 200 short — under review"></div>

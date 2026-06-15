@@ -15,16 +15,16 @@
       <li>Apply any database changes and refresh the app</li>
     </ul>
     <p class="help">Your data is not touched except for the safety backup. The update takes about a minute.</p>
-    <form method="post" style="margin-top:1rem">{% csrf_token %}
+    <form method="post" class="u-mt">{% csrf_token %}
       <button class="btn" onclick="return confirm('Update the app to {{ update_tag }} now?')">Update now</button>
     </form>
   </div></div>
   {% else %}
   <div class="info-panel">You're already on the latest version the app can see ({{ current }}).</div>
-  {% if diag %}<div class="card" style="margin-top:1rem"><div class="bd">
+  {% if diag %}<div class="card u-mt"><div class="bd">
     <strong>Why no update is showing</strong>
-    <p class="help" style="margin-top:.4rem">{{ diag }}</p>
-    <table class="ledger compact" style="margin-top:.5rem"><tbody>
+    <p class="help u-mt-xs">{{ diag }}</p>
+    <table class="ledger compact u-mt-sm"><tbody>
       <tr><td>Configured repository</td><td class="mono">{{ repo|default:"(none)" }}</td></tr>
       <tr><td>Access token set</td><td>{% if token_set %}Yes{% else %}No{% endif %}</td></tr>
       <tr><td>Latest release seen</td><td class="mono">{{ update_tag|default:"(none)" }}</td></tr>
@@ -36,7 +36,7 @@
   <div class="card"><div class="hd">Update progress <span id="spin" class="muted" style="font-weight:400"></span></div><div class="bd">
     <pre id="log" class="mono" style="white-space:pre-wrap;background:var(--paper-2);padding:1rem;border-radius:10px;max-height:380px;overflow:auto;font-size:.82rem;line-height:1.6">{% for line in status.log %}{{ line }}
 {% endfor %}</pre>
-    <div id="result" style="margin-top:1rem"></div>
+    <div id="result" class="u-mt"></div>
   </div></div>
   <script>
   (function(){

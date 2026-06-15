@@ -349,7 +349,7 @@ class NoDoubleCountTests(FinancialFixture):
         rows2 = balances.department_summary(None, None)
         income_after = balances.totals(rows2)["receipts"]
         self.assertEqual(income_before, income_after,
-                         "Receipting a bank gift as an envelope changed income")
+                         "Receipting a bank contribution as an envelope changed income")
 
     def test_remittance_not_counted_as_income(self):
         from reports.services import balances
@@ -583,7 +583,7 @@ class UnconfirmedAndPendingTests(TestCase):
 
 class ExcludedFromIncomeTests(TestCase):
     """A receipt flagged excluded_from_income (e.g. asset-disposal proceeds, or a
-    bank gift already counted via an envelope) is real cash in the fund but NOT
+    bank contribution already counted via an envelope) is real cash in the fund but NOT
     operating income. It must stay in the fund balance yet be distinguishable."""
 
     @classmethod
@@ -753,3 +753,20 @@ class DebitReducesBankPositionTests(TestCase):
             cr=Sum("amount", filter=_Q(direction="CREDIT")),
             db=Sum("amount", filter=_Q(direction="DEBIT")))
         self.assertEqual((agg["cr"] or D("0")) - (agg["db"] or D("0")), D("3800"))
+
+
+class PerformanceGuardTests(TestCase):
+    """Item 2: dev-group progress must stay constant-query regardless of how many
+    development groups exist (guards against reintroducing the per-group N+1)."""
+
+    def test_dev_group_progress_is_constant_query(self):
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        from departments.models import DevelopmentGroup
+        from reports.services.balances import dev_group_progress
+        for n in range(1, 41):
+            DevelopmentGroup.objects.create(number=n, name=f"G{n}", target=1000)
+        with CaptureQueriesContext(connection) as ctx:
+            dev_group_progress()
+        # 1 grouped aggregate + 1 group fetch; must not scale with group count
+        self.assertLessEqual(len(ctx.captured_queries), 3)

@@ -8,17 +8,17 @@
     <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
     {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
     {% if can_enter_data and unallocated_in_ledger %}
-    <form method="post" action="{% url 'queue_fetch_unallocated' %}" style="display:inline"
-          onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated gift(s) from the ledger into the queue for allocation?');">
+    <form method="post" action="{% url 'queue_fetch_unallocated' %}" class="u-inline"
+          onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated contribution(s) from the ledger into the queue for allocation?');">
       {% csrf_token %}
-      <button class="btn btn-brass btn-sm" title="Gifts in the ledger with no fund assigned that aren't in the queue">⤵ Fetch {{ unallocated_in_ledger }} unallocated from ledger</button>
+      <button class="btn btn-brass btn-sm" title="Contributions in the ledger with no fund assigned that aren't in the queue">⤵ Fetch {{ unallocated_in_ledger }} unallocated from ledger</button>
     </form>{% endif %}
   </div>
 </div>
 
 {% if can_enter_data and items %}
 <form id="bulkAllocForm" method="post" action="{% url 'queue_bulk_allocate' %}" class="bulk-bar no-print"
-      onsubmit="return document.querySelectorAll('.bulk-check:checked').length>0 || (alert('Tick at least one gift first.'),false);">
+      onsubmit="return document.querySelectorAll('.bulk-check:checked').length>0 || (alert('Tick at least one contribution first.'),false);">
   {% csrf_token %}
   <label class="bulk-bar-lbl"><input type="checkbox" id="bulkAll"> Select all on this page</label>
   <span class="bulk-count muted"><span id="bulkN">0</span> selected</span>

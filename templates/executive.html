@@ -5,7 +5,7 @@
 
 <div class="exec-cards">
   {% for c in cards %}
-  {% if c.link %}<a class="exec-card tone-{{ c.tone }}" href="{{ c.link }}" style="text-decoration:none">{% else %}<div class="exec-card tone-{{ c.tone }}">{% endif %}
+  {% if c.link %}<a class="exec-card tone-{{ c.tone }}" href="{{ c.link }}" class="u-nolink">{% else %}<div class="exec-card tone-{{ c.tone }}">{% endif %}
     <div class="ec-label">{{ c.label }}</div>
     <div class="ec-val">{% if c.money %}<span class="ec-cur">KES</span> {{ c.value|floatformat:0|intcomma }}{% else %}{{ c.value }}{% endif %}</div>
     {% if c.sub %}<div class="ec-sub">{{ c.sub }}</div>{% endif %}
@@ -82,12 +82,12 @@
 
 {% if ai_enabled %}
 <div class="card ai-card" style="margin-bottom:1.2rem;border:1px solid var(--brass)">
-  <div class="hd" style="display:flex;justify-content:space-between;align-items:center">
+  <div class="hd u-between">
     <span>✨ AI insights</span>
     <button id="aiBtn" class="btn btn-sm" onclick="loadInsights()">Generate briefing</button>
   </div>
   <div class="bd" id="aiBody">
-    <p class="muted" style="margin:0">Generate an AI briefing — highlights, risks and recommendations drawn from your current figures. This makes one call to your configured assistant.</p>
+    <p class="muted u-m-0">Generate an AI briefing — highlights, risks and recommendations drawn from your current figures. This makes one call to your configured assistant.</p>
   </div>
 </div>
 <script>
@@ -119,12 +119,12 @@ function loadInsights(){
     <div class="alert-row sev-{{ a.severity }}">
       <span class="alert-dot"></span>
       <div style="flex:1"><strong>{{ a.title }}</strong><div class="muted" style="font-size:.84rem">{{ a.detail }}{% if a.link %} · <a class="link" href="{{ a.link }}">{{ a.link_text|default:"View" }}</a>{% endif %}</div></div>
-      <form method="post" style="margin:0" title="Dismiss — no action needed">{% csrf_token %}<input type="hidden" name="dismiss" value="{{ a.key }}"><button class="alert-dismiss" type="submit" aria-label="Dismiss">&times;</button></form>
+      <form method="post" class="u-m-0" title="Dismiss — no action needed">{% csrf_token %}<input type="hidden" name="dismiss" value="{{ a.key }}"><button class="alert-dismiss" type="submit" aria-label="Dismiss">&times;</button></form>
     </div>
   {% endfor %}
 </div></div>
 {% else %}
-<div class="info-panel">No anomalies detected — collections, spending, budgets and remittances all look normal.{% if dismissed_count %} <form method="post" style="display:inline">{% csrf_token %}<input type="hidden" name="restore" value="1"><button class="link">Restore {{ dismissed_count }} dismissed</button></form>{% endif %}</div>
+<div class="info-panel">No anomalies detected — collections, spending, budgets and remittances all look normal.{% if dismissed_count %} <form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="restore" value="1"><button class="link">Restore {{ dismissed_count }} dismissed</button></form>{% endif %}</div>
 {% endif %}
 
 <div class="kpi-strip">
@@ -133,7 +133,7 @@ function loadInsights(){
     <div class="kpi-top"><span class="kpi-name">{{ k.label }}</span>
       <span class="kpi-arrow {% if k.invert %}{% if k.trend == 'up' %}bad{% elif k.trend == 'down' %}good{% else %}flat{% endif %}{% else %}{% if k.trend == 'up' %}good{% elif k.trend == 'down' %}bad{% else %}flat{% endif %}{% endif %}">
         {% if k.trend == 'up' %}▲{% elif k.trend == 'down' %}▼{% else %}▬{% endif %}</span></div>
-    {% if k.pct != None %}<div class="kpi-pct">{{ k.pct|floatformat:1 }}%{% if k.is_level %} <span class="muted" style="font-size:.7rem">{% if k.label == 'Budget compliance' %}used{% else %}level{% endif %}</span>{% endif %}</div>{% else %}<div class="kpi-pct muted">—</div>{% endif %}
+    {% if k.pct != None %}<div class="kpi-pct">{{ k.pct|floatformat:1 }}%{% if k.is_level %} <span class="muted u-xs">{% if k.label == 'Budget compliance' %}used{% else %}level{% endif %}</span>{% endif %}</div>{% else %}<div class="kpi-pct muted">—</div>{% endif %}
     <div class="kpi-detail">{{ k.detail }}</div>
   </div>
   {% endfor %}

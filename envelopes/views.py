@@ -762,7 +762,7 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
 
 
 class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
-    """Receipt a SINGLE bank transaction (and any split siblings of the same gift)
+    """Receipt a SINGLE bank transaction (and any split siblings of the same contribution)
     as an envelope, on demand — the per-entry counterpart to the bulk monthly
     pull. Supports a user-supplied receipt number for hybrid manual receipting:
     the treasurer can enter the number written on the physical receipt/envelope so
@@ -775,7 +775,7 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
     """
 
     def get(self, request, pk):
-        """Show a small confirmation form to receipt this bank gift, with an
+        """Show a small confirmation form to receipt this bank contribution, with an
         optional manual receipt number."""
         txn = get_object_or_404(Transaction, pk=pk)
         eligible = (txn.channel == Transaction.Channel.BANK
@@ -804,18 +804,18 @@ class EnvelopeReceiptOneBankView(DataEntryRequiredMixin, View):
             messages.error(request, "Only bank/M-Pesa credits can be receipted as envelopes.")
             return redirect("transaction_list")
         if txn.processed_via_envelope or hasattr(txn, "envelope"):
-            messages.info(request, "That gift has already been receipted as an envelope.")
+            messages.info(request, "That contribution has already been receipted as an envelope.")
             return redirect("transaction_list")
         if txn.manual_receipt:
-            messages.info(request, "That gift is marked as a manual (paper) receipt. "
+            messages.info(request, "That contribution is marked as a manual (paper) receipt. "
                                    "Untick 'manual receipt' on the entry first if you "
                                    "want to issue a system receipt instead.")
             return redirect("transaction_list")
         if txn.department_id is None:
-            messages.error(request, "Allocate this gift to a fund before receipting it.")
+            messages.error(request, "Allocate this contribution to a fund before receipting it.")
             return redirect("transaction_list")
         if txn.sabbath_confirm_pending:
-            messages.error(request, "Confirm this gift's Sabbath before receipting it.")
+            messages.error(request, "Confirm this contribution's Sabbath before receipting it.")
             return redirect("transaction_list")
         lk = period_locked(txn.service_sabbath or txn.date)
         if lk:
@@ -1019,7 +1019,7 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
 
         if created:
             messages.success(
-                request, f"Receipted {created} bank gift(s) as envelopes "
+                request, f"Receipted {created} bank contribution(s) as envelopes "
                          f"(accounted once — not double-counted).")
         else:
             messages.info(request, "No new bank giving to receipt for this month.")
@@ -1100,13 +1100,13 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
 
     def _breakdown(self, sabbath):
         """Transparent components of expected cash on hand for the Sabbath. Groups
-        by each gift's *service Sabbath*, so a gift sent after the count closed is
+        by each contribution's *service Sabbath*, so a contribution sent after the count closed is
         credited to the next Sabbath and never reopens this one.
 
         Crucially, this is a count of PHYSICAL CASH only. Bank/M-Pesa giving lives
         on the statement (channel=BANK) and is never included. We also subtract any
         'cash envelope' (an ENVELOPE-channel row) that turns out to duplicate a
-        bank gift for the same contributor this Sabbath — i.e. money that arrived
+        bank contribution for the same contributor this Sabbath — i.e. money that arrived
         in the bank but was also keyed on the cash envelope sheet. Counting it as
         cash would overstate the float and make the count impossible to balance."""
         from django.db.models import Sum, Case, When, DecimalField
@@ -1411,7 +1411,7 @@ class EnvelopeBulkSendView(DataEntryRequiredMixin, View):
 
 class SabbathCloseView(DataEntryRequiredMixin, View):
     """Close (or reopen) a Sabbath once counting is done. Closing fixes its
-    offering/count figures; later gifts for it roll to the next open Sabbath."""
+    offering/count figures; later contributions for it roll to the next open Sabbath."""
     def post(self, request):
         from core.models import SabbathClose
         try:
@@ -1435,7 +1435,7 @@ class SabbathCloseView(DataEntryRequiredMixin, View):
             SabbathClose.objects.get_or_create(
                 sabbath=sab, defaults={"closed_by": request.user,
                                        "note": (request.POST.get("note") or "")[:200]})
-            messages.success(request, f"Sabbath {sab:%d %b %Y} closed. Later gifts for "
+            messages.success(request, f"Sabbath {sab:%d %b %Y} closed. Later contributions for "
                                       f"it will be credited to the next open Sabbath.")
         return redirect(back)
 
@@ -1459,7 +1459,7 @@ class SabbathReconciliationView(ReadAccessMixin, View):
 class ReconcileApplyView(DataEntryRequiredMixin, View):
     """Item 1: apply selected reconciliation matches. Each selected pair is
     'env:<envelope_id>:bank:<txn_id>'. Applying marks the matched envelope as a
-    BANK item (it was bank money), links it to the bank gift when free, and
+    BANK item (it was bank money), links it to the bank contribution when free, and
     neutralises the duplicate cash income the envelope created so the money is
     counted once — via the bank transaction."""
 

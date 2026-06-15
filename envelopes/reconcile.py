@@ -1,7 +1,7 @@
 """Item 1: reconcile a Sabbath's BANK giving (receipted + manually receipted)
 against the ENVELOPE records counted for that Sabbath.
 
-The goal is a balanced view: every bank gift that hit the account should be
+The goal is a balanced view: every bank contribution that hit the account should be
 accounted for as an envelope (or a manual receipt), and the totals on each side
 should agree. Where the names don't line up exactly we fall back to fuzzy
 matching, so a manual-receipt name typed with a small misspelling still pairs up.
@@ -28,7 +28,7 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
 
     Bank side: every BANK credit whose service Sabbath is this Sabbath, tagged
     receipted / manual / unreceipted. Envelope side: every Envelope counted for
-    this Sabbath. We then greedily pair bank gifts to envelopes by amount + name
+    this Sabbath. We then greedily pair bank contributions to envelopes by amount + name
     (exact first, then fuzzy), surface what's left over on each side, and report
     whether the two sides balance.
     """

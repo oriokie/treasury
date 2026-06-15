@@ -1,6 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}{{ member.name }} statement · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Member Giving Statement" %}
 <div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">Giving statement · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
 <button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
 {% include 'partials/period_filter.html' %}
@@ -10,6 +11,6 @@
     <tbody>{% for r in rows %}<tr><td>{{ r.department__name|default:"Unallocated" }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td colspan="2" class="empty">No giving in this period.</td></tr>{% endfor %}</tbody>
     <tfoot><tr><th>Total</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>
   </table>
-  <div class="note" style="margin-top:.8rem">Thank you for your faithful giving. Please retain this statement for your records.</div>
+  <div class="note u-mt-sm">Thank you for your faithful giving. Please retain this statement for your records.</div>
 </div></div>
 {% endblock %}

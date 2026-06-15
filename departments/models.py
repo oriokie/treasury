@@ -231,14 +231,23 @@ class DepartmentLeadership(models.Model):
 
 def departments_led_by(user):
     """The set of Department objects a leader may see: the departments they are
-    assigned to, plus the sub-accounts of any of those. Returns a queryset.
-    Office staff (treasurer/assistant/auditor/admin) are not constrained here —
-    this is only used to scope the Leader role."""
+    assigned to, plus ALL their sub-accounts at any depth (children, grandchildren
+    …). So assigning the parent fund (e.g. CAMP MEETING) automatically gives the
+    leader its whole tree (CAMP_1 … CAMP_30). Office staff are not constrained
+    here — this only scopes the Leader role. Returns a queryset.
+    """
     led_ids = list(DepartmentLeadership.objects.filter(user=user)
                    .values_list("department_id", flat=True))
     if not led_ids:
         return Department.objects.none()
-    # include sub-accounts of the led departments (closing balance rolls them up)
-    return Department.objects.filter(
-        models.Q(id__in=led_ids) | models.Q(parent_id__in=led_ids)
-    ).distinct()
+    # walk down the tree, level by level, until no new sub-accounts appear
+    all_ids = set(led_ids)
+    frontier = set(led_ids)
+    while frontier:
+        children = set(Department.objects.filter(parent_id__in=frontier)
+                       .exclude(id__in=all_ids).values_list("id", flat=True))
+        if not children:
+            break
+        all_ids |= children
+        frontier = children
+    return Department.objects.filter(id__in=all_ids).distinct()

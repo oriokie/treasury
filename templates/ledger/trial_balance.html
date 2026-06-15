@@ -2,7 +2,7 @@
 {% block title %}Trial balance · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head no-print"><div><h1>Trial balance</h1><div class="sub">As at {{ end|date:"d M Y" }}</div></div>
-<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">Excel</a>{% if is_treasurer %}<form method="post" action="{% url 'ledger_rebuild' %}" style="display:inline">{% csrf_token %}<button class="btn btn-ghost btn-sm">⟳ Rebuild</button></form>{% endif %}<button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">Excel</a>{% if is_treasurer %}<form method="post" action="{% url 'ledger_rebuild' %}" class="u-inline">{% csrf_token %}<button class="btn btn-ghost btn-sm">⟳ Rebuild</button></form>{% endif %}<button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 {% include 'ledger/_period.html' %}
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Trial Balance — as at {{ end|date:"d M Y" }}</div></div>
 {% if not ready %}<div class="info-panel">No ledger yet — use Rebuild to post the general ledger.</div>{% endif %}

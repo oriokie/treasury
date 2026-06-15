@@ -1,10 +1,11 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Cash book · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% include "ui/print_header.html" with title="Cash Book" %}
 <div class="page-head"><div><h1>Cash book</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · running balance</div></div>
 <button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
 {% include 'partials/period_filter.html' %}
-<div class="table-wrap" style="margin-top:1rem"><table class="ledger">
+<div class="table-wrap u-mt"><table class="ledger">
   <thead><tr><th>Date</th><th>Detail</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
   <tbody>
   {% for e in entries %}
