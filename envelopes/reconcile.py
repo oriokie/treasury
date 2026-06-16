@@ -72,11 +72,12 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
         parts = groups[k]
         head = parts[0]
         total = sum((p.amount for p in parts), Decimal(0))
-        # status: receipted if any part is, else manual if any, else unreceipted
-        statuses = {("receipted" if p.processed_via_envelope else
-                     "manual" if p.manual_receipt else "unreceipted") for p in parts}
-        status = ("receipted" if "receipted" in statuses else
-                  "manual" if "manual" in statuses else "unreceipted")
+        # In the legacy model the envelope is the income; a bank credit that has
+        # been receipted is EXCLUDED from income (a memo). So a credit is either
+        # "receipted" (excluded — counted once, on the envelope side) or "income"
+        # (still counted here — a double-count if it also has an envelope).
+        excluded = any(p.excluded_from_income for p in parts)
+        status = "receipted" if excluded else "income"
         funds = []
         for p in parts:
             if p.department_id and p.department.name not in funds:
@@ -133,7 +134,15 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
                 continue
             matched.append({"bank": b, "env": e,
                             "confidence": "exact" if min_ratio >= 0.999 else "fuzzy",
-                            "ratio": round(_ratio(b["who"], e["who"]), 2)})
+                            "ratio": round(_ratio(b["who"], e["who"]), 2),
+                            # the overstating case: this gift was banked AND typed as
+                            # a cash envelope (its own ledger entry), while the bank
+                            # credit is still unreceipted — so the money is counted
+                            # twice until the envelope is moved to bank.
+                            # the double-count case in the legacy model: the
+                            # envelope posts income AND this bank credit is still
+                            # income (not yet excluded) — mark it receipted to fix
+                            "miscat": b["status"] == "income"})
             bank_left.remove(b)
             env_left.remove(e)
 
@@ -209,15 +218,16 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
         "bank": bank, "envelopes": envelopes,
         "matched": matched, "bank_unmatched": bank_left, "env_unmatched": env_left,
         "suggestion": suggestion, "suggestions": suggestions,
+        "miscat_count": sum(1 for m in matched if m.get("miscat")),
         "bank_total": bank_total,
         "bank_receipted": sum((b["amount"] for b in bank if b["status"] == "receipted"), Decimal(0)),
-        "bank_manual": sum((b["amount"] for b in bank if b["status"] == "manual"), Decimal(0)),
-        "bank_unreceipted": sum((b["amount"] for b in bank if b["status"] == "unreceipted"), Decimal(0)),
+        "bank_income": sum((b["amount"] for b in bank if b["status"] == "income"), Decimal(0)),
         "env_total": env_total, "env_bank_total": env_bank_total,
         "env_cash_total": env_cash_total,
-        # the two sides balance when the bank gifts equal the bank-attributed
-        # envelopes (cash envelopes are their own money and excluded here)
-        "balanced": bank_total == env_bank_total,
+        # In the legacy model the envelope is the income and a receipted credit is
+        # excluded. The Sabbath is reconciled when no bank credit that matches an
+        # envelope is still counted as income — i.e. nothing is double-counted.
+        "balanced": all(not m.get("miscat") for m in matched),
         "difference": bank_total - env_bank_total,
     }
 

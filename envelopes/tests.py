@@ -679,7 +679,7 @@ class SabbathReconciliationTests(TestCase):
 
     def test_balanced_when_bank_equals_bank_envelopes(self):
         from decimal import Decimal
-        self._bank("A", 200, processed_via_envelope=True); self._env("A", 200)
+        self._bank("A", 200, excluded_from_income=True); self._env("A", 200)
         rec = self._rec()
         self.assertTrue(rec["balanced"])
         self.assertEqual(rec["difference"], Decimal("0"))
@@ -743,15 +743,48 @@ class ReconcileApplyTests(TestCase):
         env.recompute_total(); env.save()
         return bank, env, envtxn
 
+    def test_bank_envelope_plus_credit_counted_once_after_receipting(self):
+        # Legacy-model invariant: a hand-typed BANK envelope posts income; the
+        # matching imported bank credit double-counts until it is marked
+        # receipted, which excludes it — leaving the gift counted exactly once.
+        from decimal import Decimal
+        from django.db.models import Sum
+        from giving.models import Transaction
+        from envelopes.views import _save_envelope
+        from core.models import SiteConfig
+
+        def income():
+            return Transaction.objects.filter(
+                service_sabbath=self.sab, direction="CREDIT", confirmed=True,
+                excluded_from_income=False).aggregate(s=Sum("amount"))["s"] or Decimal(0)
+
+        _save_envelope(date=self.sab, name="Dup Giver", receipt="DUP1", channel="BANK",
+                       lines=[(self.d, Decimal("800"))], member=None, user=self.u,
+                       cfg=SiteConfig.get())
+        self.assertEqual(income(), Decimal("800"))
+        credit = Transaction.objects.create(
+            date=self.sab, service_sabbath=self.sab, channel="BANK", direction="CREDIT",
+            amount=Decimal("800"), department=self.d, payer_name="Dup Giver",
+            reference="DUPB", core_ref="DUPB", confirmed=True, allocation_status="AUTO")
+        self.assertEqual(income(), Decimal("1600"))   # double until reconciled
+        self.client.post("/envelopes/reconcile/apply/",
+                         {"date": self.sab.isoformat(), "mark_receipted": [str(credit.id)]})
+        credit.refresh_from_db()
+        self.assertTrue(credit.excluded_from_income)
+        self.assertEqual(income(), Decimal("800"))    # counted once
+
     def test_apply_marks_bank_and_neutralises_income(self):
         from envelopes.models import Envelope
         bank, env, envtxn = self._setup_dup()
         self.client.post("/envelopes/reconcile/apply/",
             {"date": self.sab.isoformat(),
              "pair": [f"env:{env.id}:bank:{bank.id}"]})
-        env.refresh_from_db(); envtxn.refresh_from_db()
+        env.refresh_from_db(); envtxn.refresh_from_db(); bank.refresh_from_db()
         self.assertEqual(env.channel, Envelope.Channel.BANK)
-        self.assertTrue(envtxn.excluded_from_income)
+        # legacy model: the BANK CREDIT is excluded as a memo; the envelope's own
+        # transaction remains the income, so the gift is counted once.
+        self.assertTrue(bank.excluded_from_income)
+        self.assertFalse(envtxn.excluded_from_income)
         self.assertEqual(env.bank_transaction_id, bank.id)
 
     def test_apply_fixes_cash_count(self):
@@ -809,12 +842,12 @@ class ReconcileSplitFundTests(TestCase):
         Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
             channel="BANK", direction="CREDIT", amount=Decimal("600"),
             department=self.trust, payer_name="Split Giver", reference="SR",
-            core_ref="RSBASE", processed_via_envelope=True, confirmed=True,
+            core_ref="RSBASE", excluded_from_income=True, confirmed=True,
             allocation_status="MANUAL")
         Transaction.objects.create(date=self.sab, service_sabbath=self.sab,
             channel="BANK", direction="CREDIT", amount=Decimal("400"),
             department=self.local, payer_name="Split Giver", reference="SR",
-            core_ref="RSBASE-S1", processed_via_envelope=True, confirmed=True,
+            core_ref="RSBASE-S1", excluded_from_income=True, confirmed=True,
             allocation_status="MANUAL")
         e = Envelope.objects.create(date=self.sab,
             sabbath_week=sabbath_week_of(self.sab), receipt_no="RSENV",

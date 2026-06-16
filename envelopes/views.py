@@ -203,16 +203,19 @@ def _save_envelope(*, date, name, receipt, channel, lines, member, user, cfg):
     for line in lines:
         dept, amt = line[0], line[1]
         dev_group = line[2] if len(line) > 2 else None
-        txn = None
-        if env.channel == Envelope.Channel.CASH:
-            txn = Transaction.objects.create(
-                date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
-                channel=Transaction.Channel.ENVELOPE,
-                direction=Transaction.Direction.CREDIT, amount=amt,
-                department=dept, dev_group=dev_group, member=member, payer_name=name,
-                reference=f"envelope {receipt}",
-                allocation_status=Transaction.Status.MANUAL,
-                raw_narration=f"ENVELOPE {receipt}")
+        # Both cash and bank envelopes post income: the envelope (the offering
+        # record) IS the income, exactly as the legacy import did. A bank
+        # envelope's matching bank-statement credit is excluded from income
+        # during Sabbath reconciliation, so the gift is counted once — on the
+        # envelope side — and never double-counted against the bank credit.
+        txn = Transaction.objects.create(
+            date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
+            channel=Transaction.Channel.ENVELOPE,
+            direction=Transaction.Direction.CREDIT, amount=amt,
+            department=dept, dev_group=dev_group, member=member, payer_name=name,
+            reference=f"envelope {receipt}",
+            allocation_status=Transaction.Status.MANUAL,
+            raw_narration=f"ENVELOPE {receipt}")
         EnvelopeLine.objects.create(envelope=env, department=dept, amount=amt,
                                     dev_group=dev_group, transaction=txn)
     env.recompute_total()
@@ -1113,6 +1116,7 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
         from django.db.models import Sum, Case, When, DecimalField
         from giving.models import Transaction
         from cashbook.models import Expense
+        from envelopes.models import Envelope
         from members.services.matching import name_key
         zero = DecimalField(max_digits=14, decimal_places=2)
         agg = (Transaction.objects.filter(
@@ -1121,6 +1125,10 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
                     is_reversed=False, is_reversal=False,
                     excluded_from_income=False,
                     service_sabbath=sabbath)
+               # a BANK envelope now posts an ENVELOPE-channel transaction too, but
+               # that is bank/M-Pesa money — never physical cash — so drop any row
+               # that belongs to a bank-channel envelope.
+               .exclude(envelope_lines__envelope__channel=Envelope.Channel.BANK)
                .aggregate(
                     cash=Sum(Case(When(channel=Transaction.Channel.CASH, then="amount"),
                                   default=Decimal(0), output_field=zero)),
@@ -1148,7 +1156,9 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
                     direction=Transaction.Direction.CREDIT, confirmed=True,
                     is_reversed=False, is_reversal=False,
                     excluded_from_income=False,
-                    service_sabbath=sabbath).values("member_id", "payer_name", "amount"):
+                    service_sabbath=sabbath).exclude(
+                        envelope_lines__envelope__channel=Envelope.Channel.BANK
+                    ).values("member_id", "payer_name", "amount"):
                 who = e["member_id"] or name_key(e["payer_name"]) or ""
                 key = (who, e["amount"])
                 if bank_sig.get(key, 0) > 0:
@@ -1317,9 +1327,17 @@ def _reverse_envelope(env):
     # hand any real bank deposits back to the receipt queue so they can be
     # receipted again correctly (e.g. linked after a statement import)
     for t in bank_txns:
-        if t and t.processed_via_envelope:
+        if not t:
+            continue
+        fields = []
+        if t.processed_via_envelope:
             t.processed_via_envelope = False
-            t.save(update_fields=["processed_via_envelope"])
+            fields.append("processed_via_envelope")
+        if t.excluded_from_income:           # bring the memo'd credit back as income
+            t.excluded_from_income = False
+            fields.append("excluded_from_income")
+        if fields:
+            t.save(update_fields=fields)
     env.delete()
     return removed
 
@@ -1543,6 +1561,56 @@ class ReconcileApplyView(DataEntryRequiredMixin, View):
         pairs = request.POST.getlist("pair")
         sab = request.POST.get("date", "")
         applied = 0
+        from django.db.models import Q as _Q
+
+        def _exclude_credit(t):
+            # A receipted bank credit is the same money as an envelope (which is
+            # the income), so it becomes a pure reconciliation memo — exactly the
+            # legacy "Processed via envelope": excluded from income AND detached
+            # from its fund (department=None) so it neither counts as income nor
+            # inflates the fund balance. The envelope is the single record.
+            base = (t.core_ref or "").split("-S")[0]
+            sibs = (Transaction.objects.filter(_Q(core_ref=base) | _Q(core_ref__startswith=base + "-S"))
+                    if base else Transaction.objects.filter(pk=t.pk))
+            n = 0
+            for s in sibs:
+                fields = []
+                if not s.excluded_from_income:
+                    s.excluded_from_income = True
+                    fields.append("excluded_from_income")
+                if not s.processed_via_envelope:
+                    s.processed_via_envelope = True
+                    fields.append("processed_via_envelope")
+                if s.department_id is not None:
+                    s.department = None
+                    fields.append("department")
+                if fields:
+                    s.save(update_fields=fields)
+                    n += 1
+            return n
+
+        # --- status actions that need no pairing ----------------------------
+        # (a) mark bank credits as receipted — a CONFIRMATION that the money is
+        #     already counted on the envelope side. One credit may cover several
+        #     envelopes for several people, so no 1:1 link is implied; it simply
+        #     excludes the credit from income so the gift is not counted twice.
+        receipted = 0
+        for tid in request.POST.getlist("mark_receipted"):
+            t = Transaction.objects.filter(pk=tid).first()
+            if t and _exclude_credit(t):
+                receipted += 1
+        # (b) reclassify a CASH envelope as BANK — relabel only. The envelope is
+        #     the income either way; its bank-statement credit is what gets
+        #     excluded (via a match or "mark receipted"), not the envelope.
+        to_bank = 0
+        for eid in request.POST.getlist("to_bank"):
+            env = Envelope.objects.filter(pk=eid).first()
+            if not env or env.channel == Envelope.Channel.BANK:
+                continue
+            env.channel = Envelope.Channel.BANK
+            env.save(update_fields=["channel"])
+            to_bank += 1
+
         for token in pairs:
             try:
                 _, env_id, _, txn_id = token.split(":")
@@ -1554,43 +1622,30 @@ class ReconcileApplyView(DataEntryRequiredMixin, View):
             if not env or not txn:
                 continue
             changed = False
-            # 1) mark the receipted entry (envelope) as a BANK item
+            # 1) relabel the envelope as a BANK item (it is bank giving)
             if env.channel != Envelope.Channel.BANK:
                 env.channel = Envelope.Channel.BANK
                 changed = True
-            # 2) link it to the bank gift if neither side is already linked
+            # 2) link to the bank credit for tracking, if neither side is linked
             if env.bank_transaction_id is None and not hasattr(txn, "envelope"):
                 env.bank_transaction = txn
                 changed = True
             if changed:
                 env.save(update_fields=["channel", "bank_transaction"])
-            # 3) neutralise duplicate income: any ENVELOPE-channel transaction this
-            #    envelope created is the same money as the bank gift — exclude it
-            #    from income (the bank transaction is the income).
-            for line in env.lines.select_related("transaction").all():
-                lt = line.transaction
-                if lt and lt.channel == Transaction.Channel.ENVELOPE \
-                        and not lt.excluded_from_income:
-                    lt.excluded_from_income = True
-                    lt.save(update_fields=["excluded_from_income"])
-            # 4) mark the bank credit (and any split siblings) as receipted via
-            #    the envelope, so it shows as captured. This does NOT change the
-            #    ledger — the credit stays as income; only its receipted flag is
-            #    set. For hand-typed bank envelopes (no envelope transaction) this
-            #    is the whole effect of the link: no ledger entry is created or
-            #    removed.
-            from django.db.models import Q as _Q
-            base = (txn.core_ref or "").split("-S")[0]
-            sibs = (Transaction.objects.filter(_Q(core_ref=base) | _Q(core_ref__startswith=base + "-S"))
-                    if base else Transaction.objects.filter(pk=txn.pk))
-            for s in sibs:
-                if not s.processed_via_envelope:
-                    s.processed_via_envelope = True
-                    s.save(update_fields=["processed_via_envelope"])
+            # 3) exclude the BANK CREDIT from income — the envelope's own
+            #    transactions remain the income (the legacy model). This is the
+            #    inverse of the old behaviour, which excluded the envelope.
+            _exclude_credit(txn)
             applied += 1
+        bits = []
         if applied:
-            messages.success(request, f"Applied {applied} match(es): marked the bank "
-                                      "credit as receipted (no ledger change).")
+            bits.append(f"linked {applied} match(es) (bank credit excluded as a memo)")
+        if receipted:
+            bits.append(f"marked {receipted} bank credit(s) as receipted")
+        if to_bank:
+            bits.append(f"moved {to_bank} envelope(s) from cash to bank")
+        if bits:
+            messages.success(request, "Reconciliation: " + "; ".join(bits) + ".")
         else:
-            messages.info(request, "No matches were selected.")
+            messages.info(request, "Nothing was selected.")
         return redirect(f"{reverse('sabbath_reconcile')}?date={sab}")

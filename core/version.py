@@ -38,6 +38,27 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.34.1": "Aligned the cash-count sheet and the rest of the reports with the new model. "
+              "The cash count no longer treats a bank envelope as physical cash, and the income "
+              "reports (by channel, by group, tithe, offering, development) all leave out the "
+              "receipted bank-credit memos, so every figure — dashboard included — counts each "
+              "gift exactly once.",
+    "1.34.0": "Adopted the legacy accounting model. A bank envelope now posts income just like "
+              "a cash envelope (the envelope is the record of the gift), and when its matching "
+              "bank-statement credit is receipted during Sabbath reconciliation that credit is "
+              "turned into a memo — excluded from income and detached from its fund — so the gift "
+              "is counted exactly once, on the envelope side. The Sabbath reconciliation now "
+              "exists to find bank credits still counted as income that have actually been "
+              "receipted, so you can clear the double-count.",
+    "1.33.0": "From the Sabbath reconciliation page you can now change a record's status "
+              "directly: mark an unreceipted bank credit as receipted (a confirmation only — one "
+              "credit can cover several envelopes, so no link is required), and move an envelope "
+              "that was entered as cash over to bank (removing its duplicate cash entry so the "
+              "gift is not counted twice). Matches where a bank credit is still unreceipted but "
+              "the gift was typed as cash are flagged as the overstating case.",
+    "1.32.1": "trust_reconcile is more accurate: an envelope line that is excluded from income "
+              "but whose envelope is linked to a bank credit is no longer counted as missing from "
+              "collections (the bank credit is already there).",
     "1.32.0": "Sabbath reconciliation now also pairs gifts that share a first name and amount "
               "when there is only one such person that Sabbath (e.g. 'ADAM KEN' and 'ADAM NYAN'), "
               "and confirming a match marks the bank credit as receipted without changing the "

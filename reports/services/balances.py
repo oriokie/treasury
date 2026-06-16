@@ -173,7 +173,7 @@ def offering_summary(start=None, end=None):
     the selected range (not month-ordinals 1..5), so a multi-month range shows
     every Sabbath separately instead of merging all 'week 1' Sabbaths together."""
     from core.utils import sabbath_of
-    qs = (Transaction.objects.filter(_credit_filter(start, end))
+    qs = (Transaction.objects.filter(_credit_filter(start, end), excluded_from_income=False)
           .values("department__name", "service_sabbath", "date").annotate(total=Sum("amount")))
     sabbaths = set()
     rows = {}
@@ -189,14 +189,15 @@ def offering_summary(start=None, end=None):
 
 
 def giving_by_group(start=None, end=None):
-    qs = (Transaction.objects.filter(_credit_filter(start, end), member__isnull=False)
+    qs = (Transaction.objects.filter(_credit_filter(start, end), member__isnull=False,
+                                   excluded_from_income=False)
           .values("member__group")
           .annotate(total=Sum("amount"), count=Count("id")))
     return {r["member__group"] or "UNASSIGNED": (r["total"] or 0) for r in qs}
 
 
 def income_by_channel(start=None, end=None):
-    qs = (Transaction.objects.filter(_credit_filter(start, end))
+    qs = (Transaction.objects.filter(_credit_filter(start, end), excluded_from_income=False)
           .values("channel")
           .annotate(total=Sum("amount"), count=Count("id")))
     return list(qs)
@@ -204,7 +205,7 @@ def income_by_channel(start=None, end=None):
 
 def tithe_total(start=None, end=None):
     return (Transaction.objects.filter(
-        _credit_filter(start, end),
+        _credit_filter(start, end), excluded_from_income=False,
         department__name__icontains="tithe",
     ).aggregate(total=Sum("amount"))["total"] or Decimal(0))
 
@@ -213,7 +214,8 @@ def dev_group_progress(start=None, end=None):
     from departments.models import DevelopmentGroup
     rows = []
     f = dict(direction=Transaction.Direction.CREDIT, confirmed=True,
-             is_reversed=False, is_reversal=False, dev_group__isnull=False)
+             is_reversed=False, is_reversal=False, excluded_from_income=False,
+             dev_group__isnull=False)
     if start:
         f["date__gte"] = start
     if end:

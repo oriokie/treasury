@@ -51,14 +51,15 @@ class EnvelopeSaveTests(TestCase):
         self.assertEqual(env.total, Decimal("1250"))
         self.assertEqual(EnvelopeLine.objects.filter(envelope=env).count(), 2)
 
-    def test_bank_envelope_makes_no_envelope_transactions(self):
-        # a BANK envelope is matched to the imported bank credit, not re-created
+    def test_bank_envelope_posts_income(self):
+        # legacy model: a BANK envelope posts income like cash; its matching bank
+        # statement credit is excluded from income during Sabbath reconciliation
         sab = _last_saturday()
         env = _save_envelope(date=sab, name="Asha N", receipt="R002", channel="BANK",
             lines=[(self.lcb, Decimal("500"))], member=self.member,
             user=self.user, cfg=self.cfg)
         self.assertEqual(Transaction.objects.filter(channel="ENVELOPE",
-            reference="envelope R002").count(), 0)
+            reference="envelope R002", excluded_from_income=False).count(), 1)
         env.refresh_from_db()
         self.assertEqual(env.total, Decimal("500"))
 

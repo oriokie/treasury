@@ -55,7 +55,10 @@ class Command(BaseCommand):
                 if not env.bank_transaction_id:
                     no_txn += ln.amount                   # in offering, no ledger entry at all
             elif t.excluded_from_income:
-                excluded_txn += ln.amount                 # in offering, excluded from collections
+                # excluded from income, but if its envelope is linked to a bank
+                # credit, that credit IS in collections — so it's not offering-only
+                if not env.bank_transaction_id:
+                    excluded_txn += ln.amount             # in offering, excluded from collections
             elif not in_month(t.date):
                 other_month_txn += ln.amount              # counted in collections of another month
 

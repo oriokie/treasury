@@ -1,5 +1,47 @@
 # Changelog
 
+## v1.34.1 - cash count + report consistency for the legacy model
+- Cash count (_breakdown): a BANK envelope now posts an ENVELOPE-channel transaction, but
+  that is bank money, not physical cash. The count now excludes ENVELOPE transactions that
+  belong to a bank-channel envelope (in both the cash total and the duplicate-matching
+  heuristic), so the float still balances.
+- Income reports that don't group by department now exclude the receipted bank-credit memos
+  (excluded_from_income): income_by_channel, giving_by_group, offering_summary, tithe_total,
+  dev_group_progress. Department-grouped reports already self-correct because a memo'd credit
+  has department=None.
+- Verified consistent (counted once) across: dashboard, collections summary, trust report,
+  member statement, income-by-channel and the cash count. Full suite (479 tests) green.
+
+## v1.34.0 - legacy accounting model: envelope is income, bank credit is a memo
+- `_save_envelope` now posts an income transaction for BANK envelopes too (previously only
+  cash), so the envelope is the income for all giving, matching the legacy import's
+  phase_envelopes.
+- Sabbath reconciliation INVERTED to match legacy: applying a match / marking a credit
+  receipted now excludes the BANK CREDIT from income and nulls its department (the legacy
+  "Processed via envelope" memo) - it no longer excludes the envelope's transaction. The
+  envelope keeps its income, so the gift is counted once.
+- reconcile_sabbath status is now "receipted" (excluded memo) vs "income" (still counted);
+  a matched pair whose credit is still income is flagged as the double-count to clear, and
+  `balanced` means no such double-count remains.
+- _reverse_envelope re-includes a memo'd credit (clears excluded_from_income) on undo.
+- New regression test locks the invariant: bank envelope + matching credit = double until
+  receipted, then counted once (income AND fund balance). Full suite green.
+
+## v1.33.0 - reconciliation status actions (mark receipted, cash->bank)
+- ReconcileApplyView accepts two new pairing-free actions: `mark_receipted` (sets a bank
+  credit and its split siblings to manual_receipt=True as a confirmation, no envelope link,
+  no ledger change) and `to_bank` (reclassifies a cash envelope to bank and excludes its
+  ENVELOPE-channel transaction from income to avoid overstating).
+- reconcile_sabbath flags matched pairs as `miscat` when the bank credit is unreceipted but
+  the envelope was entered as cash (the double-count case), and returns `miscat_count`.
+- Unmatched bank table gains per-credit "mark receipted" checkboxes; the success message
+  reports linked/receipted/moved counts separately.
+
+## v1.32.1 - trust_reconcile accuracy for reconciled-and-excluded lines
+- An envelope line whose transaction is excluded_from_income but whose envelope is linked
+  to a bank credit (env.bank_transaction) is no longer reported as "offering but not
+  collections" - the bank credit is the ledger entry and is already counted in collections.
+
 ## v1.32.0 - shared-name reconciliation match + receipt-only apply
 - reconcile_sabbath suggestions now include a shared-name-token rule: within one amount,
   a name token (e.g. a first name) carried by exactly one remaining bank credit and one

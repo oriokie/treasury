@@ -27,7 +27,7 @@
 </div>
 
 <div class="help u-mb">
-  Bank giving for this Sabbath = receipted {{ bank_receipted|floatformat:2|intcomma }} + manual receipts {{ bank_manual|floatformat:2|intcomma }}{% if bank_unreceipted %} + <span class="text-amber">unreceipted {{ bank_unreceipted|floatformat:2|intcomma }}</span>{% endif %}. It should equal the bank-channel envelopes counted for the Sabbath.
+  Bank credits this Sabbath: <strong>{{ bank_receipted|floatformat:2|intcomma }}</strong> already receipted (excluded from income — counted on the envelope side){% if bank_income %} + <span class="text-amber">{{ bank_income|floatformat:2|intcomma }} still counted as income</span>{% endif %}. Any credit that matches an envelope but is still counted as income is double-counted — mark it receipted to fix.
 </div>
 
 {% if suggestions %}
@@ -64,14 +64,19 @@
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
   <div class="card"><div class="hd">Unmatched bank contributions ({{ bank_unmatched|length }})</div><div class="bd bd-flush">
+    <form method="post" action="{% url 'reconcile_apply' %}">
+    {% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}">
     <table class="ledger compact">
-      <thead><tr><th>Giver</th><th>Status</th><th class="num">Amount</th></tr></thead>
+      <thead><tr>{% if can_enter_data %}<th style="width:30px"></th>{% endif %}<th>Giver</th><th>Status</th><th class="num">Amount</th></tr></thead>
       <tbody>{% for b in bank_unmatched %}<tr>
+        {% if can_enter_data %}<td>{% if b.status == 'income' %}<input type="checkbox" name="mark_receipted" value="{{ b.id }}" title="Mark this bank credit as receipted (a confirmation — no envelope link needed)">{% endif %}</td>{% endif %}
         <td>{{ b.who }}{% if b.reference %} <span class="mono muted u-xs">{{ b.reference }}</span>{% endif %}</td>
-        <td>{% if b.status == 'receipted' %}<span class="pill pill-grey">receipted</span>{% elif b.status == 'manual' %}<span class="pill pill-brass">manual</span>{% else %}<span class="pill pill-amber">unreceipted</span>{% endif %}</td>
+        <td>{% if b.status == 'receipted' %}<span class="pill pill-grey">receipted</span>{% else %}<span class="pill pill-amber" title="Still counted as income">income</span>{% endif %}</td>
         <td class="num mono">{{ b.amount|floatformat:2|intcomma }}</td>
-      </tr>{% empty %}<tr><td colspan="3" class="muted">All bank contributions matched.</td></tr>{% endfor %}</tbody>
+      </tr>{% empty %}<tr><td colspan="4" class="muted">All bank contributions matched.</td></tr>{% endfor %}</tbody>
     </table>
+    {% if can_enter_data and bank_unmatched %}<div class="u-p-sm"><button class="btn btn-sm">Mark ticked as receipted</button> <span class="help">A confirmation that the money is accounted for — one credit can cover several envelopes, so no link is required.</span></div>{% endif %}
+    </form>
   </div></div>
 
   <div class="card"><div class="hd">Unmatched envelopes ({{ env_unmatched|length }})</div><div class="bd bd-flush">
