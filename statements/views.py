@@ -423,10 +423,10 @@ class StatementPurgeView(TreasurerRequiredMixin, View):
         if imp.status == StatementImport.Status.PURGED:
             messages.info(request, "This import has already been purged.")
             return redirect("statement_list")
-        if timezone.localtime(imp.uploaded_at).date() != timezone.localdate():
-            messages.error(request, "A purge is only allowed on the day the statement "
-                                    "was uploaded — after that, counts and reports may "
-                                    "already rely on its entries.")
+        if not imp.can_purge:
+            messages.error(request, "A purge is only allowed within a week of upload "
+                                    "— after that, counts and reports may already rely "
+                                    "on its entries.")
             return redirect("statement_list")
 
         txns = Transaction.objects.filter(statement_import=imp)

@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.30.0 - statement purge window extended to a week
+- The statement-import Purge / Unlink-and-purge buttons now remain available for a
+  week after upload instead of only the same day (StatementImport.can_purge, mirroring
+  the bank-reconciliation delete window). All existing safety checks are unchanged:
+  refuses inside a locked period or when expenses are linked (unless unlink is chosen).
+
 ## v1.29.0 - undo envelope entries (bulk reversal)
 - New EnvelopeReversalView (/envelopes/reverse/, treasurer only): filter envelopes by
   Sabbath date and optional channel, preview the count/total, and reverse the batch

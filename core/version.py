@@ -38,6 +38,10 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.30.0": "The Purge button for a statement import now stays available for a week "
+              "after upload (it used to vanish the next day), so a recent import can still "
+              "be undone — useful when an import duplicated giving that was already "
+              "recorded.",
     "1.29.0": "New: Undo envelope entries. From the envelope list, treasurers can pick a "
               "Sabbath (and optionally cash/bank), preview the envelopes, and reverse the whole "
               "batch at once — handy for entries typed before a bank statement was imported. "

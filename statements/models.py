@@ -63,6 +63,18 @@ class StatementImport(models.Model):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     error_detail = models.TextField(blank=True)
 
+    PURGE_WINDOW_DAYS = 7
+
+    @property
+    def can_purge(self):
+        """An import may be undone within a week of upload (and only if not already
+        purged). After that, counts and reports may rely on its entries."""
+        from django.utils import timezone
+        import datetime as _dt
+        if self.status == self.Status.PURGED or not self.uploaded_at:
+            return False
+        return timezone.now() - self.uploaded_at <= _dt.timedelta(days=self.PURGE_WINDOW_DAYS)
+
     # Running-balance integrity check (uses the statement's own balance column as
     # a checksum). balance_check: "" (not run), "OK", "BROKEN", or "NO_BALANCE".
     balance_check = models.CharField(max_length=12, blank=True, default="")
