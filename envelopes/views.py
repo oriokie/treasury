@@ -1573,10 +1573,24 @@ class ReconcileApplyView(DataEntryRequiredMixin, View):
                         and not lt.excluded_from_income:
                     lt.excluded_from_income = True
                     lt.save(update_fields=["excluded_from_income"])
+            # 4) mark the bank credit (and any split siblings) as receipted via
+            #    the envelope, so it shows as captured. This does NOT change the
+            #    ledger — the credit stays as income; only its receipted flag is
+            #    set. For hand-typed bank envelopes (no envelope transaction) this
+            #    is the whole effect of the link: no ledger entry is created or
+            #    removed.
+            from django.db.models import Q as _Q
+            base = (txn.core_ref or "").split("-S")[0]
+            sibs = (Transaction.objects.filter(_Q(core_ref=base) | _Q(core_ref__startswith=base + "-S"))
+                    if base else Transaction.objects.filter(pk=txn.pk))
+            for s in sibs:
+                if not s.processed_via_envelope:
+                    s.processed_via_envelope = True
+                    s.save(update_fields=["processed_via_envelope"])
             applied += 1
         if applied:
-            messages.success(request, f"Applied {applied} match(es): marked as bank "
-                                      "giving and removed the duplicate cash entry.")
+            messages.success(request, f"Applied {applied} match(es): marked the bank "
+                                      "credit as receipted (no ledger change).")
         else:
             messages.info(request, "No matches were selected.")
         return redirect(f"{reverse('sabbath_reconcile')}?date={sab}")

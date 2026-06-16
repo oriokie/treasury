@@ -1,5 +1,34 @@
 # Changelog
 
+## v1.32.0 - shared-name reconciliation match + receipt-only apply
+- reconcile_sabbath suggestions now include a shared-name-token rule: within one amount,
+  a name token (e.g. a first name) carried by exactly one remaining bank credit and one
+  remaining envelope is suggested ("ADAM KEN" <-> "ADAM NYAN" when there is only one Adam
+  of that amount). Suggestions are de-duplicated so no credit/envelope appears twice.
+- ReconcileApplyView now marks the matched bank credit (and split siblings) as receipted
+  (processed_via_envelope) WITHOUT changing the ledger: the credit stays as income and no
+  envelope transaction is created. The existing duplicate-cash exclusion still applies only
+  when a cash envelope is being reclassified as bank.
+
+## v1.31.0 - smarter Sabbath reconciliation matching
+- reconcile_sabbath auto-match is now conservative: it pairs a bank credit to an envelope
+  only when the name+amount match is unambiguous (exactly one candidate on each side), so
+  duplicates (two givers of the same amount, repeated names) are never mis-paired and are
+  left for manual resolution.
+- New unique-amount suggestions: any amount that appears exactly once among the remaining
+  bank credits and exactly once among the remaining envelopes is surfaced as a suggested
+  match (even when names differ), each confirmable with one tick. Returned as `suggestions`
+  (list); the single-suggestion field is kept for compatibility.
+- The reconciliation remains a detector/suggester only — it never posts a second ledger
+  entry; hand-typed bank envelopes stay the offering record and the imported bank credit
+  stays the income.
+
+## v1.30.1 - trust_reconcile accuracy: respect env.bank_transaction
+- The diagnostic previously counted any envelope line with no line-level transaction as
+  "no ledger transaction", even when its envelope was linked to the imported bank credit
+  (env.bank_transaction) — overstating the orphan figure. It now treats those as
+  reconciled (the bank credit is the ledger entry) on both sides of the comparison.
+
 ## v1.30.0 - statement purge window extended to a week
 - The statement-import Purge / Unlink-and-purge buttons now remain available for a
   week after upload instead of only the same day (StatementImport.can_purge, mirroring

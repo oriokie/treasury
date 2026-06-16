@@ -15,7 +15,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Sum
 
 from core.utils import sabbath_bucket
-from envelopes.models import EnvelopeLine
+from envelopes.models import Envelope, EnvelopeLine
 from giving.models import Transaction
 
 
@@ -47,8 +47,13 @@ class Command(BaseCommand):
                 continue
             off_total += ln.amount
             t = ln.transaction
+            env = ln.envelope
             if t is None:
-                no_txn += ln.amount                       # in offering, no ledger txn at all
+                # a line with no transaction is only truly missing from the ledger
+                # if its envelope is NOT linked to a bank credit; if it is, that
+                # bank credit is the ledger entry (and is in collections).
+                if not env.bank_transaction_id:
+                    no_txn += ln.amount                   # in offering, no ledger entry at all
             elif t.excluded_from_income:
                 excluded_txn += ln.amount                 # in offering, excluded from collections
             elif not in_month(t.date):
@@ -70,7 +75,11 @@ class Command(BaseCommand):
             sb = t.service_sabbath or sabbath_bucket(t.date)
             if sb.year != y or sb.month != m:
                 coll_sabbath_other += t.amount
-            if not EnvelopeLine.objects.filter(transaction=t).exists():
+            # a bank credit is "represented in the offering" if a line links to it
+            # OR an envelope is linked to it as its bank deposit (env.bank_transaction)
+            linked = (EnvelopeLine.objects.filter(transaction=t).exists()
+                      or Envelope.objects.filter(bank_transaction=t).exists())
+            if not linked:
                 coll_no_line += t.amount
 
         w = self.stdout.write

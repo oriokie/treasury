@@ -38,6 +38,21 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.32.0": "Sabbath reconciliation now also pairs gifts that share a first name and amount "
+              "when there is only one such person that Sabbath (e.g. 'ADAM KEN' and 'ADAM NYAN'), "
+              "and confirming a match marks the bank credit as receipted without changing the "
+              "ledger (the credit stays as income; hand-typed bank envelopes remain the offering "
+              "record).",
+    "1.31.0": "Smarter Sabbath reconciliation. It now auto-matches a bank credit to an "
+              "envelope only when the name and amount agree and there is no duplicate (so it "
+              "never mis-pairs two givers of the same amount), and it suggests any gift that is "
+              "the only one of its amount that Sabbath even when the names don't line up. It "
+              "stays a detector — surfacing bank credits and envelopes that haven't been "
+              "captured — and never creates a second ledger entry.",
+    "1.30.1": "trust_reconcile now recognises bank envelopes that are linked to their "
+              "imported bank credit (env.bank_transaction), so it no longer reports them as "
+              "orphan lines — giving an accurate view of what genuinely still needs "
+              "reconciling.",
     "1.30.0": "The Purge button for a statement import now stays available for a week "
               "after upload (it used to vanish the next day), so a recent import can still "
               "be undone — useful when an import duplicated giving that was already "

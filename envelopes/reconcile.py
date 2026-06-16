@@ -109,36 +109,94 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
         })
 
     # --- match bank gifts to envelopes (amount must agree) -------------------
+    from collections import Counter
     matched = []
     bank_left = list(bank)
     env_left = list(envelopes)
 
-    def _take_match(min_ratio):
+    def _auto_match(min_ratio):
+        # Match on name + equal amount, but ONLY when the pairing is unambiguous:
+        # exactly one envelope is a candidate for this credit and no other credit
+        # competes for that envelope. This never mis-pairs duplicates (two givers
+        # of the same amount, or a repeated name), which the treasurer can resolve
+        # by hand instead.
         for b in list(bank_left):
-            best, best_r = None, 0.0
-            for e in env_left:
-                if e["amount"] != b["amount"]:
-                    continue
-                r = _ratio(b["who"], e["who"])
-                if r > best_r:
-                    best, best_r = e, r
-            if best is not None and best_r >= min_ratio:
-                conf = "exact" if best_r >= 0.999 else "fuzzy"
-                matched.append({"bank": b, "env": best, "confidence": conf,
-                                "ratio": round(best_r, 2)})
-                bank_left.remove(b)
-                env_left.remove(best)
+            cands = [e for e in env_left
+                     if e["amount"] == b["amount"] and _ratio(b["who"], e["who"]) >= min_ratio]
+            if len(cands) != 1:
+                continue
+            e = cands[0]
+            rivals = [bb for bb in bank_left if bb is not b
+                      and bb["amount"] == e["amount"]
+                      and _ratio(bb["who"], e["who"]) >= min_ratio]
+            if rivals:
+                continue
+            matched.append({"bank": b, "env": e,
+                            "confidence": "exact" if min_ratio >= 0.999 else "fuzzy",
+                            "ratio": round(_ratio(b["who"], e["who"]), 2)})
+            bank_left.remove(b)
+            env_left.remove(e)
 
-    _take_match(0.999)            # exact name + exact amount
-    _take_match(fuzzy_threshold)  # fuzzy name + exact amount
+    _auto_match(0.999)            # exact name + exact amount, unambiguous
+    _auto_match(fuzzy_threshold)  # fuzzy name + exact amount, unambiguous
 
-    # --- singleton suggestion ------------------------------------------------
-    # if names didn't match but exactly one bank gift and one envelope remain
-    # unmatched, they are almost certainly the same gift — surface a suggestion.
-    suggestion = None
-    if len(bank_left) == 1 and len(env_left) == 1:
-        suggestion = {"bank": bank_left[0], "env": env_left[0],
-                      "same_amount": bank_left[0]["amount"] == env_left[0]["amount"]}
+    # --- suggestions ---------------------------------------------------------
+    # Surface likely pairs the auto-match left behind, each confirmable with one
+    # tick. Two rules, strongest first, and never suggesting the same credit or
+    # envelope twice:
+    #   (a) an amount that is the only one of its value on both sides;
+    #   (b) within one amount, a name token (e.g. a first name like "ADAM")
+    #       carried by exactly one remaining credit and one remaining envelope —
+    #       so "ADAM KEN" and "ADAM NYAN" of the same amount pair up when there
+    #       is only one Adam of that amount on each side.
+    from collections import Counter, defaultdict
+    suggestions = []
+    used_b, used_e = set(), set()
+
+    def _tokens(name):
+        return {t for t in name_key(name).split() if len(t) >= 2}
+
+    bank_amt = Counter(b["amount"] for b in bank_left)
+    env_amt = Counter(e["amount"] for e in env_left)
+    for b in bank_left:                                   # (a) unique amount
+        if b["id"] in used_b or bank_amt[b["amount"]] != 1 or env_amt[b["amount"]] != 1:
+            continue
+        e = next((e for e in env_left if e["amount"] == b["amount"] and e["id"] not in used_e), None)
+        if e:
+            suggestions.append({"bank": b, "env": e, "same_amount": True,
+                                "reason": "only gift of this amount this Sabbath"})
+            used_b.add(b["id"]); used_e.add(e["id"])
+
+    by_amt = defaultdict(lambda: {"b": [], "e": []})      # (b) shared name token
+    for b in bank_left:
+        if b["id"] not in used_b:
+            by_amt[b["amount"]]["b"].append(b)
+    for e in env_left:
+        if e["id"] not in used_e:
+            by_amt[e["amount"]]["e"].append(e)
+    for amt, grp in by_amt.items():
+        btok, etok = defaultdict(list), defaultdict(list)
+        for b in grp["b"]:
+            for tk in _tokens(b["who"]):
+                btok[tk].append(b)
+        for e in grp["e"]:
+            for tk in _tokens(e["who"]):
+                etok[tk].append(e)
+        for tk in sorted(set(btok) & set(etok)):
+            if len(btok[tk]) != 1 or len(etok[tk]) != 1:
+                continue
+            b, e = btok[tk][0], etok[tk][0]
+            if b["id"] in used_b or e["id"] in used_e:
+                continue
+            suggestions.append({"bank": b, "env": e, "same_amount": True,
+                                "reason": f"shared name '{tk.title()}' and amount"})
+            used_b.add(b["id"]); used_e.add(e["id"])
+
+    # backward-compatible single suggestion (first, or the lone leftover pair)
+    suggestion = (suggestions[0] if suggestions else
+                  ({"bank": bank_left[0], "env": env_left[0],
+                    "same_amount": bank_left[0]["amount"] == env_left[0]["amount"]}
+                   if len(bank_left) == 1 and len(env_left) == 1 else None))
 
     bank_total = sum((b["amount"] for b in bank), Decimal(0))
     env_total = sum((e["amount"] for e in envelopes), Decimal(0))
@@ -150,7 +208,7 @@ def reconcile_sabbath(sabbath, fuzzy_threshold=0.84):
         "sabbath": sabbath,
         "bank": bank, "envelopes": envelopes,
         "matched": matched, "bank_unmatched": bank_left, "env_unmatched": env_left,
-        "suggestion": suggestion,
+        "suggestion": suggestion, "suggestions": suggestions,
         "bank_total": bank_total,
         "bank_receipted": sum((b["amount"] for b in bank if b["status"] == "receipted"), Decimal(0)),
         "bank_manual": sum((b["amount"] for b in bank if b["status"] == "manual"), Decimal(0)),

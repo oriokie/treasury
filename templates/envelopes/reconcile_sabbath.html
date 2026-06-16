@@ -30,12 +30,16 @@
   Bank giving for this Sabbath = receipted {{ bank_receipted|floatformat:2|intcomma }} + manual receipts {{ bank_manual|floatformat:2|intcomma }}{% if bank_unreceipted %} + <span class="text-amber">unreceipted {{ bank_unreceipted|floatformat:2|intcomma }}</span>{% endif %}. It should equal the bank-channel envelopes counted for the Sabbath.
 </div>
 
-{% if suggestion %}
+{% if suggestions %}
 <form method="post" action="{% url 'reconcile_apply' %}" class="alert" style="background:var(--brass-soft);border:1px solid var(--line);margin-bottom:1rem">
   {% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}">
-  <label class="u-row-sm"><input type="checkbox" name="pair" value="env:{{ suggestion.env.id }}:bank:{{ suggestion.bank.id }}">
-  <span><strong>Possible match:</strong> bank contribution <em>{{ suggestion.bank.who }}</em> ({{ suggestion.bank.amount|floatformat:2|intcomma }}) and envelope <em>{{ suggestion.env.who }}</em> ({{ suggestion.env.amount|floatformat:2|intcomma }}) are the only unmatched items left{% if suggestion.same_amount %} and are the same amount{% else %} — note the amounts differ{% endif %}. They are likely the same contribution.</span></label>
-  {% if can_enter_data %}<div class="u-mt-sm"><button class="btn btn-sm">Apply match as bank giving</button></div>{% endif %}
+  <strong>Suggested matches</strong>
+  <p class="help u-mt-0">Each is the only unmatched gift of its amount this Sabbath, so they are very likely the same contribution. Tick the ones to confirm.</p>
+  {% for s in suggestions %}
+  <label class="u-row-sm"><input type="checkbox" name="pair" value="env:{{ s.env.id }}:bank:{{ s.bank.id }}">
+  <span>bank <em>{{ s.bank.who }}</em> ({{ s.bank.amount|floatformat:2|intcomma }}) ↔ envelope <em>{{ s.env.who }}</em> ({{ s.env.amount|floatformat:2|intcomma }}) — {{ s.reason }}.</span></label>
+  {% endfor %}
+  {% if can_enter_data %}<div class="u-mt-sm"><button class="btn btn-sm">Confirm ticked matches</button></div>{% endif %}
 </form>
 {% endif %}
 
