@@ -43,26 +43,24 @@
     {% if filters.q or filters.status or filters.category or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
-    {% if is_treasurer %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_recategorize' %}" title="Download, edit categories, and re-import">⇄ Re-categorise</a>{% endif %}
+    {% if is_treasurer %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_recategorize' %}" title="Download, edit categories, and re-import">⇄ Re-categorise</a>
+    <span class="ws-divider"></span>
+    <span class="muted u-xs"><span id="bulkcount">0</span> selected</span>
+    <button form="bulkform" name="action" value="approve" id="exb-approve" class="btn btn-sm" disabled>Approve</button>
+    <button form="bulkform" name="action" value="reject" id="exb-reject" class="btn btn-sm btn-ghost" disabled>Reject</button>
+    <button form="bulkform" name="action" value="pay" id="exb-pay" class="btn btn-sm" disabled>Mark paid</button>
+    <button form="bulkform" name="action" value="delete" id="exb-delete" class="btn btn-sm btn-danger" disabled onclick="return confirm('Delete the selected expenses permanently? This cannot be undone.');">Delete</button>{% endif %}
   </div>
 </form>
 
-{% if is_treasurer %}<form id="bulkform" method="post" action="{% url 'expense_bulk' %}">{% csrf_token %}
-<div class="ws-tb-actions u-mb" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-  <span class="muted u-xs"><span id="bulkcount">0</span> selected</span>
-  <button name="action" value="approve" class="btn btn-sm">Approve</button>
-  <button name="action" value="reject" class="btn btn-sm btn-ghost">Reject</button>
-  <button name="action" value="pay" class="btn btn-sm">Mark paid</button>
-  <button name="action" value="delete" class="btn btn-sm btn-danger" onclick="return confirm('Delete the selected expenses permanently? This cannot be undone.');">Delete</button>
-  <span class="help">Tick rows, then choose an action. High-value items needing a second approval are skipped on “Mark paid” — co-approve them from the expense page.</span>
-</div>{% endif %}
+{% if is_treasurer %}<form id="bulkform" method="post" action="{% url 'expense_bulk' %}">{% csrf_token %}{% endif %}
 <div class="ws-table sticky">
   <table class="ledger compact">
   <thead><tr>{% if is_treasurer %}<th style="width:28px"><input type="checkbox" id="checkall" title="Select all"></th>{% endif %}<th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for e in expenses %}
     <tr>
-      {% if is_treasurer %}<td><input type="checkbox" name="ids" value="{{ e.id }}" class="rowchk"></td>{% endif %}
+      {% if is_treasurer %}<td><input type="checkbox" name="ids" value="{{ e.id }}" class="rowchk" data-status="{{ e.status }}"></td>{% endif %}
       <td class="mono">{{ e.date|date:"d/m/y" }}</td>
       <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted u-xs">· {{ e.claimant }}</span>{% endif %}{% if e.attachments.exists %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
       <td>{{ e.department.name }}</td>
@@ -79,11 +77,27 @@
 <script>
 (function(){
   var all=document.getElementById('checkall'),
-      rows=function(){return Array.prototype.slice.call(document.querySelectorAll('.rowchk'));},
-      count=document.getElementById('bulkcount');
-  function upd(){count.textContent=rows().filter(function(c){return c.checked;}).length;}
+      count=document.getElementById('bulkcount'),
+      btn={approve:document.getElementById('exb-approve'),
+           reject:document.getElementById('exb-reject'),
+           pay:document.getElementById('exb-pay'),
+           del:document.getElementById('exb-delete')};
+  function rows(){return Array.prototype.slice.call(document.querySelectorAll('.rowchk'));}
+  function upd(){
+    var sel=rows().filter(function(c){return c.checked;}),
+        st=sel.map(function(c){return c.getAttribute('data-status');});
+    count.textContent=sel.length;
+    var any=sel.length>0,
+        hasPending=st.indexOf('PENDING')>=0,
+        hasApproved=st.indexOf('APPROVED')>=0;
+    if(btn.approve)btn.approve.disabled=!hasPending;
+    if(btn.reject) btn.reject.disabled=!(hasPending||hasApproved);
+    if(btn.pay)    btn.pay.disabled=!hasApproved;
+    if(btn.del)    btn.del.disabled=!any;
+  }
   if(all){all.addEventListener('change',function(){rows().forEach(function(c){c.checked=all.checked;});upd();});}
   document.addEventListener('change',function(e){if(e.target&&e.target.classList.contains('rowchk'))upd();});
+  upd();
 })();
 </script>{% endif %}
 {% include 'partials/pagination.html' %}

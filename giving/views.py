@@ -1405,7 +1405,44 @@ class CampaignCreateView(DataEntryRequiredMixin, View):
 
 
 class CampaignMemberImportView(DataEntryRequiredMixin, View):
-    """Upload the Name / Mobile / Group sheet for a campaign."""
+    """Upload the Name / Mobile / Group sheet for a campaign. Reads .xlsx or .csv
+    tolerantly, skips unusable rows and reports what happened — a bad row never
+    aborts the whole upload."""
+    @staticmethod
+    def _phone_cell(v):
+        # a numeric phone cell arrives as int/float (e.g. 254791896792.0)
+        if v is None:
+            return ""
+        if isinstance(v, float) and v.is_integer():
+            return str(int(v))
+        return str(v).strip()
+
+    def _read(self, f):
+        name = (getattr(f, "name", "") or "").lower()
+        rows = []
+        if name.endswith((".xlsx", ".xls")):
+            import openpyxl
+            ws = openpyxl.load_workbook(f, data_only=True).active
+            data = list(ws.iter_rows(values_only=True))
+            if not data:
+                return rows
+            hdr = [str(c).strip().lower() if c else "" for c in data[0]]
+            ni = next((i for i, h in enumerate(hdr) if "name" in h), 0)
+            pi = next((i for i, h in enumerate(hdr) if h in ("mobile", "phone", "msisdn")), 1)
+            gi = next((i for i, h in enumerate(hdr) if "group" in h), 2)
+            for r in data[1:]:
+                nm = str(r[ni]).strip() if ni < len(r) and r[ni] not in (None, "") else ""
+                rows.append((nm, self._phone_cell(r[pi] if pi < len(r) else None),
+                             str(r[gi]).strip() if gi < len(r) and r[gi] else ""))
+        else:
+            import csv as _csv, io as _io
+            for raw in _csv.DictReader(_io.TextIOWrapper(f.file, encoding="utf-8-sig")):
+                row = {(k or "").strip().lower(): v for k, v in raw.items()}
+                rows.append(((row.get("name") or "").strip(),
+                             (row.get("mobile") or row.get("phone") or "").strip(),
+                             (row.get("group") or "").strip()))
+        return rows
+
     def post(self, request, pk):
         from giving.models import Campaign, CampaignMember
         camp = get_object_or_404(Campaign, pk=pk)
@@ -1413,41 +1450,46 @@ class CampaignMemberImportView(DataEntryRequiredMixin, View):
         if not f:
             messages.error(request, "Choose a .xlsx or .csv with Name, Mobile, Group columns.")
             return redirect("campaign_list")
-        rows = []
         try:
-            name = (getattr(f, "name", "") or "").lower()
-            if name.endswith((".xlsx", ".xls")):
-                import openpyxl
-                ws = openpyxl.load_workbook(f, data_only=True).active
-                data = list(ws.iter_rows(values_only=True))
-                hdr = [str(c).strip().lower() if c else "" for c in data[0]]
-                ni = next((i for i, h in enumerate(hdr) if "name" in h), 0)
-                pi = next((i for i, h in enumerate(hdr) if h in ("mobile", "phone", "msisdn")), 1)
-                gi = next((i for i, h in enumerate(hdr) if "group" in h), 2)
-                for r in data[1:]:
-                    nm = str(r[ni]).strip() if ni < len(r) and r[ni] else ""
-                    if nm:
-                        rows.append((nm, str(r[pi]).strip() if pi < len(r) and r[pi] else "",
-                                     str(r[gi]).strip() if gi < len(r) and r[gi] else ""))
-            else:
-                import csv as _csv, io as _io
-                for raw in _csv.DictReader(_io.TextIOWrapper(f.file, encoding="utf-8-sig")):
-                    row = {(k or "").strip().lower(): v for k, v in raw.items()}
-                    nm = (row.get("name") or "").strip()
-                    if nm:
-                        rows.append((nm, (row.get("mobile") or row.get("phone") or "").strip(),
-                                     (row.get("group") or "").strip()))
+            rows = self._read(f)
         except Exception:
-            messages.error(request, "Could not read that file — use the Name/Mobile/Group layout.")
+            messages.error(request, "Could not read that file — use the sample layout "
+                                    "(Name, Mobile, Group). Try downloading the sample.")
             return redirect("campaign_list")
-        # replace the campaign's member table
-        camp.members.all().delete()
-        made = 0
+        if not rows:
+            messages.warning(request, "That file had no data rows.")
+            return redirect("campaign_list")
+        camp.members.all().delete()          # replace the table
+        made = skipped = 0
         for nm, ph, grp in rows:
-            CampaignMember.objects.create(campaign=camp, name=nm, phone=ph, group=grp)
-            made += 1
-        messages.success(request, f"Loaded {made} members into “{camp.name}”.")
+            if not nm:
+                skipped += 1
+                continue
+            try:
+                CampaignMember.objects.create(campaign=camp, name=nm, phone=ph, group=grp)
+                made += 1
+            except Exception:
+                skipped += 1
+        msg = f"Loaded {made} members into “{camp.name}”."
+        if skipped:
+            msg += f" {skipped} row(s) skipped (no name or unreadable)."
+        (messages.success if made else messages.warning)(request, msg)
         return redirect("campaign_list")
+
+
+class CampaignTemplateView(ReadAccessMixin, View):
+    """Download a sample member-upload file (CSV)."""
+    def get(self, request):
+        import csv as _csv
+        from django.http import HttpResponse
+        resp = HttpResponse(content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="campaign_members_sample.csv"'
+        w = _csv.writer(resp)
+        w.writerow(["Name", "Mobile", "Group"])
+        w.writerow(["Amos Ndegwa", "254791896792", "CAMP_1"])
+        w.writerow(["Calvince Ouma", "0726410608", "CAMP_1"])
+        w.writerow(["Caroline Nyalick", "254705321239", "CAMP_2"])
+        return resp
 
 
 class CampaignDeleteView(TreasurerRequiredMixin, View):

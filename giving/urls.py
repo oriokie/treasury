@@ -13,6 +13,7 @@ urlpatterns = [
     path("queue/import/", views.QueueImportView.as_view(), name="queue_import"),
     path("transactions/mark-processed/", views.MarkProcessedImportView.as_view(), name="mark_processed_import"),
     path("campaigns/", views.CampaignListView.as_view(), name="campaign_list"),
+    path("campaigns/sample/", views.CampaignTemplateView.as_view(), name="campaign_template"),
     path("campaigns/new/", views.CampaignCreateView.as_view(), name="campaign_create"),
     path("campaigns/<int:pk>/members/", views.CampaignMemberImportView.as_view(), name="campaign_members"),
     path("campaigns/<int:pk>/delete/", views.CampaignDeleteView.as_view(), name="campaign_delete"),

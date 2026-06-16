@@ -27,15 +27,13 @@
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=csv">CSV</a>
+    {% if is_treasurer %}<span class="ws-divider"></span>
+    <span class="muted u-xs"><span id="txcount">0</span> selected</span>
+    <button form="txbulk" name="action" value="reverse" id="txb-reverse" class="btn btn-sm btn-danger" disabled onclick="return confirm('Reverse the selected entries? Each gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.');">Reverse selected</button>{% endif %}
   </div>
 </form>
 
-{% if is_treasurer %}<form id="txbulk" method="post" action="{% url 'transaction_bulk_reverse' %}">{% csrf_token %}
-<div class="ws-tb-actions u-mb" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-  <span class="muted u-xs"><span id="txcount">0</span> selected</span>
-  <button name="action" value="reverse" class="btn btn-sm btn-danger" onclick="return confirm('Reverse the selected entries? Each gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.');">Reverse selected</button>
-  <span class="help">Treasury never deletes — reversing posts a contra entry. Already-reversed rows and locked periods are skipped.</span>
-</div>{% endif %}
+{% if is_treasurer %}<form id="txbulk" method="post" action="{% url 'transaction_bulk_reverse' %}">{% csrf_token %}{% endif %}
 <div class="ws-table sticky">
   <table class="ledger tx-table">
     <thead><tr>{% if is_treasurer %}<th style="width:28px"><input type="checkbox" id="txcheckall" title="Select all"></th>{% endif %}<th>Date</th><th>Channel</th><th>Payer / detail</th><th>Fund</th><th>Reference</th>{% if show_mpesa_ref %}<th>M-Pesa ref</th>{% endif %}<th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
@@ -61,11 +59,17 @@
 <script>
 (function(){
   var all=document.getElementById('txcheckall'),
-      rows=function(){return Array.prototype.slice.call(document.querySelectorAll('.txchk'));},
-      count=document.getElementById('txcount');
-  function upd(){count.textContent=rows().filter(function(c){return c.checked;}).length;}
+      count=document.getElementById('txcount'),
+      btn=document.getElementById('txb-reverse');
+  function rows(){return Array.prototype.slice.call(document.querySelectorAll('.txchk'));}
+  function upd(){
+    var n=rows().filter(function(c){return c.checked;}).length;
+    count.textContent=n;
+    if(btn)btn.disabled=(n===0);
+  }
   if(all){all.addEventListener('change',function(){rows().forEach(function(c){c.checked=all.checked;});upd();});}
   document.addEventListener('change',function(e){if(e.target&&e.target.classList.contains('txchk'))upd();});
+  upd();
 })();
 </script>{% endif %}
 {% include 'partials/pagination.html' %}

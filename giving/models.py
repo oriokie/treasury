@@ -476,8 +476,13 @@ class CampaignMember(models.Model):
 
     def save(self, *args, **kwargs):
         from members.models import name_key as _nk, normalize_phone
+        self.name = (self.name or "").strip()[:120]
         self.name_key = _nk(self.name)
-        self.phone = normalize_phone(self.phone) or (self.phone or "")
+        # store a normalised 12-digit phone or nothing — never an over-long or
+        # malformed value (a numeric cell can arrive as e.g. "2547...0"); matching
+        # by phone needs the canonical form anyway, and name matching still works.
+        self.phone = (normalize_phone(self.phone) or "")[:12]
+        self.group = (self.group or "").strip()[:40]
         super().save(*args, **kwargs)
 
     class Meta:

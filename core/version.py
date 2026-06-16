@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.38.0": "Campaigns page redesigned with a cleaner form and a downloadable sample upload "
+              "file; member uploads now skip unreadable rows (and never crash on an over-long "
+              "or malformed phone) and report how many loaded. Bulk action buttons on the "
+              "Expenses and Transactions lists now sit alongside Apply filters and light up only "
+              "for actions the ticked rows actually qualify for.",
     "1.37.0": "The transactions list now has the same row checkboxes and select-all as expenses, "
               "with a single “Reverse selected” bar — tick several entries and reverse them at "
               "once (each gets a contra posting and any linked envelope receipt is removed). "

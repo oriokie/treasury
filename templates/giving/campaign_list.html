@@ -2,60 +2,70 @@
 {% load humanize %}
 {% block title %}Campaigns{% endblock %}
 {% block content %}
-{% include "ui/page_header.html" with title="Campaigns" subtitle="Fallback allocation for an appeal (e.g. Camp Meeting): match a contribution to a member's group when the normal rules miss." %}
+{% include "ui/page_header.html" with title="Campaigns" subtitle="Fallback allocation for an appeal (e.g. Camp Meeting). When the normal rules don't recognise a contribution, a campaign matches the giver to a group and routes it to the campaign's fund." %}
 
+{% if can_enter_data %}
 <div class="card u-mb">
   <div class="hd">New / update campaign</div>
   <div class="bd">
-    {% if can_enter_data %}
-    <form method="post" action="{% url 'campaign_create' %}" class="stack">
+    <form method="post" action="{% url 'campaign_create' %}">
       {% csrf_token %}
-      <label>Name <input type="text" name="name" required placeholder="Camp Meeting 2026"></label>
-      <label>Fund (department)
-        <select name="department" required>
-          <option value="">— choose —</option>
-          {% for f in funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
-        </select>
-      </label>
-      <label>Trigger words
-        <textarea name="triggers" rows="2" placeholder="expense, campexpense"></textarea>
-        <span class="help">Comma- or line-separated. The fallback only fires when a reference contains one of these.</span>
-      </label>
-      <button class="btn">Save campaign</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
+        <label class="field-label">Name
+          <input type="text" name="name" required placeholder="Camp Meeting 2026" class="field">
+        </label>
+        <label class="field-label">Fund (department)
+          <select name="department" required class="field--select">
+            <option value="">— choose —</option>
+            {% for f in funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="field-label" style="grid-column:1 / -1">Trigger words
+          <textarea name="triggers" rows="2" placeholder="expense, campexpense" class="field"></textarea>
+          <span class="help">Comma- or line-separated. The fallback only fires when a contribution's reference contains one of these words.</span>
+        </label>
+      </div>
+      <div class="u-mt-sm"><button class="btn">Save campaign</button></div>
     </form>
-    {% else %}<p class="muted">You don't have permission to edit campaigns.</p>{% endif %}
   </div>
 </div>
+{% endif %}
 
 <div class="card">
-  <div class="hd">Campaigns</div>
+  <div class="hd u-row-between">
+    <span>Campaigns</span>
+    <a class="btn btn-sm btn-ghost" href="{% url 'campaign_template' %}">&#x2913; Sample upload file</a>
+  </div>
   <div class="bd bd-flush">
     <table class="ledger">
-      <thead><tr><th>Name</th><th>Fund</th><th>Triggers</th><th class="num">Members</th><th class="num">Allocated</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Fund</th><th>Triggers</th><th class="num">Members</th><th class="num">Allocated</th><th>Members file</th>{% if is_treasurer %}<th></th>{% endif %}</tr></thead>
       <tbody>
       {% for c in campaigns %}
-        <tr{% if not c.active %} class="muted"{% endif %}>
+        <tr>
           <td><strong>{{ c.name }}</strong>{% if not c.active %} <span class="pill pill-grey">ended</span>{% endif %}</td>
           <td>{{ c.department.name }}</td>
-          <td class="u-xs">{{ c.triggers|default:"—" }}</td>
+          <td class="u-xs muted">{{ c.triggers|default:"&mdash;" }}</td>
           <td class="num mono">{{ c.n_members }}</td>
           <td class="num mono">{{ c.n_txns }}</td>
-          <td class="u-row-sm" style="gap:.4rem">
+          <td>
             {% if can_enter_data %}
-            <form method="post" action="{% url 'campaign_members' c.id %}" enctype="multipart/form-data" class="u-row-sm" style="gap:.3rem">
-              {% csrf_token %}<input type="file" name="file" accept=".xlsx,.xls,.csv" required>
-              <button class="btn btn-sm">Upload members</button>
+            <form method="post" action="{% url 'campaign_members' c.id %}" enctype="multipart/form-data" style="display:flex;gap:.4rem;align-items:center">
+              {% csrf_token %}
+              <input type="file" name="file" accept=".xlsx,.xls,.csv" required class="field" style="max-width:200px">
+              <button class="btn btn-sm">Upload</button>
             </form>
-            {% endif %}
-            {% if is_treasurer %}
-            <form method="post" action="{% url 'campaign_delete' c.id %}" onsubmit="return confirm('Delete “{{ c.name }}”? Its member table is removed; past allocations keep their group tag.');">
-              {% csrf_token %}<button class="btn btn-sm btn-danger">Delete</button>
-            </form>
-            {% endif %}
+            {% else %}<span class="muted">&mdash;</span>{% endif %}
           </td>
+          {% if is_treasurer %}
+          <td class="num">
+            <form method="post" action="{% url 'campaign_delete' c.id %}" onsubmit="return confirm('Delete this campaign? Its member table is removed; past allocations keep their group tag.');">
+              {% csrf_token %}<button class="link link-danger" type="submit">Delete</button>
+            </form>
+          </td>
+          {% endif %}
         </tr>
       {% empty %}
-        <tr><td colspan="6" class="muted">No campaigns yet. Create one above, then upload its Name / Mobile / Group sheet.</td></tr>
+        <tr><td colspan="7"><div class="ws-empty"><div class="we-mark">&#9978;</div><div class="we-title">No campaigns yet</div><div class="we-hint">Create one above, then upload its members. Need the layout? <a href="{% url 'campaign_template' %}">Download the sample</a> (Name, Mobile, Group).</div></div></td></tr>
       {% endfor %}
       </tbody>
     </table>

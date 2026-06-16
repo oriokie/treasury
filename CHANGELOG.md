@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.38.0 - campaigns polish + smart bulk buttons
+- Campaigns (#1): redesigned page (clean create form + campaigns table with per-row member
+  upload). New "Sample upload file" download (Name, Mobile, Group). Import is now tolerant —
+  numeric phone cells handled, bad/empty rows skipped and counted, no abort on a single bad row.
+- Phone overflow fix: CampaignMember.save() stores only a normalised 12-digit phone (or blank),
+  so the import can never raise DataError 1406 ("Data too long for column 'phone'").
+- Expenses (#2) & Transactions (#3): bulk action buttons moved into the filter toolbar beside
+  "Apply filters" (via the form= attribute), disabled by default and enabled only when the
+  selected rows include items eligible for that action (Approve↔PENDING, Reject↔PENDING/APPROVED,
+  Pay↔APPROVED, Delete↔any; Reverse↔any reversible row).
+
 ## v1.37.0 - transactions list bulk reverse
 - TransactionBulkReverseView reverses several selected ledger entries at once (contra
   postings, never hard delete; linked envelope receipts removed and their siblings reversed).
