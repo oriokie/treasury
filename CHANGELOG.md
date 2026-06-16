@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.29.0 - undo envelope entries (bulk reversal)
+- New EnvelopeReversalView (/envelopes/reverse/, treasurer only): filter envelopes by
+  Sabbath date and optional channel, preview the count/total, and reverse the batch
+  with a confirm. Mirrors the bank statement import undo and respects locked periods.
+- Reversal logic extracted into a shared _reverse_envelope helper used by both the
+  single-envelope delete and the bulk reversal: it removes the ENVELOPE-channel ledger
+  entries a cash envelope created, and for bank envelopes unlinks (keeps) the real bank
+  deposit and clears its processed_via_envelope flag so it returns to the receipt queue.
+- "Undo entries" link added to the envelope list for treasurers.
+
+## v1.28.1 — revert bank-envelope ledger entry (keep diagnostic)
+- Reverted v1.28.0: bank envelopes no longer create their own ledger transaction.
+  Creating one risked counting the same gift twice once the bank statement (the real
+  source of that money) is imported. _save_envelope is back to its prior behaviour and
+  the backfill command is removed.
+- Kept: the trust_reconcile management command.
+
 ## v1.28.0 — bank envelopes reach the ledger (trust/collections discrepancy)
 - Root cause (found via trust_reconcile): manually-entered BANK envelopes created an
   envelope line with no ledger transaction, so the money appeared in the offering

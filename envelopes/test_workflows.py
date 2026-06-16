@@ -51,19 +51,14 @@ class EnvelopeSaveTests(TestCase):
         self.assertEqual(env.total, Decimal("1250"))
         self.assertEqual(EnvelopeLine.objects.filter(envelope=env).count(), 2)
 
-    def test_bank_envelope_creates_ledger_transaction(self):
-        # a BANK envelope entered manually must create a ledger transaction so the
-        # money reaches the cash book (it used to be orphaned with no transaction,
-        # showing in the offering summary but not collections).
+    def test_bank_envelope_makes_no_envelope_transactions(self):
+        # a BANK envelope is matched to the imported bank credit, not re-created
         sab = _last_saturday()
         env = _save_envelope(date=sab, name="Asha N", receipt="R002", channel="BANK",
             lines=[(self.lcb, Decimal("500"))], member=self.member,
             user=self.user, cfg=self.cfg)
         self.assertEqual(Transaction.objects.filter(channel="ENVELOPE",
-            reference="envelope R002").count(), 1)
-        from envelopes.models import EnvelopeLine
-        self.assertFalse(EnvelopeLine.objects.filter(
-            envelope=env, transaction__isnull=True).exists())
+            reference="envelope R002").count(), 0)
         env.refresh_from_db()
         self.assertEqual(env.total, Decimal("500"))
 

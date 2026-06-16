@@ -10,7 +10,8 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView, DetailView
 
-from core.permissions import ReadAccessMixin, DataEntryRequiredMixin
+from core.permissions import (ReadAccessMixin, DataEntryRequiredMixin,
+                              TreasurerRequiredMixin)
 from core.models import SiteConfig
 from core.services.sms import send_receipt_sms
 from core.utils import sabbath_week_of
@@ -202,19 +203,16 @@ def _save_envelope(*, date, name, receipt, channel, lines, member, user, cfg):
     for line in lines:
         dept, amt = line[0], line[1]
         dev_group = line[2] if len(line) > 2 else None
-        # Every envelope line must create exactly one ledger transaction so the
-        # money reaches the cash book / collections — for BANK envelopes too.
-        # (To receipt money ALREADY imported from the bank statement, use the
-        # "receipt as envelope" action on that transaction, which links instead
-        # of creating, so nothing is double-counted.)
-        txn = Transaction.objects.create(
-            date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
-            channel=Transaction.Channel.ENVELOPE,
-            direction=Transaction.Direction.CREDIT, amount=amt,
-            department=dept, dev_group=dev_group, member=member, payer_name=name,
-            reference=f"envelope {receipt}",
-            allocation_status=Transaction.Status.MANUAL,
-            raw_narration=f"ENVELOPE {receipt}")
+        txn = None
+        if env.channel == Envelope.Channel.CASH:
+            txn = Transaction.objects.create(
+                date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
+                channel=Transaction.Channel.ENVELOPE,
+                direction=Transaction.Direction.CREDIT, amount=amt,
+                department=dept, dev_group=dev_group, member=member, payer_name=name,
+                reference=f"envelope {receipt}",
+                allocation_status=Transaction.Status.MANUAL,
+                raw_narration=f"ENVELOPE {receipt}")
         EnvelopeLine.objects.create(envelope=env, department=dept, amount=amt,
                                     dev_group=dev_group, transaction=txn)
     env.recompute_total()
@@ -1295,6 +1293,37 @@ class EnvelopeUpdateView(DataEntryRequiredMixin, View):
         return redirect("envelope_detail", pk=pk)
 
 
+def _reverse_envelope(env):
+    """Reverse one envelope. Deletes the ENVELOPE-channel ledger entries its lines
+    created (cash giving), unlinks any real bank deposit (kept — that is genuine
+    money from the statement) and returns it to the receipt queue, then deletes the
+    envelope. Returns the number of ledger entries removed."""
+    removed = 0
+    bank_txns = []
+    for line in env.lines.select_related("transaction").all():
+        t = line.transaction
+        if t is not None:
+            line.transaction = None
+            line.save(update_fields=["transaction"])
+            if t.channel == t.Channel.ENVELOPE:
+                t.delete()
+                removed += 1
+            else:
+                bank_txns.append(t)
+    if env.bank_transaction_id:
+        bank_txns.append(env.bank_transaction)
+        env.bank_transaction = None
+        env.save(update_fields=["bank_transaction"])
+    # hand any real bank deposits back to the receipt queue so they can be
+    # receipted again correctly (e.g. linked after a statement import)
+    for t in bank_txns:
+        if t and t.processed_via_envelope:
+            t.processed_via_envelope = False
+            t.save(update_fields=["processed_via_envelope"])
+    env.delete()
+    return removed
+
+
 class EnvelopeDeleteView(DataEntryRequiredMixin, View):
     """Delete an envelope entered in error. Removes the cash ledger entries it
     created; for a bank envelope it unlinks (but keeps) the bank deposit row."""
@@ -1306,25 +1335,67 @@ class EnvelopeDeleteView(DataEntryRequiredMixin, View):
         if _why:
             messages.error(request, _why)
             return redirect(f"{reverse('envelope_list')}?date={env.date.isoformat()}")
-        removed = 0
-        for line in env.lines.select_related("transaction").all():
-            t = line.transaction
-            if t is not None:
-                # detach then delete the ENVELOPE entry this line created
-                line.transaction = None
-                line.save(update_fields=["transaction"])
-                if t.channel == t.Channel.ENVELOPE:
-                    t.delete()
-                    removed += 1
-        # a bank envelope's deposit row is real money — keep it, just unlink
-        if env.bank_transaction_id:
-            env.bank_transaction = None
-            env.save(update_fields=["bank_transaction"])
         sab = env.date.isoformat()
-        env.delete()
+        removed = _reverse_envelope(env)
         messages.success(request, f"Envelope deleted (removed {removed} ledger entr"
                                   f"{'y' if removed == 1 else 'ies'}).")
         return redirect(f"{reverse('envelope_list')}?date={sab}")
+
+
+class EnvelopeReversalView(TreasurerRequiredMixin, View):
+    """Bulk-reverse a batch of envelopes — typically ones typed for a Sabbath
+    before the bank statement was imported. Filter by Sabbath date (and optionally
+    channel), preview the total, then reverse them all at once. Mirrors the bank
+    statement import undo, with the same locked-period guard."""
+    template_name = "envelopes/reverse.html"
+
+    def _filtered(self, date, channel):
+        qs = Envelope.objects.select_related("member").order_by("receipt_no")
+        if date:
+            qs = qs.filter(date=date)
+        if channel in ("CASH", "BANK"):
+            qs = qs.filter(channel=channel)
+        return qs
+
+    def get(self, request):
+        from core.models import entry_blocked
+        date = None
+        raw = request.GET.get("date") or ""
+        if raw:
+            try:
+                date = dt.date.fromisoformat(raw)
+            except ValueError:
+                date = None
+        channel = request.GET.get("channel") or ""
+        envs = list(self._filtered(date, channel)) if date else []
+        total = sum((e.total for e in envs), Decimal(0))
+        ctx = {"date": date, "date_value": raw, "channel": channel,
+               "envelopes": envs, "total": total, "count": len(envs),
+               "blocked": entry_blocked(date) if date else None}
+        return render(request, self.template_name, ctx)
+
+    def post(self, request):
+        from core.models import entry_blocked
+        raw = request.POST.get("date") or ""
+        channel = request.POST.get("channel") or ""
+        try:
+            date = dt.date.fromisoformat(raw)
+        except ValueError:
+            messages.error(request, "Choose a Sabbath date.")
+            return redirect("envelope_reverse")
+        why = entry_blocked(date)
+        if why:
+            messages.error(request, why)
+            return redirect(f"{reverse('envelope_reverse')}?date={raw}&channel={channel}")
+        removed = count = 0
+        with db_tx.atomic():
+            for env in self._filtered(date, channel):
+                removed += _reverse_envelope(env)
+                count += 1
+        messages.success(request, f"Reversed {count} envelope{'' if count == 1 else 's'} "
+                                  f"for {date} (removed {removed} ledger entr"
+                                  f"{'y' if removed == 1 else 'ies'}).")
+        return redirect(f"{reverse('envelope_list')}?date={raw}")
 
 
 class EnvelopeSendReceiptView(DataEntryRequiredMixin, View):

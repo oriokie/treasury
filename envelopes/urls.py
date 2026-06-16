@@ -6,6 +6,7 @@ urlpatterns = [
     path("envelopes/ledger/", views.EnvelopeLedgerCreate.as_view(), name="envelope_ledger"),
     path("envelopes/template/", views.EnvelopeTemplateView.as_view(), name="envelope_template"),
     path("envelopes/import/", views.EnvelopeImportView.as_view(), name="envelope_import"),
+    path("envelopes/reverse/", views.EnvelopeReversalView.as_view(), name="envelope_reverse"),
     path("envelopes/<int:pk>/reassign/", views.EnvelopeReassignView.as_view(), name="envelope_reassign"),
     path("envelopes/sabbath.xlsx", views.EnvelopeSabbathExcelView.as_view(), name="envelope_sabbath_excel"),
     path("envelopes/pull-bank/", views.EnvelopePullBankView.as_view(), name="envelope_pull_bank"),

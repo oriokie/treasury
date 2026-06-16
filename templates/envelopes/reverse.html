@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="page">
+  {% include "ui/page_header.html" with title="Undo envelope entries" subtitle="Reverse a batch of envelopes — e.g. ones typed for a Sabbath before the bank statement was imported." %}
+
+  <div class="card u-mt-1">
+    <form method="get" class="filters" style="align-items:flex-end">
+      <div class="f"><label>Sabbath date</label><input type="date" name="date" value="{{ date_value }}" class="field"></div>
+      <div class="f"><label>Channel</label>
+        <select name="channel" class="field">
+          <option value="">All</option>
+          <option value="BANK" {% if channel == 'BANK' %}selected{% endif %}>Bank only</option>
+          <option value="CASH" {% if channel == 'CASH' %}selected{% endif %}>Cash only</option>
+        </select>
+      </div>
+      <button class="btn">Preview</button>
+    </form>
+  </div>
+
+  {% if date %}
+    {% if blocked %}
+      <div class="banner banner-amber u-mt-1">{{ blocked }}</div>
+    {% endif %}
+    {% if envelopes %}
+      <div class="card u-mt-1">
+        <div class="u-flex u-between u-center">
+          <strong>{{ count }} envelope{{ count|pluralize }} · KES {{ total|floatformat:2|intcomma }}</strong>
+          {% if not blocked %}
+          <form method="post" onsubmit="return confirm('Reverse {{ count }} envelope{{ count|pluralize }} for {{ date }}? Cash ledger entries they created will be removed; any bank deposits are kept and returned to the receipt queue. This cannot be undone.');">
+            {% csrf_token %}
+            <input type="hidden" name="date" value="{{ date_value }}">
+            <input type="hidden" name="channel" value="{{ channel }}">
+            <button class="btn btn-danger">↩ Reverse these {{ count }}</button>
+          </form>
+          {% endif %}
+        </div>
+        <table class="table u-mt-1">
+          <thead><tr><th>Receipt</th><th>Contributor</th><th>Channel</th><th class="num">Total</th></tr></thead>
+          <tbody>
+          {% for e in envelopes %}
+            <tr>
+              <td class="mono"><a href="{% url 'envelope_detail' e.id %}">{{ e.receipt_no }}</a></td>
+              <td>{{ e.member.name|default:e.contributor_name }}</td>
+              <td>{% if e.channel == 'BANK' %}<span class="pill pill-grey">Bank</span>{% else %}<span class="pill">Cash</span>{% endif %}</td>
+              <td class="num mono">{{ e.total|floatformat:2|intcomma }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      {% include "ui/empty.html" with icon="↩" text="No envelopes match that Sabbath and channel." %}
+    {% endif %}
+  {% else %}
+    <p class="help u-mt-1">Pick a Sabbath date (and optionally a channel) to preview the envelopes that would be reversed.</p>
+  {% endif %}
+</div>
+{% endblock %}
