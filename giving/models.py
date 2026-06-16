@@ -315,6 +315,22 @@ class Transaction(models.Model):
                 if t.allocation_status == Transaction.Status.REVIEW:
                     t.allocation_status = Transaction.Status.MANUAL
                     changed.append("allocation_status")
+            # A receipted BANK credit is the same money as an envelope (which is
+            # the income), so it becomes a memo — excluded from income and detached
+            # from its fund — so it neither counts as income nor inflates the fund
+            # balance. Un-marking re-includes it (it returns to allocation).
+            if t.channel == Transaction.Channel.BANK:
+                if value:
+                    if not t.excluded_from_income:
+                        t.excluded_from_income = True
+                        changed.append("excluded_from_income")
+                    if t.department_id is not None:
+                        t.department = None
+                        changed.append("department")
+                else:
+                    if t.excluded_from_income:
+                        t.excluded_from_income = False
+                        changed.append("excluded_from_income")
             if changed:
                 t.save(update_fields=changed)
                 return True

@@ -70,12 +70,24 @@ class CbsEventWebhookView(View):
                 return False
             return user == cfg.bank_feed_username and pwd == cfg.bank_feed_password
         if mode == SiteConfig.BankFeedAuth.TOKEN:
-            token = cfg.bank_feed_token
+            import hmac
+            token = (cfg.bank_feed_token or "").strip()
             if not token:
                 return False
-            if auth.startswith("Bearer "):
-                return auth[7:] == token
-            return request.META.get("HTTP_X_AUTH_TOKEN", "") == token
+            # Accept the token however the bank presents it: an Authorization
+            # header with or without a Bearer/Token scheme, or a custom header
+            # (X-Auth-Token / X-Api-Key / Api-Key). Compared in constant time.
+            def _strip_scheme(v):
+                v = (v or "").strip()
+                for scheme in ("Bearer ", "Token ", "bearer ", "token "):
+                    if v.startswith(scheme):
+                        return v[len(scheme):].strip()
+                return v
+            candidates = [_strip_scheme(auth)]
+            for h in ("HTTP_X_AUTH_TOKEN", "HTTP_X_API_KEY", "HTTP_API_KEY",
+                      "HTTP_APIKEY", "HTTP_X_AUTHORIZATION", "HTTP_TOKEN"):
+                candidates.append(_strip_scheme(request.META.get(h, "")))
+            return any(c and hmac.compare_digest(c, token) for c in candidates)
         return False
 
     def post(self, request):

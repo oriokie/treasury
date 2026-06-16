@@ -38,6 +38,17 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.34.3": "The bank real-time feed (CBS webhook) now accepts the bank's token however it is "
+              "sent — a bare Authorization header, a Bearer/Token scheme, or X-Auth-Token / "
+              "X-Api-Key — and compares it securely. Incoming credits are allocated to funds "
+              "with the same allocation rules as the statement import, so the live feed and file "
+              "import never diverge.",
+    "1.34.2": "Fixed inflated collections under the new model. Marking a bank credit as "
+              "receipted — whether from the bulk mark-processed tool, the per-credit action, or "
+              "a paper receipt — now turns it into a memo (excluded from income and detached "
+              "from its fund), so it no longer double-counts against the envelope that already "
+              "recorded the gift. Re-run the bulk mark-processed file once after updating to "
+              "settle credits that were marked before this fix.",
     "1.34.1": "Aligned the cash-count sheet and the rest of the reports with the new model. "
               "The cash count no longer treats a bank envelope as physical cash, and the income "
               "reports (by channel, by group, tithe, offering, development) all leave out the "

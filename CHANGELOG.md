@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.34.3 - CBS webhook token auth hardening
+- CbsEventWebhookView TOKEN auth now accepts the shared token whether the bank sends it as a
+  bare Authorization header, with a Bearer/Token scheme, or via X-Auth-Token / X-Api-Key /
+  Api-Key / Token headers, and compares it in constant time (hmac.compare_digest).
+- Confirmed the feed allocates incoming credits via the same allocate() rules as the
+  statement importer (member match, split funds, dev-group tag, dedup, confirmation gating).
+
+## v1.34.2 - mark-receipted now memos the bank credit (fixes inflated collections)
+- Transaction.mark_manual_receipt now, for BANK credits, also sets excluded_from_income=True
+  and nulls the department (the legacy "Processed via envelope" memo) when marking, and
+  re-includes on un-mark. Previously it only set the manual_receipt flag, so under the new
+  income-from-envelope model the credit stayed as income and double-counted the envelope
+  it duplicated - inflating the dashboard and collections summary.
+- This fixes all three callers at once: the bulk MarkProcessedImportView, the per-credit
+  toggle, and receipt-one-bank's "mark only" paper-receipt path.
+- The exclusion applies even when the credit was already flagged manual_receipt, so re-running
+  the bulk mark-processed file settles credits marked before this fix.
+- Full suite (458 tests) green; no migrations.
+
 ## v1.34.1 - cash count + report consistency for the legacy model
 - Cash count (_breakdown): a BANK envelope now posts an ENVELOPE-channel transaction, but
   that is bank money, not physical cash. The count now excludes ENVELOPE transactions that
