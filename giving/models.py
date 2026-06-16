@@ -463,6 +463,33 @@ class Campaign(models.Model):
                 return qs.first()
         return None
 
+    def subgroup_department(self, group_name):
+        """The fund a matched member's contribution belongs to: the child fund
+        named after the member's group (e.g. CAMP_1), parented to the campaign's
+        department so it inherits its fund type and rolls up in trust/local
+        reports. Created on demand. A blank group falls back to the parent fund."""
+        from departments.models import Department
+        from django.utils.text import slugify
+        g = (group_name or "").strip()
+        if not g:
+            return self.department
+        dept = Department.objects.filter(name__iexact=g).first()
+        if dept:
+            # adopt an orphan fund of the same name under this campaign
+            if dept.parent_id is None and dept.pk != self.department_id:
+                dept.parent = self.department
+                dept.save()
+            return dept
+        base = (slugify(g) or "campgrp")[:46]
+        slug, i = base, 2
+        while Department.objects.filter(slug=slug).exists():
+            slug = f"{base}-{i}"
+            i += 1
+        # fund_type / is_trust are inherited from the parent in Department.save()
+        return Department.objects.create(
+            name=g[:80], slug=slug, parent=self.department,
+            category=self.department.category, selectable=True, active=True)
+
     def __str__(self):
         return self.name
 

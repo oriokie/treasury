@@ -1070,9 +1070,19 @@ class CampaignFallbackTests(TestCase):
     def test_trigger_and_phone_allocates_to_campaign(self):
         from giving.services.allocation import campaign_allocate
         camp, grp, dept, status = campaign_allocate("441211#campexpense", "X", "254791896792")
-        self.assertEqual(dept, self.d)
+        # the matched member's contribution splits to their subgroup fund (CAMP_1),
+        # which is created under the campaign's parent fund and inherits its type.
+        self.assertEqual(dept.name, "CAMP_1")
+        self.assertEqual(dept.parent, self.d)
+        self.assertEqual(dept.fund_type, self.d.fund_type)
         self.assertEqual(grp, "CAMP_1")
         self.assertEqual(status, "AUTO")
+
+    def test_trigger_but_no_member_routes_to_parent_for_review(self):
+        from giving.services.allocation import campaign_allocate
+        camp, grp, dept, status = campaign_allocate("441211#campexpense", "Nobody Here", "")
+        self.assertEqual(dept, self.d)        # parent fund, flagged for review
+        self.assertEqual(status, "REVIEW")
 
     def test_no_trigger_falls_through_to_normal_rules(self):
         from giving.services.allocation import campaign_allocate

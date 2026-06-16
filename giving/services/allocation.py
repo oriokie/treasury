@@ -190,5 +190,9 @@ def campaign_allocate(reference, name, phone):
         if not trigs or not any(t in s for t in trigs):
             continue
         m = camp.match_member(name, phone)
-        return camp, (m.group if m else ""), camp.department, ("AUTO" if m else "REVIEW")
+        if m:
+            # split to the member's subgroup fund (the whole point of campaigns);
+            # a member with no group falls back to the campaign's parent fund.
+            return camp, (m.group or ""), camp.subgroup_department(m.group), "AUTO"
+        return camp, "", camp.department, "REVIEW"
     return None, "", None, None

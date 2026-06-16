@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.38.1 - campaign fallback splits to subgroups (fix)
+- campaign_allocate now returns the matched member's subgroup fund, not the campaign's parent.
+  Campaign.subgroup_department() gets-or-creates a child Department named after the member's
+  group (e.g. CAMP_1), parented to the campaign's department so it inherits fund_type/is_trust
+  and rolls up in trust/local reports. A member with no group still routes to the parent fund;
+  a trigger match with no member still routes to the parent for review.
+- Updated CampaignFallbackTests to assert subgroup routing + parent fallback.
+
 ## v1.38.0 - campaigns polish + smart bulk buttons
 - Campaigns (#1): redesigned page (clean create form + campaigns table with per-row member
   upload). New "Sample upload file" download (Name, Mobile, Group). Import is now tolerant —

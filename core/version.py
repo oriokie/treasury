@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.38.1": "Fixed campaign fallback allocation: a matched giver's contribution now splits to "
+              "their own subgroup fund (e.g. CAMP_1) instead of landing on the campaign's parent "
+              "fund. The subgroup fund is created on demand under the parent and inherits its "
+              "trust/local type so it still rolls up correctly. Givers with no group fall back to "
+              "the parent fund as before.",
     "1.38.0": "Campaigns page redesigned with a cleaner form and a downloadable sample upload "
               "file; member uploads now skip unreadable rows (and never crash on an over-long "
               "or malformed phone) and report how many loaded. Bulk action buttons on the "
