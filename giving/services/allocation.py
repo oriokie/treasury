@@ -169,3 +169,26 @@ def _numbered_fund_families():
             prefixes.sort(key=len, reverse=True)
             families.append((prefixes, template))
     return families
+
+
+def campaign_allocate(reference, name, phone):
+    """Fallback used only after the normal rules miss. If the reference contains
+    one of an active campaign's trigger words, match the payer to a campaign
+    member (phone, then unique name) and return that campaign's department.
+
+    Returns (campaign, group, department, status) or (None, "", None, None).
+    status is AUTO when a member matched, REVIEW when only the trigger matched
+    (so an unrecognised giver still routes to the right fund for review).
+    """
+    import re
+    from giving.models import Campaign
+    s = re.sub(r"\s+", "", (reference or "").strip().lower())
+    if not s:
+        return None, "", None, None
+    for camp in Campaign.objects.filter(active=True):
+        trigs = camp.trigger_list()
+        if not trigs or not any(t in s for t in trigs):
+            continue
+        m = camp.match_member(name, phone)
+        return camp, (m.group if m else ""), camp.department, ("AUTO" if m else "REVIEW")
+    return None, "", None, None

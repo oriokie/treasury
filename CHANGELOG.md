@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.37.0 - transactions list bulk reverse
+- TransactionBulkReverseView reverses several selected ledger entries at once (contra
+  postings, never hard delete; linked envelope receipts removed and their siblings reversed).
+  Locked-period and already-reversed/reversal rows are skipped and counted.
+- Transactions list gains row checkboxes + select-all + a "Reverse selected" bar; the per-row
+  Reverse button is removed (Edit / Split / Receipt / cash Delete stay per row).
+
+## v1.36.0 - expenses bulk actions + ledger/backup IDs
+- Expenses (#2): row checkboxes + select-all and one action bar (Approve / Reject / Mark paid /
+  Delete) via ExpenseBulkActionView; per-row buttons removed, Edit kept. Each item is guarded
+  the same as the single action (locked periods and dual-approval-needed items are skipped and
+  counted, not errored).
+- Fund-ledger export (#4): added ID and Type (Receipt / Expense / Transfer) columns so every
+  line is traceable to its source row.
+- Backup workbook (#5): Transactions, Expenses and Reconciliations sheets now lead with the
+  database ID (Departments/Members already did); money-column indexes shifted accordingly.
+
+## v1.35.0 - campaign fallback allocation
+- New Campaign + CampaignMember models (giving). A Campaign has a fund (department), a set of
+  comma/line-separated trigger words, and an active flag; members carry name/phone/group.
+- giving.services.allocation.campaign_allocate runs ONLY after the normal allocate() misses:
+  if the reference contains a campaign trigger word, the payer is matched by phone (or a
+  unique name) to a campaign member and the credit is allocated to the campaign's fund and
+  tagged with the member's group (AUTO); trigger-but-no-member routes to the fund as REVIEW.
+- Wired into both the file importer and the live CBS feed (ingest_event); Transaction gains
+  campaign (SET_NULL) + campaign_group so the group is reportable and survives campaign delete.
+- UI at /campaigns/: create/update a campaign, upload its Name/Mobile/Group sheet (.xlsx/.csv),
+  delete a finished campaign (members removed; past allocations keep their group tag). Nav link
+  added. Regression tests cover trigger gating, phone/name matching, no-member review, inactive.
+- Migration: giving 0018.
+
 ## v1.34.3 - CBS webhook token auth hardening
 - CbsEventWebhookView TOKEN auth now accepts the shared token whether the bank sends it as a
   bare Authorization header, with a Bearer/Token scheme, or via X-Auth-Token / X-Api-Key /

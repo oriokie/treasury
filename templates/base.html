@@ -69,6 +69,7 @@
           <a href="{% url 'budget' %}" class="{% if request.resolver_match.url_name == 'budget' %}active{% endif %}">Budgeting</a>
           <a href="{% url 'asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">Fixed assets</a>
           <a href="{% url 'rule_list' %}" class="{% if 'rule' in request.resolver_match.url_name %}active{% endif %}">Allocation rules</a>
+          <a href="{% url 'campaign_list' %}" class="{% if 'campaign' in request.resolver_match.url_name %}active{% endif %}">Campaigns</a>
         </div>
       </details>
 

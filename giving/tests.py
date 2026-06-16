@@ -1053,3 +1053,39 @@ class NumberedFundFamilyTests(TestCase):
         cfg = SiteConfig.get(); cfg.numbered_fund_families = ""; cfg.save()
         res, st = allocate("expense1")
         self.assertEqual(res, "UNALLOCATED")
+
+
+class CampaignFallbackTests(TestCase):
+    """The campaign table allocates only after the normal rules miss, gated by
+    trigger words, matching the payer by phone or a unique name."""
+    def setUp(self):
+        from departments.models import Department
+        from giving.models import Campaign, CampaignMember
+        self.d = Department.objects.create(name="Camp Fund", fund_type="LOCAL", category="OFFERING")
+        self.camp = Campaign.objects.create(name="Camp", department=self.d,
+                                            triggers="expense, campexpense", active=True)
+        CampaignMember.objects.create(campaign=self.camp, name="Amos Ndegwa",
+                                      phone="254791896792", group="CAMP_1")
+
+    def test_trigger_and_phone_allocates_to_campaign(self):
+        from giving.services.allocation import campaign_allocate
+        camp, grp, dept, status = campaign_allocate("441211#campexpense", "X", "254791896792")
+        self.assertEqual(dept, self.d)
+        self.assertEqual(grp, "CAMP_1")
+        self.assertEqual(status, "AUTO")
+
+    def test_no_trigger_falls_through_to_normal_rules(self):
+        from giving.services.allocation import campaign_allocate
+        self.assertIsNone(campaign_allocate("tithe", "Amos Ndegwa", "254791896792")[0])
+
+    def test_trigger_without_member_routes_to_fund_for_review(self):
+        from giving.services.allocation import campaign_allocate
+        camp, grp, dept, status = campaign_allocate("expense", "Stranger", "254700000000")
+        self.assertEqual(dept, self.d)
+        self.assertEqual(status, "REVIEW")
+
+    def test_inactive_campaign_is_ignored(self):
+        from giving.services.allocation import campaign_allocate
+        self.camp.active = False
+        self.camp.save()
+        self.assertIsNone(campaign_allocate("campexpense", "Amos Ndegwa", "254791896792")[0])

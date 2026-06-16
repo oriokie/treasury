@@ -44,6 +44,8 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
 
     is_credit = direction == Transaction.Direction.CREDIT
     member = dept = dev_group = split_fund = None
+    campaign = None
+    campaign_group = ""
     status = Transaction.Status.REVIEW
 
     if is_credit:
@@ -58,6 +60,15 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             status = ((Transaction.Status.AUTO if alloc_status == "AUTO"
                        else Transaction.Status.LEARNED)
                       if dept is not None else Transaction.Status.REVIEW)
+            if dept is None:
+                # rules missed — try the campaign fallback (e.g. camp expenses)
+                from giving.services.allocation import campaign_allocate
+                campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                    reference, name, phone)
+                if cdept is not None:
+                    dept = cdept
+                    status = (Transaction.Status.AUTO if cstatus == "AUTO"
+                              else Transaction.Status.REVIEW)
 
     confirmed = True
     if require_confirm and status in (Transaction.Status.AUTO, Transaction.Status.LEARNED):
@@ -70,6 +81,7 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
         reference=(reference or "")[:60], payer_name=(name or "")[:120],
         payer_phone=(phone or "")[:12], mpesa_ref=(mpesa_ref or "")[:30],
         allocation_status=status, bank_account=bank_account, confirmed=confirmed,
+        campaign=campaign, campaign_group=(campaign_group or ""),
         raw_narration=raw_narration or "")
 
     with db_tx.atomic():

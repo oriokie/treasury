@@ -221,6 +221,13 @@ class Transaction(models.Model):
                   "the fund, but not operating income, so it is kept out of the "
                   "Income & Expenditure statement (only the gain/loss is shown there).")
 
+    # Campaign fallback allocation (e.g. camp-meeting expense contributions
+    # matched to a group when the normal rules miss). Kept on the row so the
+    # group is reportable; cleared (SET_NULL) if the campaign is later deleted.
+    campaign = models.ForeignKey("giving.Campaign", null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="transactions")
+    campaign_group = models.CharField(max_length=40, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
     objects = TransactionQuerySet.as_manager()
@@ -414,3 +421,65 @@ class TransactionReversal(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class Campaign(models.Model):
+    """A time-boxed appeal (e.g. Camp Meeting) whose contributions are allocated
+    to one department and tagged to a member's group. Used as a FALLBACK after
+    the normal allocation rules miss: a credit whose reference contains one of
+    the campaign's trigger strings is matched to a campaign member (by phone or
+    a unique name) and allocated to the campaign's department. Delete the whole
+    campaign when the appeal ends — its member table goes with it and the rows it
+    allocated keep their group tag for the record.
+    """
+    name = models.CharField(max_length=80, unique=True)
+    department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
+                                   related_name="campaigns",
+                                   help_text="Fund these contributions are allocated to.")
+    triggers = models.TextField(blank=True,
+        help_text="Words that mark a reference as belonging to this campaign — "
+                  "comma- or line-separated (e.g. expense, campexpense). The "
+                  "fallback only fires when the reference contains one of these.")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def trigger_list(self):
+        import re
+        return [t.strip().lower() for t in re.split(r"[,\n;]", self.triggers or "")
+                if t.strip()]
+
+    def match_member(self, name, phone):
+        """Phone first (if it identifies exactly one member), else a unique name."""
+        from members.models import name_key, normalize_phone
+        ph = normalize_phone(phone)
+        if ph:
+            qs = self.members.filter(phone=ph)
+            if qs.count() == 1:
+                return qs.first()
+        key = name_key(name)
+        if key:
+            qs = self.members.filter(name_key=key)
+            if qs.count() == 1:
+                return qs.first()
+        return None
+
+    def __str__(self):
+        return self.name
+
+
+class CampaignMember(models.Model):
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="members")
+    name = models.CharField(max_length=120)
+    name_key = models.CharField(max_length=120, db_index=True, editable=False)
+    phone = models.CharField(max_length=12, blank=True, db_index=True)
+    group = models.CharField(max_length=40, blank=True)
+
+    def save(self, *args, **kwargs):
+        from members.models import name_key as _nk, normalize_phone
+        self.name_key = _nk(self.name)
+        self.phone = normalize_phone(self.phone) or (self.phone or "")
+        super().save(*args, **kwargs)
+
+    class Meta:
+        indexes = [models.Index(fields=["campaign", "name_key"]),
+                   models.Index(fields=["campaign", "phone"])]

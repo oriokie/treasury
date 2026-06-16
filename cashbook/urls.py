@@ -8,6 +8,7 @@ urlpatterns = [
     path("expenses/new/", views.ExpenseCreate.as_view(), name="expense_create"),
     path("expenses/<int:pk>/edit/", views.ExpenseUpdate.as_view(), name="expense_edit"),
     path("expenses/<int:pk>/approve/", views.ExpenseApprove.as_view(), name="expense_approve"),
+    path("expenses/bulk/", views.ExpenseBulkActionView.as_view(), name="expense_bulk"),
     path("expenses/<int:pk>/delete/", views.ExpenseDeleteView.as_view(), name="expense_delete"),
     path("transfers/", views.TransferListView.as_view(), name="transfer_list"),
     path("transfers/new/", views.TransferCreate.as_view(), name="transfer_create"),

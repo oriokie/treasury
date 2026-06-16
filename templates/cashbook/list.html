@@ -47,12 +47,22 @@
   </div>
 </form>
 
+{% if is_treasurer %}<form id="bulkform" method="post" action="{% url 'expense_bulk' %}">{% csrf_token %}
+<div class="ws-tb-actions u-mb" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+  <span class="muted u-xs"><span id="bulkcount">0</span> selected</span>
+  <button name="action" value="approve" class="btn btn-sm">Approve</button>
+  <button name="action" value="reject" class="btn btn-sm btn-ghost">Reject</button>
+  <button name="action" value="pay" class="btn btn-sm">Mark paid</button>
+  <button name="action" value="delete" class="btn btn-sm btn-danger" onclick="return confirm('Delete the selected expenses permanently? This cannot be undone.');">Delete</button>
+  <span class="help">Tick rows, then choose an action. High-value items needing a second approval are skipped on “Mark paid” — co-approve them from the expense page.</span>
+</div>{% endif %}
 <div class="ws-table sticky">
   <table class="ledger compact">
-  <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if is_treasurer %}<th>Action</th>{% endif %}</tr></thead>
+  <thead><tr>{% if is_treasurer %}<th style="width:28px"><input type="checkbox" id="checkall" title="Select all"></th>{% endif %}<th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for e in expenses %}
     <tr>
+      {% if is_treasurer %}<td><input type="checkbox" name="ids" value="{{ e.id }}" class="rowchk"></td>{% endif %}
       <td class="mono">{{ e.date|date:"d/m/y" }}</td>
       <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted u-xs">· {{ e.claimant }}</span>{% endif %}{% if e.attachments.exists %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
       <td>{{ e.department.name }}</td>
@@ -60,25 +70,22 @@
       <td>{% if e.expenditure_type == 'CAPITAL' %}<span class="pill pill-brass">Capital</span>{% else %}<span class="pill pill-grey">Recurrent</span>{% endif %}</td>
       <td><span class="pill {% if e.status == 'PAID' %}pill-green{% elif e.status == 'APPROVED' %}pill-blue{% elif e.status == 'REJECTED' %}pill-red{% else %}pill-amber{% endif %}">{{ e.get_status_display }}</span></td>
       <td class="num mono row-debit">({{ e.amount|floatformat:2|intcomma }})</td>
-      {% if is_treasurer %}<td class="actions">
-        {% if e.status == 'PENDING' or e.status == 'APPROVED' %}
-        <form method="post" action="{% url 'expense_approve' e.id %}" class="u-inline-flex">{% csrf_token %}
-          {% if e.status == 'PENDING' %}<button name="action" value="approve" class="btn btn-xs">Approve</button>
-          <button name="action" value="reject" class="btn btn-xs btn-ghost">Reject</button>{% endif %}
-          {% if e.status == 'APPROVED' %}
-            {% if dual_threshold and e.amount >= dual_threshold and not e.second_approved_by %}
-              <button name="action" value="second_approve" class="btn btn-xs btn-brass" title="A second, different treasurer must co-approve">2nd approve</button>
-              <span class="pill pill-amber" title="Needs a second treasurer before payment">2 needed</span>
-            {% else %}<button name="action" value="pay" class="btn btn-xs">Mark paid</button>{% endif %}
-          {% endif %}
-        </form>{% endif %}
-        {% if can_enter_data %}<a class="link" href="{% url 'expense_edit' e.id %}">Edit</a>{% endif %}
-        {% if is_treasurer %}<form method="post" action="{% url 'expense_delete' e.id %}" class="u-inline" onsubmit="return confirm('Delete this expense permanently? This cannot be undone (an audit-log record is kept).');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}
-      </td>{% endif %}
+      {% if can_enter_data %}<td class="actions"><a class="link" href="{% url 'expense_edit' e.id %}">Edit</a></td>{% endif %}
     </tr>
-  {% empty %}<tr><td colspan="8"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="10"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
   </tbody>
 </table></div>
+{% if is_treasurer %}</form>
+<script>
+(function(){
+  var all=document.getElementById('checkall'),
+      rows=function(){return Array.prototype.slice.call(document.querySelectorAll('.rowchk'));},
+      count=document.getElementById('bulkcount');
+  function upd(){count.textContent=rows().filter(function(c){return c.checked;}).length;}
+  if(all){all.addEventListener('change',function(){rows().forEach(function(c){c.checked=all.checked;});upd();});}
+  document.addEventListener('change',function(e){if(e.target&&e.target.classList.contains('rowchk'))upd();});
+})();
+</script>{% endif %}
 {% include 'partials/pagination.html' %}
 <style>.ledger.compact td,.ledger.compact th{padding:.4rem .85rem}.ledger.compact .actions{white-space:nowrap;display:flex;gap:.4rem;align-items:center}.ledger.compact .btn-xs{padding:.12rem .5rem;font-size:.75rem}</style>
 {% endblock %}

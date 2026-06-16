@@ -313,10 +313,10 @@ def full_excel_export_response(year=None):
             for m in Member.objects.all().order_by("name")])
 
     _sheet("Transactions",
-           ["Date", "Channel", "Direction", "Amount", "Fund", "Dev group",
+           ["ID", "Date", "Channel", "Direction", "Amount", "Fund", "Dev group",
             "Member / payer", "Reference", "M-Pesa ref", "Status", "Confirmed",
             "Excluded from income"],
-           [[t2.date.isoformat(), t2.channel, t2.direction, float(t2.amount),
+           [[t2.id, t2.date.isoformat(), t2.channel, t2.direction, float(t2.amount),
              t2.department.name if t2.department_id else "",
              t2.dev_group.number if t2.dev_group_id else "",
              t2.member.name if t2.member_id else (t2.payer_name or ""),
@@ -324,29 +324,29 @@ def full_excel_export_response(year=None):
              "Y" if t2.confirmed else "", "Y" if t2.excluded_from_income else ""]
             for t2 in Transaction.objects.select_related(
                 "department", "dev_group", "member").order_by("date")],
-           money_cols=(4,))
+           money_cols=(5,))
 
     _sheet("Expenses",
-           ["Date", "Fund", "Description", "Amount", "Category", "Method",
+           ["ID", "Date", "Fund", "Description", "Amount", "Category", "Method",
             "Status", "Claimant", "Voucher", "Recorded by"],
-           [[x.date.isoformat(), x.department.name if x.department_id else "",
+           [[x.id, x.date.isoformat(), x.department.name if x.department_id else "",
              x.description, float(x.amount), x.get_category_display(),
              x.method, x.get_status_display(), x.claimant or "",
              x.voucher_no or "", x.recorded_by.username if x.recorded_by_id else ""]
             for x in Expense.objects.select_related(
                 "department", "recorded_by").order_by("date")],
-           money_cols=(4,))
+           money_cols=(5,))
 
     try:
         from statements.models import BankReconciliation
         _sheet("Reconciliations",
-               ["Statement date", "Bank balance", "Book balance", "Difference",
+               ["ID", "Statement date", "Bank balance", "Book balance", "Difference",
                 "Reconciled"],
-               [[r.statement_date.isoformat(), float(r.bank_balance),
+               [[r.id, r.statement_date.isoformat(), float(r.bank_balance),
                  float(r.book_balance or 0), float(r.difference or 0),
                  "Y" if r.is_reconciled else ""]
                 for r in BankReconciliation.objects.order_by("statement_date")],
-               money_cols=(2, 3, 4))
+               money_cols=(3, 4, 5))
     except Exception:
         pass
 

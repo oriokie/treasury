@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% block title %}Campaigns{% endblock %}
+{% block content %}
+{% include "ui/page_header.html" with title="Campaigns" subtitle="Fallback allocation for an appeal (e.g. Camp Meeting): match a contribution to a member's group when the normal rules miss." %}
+
+<div class="card u-mb">
+  <div class="hd">New / update campaign</div>
+  <div class="bd">
+    {% if can_enter_data %}
+    <form method="post" action="{% url 'campaign_create' %}" class="stack">
+      {% csrf_token %}
+      <label>Name <input type="text" name="name" required placeholder="Camp Meeting 2026"></label>
+      <label>Fund (department)
+        <select name="department" required>
+          <option value="">— choose —</option>
+          {% for f in funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Trigger words
+        <textarea name="triggers" rows="2" placeholder="expense, campexpense"></textarea>
+        <span class="help">Comma- or line-separated. The fallback only fires when a reference contains one of these.</span>
+      </label>
+      <button class="btn">Save campaign</button>
+    </form>
+    {% else %}<p class="muted">You don't have permission to edit campaigns.</p>{% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="hd">Campaigns</div>
+  <div class="bd bd-flush">
+    <table class="ledger">
+      <thead><tr><th>Name</th><th>Fund</th><th>Triggers</th><th class="num">Members</th><th class="num">Allocated</th><th></th></tr></thead>
+      <tbody>
+      {% for c in campaigns %}
+        <tr{% if not c.active %} class="muted"{% endif %}>
+          <td><strong>{{ c.name }}</strong>{% if not c.active %} <span class="pill pill-grey">ended</span>{% endif %}</td>
+          <td>{{ c.department.name }}</td>
+          <td class="u-xs">{{ c.triggers|default:"—" }}</td>
+          <td class="num mono">{{ c.n_members }}</td>
+          <td class="num mono">{{ c.n_txns }}</td>
+          <td class="u-row-sm" style="gap:.4rem">
+            {% if can_enter_data %}
+            <form method="post" action="{% url 'campaign_members' c.id %}" enctype="multipart/form-data" class="u-row-sm" style="gap:.3rem">
+              {% csrf_token %}<input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+              <button class="btn btn-sm">Upload members</button>
+            </form>
+            {% endif %}
+            {% if is_treasurer %}
+            <form method="post" action="{% url 'campaign_delete' c.id %}" onsubmit="return confirm('Delete “{{ c.name }}”? Its member table is removed; past allocations keep their group tag.');">
+              {% csrf_token %}<button class="btn btn-sm btn-danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">No campaigns yet. Create one above, then upload its Name / Mobile / Group sheet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

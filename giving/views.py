@@ -1362,3 +1362,132 @@ class CashEntryDeleteView(DataEntryRequiredMixin, View):
             f"Cash entry deleted{f' ({n} split parts)' if n > 1 else ''}. "
             "The ledger row was removed with it.")
         return redirect("cash_list")
+
+
+# --- Campaign fallback allocation -------------------------------------------
+class CampaignListView(ReadAccessMixin, View):
+    """Manage campaigns (e.g. Camp Meeting): their fund, trigger words and the
+    member→group table used as a fallback when the normal rules miss."""
+    template_name = "giving/campaign_list.html"
+
+    def get(self, request):
+        from giving.models import Campaign
+        from departments.models import Department
+        from django.db.models import Count
+        camps = (Campaign.objects.select_related("department")
+                 .annotate(n_members=Count("members"), n_txns=Count("transactions"))
+                 .order_by("-active", "name"))
+        return render(request, self.template_name, {
+            "campaigns": camps,
+            "funds": Department.objects.filter(active=True, selectable=True).order_by("name"),
+        })
+
+
+class CampaignCreateView(DataEntryRequiredMixin, View):
+    def post(self, request):
+        from giving.models import Campaign
+        from departments.models import Department
+        name = (request.POST.get("name") or "").strip()
+        dept = Department.objects.filter(pk=request.POST.get("department")).first()
+        triggers = (request.POST.get("triggers") or "").strip()
+        if not name or not dept:
+            messages.error(request, "A campaign needs a name and a fund.")
+            return redirect("campaign_list")
+        camp, created = Campaign.objects.get_or_create(
+            name=name, defaults={"department": dept, "triggers": triggers})
+        if not created:
+            camp.department = dept
+            camp.triggers = triggers
+            camp.active = True
+            camp.save()
+        messages.success(request, f"Campaign “{name}” saved. Now upload its members.")
+        return redirect("campaign_list")
+
+
+class CampaignMemberImportView(DataEntryRequiredMixin, View):
+    """Upload the Name / Mobile / Group sheet for a campaign."""
+    def post(self, request, pk):
+        from giving.models import Campaign, CampaignMember
+        camp = get_object_or_404(Campaign, pk=pk)
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a .xlsx or .csv with Name, Mobile, Group columns.")
+            return redirect("campaign_list")
+        rows = []
+        try:
+            name = (getattr(f, "name", "") or "").lower()
+            if name.endswith((".xlsx", ".xls")):
+                import openpyxl
+                ws = openpyxl.load_workbook(f, data_only=True).active
+                data = list(ws.iter_rows(values_only=True))
+                hdr = [str(c).strip().lower() if c else "" for c in data[0]]
+                ni = next((i for i, h in enumerate(hdr) if "name" in h), 0)
+                pi = next((i for i, h in enumerate(hdr) if h in ("mobile", "phone", "msisdn")), 1)
+                gi = next((i for i, h in enumerate(hdr) if "group" in h), 2)
+                for r in data[1:]:
+                    nm = str(r[ni]).strip() if ni < len(r) and r[ni] else ""
+                    if nm:
+                        rows.append((nm, str(r[pi]).strip() if pi < len(r) and r[pi] else "",
+                                     str(r[gi]).strip() if gi < len(r) and r[gi] else ""))
+            else:
+                import csv as _csv, io as _io
+                for raw in _csv.DictReader(_io.TextIOWrapper(f.file, encoding="utf-8-sig")):
+                    row = {(k or "").strip().lower(): v for k, v in raw.items()}
+                    nm = (row.get("name") or "").strip()
+                    if nm:
+                        rows.append((nm, (row.get("mobile") or row.get("phone") or "").strip(),
+                                     (row.get("group") or "").strip()))
+        except Exception:
+            messages.error(request, "Could not read that file — use the Name/Mobile/Group layout.")
+            return redirect("campaign_list")
+        # replace the campaign's member table
+        camp.members.all().delete()
+        made = 0
+        for nm, ph, grp in rows:
+            CampaignMember.objects.create(campaign=camp, name=nm, phone=ph, group=grp)
+            made += 1
+        messages.success(request, f"Loaded {made} members into “{camp.name}”.")
+        return redirect("campaign_list")
+
+
+class CampaignDeleteView(TreasurerRequiredMixin, View):
+    """Delete a finished campaign: its member table goes; rows it allocated keep
+    their group tag (campaign link is set null)."""
+    def post(self, request, pk):
+        from giving.models import Campaign
+        camp = get_object_or_404(Campaign, pk=pk)
+        nm = camp.name
+        camp.delete()
+        messages.success(request, f"Campaign “{nm}” deleted. Past allocations keep their group tag.")
+        return redirect("campaign_list")
+
+
+class TransactionBulkReverseView(TreasurerRequiredMixin, View):
+    """Reverse several selected ledger entries at once. Treasury never hard-
+    deletes — each becomes a contra posting (and a linked envelope receipt is
+    removed, its siblings reversed). Locked-period rows and ones already reversed
+    (or that are themselves reversals) are skipped and counted."""
+    def post(self, request):
+        from core.models import period_locked
+        ids = request.POST.getlist("ids")
+        if not ids:
+            messages.info(request, "No entries were selected.")
+            return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+        reason = (request.POST.get("reason") or "").strip()
+        done = skipped = 0
+        for t in Transaction.objects.filter(pk__in=ids):
+            if t.is_reversed or t.is_reversal or period_locked(t.date):
+                skipped += 1
+                continue
+            try:
+                t.reverse(request.user, reason=reason)
+            except ValueError:
+                skipped += 1
+                continue
+            TransactionReverseView._delete_linked_envelope(t, request.user)
+            done += 1
+        msg = f"{done} entr{'y' if done == 1 else 'ies'} reversed (contra postings kept for audit)."
+        if skipped:
+            msg += f" {skipped} skipped (locked period, or already reversed)."
+        (messages.success if done else messages.info)(request, msg)
+        return redirect(request.META.get("HTTP_REFERER") or "transaction_list")

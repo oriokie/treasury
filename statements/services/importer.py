@@ -188,6 +188,8 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                 dept = None
                 dev_group = None
                 split_fund = None
+                campaign = None
+                campaign_group = ""
                 status = Transaction.Status.REVIEW
 
                 if is_credit:
@@ -202,6 +204,14 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         status = ((Transaction.Status.AUTO if alloc_status == "AUTO"
                                    else Transaction.Status.LEARNED)
                                   if dept is not None else Transaction.Status.REVIEW)
+                        if dept is None:
+                            from giving.services.allocation import campaign_allocate
+                            campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                                row["reference"], row["name"], row["phone"])
+                            if cdept is not None:
+                                dept = cdept
+                                status = (Transaction.Status.AUTO if cstatus == "AUTO"
+                                          else Transaction.Status.REVIEW)
                 else:
                     status = Transaction.Status.REVIEW
 
@@ -249,6 +259,7 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                     mpesa_ref=(row.get("mpesa_ref") or "")[:30],
                     statement_import=import_obj, allocation_status=status,
                     bank_account=bank_account, confirmed=confirmed,
+                    campaign=campaign, campaign_group=(campaign_group or ""),
                     raw_narration=row["raw_narration"])
 
                 if split_fund is not None:

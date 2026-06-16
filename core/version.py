@@ -38,6 +38,23 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.37.0": "The transactions list now has the same row checkboxes and select-all as expenses, "
+              "with a single “Reverse selected” bar — tick several entries and reverse them at "
+              "once (each gets a contra posting and any linked envelope receipt is removed). "
+              "Already-reversed rows and locked periods are skipped. Edit, Split and Receipt "
+              "stay per row.",
+    "1.36.0": "Expenses now have row checkboxes and a single action bar — tick several and "
+              "Approve, Reject, Mark paid or Delete them at once, with Edit still per row. The "
+              "fund-ledger export gained ID and Type columns identifying each item, and the "
+              "backup workbook now carries the database ID on the Transactions, Expenses and "
+              "Reconciliations sheets.",
+    "1.35.0": "New Campaigns table for appeals like Camp Meeting. After the normal allocation "
+              "rules miss, a contribution whose reference contains one of the campaign's trigger "
+              "words (e.g. expense, campexpense) is matched to a member by phone or a unique "
+              "name and allocated to the campaign's fund, tagged with that member's group. Upload "
+              "the Name/Mobile/Group sheet per campaign, and delete the whole campaign when the "
+              "appeal ends (past allocations keep their group tag). Works for any fund's "
+              "subgroups, on both the file import and the live bank feed.",
     "1.34.3": "The bank real-time feed (CBS webhook) now accepts the bank's token however it is "
               "sent — a bare Authorization header, a Bearer/Token scheme, or X-Auth-Token / "
               "X-Api-Key — and compares it securely. Incoming credits are allocated to funds "

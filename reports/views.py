@@ -279,14 +279,15 @@ class FundLedgerView(PeriodMixin, TemplateView):
         from core.models import SiteConfig
         ctx = self.get_context_data(**kwargs)
         dept = ctx["department"]
-        header = ["Date", "Description", "Debit", "Credit", "Balance"]
-        rows = [["", "Opening balance", "", "", float(ctx["opening"])]]
+        header = ["ID", "Type", "Date", "Description", "Debit", "Credit", "Balance"]
+        rows = [["", "", "", "Opening balance", "", "", float(ctx["opening"])]]
         for en in ctx["entries"]:
-            rows.append([en["date"].isoformat(), en["desc"],
+            rows.append([en.get("ref_id", ""), en.get("src", ""),
+                         en["date"].isoformat(), en["desc"],
                          float(en["debit"]) if en["debit"] else "",
                          float(en["credit"]) if en["credit"] else "",
                          float(en["balance"])])
-        rows.append(["", "Closing balance", "", "", float(ctx["closing"])])
+        rows.append(["", "", "", "Closing balance", "", "", float(ctx["closing"])])
         fname = f"fund-{dept.slug or dept.id}-{ctx['start']}-{ctx['end']}"
         if request.GET["export"] == "csv":
             return csv_response(fname + ".csv", header, rows)
@@ -307,19 +308,19 @@ class FundLedgerView(PeriodMixin, TemplateView):
         entries = []
         for t in receipts:
             entries.append({"date": t.date, "desc": t.payer_name or t.reference or "Receipt",
-                            "credit": t.amount, "debit": None})
+                            "credit": t.amount, "debit": None, "src": "Receipt", "ref_id": t.id})
         for x in payments:
             entries.append({"date": x.date, "desc": x.description,
-                            "credit": None, "debit": x.amount})
+                            "credit": None, "debit": x.amount, "src": "Expense", "ref_id": x.id})
         from cashbook.models import FundTransfer
         for tr in FundTransfer.objects.filter(destination=dept, date__gte=s, date__lte=e):
             entries.append({"date": tr.date, "desc": f"Transfer from {tr.source.name}"
                             + (f" — {tr.reason}" if tr.reason else ""),
-                            "credit": tr.amount, "debit": None})
+                            "credit": tr.amount, "debit": None, "src": "Transfer", "ref_id": tr.id})
         for tr in FundTransfer.objects.filter(source=dept, date__gte=s, date__lte=e):
             entries.append({"date": tr.date, "desc": f"Transfer to {tr.destination.name}"
                             + (f" — {tr.reason}" if tr.reason else ""),
-                            "credit": None, "debit": tr.amount})
+                            "credit": None, "debit": tr.amount, "src": "Transfer", "ref_id": tr.id})
         entries.sort(key=lambda r: r["date"])
         running = dept.opening_balance or Decimal(0)
         for en in entries:

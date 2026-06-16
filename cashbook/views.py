@@ -1215,3 +1215,58 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             parts.append(f"{skipped} row(s) skipped (missing date, fund, description or amount)")
         messages.success(request, ", ".join(parts) + ".")
         return redirect("expense_list")
+
+
+class ExpenseBulkActionView(TreasurerRequiredMixin, View):
+    """Apply one action (approve / reject / pay / delete) to several selected
+    expenses at once. Each item is checked against the same guards as the single
+    action, and ones that don't qualify are skipped (and counted) rather than
+    erroring the whole batch."""
+    def post(self, request):
+        import datetime as dt
+        from django.shortcuts import redirect
+        from core.models import SiteConfig
+        ids = request.POST.getlist("ids")
+        action = request.POST.get("action")
+        if not ids:
+            messages.info(request, "No expenses were selected.")
+            return redirect("expense_list")
+        threshold = SiteConfig.get().dual_approval_threshold or 0
+        from core.models import period_locked
+        done = skipped = 0
+        S = Expense.Status
+        for exp in Expense.objects.filter(pk__in=ids):
+            if period_locked(exp.date):
+                skipped += 1
+                continue
+            if action == "approve" and exp.status == S.PENDING:
+                exp.status = S.APPROVED
+                exp.approved_by = request.user
+                exp.save()
+                done += 1
+            elif action == "reject" and exp.status in (S.PENDING, S.APPROVED):
+                exp.status = S.REJECTED
+                exp.approved_by = request.user
+                exp.save()
+                done += 1
+            elif action == "pay" and exp.status == S.APPROVED:
+                needs_two = threshold and exp.amount >= threshold
+                if needs_two and not (exp.approved_by_id and exp.second_approved_by_id):
+                    skipped += 1
+                    continue
+                exp.status = S.PAID
+                exp.paid_date = dt.date.today()
+                exp.save()
+                done += 1
+            elif action == "delete":
+                exp.delete()
+                done += 1
+            else:
+                skipped += 1
+        verb = {"approve": "approved", "reject": "rejected", "pay": "marked paid",
+                "delete": "deleted"}.get(action, "updated")
+        msg = f"{done} expense(s) {verb}."
+        if skipped:
+            msg += f" {skipped} skipped (locked period or not eligible)."
+        (messages.success if done else messages.info)(request, msg)
+        return redirect("expense_list")

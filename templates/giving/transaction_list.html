@@ -30,12 +30,19 @@
   </div>
 </form>
 
+{% if is_treasurer %}<form id="txbulk" method="post" action="{% url 'transaction_bulk_reverse' %}">{% csrf_token %}
+<div class="ws-tb-actions u-mb" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+  <span class="muted u-xs"><span id="txcount">0</span> selected</span>
+  <button name="action" value="reverse" class="btn btn-sm btn-danger" onclick="return confirm('Reverse the selected entries? Each gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.');">Reverse selected</button>
+  <span class="help">Treasury never deletes — reversing posts a contra entry. Already-reversed rows and locked periods are skipped.</span>
+</div>{% endif %}
 <div class="ws-table sticky">
   <table class="ledger tx-table">
-    <thead><tr><th>Date</th><th>Channel</th><th>Payer / detail</th><th>Fund</th><th>Reference</th>{% if show_mpesa_ref %}<th>M-Pesa ref</th>{% endif %}<th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
+    <thead><tr>{% if is_treasurer %}<th style="width:28px"><input type="checkbox" id="txcheckall" title="Select all"></th>{% endif %}<th>Date</th><th>Channel</th><th>Payer / detail</th><th>Fund</th><th>Reference</th>{% if show_mpesa_ref %}<th>M-Pesa ref</th>{% endif %}<th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
     <tbody>
     {% for t in transactions %}
       <tr class="{% if t.direction == 'DEBIT' %}tx-debit{% endif %}{% if t.is_reversed %} tx-reversed{% endif %}">
+        {% if is_treasurer %}<td>{% if not t.is_reversed and not t.is_reversal %}<input type="checkbox" name="ids" value="{{ t.id }}" class="txchk">{% endif %}</td>{% endif %}
         <td class="mono">{{ t.date|date:"d/m/y" }}{% if t.service_sabbath and t.service_sabbath != t.date %}<br><span class="muted u-xs" title="Counted on this Sabbath">→ {{ t.service_sabbath|date:"d/m" }}</span>{% endif %}</td>
         <td><span class="pill {% if t.channel == 'BANK' %}pill-blue{% elif t.channel == 'CASH' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_channel_display }}</span></td>
         <td>{% if t.member %}<a href="{% url 'member_detail' t.member.id %}">{{ t.payer_name|default:t.member.name }}</a>{% else %}{{ t.payer_name|default:"—" }}{% endif %}{% if t.payer_phone %}<br><span class="muted mono u-xs">{{ t.payer_phone }}</span>{% endif %}</td>
@@ -44,12 +51,23 @@
         {% if show_mpesa_ref %}<td class="mono muted">{{ t.mpesa_ref|default:"—" }}</td>{% endif %}
         <td><span class="pill {% if t.allocation_status == 'REVIEW' %}pill-amber{% elif t.allocation_status == 'AUTO' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_allocation_status_display }}</span></td>
         <td class="num mono {% if t.direction == 'DEBIT' %}row-debit{% endif %}">{% if t.direction == 'DEBIT' %}({{ t.amount|floatformat:2|intcomma }}){% else %}{{ t.amount|floatformat:2|intcomma }}{% endif %}</td>
-        {% if can_enter_data %}<td class="num u-nowrap"><a class="link" href="{% url 'transaction_edit' t.id %}">Edit</a>{% if cash_only and t.channel == 'CASH' and t.direction == 'CREDIT' and not t.is_reversed and not t.is_reversal and not t.processed_via_envelope %} <form method="post" action="{% url 'cash_delete' t.id %}" class="u-inline" onsubmit="return confirm('Delete this cash entry? It is the same record as its ledger row, so it will be removed from the ledger too. This cannot be undone.');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}{% if is_treasurer and not t.is_reversal and not t.is_reversed %} <a class="link" href="{% url 'transaction_split' t.id %}">Split</a> <form method="post" action="{% url 'transaction_reverse' t.id %}" class="u-inline" onsubmit="return confirm('Reverse this entry? A contra posting is created; if it came from an envelope, the envelope receipt is deleted.');">{% csrf_token %}<button class="link link-danger" type="submit">Reverse</button></form>{% endif %}{% if t.channel == 'BANK' and t.direction == 'CREDIT' and t.department_id and not t.processed_via_envelope and not t.manual_receipt and not t.sabbath_confirm_pending and not t.is_reversed and not t.is_reversal %} <a class="link" href="{% url 'receipt_one_bank' t.id %}" title="Receipt this bank contribution as an envelope (optionally with your own receipt number)">Receipt</a>{% endif %}{% if t.manual_receipt %} <span class="pill pill-brass" title="Receipted manually on paper — no system envelope">manual receipt</span>{% elif t.processed_via_envelope %} <span class="pill pill-grey" title="A system envelope was created">receipted</span>{% endif %}{% if t.is_reversed %} <span class="pill pill-grey">reversed</span>{% endif %}{% if t.is_reversal %} <span class="pill pill-amber">reversal</span>{% endif %}</td>{% endif %}
+        {% if can_enter_data %}<td class="num u-nowrap"><a class="link" href="{% url 'transaction_edit' t.id %}">Edit</a>{% if cash_only and t.channel == 'CASH' and t.direction == 'CREDIT' and not t.is_reversed and not t.is_reversal and not t.processed_via_envelope %} <form method="post" action="{% url 'cash_delete' t.id %}" class="u-inline" onsubmit="return confirm('Delete this cash entry? It is the same record as its ledger row, so it will be removed from the ledger too. This cannot be undone.');">{% csrf_token %}<button class="link link-danger" type="submit">Delete</button></form>{% endif %}{% if is_treasurer and not t.is_reversal and not t.is_reversed %} <a class="link" href="{% url 'transaction_split' t.id %}">Split</a>{% endif %}{% if t.channel == 'BANK' and t.direction == 'CREDIT' and t.department_id and not t.processed_via_envelope and not t.manual_receipt and not t.sabbath_confirm_pending and not t.is_reversed and not t.is_reversal %} <a class="link" href="{% url 'receipt_one_bank' t.id %}" title="Receipt this bank contribution as an envelope (optionally with your own receipt number)">Receipt</a>{% endif %}{% if t.manual_receipt %} <span class="pill pill-brass" title="Receipted manually on paper — no system envelope">manual receipt</span>{% elif t.processed_via_envelope %} <span class="pill pill-grey" title="A system envelope was created">receipted</span>{% endif %}{% if t.is_reversed %} <span class="pill pill-grey">reversed</span>{% endif %}{% if t.is_reversal %} <span class="pill pill-amber">reversal</span>{% endif %}</td>{% endif %}
       </tr>
-    {% empty %}<tr><td colspan="9"><div class="ws-empty"><div class="we-mark">≣</div><div class="we-title">No entries to show</div><div class="we-hint">{% if has_filters %}Nothing matches these filters — <a href="{% url 'transaction_list' %}">clear them</a>.{% else %}Import a bank statement or record a cash entry to begin.{% endif %}</div></div></td></tr>{% endfor %}
+    {% empty %}<tr><td colspan="11"><div class="ws-empty"><div class="we-mark">≣</div><div class="we-title">No entries to show</div><div class="we-hint">{% if has_filters %}Nothing matches these filters — <a href="{% url 'transaction_list' %}">clear them</a>.{% else %}Import a bank statement or record a cash entry to begin.{% endif %}</div></div></td></tr>{% endfor %}
     </tbody>
   </table>
 </div>
+{% if is_treasurer %}</form>
+<script>
+(function(){
+  var all=document.getElementById('txcheckall'),
+      rows=function(){return Array.prototype.slice.call(document.querySelectorAll('.txchk'));},
+      count=document.getElementById('txcount');
+  function upd(){count.textContent=rows().filter(function(c){return c.checked;}).length;}
+  if(all){all.addEventListener('change',function(){rows().forEach(function(c){c.checked=all.checked;});upd();});}
+  document.addEventListener('change',function(e){if(e.target&&e.target.classList.contains('txchk'))upd();});
+})();
+</script>{% endif %}
 {% include 'partials/pagination.html' %}
 
 <style>
