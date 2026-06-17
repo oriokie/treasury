@@ -38,6 +38,10 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.39.0": "New Collections Detail report: pick any period and see collections broken down by "
+              "fund, with trust/local subtotals and a grand total that reconciles exactly to the "
+              "Collections Summary for the same dates. Downloads to Excel and CSV. Linked from the "
+              "reports menu and the summary page.",
     "1.38.1": "Fixed campaign fallback allocation: a matched giver's contribution now splits to "
               "their own subgroup fund (e.g. CAMP_1) instead of landing on the campaign's parent "
               "fund. The subgroup fund is created on demand under the parent and inherits its "

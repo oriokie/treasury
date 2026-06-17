@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.39.0 - Collections Detail report
+- New /reports/collections-detail/ (CollectionsDetailView, PeriodMixin): collections for any
+  chosen period broken down by fund, with Trust/Local subtotals and a grand total. Uses the same
+  definition as the Collections Summary (confirmed credits, excluded_from_income=False; trust via
+  is_trust), so totals reconcile exactly for matching dates. Headline strip shows Collections,
+  Trust, Local, Expenditure and Net for the period.
+- Excel (.xlsx) and CSV downloads. Linked from the reports index and the Collections Summary page.
+- monthly.collections_detail() service added.
+
 ## v1.38.1 - campaign fallback splits to subgroups (fix)
 - campaign_allocate now returns the matched member's subgroup fund, not the campaign's parent.
   Campaign.subgroup_department() gets-or-creates a child Department named after the member's

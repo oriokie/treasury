@@ -1,0 +1,55 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Collections detail · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+{% include "ui/print_header.html" with title="Collections Detail" %}
+<div class="page-head">
+  <div><h1>Collections detail</h1>
+    <div class="sub">{{ CHURCH_NAME }} · {{ start }} to {{ end }} — collections by fund, reconciling to the Collections Summary</div></div>
+  <div class="head-actions no-print">
+    <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">&#x2913; Excel</a>
+    <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=csv">CSV</a>
+    <a class="btn btn-sm btn-ghost" href="{% url 'report_collections_summary' %}">Summary view</a>
+  </div>
+</div>
+
+{% include 'partials/period_filter.html' %}
+
+<div class="stat-strip">
+  <div class="stat"><div class="stat-label">Collections</div><div class="stat-value mono">{{ d.tot_collections|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="stat-label">Trust funds</div><div class="stat-value mono">{{ d.tot_trust|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="stat-label">Local funds</div><div class="stat-value mono">{{ d.tot_local|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="stat-label">Expenditure</div><div class="stat-value mono row-debit">{{ d.tot_expenditure|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="stat-label">Net (coll &minus; exp)</div><div class="stat-value mono">{{ d.tot_net|floatformat:0|intcomma }}</div></div>
+</div>
+
+<div class="table-wrap"><table class="ledger report-table">
+  <thead><tr><th>Fund</th><th>Type</th><th class="num">Receipts</th><th class="num">Collected</th></tr></thead>
+  <tbody>
+  {% for r in d.rows %}
+    <tr>
+      <td>{{ r.fund }}</td>
+      <td>{% if r.is_trust %}<span class="pill pill-brass">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
+      <td class="num mono">{{ r.n|intcomma }}</td>
+      <td class="num mono">{{ r.amount|floatformat:0|intcomma }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="4" class="empty">No collections in this period.</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if d.rows %}
+  <tfoot>
+    <tr class="sub-row"><td colspan="3">Trust funds &mdash; subtotal</td><td class="num mono">{{ d.tot_trust|floatformat:0|intcomma }}</td></tr>
+    <tr class="sub-row"><td colspan="3">Local funds &mdash; subtotal</td><td class="num mono">{{ d.tot_local|floatformat:0|intcomma }}</td></tr>
+    <tr class="total-row"><td colspan="2"><strong>TOTAL COLLECTIONS</strong></td><td class="num mono"><strong>{{ d.n_receipts|intcomma }}</strong></td><td class="num mono"><strong>{{ d.tot_collections|floatformat:0|intcomma }}</strong></td></tr>
+  </tfoot>
+  {% endif %}
+</table></div>
+<style>
+.stat-strip{display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0}
+.stat-strip .stat{flex:1;min-width:120px;border:1px solid var(--line);border-radius:8px;padding:.6rem .8rem}
+.stat-strip .stat-label{font-size:.75rem;color:var(--muted)}
+.stat-strip .stat-value{font-size:1.2rem;font-weight:600}
+.sub-row td{border-top:1px solid var(--line);color:var(--muted)}
+.total-row td{border-top:2px solid var(--line)}
+</style>
+{% endblock %}

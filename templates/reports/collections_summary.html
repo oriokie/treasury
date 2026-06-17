@@ -2,7 +2,8 @@
 {% block title %}Collections summary · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Collections Summary" %}
-<div class="page-head"><div><h1>Collections summary</h1><div class="sub">{{ CHURCH_NAME }} · {{ year }} — collections, trust funds &amp; expenditure by month</div></div></div>
+<div class="page-head"><div><h1>Collections summary</h1><div class="sub">{{ CHURCH_NAME }} · {{ year }} — collections, trust funds &amp; expenditure by month</div></div>
+<div class="head-actions no-print"><a class="btn btn-sm btn-ghost" href="{% url 'report_collections_detail' %}">Detail by fund</a></div></div>
 {% include 'reports/_year_filter.html' %}
 <div class="table-wrap"><table class="ledger report-table">
   <thead><tr><th>Month</th><th class="num">Collections</th><th class="num">Trust funds</th><th class="num">Local funds</th><th class="num">Expenditure</th><th class="num">Net (coll − exp)</th></tr></thead>

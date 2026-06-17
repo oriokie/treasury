@@ -135,3 +135,53 @@ def collections_summary(year):
     return {"rows": rows, "tot_collections": tot_c, "tot_trust": tot_t,
             "tot_local": tot_c - tot_t, "tot_expenditure": tot_e,
             "tot_net": tot_c - tot_e}
+
+
+def collections_detail(start, end):
+    """Detailed collections for a given period, broken down by fund.
+
+    Uses exactly the same definition as collections_summary() — confirmed
+    credits with excluded_from_income=False — so the grand total reconciles to
+    that report's Collections figure for the same dates. Trust funds are those
+    flagged is_trust; everything else (local funds and any unallocated credit)
+    is Local, mirroring the summary's `local = collections - trust`.
+
+    Returns per-fund rows plus the period's trust/local/collections totals and
+    the matching expenditure and net, so the page can show the same headline
+    figures as the summary alongside the breakdown.
+    """
+    from django.db.models import Count, Sum as _Sum
+    base = (Transaction.objects.confirmed_credits()
+            .filter(excluded_from_income=False, date__gte=start, date__lte=end))
+    agg = (base.values("department", "department__name", "department__is_trust")
+           .annotate(amount=_Sum("amount"), n=Count("id")))
+    rows = []
+    for r in agg:
+        amt = r["amount"] or Decimal(0)
+        is_trust = bool(r["department__is_trust"])
+        rows.append({
+            "fund": r["department__name"] or "(Unallocated)",
+            "is_trust": is_trust,
+            "type": "Trust" if is_trust else "Local",
+            "n": r["n"],
+            "amount": amt,
+        })
+    # trust funds first, then local, each by amount descending
+    rows.sort(key=lambda x: (not x["is_trust"], -x["amount"]))
+    tot_trust = sum((x["amount"] for x in rows if x["is_trust"]), Decimal(0))
+    tot_collections = sum((x["amount"] for x in rows), Decimal(0))
+    tot_local = tot_collections - tot_trust
+    exp = (Expense.objects.exclude(category=Expense.Category.REMITTANCE)
+           .filter(date__gte=start, date__lte=end,
+                   status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+           .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+    return {
+        "rows": rows,
+        "n_funds": len(rows),
+        "n_receipts": sum(x["n"] for x in rows),
+        "tot_trust": tot_trust,
+        "tot_local": tot_local,
+        "tot_collections": tot_collections,
+        "tot_expenditure": exp,
+        "tot_net": tot_collections - exp,
+    }

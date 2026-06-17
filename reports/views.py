@@ -759,6 +759,35 @@ class CollectionsSummaryView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
+class CollectionsDetailView(PeriodMixin, TemplateView):
+    """Detailed collections for any chosen period, broken down by fund. The grand
+    total reconciles to the Collections figure on the Collections Summary for the
+    same dates. Exports to Excel (.xlsx) and CSV."""
+    template_name = "reports/collections_detail.html"
+
+    def get(self, request, *args, **kwargs):
+        s, e = self.period()
+        data = monthly.collections_detail(s, e)
+        export = request.GET.get("export")
+        if export in ("xlsx", "csv"):
+            header = ["Fund", "Type", "Receipts", "Collected"]
+            rows = [[r["fund"], r["type"], r["n"], float(r["amount"])] for r in data["rows"]]
+            rows.append(["Trust funds — subtotal", "", "", float(data["tot_trust"])])
+            rows.append(["Local funds — subtotal", "", "", float(data["tot_local"])])
+            rows.append(["TOTAL COLLECTIONS", "", data["n_receipts"], float(data["tot_collections"])])
+            fname = f"collections_detail_{s}_{e}"
+            if export == "csv":
+                return csv_response(fname + ".csv", header, rows)
+            from reports.exports import xlsx_response
+            from core.models import SiteConfig
+            return xlsx_response(fname + ".xlsx", header, rows,
+                                 title=f"Collections detail ({s} to {e})",
+                                 church=SiteConfig.get().church_name)
+        ctx = self.get_context_data(**kwargs)
+        ctx.update(d=data)
+        return self.render_to_response(ctx)
+
+
 # ===================== Trust Fund Remittance subsystem =====================
 import datetime as _dt
 from django.utils import timezone as _tz
