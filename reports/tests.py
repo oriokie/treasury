@@ -46,7 +46,7 @@ class RemitAndConsolidationTests(TestCase):
         parent = Department.objects.create(name="LCB", fund_type=Department.FundType.LOCAL)
         self.sub = Department.objects.create(name="SS", parent=parent,
                                              fund_type=Department.FundType.LOCAL)
-        Transaction.objects.create(date=dt.date(2026, 5, 10), channel="CASH",
+        Transaction.objects.create(date=dt.date(2026, 5, 10), channel="ENVELOPE",
             direction="CREDIT", amount=Decimal("5000"), department=self.trust,
             allocation_status="AUTO")
         Transaction.objects.create(date=dt.date(2026, 5, 10), channel="CASH",
@@ -80,7 +80,7 @@ class RemittanceBatchTests(TestCase):
         from giving.models import Transaction
         self.u = User.objects.create_superuser("rb", password="x")
         self.trust = Department.objects.create(name="Tithe", fund_type=Department.FundType.TRUST)
-        Transaction.objects.create(date=dt.date(2026, 5, 1), channel="BANK", direction="CREDIT",
+        Transaction.objects.create(date=dt.date(2026, 5, 1), channel="ENVELOPE", direction="CREDIT",
             amount=Decimal("1000"), department=self.trust, allocation_status="AUTO")
         from ledger.services import posting
         posting.rebuild()  # build the chart + post the ledger so remittances post too
@@ -305,7 +305,7 @@ class IssueFixesTests(TestCase):
         self.u = User.objects.create_superuser("if", password="x")
         self.tr = Department.objects.create(name="Tithe", fund_type=Department.FundType.TRUST)
         self.loc = Department.objects.create(name="Youth", fund_type=Department.FundType.LOCAL)
-        Transaction.objects.create(date=dt.date(2026, 5, 2), channel="BANK", direction="CREDIT",
+        Transaction.objects.create(date=dt.date(2026, 5, 2), channel="ENVELOPE", direction="CREDIT",
             amount=Decimal("10000"), department=self.tr, allocation_status="AUTO", confirmed=True)
         Transaction.objects.create(date=dt.date(2026, 5, 2), channel="CASH", direction="CREDIT",
             amount=Decimal("4000"), department=self.loc, allocation_status="MANUAL", confirmed=True)
@@ -559,8 +559,17 @@ class PendingBankReceiptTests(TestCase):
         t.confirmed = True
         t.save()
         self.assertEqual(pending_receipts_total(), Decimal(0))
-        to_remit = {r["department"].id: r["to_remit"] for r in trust_summary()}
-        self.assertEqual(to_remit.get(self.trust.id), Decimal("3000"))
+        rows = {r["department"].id: r for r in trust_summary()}
+        # confirmed but no receipt yet -> recognised as UNRECEIPTED trust, not to-remit
+        self.assertEqual(rows[self.trust.id]["to_remit"], Decimal(0))
+        self.assertEqual(rows[self.trust.id]["unreceipted"], Decimal("3000"))
+        self.assertEqual(rows[self.trust.id]["total_liability"], Decimal("3000"))
+        # issuing a receipt (envelope) moves it into the amount due to remit
+        t.channel = "ENVELOPE"
+        t.save()
+        rows = {r["department"].id: r for r in trust_summary()}
+        self.assertEqual(rows[self.trust.id]["to_remit"], Decimal("3000"))
+        self.assertEqual(rows[self.trust.id]["unreceipted"], Decimal(0))
 
     def test_sofp_balances_with_pending(self):
         from django.urls import reverse

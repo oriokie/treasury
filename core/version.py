@@ -38,6 +38,26 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.42.0": "Trust funds now separate receipted from unreceipted money: only RECEIPTED trust "
+              "money (a receipt issued — envelope or manual) is shown as outstanding to remit, "
+              "and trust money received but not yet receipted appears on its own “unreceipted "
+              "(pending receipting)” liability line across the Trust report, Remittance advice, "
+              "Conference submission and the remittance dashboard. New “Construction in progress” "
+              "asset category that doesn't depreciate, with a tool to accumulate its cost from "
+              "capital expenses (any fund, any date range incl. prior years) or set it manually. "
+              "Fixed the envelope-ledger name autocomplete (the scroll container was hiding it). "
+              "Budget breakdown lines can record the quarter a fund expects to spend them.",
+    "1.41.0": "Budget breakdown lines can now carry the quarter a fund expects to spend them "
+              "(Q1–Q4, or blank for spread across the year), shown on the budget page for "
+              "planning insight. Statement import already updates a known member's phone when "
+              "they had none, and the envelope ledger already autocompletes names from the "
+              "members list.",
+    "1.40.0": "Fund ledger sub-accounts can now be downloaded to Excel/CSV. The fund structure "
+              "import gained a \"Show in expenses\" column. Transaction-charge expenses now name "
+              "the parent expense they belong to. The Offering/Collection summary scales to fit a "
+              "single A4 landscape page when printed. And the backup workbook now records, for "
+              "audit only, who created each row (Transactions, Expenses, Members, Departments, "
+              "Reconciliations) — never shown in the app or on-screen reports.",
     "1.39.0": "New Collections Detail report: pick any period and see collections broken down by "
               "fund, with trust/local subtotals and a grand total that reconciles exactly to the "
               "Collections Summary for the same dates. Downloads to Excel and CSV. Linked from the "

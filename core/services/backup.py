@@ -169,6 +169,18 @@ def full_excel_export_response(year=None):
     TOTAL_FONT = Font(bold=True)
     money_cols_cache = {}
 
+    def _creators(model):
+        """Audit-only map pk -> username of whoever first created the row, read
+        from simple-history's create record. Deliberately NOT shown in the UI or
+        any on-screen report — it exists only in this backup workbook so an
+        auditor can see who entered each record. One query per table."""
+        try:
+            return {h["id"]: (h["history_user__username"] or "")
+                    for h in model.history.filter(history_type="+")
+                    .values("id", "history_user__username")}
+        except Exception:
+            return {}
+
     def _sheet(name, header, rows, title=None, money_cols=(), total_row=None):
         ws = wb.create_sheet(name[:31])
         r = 1
@@ -298,53 +310,62 @@ def full_excel_export_response(year=None):
            cashbook, title="Cash book", money_cols=(4, 5, 6))
 
     # ---- Raw tables -------------------------------------------------------
+    _dcre = _creators(Department)
     _sheet("Departments",
-           ["ID", "Name", "Type", "Category", "Trust", "Opening balance"],
+           ["ID", "Name", "Type", "Category", "Trust", "Opening balance", "Created by"],
            [[d.id, d.name, d.fund_type, d.category, "Y" if d.is_trust else "",
-             float(d.opening_balance or 0)]
+             float(d.opening_balance or 0), _dcre.get(d.id, "")]
             for d in Department.objects.all().order_by("name")],
            money_cols=(6,))
 
+    _mcre = _creators(Member)
     _sheet("Members",
-           ["ID", "Name", "Primary phone", "All phones", "Group", "Source", "Active"],
+           ["ID", "Name", "Primary phone", "All phones", "Group", "Source", "Active",
+            "Created by"],
            [[m.id, m.name, m.receipt_phone or "",
              ", ".join(m.phones.values_list("number", flat=True)) or (m.phone or ""),
-             m.group or "", m.get_source_display(), "Y" if m.active else ""]
+             m.group or "", m.get_source_display(), "Y" if m.active else "",
+             _mcre.get(m.id, "")]
             for m in Member.objects.all().order_by("name")])
 
+    _tcre = _creators(Transaction)
     _sheet("Transactions",
            ["ID", "Date", "Channel", "Direction", "Amount", "Fund", "Dev group",
             "Member / payer", "Reference", "M-Pesa ref", "Status", "Confirmed",
-            "Excluded from income"],
+            "Excluded from income", "Created by"],
            [[t2.id, t2.date.isoformat(), t2.channel, t2.direction, float(t2.amount),
              t2.department.name if t2.department_id else "",
              t2.dev_group.number if t2.dev_group_id else "",
              t2.member.name if t2.member_id else (t2.payer_name or ""),
              t2.reference or "", t2.mpesa_ref or "", t2.allocation_status,
-             "Y" if t2.confirmed else "", "Y" if t2.excluded_from_income else ""]
+             "Y" if t2.confirmed else "", "Y" if t2.excluded_from_income else "",
+             _tcre.get(t2.id, "")]
             for t2 in Transaction.objects.select_related(
                 "department", "dev_group", "member").order_by("date")],
            money_cols=(5,))
 
+    _xcre = _creators(Expense)
     _sheet("Expenses",
            ["ID", "Date", "Fund", "Description", "Amount", "Category", "Method",
-            "Status", "Claimant", "Voucher", "Recorded by"],
+            "Status", "Claimant", "Voucher", "Recorded by", "Created by"],
            [[x.id, x.date.isoformat(), x.department.name if x.department_id else "",
              x.description, float(x.amount), x.get_category_display(),
              x.method, x.get_status_display(), x.claimant or "",
-             x.voucher_no or "", x.recorded_by.username if x.recorded_by_id else ""]
+             x.voucher_no or "", x.recorded_by.username if x.recorded_by_id else "",
+             _xcre.get(x.id, "")]
             for x in Expense.objects.select_related(
                 "department", "recorded_by").order_by("date")],
            money_cols=(5,))
 
     try:
         from statements.models import BankReconciliation
+        _rcre = _creators(BankReconciliation)
         _sheet("Reconciliations",
                ["ID", "Statement date", "Bank balance", "Book balance", "Difference",
-                "Reconciled"],
+                "Reconciled", "Created by"],
                [[r.id, r.statement_date.isoformat(), float(r.bank_balance),
                  float(r.book_balance or 0), float(r.difference or 0),
-                 "Y" if r.is_reconciled else ""]
+                 "Y" if r.is_reconciled else "", _rcre.get(r.id, "")]
                 for r in BankReconciliation.objects.order_by("statement_date")],
                money_cols=(3, 4, 5))
     except Exception:

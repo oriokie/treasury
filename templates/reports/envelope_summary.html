@@ -10,7 +10,7 @@
   <button class="btn btn-sm">View</button>
 </form>
 
-<div class="print-sheet">
+<div class="print-sheet"><div class="print-scale">
   <div class="print-head">
     <div class="ph-church">{{ CHURCH_NAME }}</div>
     <div class="ph-title">Collection / Offering Summary</div>
@@ -36,7 +36,9 @@
     <div class="sign"><div class="sign-line"></div><div class="sign-role">Pastor</div><div class="sign-name">{{ cfg.sig_pastor }}</div></div>
     <div class="sign"><div class="sign-line"></div><div class="sign-role">First Church Elder</div><div class="sign-name">{{ cfg.sig_elder }}</div></div>
   </div>
-</div>
+</div></div>
+
+<div id="mm-ruler" style="position:absolute;width:100mm;height:0;visibility:hidden"></div>
 
 <style>
 .print-head{text-align:center;margin-bottom:1rem}
@@ -57,15 +59,40 @@
 .sign-role{font-weight:600;font-size:.85rem}
 .sign-name{color:var(--muted);font-size:.85rem;min-height:1.1em}
 @media print{
-  @page{size:A4 landscape;margin:10mm}
+  @page{size:A4 landscape;margin:8mm}
   html,body{background:#fff}
   body *{visibility:hidden}
   .print-sheet,.print-sheet *{visibility:visible}
-  .print-sheet{position:absolute;left:0;top:0;width:100%}
+  .print-sheet{position:absolute;left:0;top:0;width:281mm;height:194mm;overflow:hidden}
+  .print-scale{transform-origin:top left}
   .no-print{display:none!important}
-  .report-table th,.report-table td{padding:2px 4px;font-size:7.8pt}
   .report-table th.sat{font-size:6.8pt}
   .report-table,.section-row td,.grand-row td,.total-row td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 </style>
+<script>
+(function(){
+  function fit(){
+    var sheet=document.querySelector('.print-sheet'),
+        scale=document.querySelector('.print-scale'),
+        ruler=document.getElementById('mm-ruler');
+    if(!sheet||!scale||!ruler) return;
+    scale.style.transform='none';
+    var pxPerMm=ruler.offsetWidth/100;          // measured at print media
+    var boxW=281*pxPerMm, boxH=194*pxPerMm;
+    var w=scale.scrollWidth, h=scale.scrollHeight;
+    var f=Math.min(boxW/w, boxH/h, 1);
+    if(f<1) scale.style.transform='scale('+f.toFixed(4)+')';
+  }
+  window.addEventListener('beforeprint', fit);
+  window.addEventListener('afterprint', function(){
+    var scale=document.querySelector('.print-scale'); if(scale) scale.style.transform='none';
+  });
+  // Safari/Chrome print preview path
+  if(window.matchMedia){
+    var mq=window.matchMedia('print');
+    mq.addListener && mq.addListener(function(m){ if(m.matches) fit(); });
+  }
+})();
+</script>
 {% endblock %}

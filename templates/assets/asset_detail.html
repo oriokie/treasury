@@ -20,7 +20,21 @@
 </div></div>
 
 {% if is_treasurer and not asset.disposed %}
-<div class="card u-narrow-md u-mt"><div class="hd">Dispose of this asset</div><div class="bd">
+<div class="card u-narrow-md u-mt"><div class="hd">Accumulate cost from capital expenses</div><div class="bd">
+  <form method="post" action="{% url 'asset_accumulate' asset.id %}">{% csrf_token %}
+    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+      <div class="form-row"><label>Fund the work is paid from</label><select name="fund" class="field--select" required><option value="">—</option>{% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+      <div class="form-row"><label>Mode</label><select name="mode" class="field--select"><option value="set">Set cost to total</option><option value="add">Add total to current cost</option></select></div>
+      <div class="form-row"><label>From date (incl. prior years)</label><input type="date" name="start" class="field"></div>
+      <div class="form-row"><label>To date</label><input type="date" name="end" value="{{ today|date:'Y-m-d' }}" class="field"></div>
+    </div>
+    <p class="help">Totals the <strong>capital</strong> expenses (approved or paid) on the chosen fund over the date range — leave “From” blank to include every prior year — and uses it as this asset's cost. You can also just type the cost on the <a class="link" href="{% url 'asset_edit' asset.id %}">edit</a> page.</p>
+    <div class="btn-row"><button class="btn">Accumulate cost</button></div>
+  </form>
+</div></div>
+{% endif %}
+
+{% if is_treasurer and not asset.disposed %}
   <form method="post" action="{% url 'asset_dispose' asset.id %}">{% csrf_token %}
     <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
       <div class="form-row"><label>Date</label><input type="date" name="disposed_on" value="{{ today|date:'Y-m-d' }}" class="field"></div>

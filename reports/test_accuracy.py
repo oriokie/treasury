@@ -399,8 +399,11 @@ class TrustAccountingTests(FinancialFixture):
         from reports.services import balances
         trust = balances.trust_summary(None, None)
         row = next(r for r in trust if r["department"].name == "Tithe")
-        # collected 50,000, remitted 40,000 -> 10,000 still to remit
-        self.assertEqual(row["to_remit"], D("10000"))
+        # collected 50,000, remitted 40,000 -> 10,000 still owed in total.
+        # Only RECEIPTED trust money is due to remit; the rest sits on the
+        # unreceipted (pending receipting) line. Both together are the liability.
+        self.assertEqual(row["total_liability"], D("10000"))
+        self.assertEqual(row["to_remit"] + row["unreceipted"], row["total_liability"])
 
 
 # ===========================================================================

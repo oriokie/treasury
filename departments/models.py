@@ -168,6 +168,12 @@ class BudgetLine(models.Model):
     category = models.CharField(max_length=14, blank=True,
                                 help_text="Optional expense category, for line-level actuals.")
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    quarter = models.CharField(
+        max_length=2, blank=True,
+        choices=[("Q1", "Q1 (Jan–Mar)"), ("Q2", "Q2 (Apr–Jun)"),
+                 ("Q3", "Q3 (Jul–Sep)"), ("Q4", "Q4 (Oct–Dec)")],
+        help_text="Optional: the quarter the fund expects to spend this line, "
+                  "for planning insight. Leave blank for spread across the year.")
     source_fund = models.ForeignKey("Department", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="funded_budget_lines",
         help_text="Where the money comes from. Leave blank to fund it from the "
@@ -186,6 +192,10 @@ class BudgetLine(models.Model):
         if self.source_fund_id is None:
             return self.budget.department.name + " (own funds)"
         return self.source_fund.name
+
+    @property
+    def quarter_label(self):
+        return dict(self._meta.get_field("quarter").choices).get(self.quarter, "Whole year")
 
     @property
     def source_kind(self):

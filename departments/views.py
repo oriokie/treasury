@@ -180,6 +180,7 @@ class BudgetLinesView(TreasurerRequiredMixin, View):
             "dept": dept, "year": year, "budget": budget,
             "lines": budget.lines.select_related("source_fund").all(),
             "categories": Expense.Category.choices,
+            "quarters": BudgetLine._meta.get_field("quarter").choices,
             "lcb": lcb, "other_funds": other_funds.order_by("name"),
             "prior_year": year - 1,
             "prior_total": (prior.lines_total if prior else None),
@@ -205,6 +206,7 @@ class BudgetLinesView(TreasurerRequiredMixin, View):
                 source = Department.objects.filter(pk=src_id).first() if src_id else None
                 BudgetLine.objects.create(budget=budget, name=name,
                                           category=request.POST.get("category", ""),
+                                          quarter=request.POST.get("quarter", ""),
                                           amount=amt, source_fund=source)
                 messages.success(request, f"Added budget line \u201c{name}\u201d.")
         elif action == "delete":
@@ -216,7 +218,8 @@ class BudgetLinesView(TreasurerRequiredMixin, View):
                 n = 0
                 for ln in prior.lines.all():
                     BudgetLine.objects.create(budget=budget, name=ln.name,
-                        category=ln.category, amount=ln.amount, source_fund=ln.source_fund)
+                        category=ln.category, amount=ln.amount, source_fund=ln.source_fund,
+                        quarter=ln.quarter)
                     n += 1
                 messages.success(request, f"Copied {n} line(s) from {year - 1}. "
                                           f"Adjust the amounts as needed.")
@@ -775,7 +778,7 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
         wb = openpyxl.Workbook()
         ws = wb.active; ws.title = "Funds"
         head = ["Fund name", "Parent fund (blank = top level)", "Fund type",
-                "Category", "Opening balance"]
+                "Category", "Opening balance", "Show in expenses (Yes/No)"]
         ws.append(head)
         for c in range(1, len(head) + 1):
             cell = ws.cell(1, c)
@@ -783,10 +786,10 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
             cell.fill = PatternFill("solid", fgColor="1F5F4F")
             cell.alignment = Alignment(horizontal="center")
         # worked examples showing a parent and two sub-accounts
-        ws.append(["YOUTH", "", "Local", "Ministry", 0])
-        ws.append(["YOUTH POTLUCK", "YOUTH", "Local", "Ministry", 0])
-        ws.append(["YOUTH MISSION", "YOUTH", "Local", "Development", 0])
-        ws.append(["COMBINED OFFERING TRUST", "", "Trust", "Trust", 0])
+        ws.append(["YOUTH", "", "Local", "Ministry", 0, "Yes"])
+        ws.append(["YOUTH POTLUCK", "YOUTH", "Local", "Ministry", 0, "Yes"])
+        ws.append(["YOUTH MISSION", "YOUTH", "Local", "Development", 0, "No"])
+        ws.append(["COMBINED OFFERING TRUST", "", "Trust", "Trust", 0, "Yes"])
 
         # reference lists
         ref = wb.create_sheet("Lists")
@@ -814,8 +817,10 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
             formula1=f"=Lists!$C$2:$C${len(cats) + 1}", allow_blank=True)
         ws.add_data_validation(dv_ft); ws.add_data_validation(dv_cat)
         dv_ft.add(f"C2:C{nrows}"); dv_cat.add(f"D2:D{nrows}")
+        dv_yn = DataValidation(type="list", formula1='"Yes,No"', allow_blank=True)
+        ws.add_data_validation(dv_yn); dv_yn.add(f"F2:F{nrows}")
 
-        for col, w in zip("ABCDE", (28, 30, 14, 16, 16)):
+        for col, w in zip("ABCDEF", (28, 30, 14, 16, 16, 22)):
             ws.column_dimensions[col].width = w
 
         info = wb.create_sheet("How to fill this in")
@@ -832,6 +837,8 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
             "  • Category — Offering, Ministry, Development, Holding or Trust.",
             "  • Opening balance — optional brought-forward balance (usually 0 for",
             "      a new fund).",
+            "  • Show in expenses — Yes (default) lists the fund in the expense",
+            "      picker; No hides it (collection-only funds never spent directly).",
             "",
             "Existing funds are NOT changed; a row whose name already exists is",
             "skipped on import. Parents are created before their sub-accounts, so",
@@ -875,6 +882,7 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
         c_type = col("fund type", "type")
         c_cat = col("category")
         c_open = col("opening balance", "opening", "b/f")
+        c_show = col("show in expenses (yes/no)", "show in expenses", "show in expense", "show")
         if c_name is None:
             messages.error(request, "Couldn't find a 'Fund name' column — please use the template.")
             return redirect("fund_structure_import")
@@ -906,9 +914,11 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
                     and r[c_open] not in (None, "") else 0.0
             except (TypeError, ValueError):
                 opening = 0.0
+            show_raw = cell(r, c_show).strip().lower()
+            show = False if show_raw in ("no", "n", "false", "0", "hide") else True
             plan.append({
                 "name": name_u, "parent": parent.upper() if parent else "",
-                "ftype": ftype, "cat": cat, "opening": opening,
+                "ftype": ftype, "cat": cat, "opening": opening, "show": show,
                 "exists": name_u in existing_names,
             })
 
@@ -954,6 +964,7 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
             Department.objects.get_or_create(
                 name=p["name"],
                 defaults={"fund_type": p["ftype"], "category": p["cat"],
+                          "show_in_expenses": p.get("show", True),
                           "opening_balance": Decimal(str(p["opening"]))})
             created += 1
         # pass 2: create sub-accounts (parent now exists)
@@ -971,7 +982,7 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
             Department.objects.get_or_create(
                 name=p["name"],
                 defaults={"fund_type": parent.fund_type, "category": p["cat"],
-                          "parent": parent,
+                          "parent": parent, "show_in_expenses": p.get("show", True),
                           "opening_balance": Decimal(str(p["opening"]))})
             created += 1; subs += 1
 

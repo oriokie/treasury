@@ -270,7 +270,7 @@ class FundLedgerView(PeriodMixin, TemplateView):
     template_name = "reports/fund_ledger.html"
 
     def get(self, request, *args, **kwargs):
-        if request.GET.get("export") in ("xlsx", "csv"):
+        if request.GET.get("export") in ("xlsx", "csv", "subgroups", "subgroups-csv"):
             return self._export(request, *args, **kwargs)
         return super().get(request, *args, **kwargs)
 
@@ -279,6 +279,29 @@ class FundLedgerView(PeriodMixin, TemplateView):
         from core.models import SiteConfig
         ctx = self.get_context_data(**kwargs)
         dept = ctx["department"]
+        mode = request.GET.get("export")
+
+        # subgroup breakdown export (sub-accounts beneath this fund)
+        if mode in ("subgroups", "subgroups-csv"):
+            header = ["ID", "Subgroup", "Type", "Receipts", "Payments", "Closing balance"]
+            rows = []
+            for r in ctx["subgroups"]:
+                sub = r["sub"]
+                rows.append([sub.id, sub.name,
+                             "Trust" if sub.is_trust else "Local",
+                             float(r["receipts"]), float(r["payments"]), float(r["closing"])])
+            for r in ctx.get("dev_rows", []):
+                g = r["group"]
+                rows.append([getattr(g, "id", ""), g.name, "Local",
+                             float(r["receipts"]), "", float(r["receipts"])])
+            rows.append(["", "TOTAL", "", "", "", float(ctx["subgroup_total"])])
+            fname = f"fund-{dept.slug or dept.id}-subgroups-{ctx['start']}-{ctx['end']}"
+            if mode == "subgroups-csv":
+                return csv_response(fname + ".csv", header, rows)
+            return xlsx_response(fname + ".xlsx", header, rows,
+                                 title=f"{dept.name} — sub-accounts ({ctx['start']} to {ctx['end']})",
+                                 church=SiteConfig.get().church_name)
+
         header = ["ID", "Type", "Date", "Description", "Debit", "Credit", "Balance"]
         rows = [["", "", "", "Opening balance", "", "", float(ctx["opening"])]]
         for en in ctx["entries"]:
@@ -385,6 +408,8 @@ class TrustFundView(PeriodMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["rows"] = balances.trust_summary(ctx["start"], ctx["end"])
         ctx["total_to_remit"] = sum(r["to_remit"] for r in ctx["rows"])
+        ctx["total_unreceipted"] = sum((r["unreceipted"] for r in ctx["rows"]), Decimal(0))
+        ctx["total_liability"] = sum((r["total_liability"] for r in ctx["rows"]), Decimal(0))
         ctx["batches"] = (RemittanceBatch.objects
                           .order_by("-date", "-id")[:25])
         ctx["remitted_total"] = sum(r["remitted"] for r in ctx["rows"])
@@ -398,6 +423,7 @@ class RemittanceView(PeriodMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         ctx["rows"] = balances.trust_summary(ctx["start"], ctx["end"])
         ctx["total"] = sum(r["to_remit"] for r in ctx["rows"])
+        ctx["total_unreceipted"] = sum((r["unreceipted"] for r in ctx["rows"]), Decimal(0))
         return ctx
 
 
@@ -835,6 +861,7 @@ def remittance_dashboard_rows(start=None, end=None):
         rows.append({
             "department": r["department"], "collected": r["collected"],
             "remitted": r["remitted"], "outstanding": out,
+            "unreceipted": r["unreceipted"],
             "days": _days_outstanding(r["department"]) if out > 0 else 0,
         })
     return rows
@@ -875,6 +902,7 @@ class RemittanceDashboardView(ReadAccessMixin, TemplateView):
         ctx["total_outstanding"] = sum((r["outstanding"] for r in rows), Decimal(0))
         ctx["total_collected"] = sum((r["collected"] for r in rows), Decimal(0))
         ctx["total_remitted"] = sum((r["remitted"] for r in rows), Decimal(0))
+        ctx["total_unreceipted"] = sum((r["unreceipted"] for r in rows), Decimal(0))
         ctx["max_days"] = max([r["days"] for r in rows], default=0)
         # Next remittance: use the configured per-month deadlines if any exist
         # (their dates are set freely per month, not on a fixed day). We count
@@ -1304,6 +1332,7 @@ class BoardReportView(PeriodMixin, TemplateView):
         ctx["local_rows"] = [r for r in rows if not r["is_trust"]]
         ctx["trust_summary"] = balances.trust_summary(s, e)
         ctx["trust_outstanding"] = sum((r["to_remit"] for r in ctx["trust_summary"]), Decimal(0))
+        ctx["trust_unreceipted"] = sum((r["unreceipted"] for r in ctx["trust_summary"]), Decimal(0))
         ctx["by_channel"] = balances.income_by_channel(s, e)
         ctx["church"] = cfg.church_name
 
@@ -1499,12 +1528,17 @@ class ConferenceSubmissionView(PeriodMixin, TemplateView):
         rows = balances.trust_summary(s, e)
         cfg = SiteConfig.get()
         if request.GET.get("export") in ("csv", "xlsx"):
-            header = ["Trust fund", "Collected", "Remitted", "To remit"]
-            data = [[r["department"].name, r["collected"], r["remitted"], r["to_remit"]] for r in rows]
+            header = ["Trust fund", "Collected", "Remitted",
+                      "Outstanding to remit (receipted)", "Unreceipted (pending)",
+                      "Total trust liability"]
+            data = [[r["department"].name, r["collected"], r["remitted"], r["to_remit"],
+                     r["unreceipted"], r["total_liability"]] for r in rows]
             data.append(["TOTAL",
                          sum((r["collected"] for r in rows), Decimal(0)),
                          sum((r["remitted"] for r in rows), Decimal(0)),
-                         sum((r["to_remit"] for r in rows), Decimal(0))])
+                         sum((r["to_remit"] for r in rows), Decimal(0)),
+                         sum((r["unreceipted"] for r in rows), Decimal(0)),
+                         sum((r["total_liability"] for r in rows), Decimal(0))])
             ex = _export(request, f"conference_{s}_{e}", header, data, "Conference submission")
             if ex:
                 return ex
@@ -1513,6 +1547,8 @@ class ConferenceSubmissionView(PeriodMixin, TemplateView):
             "collected": sum((r["collected"] for r in rows), Decimal(0)),
             "remitted": sum((r["remitted"] for r in rows), Decimal(0)),
             "to_remit": sum((r["to_remit"] for r in rows), Decimal(0)),
+            "unreceipted": sum((r["unreceipted"] for r in rows), Decimal(0)),
+            "total_liability": sum((r["total_liability"] for r in rows), Decimal(0)),
         }
         ctx["field_name"] = cfg.field_name
         ctx["church"] = cfg.church_name

@@ -21,7 +21,8 @@
 <div class="kpi-row">
   <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|floatformat:0|intcomma }}</div></div>
   <div class="kpi"><div class="kpi-label">Remitted</div><div class="kpi-val">{{ total_remitted|floatformat:0|intcomma }}</div></div>
-  <div class="kpi kpi-warn"><div class="kpi-label">Outstanding liability</div><div class="kpi-val">{{ total_outstanding|floatformat:0|intcomma }}</div></div>
+  <div class="kpi kpi-warn"><div class="kpi-label">Outstanding to remit<br><span class="u-xs">receipted</span></div><div class="kpi-val">{{ total_outstanding|floatformat:0|intcomma }}</div></div>
+  <div class="kpi"><div class="kpi-label">Unreceipted (pending)</div><div class="kpi-val">{{ total_unreceipted|floatformat:0|intcomma }}</div></div>
   {% if has_deadlines %}
   <div class="kpi {% if days_to_sabbath < 0 %}kpi-danger{% elif days_to_sabbath <= 7 %}kpi-warn{% endif %}">
     <div class="kpi-label">Countdown to reporting Sabbath</div>
@@ -40,7 +41,7 @@
 {% if period_start and not period_month %}<input type="hidden" name="start" value="{{ period_start|date:'Y-m-d' }}">{% endif %}
 {% if period_end and not period_month %}<input type="hidden" name="end" value="{{ period_end|date:'Y-m-d' }}">{% endif %}
 <div class="table-wrap"><table class="ledger compact">
-  <thead><tr>{% if is_treasurer %}<th style="width:30px"></th>{% endif %}<th>Trust fund</th><th class="num">Collected</th><th class="num">Remitted</th><th class="num">Outstanding</th><th class="num">Days</th></tr></thead>
+  <thead><tr>{% if is_treasurer %}<th style="width:30px"></th>{% endif %}<th>Trust fund</th><th class="num">Collected</th><th class="num">Remitted</th><th class="num">Outstanding<br><span class="u-xs muted">receipted</span></th><th class="num">Unreceipted</th><th class="num">Days</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
@@ -49,12 +50,13 @@
       <td class="num mono">{{ r.collected|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.remitted|floatformat:0|intcomma }}</td>
       <td class="num mono {% if r.outstanding > 0 %}row-debit{% endif %}">{{ r.outstanding|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.unreceipted|floatformat:0|intcomma }}</td>
       <td class="num"><span class="pill {% if r.days > 30 %}pill-red{% elif r.days > 0 %}pill-amber{% else %}pill-grey{% endif %}">{{ r.days }}</span></td>
     </tr>
   {% empty %}<tr><td colspan="6" class="empty">No trust funds.</td></tr>{% endfor %}
   </tbody>
 </table></div>
-<p class="help" style="margin:.3rem 0 0">Collected and Remitted are for the selected period; <strong>Outstanding</strong> is the full running balance still owed (everything collected to date less everything remitted to date), so it won't equal this month's collected minus remitted.</p>
+<p class="help" style="margin:.3rem 0 0">Collected and Remitted are for the selected period; <strong>Outstanding</strong> is the receipted trust money still owed (only receipted money is remitted). <strong>Unreceipted</strong> is trust money received but not yet receipted — still owed, but held off the remittance until a receipt is issued.</p>
 {% if is_treasurer %}
 <div class="btn-row">
   <button class="btn" name="_sel" value="1">Generate batch for selected</button>

@@ -18,10 +18,21 @@ def _credit_filter(start=None, end=None):
     return f
 
 
-def receipts_by_department(start=None, end=None):
-    qs = (Transaction.objects.filter(_credit_filter(start, end))
-          .values("department")
-          .annotate(total=Sum("amount"), count=Count("id")))
+def _receipted_q():
+    """A trust/giving credit counts as RECEIPTED once a formal receipt exists:
+    it came through the envelope/receipt flow, or it was flagged as receipted
+    manually on paper. Everything else is confirmed-but-not-yet-receipted."""
+    return (Q(channel=Transaction.Channel.ENVELOPE) | Q(manual_receipt=True)
+            | Q(processed_via_envelope=True))
+
+
+def receipts_by_department(start=None, end=None, receipted=None):
+    qs = Transaction.objects.filter(_credit_filter(start, end))
+    if receipted is True:
+        qs = qs.filter(_receipted_q())
+    elif receipted is False:
+        qs = qs.exclude(_receipted_q())
+    qs = qs.values("department").annotate(total=Sum("amount"), count=Count("id"))
     return {r["department"]: (r["total"] or Decimal(0)) for r in qs}
 
 
@@ -258,17 +269,27 @@ def trust_summary(start=None, end=None):
         cum_remit_f &= Q(date__lte=end)
     cum_remitted_map = {r["department"]: (r["total"] or Decimal(0)) for r in
                         Expense.objects.filter(cum_remit_f).values("department").annotate(total=Sum("amount"))}
+    # cumulative receipts split by whether a formal receipt has been issued.
+    # Only RECEIPTED trust money is a firm liability to remit; unreceipted trust
+    # money is still owed but shown on its own "pending receipting" line.
+    cum_receipted = receipts_by_department(None, end, receipted=True)
+    cum_unreceipted = receipts_by_department(None, end, receipted=False)
+    period_unreceipted = receipts_by_department(start, end, receipted=False)
     for dept in Department.objects.filter(
             fund_type=Department.FundType.TRUST, active=True):
         collected = receipts.get(dept.id, Decimal(0))
         remitted = remitted_map.get(dept.id, Decimal(0))
-        # outstanding = opening liability + everything collected to date − everything
-        # remitted to date (this is what is genuinely still owed to the conference)
-        outstanding = ((dept.opening_balance or Decimal(0))
-                       + cum_receipts.get(dept.id, Decimal(0))
-                       - cum_remitted_map.get(dept.id, Decimal(0)))
+        # outstanding-to-remit = opening liability + RECEIPTED collected to date
+        # − everything remitted to date. This is what is genuinely due to the field.
+        to_remit = ((dept.opening_balance or Decimal(0))
+                    + cum_receipted.get(dept.id, Decimal(0))
+                    - cum_remitted_map.get(dept.id, Decimal(0)))
+        unreceipted = cum_unreceipted.get(dept.id, Decimal(0))
         rows.append({"department": dept, "collected": collected,
-                     "remitted": remitted, "to_remit": outstanding})
+                     "remitted": remitted, "to_remit": to_remit,
+                     "unreceipted": unreceipted,
+                     "unreceipted_period": period_unreceipted.get(dept.id, Decimal(0)),
+                     "total_liability": to_remit + unreceipted})
     return rows
 
 

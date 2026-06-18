@@ -6,6 +6,7 @@ urlpatterns = [
     path("assets/new/", views.AssetCreate.as_view(), name="asset_create"),
     path("assets/<int:pk>/edit/", views.AssetUpdate.as_view(), name="asset_edit"),
     path("assets/<int:pk>/dispose/", views.AssetDisposeView.as_view(), name="asset_dispose"),
+    path("assets/<int:pk>/accumulate/", views.AssetAccumulateView.as_view(), name="asset_accumulate"),
     path("assets/depreciation/", views.DepreciationRulesView.as_view(), name="depreciation_rules"),
     path("<int:pk>/", views.AssetDetailView.as_view(), name="asset_detail"),
     path("<int:pk>/attach/", views.AssetAttachmentUpload.as_view(), name="asset_attachment_upload"),

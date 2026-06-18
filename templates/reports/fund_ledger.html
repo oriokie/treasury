@@ -24,7 +24,9 @@
 </table></div>
 
 {% if subgroups or dev_rows %}
-<h2 class="u-mt-lg">Sub-accounts</h2>
+<div class="page-head"><h2 class="u-mt-lg">Sub-accounts</h2>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups">⤓ Excel</a>
+<a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups-csv">CSV</a></div></div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Sub-account</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
   <tbody>

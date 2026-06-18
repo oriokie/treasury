@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.42.0 - trust receipted/unreceipted split, construction asset, ledger autocomplete fix, budget quarter
+- Trust (#1): trust_summary now splits cumulative trust receipts by whether a formal receipt was
+  issued (envelope channel or manual_receipt). `to_remit` = opening + receipted − remitted (the
+  firm liability due to the field); new `unreceipted` line = confirmed trust money with no receipt
+  yet (still a liability, held off remittance); `total_liability` = to_remit + unreceipted.
+  Surfaced on the Trust Fund Report, Remittance advice, Conference submission export, remittance
+  dashboard and main dashboard. Remittance batches (which use to_remit) therefore only remit
+  receipted money. Tests updated to the new policy.
+- Assets (#2): new FixedAsset category "Construction in progress" that never depreciates (Land
+  also corrected to not depreciate); NBV = accumulated cost. AssetAccumulateView totals CAPITAL
+  expenses (approved/paid) on a chosen fund over any date range — including prior years — to set
+  or add the asset's cost; manual cost editing remains. Migration assets 0003.
+- Envelope ledger (#3): name autocomplete dropdown was being clipped by the scrolling table
+  wrapper (overflow:auto). The suggestion box is now position:fixed, positioned from the input,
+  and hidden on scroll/resize.
+- Budget (#3a, from 1.41 work): BudgetLine.quarter (Q1–Q4) for planned spend timing. Migration
+  departments 0015.
+
+## v1.41.0 - budget timing by quarter
+- BudgetLine gained an optional `quarter` (Q1–Q4) for the period a fund foresees spending the
+  line; surfaced in the budget-lines page (column + add-form dropdown) and carried over by
+  "copy prior year". Blank = spread across the year. Migration departments 0015.
+
+## v1.40.0 - subgroup export, structure-import flag, charge traceability, print fit, audit creator
+- Fund ledger (#1): sub-accounts table now exports to Excel and CSV (ID, Subgroup, Type,
+  Receipts, Payments, Closing) via ?export=subgroups[/-csv]; download buttons on the page.
+- Fund structure import (#2): new "Show in expenses (Yes/No)" column (template, parser, apply);
+  defaults to Yes, "No" hides the fund from the expense picker.
+- Charge traceability (#3): the auto-created transaction-charge expense now references its parent
+  ("... [for <voucher / exp #id>]") and copies the parent voucher.
+- Offering/Collection summary (#4): prints to a single A4 landscape page — a measured scale
+  factor shrinks the sheet to fit when there are many funds/Sabbaths.
+- Backup audit (#5): backup workbook adds a "Created by" column (from simple-history's create
+  record) to Transactions, Expenses, Members, Departments and Reconciliations. Audit-only — not
+  shown anywhere in the UI or on-screen reports. No schema change.
+
 ## v1.39.0 - Collections Detail report
 - New /reports/collections-detail/ (CollectionsDetailView, PeriodMixin): collections for any
   chosen period broken down by fund, with Trust/Local subtotals and a grand total. Uses the same

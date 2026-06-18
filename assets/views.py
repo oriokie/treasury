@@ -180,3 +180,55 @@ class AssetAttachmentDelete(DataEntryRequiredMixin, View):
         x.delete()
         messages.success(request, "Attachment removed.")
         return redirect("asset_detail", pk=pk)
+
+
+class AssetAccumulateView(TreasurerRequiredMixin, View):
+    """Accumulate a construction/building asset's cost from CAPITAL expenses.
+
+    Sums approved/paid capital expenditure on a chosen fund over a date range
+    (which can reach back into previous years) and either sets or adds to the
+    asset's cost — so a building under construction is carried at the total spent
+    on it so far. Manual editing of the cost stays available on the edit form."""
+    def post(self, request, pk):
+        import datetime as dt
+        from decimal import Decimal
+        from django.db.models import Sum
+        from django.shortcuts import get_object_or_404, redirect
+        from django.contrib import messages
+        from cashbook.models import Expense
+        from departments.models import Department
+        a = get_object_or_404(FixedAsset, pk=pk)
+        fund_id = request.POST.get("fund")
+        fund = Department.objects.filter(pk=fund_id).first() if fund_id else None
+        if not fund:
+            messages.error(request, "Choose the fund the construction is paid from.")
+            return redirect("asset_detail", pk=a.pk)
+
+        def _date(key):
+            try:
+                return dt.date.fromisoformat(request.POST.get(key))
+            except (TypeError, ValueError):
+                return None
+        start, end = _date("start"), _date("end")
+        qs = Expense.objects.filter(
+            department=fund,
+            expenditure_type=Expense.ExpenditureType.CAPITAL,
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+        if start:
+            qs = qs.filter(date__gte=start)
+        if end:
+            qs = qs.filter(date__lte=end)
+        total = qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+        if request.POST.get("mode") == "add":
+            a.cost = (a.cost or Decimal(0)) + total
+            verb = f"Added {total:,.2f}"
+        else:
+            a.cost = total
+            verb = f"Set cost to {total:,.2f}"
+        a.save()
+        rng = ""
+        if start or end:
+            rng = f" ({start or '…'} to {end or '…'})"
+        messages.success(request, f"{verb} from {qs.count()} capital expense(s) "
+                                  f"on {fund.name}{rng}.")
+        return redirect("asset_detail", pk=a.pk)

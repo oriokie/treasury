@@ -4,17 +4,22 @@
 <div class="page-head"><div><h1>Trust funds</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · held on behalf of the conference</div></div></div>
 {% include 'partials/period_filter.html' %}
 <div class="table-wrap u-mt"><table class="ledger">
-  <thead><tr><th>Fund</th><th class="num">Collected</th><th class="num">Already remitted</th><th class="num">To remit</th></tr></thead>
+  <thead><tr><th>Fund</th><th class="num">Collected</th><th class="num">Already remitted</th><th class="num">Outstanding to remit<br><span class="u-xs muted">receipted</span></th><th class="num">Unreceipted<br><span class="u-xs muted">pending receipting</span></th><th class="num">Total trust liability</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr><td><strong>{{ r.department.name }}</strong></td>
       <td class="num mono">{{ r.collected|floatformat:2|intcomma }}</td>
       <td class="num mono muted">{{ r.remitted|floatformat:2|intcomma }}</td>
-      <td class="num mono"><strong>{{ r.to_remit|floatformat:2|intcomma }}</strong></td></tr>
-  {% empty %}<tr><td colspan="4" class="empty">No trust funds defined.</td></tr>{% endfor %}
+      <td class="num mono"><strong>{{ r.to_remit|floatformat:2|intcomma }}</strong></td>
+      <td class="num mono {% if r.unreceipted %}row-debit{% endif %}">{{ r.unreceipted|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.total_liability|floatformat:2|intcomma }}</td></tr>
+  {% empty %}<tr><td colspan="6" class="empty">No trust funds defined.</td></tr>{% endfor %}
   </tbody>
-  <tfoot><tr><th colspan="3">Total to remit</th><th class="num mono">{{ total_to_remit|floatformat:2|intcomma }}</th></tr></tfoot>
+  <tfoot>
+    <tr><th colspan="3">Outstanding to remit (receipted)</th><th class="num mono">{{ total_to_remit|floatformat:2|intcomma }}</th><th class="num mono">{{ total_unreceipted|floatformat:2|intcomma }}</th><th class="num mono">{{ total_liability|floatformat:2|intcomma }}</th></tr>
+  </tfoot>
 </table></div>
+<p class="muted u-xs u-mt-sm">Only <strong>receipted</strong> trust money (issued a receipt — envelope or manual) is due for remittance. <strong>Unreceipted</strong> trust money is received and still owed, but held on a separate line until a receipt is issued; it is not included in a remittance batch.</p>
 
 <div class="card u-mt-lg"><div class="hd">Remittance history</div><div class="bd bd-flush">
   <table class="ledger compact">

@@ -37,6 +37,7 @@ class DepreciationRule(models.Model):
 class FixedAsset(models.Model):
     class Category(models.TextChoices):
         LAND = "LAND", "Land"
+        CONSTRUCTION = "CONSTRUCTION", "Construction in progress"
         BUILDING = "BUILDING", "Buildings"
         FURNITURE = "FURNITURE", "Furniture & fittings"
         EQUIPMENT = "EQUIPMENT", "Equipment"
@@ -96,6 +97,10 @@ class FixedAsset(models.Model):
         return (self.method or cfg.asset_depr_method), (self.rate if self.rate is not None else cfg.asset_depr_rate)
 
     def annual_depreciation(self):
+        # work in progress (and land) is not depreciated until it is in use /
+        # reclassified, so it is carried at accumulated cost.
+        if self.category in (self.Category.CONSTRUCTION, self.Category.LAND):
+            return Decimal(0)
         method, rate = self._policy()
         rate = Decimal(rate or 0)
         if method == DepreciationRule.Method.NONE or rate <= 0:
@@ -105,6 +110,8 @@ class FixedAsset(models.Model):
         return None  # reducing balance is computed period by period
 
     def accumulated_depreciation(self, as_of=None, rules=None, cfg=None):
+        if self.category in (self.Category.CONSTRUCTION, self.Category.LAND):
+            return Decimal(0)
         as_of = as_of or dt.date.today()
         if as_of < self.acquired_on:
             return Decimal(0)

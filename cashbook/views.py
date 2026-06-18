@@ -181,11 +181,13 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
         # optional M-Pesa / bank transaction charge -> separate bank-charge expense
         charge = form.cleaned_data.get("charge")
         if charge and charge > 0:
+            ref = exp.voucher_no or f"exp #{exp.id}"
             Expense.objects.create(
                 date=exp.date, sabbath_week=exp.sabbath_week, department=exp.department,
-                description=f"Transaction charge — {exp.description}"[:200],
+                description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
                 amount=charge, category=Expense.Category.BANK_CHARGE,
                 method=exp.method, recorded_by=self.request.user,
+                voucher_no=exp.voucher_no,
                 status=exp.status,
                 approved_by=self.request.user if auto else None)
         if exp.status == Expense.Status.PENDING:

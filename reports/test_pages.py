@@ -137,7 +137,13 @@ class ReportFigureTests(ReportDataMixin, TestCase):
     def test_trust_report_to_remit(self):
         r = self.client.get(reverse("report_trust"))
         rows = {row["department"].id: row for row in r.context["rows"]}
-        self.assertEqual(rows[self.trust.id]["to_remit"], Decimal("2500"))
+        row = rows[self.trust.id]
+        # the 2,500 is a raw BANK credit with no receipt issued yet, so it is
+        # recognised as UNRECEIPTED trust (a separate liability), not yet due to
+        # remit. Only receipted trust money counts toward to_remit.
+        self.assertEqual(row["to_remit"], Decimal("0"))
+        self.assertEqual(row["unreceipted"], Decimal("2500"))
+        self.assertEqual(row["total_liability"], Decimal("2500"))
 
     def test_sofp_balances(self):
         r = self.client.get(reverse("report_financial_position"))
