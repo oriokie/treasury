@@ -7,6 +7,12 @@
   <div class="btn-row no-print">
     <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
     {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
+    {% if can_enter_data and items %}
+    <form method="post" action="{% url 'queue_run_rules' %}" class="u-inline"
+          onsubmit="return confirm('Re-run allocation rules on the queued items? Items matching a rule (e.g. one you just added) will be allocated automatically.');">
+      {% csrf_token %}
+      <button class="btn btn-brass btn-sm" title="Apply the current allocation rules to the items still in this queue — useful right after adding rules following an import">⚙ Run rules on pending</button>
+    </form>{% endif %}
     {% if can_enter_data and unallocated_in_ledger %}
     <form method="post" action="{% url 'queue_fetch_unallocated' %}" class="u-inline"
           onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated contribution(s) from the ledger into the queue for allocation?');">

@@ -37,10 +37,14 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "opening_bank_balance", "opening_cash_on_hand", "opening_unremitted_trust",
             "telegram_enabled", "telegram_bot_token", "telegram_pin",
             "telegram_session_minutes", "telegram_run_in_app",
+            "telegram_envelope_enabled", "telegram_allow_new_member",
+            "telegram_envelope_confirm", "telegram_envelope_channel",
+            "telegram_envelope_funds",
             "sabbath_confirm_scope",
         ]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
-                   "receipt_message": forms.Textarea(attrs={"rows": 3})}
+                   "receipt_message": forms.Textarea(attrs={"rows": 3}),
+                   "telegram_envelope_funds": forms.CheckboxSelectMultiple()}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -51,6 +55,10 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             render_value=True, attrs={"class": "field"})
         self.fields["telegram_bot_token"].widget = forms.PasswordInput(
             render_value=True, attrs={"class": "field"})
+        from departments.models import Department
+        self.fields["telegram_envelope_funds"].queryset = (
+            Department.objects.filter(active=True).order_by("name"))
+        self.fields["telegram_envelope_funds"].required = False
         self.fields["asset_depr_method"] = forms.ChoiceField(
             label="Default depreciation method",
             choices=[("STRAIGHT", "Straight-line"), ("REDUCING", "Reducing balance"),

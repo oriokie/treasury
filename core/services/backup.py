@@ -250,6 +250,7 @@ def full_excel_export_response(year=None):
                     - cfg.opening_unremitted_trust)
     trust_rows = balances.trust_summary(start, end)
     to_remit = sum((tr["to_remit"] for tr in trust_rows), Decimal(0))
+    trust_unreceipted = sum((tr["unreceipted"] for tr in trust_rows), Decimal(0))
     _sheet("Summary",
            ["Item", "Amount"],
            [["Reporting period", f"{start:%d %b %Y} – {end:%d %b %Y}"],
@@ -260,22 +261,26 @@ def full_excel_export_response(year=None):
             ["Total receipts (period)", float(t["receipts"])],
             ["Total operating expenses (period)", float(t["expenses_operating"])],
             ["Total trust remittances (period)", float(t["remittances"])],
-            ["Trust still to remit", float(to_remit)],
+            ["Trust outstanding to remit (receipted)", float(to_remit)],
+            ["Trust unreceipted (pending receipting)", float(trust_unreceipted)],
             ["Closing fund balances (sum)", float(t["closing"])]],
            title="Financial summary", money_cols=(2,))
 
     # ---- Trust Funds ------------------------------------------------------
     _sheet("Trust Funds",
-           ["Trust fund", "Collected", "Remitted", "Still to remit"],
+           ["Trust fund", "Collected", "Remitted", "Outstanding to remit (receipted)",
+            "Unreceipted (pending)", "Total liability"],
            [[tr["department"].name, float(tr["collected"]),
-             float(tr["remitted"]), float(tr["to_remit"])]
+             float(tr["remitted"]), float(tr["to_remit"]),
+             float(tr["unreceipted"]), float(tr["total_liability"])]
             for tr in trust_rows],
            title="Trust fund remittance schedule",
-           money_cols=(2, 3, 4),
+           money_cols=(2, 3, 4, 5, 6),
            total_row=["TOTAL",
                       float(sum((tr["collected"] for tr in trust_rows), Decimal(0))),
                       float(sum((tr["remitted"] for tr in trust_rows), Decimal(0))),
-                      float(to_remit)])
+                      float(to_remit), float(trust_unreceipted),
+                      float(sum((tr["total_liability"] for tr in trust_rows), Decimal(0)))])
 
     # ---- Income by Channel ------------------------------------------------
     chan = balances.income_by_channel(start, end)

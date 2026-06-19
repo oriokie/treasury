@@ -237,3 +237,37 @@ class TwoFactor(models.Model):
         if not ok:
             ok = self.consume_recovery_code(token)
         return ok
+
+
+class Profile(models.Model):
+    """A named, fully-configurable bundle of rights a treasurer can assign to
+    users. Layered on top of the role groups: a user with at least one profile
+    is governed by the union of their profiles' rights; a user with none keeps
+    their role-group access (see core.rights.user_rights)."""
+    name = models.CharField(max_length=60, unique=True)
+    description = models.CharField(max_length=200, blank=True)
+    rights = models.JSONField(default=list, blank=True,
+                              help_text="List of right keys from core.rights.RIGHT_KEYS.")
+    users = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
+                                   related_name="profiles")
+    is_system = models.BooleanField(default=False,
+                                    help_text="Seeded default profile mirroring a role group.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def clean_rights(self):
+        from core.rights import RIGHT_KEYS
+        valid = set(RIGHT_KEYS)
+        self.rights = [r for r in (self.rights or []) if r in valid]
+
+    def save(self, *args, **kwargs):
+        self.clean_rights()
+        super().save(*args, **kwargs)
+
+    def has(self, key):
+        return key in (self.rights or [])

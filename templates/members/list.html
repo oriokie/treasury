@@ -1,4 +1,5 @@
 {% extends 'base.html' %}{% load humanize %}
+{% load rights_tags %}
 {% block title %}Members · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Members</h1><div class="sub">Everyone who has given, however they were recorded</div></div>
@@ -39,7 +40,7 @@
         <tr>
           {% if can_enter_data %}<td><input type="checkbox" class="rowcb" name="ids" value="{{ m.id }}"></td>{% endif %}
           <td><a href="{% url 'member_detail' m.id %}"><strong>{{ m.name }}</strong></a></td>
-          <td class="mono muted">{{ m.phone|default:"—" }}</td>
+          <td class="mono muted">{{ m.phone|phone_for:user|default:"—" }}</td>
           <td>{{ m.get_group_display|default:"—" }}</td>
           <td>{{ m.get_member_type_display|default:"—" }}</td>
           <td><span class="pill {% if m.source == 'AUTO_BANK' %}pill-amber{% else %}pill-grey{% endif %}">{{ m.get_source_display }}</span></td>

@@ -54,3 +54,22 @@ class ReadAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
             messages.error(self.request, "You don't have permission to view that.")
             return redirect("dashboard")
         return super().handle_no_permission()
+
+
+class RightRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
+    """Gate a view on a granular right (see core.rights). Set `required_right`."""
+    required_right = None
+    permission_message = "You don't have permission to do that."
+
+    def test_func(self):
+        from .rights import has_right
+        return has_right(self.request.user, self.required_right)
+
+    def handle_no_permission(self):
+        if self.request.user.is_authenticated:
+            from . import roles
+            if roles.is_leader(self.request.user):
+                return redirect("leader_dashboard")
+            messages.error(self.request, self.permission_message)
+            return redirect("dashboard")
+        return super().handle_no_permission()

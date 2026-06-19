@@ -196,3 +196,60 @@ def campaign_allocate(reference, name, phone):
             return camp, (m.group or ""), camp.subgroup_department(m.group), "AUTO"
         return camp, "", camp.department, "REVIEW"
     return None, "", None, None
+
+
+def reallocate_pending():
+    """Re-run allocation rules over the items currently in the review queue
+    (credits awaiting allocation), so rules added *after* an import can clear
+    them without re-importing. Updates each transaction in place when it now
+    resolves to a fund (directly, via a development-group token, or via the
+    campaign fallback). Split-fund matches and locked periods are left for
+    manual handling. Returns a summary dict.
+    """
+    from giving.models import Transaction, SplitFund
+    from giving.services.allocation import campaign_allocate
+    from statements.services.importer import _resolve
+    from core.models import entry_blocked
+
+    qs = (Transaction.objects.filter(
+            allocation_status=Transaction.Status.REVIEW,
+            direction=Transaction.Direction.CREDIT,
+            processed_via_envelope=False, manual_receipt=False))
+
+    scanned = allocated = skipped_locked = skipped_split = 0
+    for t in qs.iterator():
+        scanned += 1
+        if entry_blocked(t.service_sabbath or t.date):
+            skipped_locked += 1
+            continue
+        resolver, status = allocate(t.reference, t.date)
+        if isinstance(resolver, SplitFund):
+            skipped_split += 1          # splitting in place is out of scope here
+            continue
+        dept, dev_group = _resolve(resolver)
+        new_status = None
+        campaign = campaign_group = None
+        if dept is not None:
+            new_status = (Transaction.Status.AUTO if status == "AUTO"
+                          else Transaction.Status.LEARNED)
+        else:
+            campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                t.reference, t.payer_name, t.payer_phone)
+            if cdept is not None and cstatus == "AUTO":
+                dept, new_status = cdept, Transaction.Status.AUTO
+        if dept is None or new_status not in (Transaction.Status.AUTO,
+                                              Transaction.Status.LEARNED):
+            continue
+        t.department = dept
+        t.dev_group = dev_group
+        t.allocation_status = new_status
+        fields = ["department", "dev_group", "allocation_status"]
+        if campaign is not None:
+            t.campaign = campaign
+            t.campaign_group = campaign_group or ""
+            fields += ["campaign", "campaign_group"]
+        t.save(update_fields=fields)
+        allocated += 1
+    return {"scanned": scanned, "allocated": allocated,
+            "remaining": scanned - allocated,
+            "skipped_locked": skipped_locked, "skipped_split": skipped_split}

@@ -22,6 +22,11 @@ def site_context(request):
         "is_leader": roles.is_leader(user) if user else False,
         "is_staff_role": roles.is_staff_role(user) if user else False,
     }
+    from . import rights as _rights
+    _granted = _rights.user_rights(user) if user else set()
+    ctx["rights"] = _granted
+    ctx["can"] = {k: (k in _granted) for k in _rights.RIGHT_KEYS}
+    ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))
     if user and user.is_authenticated:
         if user.is_superuser or user.groups.filter(name="Treasurer").exists():
             try:

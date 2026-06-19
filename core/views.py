@@ -59,7 +59,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         from django.db.models.functions import ExtractMonth as _ExM
         # income by channel (doughnut)
         _chan = {c["channel"]: float(c["total"] or 0) for c in ctx["by_channel"]}
-        ctx["channel_json"] = _json.dumps([
+        ctx["channel_json"] = safe_json([
             {"label": "Bank", "value": _chan.get("BANK", 0)},
             {"label": "Envelope", "value": _chan.get("ENVELOPE", 0)},
             {"label": "Cash", "value": _chan.get("CASH", 0)},
@@ -76,14 +76,14 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 .exclude(category=Expense.Category.REMITTANCE)
                 .annotate(m=_ExM("date")).values("m").annotate(t=_Sum("amount"))}
         active_m = sorted(set(mrec) | set(mexp))
-        ctx["monthly_json"] = _json.dumps({
+        ctx["monthly_json"] = safe_json({
             "labels": [MN[m - 1] for m in active_m],
             "receipts": [mrec.get(m, 0) for m in active_m],
             "expenses": [mexp.get(m, 0) for m in active_m]})
         ctx["has_monthly"] = len(active_m) >= 2
         # top funds by receipts (horizontal bars)
         _top = sorted(ctx["local_rows"], key=lambda r: r["receipts"], reverse=True)[:8]
-        ctx["topfunds_json"] = _json.dumps({
+        ctx["topfunds_json"] = safe_json({
             "labels": [r["department"].name[:22] for r in _top],
             "values": [float(r["receipts"]) for r in _top]})
         ctx["has_topfunds"] = bool(_top)
@@ -241,7 +241,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 trend.append({"year": y, "collection": float(cc),
                               "trust": float(ct), "expenditure": float(ce)})
         trend.sort(key=lambda t: t["year"])
-        ctx["trend_json"] = json.dumps(trend)
+        ctx["trend_json"] = safe_json(trend)
         ctx["has_trend"] = len(trend) >= 2
         ctx["trend_through"] = MN[cur_month - 1]
         ctx["trend_approx"] = approx
@@ -255,6 +255,7 @@ from django.urls import reverse
 from django.shortcuts import redirect, render
 from django.views import View
 
+from core.utils import safe_json
 from core.permissions import TreasurerRequiredMixin, ReadAccessMixin, DataEntryRequiredMixin
 from core.models import SiteConfig, SmsLog
 from core.forms import SiteConfigForm
@@ -338,7 +339,9 @@ class MemberSearchView(DataEntryRequiredMixin, View):
         qs = (Member.objects.filter(active=True)
               .filter(Q(name__icontains=q) | Q(phone__icontains=q))
               .order_by("name")[:5])
-        results = [{"id": m.id, "name": m.name, "phone": m.phone or "",
+        from core.rights import display_phone
+        results = [{"id": m.id, "name": m.name,
+                    "phone": display_phone(request.user, m.phone or ""),
                     "type": m.get_member_type_display() if m.member_type else ""}
                    for m in qs]
         return JsonResponse({"results": results})
@@ -634,7 +637,7 @@ def _duplicate_expenses():
     identical across many payments and would flood the list with false positives."""
     from django.db.models import Count, Min, Max
     from cashbook.models import Expense
-    from core.models import service_sabbath_for
+    from core.utils import sabbath_of
     # group in Python by the service Sabbath of each expense's date, since the
     # Sabbath is derived (not a stored column on Expense)
     rows = list(Expense.objects.exclude(category=Expense.Category.BANK_CHARGE)
@@ -652,7 +655,7 @@ def _duplicate_expenses():
     rows = [r for r in rows if not _is_charge(r["description"])]
     buckets = {}
     for r in rows:
-        sab = service_sabbath_for(r["date"])
+        sab = sabbath_of(r["date"])
         key = (sab, r["amount"], r["department__name"], r["description"],
                r["claimant"])
         buckets.setdefault(key, []).append(r)
@@ -863,7 +866,7 @@ class ExecutiveDashboardView(ReadAccessMixin, View):
             "kpis": health.kpis(),
             "alerts": alerts,
             "dismissed_count": len(dismissed),
-            "charts_json": json.dumps(ch),
+            "charts_json": safe_json(ch),
             "ai_enabled": SiteConfig.get().llm_enabled,
         })
 

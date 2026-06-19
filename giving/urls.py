@@ -8,6 +8,7 @@ urlpatterns = [
     path("transactions/bulk-reverse/", views.TransactionBulkReverseView.as_view(), name="transaction_bulk_reverse"),
     path("queue/", views.ReviewQueueView.as_view(), name="queue"),
     path("queue/bulk-allocate/", views.BulkAllocateView.as_view(), name="queue_bulk_allocate"),
+    path("queue/run-rules/", views.RunRulesOnQueueView.as_view(), name="queue_run_rules"),
     path("queue/fetch-unallocated/", views.FetchUnallocatedView.as_view(), name="queue_fetch_unallocated"),
     path("queue/export/", views.QueueExportView.as_view(), name="queue_export"),
     path("queue/import/", views.QueueImportView.as_view(), name="queue_import"),

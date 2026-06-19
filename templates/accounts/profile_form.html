@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{% if profile %}Edit profile{% else %}New profile{% endif %}{% endblock %}
+{% block content %}
+{% include "ui/page_header.html" with title="Profile" subtitle="Tick the rights this profile grants, and the users it applies to." %}
+<form method="post">{% csrf_token %}
+<div class="card u-mb"><div class="bd">
+  <div style="display:grid;grid-template-columns:1fr 2fr;gap:1rem">
+    <label class="field-label">Name<input name="name" value="{{ profile.name|default:'' }}" required class="field"></label>
+    <label class="field-label">Description<input name="description" value="{{ profile.description|default:'' }}" class="field"></label>
+  </div>
+</div></div>
+
+<div class="card u-mb"><div class="hd">Rights</div><div class="bd">
+  {% for group, items in grouped_rights %}
+    <div class="u-mb"><div class="u-bold u-mb-sm">{{ group }}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.3rem">
+      {% for key, label in items %}
+        <label class="u-row-sm"><input type="checkbox" name="right_{{ key }}" {% if key in granted %}checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div></div>
+
+<div class="card u-mb"><div class="hd">Apply to users</div><div class="bd">
+  <p class="help">Selected users are governed by this profile (union with any other profiles they have). Unselected users keep their role-based access.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.3rem">
+  {% for u in all_users %}
+    <label class="u-row-sm"><input type="checkbox" name="users" value="{{ u.id }}" {% if u.id in assigned %}checked{% endif %}> {{ u.username }}</label>
+  {% endfor %}
+  </div>
+</div></div>
+
+<div class="btn-row"><button class="btn">Save profile</button> <a class="btn btn-ghost" href="{% url 'profile_list' %}">Cancel</a></div>
+</form>
+{% endblock %}

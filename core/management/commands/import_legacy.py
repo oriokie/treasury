@@ -999,8 +999,21 @@ class Command(BaseCommand):
         wb.close()
 
     # ---- PHASE: expenses ---------------------------------------------------
+    def _church_building(self):
+        """The single 'Church building' construction-in-progress asset that the
+        legacy development/construction expenses are capitalised into."""
+        if getattr(self, "_cb", None) is not None:
+            return self._cb
+        from assets.models import FixedAsset
+        self._cb, _ = FixedAsset.objects.get_or_create(
+            name="Church building",
+            defaults=dict(category="CONSTRUCTION",
+                          acquired_on=dt.date(self.year, 1, 1), cost=0))
+        return self._cb
+
     def phase_expenses(self):
         from cashbook.models import Expense
+        from departments.models import Department
         from django.contrib.auth.models import User
         user = self.import_user
         wb = self._wb(MASTER_FILE)
@@ -1025,12 +1038,26 @@ class Command(BaseCommand):
             if self.dry:
                 continue
             cat = self._guess_expense_category(desc, deptname)
+            # development / construction spend is capital — capitalise it onto the
+            # Church building asset so the building's cost reflects what was spent.
+            is_capital = (dept.category == Department.Category.DEVELOPMENT
+                          or cat == Expense.Category.CONSTRUCTION)
+            asset = self._church_building() if is_capital else None
             Expense.objects.create(
                 date=date, department=dept, description=str(desc or "Expense")[:200],
                 amount=amount, category=cat, status="PAID",
+                expenditure_type=("CAPITAL" if is_capital else "RECURRENT"),
+                capitalized_asset=asset,
                 claimant=str(claimant or "")[:120], voucher_no=voucher,
                 recorded_by=user, approved_by=user, paid_date=date)
         wb.close()
+        # set the building's cost = sum of everything capitalised onto it (idempotent)
+        if not self.dry:
+            from django.db.models import Sum
+            from decimal import Decimal as _D
+            cb = self._church_building()
+            cb.cost = cb.source_expenses.aggregate(t=Sum("amount"))["t"] or _D(0)
+            cb.save(update_fields=["cost"])
 
     # keyword -> Expense.Category, checked in order against description + department
     EXP_CATEGORY_RULES = [

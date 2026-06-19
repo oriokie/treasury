@@ -38,6 +38,47 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.48.0": "New “Run rules on pending” button on the review queue: after you add allocation "
+              "rules following an import, click it to apply the current rules to the items still in "
+              "the queue — anything that now matches is allocated automatically, the rest stay for "
+              "review. Locked periods are skipped and split-fund matches are left for manual handling.",
+    "1.47.0": "Assistants can now record offering envelopes from Telegram: send /envelope and the "
+              "bot walks through the Sabbath, the member, and the amount for each fund, then saves "
+              "it straight into the books (it appears in reports and reconciliation like any other "
+              "envelope). Everything is configurable on Settings → Telegram: turn envelope entry on/"
+              "off, choose which funds are offered, set cash vs bank, require a confirmation step, "
+              "and decide whether new members may be created from Telegram. Locked periods are "
+              "respected and every entry is attributed to the signed-in user.",
+    "1.46.0": "Major speed-ups on the Executive and Controls pages — both were doing thousands of "
+              "tiny database lookups on large datasets and are now 15–60x faster (Controls from "
+              "~4.8s to under 0.1s, Executive from ~5.1s to ~0.3s). Added optional short-lived "
+              "caching of the heavy dashboard figures (set DJANGO_DASH_CACHE_TTL in production; any "
+              "change to giving or expenses refreshes it instantly) and a set of automatic checks "
+              "that fail the build if a page ever starts over-querying the database again.",
+    "1.45.0": "Performance at scale: the expenses list no longer runs a separate query per row to "
+              "check for receipts (it now resolves in one query — about 4x fewer database hits on a "
+              "full page), and the member list gained an index on the name so it stays fast when "
+              "sorted across tens of thousands of members. Verified the other high-traffic pages "
+              "(transactions, dashboard, reports) stay query-light on an 18,000-transaction dataset.",
+    "1.44.2": "Error monitoring & alerts: server errors are now written to a rotating log file and "
+              "(when an admin email and SMTP are configured) emailed to administrators, with "
+              "optional Sentry integration. Email settings are configurable via environment "
+              "variables, which also enables the off-site backup emailer.",
+    "1.44.1": "Maintenance & hardening from a full audit: dashboard chart data is now escaped so a "
+              "fund or member name can never inject markup; the background poller no longer touches "
+              "the database during management checks; a redundant query in the trust report was "
+              "removed; and a couple of date-sensitive tests were made deterministic.",
+    "1.44.0": "New Profiles & rights system: create fully-configurable profiles (any combination of "
+              "rights — recording, approvals, remittance, setup, reports, and sensitive data such as "
+              "seeing member phone numbers in full vs masked) and assign them to users. It layers on "
+              "top of the existing Treasurer/Assistant/Auditor/Leader roles — users without a profile "
+              "keep their current access unchanged, so nothing breaks. Member phone numbers are now "
+              "masked for anyone whose profile doesn't grant the right to see them in full.",
+    "1.43.0": "Building an asset's cost from capital expenses is now safe to repeat — each expense "
+              "is linked to the asset and skipped on the next run, and the asset page lists exactly "
+              "which expenses make up the cost. Reclassifying a linked expense to recurrent (or "
+              "deleting it) reduces the asset's cost automatically. The legacy importer now creates "
+              "a “Church building” asset and capitalises all development/construction expenses onto it.",
     "1.42.0": "Trust funds now separate receipted from unreceipted money: only RECEIPTED trust "
               "money (a receipt issued — envelope or manual) is shown as outstanding to remit, "
               "and trust money received but not yet receipted appears on its own “unreceipted "

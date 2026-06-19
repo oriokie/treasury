@@ -63,3 +63,79 @@ class UserEditRoleView(TreasurerRequiredMixin, View):
     def _render(self, request, user, form):
         from django.shortcuts import render
         return render(request, self.template_name, {"object": user, "form": form})
+
+
+# ---------------------------------------------------------------- profiles ---
+from django.shortcuts import render
+from core.permissions import RightRequiredMixin
+from core import rights as R
+from .models import Profile
+
+
+class ProfileListView(RightRequiredMixin, View):
+    required_right = "manage_profiles"
+    permission_message = "Managing profiles requires the 'Manage profiles & users' right."
+
+    def get(self, request):
+        profiles = Profile.objects.prefetch_related("users").all()
+        return render(request, "accounts/profile_list.html", {
+            "profiles": profiles,
+            "n_rights": len(R.RIGHT_KEYS),
+        })
+
+
+class ProfileEditView(RightRequiredMixin, View):
+    required_right = "manage_profiles"
+
+    def _get(self, pk):
+        return get_object_or_404(Profile, pk=pk) if pk else None
+
+    def get(self, request, pk=None):
+        profile = self._get(pk)
+        return render(request, "accounts/profile_form.html", {
+            "profile": profile,
+            "grouped_rights": R.grouped_rights(),
+            "granted": set(profile.rights) if profile else set(),
+            "all_users": User.objects.filter(is_active=True).order_by("username"),
+            "assigned": set(profile.users.values_list("id", flat=True)) if profile else set(),
+        })
+
+    def post(self, request, pk=None):
+        profile = self._get(pk)
+        name = (request.POST.get("name") or "").strip()
+        if not name:
+            messages.error(request, "Give the profile a name.")
+            return redirect(request.path)
+        chosen = [k for k in R.RIGHT_KEYS if request.POST.get(f"right_{k}")]
+        if profile is None:
+            profile = Profile(name=name)
+        elif profile.is_system and profile.name != name:
+            # allow editing a system profile's rights but keep its name stable-ish
+            pass
+        profile.name = name
+        profile.description = (request.POST.get("description") or "").strip()[:200]
+        profile.rights = chosen
+        try:
+            profile.save()
+        except Exception:
+            messages.error(request, "A profile with that name already exists.")
+            return redirect(request.path)
+        user_ids = request.POST.getlist("users")
+        profile.users.set(User.objects.filter(id__in=user_ids))
+        messages.success(request, f"Saved profile “{profile.name}” with {len(chosen)} right(s) "
+                                  f"and {len(user_ids)} user(s).")
+        return redirect("profile_list")
+
+
+class ProfileDeleteView(RightRequiredMixin, View):
+    required_right = "manage_profiles"
+
+    def post(self, request, pk):
+        profile = get_object_or_404(Profile, pk=pk)
+        if profile.is_system:
+            messages.error(request, "Default profiles can't be deleted — edit or clone them instead.")
+            return redirect("profile_list")
+        name = profile.name
+        profile.delete()
+        messages.success(request, f"Deleted profile “{name}”. Affected users fall back to their role.")
+        return redirect("profile_list")

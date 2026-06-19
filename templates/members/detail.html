@@ -1,7 +1,8 @@
 {% extends 'base.html' %}{% load humanize %}
+{% load rights_tags %}
 {% block title %}{{ member.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">{{ member.get_group_display|default:"No group" }}{% if member.phone %} · <span class="mono">{{ member.phone }}</span>{% endif %}</div></div>
+<div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">{{ member.get_group_display|default:"No group" }}{% if member.phone %} · <span class="mono">{{ member.phone|phone_for:user }}</span>{% endif %}</div></div>
 <div class="btn-row">
   <a class="btn btn-ghost" href="{% url 'report_member' member.id %}">Statement</a>
   {% if can_enter_data %}<a class="btn" href="{% url 'member_edit' member.id %}">Edit</a>{% endif %}

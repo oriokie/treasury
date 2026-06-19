@@ -737,7 +737,7 @@ class TrustDueDateAlertTests(TestCase):
         Department.objects.create(name="Tithe", fund_type="TRUST")
         tr = Department.objects.get(name="Tithe")
         Transaction.objects.create(date=dt.date(dt.date.today().year, 1, 4),
-            channel="BANK", direction="CREDIT", amount=Decimal("5000"), department=tr,
+            channel="ENVELOPE", direction="CREDIT", amount=Decimal("5000"), department=tr,
             allocation_status="AUTO", confirmed=True)
         titles = " ".join(a["title"] for a in anomalies())
         # only assert if we're past day 1 of the month (always true except the 1st)

@@ -72,7 +72,8 @@ class PledgeMatchingTests(TestCase):
         self.camp = PledgeCampaign.objects.create(name="Roof Appeal",
                                                   target_department=self.dept)
         self.p = Pledge.objects.create(campaign=self.camp, member=self.member,
-            amount=Decimal("10000"), status="ACTIVE", end_date=dt.date(2026, 12, 31))
+            amount=Decimal("10000"), status="ACTIVE",
+            start_date=dt.date(2026, 1, 1), end_date=dt.date(2026, 12, 31))
 
     def test_auto_match_caps_at_outstanding(self):
         # two gifts totalling 15,000 but the pledge is only 10,000

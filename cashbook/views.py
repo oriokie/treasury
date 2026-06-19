@@ -45,6 +45,8 @@ class ExpenseListView(ReadAccessMixin, ListView):
     def get_queryset(self):
         import datetime as dt
         qs = Expense.objects.select_related("department", "recorded_by").order_by("-date")
+        from django.db.models import Count
+        qs = qs.annotate(n_attachments=Count("attachments"))
         g = self.request.GET
         if g.get("status"):
             qs = qs.filter(status=g["status"])

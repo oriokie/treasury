@@ -79,3 +79,19 @@ def parse_period(request):
 def money(value) -> str:
     value = Decimal(value or 0)
     return f"{value:,.2f}"
+
+
+def safe_json(obj):
+    """json.dumps hardened for embedding inside a <script> block via |safe.
+
+    Escapes the characters that could otherwise break out of the script element
+    or start an HTML comment, so user-controlled strings (fund or member names)
+    embedded in chart data can't inject markup. Pair with |safe in the template.
+    """
+    import json
+    return (json.dumps(obj)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029"))

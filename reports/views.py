@@ -8,7 +8,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from core.permissions import ReadAccessMixin, TreasurerRequiredMixin
-from core.utils import parse_period
+from core.utils import parse_period, safe_json
 from cashbook.models import Expense
 from departments.models import Department
 from giving.models import Transaction
@@ -587,7 +587,7 @@ class AnnualSummaryView(ReadAccessMixin, TemplateView):
                   "collection": [round(agg[m]["c"] / agg[m]["n"], 2) if agg[m]["n"] else 0 for m in range(1, 13)],
                   "trust": [round(agg[m]["t"] / agg[m]["n"], 2) if agg[m]["n"] else 0 for m in range(1, 13)],
                   "expenditure": [round(agg[m]["e"] / agg[m]["n"], 2) if agg[m]["n"] else 0 for m in range(1, 13)]}
-        ctx["season_json"] = json.dumps(season)
+        ctx["season_json"] = safe_json(season)
         ctx["has_season"] = HistoricalMonth.objects.exists()
         return ctx
 

@@ -1,0 +1,122 @@
+"""Granular rights, layered on top of the existing role groups.
+
+A right is a fine-grained capability (e.g. "approve expenses", "see member
+phone numbers in full"). Rights are bundled into **profiles** (accounts.Profile)
+that a treasurer can create freely and assign to users.
+
+How a user's effective rights are resolved (`user_rights`):
+  * superuser            -> every right.
+  * has assigned profiles -> exactly the union of those profiles' rights. This
+    lets a profile RESTRICT access (e.g. masked phone numbers) — the whole point
+    of configurable profiles.
+  * no profiles assigned  -> the rights implied by their existing role group
+    (Treasurer/Assistant/Auditor/Leader). This is the backwards-compatible
+    fallback, so every existing user keeps working exactly as before until a
+    profile is deliberately assigned to them.
+
+So nothing breaks for current users, and new profiles are fully configurable.
+"""
+from . import roles
+
+# (key, label, group) — the catalogue shown on the profile editor.
+RIGHTS = [
+    # Data entry
+    ("record_giving",        "Record giving / cash",               "Data entry"),
+    ("count_envelopes",      "Count envelopes",                    "Data entry"),
+    ("import_statements",    "Import bank statements",             "Data entry"),
+    ("record_expenses",      "Record expenses / claims",           "Data entry"),
+    ("manage_members",       "Add / edit members",                 "Data entry"),
+    ("manage_campaigns",     "Manage campaigns",                   "Data entry"),
+    # Money controls
+    ("approve_expenses",     "Approve / reject expenses",          "Money controls"),
+    ("second_approve",       "Second approval (high value)",       "Money controls"),
+    ("mark_paid",            "Mark expenses paid",                 "Money controls"),
+    ("reverse_transactions", "Reverse transactions",               "Money controls"),
+    ("manage_remittance",    "Prepare / post remittances",         "Money controls"),
+    ("manage_transfers",     "Make fund transfers",                "Money controls"),
+    ("lock_periods",         "Lock / unlock periods",              "Money controls"),
+    # Setup
+    ("manage_funds",         "Manage funds & structure",           "Setup"),
+    ("manage_budgets",       "Manage budgets",                     "Setup"),
+    ("manage_rules",         "Manage allocation rules",            "Setup"),
+    ("manage_assets",        "Manage assets",                      "Setup"),
+    ("manage_channels",      "Manage SMS / channels / settings",   "Setup"),
+    ("manage_profiles",      "Manage profiles & users",            "Setup"),
+    # Reports
+    ("view_reports",         "View reports",                       "Reports"),
+    ("export_reports",       "Export reports (Excel / PDF)",       "Reports"),
+    ("view_audit",           "View the audit log",                 "Reports"),
+    ("download_backup",      "Download the full backup",           "Reports"),
+    # Sensitive data
+    ("view_member_phone_full", "See member phone numbers in full (otherwise masked)", "Sensitive data"),
+    ("view_giver_identity",    "See giver identities (otherwise anonymised)",         "Sensitive data"),
+    ("view_member_statements", "See individual member giving statements",             "Sensitive data"),
+]
+
+RIGHT_KEYS = [r[0] for r in RIGHTS]
+RIGHT_LABELS = {r[0]: r[1] for r in RIGHTS}
+
+
+def grouped_rights():
+    """[(group, [(key, label), ...]), ...] preserving catalogue order."""
+    out, seen = [], {}
+    for key, label, group in RIGHTS:
+        if group not in seen:
+            seen[group] = []
+            out.append((group, seen[group]))
+        seen[group].append((key, label))
+    return out
+
+
+# Every sensitive/identity right is granted to existing staff groups so today's
+# behaviour (full phone numbers, visible identities) is unchanged.
+_ALL = set(RIGHT_KEYS)
+_DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
+               "record_expenses", "manage_members", "manage_campaigns",
+               "manage_rules"}
+_SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}
+_REPORTS = {"view_reports", "export_reports"}
+
+GROUP_RIGHTS = {
+    roles.TREASURER: set(_ALL),                                   # everything
+    roles.ASSISTANT: _DATA_ENTRY | _REPORTS | _SENSITIVE,         # entry + sees identities
+    roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup"} | _SENSITIVE,
+    roles.LEADER:    {"view_reports"},                            # scoped views handle the rest
+}
+
+
+def user_rights(user):
+    """The set of right keys a user effectively holds."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return set()
+    if user.is_superuser:
+        return set(RIGHT_KEYS)
+    # explicit profiles define access (and can restrict)
+    try:
+        profiles = list(user.profiles.all())
+    except Exception:
+        profiles = []
+    if profiles:
+        granted = set()
+        for p in profiles:
+            granted |= set(p.rights or [])
+        return granted & set(RIGHT_KEYS)
+    # fallback: rights implied by the user's role group(s)
+    granted = set()
+    for g in roles.user_roles(user):
+        granted |= GROUP_RIGHTS.get(g, set())
+    return granted
+
+
+def has_right(user, key):
+    if user is not None and getattr(user, "is_superuser", False):
+        return True
+    return key in user_rights(user)
+
+
+def display_phone(user, phone):
+    """Full number if the user may see it, otherwise masked."""
+    from members.models import mask_phone
+    if not phone:
+        return ""
+    return phone if has_right(user, "view_member_phone_full") else mask_phone(phone)

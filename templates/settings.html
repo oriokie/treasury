@@ -149,6 +149,21 @@
       </div>
     </div></div>
 
+    <div class="card"><div class="hd">Envelope entry from Telegram</div><div class="bd">
+      <div class="info-panel">Lets an assistant record offering envelopes from Telegram with <span class="mono">/envelope</span> — choose the Sabbath, find the member, key the amount for each fund, confirm. Each envelope is saved exactly like the web ledger, so it flows into reconciliation and reports. Locked periods are respected and every entry is attributed to the signed-in user.</div>
+      <div class="form-grid u-mt-sm">
+      {% for f in form %}{% if f.name in 'telegram_envelope_enabled telegram_allow_new_member telegram_envelope_confirm telegram_envelope_channel' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
+          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="form-row u-mt-sm"><label>{{ form.telegram_envelope_funds.label }}</label>
+        <div class="help u-mb-sm">{{ form.telegram_envelope_funds.help_text }}</div>
+        <div class="check-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.2rem">{{ form.telegram_envelope_funds }}</div>
+      </div>
+    </div></div>
+
     <div class="card"><div class="hd">Personal PINs (per user)</div><div class="bd">
       <div class="info-panel">Each treasurer/assistant can have their <strong>own</strong> PIN. When someone enters their personal PIN in the bot, anything they record (e.g. an expense) is attributed to them. The shared PIN above still works as a fallback.</div>
       <div class="form-grid u-mt-sm">

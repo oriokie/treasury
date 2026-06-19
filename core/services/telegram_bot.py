@@ -67,6 +67,8 @@ HELP = (
     "• Or just type a question, e.g. <i>how much tithe in May?</i>\n\n"
     "Record an expense:\n"
     "• /expense — guided (amount → fund → description)\n"
+    "Record an envelope / offering:\n"
+    "• /envelope — guided (Sabbath → member → amount per fund)\n"
     "• /cancel — abandon the current entry\n"
     "• /lock — lock the chat now")
 
@@ -323,6 +325,161 @@ def _create_expense(session, data):
             f"as <b>PENDING</b>.{extra} A treasurer must approve it in the web app.")
 
 
+# ----------------------------------------------------------------------------- envelope flow
+def _tg_envelope_funds(cfg):
+    """The funds offered for envelope entry: the configured set, or — if none is
+    configured — the active top-level funds."""
+    from departments.models import Department
+    qs = cfg.telegram_envelope_funds.filter(active=True).order_by("name")
+    funds = list(qs)
+    if not funds:
+        funds = list(Department.objects.filter(active=True, parent__isnull=True)
+                     .order_by("name")[:40])
+    return funds
+
+
+def _start_envelope(session, cfg):
+    if not cfg.telegram_envelope_enabled:
+        return "Recording envelopes from Telegram is switched off."
+    from core.utils import sabbath_of
+    sab = sabbath_of(dt.date.today())
+    session.state = "ENV_SABBATH"
+    session.state_data = {}
+    session.save()
+    return ("Recording an <b>envelope</b>.\n"
+            f"Which <b>Sabbath</b>? Send a date (YYYY-MM-DD), or <b>-</b> for the "
+            f"current Sabbath ({sab:%d %b %Y}).")
+
+
+def _envelope_step(session, text, cfg):
+    from decimal import Decimal, InvalidOperation
+    from core.utils import sabbath_of
+    st = session.state
+    data = session.state_data or {}
+    raw = text.strip()
+
+    if st == "ENV_SABBATH":
+        if raw in ("-", "today", "/skip"):
+            sab = sabbath_of(dt.date.today())
+        else:
+            try:
+                sab = sabbath_of(dt.date.fromisoformat(raw))
+            except ValueError:
+                return "Send the Sabbath as YYYY-MM-DD (e.g. 2026-06-13), or - for this week."
+        data["date"] = sab.isoformat()
+        session.state = "ENV_MEMBER"; session.state_data = data; session.save()
+        return f"Sabbath: <b>{sab:%d %b %Y}</b>.\nWhose envelope is it? Type the <b>member's name</b>."
+
+    if st == "ENV_MEMBER":
+        member, ambiguous = _match_member(raw)
+        if ambiguous:
+            return "Several members match that — type more of the name to narrow it down."
+        if not member:
+            if cfg.telegram_allow_new_member:
+                from members.models import Member
+                member = Member.objects.create(name=raw[:120], source=Member.Source.MANUAL)
+            else:
+                return (f"No member matches “{raw}”. Try another spelling, or ask a "
+                        f"treasurer to add them in the app. (Creating new members from "
+                        f"Telegram is turned off.)")
+        data["member_id"] = member.id
+        data["member_name"] = member.name
+        funds = _tg_envelope_funds(cfg)
+        data["fund_ids"] = [f.id for f in funds]
+        data["fund_names"] = [f.name for f in funds]
+        data["idx"] = 0
+        data["lines"] = []
+        session.state = "ENV_AMT"; session.state_data = data; session.save()
+        return (f"Member: <b>{member.name}</b>.\nNow the amount per fund — send <b>0</b> or "
+                f"<b>-</b> to skip a fund.\n\nAmount for <b>{data['fund_names'][0]}</b>?")
+
+    if st == "ENV_AMT":
+        idx = data.get("idx", 0)
+        names = data.get("fund_names", [])
+        ids = data.get("fund_ids", [])
+        if raw in ("-", "0", "skip", "/skip", "no", "none"):
+            amt = Decimal("0")
+        else:
+            try:
+                amt = Decimal(raw.replace(",", ""))
+                if amt < 0:
+                    raise InvalidOperation
+            except (InvalidOperation, ValueError):
+                return f"Send a number for <b>{names[idx]}</b> (e.g. 2000), or - to skip."
+        if amt > 0:
+            data.setdefault("lines", []).append([ids[idx], str(amt)])
+        idx += 1
+        data["idx"] = idx
+        if idx < len(ids):
+            session.state_data = data; session.save()
+            return f"Amount for <b>{names[idx]}</b>?"
+        # done collecting
+        if not data.get("lines"):
+            session.reset_flow(); session.save()
+            return "No amounts entered — nothing to record. Cancelled."
+        if cfg.telegram_envelope_confirm:
+            session.state = "ENV_CONFIRM"; session.state_data = data; session.save()
+            return _envelope_summary(data, cfg)
+        return _create_envelope(session, data, cfg)
+
+    if st == "ENV_CONFIRM":
+        if raw.lower() not in ("yes", "y"):
+            session.reset_flow(); session.save()
+            return "Cancelled."
+        return _create_envelope(session, data, cfg)
+    return None
+
+
+def _envelope_summary(data, cfg):
+    from decimal import Decimal
+    names = {str(i): n for i, n in zip(data["fund_ids"], data["fund_names"])}
+    sab = dt.date.fromisoformat(data["date"])
+    total = sum((Decimal(a) for _, a in data["lines"]), Decimal(0))
+    lines = [f"Confirm envelope — <b>{sab:%d %b %Y}</b>",
+             f"Member: {data['member_name']}"]
+    for fid, amt in data["lines"]:
+        lines.append(f"  {names.get(str(fid), fid)}: {_money(amt)}")
+    chan = "Bank / already given" if cfg.telegram_envelope_channel == "BANK" else "Cash"
+    lines.append(f"Channel: {chan}")
+    lines.append(f"<b>Total: {_money(total)}</b>")
+    lines.append("\nReply <b>yes</b> to record, or <b>no</b> to cancel.")
+    return "\n".join(lines)
+
+
+def _create_envelope(session, data, cfg):
+    from decimal import Decimal
+    from departments.models import Department
+    from members.models import Member
+    from core.models import entry_blocked
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from envelopes.views import _save_envelope
+    date = dt.date.fromisoformat(data["date"])
+    blocked = entry_blocked(date)
+    if blocked:
+        session.reset_flow(); session.save()
+        return f"{blocked} — the envelope was not recorded."
+    member = Member.objects.filter(id=data.get("member_id")).first()
+    fund_by_id = {d.id: d for d in Department.objects.filter(id__in=[int(f) for f, _ in data["lines"]])}
+    lines = [(fund_by_id[int(fid)], Decimal(amt)) for fid, amt in data["lines"]
+             if int(fid) in fund_by_id]
+    if not lines:
+        session.reset_flow(); session.save()
+        return "Those funds are no longer available — cancelled."
+    user = (session.user if session.user_id else None) \
+        or User.objects.filter(groups__name="Treasurer").first() \
+        or User.objects.filter(is_superuser=True).first()
+    receipt = f"TG{session.chat_id}-{int(timezone.now().timestamp())}"
+    env = _save_envelope(date=date, name=member.name if member else (data.get("member_name") or ""),
+                         receipt=receipt, channel=cfg.telegram_envelope_channel,
+                         lines=lines, member=member, user=user, cfg=cfg)
+    who = f" by {user.get_full_name() or user.username}" if user else ""
+    session.reset_flow(); session.save()
+    return (f"✅ Recorded envelope #{env.id} for <b>{member.name if member else data.get('member_name')}</b> "
+            f"({_money(env.total)}) on {date:%d %b %Y}{who}. It's in the books and will appear in "
+            f"reports and reconciliation.")
+
+
 # ----------------------------------------------------------------------------- dispatch
 def handle_update(update):
     """Process one Telegram update dict. Returns a list of {chat_id, text}."""
@@ -375,10 +532,18 @@ def handle_update(update):
         if reply is not None:
             return [{"chat_id": chat_id, "text": reply}]
 
+    # mid-flow (envelope entry)
+    if session.state.startswith("ENV_"):
+        reply = _envelope_step(session, text, cfg)
+        if reply is not None:
+            return [{"chat_id": chat_id, "text": reply}]
+
     if low in ("/start", "/help"):
         return [{"chat_id": chat_id, "text": HELP}]
     if low == "/expense":
         return [{"chat_id": chat_id, "text": _start_expense(session)}]
+    if low == "/envelope":
+        return [{"chat_id": chat_id, "text": _start_envelope(session, cfg)}]
     if low == "/summary":
         return [{"chat_id": chat_id, "text": _do_summary()}]
     if low == "/trust":

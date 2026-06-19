@@ -200,11 +200,14 @@ def anomalies():
 
     # 5) Unusual single expense (> 3x its fund's historical average)
     from django.db.models import Avg
-    recent = Expense.objects.filter(date__gte=cur_s, date__lte=cur_e,
+    recent = list(Expense.objects.filter(date__gte=cur_s, date__lte=cur_e,
                                     status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-    for exp in recent.select_related("department"):
-        hist = (Expense.objects.filter(department=exp.department)
-                .exclude(pk=exp.pk).aggregate(a=Avg("amount"))["a"])
+                  .select_related("department"))
+    # fund averages computed once (not per row) — close enough for a >3x heuristic
+    fund_avgs = {r["department"]: r["a"] for r in
+                 Expense.objects.values("department").annotate(a=Avg("amount"))}
+    for exp in recent:
+        hist = fund_avgs.get(exp.department_id)
         if hist and exp.amount > hist * 3 and exp.amount > 1000:
             alerts.append({"severity": "info",
                            "title": f"Unusually large expense in {exp.department.name}",

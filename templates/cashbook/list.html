@@ -62,7 +62,7 @@
     <tr>
       {% if is_treasurer %}<td><input type="checkbox" name="ids" value="{{ e.id }}" class="rowchk" data-status="{{ e.status }}"></td>{% endif %}
       <td class="mono">{{ e.date|date:"d/m/y" }}</td>
-      <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted u-xs">· {{ e.claimant }}</span>{% endif %}{% if e.attachments.exists %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
+      <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted u-xs">· {{ e.claimant }}</span>{% endif %}{% if e.n_attachments %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
       <td>{{ e.department.name }}</td>
       <td class="muted">{{ e.get_category_display }}</td>
       <td>{% if e.expenditure_type == 'CAPITAL' %}<span class="pill pill-brass">Capital</span>{% else %}<span class="pill pill-grey">Recurrent</span>{% endif %}</td>

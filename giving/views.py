@@ -187,6 +187,35 @@ class ReviewQueueView(ReadAccessMixin, ListView):
         return ctx
 
 
+class RunRulesOnQueueView(DataEntryRequiredMixin, View):
+    """Re-run allocation rules over the items still in the review queue, so rules
+    added after an import can clear matching items without re-importing the file."""
+
+    def post(self, request):
+        from giving.services.allocation import reallocate_pending
+        r = reallocate_pending()
+        if r["scanned"] == 0:
+            messages.info(request, "The review queue is empty — nothing to allocate.")
+        elif r["allocated"]:
+            msg = (f"Allocated {r['allocated']} of {r['scanned']} item(s) using the "
+                   f"current rules. {r['remaining']} still need attention.")
+            extra = []
+            if r["skipped_locked"]:
+                extra.append(f"{r['skipped_locked']} in a locked period were skipped")
+            if r["skipped_split"]:
+                extra.append(f"{r['skipped_split']} matched a split fund (allocate manually)")
+            if extra:
+                msg += " (" + "; ".join(extra) + ")."
+            messages.success(request, msg)
+        else:
+            note = ""
+            if r["skipped_locked"]:
+                note = f" {r['skipped_locked']} were in a locked period."
+            messages.info(request, "No queued items matched the current rules — "
+                                   "check the rule reference and match type." + note)
+        return redirect("queue")
+
+
 class BulkAllocateView(DataEntryRequiredMixin, View):
     """Item 1: allocate several review-queue contributions to one fund in a single action,
     for faster clearing of the queue. Optionally sets a development group when the

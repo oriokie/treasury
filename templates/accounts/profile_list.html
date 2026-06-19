@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Profiles & rights{% endblock %}
+{% block content %}
+{% include "ui/page_header.html" with title="Profiles & rights" subtitle="Bundles of rights you can assign to users. A user with a profile is governed by it; a user with none keeps their role-based access." %}
+<div class="u-row-between u-mb">
+  <a class="btn btn-sm" href="{% url 'profile_create' %}">＋ New profile</a>
+  <a class="btn btn-sm btn-ghost" href="{% url 'user_list' %}">Users & roles</a>
+</div>
+<div class="card"><div class="bd bd-flush">
+  <table class="ledger">
+    <thead><tr><th>Profile</th><th>Rights</th><th>Users</th><th></th></tr></thead>
+    <tbody>
+    {% for p in profiles %}
+      <tr>
+        <td><strong>{{ p.name }}</strong>{% if p.is_system %} <span class="pill pill-grey">default</span>{% endif %}<div class="muted u-xs">{{ p.description }}</div></td>
+        <td class="mono">{{ p.rights|length }} / {{ n_rights }}</td>
+        <td>{% for u in p.users.all %}<span class="pill pill-blue">{{ u.username }}</span> {% empty %}<span class="muted">—</span>{% endfor %}</td>
+        <td class="num"><a class="link" href="{% url 'profile_edit' p.id %}">Edit</a>{% if not p.is_system %} · <form method="post" action="{% url 'profile_delete' p.id %}" class="u-inline" onsubmit="return confirm('Delete this profile? Its users fall back to their role.');">{% csrf_token %}<button class="link link-danger">Delete</button></form>{% endif %}</td>
+      </tr>
+    {% empty %}<tr><td colspan="4" class="empty">No profiles yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endblock %}

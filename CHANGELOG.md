@@ -1,5 +1,108 @@
 # Changelog
 
+## v1.48.0 - run allocation rules on the review queue on demand
+- giving.services.allocation.reallocate_pending(): re-runs allocate() (+ dev-group token and
+  campaign fallback, via the importer's _resolve) over the credits still in the review queue and
+  updates each in place when it now resolves to a fund. Skips locked periods and split-fund
+  matches; returns a {scanned, allocated, remaining, skipped_locked, skipped_split} summary.
+- RunRulesOnQueueView (POST /queue/run-rules/, data-entry right) with a clear result message.
+- "Run rules on pending" button added to the review-queue toolbar (shown when there are items).
+  Use case: add rules after importing a statement, then clear the matching queued items without
+  re-importing the file.
+- 5 tests in giving/test_reallocate.py (matching allocated/others left, no-rule no-op, locked-
+  period skip, the view, button visibility).
+
+## v1.47.0 - Telegram envelope entry (configurable)
+- Bot (#3): new guided /envelope flow in core/services/telegram_bot.py — Sabbath -> member
+  (name match; ambiguity prompts; optional new-member creation) -> amount per configured fund
+  (0/- to skip) -> optional confirmation -> save. Records via the same envelopes.views._save_envelope
+  used by the web ledger, so it posts ENVELOPE-channel income and flows into reconciliation/reports.
+  Respects locked periods (entry_blocked) and attributes the entry to the signed-in user (personal
+  PIN), behind the existing PIN gate.
+- Parameters on Settings -> Telegram (SiteConfig, migration core 0031):
+  telegram_envelope_enabled, telegram_allow_new_member, telegram_envelope_confirm,
+  telegram_envelope_channel (cash/bank) and telegram_envelope_funds (which funds are offered;
+  empty = active top-level funds). Surfaced on the settings page; saved with the config form.
+- 9 tests in core/test_telegram_envelope.py: full flow, skip-fund, new-member gating on/off,
+  feature disabled, locked-period block, confirm-off immediate save, PIN-required, attribution.
+
+## v1.46.0 - executive/controls speed-ups, aggregate caching, query-regression guards
+- Controls (#2): _duplicate_expenses grouped expenses by service_sabbath_for(), which queried
+  SiteConfig + closed-Sabbath rules per row (~8,000 queries on 4k expenses). It now groups by the
+  pure natural Sabbath (sabbath_of, no DB) — correct for dedup and 1 query. Controls: ~887 q /
+  4.8s -> 29 q / 77 ms.
+- Executive (#2): health.anomalies() did a per-expense fund-average query and also invoked the
+  expensive dedup; fund averages are now computed once and the dedup fix carries through.
+  Executive: ~670 q / 5.1s -> ~239 q / 325 ms.
+- Caching (#1): core.perfcache caches department_summary/trust_summary keyed by a global data
+  version that is bumped on any Transaction/Expense/RemittanceBatch/FundTransfer write, with a
+  TTL backstop. Off by default (DASHBOARD_CACHE_TTL=0); set DJANGO_DASH_CACHE_TTL=60 in prod.
+- Regression guards (#1): core/test_performance.py asserts the hot pages stay under a query
+  ceiling on a seeded dataset (catches N+1 regressions) plus cache hit/bust/off-by-default tests.
+
+## v1.45.0 - performance at high volume
+- Expenses list: eliminated an N+1 (a per-row `attachments.exists()` query). The receipt
+  indicator is now an annotated Count in the main query — measured 66 -> 16 queries on a
+  50-row page over 5,000 expenses.
+- Member list: added a database index on `name` (migration members 0004) so the default
+  name-ordered listing and search don't sort-scan at tens of thousands of members.
+- Audited the hot paths on an 18,142-transaction / 5,042-expense / 4,010-member dataset:
+  transactions (16 q), members (13 q), dashboard (52 bounded aggregate q, ~87 ms), review queue,
+  audit log, fund ledger, trust, reports — all query-light with no N+1. The transactions page's
+  one-off ~400 ms first hit was template/app warmup (38 ms warm); no code change needed.
+
+## v1.44.2 - error monitoring, email config, log files
+- Logging: server errors (django.request / django.security) now go to a rotating file
+  (logs/treasury-errors.log, 5x5MB; dir configurable via DJANGO_LOG_DIR) and to an
+  AdminEmailHandler that emails ADMINS on 500s when configured (no-op until set, so nothing
+  breaks by default).
+- Email: configurable via DJANGO_EMAIL_HOST/PORT/USER/PASSWORD/TLS, DJANGO_FROM_EMAIL,
+  DJANGO_SERVER_EMAIL and DJANGO_ADMINS; defaults to the console backend when no SMTP is set so
+  the app and the backup emailer degrade gracefully. Also wires DEFAULT_FROM_EMAIL/SERVER_EMAIL.
+- Optional Sentry: set SENTRY_DSN (and optionally SENTRY_TRACES/SENTRY_ENV) to enable; guarded
+  import means a missing sentry-sdk never breaks startup.
+- (The encrypted, rotated, off-site backup_db cron command was already present — documented in
+  its module docstring.)
+
+## v1.44.1 - audit fixes & hardening
+- Security: dashboard/report chart JSON is now emitted through a safe_json() helper that escapes
+  <, >, & and line separators, so user-set fund/member names can't break out of the <script>
+  block (low-severity stored-XSS hardening; dashboards are staff-only).
+- Stability: the in-app Telegram poller no longer starts (or queries the DB) during `check`,
+  `showmigrations`, `sqlmigrate` or `createsuperuser` — removes a DB-access-at-init warning.
+- Cleanup: removed a redundant cumulative-receipts query in trust_summary (no behaviour change).
+- Tests: pledge matching tests pin an explicit pledge start_date so they no longer depend on the
+  current date.
+
+## v1.44.0 - configurable profiles & rights (layered on roles)
+- core/rights.py: a catalogue of granular rights (data entry, money controls, setup, reports,
+  sensitive data) and resolution layered on the role groups — superuser = all; a user with
+  assigned profiles is bound by the union of those profiles (can restrict); a user with none
+  falls back to their role group's implied rights (full backward compatibility).
+- accounts.Profile model (name, description, rights JSON, users M2M, is_system). Migration
+  accounts 0003 + 0004 (four default profiles mirroring the role groups).
+- Profiles management page (/profiles/) — create/edit/delete profiles, tick rights grouped by
+  area, assign users. Gated by the manage_profiles right. Nav link beside Users & roles.
+- Phone masking: member phone numbers are shown full only to viewers with view_member_phone_full
+  (treasurer/assistant/auditor groups keep it by default); otherwise masked (e.g. *********678)
+  in the member list, member detail, duplicates, the member-search typeahead and envelope ledger.
+- RightRequiredMixin + has_right() + context `rights`/`can`/`phone_full` for further wiring.
+- 16 new tests covering rights resolution, masking, profile CRUD/assignment and backward compat.
+
+## v1.43.0 - asset cost from expenses: idempotent, itemised, reclass-aware
+- Accumulate (#1): AssetAccumulateView now only picks up capital expenses not already linked to
+  an asset (capitalized_asset is null), links them, and adds their sum to the cost — so clicking
+  twice can't double-count. The asset detail page lists every expense included in the cost with a
+  linked total.
+- Reclassify/delete (#3): cashbook signals keep the cost honest — reclassifying a linked expense
+  to recurrent (or unlinking, reducing its amount, or deleting it) reduces the linked asset's cost
+  by the right amount. A recurrent expense can never stay attached to an asset.
+- Legacy importer (#2): creates a single "Church building" construction-in-progress asset and
+  capitalises every development/construction expense onto it (expenditure_type=CAPITAL,
+  capitalized_asset set); the building's cost is set to the sum of those expenses.
+- Backup workbook Trust Funds + Summary sheets now show outstanding-to-remit (receipted) and
+  unreceipted (pending) separately, consistent with the on-screen trust reports.
+
 ## v1.42.0 - trust receipted/unreceipted split, construction asset, ledger autocomplete fix, budget quarter
 - Trust (#1): trust_summary now splits cumulative trust receipts by whether a formal receipt was
   issued (envelope channel or manual_receipt). `to_remit` = opening + receipted − remitted (the

@@ -19,6 +19,25 @@
   </tbody></table>
 </div></div>
 
+{% if linked_expenses %}
+<div class="card u-narrow-md u-mt"><div class="hd">Expenses included in the cost ({{ linked_expenses|length }})</div><div class="bd bd-flush">
+  <table class="ledger compact">
+    <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Status</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for x in linked_expenses %}
+      <tr><td class="mono">{{ x.date|date:"d/m/y" }}</td>
+        <td><a class="link" href="{% url 'expense_detail' x.id %}">{{ x.description }}</a></td>
+        <td class="muted">{{ x.department.name }}</td>
+        <td><span class="pill {% if x.status == 'PAID' %}pill-green{% elif x.status == 'APPROVED' %}pill-blue{% else %}pill-amber{% endif %}">{{ x.get_status_display }}</span></td>
+        <td class="num mono">{{ x.amount|floatformat:2|intcomma }}</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="4">Linked total</th><th class="num mono">{{ linked_total|floatformat:2|intcomma }}</th></tr></tfoot>
+  </table>
+  <p class="help">Reclassifying any of these to a recurrent expense (on its edit page) removes it here and reduces the asset's cost.</p>
+</div></div>
+{% endif %}
+
 {% if is_treasurer and not asset.disposed %}
 <div class="card u-narrow-md u-mt"><div class="hd">Accumulate cost from capital expenses</div><div class="bd">
   <form method="post" action="{% url 'asset_accumulate' asset.id %}">{% csrf_token %}

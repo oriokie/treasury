@@ -1,4 +1,5 @@
 {% extends 'base.html' %}{% load humanize %}
+{% load rights_tags %}
 {% block title %}Possible duplicates · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -16,7 +17,7 @@
   <div class="split" style="align-items:flex-start;gap:1rem">
     <div style="flex:1">
       <strong>{{ row.member.name }}</strong> <span class="pill pill-amber">flagged</span>
-      <div class="muted" style="font-size:.85rem;margin-top:.3rem">{{ row.member.phone|default:"no phone" }} · {{ row.member.get_source_display }}</div>
+      <div class="muted" style="font-size:.85rem;margin-top:.3rem">{{ row.member.phone|phone_for:user|default:"no phone" }} · {{ row.member.get_source_display }}</div>
     </div>
     {% if can_enter_data and row.candidates %}
     <form method="post" action="{% url 'member_merge' %}" style="flex:1.4;min-width:280px">
@@ -27,14 +28,14 @@
         {% with c=row.candidates.0 %}
         <input type="hidden" name="keep" value="{{ c.id }}">
         <div style="font-size:.88rem;margin-bottom:.5rem">Merge into <strong>{{ c.name }}</strong>
-          <span class="muted">— {{ c.phone|default:"no phone" }} ({{ c.get_source_display }})</span></div>
+          <span class="muted">— {{ c.phone|phone_for:user|default:"no phone" }} ({{ c.get_source_display }})</span></div>
         <button class="btn btn-sm">Merge these two</button>
         {% endwith %}
       {% else %}
         <div class="form-row u-mb-sm"><label>Merge this record into ({{ row.candidates|length }} matches)</label>
           <select name="keep" class="field--select" required>
             <option value="">Choose the record to keep…</option>
-            {% for c in row.candidates %}<option value="{{ c.id }}">{{ c.name }} — {{ c.phone|default:"no phone" }} ({{ c.get_source_display }})</option>{% endfor %}
+            {% for c in row.candidates %}<option value="{{ c.id }}">{{ c.name }} — {{ c.phone|phone_for:user|default:"no phone" }} ({{ c.get_source_display }})</option>{% endfor %}
           </select></div>
         <button class="btn btn-sm">Merge</button>
       {% endif %}

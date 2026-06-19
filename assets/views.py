@@ -157,6 +157,11 @@ class AssetDetailView(ReadAccessMixin, DetailView):
         from departments.models import Department
         ctx["funds"] = Department.objects.filter(active=True, is_trust=False).order_by("name")
         ctx["today"] = dt.date.today()
+        le = a.source_expenses.select_related("department").order_by("date")
+        ctx["linked_expenses"] = le
+        from decimal import Decimal as _D
+        from django.db.models import Sum as _Sum
+        ctx["linked_total"] = le.aggregate(t=_Sum("amount"))["t"] or _D(0)
         return ctx
 
 
@@ -185,10 +190,11 @@ class AssetAttachmentDelete(DataEntryRequiredMixin, View):
 class AssetAccumulateView(TreasurerRequiredMixin, View):
     """Accumulate a construction/building asset's cost from CAPITAL expenses.
 
-    Sums approved/paid capital expenditure on a chosen fund over a date range
-    (which can reach back into previous years) and either sets or adds to the
-    asset's cost — so a building under construction is carried at the total spent
-    on it so far. Manual editing of the cost stays available on the edit form."""
+    Only capital expenses NOT yet attached to any asset are picked up, then each
+    is LINKED to this asset (capitalized_asset) and its amount added to the cost.
+    Re-running is therefore safe — already-included expenses are skipped, so the
+    cost can't be double-counted. The asset detail page lists exactly which
+    expenses make up the cost. Manual editing of the cost stays available."""
     def post(self, request, pk):
         import datetime as dt
         from decimal import Decimal
@@ -213,22 +219,22 @@ class AssetAccumulateView(TreasurerRequiredMixin, View):
         qs = Expense.objects.filter(
             department=fund,
             expenditure_type=Expense.ExpenditureType.CAPITAL,
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
+            capitalized_asset__isnull=True)        # never re-add an already-linked expense
         if start:
             qs = qs.filter(date__gte=start)
         if end:
             qs = qs.filter(date__lte=end)
         total = qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
-        if request.POST.get("mode") == "add":
-            a.cost = (a.cost or Decimal(0)) + total
-            verb = f"Added {total:,.2f}"
-        else:
-            a.cost = total
-            verb = f"Set cost to {total:,.2f}"
+        n = qs.count()
+        if not n:
+            messages.info(request, "No new capital expenses to add — everything matching is "
+                                   "already included in this asset's cost.")
+            return redirect("asset_detail", pk=a.pk)
+        qs.update(capitalized_asset=a)             # link them so they're exempt next time
+        a.cost = (a.cost or Decimal(0)) + total
         a.save()
-        rng = ""
-        if start or end:
-            rng = f" ({start or '…'} to {end or '…'})"
-        messages.success(request, f"{verb} from {qs.count()} capital expense(s) "
-                                  f"on {fund.name}{rng}.")
+        rng = f" ({start or '...'} to {end or '...'})" if (start or end) else ""
+        messages.success(request, f"Added {n} capital expense(s) totalling {total:,.2f} "
+                                  f"from {fund.name}{rng}. Cost is now {a.cost:,.2f}.")
         return redirect("asset_detail", pk=a.pk)

@@ -113,6 +113,29 @@ class SiteConfig(models.Model):
     telegram_session_minutes = models.PositiveIntegerField(
         default=30, help_text="Minutes a chat stays unlocked after a correct PIN.")
 
+    # ---- Telegram envelope entry (assistants record offerings remotely) ----
+    telegram_envelope_enabled = models.BooleanField(
+        default=True,
+        help_text="Allow recording envelope/offering giving from Telegram (/envelope).")
+    telegram_allow_new_member = models.BooleanField(
+        default=False,
+        help_text="Let Telegram entry create a NEW member when no existing member "
+                  "matches the typed name. Off = assistants can only record for "
+                  "members already in the system (safer).")
+    telegram_envelope_confirm = models.BooleanField(
+        default=True,
+        help_text="Show a summary and require a 'yes' before saving each envelope.")
+    class TgEnvChannel(models.TextChoices):
+        CASH = "CASH", "Cash"
+        BANK = "BANK", "Bank / already given"
+    telegram_envelope_channel = models.CharField(
+        max_length=4, choices=TgEnvChannel.choices, default=TgEnvChannel.CASH,
+        help_text="Default channel for envelopes recorded via Telegram.")
+    telegram_envelope_funds = models.ManyToManyField(
+        "departments.Department", blank=True, related_name="telegram_envelope_configs",
+        help_text="Funds offered when recording an envelope on Telegram. "
+                  "Leave empty to use the active offering funds automatically.")
+
     # ---- Report signatories ----
     sig_treasurer = models.CharField("Head treasurer", max_length=120, blank=True)
     sig_pastor = models.CharField("Pastor", max_length=120, blank=True)

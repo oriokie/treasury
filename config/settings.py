@@ -302,7 +302,47 @@ if not DEBUG:
 MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"
 
 
+# --- Email + admin error alerts -------------------------------------------
+def _parse_admin(a):
+    a = a.strip()
+    if "<" in a and a.endswith(">"):
+        name, email = a[:-1].split("<", 1)
+        return (name.strip() or "Admin", email.strip())
+    return ("Admin", a)
+
+ADMINS = [_parse_admin(x) for x in os.environ.get("DJANGO_ADMINS", "").split(",") if x.strip()]
+MANAGERS = ADMINS
+
+_email_host = os.environ.get("DJANGO_EMAIL_HOST", "")
+if _email_host:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = _email_host
+    EMAIL_PORT = int(os.environ.get("DJANGO_EMAIL_PORT", "587"))
+    EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_PASSWORD", "")
+    EMAIL_USE_TLS = env_bool("DJANGO_EMAIL_TLS", True)
+else:
+    # no SMTP configured -> emails are written to the log instead of failing,
+    # so the app and the backup emailer degrade gracefully out of the box.
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_FROM_EMAIL", "treasury@localhost")
+SERVER_EMAIL = os.environ.get("DJANGO_SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+
+# --- Caching for heavy aggregates (off unless a TTL is set) -----------------
+# Set DJANGO_DASH_CACHE_TTL (seconds, e.g. 60) in production to cache the
+# dashboard/executive/controls aggregates. Any financial write busts the cache
+# immediately (see core.perfcache); the TTL is just a backstop. Default 0 = off.
+DASHBOARD_CACHE_TTL = int(os.environ.get("DJANGO_DASH_CACHE_TTL", "0") or "0")
+
 # --- Logging ---------------------------------------------------------------
+_LOG_DIR = os.environ.get("DJANGO_LOG_DIR", str(BASE_DIR / "logs"))
+try:
+    os.makedirs(_LOG_DIR, exist_ok=True)
+    _have_log_dir = os.access(_LOG_DIR, os.W_OK)
+except OSError:
+    _have_log_dir = False
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -311,13 +351,43 @@ LOGGING = {
     },
     "handlers": {
         "console": {"class": "logging.StreamHandler", "formatter": "verbose"},
+        # only sends when ADMINS is set + email is configured; a no-op otherwise
+        "mail_admins": {"class": "django.utils.log.AdminEmailHandler",
+                        "level": "ERROR", "include_html": False},
     },
     "root": {"handlers": ["console"],
              "level": os.environ.get("DJANGO_LOG_LEVEL", "INFO")},
     "loggers": {
-        "django.request": {"handlers": ["console"], "level": "ERROR",
+        "django.request": {"handlers": ["console", "mail_admins"], "level": "ERROR",
                            "propagate": False},
-        "django.security": {"handlers": ["console"], "level": "WARNING",
+        "django.security": {"handlers": ["console", "mail_admins"], "level": "WARNING",
                             "propagate": False},
     },
 }
+if _have_log_dir:
+    LOGGING["handlers"]["error_file"] = {
+        "class": "logging.handlers.RotatingFileHandler",
+        "filename": os.path.join(_LOG_DIR, "treasury-errors.log"),
+        "maxBytes": 5 * 1024 * 1024, "backupCount": 5,
+        "level": "WARNING", "formatter": "verbose",
+    }
+    for _h in (LOGGING["root"], LOGGING["loggers"]["django.request"],
+               LOGGING["loggers"]["django.security"]):
+        _h["handlers"].append("error_file")
+
+
+# --- Optional Sentry error monitoring (active only if SENTRY_DSN is set) ----
+_SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            traces_sample_rate=float(os.environ.get("SENTRY_TRACES", "0")),
+            send_default_pii=False,
+            environment=os.environ.get("SENTRY_ENV", "dev" if DEBUG else "production"))
+    except Exception:
+        # Sentry is optional — never let a missing package break startup
+        pass

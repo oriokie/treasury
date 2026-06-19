@@ -81,7 +81,7 @@ def transfers_out_by_department(start=None, end=None):
     return {r["source"]: (r["total"] or Decimal(0)) for r in qs}
 
 
-def department_summary(start=None, end=None, consolidated=True):
+def _department_summary_impl(start=None, end=None, consolidated=True):
     """Per-fund: opening, receipts, expenses, closing. The master report.
 
     When consolidated (default), sub-accounts roll up into their parent fund, so
@@ -245,13 +245,9 @@ def dev_group_progress(start=None, end=None):
     return rows
 
 
-def trust_summary(start=None, end=None):
+def _trust_summary_impl(start=None, end=None):
     rows = []
     receipts = receipts_by_department(start, end)
-    # Cumulative receipts through the period end — the outstanding remittance is a
-    # running liability, not a single month's figure, so a trust collected in one
-    # month and remitted the next still reconciles.
-    cum_receipts = receipts_by_department(None, end)
     # A remittance reduces the trust liability once it is APPROVED or PAID — the
     # same basis the fund reports and general ledger use, so all three agree.
     remit_base = Q(category=Expense.Category.REMITTANCE,
@@ -371,3 +367,21 @@ def pending_receipts_total(as_of=None):
     if as_of:
         f &= Q(date__lte=as_of)
     return Transaction.objects.filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+
+# --- cached public wrappers (see core.perfcache; no-op unless a TTL is set) ---
+def _k(*parts):
+    return ":".join("" if p is None else (p.isoformat() if hasattr(p, "isoformat") else str(p))
+                    for p in parts)
+
+
+def department_summary(start=None, end=None, consolidated=True):
+    from core.perfcache import cached
+    return cached("dept_summary:" + _k(start, end, consolidated),
+                  lambda: _department_summary_impl(start, end, consolidated))
+
+
+def trust_summary(start=None, end=None):
+    from core.perfcache import cached
+    return cached("trust_summary:" + _k(start, end),
+                  lambda: _trust_summary_impl(start, end))

@@ -83,7 +83,7 @@ class ExecutiveDashboardTests(TestCase):
             description="big", amount=Decimal("5000"), category="OTHER",
             status=Expense.Status.PAID, recorded_by=self.u)
         # old unremitted trust receipt
-        Transaction.objects.create(date=dt.date.today() - dt.timedelta(days=90), channel="BANK",
+        Transaction.objects.create(date=dt.date.today() - dt.timedelta(days=90), channel="ENVELOPE",
             direction="CREDIT", amount=Decimal("2000"), department=self.trust, allocation_status="AUTO")
 
     def test_cards_and_charts(self):
