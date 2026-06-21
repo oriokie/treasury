@@ -230,7 +230,7 @@ def _normalise_openai_base(base, provider):
     return base
 
 
-def _llm_call(question, cfg, context=None):
+def _llm_call(question, cfg, context=None, system=None):
     """Call the configured provider. Returns (text, error). On success error is
     None; on failure text is None and error is a short human-readable reason."""
     from core.services.net import post_json
@@ -239,9 +239,10 @@ def _llm_call(question, cfg, context=None):
         return None, "No API key is set for the assistant."
     provider = cfg.llm_provider or "OPENAI"
     model = cfg.llm_model or _DEFAULT_MODEL.get(provider, "")
-    system = ("You are the treasurer's assistant for a church finance system. "
-              "Answer concisely using only the data summary provided. If the "
-              "answer isn't in the summary, say you don't have that figure.")
+    if system is None:
+        system = ("You are the treasurer's assistant for a church finance system. "
+                  "Answer concisely using only the data summary provided. If the "
+                  "answer isn't in the summary, say you don't have that figure.")
     if context is None:
         context = _data_context()
     user_msg = f"DATA SUMMARY:\n{context}\n\nQUESTION: {question}"
@@ -321,6 +322,61 @@ def _llm_answer(question, cfg):
     return text
 
 
+_ROUTE_INTENTS = {
+    "tithe": "tithe {period}",
+    "offering_summary": "offering summary {period}",
+    "trust": "trust funds to remit {period}",
+    "remittance": "remittance {period}",
+    "dev_groups": "development groups progress {period}",
+    "expenses": "expenses {fund} {period}",
+    "budget": "budget {fund} {period}",
+    "fund_balance": "balance of {fund}",
+    "income_expenditure": "income vs expenditure {period}",
+    "surplus": "surplus {period}",
+    "assets": "fixed assets net book value",
+    "financial_position": "statement of financial position",
+    "top_givers": "top givers {period}",
+    "cashbook": "cashbook {period}",
+}
+
+
+def _llm_route(question, cfg):
+    """Use the LLM purely to classify a free-text question into one known report
+    intent (plus an optional fund and period), then hand back to the rule engine
+    with a canonical phrasing. Returns an answer dict, or None if it can't route."""
+    import json as _json
+    intents = ", ".join(_ROUTE_INTENTS)
+    system = (
+        "You classify a church treasurer's question into exactly one report intent "
+        "for a finance system. Reply with ONLY a compact JSON object, no prose, of the "
+        'form {"intent": "...", "fund": "...", "period": "..."}. '
+        f"intent must be one of: {intents}. "
+        "fund is the fund/ministry name if the question names one, else empty. "
+        "period is a short phrase like 'last month', 'this year', 'last quarter', or empty. "
+        'If the question is not about any of these reports, use {"intent": "none"}.')
+    text, err = _llm_call(question, cfg, context="(intent routing — no data needed)",
+                          system=system)
+    if err or not text:
+        return None
+    raw = text.strip()
+    if "```" in raw:
+        raw = raw.split("```")[1].replace("json", "", 1).strip() if raw.count("```") >= 2 else raw
+    try:
+        obj = _json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+    except (ValueError, TypeError):
+        return None
+    intent = (obj.get("intent") or "").strip()
+    if intent not in _ROUTE_INTENTS:
+        return None
+    canonical = _ROUTE_INTENTS[intent].format(
+        fund=(obj.get("fund") or "").strip(), period=(obj.get("period") or "").strip()).strip()
+    routed = _answer_rules(canonical)
+    if routed.get("_fallback"):
+        return None
+    routed.pop("_fallback", None)
+    return routed
+
+
 def answer(question, user=None):
     data = _answer_rules(question, user)
     # If the rule engine didn't understand, optionally defer to a configured LLM.
@@ -328,6 +384,14 @@ def answer(question, user=None):
         from core.models import SiteConfig
         cfg = SiteConfig.get()
         if cfg.llm_enabled:
+            # first let the LLM pick the right report from natural phrasing…
+            try:
+                routed = _llm_route(question, cfg)
+            except Exception:
+                routed = None
+            if routed:
+                return routed
+            # …otherwise fall back to a conversational answer from the data summary
             text = _llm_answer(question, cfg)
             if text:
                 return {"text": text.strip()}

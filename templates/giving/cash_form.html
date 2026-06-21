@@ -34,7 +34,12 @@
       {% for e in form.fund.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       {% for e in form.department.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
     </div>
-    {% for f in form %}{% if f.name != 'member' and f.name != 'fund' and f.name != 'department' %}
+    <div class="form-row" id="devGroupRow" style="display:none">
+      <label>Development group</label>{{ form.dev_group }}
+      <div class="help">Required for development funds — which group does this giving belong to?</div>
+      {% for e in form.dev_group.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>
+    {% for f in form %}{% if f.name != 'member' and f.name != 'fund' and f.name != 'department' and f.name != 'dev_group' %}
       <div class="form-row">
         <label>{{ f.label }}</label>{{ f }}
         {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
@@ -78,7 +83,9 @@ fs.addEventListener("input",()=>{ clearTimeout(ft); fkey.value=""; const q=fs.va
     fac.innerHTML=""; if(!d.results.length){ fac.style.display="none"; return; }
     d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
       it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
-      const doPick=()=>{ fs.value=r.label; fkey.value=r.key; fac.style.display="none"; };
+      const doPick=()=>{ fs.value=r.label; fkey.value=r.key; fac.style.display="none";
+        const row=document.getElementById("devGroupRow"), sel=document.getElementById("id_dev_group");
+        if(row){ row.style.display = r.dev ? "" : "none"; if(!r.dev && sel) sel.value=""; } };
       it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
       it._pick=doPick;
       fac.appendChild(it); });

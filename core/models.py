@@ -112,6 +112,10 @@ class SiteConfig(models.Model):
                   "simple deployments; leave off if you use the webhook URL.")
     telegram_session_minutes = models.PositiveIntegerField(
         default=30, help_text="Minutes a chat stays unlocked after a correct PIN.")
+    site_base_url = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Public address of this site, e.g. https://kws.oriokie.com — used to "
+                  "turn report links in Telegram replies and emails into clickable URLs.")
 
     # ---- Telegram envelope entry (assistants record offerings remotely) ----
     telegram_envelope_enabled = models.BooleanField(

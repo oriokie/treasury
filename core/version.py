@@ -38,6 +38,43 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.54.0": "Telegram report answers can now include a clickable link straight to the report. Set "
+              "your site address (e.g. https://kws.oriokie.com) under Settings → Telegram, and the "
+              "bot's replies will link to the matching report; leave it blank and replies stay "
+              "text-only as before.",
+    "1.53.0": "The expense recategorise round-trip can now also switch an expense between capital "
+              "and recurrent (new column in the download). The leader department view is simpler and "
+              "shareable: the charts are gone, collection-only subgroups show just their name and "
+              "total contribution with no expenses, and there's a JPEG download for the subgroups "
+              "stamped with the date and time so you can see how current the figures are. The fund "
+              "report lists sub-accounts busiest-first (by receipts) and offers the same JPEG download.",
+    "1.52.0": "Split offerings are safer and the Telegram bot is smarter. Confirming auto-allocated "
+              "imports no longer re-points a split offering's halves to the wrong account when "
+              "“require confirmation” is on — the component funds are locked. The review queue's "
+              "manual Split can now target a split fund, which sub-divides that part across its "
+              "components. On Telegram, /balance with no fund lists every fund's balance with a total, "
+              "and when the assistant LLM is enabled the bot uses it to work out which report you're "
+              "asking for from plain language.",
+    "1.51.0": "The cash entry form now asks for the development group whenever a development fund "
+              "is chosen, and won't save without it. Petty cash disbursements now mirror the expense "
+              "form: choose how it was paid (cash, bank, M-Pesa or cheque) and add any M-Pesa/bank "
+              "transaction charge — useful when the float is held on M-Pesa or a bank account — which "
+              "is recorded as a linked charge and also reduces the float. Expenses can be flagged "
+              "“paid from petty cash” on both the expense form and the import (new column), so the "
+              "float stays accurate.",
+    "1.50.0": "Fixes: the development-groups “unassigned” page no longer errors when a contribution "
+              "has no linked member; bank-statement import now reads the real M-Pesa receipt code "
+              "from mobile/bank-channel narrations, so two genuinely different payments are never "
+              "dropped as duplicates; notifications now disappear from the list once read (with a "
+              "per-item Dismiss); and the transactions Excel/CSV export gains a “Receipt status” "
+              "column (receipted by envelope, manual receipt, memo, or not receipted) to aid "
+              "reconciliation.",
+    "1.49.0": "Fixed a split-fund allocation bug: when a reference (e.g. Combined Offering) had both "
+              "a split-fund rule and an older single-account rule, the gift could be sent wholly to "
+              "the wrong account (e.g. 13th Sabbath Offering). A deliberately-configured split fund "
+              "now always wins. Expenses can also carry an M-Pesa/bank charge on import (new column "
+              "on the template), just like the manual form — the charge is recorded as its own "
+              "bank-charge expense and linked back to the expense that incurred it.",
     "1.48.0": "New “Run rules on pending” button on the review queue: after you add allocation "
               "rules following an import, click it to apply the current rules to the items still in "
               "the queue — anything that now matches is allocated automatically, the rest stay for "

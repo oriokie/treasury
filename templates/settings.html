@@ -132,7 +132,7 @@
     <div class="card"><div class="bd">
       <div class="info-panel">Lets the treasurer use a Telegram chat to check figures and record expenses remotely. A PIN is required at the start of each chat session; expenses recorded here are saved as <strong>PENDING</strong> and must be approved in the web app.</div>
       <div class="form-grid">
-      {% for f in form %}{% if f.name in 'telegram_enabled telegram_bot_token telegram_pin telegram_session_minutes telegram_run_in_app' %}
+      {% for f in form %}{% if f.name in 'telegram_enabled telegram_bot_token telegram_pin telegram_session_minutes telegram_run_in_app site_base_url' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
           {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>

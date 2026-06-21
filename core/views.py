@@ -427,7 +427,7 @@ class FundSearchView(ReadAccessMixin, View):
     """Typeahead for fund pickers. scope=income adds split funds as single
     options; scope=expense restricts to expense-eligible funds."""
     def get(self, request):
-        from departments.models import expense_departments, income_departments
+        from departments.models import expense_departments, income_departments, Department
         q = (request.GET.get("q") or "").strip().lower()
         scope = request.GET.get("scope", "income")
         results = []
@@ -438,8 +438,9 @@ class FundSearchView(ReadAccessMixin, View):
         for d in depts:
             if not q or q in d.name.lower():
                 tag = "Trust" if d.is_trust else "Local"
-                results.append({"key": f"d:{d.id}", "id": d.id,
-                                "label": d.name, "tag": tag})
+                results.append({"key": f"d:{d.id}", "id": d.id, "label": d.name,
+                                "tag": tag,
+                                "dev": d.category == Department.Category.DEVELOPMENT})
         if scope == "income":
             from giving.models import SplitFund
             for s in SplitFund.objects.filter(active=True):
@@ -918,16 +919,23 @@ class NotificationListView(LoginRequiredMixin, View):
     def get(self, request):
         from django.db.models import Q
         from core.models import Notification
+        # only unread are shown — marking read makes them disappear from here
         qs = Notification.objects.filter(
-            Q(recipient=request.user) | Q(recipient__isnull=True)).order_by("-created_at")[:100]
+            Q(recipient=request.user) | Q(recipient__isnull=True),
+            read=False).order_by("-created_at")[:100]
         return render(request, self.template_name, {"notifications": qs})
 
     def post(self, request):
         from django.db.models import Q
         from core.models import Notification
-        Notification.objects.filter(
-            Q(recipient=request.user) | Q(recipient__isnull=True), read=False).update(read=True)
-        messages.success(request, "Notifications marked as read.")
+        base = Notification.objects.filter(
+            Q(recipient=request.user) | Q(recipient__isnull=True), read=False)
+        one = request.POST.get("id")
+        if one:
+            base.filter(pk=one).update(read=True)
+        else:
+            base.update(read=True)
+            messages.success(request, "Notifications marked as read.")
         return redirect("notifications")
 
 

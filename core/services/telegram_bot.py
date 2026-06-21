@@ -62,7 +62,7 @@ HELP = (
     "Queries:\n"
     "• /summary — collections, expenses, surplus this month\n"
     "• /trust — trust collected / remitted / outstanding\n"
-    "• /balance &lt;fund&gt; — closing balance of a fund\n"
+    "• /balance — all fund balances (or /balance • /balance &lt;fund&gt; — closing balance of a fundlt;fund• /balance &lt;fund&gt; — closing balance of a fundgt; for one)\n"
     "• /today — today's collections\n"
     "• Or just type a question, e.g. <i>how much tithe in May?</i>\n\n"
     "Record an expense:\n"
@@ -115,13 +115,31 @@ def _do_today():
 def _do_balance(arg):
     from departments.models import Department
     from reports.services import balances
+    rows = balances.department_summary()
     if not arg:
-        return "Usage: /balance <fund name>"
+        # no fund named -> show the closing balance of every fund, with a total
+        from decimal import Decimal
+        lines = ["<b>Fund balances</b>"]
+        total = Decimal("0")
+        shown = 0
+        for r in rows:
+            d = r["department"]
+            if getattr(d, "parent_id", None):      # roll sub-accounts into parents
+                continue
+            if not (r["opening"] or r["receipts"] or r["expenses"] or r["closing"]):
+                continue
+            lines.append(f"{d.name}: <b>{_money(r['closing'])}</b>")
+            total += r["closing"] or Decimal("0")
+            shown += 1
+        if not shown:
+            return "No fund activity recorded yet."
+        lines.append(f"———\n<b>Total: {_money(total)}</b>")
+        lines.append("\n<i>Tip: /balance &lt;fund&gt; for one fund's full detail.</i>")
+        return "\n".join(lines)
     dept = (Department.objects.filter(name__icontains=arg).first()
             or Department.objects.filter(slug__icontains=arg).first())
     if not dept:
         return f"No fund matching “{arg}”."
-    rows = balances.department_summary()
     for r in rows:
         if r["department"].id == dept.id:
             return (f"<b>{dept.name}</b>\nOpening: {_money(r['opening'])}\n"
@@ -480,6 +498,38 @@ def _create_envelope(session, data, cfg):
             f"reports and reconciliation.")
 
 
+def _format_assistant(ans, cfg):
+    """Render the assistant's answer (string or dict with text/rows/note/link)
+    into Telegram HTML."""
+    if ans is None:
+        return ""
+    if isinstance(ans, str):
+        return ans
+    if isinstance(ans, tuple):
+        ans = ans[0] if ans else ""
+        return ans if isinstance(ans, str) else ""
+    if not isinstance(ans, dict):
+        return str(ans)
+    parts = [ans.get("text", "").strip()]
+    for row in ans.get("rows", []) or []:
+        try:
+            label, value = row
+            parts.append(f"• {label}: <b>{value}</b>")
+        except (ValueError, TypeError):
+            continue
+    if ans.get("note"):
+        parts.append(f"<i>{ans['note']}</i>")
+    link = ans.get("link")
+    if link:
+        base = (getattr(cfg, "site_base_url", "") or "").strip().rstrip("/")
+        if base and not base.startswith(("http://", "https://")):
+            base = "https://" + base
+        label = ans.get("link_label") or "Open report"
+        if base and link.startswith("/"):
+            parts.append(f'<a href="{base}{link}">{label}</a>')
+    return "\n".join(p for p in parts if p)
+
+
 # ----------------------------------------------------------------------------- dispatch
 def handle_update(update):
     """Process one Telegram update dict. Returns a list of {chat_id, text}."""
@@ -559,10 +609,9 @@ def handle_update(update):
     try:
         from core.services.assistant import answer
         ans = answer(text, user=session.user)
-        if isinstance(ans, tuple):
-            ans = ans[0]
+        reply = _format_assistant(ans, cfg)
         hint = "" if cfg.llm_enabled else "\n\n<i>Tip: try /summary, /trust, /today or /expense.</i>"
-        return [{"chat_id": chat_id, "text": (ans or "I didn't catch that.") + hint}]
+        return [{"chat_id": chat_id, "text": (reply or "I didn't catch that.") + hint}]
     except Exception:
         return [{"chat_id": chat_id, "text": "Try /help for what I can do."}]
 

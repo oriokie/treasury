@@ -36,7 +36,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "error_alerts_enabled", "error_alert_phone",
             "opening_bank_balance", "opening_cash_on_hand", "opening_unremitted_trust",
             "telegram_enabled", "telegram_bot_token", "telegram_pin",
-            "telegram_session_minutes", "telegram_run_in_app",
+            "telegram_session_minutes", "telegram_run_in_app", "site_base_url",
             "telegram_envelope_enabled", "telegram_allow_new_member",
             "telegram_envelope_confirm", "telegram_envelope_channel",
             "telegram_envelope_funds",

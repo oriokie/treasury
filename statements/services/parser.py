@@ -56,6 +56,12 @@ def _map_columns(headers):
 
 # --- narration parsing -----------------------------------------------------
 PHONE_SEG = re.compile(r"(2547\d{8}|2541\d{8})")
+# An M-Pesa transaction receipt is a 10-character uppercase code with both
+# letters and digits (e.g. UER2Q5NF2W, UC7QM8P5XY). It is the only globally
+# unique handle on a payment, so we extract it even when it isn't the first
+# segment (bank-channel narrations put a 'NNNNNN:MBANKING' marker first and the
+# real receipt second). Requiring a digit avoids matching 10-letter words/names.
+MPESA_RCPT = re.compile(r"\b(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])([A-Z0-9]{10})\b")
 
 
 def parse_narration(narration):
@@ -72,7 +78,10 @@ def parse_narration(narration):
 
     if "~" in text:
         parts = [p.strip() for p in text.split("~")]
-        out["receipt"] = parts[0]
+        # prefer the genuine 10-char M-Pesa receipt anywhere in the narration;
+        # fall back to the first segment only when there isn't one.
+        rc = MPESA_RCPT.search(text.upper())
+        out["receipt"] = rc.group(1) if rc else parts[0]
         phone_match = PHONE_SEG.search(text)
         if phone_match:
             out["phone"] = phone_match.group(1)

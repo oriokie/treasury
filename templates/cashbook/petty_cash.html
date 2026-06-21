@@ -30,6 +30,12 @@
         <div class="form-row"><label>Category</label>{{ disb_form.category }}</div>
       </div>
       <div class="form-row"><label>Charge to fund / ministry</label>{{ disb_form.department }}</div>
+      <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+        <div class="form-row"><label>Paid by</label>{{ disb_form.method }}</div>
+        <div class="form-row"><label>Voucher no <span class="muted">(optional)</span></label>{{ disb_form.voucher_no }}</div>
+      </div>
+      <div class="form-row"><label>{{ disb_form.charge.label }} <span class="muted">(optional)</span></label>{{ disb_form.charge }}
+        <div class="help">{{ disb_form.charge.help_text }}</div></div>
       <div class="form-row"><label>Paid to <span class="muted">(optional)</span></label>{{ disb_form.claimant }}</div>
       <div class="btn-row"><button class="btn btn-brass">Record disbursement</button></div>
     </form>

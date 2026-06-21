@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize static %}
 {% block title %}{{ department.name }} ledger · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Fund Ledger" %}
@@ -26,8 +26,9 @@
 {% if subgroups or dev_rows %}
 <div class="page-head"><h2 class="u-mt-lg">Sub-accounts</h2>
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups">⤓ Excel</a>
-<a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups-csv">CSV</a></div></div>
-<div class="table-wrap"><table class="ledger">
+<a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups-csv">CSV</a>
+<button type="button" class="btn btn-ghost btn-sm" onclick="tableToJpeg('subAccountsTable', {title:'{{ department.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'fund-{{ department.slug|default:department.id }}-subaccounts', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download the sub-accounts as a JPEG image">⤓ JPEG</button></div></div>
+<div class="table-wrap"><table class="ledger" id="subAccountsTable">
   <thead><tr><th>Sub-account</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
   <tbody>
   {% for r in subgroups %}
@@ -48,4 +49,5 @@
 </table></div>
 <style>.total-row td{border-top:2px solid var(--line)}</style>
 {% endif %}
+<script src="{% static 'js/table_jpeg.js' %}"></script>
 {% endblock %}

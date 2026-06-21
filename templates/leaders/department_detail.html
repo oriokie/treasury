@@ -44,17 +44,7 @@
   {% endif %}
 </div>
 
-<!-- Insight charts -->
-<div class="ld-charts">
-  {% if has_monthly %}
-  <div class="card"><div class="hd">Collections vs expenses</div><div class="bd">
-    <canvas id="ldMonthly" height="200"></canvas></div></div>
-  {% endif %}
-  {% if has_channel %}
-  <div class="card"><div class="hd">How giving arrives</div><div class="bd">
-    <canvas id="ldChannel" height="200"></canvas></div></div>
-  {% endif %}
-</div>
+<!-- Insight charts removed: leaders asked for a simpler, image-friendly view -->
 
 <!-- Insights row: top givers + budget -->
 <div class="ld-charts">
@@ -122,6 +112,7 @@
       </tbody>
     </table>
   </div></div>
+  {% if expenses_eligible %}
   <div class="card"><div class="hd u-between">Recent expenses <a class="link u-xs" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd bd-flush">
     <table class="ledger compact">
       <tbody>
@@ -133,13 +124,16 @@
       </tbody>
     </table>
   </div></div>
+  {% endif %}
 </div>
 
 <!-- Sub-accounts -->
 {% if subrows %}
-<div class="section-title">Sub-accounts</div>
+<div class="section-title u-between"><span>Sub-accounts</span>
+  <button type="button" class="btn btn-ghost btn-sm no-print" onclick="tableToJpeg('ldSubgroups', {title:'{{ dept.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'{{ dept.slug|default:dept.id }}-subgroups', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download as a JPEG image">⤓ JPEG</button></div>
 <div class="card u-mb-lg"><div class="bd bd-flush">
-  <table class="ledger compact">
+  <table class="ledger compact" id="ldSubgroups">
+    {% if any_sub_expenses %}
     <thead><tr><th>Fund</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th><th></th></tr></thead>
     <tbody>
     {% for r in subrows %}<tr>
@@ -150,6 +144,15 @@
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">drill in →</a></td>
     </tr>{% endfor %}
     </tbody>
+    {% else %}
+    <thead><tr><th>Subgroup</th><th class="num">Total contribution</th></tr></thead>
+    <tbody>
+    {% for r in subrows %}<tr>
+      <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">{{ r.department.name }}</a></td>
+      <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
+    </tr>{% endfor %}
+    </tbody>
+    {% endif %}
   </table>
 </div></div>
 {% endif %}
@@ -165,38 +168,5 @@
 .ld-charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.4rem;align-items:start}
 @media(max-width:820px){.ld-kpis{grid-template-columns:repeat(2,1fr)}.ld-charts{grid-template-columns:1fr}}
 </style>
-<script src="{% static 'vendor/chart.umd.js' %}"></script>
-<script>
-(function(){
-  var css = getComputedStyle(document.documentElement);
-  var forest = (css.getPropertyValue('--forest')||'#1f5f4f').trim();
-  var brass = (css.getPropertyValue('--brass')||'#b07d2c').trim();
-  var danger = (css.getPropertyValue('--danger')||'#a23b3b').trim();
-  var muted = (css.getPropertyValue('--muted')||'#7a7568').trim();
-  if (typeof Chart === 'undefined') return;
-  Chart.defaults.font.family = "'Public Sans',sans-serif";
-  Chart.defaults.color = muted;
-  {% if has_monthly %}
-  var mo = {{ monthly_json|safe }};
-  new Chart(document.getElementById('ldMonthly'), {
-    type: 'bar',
-    data: { labels: mo.labels, datasets: [
-      { label: 'Collections', data: mo.receipts, backgroundColor: forest, borderRadius: 4 },
-      { label: 'Expenses', data: mo.expenses, backgroundColor: danger, borderRadius: 4 } ]},
-    options: { responsive: true, plugins: { legend: { position: 'bottom' } },
-      scales: { y: { beginAtZero: true } } }
-  });
-  {% endif %}
-  {% if has_channel %}
-  var ch = {{ channel_json|safe }};
-  new Chart(document.getElementById('ldChannel'), {
-    type: 'doughnut',
-    data: { labels: ch.map(function(d){return d.label;}),
-      datasets: [{ data: ch.map(function(d){return d.value;}),
-        backgroundColor: [forest, brass, muted, danger] }]},
-    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-  });
-  {% endif %}
-})();
-</script>
+<script src="{% static 'js/table_jpeg.js' %}"></script>
 {% endblock %}

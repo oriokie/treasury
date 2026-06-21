@@ -22,9 +22,9 @@
       <td>{{ t.payer_name|default:"—" }}{% if t.payer_phone %} <span class="muted u-xs">{{ t.payer_phone }}</span>{% endif %}</td>
       <td class="mono u-small">{{ t.reference|default:"—" }}</td>
       <td class="num mono">{% if t.dev_group %}<span class="pill pill-brass" title="{{ t.dev_group.label }}">{{ t.dev_group.number }}</span>{% else %}—{% endif %}</td>
-      <td><select name="dept_{{ t.id }}" class="field--select" style="min-width:200px">
+      <td>{% if t.department_id in comp_ids %}<span title="Part of a configured split — locked">{{ t.department.name }} <span class="muted">· split</span></span>{% else %}<select name="dept_{{ t.id }}" class="field--select" style="min-width:200px">
         {% for d in funds %}<option value="{{ d.id }}" {% if d.id == t.department_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
-      </select></td>
+      </select>{% endif %}</td>
       <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
       <td><span class="pill {% if t.allocation_status == 'AUTO' %}pill-green{% else %}pill-blue{% endif %}">{{ t.get_allocation_status_display }}</span></td>
     </tr>{% endfor %}

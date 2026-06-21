@@ -12,12 +12,13 @@ class CashEntryForm(StyledFormMixin, forms.ModelForm):
 
     class Meta:
         model = Transaction
-        fields = ["date", "channel", "department", "member", "amount",
+        fields = ["date", "channel", "department", "dev_group", "member", "amount",
                   "reference", "payer_name"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        from departments.models import DevelopmentGroup
         self.fields["channel"].choices = [
             (Transaction.Channel.CASH, "Cash"),
             (Transaction.Channel.ENVELOPE, "Envelope"),
@@ -25,6 +26,9 @@ class CashEntryForm(StyledFormMixin, forms.ModelForm):
         self.fields["department"].queryset = Department.objects.filter(active=True)
         self.fields["department"].required = False
         self.fields["department"].widget = forms.HiddenInput()
+        self.fields["dev_group"].required = False
+        self.fields["dev_group"].queryset = DevelopmentGroup.objects.filter(
+            active=True).order_by("number")
         self.fields["member"].required = False
         self.fields["member"].queryset = Member.objects.filter(active=True)
         self.fields["member"].widget = forms.HiddenInput()
@@ -50,6 +54,10 @@ class CashEntryForm(StyledFormMixin, forms.ModelForm):
             cleaned["department"] = Department.objects.filter(pk=key[2:]).first()
         if not cleaned.get("department") and not self.split_fund:
             raise forms.ValidationError("Choose a fund to record this against.")
+        dept = cleaned.get("department")
+        if dept and dept.category == Department.Category.DEVELOPMENT and not cleaned.get("dev_group"):
+            raise forms.ValidationError(
+                "This is a development fund — please choose the development group.")
         return cleaned
 
 

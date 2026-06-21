@@ -16,7 +16,7 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
         model = Expense
         fields = ["date", "department", "description", "amount", "category",
                   "expenditure_type", "capitalized_asset",
-                  "claimant", "method", "voucher_no"]
+                  "claimant", "method", "voucher_no", "paid_from_petty_cash"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):
@@ -41,6 +41,11 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
             from assets.models import FixedAsset
             self.fields["capitalized_asset"].queryset = FixedAsset.objects.filter(disposed=False)
             self.fields["capitalized_asset"].widget.attrs.update({"class": "field--select"})
+        if "paid_from_petty_cash" in self.fields:
+            self.fields["paid_from_petty_cash"].required = False
+            self.fields["paid_from_petty_cash"].label = "Paid from petty cash float"
+            self.fields["paid_from_petty_cash"].help_text = (
+                "Tick if this was paid out of the petty cash float — it reduces the float.")
         self._style()
 
     def clean_expenditure_type(self):
@@ -117,7 +122,14 @@ class PettyCashDisbursementForm(StyledFormMixin, forms.Form):
     amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
     department = forms.ModelChoiceField(queryset=None, label="Charge to fund / ministry")
     category = forms.ChoiceField(choices=[])
+    method = forms.ChoiceField(choices=[], required=False,
+                               label="Paid by", initial="CASH")
     claimant = forms.CharField(max_length=120, required=False)
+    voucher_no = forms.CharField(max_length=30, required=False, label="Voucher no")
+    charge = forms.DecimalField(
+        required=False, min_value=0, label="Transaction charge (M-Pesa / bank)",
+        help_text="If the float is held on M-Pesa/bank: any withdrawal/transfer charge. "
+                  "It's recorded as a linked bank-charge disbursement and also reduces the float.")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -126,10 +138,11 @@ class PettyCashDisbursementForm(StyledFormMixin, forms.Form):
         self.fields["category"].choices = [
             c for c in Expense.Category.choices if c[0] != Expense.Category.REMITTANCE]
         self.fields["category"].initial = Expense.Category.OTHER
+        self.fields["method"].choices = Expense.Method.choices
         from departments.models import Department
         self.fields["department"].queryset = Department.objects.filter(
             active=True, is_trust=False).order_by("name")
-        for f in ("category", "department"):
+        for f in ("category", "department", "method"):
             self.fields[f].widget.attrs.update({"class": "field--select"})
         self.fields["date"].initial = _dt.date.today()
         self._style()

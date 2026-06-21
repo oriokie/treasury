@@ -189,8 +189,8 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                 description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
                 amount=charge, category=Expense.Category.BANK_CHARGE,
                 method=exp.method, recorded_by=self.request.user,
-                voucher_no=exp.voucher_no,
-                status=exp.status,
+                voucher_no=exp.voucher_no, paid_from_petty_cash=exp.paid_from_petty_cash,
+                status=exp.status, charge_for=exp,
                 approved_by=self.request.user if auto else None)
         if exp.status == Expense.Status.PENDING:
             from core.services.notifications import notify
@@ -493,19 +493,35 @@ class PettyCashDisburse(DataEntryRequiredMixin, View):
             from core.models import SiteConfig
             if SiteConfig.get().enforce_petty_float:
                 bal = _petty_balance_asof(cd["date"])
-                if cd["amount"] > bal:
+                need = cd["amount"] + (cd.get("charge") or 0)
+                if need > bal:
                     messages.error(request,
                         f"Insufficient petty cash float — {bal:,.2f} on hand, "
-                        f"{cd['amount']:,.2f} requested. Top up the float first.")
+                        f"{need:,.2f} requested. Top up the float first.")
                     return redirect("petty_cash")
-            Expense.objects.create(
+            method = cd.get("method") or Expense.Method.CASH
+            exp = Expense.objects.create(
                 date=cd["date"], sabbath_week=sabbath_week_of(cd["date"]),
                 department=cd["department"], description=cd["description"], amount=cd["amount"],
-                category=cd["category"], claimant=cd["claimant"], method=Expense.Method.CASH,
+                category=cd["category"], claimant=cd["claimant"], method=method,
+                voucher_no=cd.get("voucher_no") or "",
                 paid_from_petty_cash=True, status=Expense.Status.PAID, paid_date=cd["date"],
                 recorded_by=request.user, approved_by=request.user)
-            messages.success(request, f"Petty cash disbursement of {cd['amount']} charged to "
-                                      f"{cd['department'].name}.")
+            # optional M-Pesa / bank charge (float held on M-Pesa/bank) -> linked,
+            # also paid from petty cash so it reduces the float too
+            charge = cd.get("charge")
+            if charge and charge > 0:
+                ref = exp.voucher_no or f"exp #{exp.id}"
+                Expense.objects.create(
+                    date=cd["date"], sabbath_week=exp.sabbath_week, department=cd["department"],
+                    description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
+                    amount=charge, category=Expense.Category.BANK_CHARGE, method=method,
+                    voucher_no=exp.voucher_no, paid_from_petty_cash=True, charge_for=exp,
+                    status=Expense.Status.PAID, paid_date=cd["date"],
+                    recorded_by=request.user, approved_by=request.user)
+            extra = f" (+ {charge:,.2f} charge)" if charge and charge > 0 else ""
+            messages.success(request, f"Petty cash disbursement of {cd['amount']:,.2f}{extra} "
+                                      f"charged to {cd['department'].name}.")
         else:
             messages.error(request, "Could not record the disbursement: " + form.errors.as_text())
         return redirect("petty_cash")
@@ -867,12 +883,11 @@ class ExpenseCategoryList(TreasurerRequiredMixin, View):
 
 
 class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
-    """Download all expenses as a spreadsheet for offline re-categorising, then
-    re-import to update ONLY the category column. Every other field is read-only
-    in this flow — the round-trip is keyed on the expense ID, and any change to
-    amounts, dates, descriptions etc. in the file is ignored. This lets a
-    treasurer fix many mis-categorised expenses quickly without risking the rest
-    of the ledger."""
+    """Download all expenses as a spreadsheet for offline editing, then re-import
+    to update the category and/or the expenditure type (capital vs recurrent).
+    The round-trip is keyed on the expense ID; amounts, dates, descriptions and
+    other fields in the file are ignored, so a treasurer can fix many
+    mis-categorised expenses quickly without risking the rest of the ledger."""
     template_name = "cashbook/recategorize.html"
 
     def get(self, request):
@@ -889,7 +904,8 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
         from django.http import HttpResponse
         wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Expenses"
         head = ["ID", "Date", "Description", "Fund", "Amount",
-                "Current category", "New category (edit this)"]
+                "Current category", "New category (edit this)",
+                "Current type", "New type (capital/recurrent)"]
         ws.append(head)
         for c in range(1, len(head) + 1):
             ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
@@ -900,15 +916,22 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
         ref.cell(1, 1).font = Font(bold=True); ref.cell(1, 2).font = Font(bold=True)
         for code, label in Expense.Category.choices:
             ref.append([code, label])
+        ref.append([])
+        ref.append(["Expenditure type", ""])
+        for code, label in Expense.ExpenditureType.choices:
+            ref.append([code, label])
         for x in (Expense.objects.select_related("department")
                   .order_by("-date", "-id")):
             ws.append([x.id, x.date.isoformat(), x.description,
                        x.department.name if x.department_id else "",
                        float(x.amount), x.get_category_display(),
-                       x.get_category_display()])
+                       x.get_category_display(),
+                       x.get_expenditure_type_display() if x.expenditure_type else "",
+                       x.get_expenditure_type_display() if x.expenditure_type else ""])
         ws.column_dimensions["C"].width = 34
         ws.column_dimensions["F"].width = 20
         ws.column_dimensions["G"].width = 22
+        ws.column_dimensions["I"].width = 24
         buf = io.BytesIO(); wb.save(buf)
         resp = HttpResponse(buf.getvalue(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -933,6 +956,8 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
         # either the human label ("Transport") or the raw code ("TRANSPORT")
         by_label = {lbl.lower(): code for code, lbl in Expense.Category.choices}
         by_code = {code.upper(): code for code, _ in Expense.Category.choices}
+        type_by_label = {lbl.lower(): code for code, lbl in Expense.ExpenditureType.choices}
+        type_by_code = {code.upper(): code for code, _ in Expense.ExpenditureType.choices}
 
         header = [str(c.value).strip().lower() if c.value else "" for c in ws[1]]
         try:
@@ -942,8 +967,11 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
             messages.error(request, "That doesn't look like the recategorise template "
                                     "(missing the ID or New category column).")
             return redirect("expense_recategorize")
+        # optional type column (older templates won't have it)
+        type_col = next((i for i, h in enumerate(header)
+                         if h.startswith("new type")), None)
 
-        updated = unchanged = bad = missing = 0
+        updated = unchanged = bad = missing = typed = 0
         bad_rows = []
         for row in ws.iter_rows(min_row=2, values_only=True):
             if id_col >= len(row) or row[id_col] in (None, ""):
@@ -952,38 +980,60 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
                 eid = int(row[id_col])
             except (TypeError, ValueError):
                 continue
-            raw = row[new_col] if new_col < len(row) else None
-            if raw in (None, ""):
-                continue
-            key = str(raw).strip()
-            code = by_code.get(key.upper()) or by_label.get(key.lower())
-            if not code:
-                bad += 1
-                if len(bad_rows) < 10:
-                    bad_rows.append(f"#{eid}: “{key}”")
-                continue
             exp = Expense.objects.filter(pk=eid).first()
             if not exp:
                 missing += 1
                 continue
-            if exp.category == code:
+            dirty = []
+            # category
+            raw = row[new_col] if new_col < len(row) else None
+            if raw not in (None, ""):
+                key = str(raw).strip()
+                code = by_code.get(key.upper()) or by_label.get(key.lower())
+                if not code:
+                    bad += 1
+                    if len(bad_rows) < 10:
+                        bad_rows.append(f"#{eid}: “{key}”")
+                elif exp.category != code:
+                    exp.category = code
+                    dirty.append("category")
+            # expenditure type (capital / recurrent)
+            if type_col is not None and type_col < len(row):
+                traw = row[type_col]
+                if traw not in (None, ""):
+                    tkey = str(traw).strip()
+                    tcode = type_by_code.get(tkey.upper()) or type_by_label.get(tkey.lower())
+                    if not tcode:
+                        bad += 1
+                        if len(bad_rows) < 10:
+                            bad_rows.append(f"#{eid}: type “{tkey}”")
+                    elif exp.expenditure_type != tcode:
+                        exp.expenditure_type = tcode
+                        dirty.append("expenditure_type")
+            if dirty:
+                exp.save(update_fields=dirty)
+                updated += 1 if "category" in dirty else 0
+                typed += 1 if "expenditure_type" in dirty else 0
+            else:
                 unchanged += 1
-                continue
-            exp.category = code
-            exp.save(update_fields=["category"])
-            updated += 1
 
-        parts = [f"{updated} re-categorised"]
+        parts = []
+        if updated:
+            parts.append(f"{updated} re-categorised")
+        if typed:
+            parts.append(f"{typed} type changed")
+        if not parts:
+            parts.append("0 changed")
         if unchanged:
             parts.append(f"{unchanged} unchanged")
         if missing:
             parts.append(f"{missing} not found")
         if bad:
-            parts.append(f"{bad} with an unrecognised category")
+            parts.append(f"{bad} with an unrecognised value")
         msg = ", ".join(parts) + "."
         if bad_rows:
             msg += " Unrecognised: " + "; ".join(bad_rows)
-        (messages.success if updated else messages.warning)(request, msg)
+        (messages.success if (updated or typed) else messages.warning)(request, msg)
         return redirect("expense_list")
 
 
@@ -1031,15 +1081,15 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         from departments.models import Department
         wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Expenses"
         head = ["Date", "Fund", "Description", "Amount", "Category", "Method",
-                "Claimant", "Voucher no"]
+                "Claimant", "Voucher no", "M-Pesa charge", "Paid from petty cash"]
         ws.append(head)
         for c in range(1, len(head) + 1):
             ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
             ws.cell(1, c).fill = PatternFill("solid", fgColor="1F5F4F")
         ws.append(["2026-06-06", "LCB", "Pulpit microphone", 4500, "Materials",
-                   "Cash", "J. Mwangi", "V-001"])
+                   "Cash", "J. Mwangi", "V-001", "", ""])
         ws.append(["2026-06-07", "YOUTH", "Bus fare for rally", 2000, "Transport",
-                   "M-Pesa", "S. Achieng", "V-002"])
+                   "M-Pesa", "S. Achieng", "V-002", 30, "Yes"])
         ref = wb.create_sheet("Lists")
         ref["A1"] = "Funds"; ref["A1"].font = Font(bold=True)
         funds = list(Department.objects.filter(active=True, selectable=True).order_by("name"))
@@ -1075,6 +1125,11 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             "  - Method — Cash / Bank / Cheque / M-Pesa (defaults to Cash).",
             "  - Claimant — who was paid (optional).",
             "  - Voucher no — optional reference.",
+            "  - M-Pesa charge — optional. The transaction/withdrawal charge for this",
+            "    payment; it's recorded as a separate bank-charge expense on the same",
+            "    fund and linked back to this expense.",
+            "  - Paid from petty cash — optional Yes/No. If Yes, the expense (and any",
+            "    charge) is paid from the petty cash float and reduces it.",
             "",
             "If approval is required, imported expenses arrive as Pending for you to",
             "approve. If it isn't, they are approved automatically.",
@@ -1119,6 +1174,8 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         c_method = col("method", "paid by", "payment")
         c_claim = col("claimant", "payee", "paid to")
         c_vouch = col("voucher no", "voucher", "ref")
+        c_charge = col("m-pesa charge", "mpesa charge", "charge", "transaction charge")
+        c_petty = col("paid from petty cash", "petty cash", "petty")
         if c_date is None or c_amt is None or c_desc is None:
             messages.error(request, "Need at least Date, Description and Amount columns "
                                     "— please use the template.")
@@ -1157,12 +1214,20 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             fund = funds.get(fund_raw.lower()) if fund_raw else None
             cat = self.CATEGORY_LABELS.get(cell(r, c_cat).upper(), "OTHER")
             method = self.METHOD_LABELS.get(cell(r, c_method).upper(), "CASH")
+            try:
+                charge = (float(r[c_charge]) if c_charge is not None and c_charge < len(r)
+                          and r[c_charge] not in (None, "") else 0.0)
+            except (TypeError, ValueError):
+                charge = 0.0
+            petty_raw = cell(r, c_petty) if c_petty is not None else ""
+            petty = str(petty_raw).strip().lower() in ("yes", "y", "true", "1", "x")
             plan.append({
                 "date": d, "fund_raw": fund_raw,
                 "fund_id": fund.id if fund else None,
                 "fund_name": fund.name if fund else None,
                 "description": desc[:200], "amount": amt,
-                "category": cat, "method": method,
+                "category": cat, "method": method, "charge": round(charge, 2),
+                "petty": petty,
                 "claimant": cell(r, c_claim)[:120], "voucher": cell(r, c_vouch)[:30],
                 "ok": bool(d and desc and amt > 0 and fund),
             })
@@ -1201,17 +1266,36 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             from decimal import Decimal as D
             import datetime as _dt
             d = _dt.date.fromisoformat(p["date"])
+            petty = bool(p.get("petty"))
             exp = Expense(
                 date=d, department=fund, description=p["description"],
                 amount=D(str(p["amount"])), category=p["category"],
                 method=p["method"], claimant=p["claimant"], voucher_no=p["voucher"],
-                recorded_by=request.user,
+                paid_from_petty_cash=petty, recorded_by=request.user,
                 sabbath_week=sabbath_week_of(d))
-            if auto:
+            if petty:
+                # paid out of the float already — record as paid
+                exp.status = Expense.Status.PAID
+                exp.paid_date = d
+                exp.approved_by = request.user
+            elif auto:
                 exp.status = Expense.Status.APPROVED
                 exp.approved_by = request.user
             exp.save()
             created += 1
+            # optional M-Pesa / bank charge -> separate bank-charge expense, linked
+            charge = D(str(p.get("charge") or 0))
+            if charge > 0:
+                ref = exp.voucher_no or f"exp #{exp.id}"
+                Expense.objects.create(
+                    date=d, sabbath_week=exp.sabbath_week, department=fund,
+                    description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
+                    amount=charge, category=Expense.Category.BANK_CHARGE,
+                    method=exp.method, claimant=exp.claimant, voucher_no=exp.voucher_no,
+                    paid_from_petty_cash=petty, recorded_by=request.user, charge_for=exp,
+                    status=exp.status, paid_date=exp.paid_date,
+                    approved_by=exp.approved_by)
+                created += 1
         request.session.pop("expense_import_plan", None)
         state = "approved" if auto else "pending approval"
         parts = [f"{created} expense(s) imported ({state})"]

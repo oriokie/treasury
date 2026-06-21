@@ -9,7 +9,7 @@
   {% for s in suggestions %}
     <tr>
       <td class="mono">{{ s.transaction.date|date:"d/m/y" }}</td>
-      <td>{{ s.transaction.payer_name|default:s.pledge.member.name }}</td>
+      <td>{% if s.transaction.payer_name %}{{ s.transaction.payer_name }}{% elif s.pledge.member %}{{ s.pledge.member.name }}{% else %}—{% endif %}</td>
       <td class="mono muted">{{ s.transaction.department.name|default:"—" }} · {{ s.transaction.amount|floatformat:0|intcomma }}</td>
       <td><a class="link" href="{% url 'pledge_detail' s.pledge.id %}">{{ s.pledge.member.name }}</a> · {{ s.pledge.campaign.name }}</td>
       <td class="num mono">{{ s.amount|floatformat:0|intcomma }}</td>

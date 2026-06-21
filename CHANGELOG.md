@@ -1,5 +1,83 @@
 # Changelog
 
+## v1.54.0 - clickable report links in Telegram replies
+- New SiteConfig.site_base_url (migration core 0032), editable under Settings -> Telegram.
+- The Telegram assistant formatter turns a report's relative link into a full clickable URL using
+  that base; it adds https:// if the scheme is omitted and trims a trailing slash. With no base set,
+  replies remain text-only (graceful). Tests: core/test_telegram_links.
+
+## v1.53.0 - recategorise type, simpler leader view, fund sub-account sort + JPEG
+- #1: ExpenseRecategorizeView download gains "Current type"/"New type (capital/recurrent)" columns;
+  the re-import now updates expenditure_type as well as category (each optional, keyed on the ID).
+- #2: leader department detail removes the Chart.js insight charts; the "Recent expenses" card is
+  hidden for funds that aren't expense-eligible; the sub-accounts table shows just name + total
+  contribution when no subgroup carries expenses; and a JPEG download (with a date/time stamp) is
+  offered for the subgroups. expenses_eligible / any_sub_expenses flags added to the context.
+- #11: FundLedgerView sorts sub-accounts and dev rows by receipts (descending); the fund report's
+  sub-accounts table gains a JPEG download.
+- New static/js/table_jpeg.js: a dependency-free table->JPEG export (canvas, no html2canvas/Pillow)
+  with title, subtitle and a "current as of" timestamp, used by both the leader and fund pages.
+  (Run collectstatic on deploy.) Tests: cashbook/test_recategorize_type, leaders/test_dashboard_simplified,
+  reports/test_fund_subaccount_sort.
+
+## v1.52.0 - split-confirm fix, split funds in the queue, smarter Telegram
+- #8: AutoAllocationReviewView (the 'require confirmation' screen) silently re-pointed split
+  components to the dropdown's first option, because split halves aren't selectable and so weren't
+  pre-selected. The picker now always includes each row's current fund (pre-selected), split
+  components are shown locked, and the POST never re-points a split component.
+- #9: the queue's manual Split rows can now target a split fund (the combo offers them); a split-
+  fund part is expanded across its components server-side, so e.g. 600 to Combined Offering becomes
+  300 ENF + 300 LCB within the wider split.
+- Telegram /balance with no fund now lists every (parent) fund's closing balance with a grand total;
+  /balance <fund> still gives the full breakdown. The free-text handler now renders the assistant's
+  rows and report link properly.
+- Telegram LLM report routing: when the assistant LLM is enabled, free-text questions are first
+  classified by the LLM into a known report intent (+fund/period) and routed to that report via the
+  existing rule engine; otherwise it falls back to a conversational answer. _llm_call gained an
+  optional system-prompt override. Tests: statements/test_split_confirm, giving/test_queue_split_funds.
+
+## v1.51.0 - cash-form dev group requirement + petty cash mirrors the expense form
+- #7: CashEntryForm gains a dev_group field, shown on the cash form only when a DEVELOPMENT fund
+  is picked (fund search now returns a `dev` flag) and required by clean() — a development gift
+  can't be saved without its group.
+- #10: petty cash disbursements mirror the expense form — method (cash/bank/M-Pesa/cheque),
+  voucher, and an M-Pesa/bank transaction charge (for floats held on M-Pesa/bank). The charge is
+  a linked bank-charge expense (charge_for) that is also paid_from_petty_cash, so it reduces the
+  float; the float check includes it. A petty-cash disbursement is a normal Expense flagged
+  paid_from_petty_cash=True (that flag is exactly what differentiates it and reduces the float).
+  The regular expense form gains a "Paid from petty cash" checkbox, and the expense import gains
+  a "Paid from petty cash" column (imported petty expenses are recorded as PAID). The manual/import
+  charge inherits the parent's petty-cash flag. 7 tests (giving/test_cash_devgroup,
+  cashbook/test_petty_charge).
+
+## v1.50.0 - statement dedup, unassigned-page crash, notifications, ledger export column
+- #5: reports/dev_unassigned (and the sabbath queue + pledge suggestions) crashed with
+  VariableDoesNotExist when a row had no member, because `default:t.member.name` still evaluates
+  member.name. Replaced with an explicit {% if %} guard.
+- #6: the statement parser took the first '~' segment as the receipt, so mobile/bank-channel
+  narrations ("NNNNNN:MBANKING~<REAL RECEIPT> ...") yielded non-unique keys and distinct payments
+  could be dropped as duplicates. It now extracts the genuine 10-char M-Pesa receipt code
+  (letters+digits) anywhere in the narration, falling back to the first segment only when absent.
+- #3: the notifications page now lists only unread items (so they disappear once read) and each
+  has a Dismiss action; "Mark all read" empties the list.
+- #4: the transactions ledger export (xlsx/csv) gains a "Receipt status" column — Receipted
+  (envelope) / Receipted (manual) / Memo (reconciled to envelope) / Not receipted.
+
+## v1.49.0 - split-fund allocation fix + M-Pesa charge on expenses
+- Allocation (#1): AllocationRule.reference is not unique, so a reference could have two rules
+  (e.g. a stray learned 'remember this' to one account, plus the real split-fund rule). _pick
+  now prefers, among rules covering the date: period rules, then an explicit split_fund over a
+  bare department, then the newest rule. Pattern matching gets the same split-fund/newest
+  tiebreak. So a configured split fund (Combined Offering) is never overridden by an older
+  single-account rule (13th Sabbath). Hardening: the legacy importer's split-rule seeding now
+  update_or_creates (so it can't be blocked by a pre-existing department rule), and a learned
+  department rule clears any stale split_fund. 4 tests in giving/test_split_priority.py.
+- Expenses (#2): new Expense.charge_for self-link (migration cashbook 0014). The manual form's
+  M-Pesa/bank charge now links the generated bank-charge expense to its parent; the expense
+  import template gains an 'M-Pesa charge' column that does the same on import. The expense
+  detail page shows linked charge(s) and, on a charge, the expense it was for. 5 tests in
+  cashbook/test_mpesa_charge.py.
+
 ## v1.48.0 - run allocation rules on the review queue on demand
 - giving.services.allocation.reallocate_pending(): re-runs allocate() (+ dev-group token and
   campaign fallback, via the importer's _resolve) over the credits still in the review queue and

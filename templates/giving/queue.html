@@ -128,7 +128,7 @@
     var hidden = combo.querySelector(".combo-value");
     var list = combo.querySelector(".combo-list");
     var isSplit = combo.classList.contains("combo-split");
-    var pool = isSplit ? DATA.funds : OPTS;   // split rows pick plain funds only
+    var pool = OPTS;   // split rows may target a split fund (it sub-divides that part)
     var active = -1, shown = [];
 
     function render(q){

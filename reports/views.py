@@ -376,6 +376,7 @@ class FundLedgerView(PeriodMixin, TemplateView):
             closing = (sub.opening_balance or Decimal(0)) + r - p
             subs_rows.append({"sub": sub, "receipts": r, "payments": p, "closing": closing})
             sub_total += closing
+        subs_rows.sort(key=lambda x: x["receipts"], reverse=True)   # busiest first
         subs = subs_rows
 
         # development groups are sub-accounts of the Development fund (one query)
@@ -392,6 +393,7 @@ class FundLedgerView(PeriodMixin, TemplateView):
                 r = dev_map.get(grp.id, Decimal(0))
                 dev_rows.append({"group": grp, "receipts": r})
                 sub_total += r
+            dev_rows.sort(key=lambda x: x["receipts"], reverse=True)
         ctx["dev_rows"] = dev_rows
         ctx["subgroups"] = subs
         ctx["subgroup_total"] = sub_total

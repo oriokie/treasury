@@ -54,6 +54,10 @@ class Expense(models.Model):
     advance = models.ForeignKey(
         "cashbook.StaffAdvance", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="expenses", help_text="If this expense settles a staff cash advance, link it here.")
+    charge_for = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="charges",
+        help_text="If this is an M-Pesa/bank transaction charge, the expense that incurred it.")
     capitalized_asset = models.ForeignKey(
         "assets.FixedAsset", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="source_expenses",

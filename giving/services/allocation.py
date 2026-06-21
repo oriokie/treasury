@@ -28,17 +28,28 @@ def normalize_reference(reference):
     return re.sub(r"\s+", "", (reference or "").strip().lower())
 
 
+def _rule_sort_key(r):
+    """Higher tuple = preferred when several rules match the same reference:
+      1. a period-specific rule that covers the date beats a permanent one;
+      2. the most recently-starting period wins;
+      3. an explicit split fund beats a stray department rule (deliberate config
+         beats a one-off 'remember this' that may have been a mistake);
+      4. the newest rule (highest id) wins remaining ties — latest intent.
+    """
+    return (
+        1 if r.is_period else 0,
+        r.valid_from or _MIN,
+        1 if r.split_fund_id else 0,
+        r.pk or 0,
+    )
+
+
 def _pick(rules, date):
-    """From candidate rules, choose the best one for `date`: a period-specific rule
-    that covers the date wins over a permanent rule; otherwise the permanent rule."""
+    """From candidate rules, choose the best one for `date` (see _rule_sort_key)."""
     covering = [r for r in rules if r.covers(date)]
     if not covering:
         return None
-    period = [r for r in covering if r.is_period]
-    if period:
-        # narrowest / most recently-starting period first
-        period.sort(key=lambda r: (r.valid_from or _MIN, r.valid_to or _MAX), reverse=True)
-        return period[0]
+    covering.sort(key=_rule_sort_key, reverse=True)
     return covering[0]
 
 
@@ -93,7 +104,8 @@ def allocate(reference, date=None):
         "department", "split_fund"))
     order = {AllocationRule.MatchType.STARTS: 0, AllocationRule.MatchType.ENDS: 1,
              AllocationRule.MatchType.CONTAINS: 2}
-    patterns.sort(key=lambda r: (order.get(r.match_type, 3), -len(r.reference)))
+    patterns.sort(key=lambda r: (order.get(r.match_type, 3), -len(r.reference),
+                                  0 if r.split_fund_id else 1, -(r.pk or 0)))
     matched = []
     for r in patterns:
         ref = r.reference

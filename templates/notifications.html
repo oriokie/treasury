@@ -5,11 +5,12 @@
 <form method="post">{% csrf_token %}<button class="btn btn-ghost btn-sm">Mark all read</button></form></div>
 <div class="card"><div class="bd bd-flush">
 <table class="ledger compact"><tbody>
-{% for n in notifications %}<tr style="{% if not n.read %}font-weight:600{% endif %}">
+{% for n in notifications %}<tr style="font-weight:600">
   <td style="width:1%"><span class="pill {% if n.kind == 'APPROVAL' %}pill-amber{% elif n.kind == 'REMITTANCE' %}pill-blue{% elif n.kind == 'BUDGET' %}pill-red{% else %}pill-grey{% endif %}">{{ n.get_kind_display }}</span></td>
   <td>{% if n.link %}<a class="link" href="{{ n.link }}">{{ n.message }}</a>{% else %}{{ n.message }}{% endif %}</td>
   <td class="muted u-nowrap">{{ n.created_at|date:"d M H:i" }}</td>
-</tr>{% empty %}<tr><td class="empty">No notifications.</td></tr>{% endfor %}
+  <td class="u-right" style="width:1%"><form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="id" value="{{ n.id }}"><button class="link" title="Mark read">Dismiss</button></form></td>
+</tr>{% empty %}<tr><td class="empty">You're all caught up — no unread notifications.</td></tr>{% endfor %}
 </tbody></table>
 </div></div>
 {% endblock %}

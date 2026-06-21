@@ -66,7 +66,18 @@ class TransactionListView(ReadAccessMixin, ListView):
             qs = self.get_queryset()
             header = ["Date", "Sabbath", "Channel", "Direction", "Payer", "Member",
                       "Phone", "Fund", "Dev group", "Reference", "M-Pesa ref",
-                      "Core ref", "Bank receipt", "Status", "Confirmed", "Amount"]
+                      "Core ref", "Bank receipt", "Receipt status", "Status",
+                      "Confirmed", "Amount"]
+
+            def _receipt_status(t):
+                if t.processed_via_envelope or t.channel == Transaction.Channel.ENVELOPE:
+                    return "Receipted (envelope)"
+                if t.manual_receipt:
+                    return "Receipted (manual)"
+                if t.excluded_from_income:
+                    return "Memo (reconciled to envelope)"
+                return "Not receipted"
+
             rows = [[t.date.isoformat(),
                      t.service_sabbath.isoformat() if t.service_sabbath else "",
                      t.get_channel_display(), t.get_direction_display(),
@@ -77,7 +88,8 @@ class TransactionListView(ReadAccessMixin, ListView):
                      ("Excluded (via envelope)" if t.excluded_from_income else "Unallocated"),
                      t.dev_group.label if t.dev_group_id else "",
                      t.reference or "", t.mpesa_ref or "", t.core_ref or "",
-                     t.bank_receipt or "", t.get_allocation_status_display(),
+                     t.bank_receipt or "", _receipt_status(t),
+                     t.get_allocation_status_display(),
                      "Yes" if t.confirmed else "",
                      float(t.amount if t.direction == "CREDIT" else -t.amount)]
                     for t in qs]
@@ -321,11 +333,25 @@ class ClaimResolveView(DataEntryRequiredMixin, View):
         # --- split allocation: one bank gift meant for several funds ---
         if request.POST.get("split") == "1":
             from departments.models import Department as _D, DevelopmentGroup as _G
+            from giving.models import SplitFund as _SF
+            from decimal import Decimal as _Dec
             parts = []
             grps = request.POST.getlist("split_grp")
             for n, (d_id, amt) in enumerate(zip(request.POST.getlist("split_dept"),
                                                 request.POST.getlist("split_amount"))):
                 if not d_id or not str(amt).strip():
+                    continue
+                # a split-fund target sub-divides this part across its components
+                if str(d_id).startswith("sf:"):
+                    sf = _SF.objects.filter(pk=d_id[3:], active=True).first()
+                    if not sf:
+                        continue
+                    try:
+                        row_amt = _Dec(str(amt))
+                    except (ArithmeticError, ValueError):
+                        continue
+                    for sub_d, sub_amt in sf.split(row_amt):
+                        parts.append((sub_d, sub_amt, None))
                     continue
                 d = _D.objects.filter(pk=d_id, active=True).first()
                 if not d:
@@ -396,7 +422,8 @@ class ClaimResolveView(DataEntryRequiredMixin, View):
             ref = normalize_reference(txn.reference)
             AllocationRule.objects.update_or_create(
                 reference=ref,
-                defaults={"department": dept, "source": AllocationRule.Source.LEARNED},
+                defaults={"department": dept, "split_fund": None,
+                          "source": AllocationRule.Source.LEARNED},
             )
             # apply to all other queued items with the same reference
             similar = Transaction.objects.filter(

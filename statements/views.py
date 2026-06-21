@@ -294,22 +294,31 @@ class AutoAllocationReviewView(DataEntryRequiredMixin, View):
         imp = get_object_or_404(StatementImport, pk=pk)
         rows = (Transaction.objects.filter(statement_import=imp, confirmed=False)
                 .select_related("department", "dev_group").order_by("date", "id"))
-        from departments.models import Department
+        from departments.models import Department, split_component_dept_ids
+        from django.db.models import Q
+        comp_ids = set(split_component_dept_ids())
+        used = [t.department_id for t in rows if t.department_id]
+        funds = (Department.objects.filter(active=True)
+                 .filter(Q(selectable=True) | Q(pk__in=used))
+                 .order_by("name"))
         return render(request, self.template_name, {
-            "imp": imp, "rows": rows,
-            "funds": Department.objects.filter(active=True, selectable=True).order_by("name"),
-            "count": rows.count()})
+            "imp": imp, "rows": rows, "funds": funds,
+            "comp_ids": comp_ids, "count": rows.count()})
 
     def post(self, request, pk):
         imp = get_object_or_404(StatementImport, pk=pk)
-        from departments.models import Department
+        from departments.models import Department, split_component_dept_ids
+        comp_ids = set(split_component_dept_ids())
         rows = list(Transaction.objects.filter(statement_import=imp, confirmed=False))
         only = set(request.POST.getlist("confirm"))     # ids ticked, if any
         confirm_all = request.POST.get("confirm_all")
         changed = 0
         for t in rows:
             new_dept = request.POST.get(f"dept_{t.id}")
-            if new_dept and str(t.department_id) != new_dept:
+            # never re-point a split component from this screen — it's part of a
+            # configured split and must stay put.
+            if (new_dept and str(t.department_id) != new_dept
+                    and t.department_id not in comp_ids):
                 d = Department.objects.filter(pk=new_dept).first()
                 if d:
                     t.department = d

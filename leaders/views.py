@@ -203,6 +203,15 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         ctx["expenses"] = (Expense.objects.filter(department=dept,
                     date__gte=start, date__lte=end).order_by("-date")[:8])
 
+        # which of these funds may actually carry expenses — used to hide the
+        # expenses preview and columns for collection-only subgroups.
+        from departments.models import expense_departments
+        elig_ids = {d.id for d in expense_departments()}
+        ctx["expenses_eligible"] = dept.id in elig_ids
+        for r in ctx["subrows"]:
+            r["expenses_eligible"] = r["department"].id in elig_ids
+        ctx["any_sub_expenses"] = any(r.get("expenses_eligible") for r in ctx["subrows"])
+
         # --- development groups (for a development leader) -------------------
         if dept.category == Department.Category.DEVELOPMENT:
             ctx["dev_groups"] = self._dev_group_rows(start, end)
