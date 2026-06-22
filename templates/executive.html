@@ -113,18 +113,16 @@ function loadInsights(){
 </style>
 {% endif %}
 
-{% if alerts %}
-<div class="card alerts-card"><div class="hd">Financial-health alerts{% if dismissed_count %} <form method="post" style="display:inline;float:right">{% csrf_token %}<input type="hidden" name="restore" value="1"><button class="link" style="font-weight:400;font-size:.78rem">Restore {{ dismissed_count }} dismissed</button></form>{% endif %}</div><div class="bd">
-  {% for a in alerts %}
-    <div class="alert-row sev-{{ a.severity }}">
-      <span class="alert-dot"></span>
-      <div style="flex:1"><strong>{{ a.title }}</strong><div class="muted" style="font-size:.84rem">{{ a.detail }}{% if a.link %} · <a class="link" href="{{ a.link }}">{{ a.link_text|default:"View" }}</a>{% endif %}</div></div>
-      <form method="post" class="u-m-0" title="Dismiss — no action needed">{% csrf_token %}<input type="hidden" name="dismiss" value="{{ a.key }}"><button class="alert-dismiss" type="submit" aria-label="Dismiss">&times;</button></form>
+{% if facts %}
+<div class="card"><div class="hd">At a glance</div><div class="bd">
+  <div class="grid-3">
+  {% for f in facts %}
+    <div class="stat"><div class="lbl">{{ f.label }}</div>
+      <div class="val mono">{% if f.money %}{{ f.value|floatformat:0|intcomma }}{% elif f.value != None %}{{ f.value }}{% endif %}{% if f.text %}{% if f.value != None %} {% endif %}<span class="muted" style="font-size:.8rem">{{ f.text }}</span>{% endif %}</div>
     </div>
   {% endfor %}
+  </div>
 </div></div>
-{% else %}
-<div class="info-panel">No anomalies detected — collections, spending, budgets and remittances all look normal.{% if dismissed_count %} <form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="restore" value="1"><button class="link">Restore {{ dismissed_count }} dismissed</button></form>{% endif %}</div>
 {% endif %}
 
 <div class="kpi-strip">

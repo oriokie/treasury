@@ -147,6 +147,41 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
     template_name = "cashbook/form.html"
     success_url = reverse_lazy("expense_list")
 
+    def _settle_target(self):
+        """Resolve a ?settle=payable:5 / accrual:3 marker to the obligation being
+        paid, so settling opens this form pre-filled and editable (method,
+        claimant, charges) instead of silently posting a fixed expense."""
+        from .models import Payable, Accrual
+        raw = self.request.GET.get("settle") or self.request.POST.get("settle") or ""
+        kind, _, sid = raw.partition(":")
+        if not sid.isdigit():
+            return None, None
+        if kind == "payable":
+            return "payable", Payable.objects.filter(pk=sid, settled=False).first()
+        if kind == "accrual":
+            return "accrual", Accrual.objects.filter(pk=sid, settled=False).first()
+        return None, None
+
+    def get_initial(self):
+        initial = super().get_initial()
+        kind, obj = self._settle_target()
+        if obj:
+            initial.update({
+                "date": dt.date.today(), "department": obj.department_id,
+                "description": getattr(obj, "description", "")[:200],
+                "amount": obj.amount, "category": obj.category,
+                "method": Expense.Method.BANK})
+        return initial
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        kind, obj = self._settle_target()
+        if obj:
+            ctx["settle"] = f"{kind}:{obj.pk}"
+            ctx["settle_label"] = (f"Settling {kind}: {getattr(obj, 'vendor', '') or ''} "
+                                   f"{obj.description}".strip())
+        return ctx
+
     def form_valid(self, form):
         from core.models import SiteConfig
         from core.roles import is_treasurer
@@ -199,6 +234,16 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                    f"Expense awaiting approval: {exp.description} — "
                    f"{exp.amount:,.2f} ({exp.department.name})",
                    link=reverse("expense_list"))
+        # if this expense settles a payable/accrual, link and close it
+        kind, obj = self._settle_target()
+        if obj and not obj.settled:
+            obj.settled = True
+            obj.settled_on = exp.date
+            obj.settled_expense = exp
+            obj.save()
+            messages.success(self.request,
+                f"{kind.title()} settled and recorded as an expense.")
+            return redirect("accruals")
         messages.success(self.request, "Expense recorded.")
         return redirect(self.success_url)
 
@@ -1358,3 +1403,96 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
             msg += f" {skipped} skipped (locked period or not eligible)."
         (messages.success if done else messages.info)(request, msg)
         return redirect("expense_list")
+
+
+class FundBudgetView(TreasurerRequiredMixin, View):
+    """Budget & goals for a fund (e.g. Camp Meeting): per-category budget vs actual
+    spend for a year, plus the contribution goal (Department.target) and the
+    yearly goal (Department.annual_budget) tracked against what's been collected."""
+    template_name = "cashbook/fund_budget.html"
+
+    def _ctx(self, request, dept):
+        import datetime as dt
+        from decimal import Decimal
+        from django.db.models import Sum
+        from giving.models import Transaction
+        from .models import BudgetLine, Expense
+        year = int(request.GET.get("year") or dt.date.today().year)
+
+        # actual spend by category this year on this fund
+        spend = {r["category"]: r["t"] for r in (Expense.objects.filter(
+            department=dept, date__year=year,
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+            .values("category").annotate(t=Sum("amount")))}
+        lines = {b.category: b for b in BudgetLine.objects.filter(department=dept, year=year)}
+        cats = sorted(set(spend) | set(lines), key=lambda code: dict(Expense.Category.choices).get(code, code))
+        rows, tot_budget, tot_actual = [], Decimal(0), Decimal(0)
+        for code in cats:
+            budget = lines[code].amount if code in lines else Decimal(0)
+            actual = spend.get(code, Decimal(0))
+            tot_budget += budget; tot_actual += actual
+            rows.append({"code": code,
+                         "label": dict(Expense.Category.choices).get(code, code),
+                         "budget": budget, "actual": actual,
+                         "variance": budget - actual,
+                         "pct": int(min(actual / budget * 100, 999)) if budget else 0,
+                         "note": lines[code].note if code in lines else ""})
+
+        collected = (Transaction.objects.filter(
+            department=dept, direction=Transaction.Direction.CREDIT, confirmed=True,
+            is_reversal=False, is_reversed=False, excluded_from_income=False,
+            date__year=year).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+        def _goal(g):
+            g = g or Decimal(0)
+            return {"goal": g, "collected": collected,
+                    "pct": int(min(collected / g * 100, 100)) if g else 0,
+                    "short": max(g - collected, Decimal(0))}
+
+        return {
+            "dept": dept, "year": year,
+            "years": range(dt.date.today().year + 1, dt.date.today().year - 4, -1),
+            "rows": rows, "tot_budget": tot_budget, "tot_actual": tot_actual,
+            "tot_variance": tot_budget - tot_actual,
+            "contribution_goal": _goal(dept.contribution_goal),
+            "annual_goal": _goal(dept.year_goal),
+            "categories": Expense.Category.choices,
+        }
+
+    def get(self, request, pk):
+        from departments.models import Department
+        dept = get_object_or_404(Department, pk=pk)
+        return render(request, self.template_name, self._ctx(request, dept))
+
+    def post(self, request, pk):
+        import datetime as dt
+        from decimal import Decimal, InvalidOperation
+        from departments.models import Department
+        from .models import BudgetLine
+        dept = get_object_or_404(Department, pk=pk)
+        year = int(request.POST.get("year") or dt.date.today().year)
+        # update the fund's goals
+        if "save_goals" in request.POST:
+            def _dec(name):
+                try:
+                    v = request.POST.get(name, "").strip()
+                    return Decimal(v) if v else None
+                except InvalidOperation:
+                    return None
+            dept.contribution_goal = _dec("contribution_goal")
+            dept.year_goal = _dec("annual_goal")
+            dept.save(update_fields=["contribution_goal", "year_goal"])
+            messages.success(request, "Goals updated.")
+            return redirect(f"{request.path}?year={year}")
+        # add / update a budget line for a category
+        category = request.POST.get("category")
+        try:
+            amount = Decimal(request.POST.get("amount") or "0")
+        except InvalidOperation:
+            amount = Decimal(0)
+        if category:
+            BudgetLine.objects.update_or_create(
+                department=dept, year=year, category=category,
+                defaults={"amount": amount, "note": request.POST.get("note", "")[:120]})
+            messages.success(request, "Budget line saved.")
+        return redirect(f"{request.path}?year={year}")

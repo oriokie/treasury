@@ -41,6 +41,10 @@ class Department(models.Model):
     # read-only for backwards compatibility; values are migrated into Budget records.
     annual_budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
         editable=False)
+    contribution_goal = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Collection goal that groups contribute towards (e.g. a camp expenses goal).")
+    year_goal = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Annual goal for this fund (e.g. the Camp Meeting goal for the year).")
     children_in_expenses = models.BooleanField(
         default=False,
         help_text="For a parent fund: if on, its sub-accounts can be charged "

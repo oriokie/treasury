@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.57.0 - settle via editable expense form (#5) + camp/fund budgets & goals (#7)
+- #5: settling a payable/accrual links to the expense form pre-filled (department, description, amount,
+  category) via ?settle=payable:N / accrual:N. ExpenseCreate gained _settle_target/get_initial/
+  get_context_data and a form_valid hook that, after saving (including any charge), marks the
+  obligation settled and links settled_expense. The payables page settle buttons are now GET links;
+  the form shows a banner. Old POST settle endpoints remain (unused).
+- #7: new cashbook.BudgetLine (department, year, category, amount, note; unique per dept/year/category;
+  migration cashbook 0015). New Department.contribution_goal and Department.year_goal (editable;
+  migration departments 0016). FundBudgetView at /reports/fund/<pk>/budget/ shows per-category
+  budget-vs-actual for a year and two goal cards (contribution goal + yearly goal) tracked against
+  collected receipts, with forms to edit goals and add/update budget lines. Linked from the fund
+  ledger. Tests: cashbook/test_settle_form, cashbook/test_fund_budget.
+
+## v1.56.0 - bank-feed balance card, audit log filters/download, faster executive
+- #1: BankFeedLogView extracts the latest ClearedBalance from event payloads (case-insensitive,
+  nested-safe) and shows it as a card; each row can expand its pretty-printed raw JSON payload.
+- #2: AuditLogView rewritten with search (q), filters (model, change type +/~/-, user, date range),
+  pagination (50/page) and CSV export; user/model lists drive the dropdowns.
+- #4: ExecutiveDashboardView no longer runs health.anomalies() (slow); added fast dashboard.quick_facts()
+  (top fund this month, top spend category, givers this month, largest single gift) shown in an
+  'At a glance' card. Tests: statements/test_feed_log, reports/test_audit_log, core/test_executive_facts.
+
+## v1.55.0 - profile rights on leader pages + faster, smarter Controls duplicates
+- #3: leader views called mask_phone() directly, bypassing the rights system, so a profile granting
+  view_member_phone_full had no effect. All leader phone/identity output now goes through
+  display_phone()/new display_giver(). Leaders keep seeing giver names by default (added to LEADER
+  group rights) but phones stay masked unless a profile grants the right; a profile can also withhold
+  identity. Fixed a NameError by threading `user` through _collection_rows().
+- #6: ControlsView no longer computes duplicates on load (~887 queries -> ~24); _duplicate_expenses
+  and _duplicate_offerings now run on demand via ControlsDuplicatesView (HTMX "Run check" buttons,
+  /controls/check/<kind>/). _duplicate_offerings rewritten: no longer flags a shared allocation
+  reference (distinct bank gifts each have a unique receipt); flags same giver+amount counted on
+  both bank and envelope within a month, or an envelope re-typed in one Sabbath. Tests:
+  core/test_rights_leader, core/test_controls_duplicates.
+
 ## v1.54.0 - clickable report links in Telegram replies
 - New SiteConfig.site_base_url (migration core 0032), editable under Settings -> Telegram.
 - The Telegram assistant formatter turns a report's relative link into a full clickable URL using

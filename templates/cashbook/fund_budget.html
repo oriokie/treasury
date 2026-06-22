@@ -1,0 +1,75 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ dept.name }} budget · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ dept.name }} — budget &amp; goals</h1>
+  <div class="sub">Camp/fund budget by category and the goals it's tracked against</div></div>
+  <div class="btn-row no-print">
+    <a class="btn btn-ghost btn-sm" href="{% url 'report_fund' dept.id %}">← Fund ledger</a>
+    <form method="get" class="u-inline"><select name="year" class="field--select" onchange="this.form.submit()">
+      {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select></form>
+  </div>
+</div>
+
+<!-- Goals -->
+<div class="grid-2 u-mt">
+  <div class="card"><div class="hd">Contribution goal {{ year }}</div><div class="bd">
+    <div class="mono" style="font-size:1.4rem;font-weight:700;color:var(--forest)">
+      {{ contribution_goal.collected|floatformat:0|intcomma }} <span class="muted" style="font-size:.9rem">/ {{ contribution_goal.goal|floatformat:0|intcomma }}</span></div>
+    <div class="progress u-mt-0"><span style="width:{{ contribution_goal.pct }}%"></span></div>
+    <div class="help u-mt-0">{{ contribution_goal.pct }}% collected{% if contribution_goal.short %} · {{ contribution_goal.short|floatformat:0|intcomma }} to go{% endif %}</div>
+  </div></div>
+  <div class="card"><div class="hd">Camp meeting goal (year)</div><div class="bd">
+    <div class="mono" style="font-size:1.4rem;font-weight:700;color:var(--forest)">
+      {{ annual_goal.collected|floatformat:0|intcomma }} <span class="muted" style="font-size:.9rem">/ {{ annual_goal.goal|floatformat:0|intcomma }}</span></div>
+    <div class="progress u-mt-0"><span style="width:{{ annual_goal.pct }}%"></span></div>
+    <div class="help u-mt-0">{{ annual_goal.pct }}% collected{% if annual_goal.short %} · {{ annual_goal.short|floatformat:0|intcomma }} to go{% endif %}</div>
+  </div></div>
+</div>
+
+<details class="card u-mt"><summary class="hd" style="cursor:pointer">Edit goals</summary><div class="bd">
+  <form method="post" style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap">{% csrf_token %}
+    <input type="hidden" name="year" value="{{ year }}">
+    <div><label class="lbl u-xs">Contribution goal (groups give towards)</label>
+      <input type="number" step="0.01" name="contribution_goal" class="field" value="{{ contribution_goal.goal|floatformat:'0' }}"></div>
+    <div><label class="lbl u-xs">Camp meeting goal (year)</label>
+      <input type="number" step="0.01" name="annual_goal" class="field" value="{{ annual_goal.goal|floatformat:'0' }}"></div>
+    <button name="save_goals" value="1" class="btn btn-primary btn-sm">Save goals</button>
+  </form>
+</div></details>
+
+<!-- Budget vs actual by category -->
+<div class="section-title u-mt-lg">Budget vs actual by category — {{ year }}</div>
+<div class="card"><div class="bd bd-flush">
+  <table class="ledger" id="campBudget">
+    <thead><tr><th>Category</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th><th>Used</th></tr></thead>
+    <tbody>
+    {% for r in rows %}<tr>
+      <td>{{ r.label }}{% if r.note %} <span class="muted u-xs">· {{ r.note }}</span>{% endif %}</td>
+      <td class="num mono">{{ r.budget|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.actual|floatformat:0|intcomma }}</td>
+      <td class="num mono {% if r.variance < 0 %}u-danger{% endif %}">{{ r.variance|floatformat:0|intcomma }}</td>
+      <td style="width:130px"><div class="progress u-mt-0"><span style="width:{% if r.pct > 100 %}100{% else %}{{ r.pct }}{% endif %}%;{% if r.pct > 100 %}background:var(--danger){% endif %}"></span></div><span class="muted u-xs">{{ r.pct }}%</span></td>
+    </tr>{% empty %}<tr><td colspan="5" class="empty">No budget lines or spend yet for {{ year }}.</td></tr>{% endfor %}
+    </tbody>
+    <tfoot><tr><td><strong>Total</strong></td>
+      <td class="num mono"><strong>{{ tot_budget|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono"><strong>{{ tot_actual|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono {% if tot_variance < 0 %}u-danger{% endif %}"><strong>{{ tot_variance|floatformat:0|intcomma }}</strong></td>
+      <td></td></tr></tfoot>
+  </table>
+</div></div>
+
+<details class="card u-mt"><summary class="hd" style="cursor:pointer">Add / update a budget line</summary><div class="bd">
+  <form method="post" style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap">{% csrf_token %}
+    <input type="hidden" name="year" value="{{ year }}">
+    <div><label class="lbl u-xs">Category</label><select name="category" class="field--select">
+      {% for code, label in categories %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+    </select></div>
+    <div><label class="lbl u-xs">Budget amount</label><input type="number" step="0.01" name="amount" class="field" required></div>
+    <div><label class="lbl u-xs">Note (optional)</label><input type="text" name="note" class="field" placeholder="e.g. accommodation, pulpit"></div>
+    <button class="btn btn-primary btn-sm">Save line</button>
+  </form>
+  <div class="help u-mt-sm">Set a budget for each category (accommodation → Refreshments/Materials, pulpit → Allowance, etc.). Actuals are pulled from approved/paid expenses booked to this fund in {{ year }}.</div>
+</div></details>
+{% endblock %}

@@ -29,6 +29,42 @@ def _debits(**extra):
                                       is_reversed=False, **extra)
 
 
+def quick_facts():
+    """A few fast, informative at-a-glance facts for the executive overview —
+    pure DB aggregates (no per-row Python), so they're cheap to compute. These
+    replace the old financial-health anomaly scan, which was slow."""
+    import datetime as dt
+    from decimal import Decimal
+    from django.db.models import Sum, Max
+    from cashbook.models import Expense as E
+    today = dt.date.today()
+    ms = today.replace(day=1)
+    facts = []
+
+    top = (_credits(date__gte=ms).exclude(department__isnull=True)
+           .values("department__name").annotate(t=Sum("amount")).order_by("-t").first())
+    if top and top["department__name"]:
+        facts.append({"label": "Top fund this month", "text": top["department__name"],
+                      "value": top["t"], "money": True})
+
+    cat = (E.objects.filter(date__gte=ms, status__in=[E.Status.APPROVED, E.Status.PAID])
+           .values("category").annotate(t=Sum("amount")).order_by("-t").first())
+    if cat:
+        facts.append({"label": "Top spend category (month)",
+                      "text": dict(E.Category.choices).get(cat["category"], cat["category"]),
+                      "value": cat["t"], "money": True})
+
+    givers = _credits(date__gte=ms).exclude(member__isnull=True).values("member").distinct().count()
+    facts.append({"label": "Givers this month", "text": f"{givers} contributor(s)",
+                  "value": None, "money": False})
+
+    big = _credits(date__gte=ms).aggregate(m=Max("amount"))["m"]
+    if big:
+        facts.append({"label": "Largest single gift (month)", "text": "",
+                      "value": big, "money": True})
+    return facts
+
+
 def cards():
     today = dt.date.today()
     month_start = today.replace(day=1)

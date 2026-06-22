@@ -81,7 +81,7 @@ GROUP_RIGHTS = {
     roles.TREASURER: set(_ALL),                                   # everything
     roles.ASSISTANT: _DATA_ENTRY | _REPORTS | _SENSITIVE,         # entry + sees identities
     roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup"} | _SENSITIVE,
-    roles.LEADER:    {"view_reports"},                            # scoped views handle the rest
+    roles.LEADER:    {"view_reports", "view_giver_identity"},     # names visible; phones masked unless a profile grants more
 }
 
 
@@ -120,3 +120,13 @@ def display_phone(user, phone):
     if not phone:
         return ""
     return phone if has_right(user, "view_member_phone_full") else mask_phone(phone)
+
+
+def display_giver(user, name):
+    """Giver/member name if the user may see identities, else anonymised. Used
+    anywhere a contributor's name is shown to a user whose profile withholds the
+    'view_giver_identity' right (e.g. a department leader given totals but not
+    identities)."""
+    if not name:
+        return ""
+    return name if has_right(user, "view_giver_identity") else "Giver (hidden)"

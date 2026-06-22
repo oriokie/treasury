@@ -9,6 +9,7 @@ from core.utils import parse_period
 from reports.services import balances
 from departments.models import Department, DevelopmentGroup
 from members.models import mask_phone
+from core.rights import display_phone, display_giver
 from .permissions import LeaderRequiredMixin, allowed_departments, assert_department_allowed
 
 
@@ -177,7 +178,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
                .values("member__name", "payer_name")
                .annotate(t=Sum("amount"), n=Count("id")).order_by("-t")[:6])
         ctx["top_givers"] = [{
-            "who": r["member__name"] or r["payer_name"] or "—",
+            "who": display_giver(self.request.user, r["member__name"] or r["payer_name"]) or "—",
             "total": r["t"] or Decimal(0), "n": r["n"]} for r in top]
 
         # --- budget vs actual ------------------------------------------------
@@ -196,8 +197,8 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
                 .select_related("member").order_by("-date")[:8])
         ctx["collections"] = [{
             "date": t.date, "amount": t.amount, "channel": t.get_channel_display(),
-            "who": t.member.name if t.member_id else (t.payer_name or "—"),
-            "phone": mask_phone(t.member.phone if t.member_id else t.payer_phone),
+            "who": display_giver(self.request.user, t.member.name if t.member_id else t.payer_name) or "—",
+            "phone": display_phone(self.request.user, t.member.phone if t.member_id else t.payer_phone),
             "reference": t.reference,
         } for t in txns]
         ctx["expenses"] = (Expense.objects.filter(department=dept,
@@ -247,7 +248,7 @@ def _leads_a_development_dept(user):
         category=Department.Category.DEVELOPMENT).exists()
 
 
-def _collection_rows(dept, start, end):
+def _collection_rows(dept, start, end, user):
     """Full collections (credits) for a department in a period, newest first."""
     from giving.models import Transaction
     txns = (Transaction.objects.filter(
@@ -259,8 +260,8 @@ def _collection_rows(dept, start, end):
     for t in txns:
         out.append({
             "date": t.date, "amount": t.amount, "channel": t.get_channel_display(),
-            "who": t.member.name if t.member_id else (t.payer_name or "—"),
-            "phone": mask_phone(t.member.phone if t.member_id else t.payer_phone),
+            "who": display_giver(user, t.member.name if t.member_id else t.payer_name) or "—",
+            "phone": display_phone(user, t.member.phone if t.member_id else t.payer_phone),
             "reference": t.reference or "",
             "group": t.dev_group.label if t.dev_group_id else "",
         })
@@ -280,7 +281,7 @@ class LeaderCollectionsView(LeaderRequiredMixin, TemplateView):
         if export in ("csv", "xlsx"):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
-            rows = _collection_rows(self.dept, start, end)
+            rows = _collection_rows(self.dept, start, end, self.request.user)
             header = ["Date", "Contributor", "Phone", "Reference", "Channel", "Group", "Amount"]
             data = [[r["date"].isoformat(), r["who"], r["phone"], r["reference"],
                      r["channel"], r["group"], float(r["amount"])] for r in rows]
@@ -297,7 +298,7 @@ class LeaderCollectionsView(LeaderRequiredMixin, TemplateView):
         start, end = parse_period(self.request)
         ctx["dept"] = self.dept
         ctx["start"], ctx["end"] = start, end
-        rows = _collection_rows(self.dept, start, end)
+        rows = _collection_rows(self.dept, start, end, self.request.user)
         ctx["rows"] = rows
         ctx["total"] = sum((r["amount"] for r in rows), Decimal(0))
         ctx["count"] = len(rows)
@@ -365,7 +366,7 @@ class LeaderGroupDetailView(LeaderRequiredMixin, TemplateView):
             from core.models import SiteConfig
             data_obj = balances.dev_group_members(self.group, start, end)
             header = ["Contributor", "Phone", "Contributions", "Total"]
-            data = [[r["name"], mask_phone(r["phone"]), r["count"], float(r["total"])]
+            data = [[display_giver(request.user, r["name"]), display_phone(request.user, r["phone"]), r["count"], float(r["total"])]
                     for r in data_obj["rows"]]
             title = f"{self.group.label} contributions {start:%d %b %Y}–{end:%d %b %Y}"
             fn = f"group_{self.group.number}_contributions"
@@ -383,7 +384,7 @@ class LeaderGroupDetailView(LeaderRequiredMixin, TemplateView):
         ctx["group"] = g
         data_obj = balances.dev_group_members(g, start, end)
         # mask phones for display
-        ctx["rows"] = [{"name": r["name"], "phone": mask_phone(r["phone"]),
+        ctx["rows"] = [{"name": display_giver(self.request.user, r["name"]), "phone": display_phone(self.request.user, r["phone"]),
                         "count": r["count"], "total": r["total"]}
                        for r in data_obj["rows"]]
         ctx["total"] = data_obj["total"]
@@ -428,7 +429,7 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
                        .select_related("member", "campaign").order_by("-start_date"))
             for p in pledges:
                 out.append({
-                    "member": p.member.name, "phone": mask_phone(p.member.phone),
+                    "member": display_giver(self.request.user, p.member.name), "phone": display_phone(self.request.user, p.member.phone),
                     "campaign": p.campaign.name, "amount": p.amount,
                     "paid": p.paid, "outstanding": p.outstanding,
                     "status": p.get_status_display(), "pct": p.percent_paid

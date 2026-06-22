@@ -38,6 +38,24 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.57.0": "Settling a payable or accrual now opens the normal expense form pre-filled, so you can "
+              "record how it was actually paid — payment method, claimant and any M-Pesa/bank charge — "
+              "before it's posted and the obligation closed. New camp/fund budgets: open a fund's "
+              "“Budget & goals” page to set a per-category budget (accommodation, catering, pulpit, …) "
+              "and see budget-vs-actual for the year, plus a contribution goal that groups give towards "
+              "and a yearly camp-meeting goal, each tracked against what's been collected.",
+    "1.56.0": "The real-time bank feed page now shows the current cleared bank balance as a card and "
+              "lets you expand each event's raw JSON. The audit log gains search, filters (record "
+              "type, change, user, date range), pagination and a CSV download. And the executive "
+              "overview drops the slow financial-health alert scan in favour of fast at-a-glance "
+              "facts (top fund and spend category this month, givers, largest single gift).",
+    "1.55.0": "Profile rights now work on the leader pages: a profile that grants “see full phone "
+              "numbers” is honoured (previously leaders always saw masked numbers), and giver "
+              "identities can be granted or withheld per profile. The Treasury Controls page loads "
+              "much faster — the possible-duplicate scans now run only when you click “Run check”, "
+              "and the duplicate-offering logic is smarter: distinct bank gifts that merely share a "
+              "paybill reference are no longer flagged, while the same gift counted on both the bank "
+              "and an envelope in one month (or an envelope re-typed in a Sabbath) is.",
     "1.54.0": "Telegram report answers can now include a clickable link straight to the report. Set "
               "your site address (e.g. https://kws.oriokie.com) under Settings → Telegram, and the "
               "bot's replies will link to the matching report; leave it blank and replies stay "

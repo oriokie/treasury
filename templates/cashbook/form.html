@@ -5,6 +5,8 @@
 <div class="sub">{% if cfg.require_expense_approval %}Submitted as pending until a treasurer approves it{% else %}Approved on save{% endif %}</div></div></div>
 <div class="card form-card" style="max-width:660px"><div class="bd">
   <form method="post">{% csrf_token %}
+    {% if settle %}<input type="hidden" name="settle" value="{{ settle }}">
+    <div class="alert alert-info u-mb">{{ settle_label }} — complete how it was paid (method, claimant, any charge) and save to settle it.</div>{% endif %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     {% if overspend_warning %}<div class="alert alert-warn u-mb">
       <strong>Not saved yet.</strong> This expense is larger than the fund's available

@@ -54,20 +54,14 @@
   {% endif %}
 </div></div>
 
-<div class="card u-mt-lg"><div class="hd">Possible duplicate expenses</div><div class="bd">
-  <table class="ledger compact"><thead><tr><th>Sabbath</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
-  {% for d in dup_expenses %}<tr><td class="mono">{{ d.sabbath|date:"d/m/y" }}</td><td>{{ d.fund }}</td><td>{{ d.description }} <span class="muted">· {{ d.claimant }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
-  {% empty %}<tr><td colspan="5" class="empty">No duplicate expenses detected.</td></tr>{% endfor %}
-  </tbody></table>
-  <div class="help u-mt-sm">Flags same-Sabbath repeats with the same fund, claimant, amount and description. Bank / M-Pesa charges are excluded.</div>
+<div class="card u-mt-lg"><div class="hd u-between">Possible duplicate expenses
+  <button type="button" class="btn btn-ghost btn-sm" hx-get="{% url 'controls_duplicates' 'expenses' %}" hx-target="#dupExpensesPanel" hx-indicator="#dupExpensesPanel" hx-swap="innerHTML">Run check</button></div><div class="bd">
+  <div id="dupExpensesPanel"><p class="help u-mt-0">This scan runs on demand. Click <strong>Run check</strong> to look for duplicate expenses.</p></div>
 </div></div>
 
-<div class="card u-mt-lg"><div class="hd">Possible duplicate offerings</div><div class="bd">
-  <table class="ledger compact"><thead><tr><th>Date</th><th>Payer</th><th>Reference</th><th>Channel</th><th>Signal</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
-  {% for d in dup_offerings %}<tr><td class="mono">{{ d.date|date:"d/m/y" }}</td><td>{{ d.payer }}</td><td class="mono muted">{{ d.reference }}</td><td>{% if d.channel == 'BANK' %}<span class="pill pill-blue">Bank/M-Pesa</span>{% elif d.channel == 'CASH' %}<span class="pill pill-green">Cash</span>{% elif d.channel == 'envelope' %}<span class="pill pill-grey">Envelope</span>{% else %}—{% endif %}</td><td><span class="muted u-xs">{{ d.by }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
-  {% empty %}<tr><td colspan="7" class="empty">No duplicate offerings detected.</td></tr>{% endfor %}
-  </tbody></table>
-  <div class="help u-mt-sm">Flags a repeated M-Pesa reference, the same giver + amount on the <strong>same channel</strong> within 3 days, or a re-typed envelope (same giver + amount on one Sabbath). Bank statement imports are de-duplicated automatically by their unique bank reference.</div>
+<div class="card u-mt-lg"><div class="hd u-between">Possible duplicate offerings
+  <button type="button" class="btn btn-ghost btn-sm" hx-get="{% url 'controls_duplicates' 'offerings' %}" hx-target="#dupOfferingsPanel" hx-indicator="#dupOfferingsPanel" hx-swap="innerHTML">Run check</button></div><div class="bd">
+  <div id="dupOfferingsPanel"><p class="help u-mt-0">This scan runs on demand. Click <strong>Run check</strong> to look for duplicate offerings.</p></div>
 </div></div>
 <style>
 .lock-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.6rem}

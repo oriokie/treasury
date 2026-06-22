@@ -630,23 +630,92 @@ class HistoricalYearManageView(TreasurerRequiredMixin, TemplateView):
 class AuditLogView(ReadAccessMixin, TemplateView):
     template_name = "reports/audit.html"
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        from giving.models import Transaction as T
+    def _models(self):
+        from giving.models import Transaction as T, AllocationRule as AR
         from cashbook.models import Expense as X
         from members.models import Member as M
-        records = []
-        for model in (T, X, M):
-            for h in model.history.all().select_related("history_user")[:40]:
+        candidates = {"Transaction": T, "Expense": X, "Member": M, "Allocation rule": AR}
+        return {n: m for n, m in candidates.items() if hasattr(m, "history")}
+
+    def _collect(self, request, cap=1500):
+        import datetime as dt
+        models = self._models()
+        model_f = request.GET.get("model", "")
+        user_f = request.GET.get("user", "")
+        type_f = request.GET.get("type", "")          # +, ~, -
+        q = (request.GET.get("q", "") or "").strip().lower()
+
+        def _date(name):
+            raw = request.GET.get(name)
+            try:
+                return dt.date.fromisoformat(raw) if raw else None
+            except ValueError:
+                return None
+        start, end = _date("start"), _date("end")
+
+        records, users = [], set()
+        for name, model in models.items():
+            hq = model.history.all().select_related("history_user")
+            if start:
+                hq = hq.filter(history_date__date__gte=start)
+            if end:
+                hq = hq.filter(history_date__date__lte=end)
+            if user_f:
+                hq = hq.filter(history_user__username=user_f)
+            if type_f in ("+", "~", "-"):
+                hq = hq.filter(history_type=type_f)
+            # collect the user list for the filter dropdown (cheap, distinct)
+            for u in (model.history.exclude(history_user__isnull=True)
+                      .values_list("history_user__username", flat=True).distinct()[:200]):
+                users.add(u)
+            if model_f and model_f != name:
+                continue
+            for h in hq.order_by("-history_date")[:cap]:
+                try:
+                    obj = str(h.instance)
+                except Exception:
+                    obj = f"{name} #{h.id}"
+                uname = getattr(h.history_user, "username", "") or "system"
+                if q and q not in (obj + " " + uname + " " + name).lower():
+                    continue
                 records.append({
-                    "model": model.__name__, "when": h.history_date,
-                    "user": getattr(h.history_user, "username", "system"),
-                    "type": h.get_history_type_display(),
-                    "obj": str(h.instance) if hasattr(h, "instance") else str(h),
-                })
+                    "model": name, "when": h.history_date, "user": uname,
+                    "type": h.get_history_type_display(), "obj": obj})
         records.sort(key=lambda r: r["when"], reverse=True)
-        ctx["records"] = records[:100]
-        return ctx
+        return records, sorted(users)
+
+    def get(self, request, *args, **kwargs):
+        records, users = self._collect(request)
+        if request.GET.get("export") == "csv":
+            from reports.exports import csv_response
+            header = ["When", "Record type", "Change", "By", "Detail"]
+            rows = [[r["when"].strftime("%Y-%m-%d %H:%M:%S"), r["model"],
+                     r["type"], r["user"], r["obj"]] for r in records]
+            return csv_response("audit_log.csv", header, rows)
+
+        from django.core.paginator import Paginator
+        paginator = Paginator(records, 50)
+        page = paginator.get_page(request.GET.get("page"))
+        ctx = self.get_context_data(**kwargs)
+        ctx.update({
+            "page_obj": page, "records": page.object_list,
+            "total": paginator.count,
+            "models": list(self._models().keys()), "users": users,
+            "f": {"model": request.GET.get("model", ""),
+                  "user": request.GET.get("user", ""),
+                  "type": request.GET.get("type", ""),
+                  "q": request.GET.get("q", ""),
+                  "start": request.GET.get("start", ""),
+                  "end": request.GET.get("end", "")},
+            "querystring": _qs_without(request, "page"),
+        })
+        return self.render_to_response(ctx)
+
+
+def _qs_without(request, *drop):
+    from urllib.parse import urlencode
+    items = [(k, v) for k, v in request.GET.items() if k not in drop and v]
+    return urlencode(items)
 
 
 # ---- Envelope reports ----

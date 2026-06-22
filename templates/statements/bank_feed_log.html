@@ -2,11 +2,18 @@
 {% block title %}Bank feed log · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Real-time bank feed</h1><div class="sub">Events pushed by the bank's Core Banking System</div></div></div>
+{% if cleared %}
+<div class="card u-mt" style="max-width:420px"><div class="bd">
+  <div class="muted u-xs" style="text-transform:uppercase;letter-spacing:.05em">Current bank balance (cleared)</div>
+  <div class="mono" style="font-size:1.9rem;font-weight:700;color:var(--forest)">{{ cleared.currency }} {{ cleared.balance|floatformat:2|intcomma }}</div>
+  <div class="help u-mt-0">{% if cleared.account %}Account {{ cleared.account }} · {% endif %}as reported {{ cleared.at|date:"d M Y H:i" }}</div>
+</div></div>
+{% endif %}
 <div class="grid-3 u-mt">
   {% for label, n in counts.items %}<div class="stat"><div class="lbl">{{ label }}</div><div class="val mono">{{ n }}</div></div>{% endfor %}
 </div>
 <table class="ledger u-mt"><thead><tr>
-  <th>Received</th><th>Transaction ID</th><th>Account</th><th>Type</th><th class="num">Amount</th><th>Status</th><th>Linked</th>
+  <th>Received</th><th>Transaction ID</th><th>Account</th><th>Type</th><th class="num">Amount</th><th>Status</th><th>Linked</th><th>Raw</th>
 </tr></thead><tbody>
 {% for e in events %}
   <tr>
@@ -17,9 +24,10 @@
     <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
     <td><span class="pill {% if e.status == 'PROCESSED' %}pill-green{% elif e.status == 'FAILED' or e.status == 'REJECTED' %}pill-amber{% else %}pill-grey{% endif %}">{{ e.get_status_display }}</span>{% if e.error %}<div class="help">{{ e.error }}</div>{% endif %}</td>
     <td>{% if e.transaction %}<a class="link" href="{% url 'transaction_list' %}">view</a>{% else %}—{% endif %}</td>
+    <td>{% if e.pretty %}<details><summary class="link u-xs">JSON</summary><pre class="mono u-xs" style="white-space:pre-wrap;max-width:420px;margin:.3rem 0;padding:.5rem;background:var(--paper);border:1px solid var(--line);border-radius:8px">{{ e.pretty }}</pre></details>{% else %}—{% endif %}</td>
   </tr>
 {% empty %}
-  <tr><td colspan="7" class="muted">No events received yet. Configure the feed in Settings → Channels and share the webhook URL with the bank.</td></tr>
+  <tr><td colspan="8" class="muted">No events received yet. Configure the feed in Settings → Channels and share the webhook URL with the bank.</td></tr>
 {% endfor %}
 </tbody></table>
 {% endblock %}

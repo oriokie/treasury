@@ -1,17 +1,50 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Audit log · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Audit log</h1><div class="sub">Most recent changes across transactions, expenses &amp; members</div></div></div>
-<div class="table-wrap"><table class="ledger">
+<div class="page-head"><div><h1>Audit log</h1><div class="sub">Who created, changed or deleted what · {{ total }} matching record{{ total|pluralize }}</div></div>
+  <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="?{{ querystring }}{% if querystring %}&{% endif %}export=csv">⤓ CSV</a></div>
+</div>
+
+<form method="get" class="card u-mt"><div class="bd" style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:end">
+  <div><label class="lbl u-xs">Search</label><input type="text" name="q" value="{{ f.q }}" class="field" placeholder="detail or user…"></div>
+  <div><label class="lbl u-xs">Record</label><select name="model" class="field--select">
+    <option value="">All</option>
+    {% for m in models %}<option value="{{ m }}" {% if f.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+  </select></div>
+  <div><label class="lbl u-xs">Change</label><select name="type" class="field--select">
+    <option value="">All</option>
+    <option value="+" {% if f.type == '+' %}selected{% endif %}>Created</option>
+    <option value="~" {% if f.type == '~' %}selected{% endif %}>Changed</option>
+    <option value="-" {% if f.type == '-' %}selected{% endif %}>Deleted</option>
+  </select></div>
+  <div><label class="lbl u-xs">User</label><select name="user" class="field--select">
+    <option value="">All</option>
+    {% for u in users %}<option value="{{ u }}" {% if f.user == u %}selected{% endif %}>{{ u }}</option>{% endfor %}
+  </select></div>
+  <div><label class="lbl u-xs">From</label><input type="date" name="start" value="{{ f.start }}" class="field"></div>
+  <div><label class="lbl u-xs">To</label><input type="date" name="end" value="{{ f.end }}" class="field"></div>
+  <div><button class="btn btn-primary btn-sm">Filter</button>
+    <a class="btn btn-ghost btn-sm" href="{% url 'report_audit' %}">Clear</a></div>
+</div></form>
+
+<div class="table-wrap u-mt"><table class="ledger">
   <thead><tr><th>When</th><th>Record</th><th>Change</th><th>By</th><th>Detail</th></tr></thead>
   <tbody>
   {% for r in records %}
-    <tr><td class="mono">{{ r.when|date:"d/m/y H:i" }}</td>
+    <tr><td class="mono u-nowrap">{{ r.when|date:"d/m/y H:i" }}</td>
       <td>{{ r.model }}</td>
       <td><span class="pill {% if r.type == 'Created' %}pill-green{% elif r.type == 'Deleted' %}pill-red{% else %}pill-grey{% endif %}">{{ r.type }}</span></td>
       <td class="muted">{{ r.user }}</td>
-      <td class="muted">{{ r.obj|truncatechars:48 }}</td></tr>
-  {% empty %}<tr><td colspan="5" class="empty">No history yet.</td></tr>{% endfor %}
+      <td class="muted">{{ r.obj|truncatechars:64 }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No matching history.</td></tr>{% endfor %}
   </tbody>
 </table></div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<div class="u-mt" style="display:flex;gap:.5rem;align-items:center;justify-content:center">
+  {% if page_obj.has_previous %}<a class="btn btn-ghost btn-sm" href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page_obj.previous_page_number }}">← Prev</a>{% endif %}
+  <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="btn btn-ghost btn-sm" href="?{{ querystring }}{% if querystring %}&{% endif %}page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
+</div>
+{% endif %}
 {% endblock %}

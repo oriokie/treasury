@@ -20,6 +20,7 @@ urlpatterns = [
     path("assistant/", views.AssistantView.as_view(), name="assistant"),
     path("assistant/ask/", views.AssistantAskView.as_view(), name="assistant_ask"),
     path("controls/", views.ControlsView.as_view(), name="controls"),
+    path("controls/check/<str:kind>/", views.ControlsDuplicatesView.as_view(), name="controls_duplicates"),
     path("executive/", views.ExecutiveDashboardView.as_view(), name="executive"),
     path("executive/insights/", views.ExecutiveInsightsView.as_view(), name="executive_insights"),
 ]

@@ -236,15 +236,15 @@ class DuplicateDetectionTests(TestCase):
         from decimal import Decimal
         from giving.models import Transaction
         from core.views import _duplicate_offerings
-        # cross-channel same giver/amount — must NOT flag
-        Transaction.objects.create(date=dt.date(2026, 6, 8), channel="CASH",
+        # bank + envelope, same giver/amount/month — IS a probable double count
+        Transaction.objects.create(date=dt.date(2026, 6, 8), channel="ENVELOPE",
             direction="CREDIT", amount=Decimal("500"), department=self.d,
             payer_name="Cross C", allocation_status="MANUAL", confirmed=True)
         Transaction.objects.create(date=dt.date(2026, 6, 8), channel="BANK",
             direction="CREDIT", amount=Decimal("500"), department=self.d,
             payer_name="Cross C", allocation_status="MANUAL", confirmed=True,
             core_ref="CC9")
-        # same-channel same giver/amount — must flag
+        # two cash gifts of the same amount on different days are NOT flagged
         Transaction.objects.create(date=dt.date(2026, 6, 8), channel="CASH",
             direction="CREDIT", amount=Decimal("700"), department=self.d,
             payer_name="Same C", allocation_status="MANUAL", confirmed=True)
@@ -252,8 +252,8 @@ class DuplicateDetectionTests(TestCase):
             direction="CREDIT", amount=Decimal("700"), department=self.d,
             payer_name="Same C", allocation_status="MANUAL", confirmed=True)
         payers = [x["payer"] for x in _duplicate_offerings()]
-        self.assertNotIn("CROSS C", payers)
-        self.assertIn("SAME C", payers)
+        self.assertIn("CROSS C", payers)        # bank + envelope flagged
+        self.assertNotIn("SAME C", payers)      # cash-only no longer flagged
 
     def test_envelope_duplicate_flagged(self):
         import datetime as dt

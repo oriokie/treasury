@@ -1,0 +1,6 @@
+{% load humanize %}
+<table class="ledger compact"><thead><tr><th>Sabbath</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
+{% for d in dup_expenses %}<tr><td class="mono">{{ d.sabbath|date:"d/m/y" }}</td><td>{{ d.fund }}</td><td>{{ d.description }} <span class="muted">· {{ d.claimant }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
+{% empty %}<tr><td colspan="5" class="empty">No duplicate expenses detected.</td></tr>{% endfor %}
+</tbody></table>
+<div class="help u-mt-sm">Flags same-Sabbath repeats with the same fund, claimant, amount and description. Bank / M-Pesa charges are excluded.</div>

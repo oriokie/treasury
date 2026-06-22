@@ -413,7 +413,9 @@ class TelegramEnhancementsTests(TestCase):
 class DuplicateDetectionTests(TestCase):
     """Offerings flag same-reference duplicates; expenses exclude bank charges."""
 
-    def test_offerings_flag_same_reference(self):
+    def test_offerings_shared_reference_not_flagged(self):
+        # distinct givers sharing a paybill reference (each with a unique bank
+        # receipt) are NOT duplicates under the corrected logic.
         from giving.models import Transaction
         from core.views import _duplicate_offerings
         import datetime as dt
@@ -425,10 +427,8 @@ class DuplicateDetectionTests(TestCase):
                 payer_name=f"Person {i}", reference="SAMEREF123",
                 core_ref=f"DR{i}")
         out = _duplicate_offerings()
-        ref_dups = [o for o in out if o.get("by") == "reference"
-                    and o["reference"] == "SAMEREF123"]
-        self.assertTrue(ref_dups)
-        self.assertEqual(ref_dups[0]["count"], 2)
+        ref_dups = [o for o in out if o["reference"] == "SAMEREF123"]
+        self.assertFalse(ref_dups)
 
     def test_expenses_exclude_bank_charges(self):
         from django.contrib.auth.models import User

@@ -474,8 +474,6 @@ class ControlsView(TreasurerRequiredMixin, View):
         return render(request, self.template_name, {
             "year": year, "months": months,
             "years": range(dt.date.today().year + 1, dt.date.today().year - 5, -1),
-            "dup_expenses": _duplicate_expenses(),
-            "dup_offerings": _duplicate_offerings(),
             "close_year": close_year,
             "cf_rows": cf_rows, "cf_total": cf_total,
             "closes": YearEndClose.objects.all(),
@@ -674,90 +672,75 @@ def _duplicate_expenses():
     return out[:50]
 
 
+class ControlsDuplicatesView(TreasurerRequiredMixin, View):
+    """Computes possible duplicates on demand (button-triggered) so the controls
+    page itself loads fast and these heavier scans run only when asked for."""
+    def get(self, request, kind):
+        if kind == "expenses":
+            return render(request, "controls/_dup_expenses.html",
+                          {"dup_expenses": _duplicate_expenses()})
+        if kind == "offerings":
+            return render(request, "controls/_dup_offerings.html",
+                          {"dup_offerings": _duplicate_offerings()})
+        from django.http import HttpResponseBadRequest
+        return HttpResponseBadRequest("unknown check")
+
+
 def _duplicate_offerings():
-    """Likely duplicate offerings, by three signals:
+    """Likely duplicate offerings — only the signals that actually indicate a
+    double count, so a shared paybill reference (e.g. many people giving with
+    reference 'tithe', each with its own unique bank receipt) is NOT flagged:
 
-    1. Same reference (M-Pesa receipt / paybill ref) appearing on more than one
-       non-excluded credit — a near-certain double import of the same payment.
-    2. Same giver (order-insensitive name match) + same amount + **same channel**
-       within 3 days — a probable re-entry. Requiring the same channel avoids
-       flagging a giver who legitimately gave the same amount once by cash and
-       once by M-Pesa.
-    3. Same giver + same amount appearing more than once in the **envelopes** for
-       the same Sabbath — a re-typed envelope.
+    1. Same giver (order-insensitive name) + same amount counted as income BOTH
+       on the bank AND as an envelope within the same calendar month. A bank
+       credit that's properly reconciled to its envelope is a memo
+       (excluded_from_income) and never reaches here, so this catches genuine
+       double counts where the same gift was receipted twice across channels.
+    2. Same giver + same amount receipted more than once in the envelopes of one
+       Sabbath — a re-typed envelope.
 
-    Envelope detail rows of bank giving (excluded_from_income) and reversals are
-    duplicates by design and are not flagged; the 3-day window avoids flagging a
-    faithful weekly giver of a fixed amount."""
-    from django.db.models import Count, Min, Max
+    Bank rows are de-duplicated on their unique receipt at import, so a unique
+    bank reference can never collide; we deliberately do not group by the
+    allocation reference any more (that produced false positives)."""
+    from collections import defaultdict
     from giving.models import Transaction
     from members.services.matching import name_key
-    base = Transaction.objects.filter(
-        direction=Transaction.Direction.CREDIT, is_reversal=False,
-        is_reversed=False, excluded_from_income=False)
 
     out = []
-    seen_refs = set()
-    # 1) same non-empty reference on more than one credit -> strong duplicate
-    ref_groups = (base.exclude(reference="")
-                  .values("reference", "amount")
-                  .annotate(n=Count("id"), first=Min("date"), last=Max("date"),
-                            payer=Min("payer_name"))
-                  .filter(n__gt=1).order_by("-last"))
-    for g in ref_groups[:50]:
-        seen_refs.add(g["reference"])
-        out.append({"date": g["last"], "first": g["first"], "amount": g["amount"],
-                    "payer": g["payer"] or "—", "count": g["n"],
-                    "reference": g["reference"], "by": "reference",
-                    "channel": ""})
-
-    # 2) same giver + same amount + same CHANNEL within 3 days (skip refs caught above)
-    rows = list(base.exclude(payer_name="")
-                .values("date", "amount", "payer_name", "reference", "channel"))
-    byk = {}
+    # income-counted credits only (memos / reversals excluded by design)
+    rows = (Transaction.objects.filter(
+                direction=Transaction.Direction.CREDIT, is_reversal=False,
+                is_reversed=False, excluded_from_income=False, confirmed=True)
+            .values("date", "amount", "payer_name", "member__name",
+                    "channel", "reference"))
+    groups = defaultdict(list)
     for r in rows:
-        if r["reference"] and r["reference"] in seen_refs:
+        name = r["payer_name"] or r["member__name"] or ""
+        nk = name_key(name)
+        if not nk or not r["amount"]:
             continue
-        nk = name_key(r["payer_name"])
-        if nk:
-            byk.setdefault((nk, r["amount"], r["channel"]), []).append(r)
-    for (nk, amt, channel), grp in byk.items():
-        if len(grp) < 2:
-            continue
-        grp.sort(key=lambda r: r["date"])
-        cluster = [grp[0]]
-        for prev, cur in zip(grp, grp[1:]):
-            if (cur["date"] - prev["date"]).days <= 3:
-                cluster.append(cur)
-            else:
-                if len(cluster) > 1:
-                    out.append(_off_cluster(cluster))
-                cluster = [cur]
-        if len(cluster) > 1:
-            out.append(_off_cluster(cluster))
+        groups[(nk, r["amount"], r["date"].year, r["date"].month)].append(r)
 
-    # 3) duplicate envelopes: same giver + same amount on the same Sabbath
+    for (nk, amt, _y, _m), grp in groups.items():
+        channels = {g["channel"] for g in grp}
+        bank = Transaction.Channel.BANK in channels
+        env = (Transaction.Channel.ENVELOPE in channels
+               or any(g["channel"] == Transaction.Channel.ENVELOPE for g in grp))
+        if bank and env:                       # counted on both -> probable double
+            grp.sort(key=lambda r: r["date"])
+            out.append({
+                "date": grp[-1]["date"], "first": grp[0]["date"], "amount": amt,
+                "payer": next((g["payer_name"] or g["member__name"] for g in grp
+                               if g["payer_name"] or g["member__name"]), "—"),
+                "count": len(grp), "by": "bank + envelope, same month",
+                "reference": next((g["reference"] for g in grp if g["reference"]), "—"),
+                "channel": "bank+envelope"})
+
+    # same giver + same total typed more than once in one Sabbath's envelopes
     out.extend(_duplicate_envelopes())
 
-    # 4) NEAR-match givers: same amount + same channel within 3 days where the
-    #    names are *almost* equal — catches a manual receipt typed with a slightly
-    #    misspelt name (e.g. "Jon Mwangi" vs "John Mwangi") that the exact
-    #    order-insensitive key in (2) would miss.
-    out.extend(_fuzzy_name_duplicates(base, seen_refs))
-
-    # de-duplicate clusters that more than one signal produced (same payer+amount+date)
-    deduped, sig_seen = [], set()
-    for c in out:
-        sig = (c.get("payer"), c.get("amount"), c.get("first"), c.get("last"),
-               c.get("by"))
-        if sig in sig_seen:
-            continue
-        sig_seen.add(sig)
-        deduped.append(c)
-    # sort by payer (the user reviews these name-by-name), then most recent first
-    deduped.sort(key=lambda c: ((c.get("payer") or "~").upper(), c["date"]),
-                 reverse=False)
-    return deduped[:80]
+    out.sort(key=lambda c: ((c.get("payer") or "~").upper(), c["date"]))
+    return out[:100]
 
 
 def _fuzzy_name_duplicates(base, seen_refs, threshold=0.86):
@@ -855,33 +838,16 @@ class ExecutiveDashboardView(ReadAccessMixin, View):
         from .services import dashboard, health
         from core.models import SiteConfig
         ch = dashboard.charts()
-        dismissed = set(request.session.get("dismissed_alerts", []))
-        alerts = []
-        for a in health.anomalies():
-            a["key"] = self._key(a)
-            if a["key"] not in dismissed:
-                alerts.append(a)
         return render(request, self.template_name, {
             "cards": dashboard.cards(),
             "insights": dashboard.insights(),
             "kpis": health.kpis(),
-            "alerts": alerts,
-            "dismissed_count": len(dismissed),
+            "facts": dashboard.quick_facts(),
             "charts_json": safe_json(ch),
             "ai_enabled": SiteConfig.get().llm_enabled,
         })
 
     def post(self, request):
-        """Dismiss an alert (no action needed) or restore all dismissed alerts."""
-        dismissed = set(request.session.get("dismissed_alerts", []))
-        if request.POST.get("restore"):
-            dismissed = set()
-            messages.info(request, "Dismissed alerts restored.")
-        else:
-            key = request.POST.get("dismiss")
-            if key:
-                dismissed.add(key)
-        request.session["dismissed_alerts"] = list(dismissed)
         return redirect("executive")
 
 

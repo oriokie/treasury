@@ -404,10 +404,51 @@ class BankFeedLogView(ReadAccessMixin, ListView):
         return BankEvent.objects.select_related("transaction").all()
 
     def get_context_data(self, **kwargs):
+        import json
         from statements.models import BankEvent
         ctx = super().get_context_data(**kwargs)
         ctx["counts"] = {s.label: BankEvent.objects.filter(status=s.value).count()
                          for s in BankEvent.Status}
+
+        def _find(obj, key):
+            """Case-insensitive search for a key anywhere in nested JSON."""
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if k.lower() == key.lower() and v not in (None, "", []):
+                        return v
+                    found = _find(v, key)
+                    if found not in (None, ""):
+                        return found
+            elif isinstance(obj, list):
+                for it in obj:
+                    found = _find(it, key)
+                    if found not in (None, ""):
+                        return found
+            return None
+
+        # most recent cleared bank balance reported by the feed
+        cleared = None
+        for e in BankEvent.objects.order_by("-received_at")[:100]:
+            if not e.payload:
+                continue
+            try:
+                data = json.loads(e.payload)
+            except (ValueError, TypeError):
+                continue
+            cb = _find(data, "ClearedBalance")
+            if cb not in (None, ""):
+                cleared = {"balance": cb, "at": e.received_at,
+                           "account": e.acct_no or _find(data, "AccountNo") or "",
+                           "currency": e.currency or _find(data, "Currency") or ""}
+                break
+        ctx["cleared"] = cleared
+
+        # pretty-print each event's raw payload for the on-row JSON view
+        for e in ctx.get("events", []):
+            try:
+                e.pretty = json.dumps(json.loads(e.payload), indent=2) if e.payload else ""
+            except (ValueError, TypeError):
+                e.pretty = e.payload or ""
         return ctx
 
 

@@ -20,7 +20,7 @@
     <td>{{ p.department.name }}</td>
     <td class="mono">{{ p.due_date|date:"d M y"|default:"—" }}</td>
     <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
-    <td class="u-right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<form method="post" action="{% url 'payable_settle' p.id %}" class="u-inline" onsubmit="return confirm('Record payment of {{ p.amount }} to {{ p.vendor|escapejs }}?');">{% csrf_token %}<button class="btn btn-xs btn-brass">Settle / pay</button></form>{% endif %}</td>
+    <td class="u-right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=payable:{{ p.id }}">Settle / pay</a>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="6" class="empty">No payables recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
@@ -42,7 +42,7 @@
   {% for a in accruals %}<tr {% if a.settled %}class="muted"{% endif %}>
     <td class="mono">{{ a.date|date:"d M y" }}</td><td>{{ a.description }}</td><td>{{ a.department.name }}</td>
     <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
-    <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<form method="post" action="{% url 'accrual_settle' a.id %}" class="u-inline" onsubmit="return confirm('Record this expense of {{ a.amount }}?');">{% csrf_token %}<button class="btn btn-xs btn-brass">Settle</button></form>{% endif %}</td>
+    <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=accrual:{{ a.id }}">Settle</a>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="5" class="empty">No accruals recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
