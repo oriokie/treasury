@@ -125,6 +125,21 @@ function loadInsights(){
 </div></div>
 {% endif %}
 
+<div class="card"><div class="hd u-between">Cash flow forecast <a class="link u-xs" href="{% url 'report_forecast' %}">Full forecast →</a></div><div class="bd">
+  <div class="grid-3">
+    {% for label, h in forecast.items %}
+    <div class="stat"><div class="lbl">Projected · {{ label }}</div>
+      <div class="val mono" style="{% if h.projected < 0 %}color:var(--danger){% endif %}">{{ h.projected|floatformat:0|intcomma }}</div>
+      <div class="muted u-xs">{% if h.net >= 0 %}+{% endif %}{{ h.net|floatformat:0|intcomma }} vs today</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="stat u-mt-sm"><div class="lbl">Outstanding pledges</div>
+    <div class="val mono">{{ pledges_outstanding|floatformat:0|intcomma }}</div>
+    <div class="muted u-xs"><a class="link" href="{% url 'pledge_list' %}">View pledges →</a></div>
+  </div>
+</div></div>
+
 <div class="kpi-strip">
   {% for k in kpis %}
   <div class="kpi-tile">

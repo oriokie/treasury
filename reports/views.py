@@ -2163,3 +2163,23 @@ class BankPositionView(ReadAccessMixin, TemplateView):
             ctx["stmt_integrity"] = stmt.balance_check
             ctx["stmt_integrity_detail"] = stmt.balance_detail
         return ctx
+
+
+class CashFlowForecastView(ReadAccessMixin, TemplateView):
+    """Forward-looking cash projection over 30 days / quarter / year."""
+    template_name = "reports/cashflow_forecast.html"
+
+    def get_context_data(self, **kwargs):
+        from core.services import forecast
+        ctx = super().get_context_data(**kwargs)
+        h = forecast.horizons()
+        ctx["horizons"] = h
+        # a small bar/line dataset: projected position at each horizon
+        ctx["chart_json"] = safe_json({
+            "labels": ["Now", "30 days", "Quarter", "Year"],
+            "values": [float(forecast.cash_now()),
+                       float(h["30 days"]["projected"]),
+                       float(h["Quarter"]["projected"]),
+                       float(h["Year"]["projected"])],
+        })
+        return ctx

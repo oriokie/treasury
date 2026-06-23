@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Settle against an existing expense · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Settle against an existing expense</h1>
+  <div class="sub">{{ kind|title }}: {{ obj.description }} — {{ obj.amount|floatformat:2|intcomma }} ({{ obj.department.name }})</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'accruals' %}">← Back</a>
+</div>
+<div class="card u-mt"><div class="bd">
+  <p class="help u-mt-0">Pick the expense you already entered for this. It will be linked and the
+    {{ kind }} marked settled — no second expense is created. Only unlinked expenses on
+    <strong>{{ obj.department.name }}</strong> are shown.</p>
+  <form method="post">{% csrf_token %}
+    <table class="ledger compact"><thead><tr><th></th><th>Date</th><th>Description</th><th>Claimant</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for e in candidates %}<tr>
+      <td><input type="radio" name="expense" value="{{ e.id }}" required></td>
+      <td class="mono">{{ e.date|date:"d/m/y" }}</td>
+      <td>{{ e.description }}{% if e.amount != obj.amount %} <span class="muted u-xs">· differs from {{ obj.amount|floatformat:0|intcomma }}</span>{% endif %}</td>
+      <td class="muted">{{ e.claimant }}</td>
+      <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    </tr>{% empty %}<tr><td colspan="5" class="empty">No unlinked expenses on this fund to choose from.</td></tr>{% endfor %}
+    </tbody></table>
+    {% if candidates %}<div class="btn-row"><button class="btn">Link &amp; settle</button></div>{% endif %}
+  </form>
+</div></div>
+{% endblock %}

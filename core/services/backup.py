@@ -482,3 +482,42 @@ def database_restore(uploaded_file):
             os.unlink(tmp.name)
         except OSError:
             pass
+
+
+def upload_offsite(filename, data, cfg=None):
+    """Upload a backup file to off-site storage over HTTPS (dependency-free).
+
+    Does an authenticated HTTP PUT to the configured destination URL with the
+    file name appended — compatible with WebDAV (Nextcloud/ownCloud) and any
+    object store / endpoint that accepts an authenticated PUT. Returns
+    (ok, detail); never raises into the caller.
+    """
+    import base64
+    import urllib.request
+    import urllib.error
+    from core.models import SiteConfig
+    cfg = cfg or SiteConfig.get()
+    if not getattr(cfg, "offsite_backup_enabled", False):
+        return False, "Off-site backup is not enabled."
+    base = (cfg.offsite_backup_url or "").strip()
+    if not base:
+        return False, "No off-site backup URL configured."
+    url = base if base.endswith("/") else base + "/"
+    url = url + filename
+    try:
+        req = urllib.request.Request(url, data=data, method="PUT")
+        req.add_header("Content-Type", "application/octet-stream")
+        user = (cfg.offsite_backup_user or "").strip()
+        pwd = cfg.offsite_backup_password or ""
+        if user:
+            token = base64.b64encode(f"{user}:{pwd}".encode()).decode("ascii")
+            req.add_header("Authorization", f"Basic {token}")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            code = r.getcode()
+        if 200 <= code < 300:
+            return True, f"Uploaded {filename} to off-site storage."
+        return False, f"Upload returned HTTP {code}."
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}: {e.reason}"
+    except Exception as e:  # noqa: BLE001
+        return False, f"{type(e).__name__}: {e}"

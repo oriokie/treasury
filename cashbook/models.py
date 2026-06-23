@@ -247,6 +247,8 @@ class RecurringExpense(models.Model):
     class Frequency(models.TextChoices):
         SABBATH = "SABBATH", "Every Sabbath (weekly)"
         MONTHLY = "MONTHLY", "Every month"
+        QUARTERLY = "QUARTERLY", "Every quarter"
+        YEARLY = "YEARLY", "Every year"
 
     description = models.CharField(max_length=200)
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
@@ -254,10 +256,10 @@ class RecurringExpense(models.Model):
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
                                 default=Expense.Category.ALLOWANCE)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    frequency = models.CharField(max_length=8, choices=Frequency.choices,
+    frequency = models.CharField(max_length=10, choices=Frequency.choices,
                                  default=Frequency.MONTHLY)
     day_of_month = models.PositiveSmallIntegerField(
-        default=1, help_text="For monthly schedules: day of the month the payment falls due.")
+        default=1, help_text="For monthly/quarterly/yearly schedules: day of the month the payment falls due.")
     claimant = models.CharField(max_length=120, blank=True)
     method = models.CharField(max_length=8, choices=Expense.Method.choices,
                               default=Expense.Method.CASH)

@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px"><div class="hd">{{ title }}</div><div class="bd">
+  <form method="post">{% csrf_token %}
+    {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+    <div class="form-grid">
+    {% for f in form %}
+      <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+        {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+        {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+      </div>
+    {% endfor %}
+    </div>
+    <div class="btn-row"><button class="btn">Save</button><a class="btn btn-ghost" href="{% url 'accruals' %}">Cancel</a></div>
+  </form>
+</div></div>
+{% endblock %}

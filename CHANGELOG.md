@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.62.0 - off-site backup storage (#5)
+- #5: new SiteConfig.offsite_backup_enabled/url/user/password (migration core 0034). New
+  backup.upload_offsite() does a dependency-free authenticated HTTPS PUT (WebDAV/Nextcloud/object
+  stores). backup_db command gains --offsite (and auto-uploads when enabled); a "Send a backup
+  off-site now" button (OffsiteBackupNowView /backup/offsite-now/) uploads an encrypted copy on
+  demand. Backup emails now use the configured SiteConfig SMTP connection (so the port-465 fix
+  applies). Settings -> Backup gains the off-site fields. Tests: core/test_offsite_backup.
+
+## v1.61.0 - cash flow forecasting (#6) + executive forecast & pledges KPIs (#7)
+- #6: new core/services/forecast.py projects cash position over 30/91/365 days from a 6-month giving
+  run-rate, scheduled recurring expenses (precise due dates) + a discretionary spend run-rate, and
+  outstanding pledge installments. New CashFlowForecastView (/reports/forecast/) with a Chart.js line
+  chart and a per-horizon breakdown; linked from the reports index.
+- #7: the existing executive overview already covered giving-this-month, budget compliance, department
+  performance, giving trends and pie/bar/trend charts; added a Cash flow forecast section (30d/quarter/
+  year projected positions) and an Outstanding pledges figure. Tests: core/test_forecast.
+
+## v1.60.0 - payables/accruals/prepayments CRUD + link-existing settle (#1) + pledge delete (#4)
+- #1: edit/delete for Payable, Accrual, Prepayment via _ObligationEditView/_ObligationDeleteView;
+  settled payables/accruals are read-only and undeletable. New SettleAgainstExpenseView
+  (/payables/<kind>/<pk>/settle-existing/) links an already-entered, unlinked expense to a
+  payable/accrual and marks it settled without creating a second expense. New templates
+  obligation_edit.html + settle_existing.html; action buttons added to accruals.html.
+- #4: new treasurer-only PledgeDeleteView (/pledges/<pk>/delete/); PledgePayment links cascade but
+  the underlying contributions remain in the ledger. Delete button on pledge detail; is_treasurer/
+  can_enter_data added to PledgeDetailView context. Tests: cashbook/test_obligation_crud,
+  pledges/test_pledge_delete.
+
+## v1.59.0 - quarterly/yearly recurring expenses (#2) + tag-aware update check (#3)
+- #2: RecurringExpense.Frequency gains QUARTERLY and YEARLY (frequency max_length 8->10; migration
+  cashbook 0017). due_dates() generalised to step by 1/3/12 months anchored to the start month.
+- #3: updates.latest_release() now falls back to the GitHub tags API (newest by semver) when no
+  published Release exists, fixing 'Latest release seen (none)' for a tag-only repo. New _fetch_json
+  helper; diagnostics updated. Tests: cashbook/test_recurring_freq, core/test_update_check.
+
 ## v1.58.0 - itemised camp budgets (#1) + email SSL fix (#2)
 - #1: BudgetLine reworked from category-keyed to named items (new `name`; `category` now optional/
   informational; unique per department/year/name; migration cashbook 0016). New Expense.budget_line FK

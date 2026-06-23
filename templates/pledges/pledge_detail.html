@@ -4,7 +4,8 @@
 <div class="ws-head">
   <div class="ws-titles"><h1>{{ pledge.member.name }}</h1><div class="ws-sub">{{ pledge.campaign.name }} · {{ pledge.get_frequency_display }}</div></div>
   <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_list' %}">← All pledges</a>
-    {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_edit' pledge.id %}">Edit</a>{% endif %}</div>
+    {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_edit' pledge.id %}">Edit</a>{% endif %}
+    {% if is_treasurer %}<form method="post" action="{% url 'pledge_delete' pledge.id %}" class="u-inline" onsubmit="return confirm('Delete this pledge? Matched contributions stay in the ledger but are unlinked.');">{% csrf_token %}<button class="btn btn-ghost btn-sm link-danger">Delete</button></form>{% endif %}</div>
 </div>
 
 <div class="ws-summary">

@@ -835,10 +835,16 @@ class ExecutiveDashboardView(ReadAccessMixin, View):
 
     def get(self, request):
         import json
-        from .services import dashboard, health
+        from decimal import Decimal
+        from .services import dashboard, health, forecast
         from core.models import SiteConfig
+        from pledges.models import Pledge
         ch = dashboard.charts()
+        pledges_out = sum((p.outstanding for p in
+                           Pledge.objects.filter(status=Pledge.Status.ACTIVE)), Decimal(0))
         return render(request, self.template_name, {
+            "forecast": forecast.horizons(),
+            "pledges_outstanding": pledges_out,
             "cards": dashboard.cards(),
             "insights": dashboard.insights(),
             "kpis": health.kpis(),
@@ -978,12 +984,11 @@ class UpdateRunView(TreasurerRequiredMixin, View):
         if not repo:
             diag = "No GITHUB_REPO is configured, so the app can't check for updates."
         elif rel is None:
-            diag = (f"Couldn't read releases from '{repo}'. If the repository is "
-                    f"private, set GITHUB_TOKEN in the server's .env. If it's public, "
-                    f"make sure a Release (not just a tag) has been published on GitHub.")
+            diag = (f"Couldn't read releases or tags from '{repo}'. If the repository "
+                    f"is private, set GITHUB_TOKEN in the server's .env; check the repo "
+                    f"name is correct (owner/name).")
         elif not tag:
-            diag = (f"Connected to '{repo}', but no published Release was found. "
-                    f"Publish a Release on GitHub (tags alone aren't enough).")
+            diag = f"Connected to '{repo}', but no releases or tags were found yet."
         else:
             diag = None
         return render(request, self.template_name, {
@@ -1052,3 +1057,20 @@ def error_404(request, exception=None):
 def error_403(request, exception=None):
     from django.shortcuts import render
     return render(request, "403.html", status=403)
+
+
+class OffsiteBackupNowView(TreasurerRequiredMixin, View):
+    """Generate a backup now and upload it to the configured off-site storage."""
+    def post(self, request):
+        from core.services.backup import database_backup_bytes, upload_offsite
+        from core.fields import encrypt
+        import base64
+        try:
+            filename, data = database_backup_bytes()
+        except RuntimeError as e:
+            messages.error(request, f"Backup failed: {e}")
+            return redirect("settings")
+        token = encrypt(base64.b64encode(data).decode("ascii"))
+        ok, detail = upload_offsite(filename + ".enc", token.encode("ascii"))
+        (messages.success if ok else messages.error)(request, detail)
+        return redirect("settings")

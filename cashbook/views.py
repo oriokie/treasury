@@ -1523,3 +1523,115 @@ class BudgetItemsJSONView(DataEntryRequiredMixin, View):
         return JsonResponse({"items": [
             {"id": b.id, "name": b.name, "category": b.category,
              "amount": float(b.amount)} for b in items]})
+
+
+# --- Payables / accruals / prepayments: edit, delete, settle-against-expense ---
+
+class _ObligationEditView(DataEntryRequiredMixin, View):
+    """Edit a payable/accrual/prepayment. Settled items are read-only (safe)."""
+    model = None
+    form_class = None
+    title = ""
+    template_name = "cashbook/obligation_edit.html"
+
+    def _get(self, pk):
+        return get_object_or_404(self.model, pk=pk)
+
+    def get(self, request, pk):
+        obj = self._get(pk)
+        if getattr(obj, "settled", False):
+            messages.error(request, "This item is settled and can no longer be edited.")
+            return redirect("accruals")
+        fields = self.form_class().fields
+        initial = {f: getattr(obj, f) for f in fields if hasattr(obj, f)}
+        return render(request, self.template_name,
+                      {"form": self.form_class(initial=initial), "title": self.title, "obj": obj})
+
+    def post(self, request, pk):
+        obj = self._get(pk)
+        if getattr(obj, "settled", False):
+            messages.error(request, "This item is settled and can no longer be edited.")
+            return redirect("accruals")
+        form = self.form_class(request.POST)
+        if form.is_valid():
+            if _block_if_locked(request, form.cleaned_data.get("date", dt.date.today())):
+                return redirect("accruals")
+            for f, v in form.cleaned_data.items():
+                if hasattr(obj, f):
+                    setattr(obj, f, v)
+            obj.save()
+            messages.success(request, "Saved.")
+            return redirect("accruals")
+        return render(request, self.template_name,
+                      {"form": form, "title": self.title, "obj": obj})
+
+
+class PayableEdit(_ObligationEditView):
+    model = Payable; form_class = PayableForm; title = "Edit payable"
+
+class AccrualEdit(_ObligationEditView):
+    model = Accrual; form_class = AccrualForm; title = "Edit accrual"
+
+class PrepaymentEdit(_ObligationEditView):
+    model = Prepayment; form_class = PrepaymentForm; title = "Edit prepayment"
+
+
+class _ObligationDeleteView(DataEntryRequiredMixin, View):
+    model = None
+    label = "item"
+    def post(self, request, pk):
+        obj = get_object_or_404(self.model, pk=pk)
+        if getattr(obj, "settled", False):
+            messages.error(request, f"A settled {self.label} can't be deleted. "
+                                    f"Reverse the settlement first if it was a mistake.")
+        else:
+            obj.delete()
+            messages.success(request, f"{self.label.capitalize()} deleted.")
+        return redirect("accruals")
+
+
+class PayableDelete(_ObligationDeleteView):
+    model = Payable; label = "payable"
+
+class AccrualDelete(_ObligationDeleteView):
+    model = Accrual; label = "accrual"
+
+class PrepaymentDelete(_ObligationDeleteView):
+    model = Prepayment; label = "prepayment"
+
+
+class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
+    """Settle a payable/accrual by linking an expense that was already entered
+    (e.g. the treasurer keyed the payment as an expense by mistake), instead of
+    creating a second one. Lists unlinked expenses on the same fund to choose from."""
+    template_name = "cashbook/settle_existing.html"
+
+    def _obj(self, kind, pk):
+        model = {"payable": Payable, "accrual": Accrual}.get(kind)
+        return model.objects.filter(pk=pk).first() if model else None
+
+    def get(self, request, kind, pk):
+        obj = self._obj(kind, pk)
+        if not obj or obj.settled:
+            messages.error(request, "That item can't be settled.")
+            return redirect("accruals")
+        cands = (Expense.objects.filter(department=obj.department,
+                    payable__isnull=True, accrual__isnull=True)
+                 .exclude(category=Expense.Category.BANK_CHARGE)
+                 .order_by("-date")[:100])
+        return render(request, self.template_name,
+                      {"obj": obj, "kind": kind, "candidates": cands})
+
+    def post(self, request, kind, pk):
+        obj = self._obj(kind, pk)
+        if not obj or obj.settled:
+            messages.error(request, "That item can't be settled.")
+            return redirect("accruals")
+        exp = get_object_or_404(Expense, pk=request.POST.get("expense"))
+        obj.settled = True
+        obj.settled_on = exp.date
+        obj.settled_expense = exp
+        obj.save()
+        messages.success(request, f"{kind.title()} settled against the existing expense "
+                                  f"“{exp.description}”.")
+        return redirect("accruals")

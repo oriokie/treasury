@@ -20,7 +20,10 @@
     <td>{{ p.department.name }}</td>
     <td class="mono">{{ p.due_date|date:"d M y"|default:"—" }}</td>
     <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
-    <td class="u-right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=payable:{{ p.id }}">Settle / pay</a>{% endif %}</td>
+    <td class="u-right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% if p.settled_expense %} <span class="muted u-xs">· linked</span>{% endif %}{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=payable:{{ p.id }}">Settle / pay</a>
+      <a class="btn btn-xs btn-ghost" href="{% url 'settle_existing' 'payable' p.id %}" title="Link an expense you already entered">Link expense</a>
+      <a class="btn btn-xs btn-ghost" href="{% url 'payable_edit' p.id %}">Edit</a>
+      <form method="post" action="{% url 'payable_delete' p.id %}" class="u-inline" onsubmit="return confirm('Delete this payable?');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber">Delete</button></form>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="6" class="empty">No payables recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
@@ -42,7 +45,10 @@
   {% for a in accruals %}<tr {% if a.settled %}class="muted"{% endif %}>
     <td class="mono">{{ a.date|date:"d M y" }}</td><td>{{ a.description }}</td><td>{{ a.department.name }}</td>
     <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
-    <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=accrual:{{ a.id }}">Settle</a>{% endif %}</td>
+    <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% if a.settled_expense %} <span class="muted u-xs">· linked</span>{% endif %}{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=accrual:{{ a.id }}">Settle</a>
+      <a class="btn btn-xs btn-ghost" href="{% url 'settle_existing' 'accrual' a.id %}" title="Link an expense you already entered">Link expense</a>
+      <a class="btn btn-xs btn-ghost" href="{% url 'accrual_edit' a.id %}">Edit</a>
+      <form method="post" action="{% url 'accrual_delete' a.id %}" class="u-inline" onsubmit="return confirm('Delete this accrual?');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber">Delete</button></form>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="5" class="empty">No accruals recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
@@ -58,13 +64,15 @@
 
 <!-- Prepayments -->
 <div class="card u-mt"><div class="hd">Prepayments <span class="muted">— paid in advance</span></div><div class="bd u-pad-cell">
-<table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Fund</th><th class="num">Paid</th><th>Spread</th><th class="num">Unexpired</th></tr></thead><tbody>
+<table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Fund</th><th class="num">Paid</th><th>Spread</th><th class="num">Unexpired</th><th></th></tr></thead><tbody>
   {% for p in prepayments %}<tr>
     <td class="mono">{{ p.date|date:"d M y" }}</td><td>{{ p.description }}</td><td>{{ p.department.name }}</td>
     <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
     <td class="mono">{{ p.months }}m from {{ p.start_date|date:"M y" }}</td>
     <td class="num mono">{{ p.unexpired_now|floatformat:2|intcomma }}</td>
-  </tr>{% empty %}<tr><td colspan="6" class="empty">No prepayments recorded.</td></tr>{% endfor %}
+    <td class="u-right">{% if can_enter_data %}<a class="btn btn-xs btn-ghost" href="{% url 'prepayment_edit' p.id %}">Edit</a>
+      <form method="post" action="{% url 'prepayment_delete' p.id %}" class="u-inline" onsubmit="return confirm('Delete this prepayment? The original expense entry is kept.');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber">Delete</button></form>{% endif %}</td>
+  </tr>{% empty %}<tr><td colspan="7" class="empty">No prepayments recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
   <form method="post" action="{% url 'prepayment_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;align-items:end">{% csrf_token %}

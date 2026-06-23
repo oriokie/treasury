@@ -283,6 +283,15 @@ class SiteConfig(models.Model):
     backup_email = models.CharField(max_length=200, blank=True, default="",
         help_text="Email address(es) to send the nightly backup to, comma-separated. "
                   "Leave blank to keep backups on the server only.")
+    offsite_backup_enabled = models.BooleanField(default=False,
+        help_text="Also upload each backup to off-site storage over HTTPS "
+                  "(e.g. Nextcloud/WebDAV or an object store that accepts an "
+                  "authenticated upload).")
+    offsite_backup_url = models.CharField(max_length=300, blank=True, default="",
+        help_text="Destination folder/URL, e.g. https://cloud.example.com/remote.php/dav/"
+                  "files/treasury/backups/ — the file name is appended.")
+    offsite_backup_user = models.CharField(max_length=160, blank=True, default="")
+    offsite_backup_password = EncryptedCharField(max_length=255, blank=True, default="")
 
     # --- Security ------------------------------------------------------------
     require_2fa_for_treasurers = models.BooleanField(default=False,

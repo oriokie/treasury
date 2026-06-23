@@ -29,13 +29,18 @@ def due_dates(sched, upto):
         while d <= end:
             out.append(d)
             d += dt.timedelta(days=7)
-    else:  # MONTHLY
+    else:  # MONTHLY / QUARTERLY / YEARLY — step by months, anchored to start month
+        step = {RecurringExpense.Frequency.MONTHLY: 1,
+                RecurringExpense.Frequency.QUARTERLY: 3,
+                RecurringExpense.Frequency.YEARLY: 12}.get(sched.frequency, 1)
+        anchor = (sched.start_date or begin).month
         y, m = begin.year, begin.month
         while dt.date(y, m, 1) <= end:
-            dom = min(sched.day_of_month or 1, monthrange(y, m)[1])
-            d = dt.date(y, m, dom)
-            if begin <= d <= end:
-                out.append(d)
+            if (m - anchor) % step == 0:
+                dom = min(sched.day_of_month or 1, monthrange(y, m)[1])
+                d = dt.date(y, m, dom)
+                if begin <= d <= end:
+                    out.append(d)
             m += 1
             if m > 12:
                 m, y = 1, y + 1

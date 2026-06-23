@@ -329,6 +329,22 @@
         The <strong>full backup</strong> is a complete, restorable snapshot of the database (a SQLite file or a SQL dump, depending on your database) — keep it somewhere safe; it contains all financial records.<br>
         The <strong>Excel export</strong> is a multi-sheet workbook (members, transactions, expenses, funds, reconciliations) for analysis or archival — it can't be restored back into the app.
       </div>
+
+      <div class="u-bt u-mt-sm u-pt-sm">
+        <div class="hd u-m-0">Off-site backup storage</div>
+        <p class="help u-mt-0">Automatically upload each nightly backup to off-site storage over HTTPS — works with Nextcloud/ownCloud (WebDAV) or any endpoint that accepts an authenticated upload. The backup is encrypted with this app's key before it leaves the server.</p>
+        <label class="check-row">{{ form.offsite_backup_enabled }} Enable off-site upload</label>
+        <div class="form-row"><label>Destination URL (folder)</label>{{ form.offsite_backup_url }}
+          {% if form.offsite_backup_url.help_text %}<div class="help">{{ form.offsite_backup_url.help_text }}</div>{% endif %}</div>
+        <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+          <div class="form-row"><label>Username</label>{{ form.offsite_backup_user }}</div>
+          <div class="form-row"><label>Password / token</label>{{ form.offsite_backup_password }}</div>
+        </div>
+        <div class="btn-row u-mt-sm">
+          <button class="btn btn-ghost" formaction="{% url 'backup_offsite_now' %}" formmethod="post">⤴ Send a backup off-site now</button>
+        </div>
+        <div class="help">Tip: set up the nightly cron with <span class="mono">manage.py backup_db --email --offsite</span> for an automatic off-site copy every night.</div>
+      </div>
     </div></div>
   </section>
 

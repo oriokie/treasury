@@ -36,6 +36,8 @@ class Command(BaseCommand):
                             help="Number of recent backups to retain.")
         parser.add_argument("--email", action="store_true",
                             help="Also email the backup off-site if configured.")
+        parser.add_argument("--offsite", action="store_true",
+                            help="Also upload the backup to off-site storage if configured.")
         parser.add_argument("--no-encrypt", action="store_true",
                             help="Write the raw dump instead of encrypting it.")
 
@@ -72,6 +74,13 @@ class Command(BaseCommand):
         if opts["email"]:
             self._email(path, filename)
 
+        from core.models import SiteConfig
+        if opts["offsite"] or SiteConfig.get().offsite_backup_enabled:
+            from core.services.backup import upload_offsite
+            ok, detail = upload_offsite(filename, data_out)
+            style = self.style.SUCCESS if ok else self.style.WARNING
+            self.stdout.write(style(f"Off-site: {detail}"))
+
     def _rotate(self, out_dir, keep):
         backups = sorted(
             [p for p in out_dir.iterdir()
@@ -95,13 +104,18 @@ class Command(BaseCommand):
             return
         try:
             from django.core.mail import EmailMessage
+            from core.services.email import _connection, is_configured
             stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+            kwargs = {}
+            if is_configured(cfg):
+                kwargs["connection"] = _connection(cfg)
+                kwargs["from_email"] = cfg.email_from
             msg = EmailMessage(
                 subject=f"{cfg.church_name or 'Treasury'} backup — {stamp}",
                 body=("Automated database backup attached. Keep this file safe; "
                       "it is encrypted with the application key and can only be "
                       "restored by this system."),
-                to=[t.strip() for t in to.split(",") if t.strip()])
+                to=[t.strip() for t in to.split(",") if t.strip()], **kwargs)
             msg.attach(filename, path.read_bytes(), "application/octet-stream")
             msg.send(fail_silently=False)
             self.stdout.write(self.style.SUCCESS(f"Backup emailed to {to}."))

@@ -26,16 +26,26 @@ _release_cache = {"at": 0.0, "value": None}
 _RELEASE_TTL = 600  # seconds — re-check GitHub at most every 10 minutes
 
 
+def _fetch_json(url, token, timeout=4):
+    headers = {"Accept": "application/vnd.github+json",
+               "User-Agent": "treasury-updater"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
+
+
 def latest_release(force=False):
-    """Return dict(tag, url, body) of the latest GitHub release, or None.
+    """Return dict(tag, url, body) of the newest release/tag on GitHub, or None.
 
-    Result is cached for a few minutes (not forever) so the update banner can
-    appear without a process restart, while avoiding hammering the GitHub API.
-    Pass force=True to bypass the cache (used by the explicit "check now" button).
+    Tries the published-Releases API first, then falls back to the **tags** API —
+    this project tags every version (vX.Y.Z) but doesn't always publish a GitHub
+    Release, and /releases/latest 404s when only tags exist (the cause of
+    "Latest release seen (none)"). Result is cached for a few minutes.
 
-    Authenticates with GITHUB_TOKEN if set, so private repositories work (the
-    unauthenticated API returns 404 for private repos). The token is read from
-    settings/env and never logged."""
+    Authenticates with GITHUB_TOKEN if set, so private repositories work. The
+    token is read from settings/env and never logged."""
     import time
     now = time.time()
     if not force and _release_cache["value"] is not None \
@@ -46,19 +56,31 @@ def latest_release(force=False):
     if not repo:
         return None
     token = getattr(settings, "GITHUB_TOKEN", "") or ""
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
-    headers = {"Accept": "application/vnd.github+json",
-               "User-Agent": "treasury-updater"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+
+    result = None
+    # 1) a published GitHub Release, if any
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=4) as r:
-            data = json.loads(r.read().decode())
-        result = {"tag": data.get("tag_name", ""), "url": data.get("html_url", ""),
-                  "body": (data.get("body") or "")[:2000]}
+        data = _fetch_json(f"https://api.github.com/repos/{repo}/releases/latest", token)
+        if data.get("tag_name"):
+            result = {"tag": data["tag_name"], "url": data.get("html_url", ""),
+                      "body": (data.get("body") or "")[:2000]}
     except Exception:  # noqa: BLE001
         result = None
+    # 2) fall back to tags (newest by semver) — works for a tag-only workflow
+    if result is None:
+        try:
+            tags = _fetch_json(f"https://api.github.com/repos/{repo}/tags?per_page=100", token)
+            best = None
+            for t in tags or []:
+                name = t.get("name", "")
+                if name and (best is None or _parse(name) > _parse(best)):
+                    best = name
+            if best:
+                result = {"tag": best, "body": "",
+                          "url": f"https://github.com/{repo}/releases/tag/{best}"}
+        except Exception:  # noqa: BLE001
+            result = None
+
     _release_cache["at"] = now
     _release_cache["value"] = result
     return result

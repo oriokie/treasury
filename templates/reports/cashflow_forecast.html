@@ -1,0 +1,53 @@
+{% extends 'base.html' %}{% load humanize static %}
+{% block title %}Cash flow forecast · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cash flow forecast</h1>
+  <div class="sub">Projected cash position, based on your giving run-rate, recurring expenses and outstanding pledges</div></div>
+</div>
+
+<div class="grid-3 u-mt">
+  {% for label, h in horizons.items %}
+  <div class="card"><div class="hd">{{ label }}</div><div class="bd">
+    <div class="mono" style="font-size:1.7rem;font-weight:700;color:{% if h.projected < 0 %}var(--danger){% else %}var(--forest){% endif %}">
+      {{ h.projected|floatformat:0|intcomma }}</div>
+    <div class="help u-mt-0">by {{ h.horizon_end|date:"d M Y" }} · {% if h.net >= 0 %}+{% endif %}{{ h.net|floatformat:0|intcomma }} vs today</div>
+  </div></div>
+  {% endfor %}
+</div>
+
+<div class="card u-mt"><div class="hd">Projected position</div><div class="bd">
+  <canvas id="forecastChart" height="110"></canvas>
+</div></div>
+
+<div class="card u-mt"><div class="hd">How each horizon is built</div><div class="bd bd-flush">
+  <table class="ledger"><thead><tr><th>Component</th>
+    {% for label, h in horizons.items %}<th class="num">{{ label }}</th>{% endfor %}</tr></thead>
+  <tbody>
+    <tr><td>Opening cash (today)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.opening|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+    <tr><td>+ Projected giving (run-rate)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.proj_giving|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+    <tr><td>+ Expected pledge collections</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.pledge_in|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+    <tr><td>− Recurring expenses (scheduled)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.recurring|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+    <tr><td>− Other spending (run-rate)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.discretionary|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+    <tr class="total-row"><td><strong>= Projected position</strong></td>{% for label, h in horizons.items %}<td class="num mono"><strong>{{ h.projected|floatformat:0|intcomma }}</strong></td>{% endfor %}</tr>
+  </tbody></table>
+</div></div>
+<div class="help u-mt-0">Indicative only. Giving and other spending use an average of the last six months; recurring expenses and pledge installments use their actual schedules.</div>
+
+<script src="{% static 'vendor/chart.umd.js' %}"></script>
+<script>
+(function(){
+  if (typeof Chart === "undefined") return;
+  const css = getComputedStyle(document.documentElement);
+  const forest = (css.getPropertyValue('--forest')||'#1f5f4f').trim();
+  const data = {{ chart_json|safe }};
+  new Chart(document.getElementById('forecastChart'), {
+    type: 'line',
+    data: { labels: data.labels, datasets: [{ label: 'Projected cash', data: data.values,
+      borderColor: forest, backgroundColor: 'rgba(31,95,79,.12)', fill: true, tension: .3,
+      pointRadius: 4 }] },
+    options: { responsive: true, plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: false } } }
+  });
+})();
+</script>
+{% endblock %}

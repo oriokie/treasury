@@ -8,6 +8,7 @@ urlpatterns = [
     path("pledges/new/", views.PledgeCreateView.as_view(), name="pledge_create"),
     path("pledges/<int:pk>/", views.PledgeDetailView.as_view(), name="pledge_detail"),
     path("pledges/<int:pk>/edit/", views.PledgeCreateView.as_view(), name="pledge_edit"),
+    path("pledges/<int:pk>/delete/", views.PledgeDeleteView.as_view(), name="pledge_delete"),
     path("pledges/<int:pk>/approve/", views.PledgeApproveView.as_view(), name="pledge_approve"),
     path("pledges/<int:pk>/match/", views.PledgeMatchView.as_view(), name="pledge_match"),
     path("pledges/<int:pk>/remind/", views.PledgeReminderView.as_view(), name="pledge_remind"),

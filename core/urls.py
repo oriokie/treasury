@@ -7,6 +7,7 @@ urlpatterns = [
     path("update/", views.UpdateRunView.as_view(), name="update_run"),
     path("update/status/", views.UpdateStatusView.as_view(), name="update_status"),
     path("backup/database/", views.BackupView.as_view(), name="backup_database"),
+    path("backup/offsite-now/", views.OffsiteBackupNowView.as_view(), name="backup_offsite_now"),
     path("backup/restore/", views.RestoreView.as_view(), name="backup_restore"),
     path("backup/data-export/", views.DataExportView.as_view(), name="data_export"),
     path("api/telegram/webhook/<str:token>/", TelegramWebhookView.as_view(), name="telegram_webhook"),

@@ -38,6 +38,25 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.62.0": "Backups can now be sent to off-site storage automatically: under Settings → Backup, "
+              "enable off-site upload and give an HTTPS destination (Nextcloud/WebDAV or any endpoint "
+              "that accepts an authenticated upload). The nightly backup (and a “Send a backup off-site "
+              "now” button) uploads an encrypted copy, so a server failure never loses the books. "
+              "Backup emails now also use your configured SMTP settings.",
+    "1.61.0": "New Cash flow forecast report (Reports → Cash flow forecast) projects your cash "
+              "position 30 days, a quarter and a year ahead — built from your giving run-rate, the "
+              "actual schedule of recurring expenses and outstanding pledges, with a chart and a "
+              "full breakdown. The executive overview now also shows the forecast at a glance and "
+              "total outstanding pledges, alongside the existing giving, budget, department and trust "
+              "KPIs and charts.",
+    "1.60.0": "The payables page now lets you edit and delete payables, accruals and prepayments "
+              "(settled items stay locked for safety), and a payable/accrual can be settled by linking "
+              "an expense you already entered by mistake — instead of creating a duplicate. Pledges can "
+              "now also be deleted by a treasurer (matched gifts stay in the ledger, just unlinked).",
+    "1.59.0": "Recurring expenses can now repeat monthly, quarterly or yearly (in addition to every "
+              "Sabbath). And the in-app update check now also recognises version tags on GitHub, not "
+              "only published Releases — so the “check for updates” page works for a tag-based "
+              "workflow instead of always showing “none”.",
     "1.58.0": "Camp/fund budgets are now itemised: set named budget items (Accommodation, Catering, "
               "Pulpit, …) on a fund's Budget & goals page, and when you record an expense on that fund "
               "you can tag it to the specific item — so the page shows actual spend per item. The "

@@ -139,6 +139,9 @@ class PledgeDetailView(ReadAccessMixin, TemplateView):
                               pk=kwargs["pk"])
         ctx["pledge"] = p
         ctx["payments"] = p.payments.select_related("transaction").all()
+        from core.roles import is_treasurer, can_enter_data
+        ctx["is_treasurer"] = is_treasurer(self.request.user)
+        ctx["can_enter_data"] = can_enter_data(self.request.user)
         ctx["reminders"] = p.reminders.all()[:10]
         # expected schedule vs paid (informational)
         sched = p.expected_installments()
@@ -934,3 +937,17 @@ class PledgeImportView(TreasurerRequiredMixin, View):
     @staticmethod
     def _norm(s):
         return " ".join((s or "").upper().split())
+
+
+class PledgeDeleteView(TreasurerRequiredMixin, View):
+    """Delete a pledge. Its payment *links* (PledgePayment) are removed, but the
+    underlying contributions stay in the ledger — a pledge link carries no money."""
+    def post(self, request, pk):
+        p = get_object_or_404(Pledge, pk=pk)
+        n = p.payments.count()
+        p.delete()
+        msg = "Pledge deleted."
+        if n:
+            msg += f" {n} matched contribution(s) were unlinked but remain in the ledger."
+        messages.success(request, msg)
+        return redirect("pledge_list")
