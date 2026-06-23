@@ -38,6 +38,12 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.58.0": "Camp/fund budgets are now itemised: set named budget items (Accommodation, Catering, "
+              "Pulpit, …) on a fund's Budget & goals page, and when you record an expense on that fund "
+              "you can tag it to the specific item — so the page shows actual spend per item. The "
+              "expense's own category is unchanged and still used for the overall categorisation. Also "
+              "fixed outgoing email on port 465: it now uses implicit SSL (the cause of the connection "
+              "time-out), with STARTTLS still used on port 587.",
     "1.57.0": "Settling a payable or accrual now opens the normal expense form pre-filled, so you can "
               "record how it was actually paid — payment method, claimant and any M-Pesa/bank charge — "
               "before it's posted and the obligation closed. New camp/fund budgets: open a fund's "

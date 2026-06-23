@@ -210,7 +210,10 @@ class SiteConfig(models.Model):
         help_text="Enable sending email (reports, receipts, notifications) via SMTP.")
     email_host = models.CharField(max_length=120, blank=True, help_text="e.g. smtp.gmail.com")
     email_port = models.PositiveIntegerField(default=587)
-    email_use_tls = models.BooleanField(default=True)
+    email_use_tls = models.BooleanField(default=True,
+        help_text="STARTTLS — use for port 587. Turn OFF for port 465.")
+    email_use_ssl = models.BooleanField(default=False,
+        help_text="Implicit SSL — required for port 465. (Auto-enabled for port 465.)")
     email_host_user = models.CharField(max_length=160, blank=True)
     email_host_password = EncryptedCharField(max_length=255, blank=True, default="")
     email_from = models.CharField(max_length=160, blank=True,

@@ -22,7 +22,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "notify_email_enabled", "dev_group_extra_prefixes",
             "numbered_fund_families",
             "sabbath_cutoff_enabled",
-            "email_enabled", "email_host", "email_port", "email_use_tls",
+            "email_enabled", "email_host", "email_port", "email_use_tls", "email_use_ssl",
             "email_host_user", "email_host_password", "email_from",
             "whatsapp_enabled", "whatsapp_provider", "whatsapp_api_url",
             "whatsapp_api_key", "whatsapp_sender",

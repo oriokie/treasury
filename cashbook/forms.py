@@ -16,7 +16,8 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
         model = Expense
         fields = ["date", "department", "description", "amount", "category",
                   "expenditure_type", "capitalized_asset",
-                  "claimant", "method", "voucher_no", "paid_from_petty_cash"]
+                  "claimant", "method", "voucher_no", "paid_from_petty_cash",
+                  "budget_line"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):
@@ -33,6 +34,13 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
             "autocomplete": "off", "class": "field claimant-ac",
             "placeholder": "Start typing a member's name…"})
         self.fields["method"].widget.attrs.update({"class": "field--select method-select"})
+        if "budget_line" in self.fields:
+            from cashbook.models import BudgetLine
+            self.fields["budget_line"].required = False
+            self.fields["budget_line"].label = "Budget item"
+            self.fields["budget_line"].queryset = BudgetLine.objects.all()
+            self.fields["budget_line"].widget.attrs.update(
+                {"class": "field--select", "id": "id_budget_line"})
         self.fields["expenditure_type"].widget.attrs.update({"class": "field--select"})
         self.fields["expenditure_type"].required = False
         self.fields["expenditure_type"].initial = Expense.ExpenditureType.RECURRENT

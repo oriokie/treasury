@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.58.0 - itemised camp budgets (#1) + email SSL fix (#2)
+- #1: BudgetLine reworked from category-keyed to named items (new `name`; `category` now optional/
+  informational; unique per department/year/name; migration cashbook 0016). New Expense.budget_line FK
+  (nullable) tags an expense to its budget item. Expense form shows a 'Budget item' picker populated
+  per selected fund via new BudgetItemsJSONView (/expenses/budget-items/). FundBudgetView now reports
+  budget-vs-actual per item (actuals from tagged expenses) and notes untagged spend. Categories remain
+  for overall expense categorisation.
+- #2: core/services/email._connection now selects implicit SSL for port 465 (use_ssl) and STARTTLS for
+  587 (use_tls); they're mutually exclusive. New SiteConfig.email_use_ssl (auto-enabled for 465;
+  migration core 0033), surfaced in Settings -> Email. Fixes SMTPServerDisconnected/timeout on 465.
+  Tests: cashbook/test_fund_budget, core/test_email_ssl.
+
 ## v1.57.0 - settle via editable expense form (#5) + camp/fund budgets & goals (#7)
 - #5: settling a payable/accrual links to the expense form pre-filled (department, description, amount,
   category) via ?settle=payable:N / accrual:N. ExpenseCreate gained _settle_target/get_initial/

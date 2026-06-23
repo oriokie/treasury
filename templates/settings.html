@@ -206,7 +206,7 @@
     <div class="card"><div class="hd">Outgoing email (SMTP)</div><div class="bd">
       <div class="help u-mb-sm">Used to email reports (e.g. development-group statements to leaders), receipts and notifications. For Gmail use an app password.</div>
       <div class="form-grid">
-      {% for f in form %}{% if f.name in 'email_enabled email_host email_port email_use_tls email_host_user email_host_password email_from' %}
+      {% for f in form %}{% if f.name in 'email_enabled email_host email_port email_use_tls email_use_ssl email_host_user email_host_password email_from' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>

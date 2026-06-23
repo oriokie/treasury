@@ -8,13 +8,19 @@ from core.models import SiteConfig
 
 def _connection(cfg):
     from django.core.mail import get_connection
+    port = cfg.email_port or 587
+    # Port 465 is implicit SSL (SMTPS); 587 is STARTTLS. They are mutually
+    # exclusive in Django's SMTP backend, and using STARTTLS against a 465 port
+    # makes the socket hang until it times out — the cause of the disconnect.
+    use_ssl = bool(getattr(cfg, "email_use_ssl", False)) or port == 465
+    use_tls = bool(cfg.email_use_tls) and not use_ssl
     return get_connection(
         backend="django.core.mail.backends.smtp.EmailBackend",
-        host=cfg.email_host, port=cfg.email_port or 587,
+        host=cfg.email_host, port=port,
         username=cfg.email_host_user or None,
         password=cfg.email_host_password or None,
-        use_tls=bool(cfg.email_use_tls),
-        timeout=20)
+        use_tls=use_tls, use_ssl=use_ssl,
+        timeout=30)
 
 
 def is_configured(cfg=None):

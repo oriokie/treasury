@@ -1,5 +1,5 @@
-"""Camp/fund budgets and goals: per-category budget-vs-actual plus a contribution
-goal and a yearly goal tracked against collections (#7)."""
+"""Camp/fund budgets: named budget items, expenses tagged to an item, actual
+spend per item, plus contribution and yearly goals (#7, #1)."""
 import datetime as dt
 from decimal import Decimal
 
@@ -9,10 +9,13 @@ from django.contrib.auth.models import User, Group
 from departments.models import Department
 from giving.models import Transaction
 from cashbook.models import Expense, BudgetLine
+from core.models import SiteConfig
 
 
 class FundBudgetTests(TestCase):
     def setUp(self):
+        cfg = SiteConfig.get()
+        cfg.require_expense_approval = False; cfg.enforce_fund_balance = False; cfg.save()
         self.u = User.objects.create_user("fb", password="x", is_superuser=True)
         self.u.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
         self.c = Client(); self.c.force_login(self.u)
@@ -23,38 +26,56 @@ class FundBudgetTests(TestCase):
         Transaction.objects.create(date=dt.date(self.yr, 3, 1), channel="CASH",
             direction="CREDIT", amount=Decimal("80000"), department=self.camp,
             allocation_status="MANUAL", confirmed=True)
-        Expense.objects.create(date=dt.date(self.yr, 4, 1), department=self.camp,
-            description="Catering", amount=Decimal("25000"), category="REFRESHMENTS",
-            status="PAID", recorded_by=self.u)
 
     def _url(self):
         return f"/reports/fund/{self.camp.id}/budget/?year={self.yr}"
 
-    def test_goals_tracked_against_collections(self):
-        b = self.c.get(self._url()).content.decode()
-        self.assertIn("Contribution goal", b)
-        self.assertIn("80,000", b)       # collected
-        self.assertIn("200,000", b)      # contribution goal
-        self.assertIn("500,000", b)      # yearly goal
-
-    def test_add_budget_line_and_actual(self):
+    def _add_item(self, name, amount, category=""):
         self.c.post(f"/reports/fund/{self.camp.id}/budget/",
-            {"year": str(self.yr), "category": "REFRESHMENTS", "amount": "30000",
-             "note": "catering"})
-        bl = BudgetLine.objects.get(department=self.camp, year=self.yr, category="REFRESHMENTS")
-        self.assertEqual(bl.amount, Decimal("30000"))
-        b = self.c.get(self._url()).content.decode()
-        self.assertIn("30,000", b)       # budget
-        self.assertIn("25,000", b)       # actual spend
+            {"year": str(self.yr), "name": name, "amount": amount, "category": category})
+        return BudgetLine.objects.get(department=self.camp, year=self.yr, name=name)
 
-    def test_update_budget_line_is_idempotent(self):
-        for amt in ("30000", "45000"):
-            self.c.post(f"/reports/fund/{self.camp.id}/budget/",
-                {"year": str(self.yr), "category": "REFRESHMENTS", "amount": amt})
-        self.assertEqual(BudgetLine.objects.filter(department=self.camp,
-                         year=self.yr, category="REFRESHMENTS").count(), 1)
-        self.assertEqual(BudgetLine.objects.get(department=self.camp, year=self.yr,
-                         category="REFRESHMENTS").amount, Decimal("45000"))
+    def test_named_items_and_goals(self):
+        self._add_item("Accommodation", "50000", "MATERIALS")
+        b = self.c.get(self._url()).content.decode()
+        self.assertIn("Accommodation", b)
+        self.assertIn("Contribution goal", b)
+        self.assertIn("80,000", b)
+        self.assertIn("200,000", b)
+        self.assertIn("500,000", b)
+
+    def test_budget_items_json_endpoint(self):
+        self._add_item("Catering", "30000")
+        import json
+        r = self.c.get(f"/expenses/budget-items/?dept={self.camp.id}")
+        items = json.loads(r.content)["items"]
+        self.assertEqual([i["name"] for i in items], ["Catering"])
+
+    def test_expense_tagged_to_item_shows_actual(self):
+        acc = self._add_item("Accommodation", "50000", "MATERIALS")
+        self.c.post("/expenses/new/", {
+            "date": f"{self.yr}-06-10", "department": str(self.camp.id),
+            "description": "Tents", "amount": "20000", "category": "MATERIALS",
+            "method": "CASH", "expenditure_type": "RECURRENT",
+            "budget_line": str(acc.id), "override_balance": "1"})
+        e = Expense.objects.get(description="Tents")
+        self.assertEqual(e.budget_line_id, acc.id)
+        b = self.c.get(self._url()).content.decode()
+        self.assertIn("20,000", b)      # actual against the item
+        self.assertIn("50,000", b)      # its budget
+
+    def test_form_has_budget_item_picker(self):
+        b = self.c.get("/expenses/new/").content.decode()
+        self.assertIn('id="id_budget_line"', b)
+        self.assertIn("budgetItemRow", b)
+        self.assertIn("budget-items", b)
+
+    def test_item_update_is_idempotent(self):
+        self._add_item("Catering", "30000")
+        self._add_item("Catering", "45000")
+        qs = BudgetLine.objects.filter(department=self.camp, year=self.yr, name="Catering")
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.first().amount, Decimal("45000"))
 
     def test_save_goals(self):
         self.c.post(f"/reports/fund/{self.camp.id}/budget/",

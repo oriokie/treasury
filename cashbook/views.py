@@ -1419,24 +1419,27 @@ class FundBudgetView(TreasurerRequiredMixin, View):
         from .models import BudgetLine, Expense
         year = int(request.GET.get("year") or dt.date.today().year)
 
-        # actual spend by category this year on this fund
-        spend = {r["category"]: r["t"] for r in (Expense.objects.filter(
-            department=dept, date__year=year,
+        lines = list(BudgetLine.objects.filter(department=dept, year=year))
+        # actual spend per budget item, from expenses tagged to that item
+        spend = {r["budget_line"]: r["t"] for r in (Expense.objects.filter(
+            budget_line__in=lines,
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-            .values("category").annotate(t=Sum("amount")))}
-        lines = {b.category: b for b in BudgetLine.objects.filter(department=dept, year=year)}
-        cats = sorted(set(spend) | set(lines), key=lambda code: dict(Expense.Category.choices).get(code, code))
+            .values("budget_line").annotate(t=Sum("amount")))}
+        # spend on this fund not tagged to any item (so nothing is hidden)
+        untagged = (Expense.objects.filter(department=dept, date__year=year,
+            budget_line__isnull=True,
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         rows, tot_budget, tot_actual = [], Decimal(0), Decimal(0)
-        for code in cats:
-            budget = lines[code].amount if code in lines else Decimal(0)
-            actual = spend.get(code, Decimal(0))
-            tot_budget += budget; tot_actual += actual
-            rows.append({"code": code,
-                         "label": dict(Expense.Category.choices).get(code, code),
-                         "budget": budget, "actual": actual,
-                         "variance": budget - actual,
-                         "pct": int(min(actual / budget * 100, 999)) if budget else 0,
-                         "note": lines[code].note if code in lines else ""})
+        for b in lines:
+            actual = spend.get(b.id, Decimal(0))
+            tot_budget += b.amount; tot_actual += actual
+            rows.append({"id": b.id, "name": b.name,
+                         "category": b.get_category_display() if b.category else "",
+                         "budget": b.amount, "actual": actual,
+                         "variance": b.amount - actual,
+                         "pct": int(min(actual / b.amount * 100, 999)) if b.amount else 0,
+                         "note": b.note})
 
         collected = (Transaction.objects.filter(
             department=dept, direction=Transaction.Direction.CREDIT, confirmed=True,
@@ -1453,7 +1456,7 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             "dept": dept, "year": year,
             "years": range(dt.date.today().year + 1, dt.date.today().year - 4, -1),
             "rows": rows, "tot_budget": tot_budget, "tot_actual": tot_actual,
-            "tot_variance": tot_budget - tot_actual,
+            "tot_variance": tot_budget - tot_actual, "untagged": untagged,
             "contribution_goal": _goal(dept.contribution_goal),
             "annual_goal": _goal(dept.year_goal),
             "categories": Expense.Category.choices,
@@ -1484,15 +1487,39 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             dept.save(update_fields=["contribution_goal", "year_goal"])
             messages.success(request, "Goals updated.")
             return redirect(f"{request.path}?year={year}")
-        # add / update a budget line for a category
-        category = request.POST.get("category")
+        # add / update a named budget item
+        name = (request.POST.get("name") or "").strip()
         try:
             amount = Decimal(request.POST.get("amount") or "0")
         except InvalidOperation:
             amount = Decimal(0)
-        if category:
+        if name:
             BudgetLine.objects.update_or_create(
-                department=dept, year=year, category=category,
-                defaults={"amount": amount, "note": request.POST.get("note", "")[:120]})
-            messages.success(request, "Budget line saved.")
+                department=dept, year=year, name=name,
+                defaults={"amount": amount, "category": request.POST.get("category", ""),
+                          "note": request.POST.get("note", "")[:120]})
+            messages.success(request, "Budget item saved.")
         return redirect(f"{request.path}?year={year}")
+
+
+class BudgetItemsJSONView(DataEntryRequiredMixin, View):
+    """Budget items for a fund + year, for the expense form's 'Budget item'
+    picker. Returns [] for funds that have no budget set."""
+    def get(self, request):
+        import datetime as dt
+        from django.http import JsonResponse
+        from .models import BudgetLine
+        try:
+            dept_id = int(request.GET.get("dept") or 0)
+        except ValueError:
+            dept_id = 0
+        year = request.GET.get("year")
+        try:
+            year = int(year) if year else dt.date.today().year
+        except ValueError:
+            year = dt.date.today().year
+        items = (BudgetLine.objects.filter(department_id=dept_id, year=year)
+                 .order_by("name"))
+        return JsonResponse({"items": [
+            {"id": b.id, "name": b.name, "category": b.category,
+             "amount": float(b.amount)} for b in items]})

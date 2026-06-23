@@ -24,7 +24,15 @@
         <div class="help" id="balBox" style="display:none"></div>
         {% for e in form.department.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       </div>
-      {% for f in form %}{% if f.name != 'department' %}
+      <div class="form-row" id="budgetItemRow" style="display:none">
+        <label>Budget item <span class="muted u-xs">(optional)</span></label>
+        <select name="budget_line" id="id_budget_line" class="field--select">
+          <option value="">— not tied to a budget item —</option>
+        </select>
+        <div class="help">If this fund has a camp/budget set, pick the item this expense relates to, so spend is tracked per item.</div>
+        {% for e in form.budget_line.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+      </div>
+      {% for f in form %}{% if f.name != 'department' and f.name != 'budget_line' %}
         <div class="form-row">
           <label>{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
@@ -43,6 +51,21 @@ const fmt=n=>Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximum
 const deptHidden=document.getElementById("id_department");
 const deptSearch=document.getElementById("deptSearch"), deptAc=document.getElementById("deptAc");
 const box=document.getElementById("balBox");
+const budgetUrl="{% url 'budget_items_json' %}";
+const biRow=document.getElementById("budgetItemRow"), biSel=document.getElementById("id_budget_line");
+const biPreset="{{ form.instance.budget_line_id|default:'' }}";
+async function loadBudgetItems(){
+  if(!biSel || !deptHidden.value){ if(biRow) biRow.style.display="none"; return; }
+  try{
+    const d=await (await fetch(budgetUrl+"?dept="+deptHidden.value)).json();
+    biSel.innerHTML='<option value="">— not tied to a budget item —</option>';
+    (d.items||[]).forEach(it=>{ const o=document.createElement("option");
+      o.value=it.id; o.textContent=it.name+" (budget "+Number(it.amount).toLocaleString()+")";
+      if(String(it.id)===String(biPreset)) o.selected=true;
+      biSel.appendChild(o); });
+    biRow.style.display=(d.items&&d.items.length)?"":"none";
+  }catch(e){ biRow.style.display="none"; }
+}
 
 async function showBal(){
   if(!deptHidden.value){ box.style.display="none"; return; }
@@ -53,14 +76,14 @@ async function showBal(){
   }catch(e){ box.style.display="none"; }
 }
 let dt=null;
-deptSearch.addEventListener("input",()=>{ clearTimeout(dt); deptHidden.value=""; box.style.display="none";
+deptSearch.addEventListener("input",()=>{ clearTimeout(dt); deptHidden.value=""; box.style.display="none"; if(biRow) biRow.style.display="none";
   const q=deptSearch.value.trim();
   dt=setTimeout(async()=>{ try{
     const d=await (await fetch(fundUrl+"?scope=expense&q="+encodeURIComponent(q))).json();
     deptAc.innerHTML=""; if(!d.results.length){ deptAc.style.display="none"; return; }
     d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
       it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
-      const doPick=()=>{ deptSearch.value=r.label; deptHidden.value=r.id; deptAc.style.display="none"; showBal(); };
+      const doPick=()=>{ deptSearch.value=r.label; deptHidden.value=r.id; deptAc.style.display="none"; showBal(); loadBudgetItems(); };
       it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
       it._pick=doPick;
       deptAc.appendChild(it); });
@@ -90,7 +113,7 @@ function acKeyNav(input, box){
 }
 acKeyNav(deptSearch, deptAc);
 // preselect on edit
-if(deptHidden.value){ deptSearch.value = deptSearch.dataset.current || "(current fund)"; showBal(); }
+if(deptHidden.value){ deptSearch.value = deptSearch.dataset.current || "(current fund)"; showBal(); loadBudgetItems(); }
 
 // claimant autocomplete
 const cl=document.querySelector(".claimant-ac");

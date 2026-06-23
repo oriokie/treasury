@@ -67,6 +67,9 @@ class Expense(models.Model):
     voucher_no = models.CharField(max_length=30, blank=True)
     paid_from_petty_cash = models.BooleanField(default=False,
         help_text="Paid out of the petty cash float (reduces the float, charged to its fund).")
+    budget_line = models.ForeignKey("cashbook.BudgetLine", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="expenses",
+        help_text="The specific budget item this expense relates to (optional).")
 
     status = models.CharField(max_length=8, choices=Status.choices,
                               default=Status.PENDING, db_index=True)
@@ -555,24 +558,27 @@ class RemittanceDeadline(models.Model):
 
 
 class BudgetLine(models.Model):
-    """A per-category budget for a fund in a year — e.g. for a Camp Meeting fund:
-    Accommodation 50,000 · Catering 30,000 · Pulpit/honoraria 20,000. Compared
-    against the actual expenses booked to that fund in that category and year to
-    give a budget-vs-actual view. The fund's own contribution goal (its `target`)
-    and yearly goal (`annual_budget`) sit on the Department.
-    """
+    """A named budget item for a fund in a year — e.g. for a Camp Meeting fund:
+    "Accommodation" 50,000 · "Catering" 30,000 · "Pulpit / honoraria" 20,000.
+    Expenses can be tagged with the specific item they relate to (Expense.budget_line)
+    so we can report actual spend per item. The expense's own `category` is kept
+    separate, for the overall expense categorisation. `category` here is an
+    optional default suggested when the item is chosen on the expense form."""
     department = models.ForeignKey("departments.Department", on_delete=models.CASCADE,
                                    related_name="budget_lines")
     year = models.PositiveIntegerField(db_index=True)
-    category = models.CharField(max_length=14, choices=Expense.Category.choices)
+    name = models.CharField(max_length=80, default="")
+    category = models.CharField(max_length=14, choices=Expense.Category.choices,
+                                blank=True, default="")
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     note = models.CharField(max_length=120, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 
     class Meta:
-        unique_together = [("department", "year", "category")]
-        ordering = ["department", "year", "category"]
+        unique_together = [("department", "year", "name")]
+        ordering = ["department", "year", "name"]
 
     def __str__(self):
+        return f"{self.department} {self.year} {self.name}: {self.amount}"
         return f"{self.department} {self.year} {self.get_category_display()}: {self.amount}"
