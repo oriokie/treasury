@@ -33,6 +33,7 @@ urlpatterns = [
     path("collections-detail/", views.CollectionsDetailView.as_view(), name="report_collections_detail"),
     path("audit/", views.AuditLogView.as_view(), name="report_audit"),
     path("forecast/", views.CashFlowForecastView.as_view(), name="report_forecast"),
+    path("fund/<int:pk>/thank-sms/", views.FundThankSmsView.as_view(), name="fund_thank_sms"),
     path("trust/remittance/", views.RemittanceDashboardView.as_view(), name="remittance_dashboard"),
     path("trust/remittance/batch/new/", views.RemittanceBatchCreateView.as_view(), name="remittance_batch_create"),
     path("trust/remittance/batch/<int:pk>/", views.RemittanceBatchDetailView.as_view(), name="remittance_batch_detail"),

@@ -360,10 +360,16 @@ def pending_receipts_total(as_of=None):
     receipted/allocated to a fund — either still unconfirmed (held for review) or
     confirmed but unallocated (no department). They are real money at the bank, so
     they belong on the Statement of Financial Position as cash held in suspense,
-    even though they have not yet touched a specific (e.g. trust) fund."""
+    even though they have not yet touched a specific (e.g. trust) fund.
+
+    A bank credit that has already been receipted through an envelope is NOT
+    pending: its income and fund live on the envelope's own record, so the bank
+    line is just a memo. Such credits (processed_via_envelope / manual_receipt)
+    are excluded here, otherwise they would be double-counted as suspense."""
     f = Q(channel=Transaction.Channel.BANK, direction=Transaction.Direction.CREDIT,
           is_reversed=False, is_reversal=False)
     f &= (Q(confirmed=False) | Q(department__isnull=True))
+    f &= Q(processed_via_envelope=False, manual_receipt=False, excluded_from_income=False)
     if as_of:
         f &= Q(date__lte=as_of)
     return Transaction.objects.filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)

@@ -1,0 +1,36 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Thank contributors · {{ department.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Thank contributors — {{ department.name }}</h1>
+  <div class="sub">SMS thanks for {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · includes sub-accounts</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'report_fund' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">← Back to fund</a>
+</div>
+
+{% if not sms_enabled %}<div class="info-panel">SMS is currently disabled. Enable it under Settings → SMS to send messages. You can still preview the recipients below.</div>{% endif %}
+
+<form method="post" action="{% url 'fund_thank_sms' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}"
+      onsubmit="return confirm('Send a thank-you SMS to {{ recipient_count }} contributor(s)?');">{% csrf_token %}
+  <input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}">
+  <input type="hidden" name="end" value="{{ end|date:'Y-m-d' }}">
+
+  <div class="card u-mt"><div class="hd">Message</div><div class="bd">
+    <p class="help u-mt-0">Customise the message. Placeholders: <span class="mono">{name}</span>,
+      <span class="mono">{amount}</span>, <span class="mono">{fund}</span>,
+      <span class="mono">{period}</span>, <span class="mono">{church}</span> — each is filled in per contributor.</p>
+    <textarea name="template" rows="3" class="field" style="width:100%">{{ template }}</textarea>
+    {% if can_send %}<div class="btn-row u-mt-sm"><button class="btn btn-brass">✉ Send to {{ recipient_count }} contributor{{ recipient_count|pluralize }}</button></div>
+    {% else %}<div class="help u-mt-sm">Sending is treasurer-only and requires SMS to be enabled.</div>{% endif %}
+  </div></div>
+</form>
+
+<div class="card u-mt"><div class="hd u-between">Recipients <span class="muted">{{ recipient_count }} · total {{ total|floatformat:0|intcomma }}</span></div><div class="bd bd-flush">
+  <table class="ledger compact"><thead><tr><th>Member</th><th>Phone</th><th class="num">Total this period</th></tr></thead>
+  <tbody>
+  {% for m, amt in recipients %}<tr>
+    <td>{{ m.name }}</td><td class="mono">{{ m.phone }}</td>
+    <td class="num mono">{{ amt|floatformat:0|intcomma }}</td>
+  </tr>{% empty %}<tr><td colspan="3" class="empty">No contributors with a phone number in this period.</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+<div class="help u-mt-0">Each contributor's total lumps their giving to {{ department.name }} and its sub-accounts over the selected period. Members without a phone on file are skipped.</div>
+{% endblock %}

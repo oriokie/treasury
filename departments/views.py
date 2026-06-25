@@ -994,3 +994,131 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
             parts.append(f"{skipped} skipped (already existed)")
         messages.success(request, ", ".join(parts) + ".")
         return redirect("department_list")
+
+
+# --- Account lifecycle + collection-account consolidation (#1, #2) ------------
+import datetime as _dt
+from decimal import Decimal
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views import View
+from django.db import transaction as _db_tx
+from .models import DepartmentStatusLog
+
+
+def _log_status(dept, from_status, to_status, user, note=""):
+    DepartmentStatusLog.objects.create(
+        department=dept, from_status=from_status or "", to_status=to_status,
+        changed_by=user, note=note[:200])
+
+
+def _balance(dept, as_of=None):
+    from reports.services.balances import fund_balance
+    return fund_balance(dept, as_of) or Decimal(0)
+
+
+class ConsolidateView(TreasurerRequiredMixin, View):
+    """Transfer every non-zero child (collection account) balance under a parent
+    into the parent in one operation, with proper transfer records and audit.
+    Children end at zero; their history stays intact."""
+    template_name = "departments/consolidate.html"
+
+    def get(self, request, pk):
+        parent = get_object_or_404(Department, pk=pk)
+        rows = []
+        for child in parent.subgroups.all():
+            bal = _balance(child)
+            rows.append({"child": child, "balance": bal})
+        ctx = {"parent": parent, "rows": rows,
+               "total": sum((r["balance"] for r in rows), Decimal(0)),
+               "movable": [r for r in rows if r["balance"] != 0]}
+        return render(request, self.template_name, ctx)
+
+    def post(self, request, pk):
+        from cashbook.models import FundTransfer
+        parent = get_object_or_404(Department, pk=pk)
+        today = _dt.date.today()
+        moved = 0
+        total = Decimal(0)
+        with _db_tx.atomic():
+            for child in parent.subgroups.all():
+                bal = _balance(child)
+                if bal == 0:
+                    continue
+                FundTransfer.objects.create(
+                    date=today, source=child, destination=parent, amount=bal,
+                    reason=f"Consolidation of {child.name} into {parent.name}",
+                    recorded_by=request.user)
+                _log_status(child, child.status, child.status, request.user,
+                            note=f"Consolidated balance {bal:,.2f} into {parent.name}")
+                moved += 1
+                total += bal
+        if moved:
+            messages.success(request, f"Consolidated {moved} account(s) totalling "
+                                      f"{total:,.2f} into {parent.name}. Their balances are now zero "
+                                      f"and their history is preserved.")
+        else:
+            messages.info(request, "Nothing to consolidate — all sub-accounts are already at zero.")
+        return redirect("department_list")
+
+
+class CloseAccountView(TreasurerRequiredMixin, View):
+    """Close an account once its purpose is complete. Only allowed at a zero
+    balance (transfer or consolidate any remainder first)."""
+    def post(self, request, pk):
+        dept = get_object_or_404(Department, pk=pk)
+        bal = _balance(dept)
+        if bal != 0:
+            messages.error(request, f"{dept.name} can't be closed — its balance is "
+                                    f"{bal:,.2f}. Transfer or consolidate the remaining "
+                                    f"balance to zero first.")
+            return redirect("department_list")
+        if dept.status != Department.Status.ACTIVE:
+            messages.info(request, f"{dept.name} is already {dept.get_status_display().lower()}.")
+            return redirect("department_list")
+        prev = dept.status
+        dept.status = Department.Status.CLOSED
+        dept.save()
+        _log_status(dept, prev, dept.status, request.user,
+                    note=request.POST.get("note", "")[:200])
+        messages.success(request, f"{dept.name} closed. It stays in historical reports "
+                                  f"but won't accept new transactions.")
+        return redirect("department_list")
+
+
+class ArchiveAccountView(TreasurerRequiredMixin, View):
+    """Archive a closed account (tidies it out of the main lists; still in reports)."""
+    def post(self, request, pk):
+        dept = get_object_or_404(Department, pk=pk)
+        prev = dept.status
+        dept.status = Department.Status.ARCHIVED
+        dept.save()
+        _log_status(dept, prev, dept.status, request.user)
+        messages.success(request, f"{dept.name} archived.")
+        return redirect("historical_accounts")
+
+
+class ReopenAccountView(TreasurerRequiredMixin, View):
+    """Reopen a closed/archived account back to active."""
+    def post(self, request, pk):
+        dept = get_object_or_404(Department, pk=pk)
+        prev = dept.status
+        dept.status = Department.Status.ACTIVE
+        dept.save()
+        _log_status(dept, prev, dept.status, request.user, note="Reopened")
+        messages.success(request, f"{dept.name} reopened and active again.")
+        return redirect("department_list")
+
+
+class HistoricalAccountsView(ReadAccessMixin, View):
+    """Closed and archived accounts, with their balances and status history."""
+    template_name = "departments/historical_accounts.html"
+
+    def get(self, request):
+        depts = (Department.objects.filter(
+            status__in=[Department.Status.CLOSED, Department.Status.ARCHIVED])
+            .prefetch_related("status_logs").order_by("status", "name"))
+        rows = [{"dept": d, "balance": _balance(d),
+                 "last": d.status_logs.first()} for d in depts]
+        from core.roles import is_treasurer
+        return render(request, self.template_name,
+                      {"rows": rows, "is_treasurer": is_treasurer(request.user)})

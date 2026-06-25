@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Closed &amp; archived accounts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Closed &amp; archived accounts</h1>
+  <div class="sub">These stay in historical reports and audits but accept no new transactions</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'department_list' %}">← Active funds</a>
+</div>
+
+<div class="table-wrap u-mt"><table class="ledger compact">
+  <thead><tr><th>Account</th><th>Status</th><th class="num">Balance</th><th>Last change</th>{% if is_treasurer %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for r in rows %}<tr>
+    <td>{{ r.dept.name }}{% if r.dept.collection_only %} <span class="pill pill-grey">collection</span>{% endif %}</td>
+    <td>{% if r.dept.status == 'CLOSED' %}<span class="pill pill-amber">Closed</span>{% else %}<span class="pill pill-grey">Archived</span>{% endif %}</td>
+    <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+    <td class="muted u-xs">{% if r.last %}{{ r.last.changed_at|date:"d M Y" }}{% if r.last.changed_by %} · {{ r.last.changed_by.username }}{% endif %}{% if r.last.note %} · {{ r.last.note }}{% endif %}{% else %}—{% endif %}</td>
+    {% if is_treasurer %}<td class="u-right">
+      <a class="link" href="{% url 'report_fund' r.dept.id %}">Ledger</a>
+      <form method="post" action="{% url 'department_reopen' r.dept.id %}" class="u-inline">{% csrf_token %}<button class="link">Reopen</button></form>
+      {% if r.dept.status == 'CLOSED' %}<form method="post" action="{% url 'department_archive' r.dept.id %}" class="u-inline">{% csrf_token %}<button class="link">Archive</button></form>{% endif %}
+    </td>{% endif %}
+  </tr>{% empty %}<tr><td colspan="5" class="empty">No closed or archived accounts.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

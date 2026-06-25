@@ -1,0 +1,31 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Consolidate into {{ parent.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Consolidate sub-accounts → {{ parent.name }}</h1>
+  <div class="sub">Move every sub-account balance into {{ parent.name }} in one operation</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'department_list' %}">← Back to funds</a>
+</div>
+
+<div class="card u-mt"><div class="bd">
+  <p class="help u-mt-0">Each sub-account with a non-zero balance will be transferred into
+    <strong>{{ parent.name }}</strong>, leaving it at zero. A transfer record is created for each
+    (so the audit trail and each sub-account's history stay intact). This is typically done at the
+    end of a camp or fundraising drive to roll the collection groups up into the main account.</p>
+
+  <table class="ledger compact"><thead><tr><th>Sub-account</th><th class="num">Current balance</th><th>Will move</th></tr></thead>
+  <tbody>
+    {% for r in rows %}<tr>
+      <td>{{ r.child.name }}{% if r.child.collection_only %} <span class="pill pill-grey">collection</span>{% endif %}</td>
+      <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+      <td>{% if r.balance %}<span class="pill pill-amber">→ {{ parent.name }}</span>{% else %}<span class="muted">nothing (zero)</span>{% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="3" class="empty">{{ parent.name }} has no sub-accounts.</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total to consolidate</strong></td><td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td><td></td></tr>
+  </tbody></table>
+
+  {% if movable %}
+  <form method="post" class="u-mt-sm" onsubmit="return confirm('Consolidate {{ movable|length }} sub-account(s) into {{ parent.name|escapejs }}?');">{% csrf_token %}
+    <button class="btn btn-brass">Consolidate {{ movable|length }} account{{ movable|length|pluralize }} now</button>
+  </form>
+  {% else %}<p class="help">Nothing to consolidate — all sub-accounts are already at zero.</p>{% endif %}
+</div></div>
+{% endblock %}

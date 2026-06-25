@@ -738,6 +738,23 @@ class DebitResolveView(DataEntryRequiredMixin, View):
             messages.success(
                 request, "Marked as a float withdrawal (cash on hand). Record "
                          "expenses against it as they are paid.")
+
+        elif kind == "petty_cash":
+            # the bank withdrawal funded the petty-cash float: record a top-up so
+            # the float reflects it. This moves money bank -> cash on hand; it
+            # doesn't reduce total cash, so the debit is not booked as an expense.
+            from cashbook.models import PettyCashTopUp
+            PettyCashTopUp.objects.create(
+                date=txn.date, amount=txn.amount,
+                note=(request.POST.get("description") or txn.raw_narration
+                      or "Bank withdrawal to petty cash")[:200],
+                recorded_by=request.user)
+            txn.department = _float_fund()
+            txn.allocation_status = Transaction.Status.MANUAL
+            txn.save(update_fields=["department", "allocation_status"])
+            messages.success(
+                request, f"Allocated to petty cash — the float has been topped up by "
+                         f"{txn.amount:,.2f}.")
         else:
             messages.error(request, "Choose how to treat this debit.")
         return redirect("debit_queue")

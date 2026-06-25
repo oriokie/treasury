@@ -52,6 +52,19 @@
   <p class="help">Examples: unpresented cheques &amp; bank charges subtract from the bank balance; deposits in transit and cash at hand add to it.</p>
 </div></div>
 
+<div class="card u-mt"><div class="hd u-between">Unpresented cheques (from the register)
+  <a class="link u-xs no-print" href="{% url 'cheque_register' %}">Open register →</a></div><div class="bd">
+  {% if unpresented_cheques %}
+  <p class="help u-mt-0">These cheques were issued on or before {{ rec.statement_date|date:"d M Y" }} and haven't cleared yet — so they're still in your cash book but not on the bank statement.</p>
+  <table class="ledger compact"><thead><tr><th>Cheque</th><th>Issued</th><th>Payee</th><th class="num">Amount</th></tr></thead><tbody>
+    {% for c in unpresented_cheques %}<tr><td class="mono">{{ c.cheque_number }}</td><td class="mono">{{ c.date_issued|date:"d/m/y" }}</td><td>{{ c.payee|default:"—" }}</td><td class="num mono">{{ c.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    <tr class="total-row"><td colspan="3"><strong>Total unpresented</strong></td><td class="num mono"><strong>{{ unpresented_total|floatformat:2|intcomma }}</strong></td></tr>
+  </tbody></table>
+  {% if can_enter_data %}<form method="post" class="u-mt-sm no-print">{% csrf_token %}<input type="hidden" name="action" value="add_unpresented_cheques">
+    <button class="btn btn-sm">↧ Add these as reconciliation items</button></form>{% endif %}
+  {% else %}<p class="help u-mt-0">No unpresented cheques in the register as at this date. Record issued cheques in the <a class="link" href="{% url 'cheque_register' %}">cheque register</a> to track them here automatically.</p>{% endif %}
+</div></div>
+
 <div class="card no-print u-narrow-md u-mt"><div class="bd">
   <form method="post" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
     <input type="hidden" name="action" value="set_book">

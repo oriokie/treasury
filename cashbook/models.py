@@ -584,3 +584,44 @@ class BudgetLine(models.Model):
     def __str__(self):
         return f"{self.department} {self.year} {self.name}: {self.amount}"
         return f"{self.department} {self.year} {self.get_category_display()}: {self.amount}"
+
+
+class ChequeRegister(models.Model):
+    """Tracks cheques the church has issued, so the treasurer can reconcile them
+    against the bank statement. A cheque is 'unpresented' until it clears; the
+    bank reconciliation can subtract the still-unpresented cheques automatically.
+    Each entry may be linked to the expense or remittance batch it paid."""
+    class Status(models.TextChoices):
+        ISSUED = "ISSUED", "Issued (unpresented)"
+        CLEARED = "CLEARED", "Cleared"
+        BOUNCED = "BOUNCED", "Bounced"
+        CANCELLED = "CANCELLED", "Cancelled / void"
+
+    cheque_number = models.CharField(max_length=40, db_index=True)
+    payee = models.CharField(max_length=160, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    date_issued = models.DateField(db_index=True)
+    date_cleared = models.DateField(null=True, blank=True,
+        help_text="Date the cheque cleared or bounced at the bank.")
+    status = models.CharField(max_length=10, choices=Status.choices,
+                              default=Status.ISSUED, db_index=True)
+    expense = models.ForeignKey("cashbook.Expense", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="cheques")
+    remittance_batch = models.ForeignKey("cashbook.RemittanceBatch", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="cheques")
+    note = models.CharField(max_length=200, blank=True)
+    recorded_by = models.ForeignKey("auth.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="cheques_recorded")
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-date_issued", "-id"]
+        indexes = [models.Index(fields=["status", "date_issued"])]
+
+    def __str__(self):
+        return f"Cheque {self.cheque_number} — {self.amount} ({self.get_status_display()})"
+
+    @property
+    def is_unpresented(self):
+        return self.status == self.Status.ISSUED

@@ -398,6 +398,19 @@ class FundLedgerView(PeriodMixin, TemplateView):
         ctx["subgroups"] = subs
         ctx["subgroup_total"] = sub_total
         ctx["combined_closing"] = running + sub_total
+
+        # combined (parent + sub-accounts) figures for the top cards, since the
+        # sub-accounts are part of the parent fund.
+        parent_receipts = sum((en["credit"] or Decimal(0)) for en in entries)
+        parent_payments = sum((en["debit"] or Decimal(0)) for en in entries)
+        sub_receipts_total = sum(sub_rec.values(), Decimal(0)) + sum(
+            (r["receipts"] for r in dev_rows), Decimal(0))
+        sub_payments_total = sum(sub_pay.values(), Decimal(0))
+        sub_opening_total = sum((r["sub"].opening_balance or Decimal(0)) for r in subs_rows)
+        ctx["has_subaccounts"] = bool(subs_rows or dev_rows)
+        ctx["combined_opening"] = (dept.opening_balance or Decimal(0)) + sub_opening_total
+        ctx["combined_receipts"] = parent_receipts + sub_receipts_total
+        ctx["combined_payments"] = parent_payments + sub_payments_total
         ctx["parent"] = dept.parent
         return ctx
 
@@ -2183,3 +2196,98 @@ class CashFlowForecastView(ReadAccessMixin, TemplateView):
                        float(h["Year"]["projected"])],
         })
         return ctx
+
+
+class FundThankSmsView(ReadAccessMixin, TemplateView):
+    """Thank contributors to a fund (and its sub-accounts) for a period by SMS.
+
+    Lumps each member's total giving across the fund and its sub-accounts within
+    the selected period; the message is a customizable template. Treasurer only
+    for sending; the preview is read-access."""
+    template_name = "reports/fund_thank_sms.html"
+
+    DEFAULT_TEMPLATE = ("Dear {name}, thank you for your contribution of KES {amount} "
+                        "to {fund} ({period}). May God bless you. - {church}")
+
+    def _period(self, request):
+        import datetime as dt
+        def _d(name, default):
+            raw = request.GET.get(name) or request.POST.get(name)
+            try:
+                return dt.date.fromisoformat(raw) if raw else default
+            except ValueError:
+                return default
+        today = dt.date.today()
+        start = _d("start", today.replace(day=1))
+        end = _d("end", today)
+        return start, end
+
+    def _recipients(self, dept, start, end):
+        """[(member, total)] for members who gave to this fund or its sub-accounts
+        in the period and have a phone on file."""
+        from django.db.models import Sum
+        from members.models import Member
+        ids = [dept.id] + list(dept.subgroups.values_list("id", flat=True))
+        rows = (Transaction.objects.filter(
+                    department_id__in=ids, direction=Transaction.Direction.CREDIT,
+                    confirmed=True, is_reversal=False, is_reversed=False,
+                    excluded_from_income=False, member__isnull=False,
+                    date__gte=start, date__lte=end)
+                .values("member").annotate(t=Sum("amount")))
+        totals = {r["member"]: r["t"] or Decimal(0) for r in rows}
+        members = {m.id: m for m in Member.objects.filter(id__in=totals)}
+        out = []
+        for mid, total in totals.items():
+            m = members.get(mid)
+            if m and m.phone:
+                out.append((m, total))
+        out.sort(key=lambda x: x[1], reverse=True)
+        return out
+
+    def get_context_data(self, **kwargs):
+        from core.models import SiteConfig
+        from core.roles import is_treasurer
+        ctx = super().get_context_data(**kwargs)
+        dept = get_object_or_404(Department, pk=kwargs["pk"])
+        start, end = self._period(self.request)
+        recips = self._recipients(dept, start, end)
+        ctx.update({
+            "department": dept, "start": start, "end": end,
+            "recipients": recips, "recipient_count": len(recips),
+            "total": sum((t for _, t in recips), Decimal(0)),
+            "template": self.DEFAULT_TEMPLATE,
+            "church": SiteConfig.get().church_name or "",
+            "can_send": is_treasurer(self.request.user) and SiteConfig.get().sms_enabled,
+            "sms_enabled": SiteConfig.get().sms_enabled,
+        })
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        from core.roles import is_treasurer
+        from core.models import SiteConfig
+        from core.services.sms import send_sms, _format
+        if not is_treasurer(request.user):
+            messages.error(request, "Only a treasurer can send the thank-you messages.")
+            return redirect("report_fund", pk=kwargs["pk"])
+        dept = get_object_or_404(Department, pk=kwargs["pk"])
+        start, end = self._period(request)
+        template = request.POST.get("template") or self.DEFAULT_TEMPLATE
+        church = SiteConfig.get().church_name or ""
+        period_str = f"{start:%d %b %Y} – {end:%d %b %Y}"
+        sent = failed = 0
+        for member, total in self._recipients(dept, start, end):
+            msg = _format(template, name=member.name.split()[0] if member.name else "member",
+                          amount=f"{total:,.0f}", fund=dept.name,
+                          period=period_str, church=church)
+            log = send_sms(member.phone, msg)
+            if getattr(log, "status", "") == "SENT":
+                sent += 1
+            else:
+                failed += 1
+        if sent:
+            messages.success(request, f"Thank-you SMS sent to {sent} contributor(s)"
+                                      + (f"; {failed} failed." if failed else "."))
+        else:
+            messages.error(request, "No messages were sent. "
+                                    + ("Check SMS settings." if failed else "No recipients with a phone."))
+        return redirect(f"{reverse('report_fund', kwargs={'pk': dept.id})}?start={start}&end={end}")

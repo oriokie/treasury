@@ -38,6 +38,25 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.65.0": "Collection accounts (e.g. Camp Group 1–22) now receive contributions but are never "
+              "selectable for expenses, and a one-click consolidation rolls every sub-account balance "
+              "into the parent (with full transfer records; the children zero out but keep their "
+              "history). Accounts now have a lifecycle — Active, Closed, Archived — so finished camps "
+              "and fundraisers can be closed (only at a zero balance) and stay in historical reports "
+              "without accepting new transactions; every status change is logged. New Cheque register "
+              "tracks issued cheques and whether they've cleared, and feeds the bank reconciliation's "
+              "unpresented-cheques figure automatically. Finally, envelopes receipted against a bank "
+              "credit no longer show up as “Receipts Pending Allocation” on the financial position.",
+    "1.64.0": "The Statement of Financial Position is now period-correct: a payable or accrued expense "
+              "settled after the statement date still shows as a liability on that date (e.g. a 14th "
+              "statement shows an accrual that was paid on the 15th). And a fund report now has a "
+              "“Thank contributors (SMS)” button — it lumps each member's giving to the fund and its "
+              "sub-accounts for the selected period and sends a customizable thank-you message.",
+    "1.63.0": "On a fund report, the summary cards at the top now include the fund's sub-accounts "
+              "(opening, receipts and closing balances roll the sub-accounts in, since they belong to "
+              "the parent). A bank debit can now be allocated straight to petty cash, topping up the "
+              "float. And recurring expense schedules can now be deleted (any expenses they already "
+              "created stay in the ledger).",
     "1.62.0": "Backups can now be sent to off-site storage automatically: under Settings → Backup, "
               "enable off-site upload and give an HTTPS destination (Nextcloud/WebDAV or any endpoint "
               "that accepts an authenticated upload). The nightly backup (and a “Send a backup off-site "

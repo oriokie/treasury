@@ -182,12 +182,19 @@ class ReconciliationDetailView(ReadAccessMixin, View):
 
     def get(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
+        from cashbook.models import ChequeRegister
+        from cashbook.views import unpresented_cheques_total
+        unpresented = (ChequeRegister.objects.filter(
+            status=ChequeRegister.Status.ISSUED,
+            date_issued__lte=rec.statement_date).order_by("date_issued"))
         return render(request, self.template_name, {
             "rec": rec, "items": rec.items.all(),
             "item_form": ReconciliationItemForm(),
             "suggested_book": _ledger_bank_balance(rec.statement_date),
             "diag": _recon_diagnostic(rec.statement_date),
             "default_effects": ReconciliationItem.DEFAULT_EFFECT,
+            "unpresented_cheques": unpresented,
+            "unpresented_total": unpresented_cheques_total(rec.statement_date),
         })
 
     def post(self, request, pk):
@@ -222,10 +229,27 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             messages.success(request,
                 f"Cash-book balance recomputed from the ledger: "
                 f"KSh {rec.book_balance:,.2f}.")
+        elif action == "add_unpresented_cheques":
+            from cashbook.models import ChequeRegister
+            existing = " ".join(rec.items.values_list("description", flat=True))
+            added = 0
+            for chq in ChequeRegister.objects.filter(
+                    status=ChequeRegister.Status.ISSUED,
+                    date_issued__lte=rec.statement_date):
+                if chq.cheque_number and chq.cheque_number in existing:
+                    continue
+                ReconciliationItem.objects.create(
+                    reconciliation=rec, kind=ReconciliationItem.Kind.UNPRESENTED,
+                    description=f"Cheque {chq.cheque_number}"
+                                + (f" — {chq.payee}" if chq.payee else ""),
+                    amount=chq.amount, effect=ReconciliationItem.Effect.SUBTRACT)
+                added += 1
+            if added:
+                messages.success(request, f"Added {added} unpresented cheque(s) from the register.")
+            else:
+                messages.info(request, "No new unpresented cheques to add — they're already listed "
+                                       "or all cheques have cleared.")
         return redirect("reconciliation_detail", pk=rec.pk)
-
-
-# ===================== Automatic reconciliation =====================
 from django.shortcuts import render, get_object_or_404
 from django.views import View
 from core.permissions import TreasurerRequiredMixin

@@ -62,6 +62,21 @@ class Department(models.Model):
         default=True,
         help_text="Show this fund in allocation pickers (review queue, cash entry, "
                   "envelopes). Turn off for the internal halves of a split fund.")
+
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Active"
+        CLOSED = "CLOSED", "Closed"
+        ARCHIVED = "ARCHIVED", "Archived"
+
+    status = models.CharField(max_length=8, choices=Status.choices,
+        default=Status.ACTIVE, db_index=True,
+        help_text="Closed/archived accounts stay in historical reports but accept "
+                  "no new transactions. An account can only be closed at a zero balance.")
+    collection_only = models.BooleanField(
+        default=False,
+        help_text="A collection account that only receives contributions (e.g. a "
+                  "camp fundraising group). It can receive income but is never "
+                  "selectable for expenses or payments.")
     active = models.BooleanField(default=True)
 
     class Meta:
@@ -83,7 +98,35 @@ class Department(models.Model):
         if self.parent_id and self.parent.fund_type:
             self.fund_type = self.parent.fund_type
         self.is_trust = self.fund_type == self.FundType.TRUST
+        # status is authoritative for whether the fund accepts new transactions
+        self.active = (self.status == self.Status.ACTIVE)
+        # a collection account is never spent directly
+        if self.collection_only:
+            self.show_in_expenses = False
         super().save(*args, **kwargs)
+
+    @property
+    def is_open(self):
+        return self.status == self.Status.ACTIVE
+
+
+class DepartmentStatusLog(models.Model):
+    """An audit trail of account lifecycle changes (active/closed/archived) and
+    consolidations, so every status change is recorded with who and when."""
+    department = models.ForeignKey(Department, on_delete=models.CASCADE,
+                                   related_name="status_logs")
+    from_status = models.CharField(max_length=8, blank=True)
+    to_status = models.CharField(max_length=8)
+    note = models.CharField(max_length=200, blank=True)
+    changed_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                   on_delete=models.SET_NULL)
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-changed_at", "-id"]
+
+    def __str__(self):
+        return f"{self.department.name}: {self.from_status or '—'} → {self.to_status}"
 
 
 class DevelopmentGroup(models.Model):
@@ -127,7 +170,7 @@ def expense_departments():
     comp = split_component_dept_ids()
     out = []
     for d in Department.objects.filter(active=True, show_in_expenses=True).select_related("parent"):
-        if d.id in comp or d.is_trust:
+        if d.id in comp or d.is_trust or d.collection_only:
             continue
         if d.parent_id and not (d.parent and d.parent.children_in_expenses):
             continue

@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.65.0 - collection accounts + lifecycle (#1,#2) + cheque register (#3) + pending-receipts fix (#4)
+- #1: Department.collection_only — receives income but excluded from expense pickers (save() forces
+  show_in_expenses off). ConsolidateView (/departments/<pk>/consolidate/) creates one FundTransfer per
+  non-zero sub-account into the parent in a single atomic op; children zero, history preserved.
+- #2: Department.status (ACTIVE/CLOSED/ARCHIVED; save() derives active). DepartmentStatusLog audit
+  trail. CloseAccountView (guards zero balance via fund_balance), ArchiveAccountView, ReopenAccountView,
+  HistoricalAccountsView. Closed/archived excluded from income/expense pickers (active=False) but stay
+  in reports. Department migration 0017.
+- #3: ChequeRegister model (cashbook 0018) + ChequeRegisterView (/cheques/): add/clear/bounce/cancel/
+  reopen, sync from CHEQUE-method expenses & cheque remittances. unpresented_cheques_total() wired into
+  the bank reconciliation (lists unpresented cheques as at the statement date + one-click 'add as items').
+- #4: pending_receipts_total excludes bank credits receipted via envelope (processed_via_envelope /
+  manual_receipt / excluded_from_income) so they no longer appear as 'Receipts Pending Allocation'.
+- Tests: departments/test_collection_lifecycle, cashbook/test_cheque_register, reports/test_pending_receipts.
+
+## v1.64.0 - period-correct SoFP settlement (#4) + thank-contributors SMS (#5)
+- #4: open_payables_total/open_accruals_total are period-based when given an as-of date — an item is a
+  liability if incurred on/before the date and either not settled or settled after it (settled_on > as_of).
+  Fixes the SoFP showing an item as paid when it was settled a day after the statement date.
+- #5: new FundThankSmsView (/reports/fund/<pk>/thank-sms/) + button on the fund report. Lumps each
+  member's confirmed giving to the fund AND its sub-accounts over the selected period, skips members
+  with no phone, and sends a customizable templated SMS ({name}/{amount}/{fund}/{period}/{church}) via
+  the existing SMS service; treasurer-only to send, read-access preview. Tests:
+  cashbook/test_period_settlement, reports/test_thank_sms.
+
+## v1.63.0 - fund cards include sub-accounts (#1) + debit->petty cash (#2) + delete recurring (#3)
+- #1: FundLedgerView computes combined_opening/combined_receipts/combined_closing (parent + sub-accounts
+  + dev groups); the top cards show these with an 'incl. sub-accounts' note when sub-accounts exist.
+- #2: DebitResolveView gains a 'petty_cash' kind that records a PettyCashTopUp from the bank debit
+  (moves bank->cash on hand, not booked as an expense); option added to the debits form.
+- #3: new RecurringDelete view/URL + Delete button on the recurring list; generated expenses are kept.
+  Tests: reports/test_fund_combined, giving/test_debit_petty, cashbook/test_recurring_delete.
+
 ## v1.62.0 - off-site backup storage (#5)
 - #5: new SiteConfig.offsite_backup_enabled/url/user/password (migration core 0034). New
   backup.upload_offsite() does a dependency-free authenticated HTTPS PUT (WebDAV/Nextcloud/object

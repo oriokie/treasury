@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Funds · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div class="ph-actions" style="margin-left:auto">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div><div><h1>Funds &amp; departments</h1><div class="sub">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div></div>
+<div class="page-head"><div class="ph-actions" style="margin-left:auto">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'historical_accounts' %}">⌂ Closed / archived</a> <a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div><div><h1>Funds &amp; departments</h1><div class="sub">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div></div>
 {% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a>
 <a class="btn btn-ghost" href="{% url 'fund_structure_import' %}">⬆ Import funds &amp; sub-accounts</a>
 <a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">⬆ Bulk budget import</a>{% endif %}</div>
@@ -10,12 +10,12 @@
   <tbody>
   {% for node in fund_tree %}
     <tr>
-      <td><strong>{{ node.fund.name }}</strong>{% if not node.fund.active %} <span class="pill pill-grey">inactive</span>{% endif %}{% if node.subs %} <span class="muted u-small">({{ node.subs|length }} sub-account{{ node.subs|length|pluralize }})</span>{% endif %}</td>
+      <td><strong>{{ node.fund.name }}</strong>{% if node.fund.status == 'CLOSED' %} <span class="pill pill-amber">Closed</span>{% elif node.fund.status == 'ARCHIVED' %} <span class="pill pill-grey">Archived</span>{% elif not node.fund.active %} <span class="pill pill-grey">inactive</span>{% endif %}{% if node.fund.collection_only %} <span class="pill pill-grey" title="Collection account — receives income only">collection</span>{% endif %}{% if node.subs %} <span class="muted u-small">({{ node.subs|length }} sub-account{{ node.subs|length|pluralize }})</span>{% endif %}</td>
       <td>{% if node.fund.is_trust %}<span class="pill pill-amber">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
       <td class="muted">{{ node.fund.get_category_display }}</td>
       <td class="num mono">{{ node.fund.opening_balance|floatformat:2|intcomma }}</td>
       <td class="num mono muted">{% if node.fund.annual_budget %}{{ node.fund.annual_budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
-      <td class="num"><a class="link" href="{% url 'report_fund' node.fund.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' node.fund.id %}">Edit</a>{% endif %}</td>
+      <td class="num"><a class="link" href="{% url 'report_fund' node.fund.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' node.fund.id %}">Edit</a>{% if node.subs %} · <a class="link" href="{% url 'department_consolidate' node.fund.id %}">Consolidate</a>{% endif %}{% if node.fund.status == 'ACTIVE' %} · <form method="post" action="{% url 'department_close' node.fund.id %}" class="u-inline" onsubmit="return confirm('Close {{ node.fund.name|escapejs }}? Only possible at a zero balance.');">{% csrf_token %}<button class="link">Close</button></form>{% else %} · <form method="post" action="{% url 'department_reopen' node.fund.id %}" class="u-inline">{% csrf_token %}<button class="link">Reopen</button></form>{% endif %}{% endif %}</td>
     </tr>
     {% for s in node.subs %}
     <tr>

@@ -7,7 +7,9 @@ class DepartmentForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = Department
         fields = ["name", "parent", "fund_type", "category", "opening_balance",
-                  "children_in_expenses", "show_in_expenses", "active"]
+                  "children_in_expenses", "show_in_expenses", "collection_only"]
+        # 'active' is derived from lifecycle status on save; use the close/reopen
+        # workflow (not this form) to change whether the account is open.
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

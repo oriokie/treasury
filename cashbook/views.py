@@ -435,6 +435,19 @@ class RecurringToggle(DataEntryRequiredMixin, View):
         return redirect("recurring_list")
 
 
+class RecurringDelete(DataEntryRequiredMixin, View):
+    """Delete a recurring schedule. Expenses it already generated are kept (they
+    are real ledger entries); only the future schedule is removed."""
+    def post(self, request, pk):
+        from .models import RecurringExpense
+        s = get_object_or_404(RecurringExpense, pk=pk)
+        desc = s.description
+        s.delete()
+        messages.success(request, f"Recurring schedule “{desc}” deleted. "
+                                  f"Any expenses it already created remain in the ledger.")
+        return redirect("recurring_list")
+
+
 class RecurringGenerate(DataEntryRequiredMixin, View):
     def post(self, request):
         from .services.recurring import generate_due, generate_schedule
@@ -639,19 +652,26 @@ from .forms import PayableForm, AccrualForm, PrepaymentForm
 
 def open_payables_total(as_of=None):
     from decimal import Decimal
-    from django.db.models import Sum
-    qs = Payable.objects.filter(settled=False)
+    from django.db.models import Sum, Q
     if as_of:
-        qs = qs.filter(date__lte=as_of)
+        # outstanding *as at* a date: incurred on/before it and either not settled
+        # or only settled after it (so settling on the 15th still shows as a
+        # liability on a 14th statement of financial position).
+        qs = Payable.objects.filter(date__lte=as_of).filter(
+            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
+    else:
+        qs = Payable.objects.filter(settled=False)
     return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
 
 def open_accruals_total(as_of=None):
     from decimal import Decimal
-    from django.db.models import Sum
-    qs = Accrual.objects.filter(settled=False)
+    from django.db.models import Sum, Q
     if as_of:
-        qs = qs.filter(date__lte=as_of)
+        qs = Accrual.objects.filter(date__lte=as_of).filter(
+            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
+    else:
+        qs = Accrual.objects.filter(settled=False)
     return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
 
@@ -1635,3 +1655,108 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
         messages.success(request, f"{kind.title()} settled against the existing expense "
                                   f"“{exp.description}”.")
         return redirect("accruals")
+
+
+def unpresented_cheques_total(as_of=None):
+    """Total of cheques issued but not yet cleared (still unpresented at the bank)."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import ChequeRegister
+    qs = ChequeRegister.objects.filter(status=ChequeRegister.Status.ISSUED)
+    if as_of:
+        qs = qs.filter(date_issued__lte=as_of)
+    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+
+class ChequeRegisterView(ReadAccessMixin, View):
+    template_name = "cashbook/cheque_register.html"
+
+    def get(self, request):
+        from .models import ChequeRegister
+        from core.roles import is_treasurer
+        status = request.GET.get("status", "")
+        qs = ChequeRegister.objects.select_related("expense", "remittance_batch")
+        if status:
+            qs = qs.filter(status=status)
+        ctx = {
+            "cheques": qs[:500],
+            "status": status,
+            "statuses": ChequeRegister.Status.choices,
+            "unpresented_total": unpresented_cheques_total(),
+            "can_enter_data": is_treasurer(request.user)
+                              or getattr(request.user, "is_superuser", False),
+        }
+        return render(request, self.template_name, ctx)
+
+    def post(self, request):
+        from decimal import Decimal, InvalidOperation
+        import datetime as dt
+        from .models import ChequeRegister
+        action = request.POST.get("action")
+
+        if action == "add":
+            try:
+                amount = Decimal(request.POST.get("amount") or "0")
+            except InvalidOperation:
+                amount = Decimal(0)
+            try:
+                issued = dt.date.fromisoformat(request.POST.get("date_issued"))
+            except (TypeError, ValueError):
+                issued = dt.date.today()
+            num = (request.POST.get("cheque_number") or "").strip()
+            if not num or amount <= 0:
+                messages.error(request, "A cheque number and a positive amount are required.")
+                return redirect("cheque_register")
+            ChequeRegister.objects.create(
+                cheque_number=num[:40], payee=(request.POST.get("payee") or "")[:160],
+                amount=amount, date_issued=issued,
+                note=(request.POST.get("note") or "")[:200], recorded_by=request.user)
+            messages.success(request, f"Cheque {num} recorded.")
+
+        elif action in ("clear", "bounce", "cancel", "reopen"):
+            chq = get_object_or_404(ChequeRegister, pk=request.POST.get("pk"))
+            if action == "clear":
+                chq.status = ChequeRegister.Status.CLEARED
+                chq.date_cleared = dt.date.today()
+            elif action == "bounce":
+                chq.status = ChequeRegister.Status.BOUNCED
+                chq.date_cleared = dt.date.today()
+            elif action == "cancel":
+                chq.status = ChequeRegister.Status.CANCELLED
+            else:
+                chq.status = ChequeRegister.Status.ISSUED
+                chq.date_cleared = None
+            chq.save()
+            messages.success(request, f"Cheque {chq.cheque_number} marked {chq.get_status_display()}.")
+
+        elif action == "sync":
+            created = self._sync_from_records(request.user)
+            messages.success(request, f"Imported {created} cheque(s) from existing "
+                                      f"cheque payments and remittances.")
+        return redirect("cheque_register")
+
+    def _sync_from_records(self, user):
+        """Create register entries for cheque-method expenses and cheque
+        remittance batches that aren't in the register yet."""
+        from .models import ChequeRegister, Expense, RemittanceBatch
+        have = set(ChequeRegister.objects.exclude(cheque_number="")
+                   .values_list("cheque_number", flat=True))
+        created = 0
+        for e in Expense.objects.filter(method=Expense.Method.CHEQUE).exclude(voucher_no=""):
+            if e.voucher_no in have:
+                continue
+            ChequeRegister.objects.create(
+                cheque_number=e.voucher_no[:40], payee=e.claimant or e.description[:160],
+                amount=e.amount, date_issued=e.paid_date or e.date,
+                status=ChequeRegister.Status.ISSUED, expense=e, recorded_by=user)
+            have.add(e.voucher_no); created += 1
+        for b in RemittanceBatch.objects.exclude(cheque_no=""):
+            if b.cheque_no in have:
+                continue
+            ChequeRegister.objects.create(
+                cheque_number=b.cheque_no[:40], payee="Conference remittance",
+                amount=getattr(b, "total", None) or Decimal(0),
+                date_issued=b.cheque_date or b.date, status=ChequeRegister.Status.ISSUED,
+                remittance_batch=b, recorded_by=user)
+            have.add(b.cheque_no); created += 1
+        return created
