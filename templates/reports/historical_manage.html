@@ -21,14 +21,20 @@
   </form>
 
   {% if month_rows %}
-  <table class="ledger compact"><thead><tr><th>Year</th><th class="num">Months</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th></tr></thead><tbody>
-    {% for r in month_rows %}<tr>
-      <td><strong>{{ r.year }}</strong></td><td class="num mono">{{ r.count }}/12</td>
-      <td class="num mono">{{ r.collection|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.trust_fund|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.expenditure|floatformat:0|intcomma }}</td>
-    </tr>{% endfor %}
+  {% for r in month_rows %}
+  <details class="hist-year"><summary><strong>{{ r.year }}</strong> · {{ r.count }}/12 months · collection {{ r.collection|floatformat:0|intcomma }} · trust {{ r.trust_fund|floatformat:0|intcomma }} · exp {{ r.expenditure|floatformat:0|intcomma }}</summary>
+  <table class="ledger compact u-mt-sm"><thead><tr><th>Month</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th><th></th></tr></thead><tbody>
+    {% for m in r.cells %}{% if m %}<tr>
+      <td>{{ m.month_label }}</td>
+      <td class="num mono">{{ m.collection|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ m.trust_fund|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ m.expenditure|floatformat:0|intcomma }}</td>
+      <td class="u-right"><form method="post" class="u-inline" onsubmit="return confirm('Delete this month?');">{% csrf_token %}<input type="hidden" name="action" value="delete_month"><input type="hidden" name="pk" value="{{ m.pk }}"><button class="link link-danger">✕</button></form></td>
+    </tr>{% endif %}{% endfor %}
   </tbody></table>
+  <div class="btn-row u-mt-sm"><form method="post" onsubmit="return confirm('Delete ALL historical data for {{ r.year }} (the year total and every month)?');">{% csrf_token %}<input type="hidden" name="action" value="delete_year_all"><input type="hidden" name="year" value="{{ r.year }}"><button class="btn btn-xs btn-ghost link-danger">Delete all {{ r.year }} data</button></form></div>
+  </details>
+  {% endfor %}
   {% endif %}
 
   <details class="u-mt"><summary class="link">Add / update a single month</summary>

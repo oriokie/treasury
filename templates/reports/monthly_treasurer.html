@@ -2,26 +2,34 @@
 {% block title %}Monthly Treasurer's Report · {{ end|date:"M Y" }}{% endblock %}
 {% block content %}
 <style>
+.mtr{max-width:920px;margin:0 auto}
+.mtr .masthead{text-align:center;border-bottom:2.5px solid var(--forest);padding-bottom:.7rem;margin-bottom:.3rem}
+.mtr .masthead .church{font-size:1.35rem;font-weight:800;color:var(--forest);letter-spacing:.01em}
+.mtr .masthead .rt{font-size:1.02rem;font-weight:600;margin-top:.15rem}
+.mtr .masthead .pd{font-size:.8rem;color:var(--muted,#667);margin-top:.1rem}
 .mtr h1{margin-bottom:.1rem}
-.mtr .sec{margin-top:1.1rem;border:1px solid var(--line);border-radius:10px;overflow:hidden;break-inside:avoid}
-.mtr .sec>.sh{padding:.5rem .8rem;background:var(--surface-2,rgba(31,95,79,.05));border-bottom:1px solid var(--line)}
-.mtr .sec>.sh .n{font-weight:700;color:var(--forest);font-size:.92rem}
-.mtr .sec>.sh .d{font-size:.74rem;color:var(--muted,#667);font-style:italic;margin-top:.05rem}
-.mtr .sec>.bd{padding:.5rem .8rem}
-.mtr table{width:100%;border-collapse:collapse;font-size:.8rem}
-.mtr th,.mtr td{padding:.28rem .45rem;border-bottom:1px solid var(--line-soft,rgba(0,0,0,.05))}
+.mtr .sec{margin-top:1.15rem;break-inside:avoid}
+.mtr .sec>.sh{border-bottom:1.5px solid var(--forest);padding:.1rem 0 .25rem;margin-bottom:.5rem}
+.mtr .sec>.sh .n{font-weight:700;color:var(--forest);font-size:1rem}
+.mtr .sec>.sh .d{font-size:.76rem;color:var(--muted,#667);font-style:italic;margin-top:.1rem}
+.mtr .sec>.bd{padding:.1rem 0}
+.mtr table{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:.2rem}
+.mtr th,.mtr td{padding:.3rem .5rem;border-bottom:1px solid var(--line-soft,rgba(0,0,0,.06))}
 .mtr th{text-align:left;font-weight:600;color:var(--muted,#667);font-size:.72rem;text-transform:uppercase;letter-spacing:.02em}
 .mtr td.num,.mtr th.num{text-align:right;font-variant-numeric:tabular-nums}
 .mtr .tot td{border-top:1.5px solid var(--line);font-weight:700}
-.mtr .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}
-.mtr .kpi{background:var(--surface-2,rgba(31,95,79,.04));border-radius:8px;padding:.55rem .7rem}
-.mtr .kpi .l{font-size:.7rem;color:var(--muted,#667);text-transform:uppercase;letter-spacing:.02em}
-.mtr .kpi .v{font-size:1.15rem;font-weight:700;font-variant-numeric:tabular-nums}
-.mtr .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
-.mtr .ai{background:linear-gradient(0deg,rgba(176,125,44,.06),rgba(176,125,44,.06));border-left:3px solid var(--brass,#b07d2c);border-radius:6px;padding:.5rem .7rem;font-size:.85rem;margin-top:.5rem}
+.mtr .grand td{border-top:2px solid var(--forest);border-bottom:2px double var(--forest);font-weight:800}
+.mtr .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.5rem}
+.mtr .kpi{background:var(--surface-2,rgba(31,95,79,.05));border-radius:8px;padding:.6rem .75rem;text-align:center}
+.mtr .kpi .l{font-size:.7rem;color:var(--muted,#667);text-transform:uppercase;letter-spacing:.03em}
+.mtr .kpi .v{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--forest)}
+.mtr .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem}
+.mtr .ai{background:rgba(176,125,44,.07);border-left:3px solid var(--brass,#b07d2c);border-radius:6px;padding:.55rem .75rem;font-size:.86rem;margin:.5rem 0}
 .mtr .muted{color:var(--muted,#667)}
-@media(max-width:720px){.mtr .grid2{grid-template-columns:1fr}.mtr .kpis{grid-template-columns:1fr}}
-@media print{.no-print{display:none}.mtr .sec{break-inside:avoid}}
+.mtr .signoff{margin-top:1.6rem;display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;font-size:.82rem}
+.mtr .signoff .sig{border-top:1px solid var(--ink,#333);padding-top:.25rem;margin-top:2.2rem}
+@media(max-width:720px){.mtr .grid2{grid-template-columns:1fr}.mtr .kpis{grid-template-columns:1fr}.mtr .signoff{grid-template-columns:1fr}}
+@media print{.no-print{display:none}.mtr .sec{break-inside:avoid}.mtr{max-width:none}}
 </style>
 
 <div class="mtr">
@@ -32,7 +40,12 @@
     <button class="btn btn-ghost btn-sm" onclick="window.print();return false;">🖨 Print</button>
   </form>
 </div>
-<div class="print-only" style="display:none"><h1>Monthly Treasurer's Report — {{ end|date:"F Y" }}</h1></div>
+
+<div class="masthead">
+  <div class="church">{{ church|default:"Church Treasury" }}</div>
+  <div class="rt">Monthly Treasurer's Report</div>
+  <div class="pd">For the month of {{ end|date:"F Y" }} &nbsp;·&nbsp; prepared {{ today|date:"d M Y" }}</div>
+</div>
 
 {% if ai_summary %}<div class="ai">✦ {{ ai_summary }}</div>{% endif %}
 
@@ -42,7 +55,15 @@
   <div class="kpi"><div class="l">Total collections</div><div class="v">{{ collections.total|floatformat:0|intcomma }}</div></div>
   <div class="kpi"><div class="l">Trust funds</div><div class="v">{{ collections.trust|floatformat:0|intcomma }}</div></div>
   <div class="kpi"><div class="l">Local funds</div><div class="v">{{ collections.local|floatformat:0|intcomma }}</div></div>
-</div></div></div>
+</div>
+<table><tbody>
+  {% if collection_detail.trust %}<tr><th colspan="2">Trust funds</th></tr>
+  {% for r in collection_detail.trust %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}{% endif %}
+  {% if collection_detail.local %}<tr><th colspan="2">Local funds</th></tr>
+  {% for r in collection_detail.local %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}{% endif %}
+  <tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:0|intcomma }}</td></tr>
+</tbody></table>
+</div></div>
 
 <div class="grid2">
 <!-- 2. Trust receipted trend -->
@@ -86,10 +107,14 @@
 <!-- 7. Income statement -->
 <div class="sec"><div class="sh"><div class="n">7 · Income &amp; expenditure statement</div><div class="d">{{ notes.income_stmt }}</div></div>
 <div class="bd"><table><tbody>
-  <tr><td>Local income</td><td class="num">{{ income_stmt.income|floatformat:0|intcomma }}</td></tr>
-  <tr><td>Operating expenses</td><td class="num">({{ income_stmt.expense|floatformat:0|intcomma }})</td></tr>
-  <tr class="tot"><td>Operating surplus / (deficit)</td><td class="num">{{ income_stmt.surplus|floatformat:0|intcomma }}</td></tr>
-  <tr><td class="muted">Capital expenditure (separate)</td><td class="num muted">{{ income_stmt.capital|floatformat:0|intcomma }}</td></tr>
+  <tr><th colspan="2">Revenue</th></tr>
+  {% for r in income_detail.revenue %}<tr><td>{{ r.name }}</td><td class="num">{{ r.amount|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td class="muted">No local revenue.</td><td></td></tr>{% endfor %}
+  <tr class="tot"><td>Total income</td><td class="num">{{ income_stmt.income|floatformat:0|intcomma }}</td></tr>
+  <tr><th colspan="2">Operating expenditure</th></tr>
+  {% for r in income_detail.expenses %}<tr><td>{{ r.name }}</td><td class="num">{{ r.amount|floatformat:0|intcomma }}</td></tr>{% empty %}<tr><td class="muted">No operating expenses.</td><td></td></tr>{% endfor %}
+  <tr class="tot"><td>Total operating expenditure</td><td class="num">({{ income_stmt.expense|floatformat:0|intcomma }})</td></tr>
+  <tr class="grand"><td>Operating surplus / (deficit)</td><td class="num">{{ income_stmt.surplus|floatformat:0|intcomma }}</td></tr>
+  <tr><td class="muted">Capital expenditure (shown separately)</td><td class="num muted">{{ income_stmt.capital|floatformat:0|intcomma }}</td></tr>
 </tbody></table></div></div>
 
 <!-- 8. Statement of financial position -->
@@ -127,6 +152,11 @@
 </tbody></table>
 <a class="link no-print" href="{% url 'reconciliation_detail' recon.id %}">Open reconciliation →</a>
 {% else %}<div class="muted">No bank reconciliation recorded yet for this period.</div>{% endif %}</div></div>
+</div>
+
+<div class="signoff">
+  <div><div class="sig">Prepared by — Treasurer</div></div>
+  <div><div class="sig">Reviewed by — Pastor / Board Chair</div></div>
 </div>
 
 <p class="help no-print u-mt">Figures are drawn live from the ledger and tie to the detailed reports. Each section above also exists as its own full report under Reports.</p>

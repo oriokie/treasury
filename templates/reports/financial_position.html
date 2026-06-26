@@ -25,13 +25,14 @@
   <table class="ledger compact"><tbody>
     <tr class="grp"><td colspan="2">Current liabilities</td></tr>
     <tr><td class="indent"><strong>Trust funds payable to {{ FIELD_NAME }}</strong></td><td class="num mono"><strong>{{ trust_total_payable|floatformat:2|intcomma }}</strong></td></tr>
-    <tr><td class="indent2">— Receipted (recorded against a trust fund)</td><td class="num mono">{{ trust_payable|floatformat:2|intcomma }}</td></tr>
-    <tr><td class="indent2">— Not yet receipted (bank money in suspense)</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="indent2">— Receipted (firmly due to remit)</td><td class="num mono">{{ trust_receipted|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="indent2">— Not yet receipted (allocated, awaiting receipt)</td><td class="num mono">{{ trust_unreceipted|floatformat:2|intcomma }}</td></tr>
     {% if payables %}<tr><td class="indent">Accounts payable (credit purchases)</td><td class="num mono">{{ payables|floatformat:2|intcomma }}</td></tr>{% endif %}
     {% if accruals %}<tr><td class="indent">Accrued expenses</td><td class="num mono">{{ accruals|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if pending %}<tr><td class="indent">Bank receipts pending allocation (suspense)</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}
     <tr class="subtotal"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ total_liabilities|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
-  <p class="help u-mt-0">Trust funds (e.g. tithe and field offerings) are held on behalf of {{ FIELD_NAME }} and remitted onward. <strong>Receipted</strong> trust has been formally recorded against a trust fund; <strong>not-yet-receipted</strong> is money already in the bank (typically paybill tithe) that is awaiting a receipt — both are owed to the field.</p>
+  <p class="help u-mt-0">Trust funds (e.g. tithe and field offerings) are held on behalf of {{ FIELD_NAME }} and remitted onward. <strong>Receipted</strong> trust has a formal receipt and is firmly due; <strong>not-yet-receipted</strong> is trust money already allocated to a trust fund but awaiting a receipt. Both are owed to the field. <strong>Bank receipts pending allocation</strong> are payments in the bank not yet matched to any fund — held in suspense until identified.</p>
 
   <div class="stmt-section">NET ASSETS</div>
   <table class="ledger compact"><tbody>

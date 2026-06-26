@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.70.0 - report fixes & polish (#1-#8)
+- #1: fixed broken card structure on /ledger/reconciliation/ (orphaned divs); wrapped equation +
+  fund-vs-GL tables in proper cards; added eq.net to accounting_equation().
+- #2: Excel/CSV export on JournalView (?export=) and ReconciliationReportView (?export=), with buttons.
+- #3: MonthlyTreasurerReportView is now report-form & detailed - masthead, per-fund collections detail,
+  itemised income statement (revenue lines + expense categories), sign-off block.
+- #4: financial position trust payable now split via trust_summary - receipted (to_remit) vs
+  not-yet-receipted (closing remainder); pending bank receipts shown separately as suspense; balance
+  sheet still ties.
+- #5: Historical data reachable from Reports index (card) and an Annual summary header button.
+- #6: income statement section headings changed from BLOCK CAPS to normal case.
+- #7: historical page - each year expands to show its months with per-month delete and a 'delete all
+  YEAR data' action (HistoricalMonth.month_label added; delete_year_all action).
+- #8: shared ui/period_selector.html (start/end + month/quarter/year presets) added to the income
+  statement and changes-in-net-assets reports; parse_period gained ?period= presets.
+- Tests: reports/test_report_fixes (+ updated test_item_batch wording).
+
 ## v1.69.0 - monthly historical records (A) + SoFP clarity (B) + monthly treasurer's report (C)
 - ITEM A: HistoricalYearManageView extended with per-month records, Excel import + sample download
   (?sample=1), and automatic yearly-total recomputation from months (_recompute_year). HistoricalMonth

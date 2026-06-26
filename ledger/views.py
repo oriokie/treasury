@@ -67,9 +67,26 @@ class JournalView(ReadAccessMixin, View):
     def get(self, request):
         start, end = parse_period(request)
         entries = (JournalEntry.objects.filter(date__gte=start, date__lte=end)
-                   .prefetch_related("lines__account").order_by("-date", "-id")[:200])
+                   .prefetch_related("lines__account").order_by("-date", "-id")[:2000])
+        if request.GET.get("export") in ("csv", "xlsx"):
+            from reports.exports import csv_response, xlsx_response
+            from core.models import SiteConfig
+            header = ["Date", "Source", "Account", "Memo", "Debit", "Credit"]
+            rows = []
+            for en in entries:
+                for ln in en.lines.all():
+                    rows.append([en.date.isoformat(),
+                                 f"{en.source_type}#{en.source_id}" if en.source_id else en.source_type,
+                                 ln.account.name if ln.account else "",
+                                 en.memo or "", ln.debit or 0, ln.credit or 0])
+            fn = f"general_journal_{start}_{end}"
+            if request.GET.get("export") == "xlsx":
+                return xlsx_response(fn + ".xlsx", header, rows,
+                    title=f"General journal {start} to {end}",
+                    church=SiteConfig.get().church_name)
+            return csv_response(fn + ".csv", header, rows)
         return render(request, self.template_name,
-                      {"entries": entries, "start": start, "end": end})
+                      {"entries": entries[:200], "start": start, "end": end})
 
 
 class RebuildLedgerView(TreasurerRequiredMixin, View):
@@ -101,6 +118,17 @@ class ReconciliationReportView(ReadAccessMixin, View):
             rows.append({"fund": d, "engine": engine_bal, "ledger": gl_bal,
                          "diff": diff, "ok": diff == 0, "is_trust": d.is_trust})
         eq = posting.accounting_equation()
+        if request.GET.get("export") in ("csv", "xlsx"):
+            from reports.exports import csv_response, xlsx_response
+            from core.models import SiteConfig
+            header = ["Fund", "Type", "Per fund report", "Per general ledger", "Difference"]
+            data = [[r["fund"].name, "Trust" if r["is_trust"] else "Local",
+                     r["engine"], r["ledger"], r["diff"]] for r in rows]
+            if request.GET.get("export") == "xlsx":
+                return xlsx_response("ledger_reconciliation.xlsx", header, data,
+                    title="General ledger reconciliation",
+                    church=SiteConfig.get().church_name)
+            return csv_response("ledger_reconciliation.csv", header, data)
         return render(request, self.template_name, {
             "rows": rows, "all_tie": diffs == 0, "eq": eq,
             "ready": posting.chart_ready()})

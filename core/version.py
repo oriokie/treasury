@@ -38,6 +38,16 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.70.0": "A batch of report fixes and polish. The ledger reconciliation page layout is fixed, and "
+              "both it and the general journal now export to Excel. The Monthly Treasurer's Report is now "
+              "a formal, detailed report — with a masthead, a per-fund collections breakdown, an itemised "
+              "income statement, and a sign-off block. The Statement of Financial Position now splits "
+              "trust funds payable correctly into receipted and not-yet-receipted (with unallocated bank "
+              "receipts shown separately as suspense). The income statement no longer shows headings in "
+              "block capitals, and it and the changes-in-net-assets statement both gained a period "
+              "selector. And historical data is easier to reach (Reports → Historical data, and a button "
+              "on the Annual summary), where you can now expand each year to see and delete individual "
+              "months.",
     "1.69.0": "A redesigned, board-ready Monthly Treasurer's Report (Reports → Monthly Treasurer's "
               "Report) pulls everything onto one compact page: collections summary, a four-month trust "
               "and LCB sub-account trend, a five-year year-to-date trend, LCB expense and local-fund "

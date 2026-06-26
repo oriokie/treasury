@@ -5,15 +5,16 @@
 <div class="page-head no-print"><div><h1>Statement of Financial Activity</h1><div class="sub">Income &amp; expenditure · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · local (operating) basis</div></div>
 <div class="btn-row"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">CSV</a><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=xlsx">Excel</a><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Statement of Financial Activity</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+{% include "ui/period_selector.html" %}
 
 <div class="stmt">
-  <div class="stmt-section">REVENUE</div>
+  <div class="stmt-section">Revenue</div>
   <table class="ledger compact"><tbody>
     {% for r in income %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No local revenue in this period.</td></tr>{% endfor %}
     <tr class="subtotal"><td><strong>Total revenue</strong></td><td class="num mono"><strong>{{ total_income|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
 
-  <div class="stmt-section">OPERATING (RECURRENT) EXPENDITURE</div>
+  <div class="stmt-section">Operating (recurrent) expenditure</div>
   <table class="ledger compact"><tbody>
     {% for r in recurrent %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No recurrent expenditure.</td></tr>{% endfor %}
     <tr class="subtotal"><td><strong>Total operating expenditure</strong></td><td class="num mono"><strong>{{ total_recurrent|floatformat:2|intcomma }}</strong></td></tr>
@@ -24,7 +25,7 @@
     <strong class="mono">KES {{ operating|floatformat:2|intcomma }}</strong>
   </div>
 
-  <div class="stmt-section">CAPITAL EXPENDITURE</div>
+  <div class="stmt-section">Capital expenditure</div>
   <table class="ledger compact"><tbody>
     {% for r in capital %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No capital expenditure.</td></tr>{% endfor %}
     <tr class="subtotal"><td><strong>Total capital expenditure</strong></td><td class="num mono"><strong>{{ total_capital|floatformat:2|intcomma }}</strong></td></tr>
@@ -35,7 +36,7 @@
     <strong class="mono">KES {{ surplus|floatformat:2|intcomma }}</strong>
   </div>
 
-  <div class="stmt-section">CHANGE IN NET ASSETS</div>
+  <div class="stmt-section">Change in net assets</div>
   <table class="ledger compact"><tbody>
     <tr><td>Net assets brought forward</td><td class="num mono">{{ na_open|floatformat:2|intcomma }}</td></tr>
     <tr><td>Net surplus/(deficit) for the period</td><td class="num mono">{{ surplus|floatformat:2|intcomma }}</td></tr>

@@ -55,7 +55,7 @@ class FinancialPositionSplitTests(TestCase):
 
     def test_trust_split_and_explanations(self):
         b = self.c.get("/reports/financial-position/").content.decode()
-        self.assertIn("Receipted (recorded against a trust fund)", b)
+        self.assertIn("Receipted (firmly due to remit)", b)
         self.assertIn("Not yet receipted", b)
         self.assertIn("accumulated local reserves", b)
         self.assertIn("set aside for specific purposes", b)

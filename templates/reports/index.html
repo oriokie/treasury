@@ -49,6 +49,7 @@
   <a class="report-card" href="{% url 'report_by_group' %}"><div class="rc-ic">☺</div><strong>Giving by group</strong><span>Youth, AMM, AWM, Ambassadors &amp; Children.</span></a>
   <a class="report-card" href="{% url 'report_dev_groups' %}"><div class="rc-ic">◈</div><strong>Development groups</strong><span>Progress of each group against target.</span></a>
   <a class="report-card" href="{% url 'report_annual' %}"><div class="rc-ic">▥</div><strong>Annual summary</strong><span>Income, expense &amp; net by year.</span></a>
+  {% if is_treasurer %}<a class="report-card" href="{% url 'historical_manage' %}"><div class="rc-ic">▦</div><strong>Historical data</strong><span>Add or import prior-year &amp; monthly figures for trends.</span></a>{% endif %}
   <a class="report-card" href="{% url 'report_reconciliation' %}"><div class="rc-ic">⇄</div><strong>Bank reconciliation</strong><span>Ledger vs bank, with unreconciled items.</span></a>
   <a class="report-card" href="{% url 'report_bank_position' %}"><div class="rc-ic">⚖</div><strong>Bank position check</strong><span>System bank balance vs the statement's closing balance — catches un-entered entries.</span></a>
   <a class="report-card" href="{% url 'auto_reconcile' %}"><div class="rc-ic">⟳</div><strong>Auto-reconciliation</strong><span>Confidence-scored matches of debits to expenses.</span></a>

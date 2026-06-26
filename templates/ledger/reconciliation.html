@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ws-head no-print"><div class="ws-titles"><h1>Ledger reconciliation</h1>
   <div class="ws-sub">Proof the general ledger ties exactly to the fund reports</div></div>
-  <div class="toolbar"><button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
+  <div class="toolbar"><a class="btn btn-sm btn-ghost" href="?export=xlsx">⬇ Excel</a> <button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 
 <div class="kpi-grid">
   <div class="stat {% if all_tie %}accent{% else %}warn{% endif %}">
@@ -31,16 +31,18 @@
   {% endif %}
 </div>
 {% endif %}
+<div class="card u-mt"><div class="hd">Accounting equation</div><div class="bd bd-flush">
   <table class="ledger compact"><tbody>
     <tr><td>Assets (cash &amp; bank, fixed assets)</td><td class="num mono">{{ eq.assets|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Less: liabilities (trust funds payable)</td><td class="num mono">{{ eq.liabilities|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Less: liabilities (trust funds payable)</td><td class="num mono">({{ eq.liabilities|floatformat:2|intcomma }})</td></tr>
+    <tr class="total-row"><td><strong>Assets − liabilities</strong></td><td class="num mono"><strong>{{ eq.net|floatformat:2|intcomma }}</strong></td></tr>
     <tr><td>Fund balances (equity + surplus to date)</td><td class="num mono">{{ eq.funds|floatformat:2|intcomma }}</td></tr>
-    <tr class="total-row"><td><strong>Assets − liabilities</strong></td><td class="num mono"><strong>{{ eq.assets|floatformat:2|intcomma }} − {{ eq.liabilities|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
-  <p class="help">In a balanced double-entry ledger, assets always equal liabilities plus fund balances.</p>
+  <p class="help">In a balanced double-entry ledger, assets less liabilities always equal the fund balances.</p>
 </div></div>
 
-<div class="table-wrap sticky"><table class="ledger">
+<div class="card u-mt"><div class="hd">Fund balances vs general ledger</div><div class="bd bd-flush">
+<div class="table-wrap"><table class="ledger">
   <thead><tr><th>Fund</th><th class="num">Per fund report</th><th class="num">Per general ledger</th><th class="num">Difference</th><th></th></tr></thead>
   <tbody>
   {% for r in rows %}<tr>
@@ -52,4 +54,5 @@
   </tr>{% empty %}<tr><td colspan="5" class="empty">No fund balances yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>
+</div></div>
 {% endblock %}

@@ -1,0 +1,11 @@
+{% load humanize %}
+<form method="get" class="filters no-print" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap;margin:.4rem 0 1rem">
+  <div class="f"><label class="help">From</label><br><input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field"></div>
+  <div class="f"><label class="help">To</label><br><input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field"></div>
+  <button class="btn btn-sm">View</button>
+  <span class="period-presets" style="display:flex;gap:.35rem;flex-wrap:wrap">
+    <a class="btn btn-xs btn-ghost" href="?period=month">This month</a>
+    <a class="btn btn-xs btn-ghost" href="?period=quarter">This quarter</a>
+    <a class="btn btn-xs btn-ghost" href="?period=year">This year</a>
+  </span>
+</form>

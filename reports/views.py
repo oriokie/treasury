@@ -711,6 +711,16 @@ class HistoricalYearManageView(TreasurerRequiredMixin, TemplateView):
             messages.success(request, "Historical year removed.")
             return redirect("historical_manage")
 
+        if action == "delete_year_all":
+            try:
+                yr = int(request.POST.get("year"))
+            except (TypeError, ValueError):
+                return redirect("historical_manage")
+            HistoricalMonth.objects.filter(year=yr).delete()
+            HistoricalYear.objects.filter(year=yr).delete()
+            messages.success(request, f"Deleted all historical data for {yr}.")
+            return redirect("historical_manage")
+
         if action == "save_month":
             try:
                 year = int(request.POST.get("year"))
@@ -1876,6 +1886,16 @@ class FinancialPositionView(ReadAccessMixin, TemplateView):
         rows = balances.department_summary(None, as_of)
         cash = sum((r["closing"] for r in rows), Decimal(0))
         trust_payable = sum((r["closing"] for r in rows if r["is_trust"]), Decimal(0))
+        # Split the trust liability into RECEIPTED (firmly due to remit) vs
+        # not-yet-receipted (trust money allocated to a trust fund but without a
+        # formal receipt). The receipted figure comes from the trust summary
+        # (opening + receipted − remitted); the remainder of the closing balance
+        # is the unreceipted portion, so the two always sum to the trust payable
+        # that ties the balance sheet. Bank money not yet allocated to any fund is
+        # a DIFFERENT thing (suspense) and is shown on its own line below.
+        _tsum = balances.trust_summary(None, as_of)
+        trust_receipted = sum((r["to_remit"] for r in _tsum), Decimal(0))
+        trust_unreceipted = trust_payable - trust_receipted
         local_rows = [r for r in rows if not r["is_trust"]]
         local_funds = sum((r["closing"] for r in local_rows), Decimal(0))
         from assets.models import nbv_total
@@ -1943,7 +1963,9 @@ class FinancialPositionView(ReadAccessMixin, TemplateView):
                     "cash_on_hand": cash_on_hand, "advances": advances,
                     "pending": pending,
                     "trust_payable": trust_payable, "local_funds": local_funds,
-                    "trust_total_payable": trust_payable + pending,
+                    "trust_receipted": trust_receipted,
+                    "trust_unreceipted": trust_unreceipted,
+                    "trust_total_payable": trust_payable,
                     "unallocated": unallocated, "allocated": allocated,
                     "net_assets": net_assets, "total_assets": total_assets,
                     "total_liab_and_na": total_liab_and_na,
@@ -2491,6 +2513,7 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             as_of = _dt.date.today()
         s, e = T.month_bounds(as_of)
         ctx["as_of"] = as_of; ctx["start"] = s; ctx["end"] = e
+        ctx["today"] = _dt.date.today()
         ctx["church"] = SiteConfig.get().church_name
 
         # 1) collections summary
@@ -2524,6 +2547,27 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         ctx["income_stmt"] = {"income": income, "expense": op_exp,
                               "surplus": income - op_exp, "capital": capital}
+        # detailed line items for a report-form income statement
+        rev_rows = (Transaction.objects.confirmed_credits().filter(
+            date__gte=s, date__lte=e, department__is_trust=False,
+            excluded_from_income=False).values("department__name")
+            .annotate(t=Sum("amount")).order_by("-t"))
+        exp_cat = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid)
+                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
+                   .values("category").annotate(t=Sum("amount")).order_by("-t"))
+        _cat = dict(Expense.Category.choices)
+        ctx["income_detail"] = {
+            "revenue": [{"name": r["department__name"] or "Unallocated",
+                         "amount": r["t"]} for r in rev_rows if r["t"]],
+            "expenses": [{"name": _cat.get(r["category"], r["category"]),
+                          "amount": r["t"]} for r in exp_cat if r["t"]]}
+        # per-fund collections detail (trust then local, with amounts)
+        ctx["collection_detail"] = {
+            "trust": sorted([r for r in rows if r["is_trust"] and r["receipts"]],
+                            key=lambda r: r["receipts"], reverse=True),
+            "local": sorted([r for r in rows if not r["is_trust"] and r["receipts"]],
+                            key=lambda r: r["receipts"], reverse=True)}
 
         # 8) statement of financial position (summary, period end)
         sofp_rows = balances.department_summary(None, e)

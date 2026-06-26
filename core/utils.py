@@ -47,6 +47,17 @@ def parse_period(request):
     Defaults to the current month if nothing is supplied.
     """
     today = dt.date.today()
+    preset = request.GET.get("period")
+    if preset:
+        if preset == "month":
+            return today.replace(day=1), today
+        if preset == "quarter":
+            q_start_month = 3 * ((today.month - 1) // 3) + 1
+            return dt.date(today.year, q_start_month, 1), today
+        if preset == "year":
+            return dt.date(today.year, 1, 1), today
+        if preset == "all":
+            return dt.date(2000, 1, 1), today
     start_raw = request.GET.get("start")
     end_raw = request.GET.get("end")
     year = request.GET.get("year")

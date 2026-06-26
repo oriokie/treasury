@@ -234,6 +234,7 @@ def accounting_equation():
     funds = equity + income - expense          # equity incl. undistributed surplus
     return {"assets": assets, "liabilities": liabilities, "equity": equity,
             "income": income, "expense": expense, "funds": funds,
+            "net": assets - liabilities,
             "balanced": assets == liabilities + funds}
 
 

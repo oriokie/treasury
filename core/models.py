@@ -573,6 +573,11 @@ class HistoricalMonth(models.Model):
         constraints = [models.UniqueConstraint(fields=["year", "month"],
                                                name="uniq_hist_year_month")]
 
+    @property
+    def month_label(self):
+        import calendar
+        return calendar.month_abbr[self.month] if 1 <= self.month <= 12 else str(self.month)
+
     def __str__(self):
         return f"{self.year}-{self.month:02d}"
 
