@@ -44,6 +44,7 @@
   {% include "ui/stat.html" with label="Expenses" prefix="KSh" value=totals.expenses_operating|floatformat:2|intcomma accent="warn" foot="Approved & paid · excl. trust remittances" %}
   {% include "ui/stat.html" with label="Trust to remit" prefix="KSh" value=trust_to_remit|floatformat:2|intcomma accent="brass" foot="All trust funds (incl. tithe) → conference" href=remit_url %}
   {% include "ui/stat.html" with label="Closing balance" prefix="KSh" value=totals.closing|floatformat:2|intcomma foot="Opening + receipts − expenses" %}
+  {% if live_balance %}{% include "ui/stat.html" with label="Bank balance (live feed)" prefix="KSh" value=live_balance.balance|floatformat:2|intcomma accent="accent" foot=live_balance.at|date:"d M H:i" href="/statements/feed-log/" %}{% endif %}
 </div>
 
 {% if sabbath.has_data %}

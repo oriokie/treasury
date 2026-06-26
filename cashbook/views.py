@@ -494,6 +494,30 @@ def _petty_balance_asof(on):
 class PettyCashView(ReadAccessMixin, TemplateView):
     template_name = "cashbook/petty_cash.html"
 
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("export") in ("csv", "xlsx"):
+            return self._export(request)
+        return super().get(request, *args, **kwargs)
+
+    def _export(self, request):
+        from core.utils import parse_period
+        from reports.exports import csv_response, xlsx_response
+        from core.models import SiteConfig
+        ctx = self.get_context_data()
+        header = ["Date", "Description", "Fund", "In", "Out", "Balance"]
+        rows = [["", "Opening balance", "", "", "", ctx["opening"]]]
+        for m in ctx["movements"]:
+            rows.append([m["date"].isoformat(), m["desc"], m.get("fund") or "",
+                         m["in"] or "", m["out"] or "", m["balance"]])
+        rows.append(["", "Closing balance", "", "", "", ctx["closing"]])
+        start, end = parse_period(request)
+        fn = f"petty_cash_{start}_{end}"
+        if request.GET.get("export") == "xlsx":
+            return xlsx_response(fn + ".xlsx", header, rows,
+                title=f"Petty cash register {start} to {end}",
+                church=SiteConfig.get().church_name)
+        return csv_response(fn + ".csv", header, rows)
+
     def get_context_data(self, **kwargs):
         from decimal import Decimal
         from core.models import SiteConfig
@@ -1765,3 +1789,76 @@ class ChequeRegisterView(ReadAccessMixin, View):
                 remittance_batch=b, recorded_by=user)
             have.add(b.cheque_no); created += 1
         return created
+
+
+class ReceiptArchiveView(ReadAccessMixin, TemplateView):
+    """Print-friendly archive of expense receipts for a period, grouped by month,
+    plus a one-click ZIP download — so a year's supporting documents can be
+    printed or filed together for audit."""
+    template_name = "cashbook/receipt_archive.html"
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("download") == "zip":
+            return self._zip(request)
+        return super().get(request, *args, **kwargs)
+
+    def _attachments(self, request):
+        from core.utils import parse_period
+        from .models import ExpenseAttachment
+        start, end = parse_period(request)
+        qs = (ExpenseAttachment.objects.filter(
+                  expense__date__gte=start, expense__date__lte=end)
+              .select_related("expense", "expense__department")
+              .order_by("expense__date"))
+        return start, end, qs
+
+    def get_context_data(self, **kwargs):
+        from collections import OrderedDict
+        ctx = super().get_context_data(**kwargs)
+        start, end, qs = self._attachments(self.request)
+        groups = OrderedDict()
+        n_files = 0
+        for a in qs:
+            key = a.expense.date.strftime("%B %Y")
+            groups.setdefault(key, []).append(a)
+            if a.file:
+                n_files += 1
+        ctx.update({"start": start, "end": end, "groups": groups,
+                    "count": qs.count(), "file_count": n_files})
+        return ctx
+
+    def _zip(self, request):
+        import io
+        import zipfile
+        from django.http import HttpResponse
+        start, end, qs = self._attachments(request)
+        buf = io.BytesIO()
+        added = 0
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for a in qs:
+                if not a.file:
+                    continue
+                try:
+                    d = a.expense.date
+                    base = a.file.name.split("/")[-1]
+                    arc = f"{d:%Y}/{d:%m}/exp{a.expense_id}_{base}"
+                    a.file.open("rb")
+                    zf.writestr(arc, a.file.read())
+                    a.file.close()
+                    added += 1
+                except Exception:  # noqa: BLE001
+                    from core.utils import log_exception as _lx; _lx("receipt zip")
+            # an index of text/links too
+            lines = ["Expense receipts index", f"Period: {start} to {end}", ""]
+            for a in qs:
+                lines.append(f"{a.expense.date}  {a.expense.description}  "
+                             f"{a.expense.amount}  "
+                             + (a.file.name if a.file else (a.link or a.text or "")))
+            zf.writestr("index.txt", "\n".join(lines))
+        if not added:
+            messages.info(request, "No uploaded receipt files in that period to download.")
+            return redirect("receipt_archive")
+        resp = HttpResponse(buf.getvalue(), content_type="application/zip")
+        resp["Content-Disposition"] = (
+            f'attachment; filename="receipts_{start}_{end}.zip"')
+        return resp

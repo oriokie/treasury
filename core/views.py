@@ -52,6 +52,14 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["channel_total"] = _ch_total
         ctx["tithe"] = balances.tithe_total(start, end)
 
+        # live cleared balance from the real-time bank feed (if any)
+        try:
+            from statements.services.importer import latest_cleared_balance
+            ctx["live_balance"] = latest_cleared_balance()
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("dashboard live balance")
+            ctx["live_balance"] = None
+
         # --- extra dashboard insight data (item 6) ---
         import json as _json
         from decimal import Decimal

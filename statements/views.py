@@ -183,10 +183,14 @@ class ReconciliationDetailView(ReadAccessMixin, View):
     def get(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
         from cashbook.models import ChequeRegister
-        from cashbook.views import unpresented_cheques_total
+        from cashbook.views import unpresented_cheques_total, _petty_balance_asof
         unpresented = (ChequeRegister.objects.filter(
             status=ChequeRegister.Status.ISSUED,
             date_issued__lte=rec.statement_date).order_by("date_issued"))
+        petty_float = _petty_balance_asof(rec.statement_date)
+        # is the petty-cash float already entered as a reconciling item?
+        petty_listed = rec.items.filter(
+            description__icontains="petty cash").exists()
         return render(request, self.template_name, {
             "rec": rec, "items": rec.items.all(),
             "item_form": ReconciliationItemForm(),
@@ -195,6 +199,9 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             "default_effects": ReconciliationItem.DEFAULT_EFFECT,
             "unpresented_cheques": unpresented,
             "unpresented_total": unpresented_cheques_total(rec.statement_date),
+            "petty_float": petty_float, "petty_listed": petty_listed,
+            "additions": rec.items.filter(effect=ReconciliationItem.Effect.ADD),
+            "subtractions": rec.items.filter(effect=ReconciliationItem.Effect.SUBTRACT),
         })
 
     def post(self, request, pk):
@@ -230,6 +237,21 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             messages.success(request,
                 f"Cash-book balance recomputed from the ledger: "
                 f"KSh {rec.book_balance:,.2f}.")
+        elif action == "add_petty_cash":
+            from cashbook.views import _petty_balance_asof
+            amt = _petty_balance_asof(rec.statement_date)
+            if amt and amt != 0 and not rec.items.filter(
+                    description__icontains="petty cash").exists():
+                ReconciliationItem.objects.create(
+                    reconciliation=rec, kind=ReconciliationItem.Kind.CASH_AT_HAND,
+                    description="Petty cash float (cash on hand)",
+                    amount=abs(amt),
+                    effect=(ReconciliationItem.Effect.ADD if amt > 0
+                            else ReconciliationItem.Effect.SUBTRACT))
+                messages.success(request, "Petty cash float added as a reconciling item.")
+            else:
+                messages.info(request, "Petty cash float is already listed or is zero.")
+            return redirect("reconciliation_detail", pk=rec.pk)
         elif action == "add_unpresented_cheques":
             from cashbook.models import ChequeRegister
             existing = " ".join(rec.items.values_list("description", flat=True))

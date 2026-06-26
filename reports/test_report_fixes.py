@@ -103,5 +103,5 @@ class BoardReportDetailTests(TestCase):
         self.assertIn("masthead", b)
         self.assertIn("Prepared by", b)
         self.assertIn("Reviewed by", b)
-        # detailed income statement headers
-        self.assertIn("Operating expenditure", b)
+        # detailed report-form structure
+        self.assertIn("Local funds statement", b)

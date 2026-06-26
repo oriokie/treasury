@@ -2521,16 +2521,21 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         rows = csum["rows"]
         ctx["collections"] = csum
 
-        # 2) trust receipted trend (this + past 3 months)
-        ctx["trust_trend"] = T.trust_receipted_trend(as_of, months=4)
-        # 3) LCB sub-account trend
-        ctx["lcb_trend"] = T.lcb_subaccount_trend(as_of, months=4)
-        # 4) 5-year YTD trend
-        ctx["yearly"] = T.yearly_trend(as_of, years=5)
-        # 5) LCB expense categories this month
-        ctx["lcb_expenses"] = T.lcb_expense_categories(s, e)
-        # 6) local funds with amounts, sorted
-        ctx["local_funds"] = T.local_funds_breakdown(rows)
+        # 2) trust receipted trend (current + previous 2 months)
+        ctx["trust_trend"] = T.trust_receipted_trend(as_of, months=3)
+        # 3) LCB sub-account trend (all LCB accounts, current + previous 2 months)
+        ctx["lcb_trend"] = T.lcb_subaccount_trend(as_of, months=3)
+        # 4) 5-year YTD trend (+ JSON for a chart)
+        yearly = T.yearly_trend(as_of, years=5)
+        ctx["yearly"] = yearly
+        ctx["yearly_json"] = safe_json([{
+            "year": str(y["year"]), "collection": float(y["collection"] or 0),
+            "trust": float(y["trust"] or 0), "expense": float(y["expense"] or 0),
+        } for y in yearly])
+        # 5) LCB expenditure statement (fixed: matches all LCB departments)
+        ctx["lcb_expenditure"] = T.lcb_expenditure(s, e)
+        # 6) local funds movement statement: opening, receipts, expenses, closing
+        ctx["local_statement"] = T.local_funds_statement(s, e)
 
         # 7) income statement (recurrent basis)
         paid = T.PAID
@@ -2583,13 +2588,36 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             nbv = nbv_total(e)
         except Exception:  # noqa: BLE001
             from core.utils import log_exception as _lx; _lx("monthly treasurer sofp")
+        # full statement of financial position, matching the main report: trust
+        # payable split into receipted vs not-yet-receipted, prepayments/advances,
+        # and net assets classified into unallocated / allocated / property.
+        _tsum = balances.trust_summary(None, e)
+        trust_receipted = sum((r["to_remit"] for r in _tsum), Decimal(0))
+        trust_unreceipted = trust_payable - trust_receipted
+        try:
+            from cashbook.views import (unexpired_prepayments_total,
+                                        outstanding_advances_total)
+            prepaid = unexpired_prepayments_total(e)
+            advances = outstanding_advances_total(e)
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer sofp2")
+            prepaid = advances = Decimal(0)
+        allocated = sum((r["closing"] for r in rows if not r["is_trust"]
+                         and r["department"].category == "DEVELOPMENT"), Decimal(0))
+        unallocated = local_funds_total - allocated
+        accrual_adj = prepaid - payables - accruals
         ctx["sofp"] = {
-            "cash": cash, "nbv": nbv, "trust_payable": trust_payable,
-            "pending": pending, "payables": payables, "accruals": accruals,
-            "total_assets": cash + nbv + pending,
+            "cash": cash, "cash_on_hand": cash - advances, "advances": advances,
+            "nbv": nbv, "prepaid": prepaid, "pending": pending,
+            "trust_payable": trust_payable, "trust_receipted": trust_receipted,
+            "trust_unreceipted": trust_unreceipted,
+            "payables": payables, "accruals": accruals,
+            "total_assets": (cash - advances) + advances + pending + nbv + prepaid,
             "total_liabilities": trust_payable + payables + accruals + pending,
             "local_funds": local_funds_total,
-            "net_assets": local_funds_total + nbv - payables - accruals}
+            "unallocated": unallocated, "allocated": allocated,
+            "accrual_adj": accrual_adj,
+            "net_assets": unallocated + allocated + nbv + accrual_adj}
 
         # 9 & 10) cash-flow statements (operating / investing / financing) for the month
         local_receipts = sum((r["receipts"] for r in rows if not r["is_trust"]), Decimal(0))
@@ -2620,16 +2648,15 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         return {
             "collections": f"Everything received in {f}, split between trust funds "
                            "(remitted to the field) and local funds (kept by the church).",
-            "trust_trend": "Receipted trust collections over the last four months — the "
-                           "trend in what is owed onward to the field.",
-            "lcb_trend": "Local Church Budget and its sub-accounts month by month, so you "
-                         "can see which areas are growing or slowing.",
+            "trust_trend": "Receipted trust collections this month and the previous "
+                           "two — the trend in what is owed onward to the field.",
+            "lcb_trend": "Every Local Church Budget account this month and the previous "
+                         "two, so you can see which areas are growing or slowing.",
             "yearly": "Year-to-date totals for the same point in each of the last five "
                       "years, for a like-for-like long-term comparison.",
-            "lcb_expenses": f"How the Local Church Budget was spent in {f}, by category.",
-            "local_funds": "Local funds with activity this period, largest first.",
-            "income_stmt": "Local income less operating expenses for the month — the "
-                           "church's surplus or deficit (capital spend shown separately).",
+            "lcb_expenditure": f"How the Local Church Budget was spent in {f}, by category.",
+            "local_statement": "Each local fund's opening balance, receipts, expenses "
+                               "and closing balance for the month.",
             "sofp": "What the church owns and owes at month-end; trust funds are a "
                     "liability owed to the field, not the church's own money.",
             "cashflow": "How cash actually moved this month — from operations, into "

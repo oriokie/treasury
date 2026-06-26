@@ -1,0 +1,48 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Expense receipts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<style>
+.rcpt .month{margin-top:1.2rem;border-bottom:1.5px solid var(--forest);padding-bottom:.25rem;color:var(--forest);font-weight:700}
+.rcpt .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem;margin-top:.6rem}
+.rcpt .doc{border:1px solid var(--line);border-radius:8px;padding:.5rem;break-inside:avoid;font-size:.8rem}
+.rcpt .doc img{width:100%;height:auto;border-radius:5px;border:1px solid var(--line-soft,#eee)}
+.rcpt .doc .meta{margin-top:.35rem;color:var(--muted,#667)}
+.rcpt .doc .amt{font-weight:700;color:var(--ink,#222)}
+.rcpt .txt{background:var(--surface-2,rgba(0,0,0,.03));padding:.4rem;border-radius:5px;white-space:pre-wrap;font-size:.76rem}
+@media print{.no-print{display:none}.rcpt .doc{break-inside:avoid}}
+</style>
+<div class="rcpt">
+<div class="page-head"><div><h1>Expense receipts</h1><div class="sub">Supporting documents for {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · {{ count }} document{{ count|pluralize }}</div></div>
+<div class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}download=zip">⬇ Download all (ZIP)</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+{% include "ui/period_selector.html" %}
+<p class="help no-print">Receipts are filed by the month each expense was incurred. Use a wide date range (e.g. a full year) and the ZIP download to assemble everything for audit.</p>
+
+{% for month, docs in groups.items %}
+<div class="month">{{ month }} <span class="muted" style="font-weight:400;font-size:.8rem">· {{ docs|length }} document{{ docs|length|pluralize }}</span></div>
+<div class="grid">
+  {% for a in docs %}
+  <div class="doc">
+    {% if a.file %}
+      {% with low=a.file.url|lower %}
+      {% if '.png' in low or '.jpg' in low or '.jpeg' in low or '.gif' in low or '.webp' in low %}
+        <a href="{{ a.file.url }}" target="_blank"><img src="{{ a.file.url }}" alt="receipt"></a>
+      {% else %}
+        <a class="btn btn-xs btn-ghost" href="{{ a.file.url }}" target="_blank">📄 {{ a.file.name|cut:"receipts/expenses/" }}</a>
+      {% endif %}
+      {% endwith %}
+    {% elif a.text %}<div class="txt">{{ a.text }}</div>
+    {% elif a.link %}<a class="link" href="{{ a.link }}" target="_blank">🔗 e-receipt</a>{% endif %}
+    <div class="meta">
+      <div>{{ a.expense.date|date:"d M Y" }} · {{ a.expense.department.name }}</div>
+      <div>{{ a.expense.description }}</div>
+      <div class="amt">KSh {{ a.expense.amount|floatformat:2|intcomma }}</div>
+      {% if a.label %}<div>{{ a.label }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% empty %}
+<p class="empty u-mt">No receipts attached to expenses in this period.</p>
+{% endfor %}
+</div>
+{% endblock %}

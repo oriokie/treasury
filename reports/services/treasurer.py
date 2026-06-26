@@ -49,8 +49,26 @@ def collections_summary(s, e):
     return {"total": total, "trust": trust, "local": total - trust, "rows": rows}
 
 
-def trust_receipted_trend(as_of, months=4):
-    """Per trust fund, RECEIPTED receipts in each of the last `months` months."""
+def _lcb_dept_ids():
+    """All Local Church Budget departments (the main fund, its sub-accounts, and
+    any other LCB-named funds) — matched by name so a newly added LCB sub-account
+    is picked up automatically."""
+    from django.db.models import Q
+    return list(Department.objects.filter(
+        Q(name__icontains="LCB") | Q(name__icontains="Local Church Budget"))
+        .values_list("id", flat=True))
+
+
+def _lcb_depts():
+    from django.db.models import Q
+    return Department.objects.filter(
+        Q(name__icontains="LCB") | Q(name__icontains="Local Church Budget")
+    ).order_by("name")
+
+
+def trust_receipted_trend(as_of, months=3):
+    """Per trust fund, RECEIPTED receipts in each of the last `months` months
+    (current + previous two)."""
     cols = months_back(as_of, months)
     per_month = [balances.receipts_by_department(c["start"], c["end"], receipted=True)
                  for c in cols]
@@ -65,23 +83,54 @@ def trust_receipted_trend(as_of, months=4):
     return {"columns": cols, "rows": rows, "col_totals": col_totals}
 
 
-def lcb_subaccount_trend(as_of, months=4):
-    """LCB and its sub-accounts, receipts each of the last `months` months."""
-    lcb = lcb_fund()
+def lcb_subaccount_trend(as_of, months=3):
+    """Every LCB department/sub-account, receipts each of the last `months` months.
+    All LCB accounts are listed (even with no activity) so newly added ones show."""
     cols = months_back(as_of, months)
     per_month = [balances.receipts_by_department(c["start"], c["end"]) for c in cols]
     rows = []
-    if lcb:
-        targets = [lcb] + list(lcb.subgroups.all().order_by("name"))
-        for d in targets:
-            cells = [pm.get(d.id, Decimal(0)) for pm in per_month]
-            if any(cells):
-                rows.append({"dept": d, "cells": cells,
-                             "total": sum(cells, Decimal(0)),
-                             "is_parent": d.id == lcb.id})
+    for d in _lcb_depts():
+        cells = [pm.get(d.id, Decimal(0)) for pm in per_month]
+        rows.append({"dept": d, "cells": cells, "total": sum(cells, Decimal(0))})
     col_totals = [sum((r["cells"][i] for r in rows), Decimal(0))
                   for i in range(len(cols))]
-    return {"lcb": lcb, "columns": cols, "rows": rows, "col_totals": col_totals}
+    return {"columns": cols, "rows": rows, "col_totals": col_totals}
+
+
+def lcb_expenditure(s, e):
+    """LCB expenditure statement: spend charged to any LCB department in the
+    period, broken down by category (largest first) with a total."""
+    ids = _lcb_dept_ids()
+    if not ids:
+        return {"rows": [], "total": Decimal(0)}
+    qs = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=PAID,
+                                 department_id__in=ids)
+          .exclude(category=Expense.Category.REMITTANCE)
+          .values("category").annotate(t=Sum("amount")).order_by("-t"))
+    label = dict(Expense.Category.choices)
+    rows = [{"label": label.get(r["category"], r["category"]), "total": r["t"]}
+            for r in qs if r["t"]]
+    return {"rows": rows, "total": sum((r["total"] for r in rows), Decimal(0))}
+
+
+def local_funds_statement(s, e):
+    """Per local fund: opening, receipts, expenses, closing — a proper movement
+    statement (replaces the old activity-only list)."""
+    rows = balances.department_summary(s, e)
+    out = []
+    for r in rows:
+        if r["is_trust"]:
+            continue
+        if not (r["opening"] or r["receipts"] or r["expenses"] or r["closing"]):
+            continue
+        out.append(r)
+    out.sort(key=lambda r: (r["closing"] or Decimal(0)), reverse=True)
+    totals = {
+        "opening": sum((r["opening"] or Decimal(0) for r in out), Decimal(0)),
+        "receipts": sum((r["receipts"] or Decimal(0) for r in out), Decimal(0)),
+        "expenses": sum((r["expenses"] or Decimal(0) for r in out), Decimal(0)),
+        "closing": sum((r["closing"] or Decimal(0) for r in out), Decimal(0))}
+    return {"rows": out, "totals": totals}
 
 
 def _trust_dept_ids():

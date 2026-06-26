@@ -2,19 +2,31 @@
 {% block title %}Reconciliation {{ rec.statement_date|date:"d M Y" }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Bank reconciliation</h1><div class="sub">{{ CHURCH_NAME }} · statement dated {{ rec.statement_date|date:"d M Y" }}</div></div>
-<button class="btn btn-ghost btn-sm no-print" onclick="window.print()">⎙ Print</button></div>
+<div class="toolbar no-print"><a class="btn btn-ghost btn-sm" href="{% url 'reconciliation_list' %}">← All</a><button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button></div></div>
 
-<div class="recon-sheet card u-narrow-md"><div class="bd">
+<div class="recon-kpis no-print">
+  <div class="rk"><div class="l">Per bank statement</div><div class="v">{{ rec.bank_balance|floatformat:2|intcomma }}</div></div>
+  <div class="rk"><div class="l">Adjusted bank balance</div><div class="v">{{ rec.adjusted_balance|floatformat:2|intcomma }}</div></div>
+  <div class="rk"><div class="l">Per cash book</div><div class="v">{{ rec.book_balance|floatformat:2|intcomma }}</div></div>
+  <div class="rk {% if rec.is_reconciled %}ok{% else %}warn{% endif %}"><div class="l">Difference</div><div class="v">{% if rec.difference != None %}{{ rec.difference|floatformat:2|intcomma }}{% else %}—{% endif %}</div><div class="s">{% if rec.is_reconciled %}✓ Reconciled{% else %}Not balanced{% endif %}</div></div>
+</div>
+
+<div class="recon-sheet card u-narrow-md"><div class="hd">Reconciliation statement</div><div class="bd">
   <table class="ledger">
     <tbody>
       <tr><td>Balance as per bank statement</td><td class="num mono">{{ rec.bank_balance|floatformat:2|intcomma }}</td><td></td></tr>
-      {% for it in items %}
-      <tr>
-        <td>{% if it.effect == 'ADD' %}＋{% else %}−{% endif %} {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
-        <td class="num mono {% if it.effect == 'SUBTRACT' %}row-debit{% endif %}">{% if it.effect == 'SUBTRACT' %}({{ it.amount|floatformat:2|intcomma }}){% else %}{{ it.amount|floatformat:2|intcomma }}{% endif %}</td>
+      {% if additions %}<tr class="grp-row"><td colspan="3">Add: items in the cash book not yet on the statement</td></tr>
+      {% for it in additions %}<tr>
+        <td class="indent">＋ {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
+        <td class="num mono">{{ it.amount|floatformat:2|intcomma }}</td>
         <td class="num">{% if can_enter_data %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% endif %}</td>
-      </tr>
-      {% endfor %}
+      </tr>{% endfor %}{% endif %}
+      {% if subtractions %}<tr class="grp-row"><td colspan="3">Less: items on the statement not yet in the cash book</td></tr>
+      {% for it in subtractions %}<tr>
+        <td class="indent">− {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
+        <td class="num mono row-debit">({{ it.amount|floatformat:2|intcomma }})</td>
+        <td class="num">{% if can_enter_data %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% endif %}</td>
+      </tr>{% endfor %}{% endif %}
       <tr class="total-row"><td><strong>Adjusted bank balance</strong></td><td class="num mono"><strong>{{ rec.adjusted_balance|floatformat:2|intcomma }}</strong></td><td></td></tr>
       <tr><td>Balance as per cash book</td><td class="num mono">{{ rec.book_balance|floatformat:2|intcomma }}</td><td></td></tr>
       <tr class="total-row"><td><strong>Difference</strong></td>
@@ -39,8 +51,18 @@
   {% endif %}
 </div></div>
 
+<div class="card no-print u-narrow-md u-mt"><div class="hd u-between">Petty cash float
+  <a class="link u-xs" href="{% url 'petty_cash' %}">Open register →</a></div><div class="bd">
+  <p class="help u-mt-0">The cash-book balance already includes the petty-cash float (cash drawn from the bank but physically held). To reconcile to the bank statement, that cash is added back as <em>cash at hand</em> — it isn't double-counted, it's just held outside the bank.</p>
+  {% if petty_float %}
+    <p>Petty cash float as at {{ rec.statement_date|date:"d M Y" }}: <strong class="mono">KSh {{ petty_float|floatformat:2|intcomma }}</strong>
+    {% if petty_listed %}<span class="pill pill-green">already added</span>{% endif %}</p>
+    {% if can_enter_data and not petty_listed %}<form method="post" class="no-print">{% csrf_token %}<input type="hidden" name="action" value="add_petty_cash">
+      <button class="btn btn-sm">↧ Add petty cash float as a reconciling item</button></form>{% endif %}
+  {% else %}<p class="help u-mt-0">No petty cash float held as at this date.</p>{% endif %}
+</div></div>
+
 {% if can_enter_data %}
-<div class="card no-print u-narrow-md u-mt"><div class="hd">Add a reconciling item</div><div class="bd">
   <form method="post" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
     <input type="hidden" name="action" value="add_item">
     <div class="f"><label>Type</label>{{ item_form.kind }}</div>
@@ -78,5 +100,16 @@
   </form>
 </div></div>
 {% endif %}
-<style>.recon-sheet .total-row td{border-top:2px solid var(--line)}.card .hd{padding:.7rem 1rem;font-weight:600;border-bottom:1px solid var(--line)}.card .bd{padding:1rem}.btn-xs{padding:.1rem .4rem;font-size:.8rem}</style>
+<style>.recon-sheet .total-row td{border-top:2px solid var(--line)}.card .hd{padding:.7rem 1rem;font-weight:600;border-bottom:1px solid var(--line)}.card .bd{padding:1rem}.btn-xs{padding:.1rem .4rem;font-size:.8rem}
+.recon-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.7rem;margin:.3rem 0 1rem}
+.recon-kpis .rk{background:var(--surface-2,rgba(31,95,79,.05));border-radius:9px;padding:.6rem .8rem;border-left:3px solid var(--line)}
+.recon-kpis .rk.ok{border-left-color:var(--accent,#1f5f4f)}
+.recon-kpis .rk.warn{border-left-color:var(--amber,#b07d2c)}
+.recon-kpis .rk .l{font-size:.68rem;color:var(--muted,#667);text-transform:uppercase;letter-spacing:.03em}
+.recon-kpis .rk .v{font-size:1.18rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--forest)}
+.recon-kpis .rk .s{font-size:.72rem;margin-top:.1rem;font-weight:600}
+.recon-kpis .rk.ok .s{color:var(--accent,#1f5f4f)}.recon-kpis .rk.warn .s{color:var(--amber,#b07d2c)}
+.recon-sheet .grp-row td{font-size:.74rem;text-transform:uppercase;letter-spacing:.02em;color:var(--muted,#667);padding-top:.5rem;font-weight:600}
+.recon-sheet .indent{padding-left:1.3rem}
+@media(max-width:720px){.recon-kpis{grid-template-columns:1fr 1fr}}</style>
 {% endblock %}

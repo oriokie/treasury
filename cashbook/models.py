@@ -303,11 +303,20 @@ class PettyCashTopUp(models.Model):
         return f"Petty cash top-up {self.amount} on {self.date}"
 
 
+def expense_receipt_path(instance, filename):
+    """Store receipts under the YEAR/MONTH the expense was INCURRED (not uploaded),
+    so a year's supporting documents sit together for audit/printing."""
+    d = getattr(getattr(instance, "expense", None), "date", None)
+    if d:
+        return f"receipts/expenses/{d:%Y}/{d:%m}/{filename}"
+    return f"receipts/expenses/unknown/{filename}"
+
+
 class ExpenseAttachment(models.Model):
     """A receipt or supporting document attached to an expense (e.g. a claimant's
     receipt brought back after an advance)."""
     expense = models.ForeignKey(Expense, on_delete=models.CASCADE, related_name="attachments")
-    file = models.FileField(upload_to="receipts/expenses/%Y/%m/", blank=True, null=True)
+    file = models.FileField(upload_to=expense_receipt_path, blank=True, null=True)
     text = models.TextField(blank=True,
         help_text="A text receipt, e.g. a pasted M-Pesa confirmation message.")
     link = models.URLField(blank=True, help_text="A link to an online/e-receipt.")

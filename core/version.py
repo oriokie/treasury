@@ -38,6 +38,21 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.72.0": "Expense receipts are now filed by the month each expense was incurred, and a new "
+              "Receipts page (Expenses → Receipts) shows them grouped by month for printing, with a "
+              "one-click ZIP download of a whole period for audit. The Monthly Treasurer's Report is "
+              "substantially upgraded: the trust and LCB trends now compare the current month with the "
+              "previous two, every LCB account is listed (new ones appear automatically), the five-year "
+              "trend is a chart, LCB expenditure is now shown correctly, a full local-funds statement "
+              "(opening, receipts, expenses, closing) replaces the old activity list, and the financial "
+              "position, cash-flow statement and bank reconciliation now mirror the detailed main "
+              "reports.",
+    "1.71.0": "The bank reconciliation page is clearer — a summary strip at the top, reconciling items "
+              "grouped into additions and subtractions, and the petty-cash float can now be added as a "
+              "reconciling item automatically (the cash book already includes that cash, so it's added "
+              "back as cash-at-hand to reconcile to the bank — not double-counted). The petty cash "
+              "register gained a period selector and Excel/CSV download. And the main dashboard now shows "
+              "a live bank-balance tile from the real-time feed when available.",
     "1.70.0": "A batch of report fixes and polish. The ledger reconciliation page layout is fixed, and "
               "both it and the general journal now export to Excel. The Monthly Treasurer's Report is now "
               "a formal, detailed report — with a masthead, a per-fund collections breakdown, an itemised "

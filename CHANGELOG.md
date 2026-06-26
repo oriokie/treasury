@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.72.0 - receipt archive (#2) + monthly treasurer report rework (#6)
+- #2: ExpenseAttachment.file upload_to is now a callable (expense_receipt_path) filing by the expense's
+  INCURRED year/month (cashbook 0020). New ReceiptArchiveView (/expenses/receipts/) groups receipts by
+  month for printing, with a ZIP download of a period (organised by year/month + index.txt). Link added
+  to the expense list.
+- #6: monthly treasurer report reworked. (c) trust + LCB trends now 3 months (current + previous two).
+  (d) all LCB accounts listed via name match (_lcb_depts), new ones appear automatically. (e) five-year
+  trend rendered as a vendored Chart.js bar chart (yearly_json). (f) LCB expenditure fixed - was matching
+  the wrong 'LCB Departments' fund via lcb_fund(); now aggregates all LCB-named departments
+  (_lcb_dept_ids). (g) removed 'Local funds (with activity)' and the income & expenditure statement.
+  (h) new local_funds_statement (opening/receipts/expenses/closing). (i) full SoFP (trust receipted/
+  unreceipted split, advances, prepaid, pending, unallocated/allocated), full cash-flow (operating/
+  investing), and full reconciliation (bank/adjusted/book/difference) mirroring the main reports.
+- Tests: cashbook/test_receipt_archive, reports/test_treasurer_rework (+ updated test_item_batch &
+  test_report_fixes for the new section names).
+
+## v1.71.0 - reconciliation polish + petty cash + feed tile (#1,#3,#4,#5)
+- #1: reconciliation_detail redesigned - KPI summary strip (bank/adjusted/book/difference+status),
+  reconciling items grouped into Add/Less sections.
+- #5: ReconciliationDetailView add_petty_cash action adds the petty-cash float (via _petty_balance_asof)
+  as a CASH_AT_HAND reconciling item (ADD), idempotent; suggestion panel explains it isn't double-counted.
+- #3: PettyCashView gains ?export=csv/xlsx + ui/period_selector.html; download buttons added.
+- #4: DashboardView exposes live_balance (latest_cleared_balance from the CBS feed); dashboard.html
+  shows a 'Bank balance (live feed)' stat tile when a feed balance exists.
+- Tests: statements/test_recon_pettycash.
+
 ## v1.70.0 - report fixes & polish (#1-#8)
 - #1: fixed broken card structure on /ledger/reconciliation/ (orphaned divs); wrapped equation +
   fund-vs-GL tables in proper cards; added eq.net to accounting_equation().
