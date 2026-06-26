@@ -125,6 +125,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             from envelopes.models import Envelope
             sab_envelopes = Envelope.objects.filter(date=last_sab).count()
         except Exception:
+            from core.utils import log_exception as _lx; _lx('core/views.py')
             sab_envelopes = 0
         ctx["sabbath"] = {
             "date": last_sab, "prev_date": prev_sab,
@@ -155,6 +156,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             ).select_related("member", "campaign")
             ctx["pledge_overdue_count"] = sum(1 for p in _open if p.is_overdue)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('core/views.py')
             ctx["pledge_draft_count"] = 0
             ctx["pledge_overdue_count"] = 0
 
@@ -415,10 +417,12 @@ class AssistantAskView(ReadAccessMixin, View):
         try:
             q = _json.loads(request.body.decode() or "{}").get("q", "")
         except Exception:
+            from core.utils import log_exception as _lx; _lx('core/views.py')
             q = request.POST.get("q", "")
         try:
             data = assistant.answer(q, request.user)
         except Exception as exc:
+            from core.utils import log_exception as _lx; _lx('core/views.py')
             data = {"text": f"Sorry — I hit an error answering that ({type(exc).__name__})."}
         return JsonResponse(data)
 
@@ -686,59 +690,83 @@ class ControlsDuplicatesView(TreasurerRequiredMixin, View):
         return HttpResponseBadRequest("unknown check")
 
 
-def _duplicate_offerings():
-    """Likely duplicate offerings — only the signals that actually indicate a
-    double count, so a shared paybill reference (e.g. many people giving with
-    reference 'tithe', each with its own unique bank receipt) is NOT flagged:
+def _duplicate_offerings(window_days=7):
+    """Likely duplicate offerings - only signals that actually indicate a double
+    count, so neither a shared paybill reference nor two genuinely separate gifts
+    of the same amount weeks apart are flagged.
 
-    1. Same giver (order-insensitive name) + same amount counted as income BOTH
-       on the bank AND as an envelope within the same calendar month. A bank
-       credit that's properly reconciled to its envelope is a memo
-       (excluded_from_income) and never reaches here, so this catches genuine
-       double counts where the same gift was receipted twice across channels.
-    2. Same giver + same amount receipted more than once in the envelopes of one
-       Sabbath — a re-typed envelope.
+    A true bank+envelope double count is the SAME gift counted on BOTH channels:
+    same giver, same amount, and close in time. We therefore require the bank and
+    envelope entries to fall within `window_days` of each other (not merely the
+    same calendar month, which produced many false positives - #14).
 
-    Bank rows are de-duplicated on their unique receipt at import, so a unique
-    bank reference can never collide; we deliberately do not group by the
-    allocation reference any more (that produced false positives)."""
+    A split offering (e.g. Combined Offering) is one bank credit posted across
+    several funds as sibling rows. Those siblings are collapsed back into a single
+    gift here (summing the parts) so the halves of a split are never mistaken for
+    duplicates of each other or of the envelope that receipts the whole split
+    (#13). A bank credit properly reconciled to its envelope is a memo
+    (excluded_from_income) and never reaches here at all.
+    """
     from collections import defaultdict
     from giving.models import Transaction
     from members.services.matching import name_key
 
-    out = []
-    # income-counted credits only (memos / reversals excluded by design)
-    rows = (Transaction.objects.filter(
-                direction=Transaction.Direction.CREDIT, is_reversal=False,
-                is_reversed=False, excluded_from_income=False, confirmed=True)
-            .values("date", "amount", "payer_name", "member__name",
-                    "channel", "reference"))
-    groups = defaultdict(list)
+    rows = list(Transaction.objects.filter(
+                    direction=Transaction.Direction.CREDIT, is_reversal=False,
+                    is_reversed=False, excluded_from_income=False, confirmed=True)
+                .values("id", "date", "amount", "payer_name", "member__name",
+                        "channel", "reference", "core_ref", "mpesa_ref"))
+
+    def _split_key(r):
+        if r["core_ref"]:
+            return ("cref", r["core_ref"].split("-S")[0])
+        if r["mpesa_ref"]:
+            return ("mref", r["mpesa_ref"].lower(), r["date"])
+        if r["reference"]:
+            return ("ref", r["reference"].lower(), r["date"], r["channel"])
+        return ("id", r["id"])
+
+    collapsed = {}
     for r in rows:
-        name = r["payer_name"] or r["member__name"] or ""
+        k = _split_key(r)
+        if k in collapsed:
+            collapsed[k]["amount"] = (collapsed[k]["amount"] or 0) + (r["amount"] or 0)
+        else:
+            collapsed[k] = dict(r)
+    gifts = list(collapsed.values())
+
+    by_name = defaultdict(list)
+    for g in gifts:
+        name = g["payer_name"] or g["member__name"] or ""
         nk = name_key(name)
-        if not nk or not r["amount"]:
+        if not nk or not g["amount"]:
             continue
-        groups[(nk, r["amount"], r["date"].year, r["date"].month)].append(r)
+        by_name[nk].append(g)
 
-    for (nk, amt, _y, _m), grp in groups.items():
-        channels = {g["channel"] for g in grp}
-        bank = Transaction.Channel.BANK in channels
-        env = (Transaction.Channel.ENVELOPE in channels
-               or any(g["channel"] == Transaction.Channel.ENVELOPE for g in grp))
-        if bank and env:                       # counted on both -> probable double
-            grp.sort(key=lambda r: r["date"])
-            out.append({
-                "date": grp[-1]["date"], "first": grp[0]["date"], "amount": amt,
-                "payer": next((g["payer_name"] or g["member__name"] for g in grp
-                               if g["payer_name"] or g["member__name"]), "—"),
-                "count": len(grp), "by": "bank + envelope, same month",
-                "reference": next((g["reference"] for g in grp if g["reference"]), "—"),
-                "channel": "bank+envelope"})
+    out = []
+    for nk, grp in by_name.items():
+        banks = [g for g in grp if g["channel"] == Transaction.Channel.BANK]
+        envs = [g for g in grp if g["channel"] == Transaction.Channel.ENVELOPE]
+        used_env = set()
+        for b in banks:
+            for ev in envs:
+                if id(ev) in used_env:
+                    continue
+                if b["amount"] == ev["amount"] and \
+                        abs((b["date"] - ev["date"]).days) <= window_days:
+                    used_env.add(id(ev))
+                    first = min(b["date"], ev["date"])
+                    last = max(b["date"], ev["date"])
+                    out.append({
+                        "date": last, "first": first, "amount": b["amount"],
+                        "payer": (b["payer_name"] or b["member__name"]
+                                  or ev["payer_name"] or ev["member__name"] or "-"),
+                        "count": 2, "by": f"bank + envelope within {window_days} days",
+                        "reference": b["reference"] or ev["reference"] or "-",
+                        "channel": "bank+envelope"})
+                    break
 
-    # same giver + same total typed more than once in one Sabbath's envelopes
     out.extend(_duplicate_envelopes())
-
     out.sort(key=lambda c: ((c.get("payer") or "~").upper(), c["date"]))
     return out[:100]
 
@@ -1029,6 +1057,7 @@ class HealthCheckView(View):
                 cur.execute("SELECT 1")
             db_ok = True
         except Exception:
+            from core.utils import log_exception as _lx; _lx('core/views.py')
             db_ok = False
         from core.version import get_version
         status = 200 if db_ok else 503
@@ -1045,6 +1074,7 @@ def error_500(request):
         from core.services.notifications import alert_admins_error
         alert_admins_error(f"server error on {request.path}")
     except Exception:
+        from core.utils import log_exception as _lx; _lx('core/views.py')
         pass
     return render(request, "500.html", status=500)
 

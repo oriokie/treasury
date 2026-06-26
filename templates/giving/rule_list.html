@@ -18,7 +18,7 @@
         <td>{% if r.split_fund %}{{ r.split_fund.name }} <span class="pill pill-brass" style="font-size:.65rem">split</span>{% else %}{{ r.department.name }}{% endif %}</td>
         <td>{% if r.is_period %}<span class="pill pill-blue u-xs">{{ r.valid_from|date:"d M y"|default:"…" }} – {{ r.valid_to|date:"d M y"|default:"…" }}</span>{% else %}<span class="muted u-xs">Permanent</span>{% endif %}</td>
         <td><span class="pill pill-grey u-xs">{{ r.get_match_type_display }}</span></td>
-        {% if is_treasurer %}<td><a class="btn btn-sm btn-danger" href="{% url 'rule_delete' r.id %}" onclick="return confirm('Delete this rule?')">Delete</a></td>{% endif %}
+        {% if is_treasurer %}<td><a class="btn btn-sm btn-ghost" href="{% url 'rule_edit' r.id %}">Edit</a> <a class="btn btn-sm btn-danger" href="{% url 'rule_delete' r.id %}" onclick="return confirm('Delete this rule?')">Delete</a></td>{% endif %}
       </tr>{% empty %}<tr><td colspan="5" class="muted">No rules yet — they're created when you tick "remember" in the queue.</td></tr>{% endfor %}</tbody>
     </table></div>
     {% if is_paginated %}

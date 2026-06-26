@@ -143,6 +143,7 @@ def _extra_dev_prefixes():
         from core.models import SiteConfig
         raw = SiteConfig.get().dev_group_extra_prefixes or ""
     except Exception:
+        from core.utils import log_exception as _lx; _lx('giving/services/allocation.py')
         return []
     out = []
     for part in raw.split(","):
@@ -163,6 +164,7 @@ def _numbered_fund_families():
         from core.models import SiteConfig
         raw = SiteConfig.get().numbered_fund_families or ""
     except Exception:
+        from core.utils import log_exception as _lx; _lx('giving/services/allocation.py')
         return []
     families = []
     for line in raw.splitlines():

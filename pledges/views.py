@@ -587,6 +587,7 @@ class PublicPledgeView(View):
                              f"(KES {amount:,.0f} to {campaign.name}) — review needed.",
                    link="/pledges/list/?status=DRAFT")
         except Exception:
+            from core.utils import log_exception as _lx; _lx('pledges/views.py')
             pass
         return redirect("public_pledge_thanks")
 
@@ -723,6 +724,7 @@ class PledgeImportView(TreasurerRequiredMixin, View):
         try:
             wb = openpyxl.load_workbook(f, data_only=True)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('pledges/views.py')
             messages.error(request, "Could not read that file — please upload a .xlsx.")
             return redirect("pledge_import")
         ws = wb["Pledges"] if "Pledges" in wb.sheetnames else wb.active
@@ -951,3 +953,20 @@ class PledgeDeleteView(TreasurerRequiredMixin, View):
             msg += f" {n} matched contribution(s) were unlinked but remain in the ledger."
         messages.success(request, msg)
         return redirect("pledge_list")
+
+
+class CampaignDeleteView(TreasurerRequiredMixin, View):
+    """Delete a pledge campaign. Only allowed when it has no pledges (remove or
+    reassign those first), so a campaign with giving history can't vanish."""
+    def post(self, request, pk):
+        from .models import PledgeCampaign
+        camp = get_object_or_404(PledgeCampaign, pk=pk)
+        n = camp.pledges.count()
+        if n:
+            messages.error(request, f"“{camp.name}” still has {n} pledge(s). Delete or "
+                                    f"reassign those pledges first, then delete the campaign.")
+            return redirect("pledge_campaign_detail", pk=pk)
+        name = camp.name
+        camp.delete()
+        messages.success(request, f"Campaign “{name}” deleted.")
+        return redirect("pledge_campaign_list")

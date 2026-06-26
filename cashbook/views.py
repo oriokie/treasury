@@ -9,16 +9,7 @@ from django.views.generic import ListView, CreateView, UpdateView, View
 
 from django.views import View
 
-def _block_if_locked(request, d):
-    """Return True (and flash an error) if date d is in a locked period. No one —
-    including superusers — may post into a locked period; it must be unlocked first."""
-    from core.models import period_locked
-    lock = period_locked(d)
-    if lock:
-        from django.contrib import messages as _m
-        _m.error(request, f"{lock} is locked. Unlock the period (Controls) before posting or editing entries in it.")
-        return True
-    return False
+from core.utils import block_if_locked as _block_if_locked
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
 from core.utils import sabbath_week_of
 from departments.models import Department
@@ -313,7 +304,19 @@ class ExpenseApprove(TreasurerRequiredMixin, View):
             return redirect("expense_list")
         elif action == "reject":
             exp.status = Expense.Status.REJECTED
-            exp.approved_by = request.user
+            exp.rejected_by = request.user
+            # do NOT set approved_by on a rejection — it corrupts the audit trail
+            # (an auditor would otherwise read "approved by X" on a rejected claim).
+            exp.save()
+            from core.services.notifications import notify
+            reason = (request.POST.get("note") or "").strip()
+            if exp.recorded_by_id and exp.recorded_by_id != request.user.id:
+                notify("REJECTION",
+                       f"Your expense “{exp.description}” ({exp.amount:,.2f}) was rejected"
+                       + (f": {reason}" if reason else "."),
+                       link="/expenses/", recipients=[exp.recorded_by])
+            messages.success(request, "Expense rejected and the submitter notified.")
+            return redirect("expense_list")
         elif action == "pay":
             # M1: a high-value expense needs two distinct treasurer approvals before pay
             if needs_two and (not exp.approved_by_id or not exp.second_approved_by_id):
@@ -1013,6 +1016,7 @@ class ExpenseRecategorizeView(TreasurerRequiredMixin, View):
         try:
             wb = openpyxl.load_workbook(f, data_only=True)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('cashbook/views.py')
             messages.error(request, "Could not read that file — is it the .xlsx you downloaded?")
             return redirect("expense_recategorize")
         ws = wb["Expenses"] if "Expenses" in wb.sheetnames else wb.active
@@ -1217,6 +1221,7 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         try:
             wb = openpyxl.load_workbook(f, data_only=True)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('cashbook/views.py')
             messages.error(request, "Could not read that file — please upload a .xlsx.")
             return redirect("expense_import")
         ws = wb["Expenses"] if "Expenses" in wb.sheetnames else wb.active

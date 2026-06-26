@@ -195,5 +195,6 @@ def handle_new_contribution(txn, user=None, cfg=None):
             return f"flagged a possible match to {pledge.member.name}'s pledge"
         return None
     except Exception:
+        from core.utils import log_exception as _lx; _lx('pledges/services/matching.py')
         # matching is best-effort; never let it break contribution creation
         return None

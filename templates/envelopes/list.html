@@ -70,6 +70,8 @@
     </div>
   </div>
   {% if sec.items %}
+  <details class="sabbath-list"{% if sel_sabbath == sec.sabbath %} open{% endif %}>
+    <summary class="sabbath-list-toggle">Show {{ sec.count }} envelope{{ sec.count|pluralize }} <span class="muted">· total {{ sec.total|floatformat:2|intcomma }}</span></summary>
   <div class="table-wrap"><table class="ledger">
     <thead><tr><th>Receipt</th><th>Contributor</th><th>Channel</th><th>Funds</th><th class="num">Total</th>{% if can_enter_data %}<th>Move to</th>{% endif %}</tr></thead>
     <tbody>
@@ -95,6 +97,7 @@
     {% endfor %}
     </tbody>
   </table></div>
+  </details>
   {% else %}
   <div class="empty u-p">No envelopes this Sabbath.</div>
   {% endif %}
@@ -108,6 +111,11 @@
 .month-bar .month-title{font-weight:700;font-size:1.05rem}
 .month-bar .grow{flex:1}
 .sabbath-card{border:1px solid var(--line);border-radius:10px;margin-bottom:1rem;overflow:hidden}
+.sabbath-list-toggle{cursor:pointer;padding:.55rem .8rem;font-size:.85rem;color:var(--brass);background:var(--surface-2,rgba(0,0,0,.02));border-top:1px solid var(--line);user-select:none;list-style:none}
+.sabbath-list-toggle::-webkit-details-marker{display:none}
+.sabbath-list-toggle::before{content:"▸ ";display:inline-block;transition:transform .15s}
+details[open]>.sabbath-list-toggle::before{content:"▾ "}
+.sabbath-list-toggle:hover{color:var(--forest)}
 .sabbath-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.6rem .9rem;background:var(--card-head,#faf7f0);border-bottom:1px solid var(--line)}
 .sabbath-totals{display:flex;align-items:center;gap:.5rem}
 .btn-xs{padding:.12rem .5rem;font-size:.78rem}

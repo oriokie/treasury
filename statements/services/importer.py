@@ -324,3 +324,46 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     except Exception:
         pass
     return import_obj
+
+
+def latest_cleared_balance(limit=200):
+    """Most recent cleared bank balance reported by the real-time CBS feed, or
+    None. Returns dict(balance: Decimal, at, account, currency). Used so the bank
+    position can compare against live data, not only an imported statement."""
+    import json
+    from decimal import Decimal, InvalidOperation
+    from statements.models import BankEvent
+
+    def _find(obj, key):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k.lower() == key.lower() and v not in (None, ""):
+                    return v
+                found = _find(v, key)
+                if found not in (None, ""):
+                    return found
+        elif isinstance(obj, list):
+            for it in obj:
+                found = _find(it, key)
+                if found not in (None, ""):
+                    return found
+        return None
+
+    for e in BankEvent.objects.order_by("-received_at")[:limit]:
+        if not e.payload:
+            continue
+        try:
+            data = json.loads(e.payload)
+        except (ValueError, TypeError):
+            continue
+        cb = _find(data, "ClearedBalance")
+        if cb in (None, ""):
+            continue
+        try:
+            bal = Decimal(str(cb).replace(",", ""))
+        except (InvalidOperation, ValueError):
+            continue
+        return {"balance": bal, "at": e.received_at,
+                "account": e.acct_no or _find(data, "AccountNo") or "",
+                "currency": e.currency or _find(data, "Currency") or ""}
+    return None

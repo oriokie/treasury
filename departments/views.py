@@ -303,6 +303,7 @@ class BulkFundImportView(TreasurerRequiredMixin, View):
         try:
             wb = openpyxl.load_workbook(f, data_only=True)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('departments/views.py')
             messages.error(request, "Could not read that file — please upload a .xlsx.")
             return redirect("bulk_fund_import")
         try:
@@ -863,6 +864,7 @@ class FundStructureImportView(TreasurerRequiredMixin, View):
         try:
             wb = openpyxl.load_workbook(f, data_only=True)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('departments/views.py')
             messages.error(request, "Could not read that file — please upload the .xlsx template.")
             return redirect("fund_structure_import")
         ws = wb["Funds"] if "Funds" in wb.sheetnames else wb.active
@@ -1122,3 +1124,61 @@ class HistoricalAccountsView(ReadAccessMixin, View):
         from core.roles import is_treasurer
         return render(request, self.template_name,
                       {"rows": rows, "is_treasurer": is_treasurer(request.user)})
+
+
+class DevGroupSmsView(TreasurerRequiredMixin, View):
+    """Send an SMS to development-group members — either one group or all groups.
+    The message is a customizable template ({name}, {group}, {church})."""
+    template_name = "departments/dev_group_sms.html"
+    DEFAULT_TEMPLATE = ("Dear {name}, greetings from {church}. ")
+
+    def _group(self, pk):
+        return DevelopmentGroup.objects.filter(pk=pk).first() if pk else None
+
+    def _recipients(self, group):
+        from members.models import Member
+        qs = Member.objects.filter(active=True).exclude(phone__isnull=True).exclude(phone="")
+        if group:
+            qs = qs.filter(dev_group=group)
+        else:
+            qs = qs.filter(dev_group__isnull=False)
+        return qs.select_related("dev_group").order_by("dev_group__number", "name")
+
+    def get(self, request, pk=None):
+        from core.models import SiteConfig
+        group = self._group(pk)
+        recips = list(self._recipients(group))
+        cfg = SiteConfig.get()
+        return render(request, self.template_name, {
+            "group": group, "recipients": recips, "recipient_count": len(recips),
+            "groups": DevelopmentGroup.objects.filter(active=True),
+            "template": self.DEFAULT_TEMPLATE, "church": cfg.church_name or "",
+            "sms_enabled": cfg.sms_enabled,
+        })
+
+    def post(self, request, pk=None):
+        from core.models import SiteConfig
+        from core.services.sms import send_sms, _format
+        group = self._group(pk)
+        template = request.POST.get("template") or self.DEFAULT_TEMPLATE
+        church = SiteConfig.get().church_name or ""
+        sent = failed = 0
+        for m in self._recipients(group):
+            msg = _format(template,
+                          name=(m.name.split()[0] if m.name else "member"),
+                          group=(m.dev_group.label if m.dev_group else ""),
+                          church=church)
+            log = send_sms(m.phone, msg)
+            if getattr(log, "status", "") == "SENT":
+                sent += 1
+            else:
+                failed += 1
+        if sent:
+            messages.success(request, f"SMS sent to {sent} member(s)"
+                             + (f"; {failed} failed." if failed else "."))
+        else:
+            messages.error(request, "No messages were sent. "
+                           + ("Check SMS settings." if failed else "No members with a phone."))
+        if group:
+            return redirect("dev_group_sms_one", pk=group.id)
+        return redirect("dev_group_sms")

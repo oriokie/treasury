@@ -362,6 +362,7 @@ LOGGING = {
                            "propagate": False},
         "django.security": {"handlers": ["console", "mail_admins"], "level": "WARNING",
                             "propagate": False},
+        "treasury": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
 }
 if _have_log_dir:
@@ -372,7 +373,7 @@ if _have_log_dir:
         "level": "WARNING", "formatter": "verbose",
     }
     for _h in (LOGGING["root"], LOGGING["loggers"]["django.request"],
-               LOGGING["loggers"]["django.security"]):
+               LOGGING["loggers"]["django.security"], LOGGING["loggers"]["treasury"]):
         _h["handlers"].append("error_file")
 
 

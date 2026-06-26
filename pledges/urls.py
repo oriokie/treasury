@@ -21,6 +21,7 @@ urlpatterns = [
     path("pledges/campaigns/<int:pk>/", views.CampaignDetailView.as_view(), name="pledge_campaign_detail"),
     path("pledges/campaigns/<int:pk>/import/", views.PledgeImportView.as_view(), name="pledge_campaign_import"),
     path("pledges/campaigns/<int:pk>/edit/", views.CampaignCreateView.as_view(), name="pledge_campaign_edit"),
+    path("pledges/campaigns/<int:pk>/delete/", views.CampaignDeleteView.as_view(), name="pledge_campaign_delete"),
     # reports
     path("pledges/report/", views.PledgeReportView.as_view(), name="pledge_report"),
     path("pledges/member/<int:pk>/statement/", views.MemberPledgeStatementView.as_view(), name="pledge_member_statement"),

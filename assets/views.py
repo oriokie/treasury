@@ -77,6 +77,7 @@ class AssetDisposeView(TreasurerRequiredMixin, View):
         try:
             proceeds = Decimal(request.POST.get("proceeds") or "0")
         except Exception:
+            from core.utils import log_exception as _lx; _lx('assets/views.py')
             proceeds = Decimal("0")
         method = request.POST.get("method") or FixedAsset.DisposalMethod.SOLD
         fund_id = request.POST.get("fund")
@@ -133,6 +134,7 @@ class DepreciationRulesView(TreasurerRequiredMixin, View):
             try:
                 rate_val = Decimal(rate) if rate else Decimal(0)
             except Exception:
+                from core.utils import log_exception as _lx; _lx('assets/views.py')
                 rate_val = Decimal(0)
             DepreciationRule.objects.update_or_create(
                 category=v, defaults={"method": method, "rate": rate_val})

@@ -27,19 +27,10 @@ def _cash_duplicate(d, dept, amount, name=None):
     return False
 
 
-def _block_if_locked(request, d):
-    """Return True (and flash an error) if date d is in a locked period. No one —
-    including superusers — may post into a locked period; it must be unlocked first."""
-    from core.models import period_locked
-    lock = period_locked(d)
-    if lock:
-        from django.contrib import messages as _m
-        _m.error(request, f"{lock} is locked. Unlock the period (Controls) before posting or editing entries in it.")
-        return True
-    return False
+from core.utils import block_if_locked as _block_if_locked
 from django.contrib import messages
 from django.db.models import Q
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.generic import ListView, CreateView, View, DeleteView
@@ -505,6 +496,7 @@ class CashEntryCreate(DataEntryRequiredMixin, CreateView):
             from pledges.services.matching import handle_new_contribution
             note = handle_new_contribution(txn, user=self.request.user)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
             note = None
         if note:
             messages.success(self.request, f"Entry recorded — {note}.")
@@ -645,6 +637,10 @@ class DebitResolveView(DataEntryRequiredMixin, View):
     def post(self, request, pk):
         txn = get_object_or_404(
             Transaction, pk=pk, direction=Transaction.Direction.DEBIT)
+        # a debit carries a date; resolving it posts an expense/transfer on that
+        # date, so it must honour the period lock just like any other entry.
+        if _block_if_locked(request, txn.date):
+            return redirect("debit_queue")
         kind = request.POST.get("kind")
 
         if kind == "bank_charge":
@@ -799,6 +795,7 @@ class QueueImportView(DataEntryRequiredMixin, View):
         try:
             reader = _csv.DictReader(_io.TextIOWrapper(f.file, encoding="utf-8-sig"))
         except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
             messages.error(request, "Could not read that CSV.")
             return redirect("queue_import")
         funds = {d.name.lower(): d for d in Department.objects.filter(active=True)}
@@ -899,6 +896,7 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
         try:
             rows = self._rows_from_upload(f)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
             messages.error(request, "Could not read that file — upload the .csv or "
                                     ".xlsx from the template.")
             return redirect("mark_processed_import")
@@ -936,6 +934,7 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
                 try:
                     amt = Decimal(str(raw_amt).replace(",", "").strip())
                 except Exception:
+                    from core.utils import log_exception as _lx; _lx('giving/views.py')
                     amt = None
 
             if n == 1:
@@ -1110,6 +1109,7 @@ class TransactionShiftSabbathView(TreasurerRequiredMixin, View):
                                         "unlock it first.")
                 return redirect(request.META.get("HTTP_REFERER", reverse("transaction_list")))
         except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
             pass
         t.service_sabbath = new
         t.sabbath_week = sabbath_week_of(new)
@@ -1286,6 +1286,7 @@ class RuleImportView(TreasurerRequiredMixin, View):
         try:
             wb = openpyxl.load_workbook(f, data_only=True)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
             messages.error(request, "Could not read that file — please upload a .xlsx.")
             return redirect("rule_import")
         ws = wb["Rules"] if "Rules" in wb.sheetnames else wb.active
@@ -1526,6 +1527,7 @@ class CampaignMemberImportView(DataEntryRequiredMixin, View):
         try:
             rows = self._read(f)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
             messages.error(request, "Could not read that file — use the sample layout "
                                     "(Name, Mobile, Group). Try downloading the sample.")
             return redirect("campaign_list")
@@ -1542,6 +1544,7 @@ class CampaignMemberImportView(DataEntryRequiredMixin, View):
                 CampaignMember.objects.create(campaign=camp, name=nm, phone=ph, group=grp)
                 made += 1
             except Exception:
+                from core.utils import log_exception as _lx; _lx('giving/views.py')
                 skipped += 1
         msg = f"Loaded {made} members into “{camp.name}”."
         if skipped:
@@ -1606,3 +1609,23 @@ class TransactionBulkReverseView(TreasurerRequiredMixin, View):
             msg += f" {skipped} skipped (locked period, or already reversed)."
         (messages.success if done else messages.info)(request, msg)
         return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+
+
+class RuleEditView(DataEntryRequiredMixin, View):
+    """Edit an allocation rule (reference / match type / target fund)."""
+    template_name = "giving/rule_form.html"
+
+    def get(self, request, pk):
+        rule = get_object_or_404(AllocationRule, pk=pk)
+        return render(request, self.template_name,
+                      {"form": RuleForm(instance=rule), "edit_obj": rule})
+
+    def post(self, request, pk):
+        rule = get_object_or_404(AllocationRule, pk=pk)
+        form = RuleForm(request.POST, instance=rule)
+        if form.is_valid():
+            form.instance.reference = normalize_reference(form.instance.reference)
+            form.save()
+            messages.success(request, "Rule updated.")
+            return redirect("rule_list")
+        return render(request, self.template_name, {"form": form, "edit_obj": rule})

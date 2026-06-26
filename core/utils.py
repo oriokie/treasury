@@ -95,3 +95,30 @@ def safe_json(obj):
             .replace("&", "\\u0026")
             .replace("\u2028", "\\u2028")
             .replace("\u2029", "\\u2029"))
+
+
+def block_if_locked(request, d):
+    """Return True (and flash an error) if date d is in a locked accounting period.
+
+    No one — including superusers — may post into a locked period; it must be
+    unlocked first via Controls. Single source of truth for the period-lock guard
+    used across the giving and cashbook views."""
+    from core.models import period_locked
+    from django.contrib import messages as _m
+    lock = period_locked(d)
+    if lock:
+        _m.error(request, f"{lock} is locked. Unlock the period (Controls) before "
+                          f"posting or editing entries in it.")
+        return True
+    return False
+
+
+import logging as _logging
+_tlog = _logging.getLogger("treasury")
+
+
+def log_exception(context=""):
+    """Log the exception currently being handled, with full traceback, to the
+    'treasury' logger. Use inside a broad `except` that shows the user a generic
+    message, so the server still records what actually went wrong."""
+    _tlog.exception("Handled exception%s", f" in {context}" if context else "")

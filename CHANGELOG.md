@@ -1,5 +1,57 @@
 # Changelog
 
+## v1.69.0 - monthly historical records (A) + SoFP clarity (B) + monthly treasurer's report (C)
+- ITEM A: HistoricalYearManageView extended with per-month records, Excel import + sample download
+  (?sample=1), and automatic yearly-total recomputation from months (_recompute_year). HistoricalMonth
+  model already existed.
+- ITEM B: financial_position splits 'Trust funds payable' into receipted (trust dept closings) vs
+  not-yet-receipted (pending bank suspense), adds trust_total_payable to context, and adds plain-language
+  explanations of unallocated (general) vs allocated (Board-designated) net assets.
+- ITEM C: new reports/services/treasurer.py + MonthlyTreasurerReportView at /reports/board/ (old board
+  report kept at /board-classic/). 10 compact sections: collections summary; trust receipted 4-month
+  trend; LCB sub-account 4-month trend; 5-year YTD trend (live actuals blended with monthly history);
+  LCB expenses by category; local funds (sorted); income statement; financial position; cash-flow
+  statement; latest reconciliation. Each has a one-line note; an AI headline (via _llm_call) with a
+  rule-based fallback. New compact/printable template.
+- Tests: reports/test_item_batch.
+
+## v1.68.0 - report accuracy: bank position, cash flows, duplicate detection (#11-#14)
+- #11: StatementOfCashFlowsView operating bucket = total non-remittance - capital, so the three
+  sections always sum to total expenses and the statement reconciles even with untyped expenses.
+  Financial-position identity verified (assets == liabilities + net assets).
+- #12: BankPositionView subtracts bank-method PAID expenses NOT linked to a bank_transaction (avoids
+  double-counting linked ones); new statements.services.importer.latest_cleared_balance() surfaces the
+  real-time CBS feed balance with a difference line.
+- #13: _duplicate_offerings collapses split siblings (shared core_ref base / mpesa_ref+date / ref+date)
+  into one gift, so split halves aren't flagged as duplicates of each other or the receipting envelope.
+- #14: bank+envelope duplicate detection now requires the two entries to fall within window_days (7)
+  of each other instead of merely the same month - removes coincidental same-amount false positives.
+- Tests: core/test_duplicate_logic, reports/test_position_reports.
+
+## v1.67.0 - envelope collapse (#7) + campaign delete (#8) + dev-group SMS (#9) + rule edit (#10)
+- #7: each Sabbath's envelope table is a collapsed <details> (head/totals/actions stay visible;
+  auto-opens when a Sabbath filter is active).
+- #8: CampaignDeleteView (/pledges/campaigns/<pk>/delete/), treasurer-only, blocked if the campaign has
+  pledges; delete button on campaign detail. (Transfers already reverse via FundTransfer.reverse.)
+- #9: DevGroupSmsView (/dev-groups/sms/ and /dev-groups/<pk>/sms/) sends a templated SMS
+  ({name}/{group}/{church}) to dev-group members (all or one); buttons on the funds list.
+- #10: RuleEditView (/rules/<pk>/edit/) + Edit button on the rules list; an 'Allocation & categories'
+  card added to Settings -> Channels linking to the rules manager.
+- Tests: departments/test_batch_b.
+
+## v1.66.0 - safety & audit hardening (#1-#6)
+- #1: DebitResolveView.post calls block_if_locked(txn.date) up front — debits can no longer post
+  expenses/transfers into a locked period.
+- #2: ExpenseApprove reject sets new Expense.rejected_by (cashbook 0019) and no longer sets approved_by.
+- #4: rejecting an expense sends a 'REJECTION' notification to the original submitter (optional note).
+- #3: new core.utils.log_exception(); a 'treasury' logger added to LOGGING (-> console + error_file).
+  Broad excepts across cashbook/giving/departments/members/pledges/assets/core/statements/reports views
+  + allocation/matching services now log a full traceback before showing the generic message (32 sites).
+- #5: htmx vendored to static/vendor/htmx.min.js (1.9.12) and served locally; removed the unpkg CDN
+  <script>. Run collectstatic on deploy.
+- #6: _block_if_locked deduplicated — single core.utils.block_if_locked, imported by giving & cashbook.
+- Tests: cashbook/test_safety_fixes.
+
 ## v1.65.0 - collection accounts + lifecycle (#1,#2) + cheque register (#3) + pending-receipts fix (#4)
 - #1: Department.collection_only — receives income but excluded from expense pickers (save() forces
   show_in_expenses off). ConsolidateView (/departments/<pk>/consolidate/) creates one FundTransfer per

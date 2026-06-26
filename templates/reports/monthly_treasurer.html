@@ -1,0 +1,134 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Monthly Treasurer's Report · {{ end|date:"M Y" }}{% endblock %}
+{% block content %}
+<style>
+.mtr h1{margin-bottom:.1rem}
+.mtr .sec{margin-top:1.1rem;border:1px solid var(--line);border-radius:10px;overflow:hidden;break-inside:avoid}
+.mtr .sec>.sh{padding:.5rem .8rem;background:var(--surface-2,rgba(31,95,79,.05));border-bottom:1px solid var(--line)}
+.mtr .sec>.sh .n{font-weight:700;color:var(--forest);font-size:.92rem}
+.mtr .sec>.sh .d{font-size:.74rem;color:var(--muted,#667);font-style:italic;margin-top:.05rem}
+.mtr .sec>.bd{padding:.5rem .8rem}
+.mtr table{width:100%;border-collapse:collapse;font-size:.8rem}
+.mtr th,.mtr td{padding:.28rem .45rem;border-bottom:1px solid var(--line-soft,rgba(0,0,0,.05))}
+.mtr th{text-align:left;font-weight:600;color:var(--muted,#667);font-size:.72rem;text-transform:uppercase;letter-spacing:.02em}
+.mtr td.num,.mtr th.num{text-align:right;font-variant-numeric:tabular-nums}
+.mtr .tot td{border-top:1.5px solid var(--line);font-weight:700}
+.mtr .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}
+.mtr .kpi{background:var(--surface-2,rgba(31,95,79,.04));border-radius:8px;padding:.55rem .7rem}
+.mtr .kpi .l{font-size:.7rem;color:var(--muted,#667);text-transform:uppercase;letter-spacing:.02em}
+.mtr .kpi .v{font-size:1.15rem;font-weight:700;font-variant-numeric:tabular-nums}
+.mtr .grid2{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+.mtr .ai{background:linear-gradient(0deg,rgba(176,125,44,.06),rgba(176,125,44,.06));border-left:3px solid var(--brass,#b07d2c);border-radius:6px;padding:.5rem .7rem;font-size:.85rem;margin-top:.5rem}
+.mtr .muted{color:var(--muted,#667)}
+@media(max-width:720px){.mtr .grid2{grid-template-columns:1fr}.mtr .kpis{grid-template-columns:1fr}}
+@media print{.no-print{display:none}.mtr .sec{break-inside:avoid}}
+</style>
+
+<div class="mtr">
+<div class="page-head no-print"><div><h1>Monthly Treasurer's Report</h1>
+  <div class="sub">{{ church }} · {{ start|date:"d M" }} – {{ end|date:"d M Y" }}</div></div>
+  <form method="get" class="u-inline" style="margin-left:auto">
+    <input type="month" name="as_of" value="{{ end|date:'Y-m' }}" class="field" onchange="this.form.submit()">
+    <button class="btn btn-ghost btn-sm" onclick="window.print();return false;">🖨 Print</button>
+  </form>
+</div>
+<div class="print-only" style="display:none"><h1>Monthly Treasurer's Report — {{ end|date:"F Y" }}</h1></div>
+
+{% if ai_summary %}<div class="ai">✦ {{ ai_summary }}</div>{% endif %}
+
+<!-- 1. Collections summary -->
+<div class="sec"><div class="sh"><div class="n">1 · Collections summary</div><div class="d">{{ notes.collections }}</div></div>
+<div class="bd"><div class="kpis">
+  <div class="kpi"><div class="l">Total collections</div><div class="v">{{ collections.total|floatformat:0|intcomma }}</div></div>
+  <div class="kpi"><div class="l">Trust funds</div><div class="v">{{ collections.trust|floatformat:0|intcomma }}</div></div>
+  <div class="kpi"><div class="l">Local funds</div><div class="v">{{ collections.local|floatformat:0|intcomma }}</div></div>
+</div></div></div>
+
+<div class="grid2">
+<!-- 2. Trust receipted trend -->
+<div class="sec"><div class="sh"><div class="n">2 · Trust funds (receipted) — 4-month trend</div><div class="d">{{ notes.trust_trend }}</div></div>
+<div class="bd"><table><thead><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+{% empty %}<tr><td colspan="5" class="muted">No receipted trust collections.</td></tr>{% endfor %}
+{% if trust_trend.rows %}<tr class="tot"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>{% endif %}
+</tbody></table></div></div>
+
+<!-- 3. LCB sub-account trend -->
+<div class="sec"><div class="sh"><div class="n">3 · LCB sub-accounts — 4-month trend</div><div class="d">{{ notes.lcb_trend }}</div></div>
+<div class="bd"><table><thead><tr><th>Account</th>{% for c in lcb_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in lcb_trend.rows %}<tr><td>{% if r.is_parent %}<strong>{{ r.dept.name }}</strong>{% else %}<span class="muted">↳</span> {{ r.dept.name }}{% endif %}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+{% empty %}<tr><td colspan="5" class="muted">No LCB activity.</td></tr>{% endfor %}
+{% if lcb_trend.rows %}<tr class="tot"><td>Total</td>{% for v in lcb_trend.col_totals %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>{% endif %}
+</tbody></table></div></div>
+</div>
+
+<!-- 4. Yearly trend -->
+<div class="sec"><div class="sh"><div class="n">4 · Five-year trend (year-to-date)</div><div class="d">{{ notes.yearly }}</div></div>
+<div class="bd"><table><thead><tr><th>Year (to {{ end|date:"M" }})</th><th class="num">Collections</th><th class="num">Trust</th><th class="num">Local</th><th class="num">Expenses</th></tr></thead>
+<tbody>{% for y in yearly %}<tr><td>{{ y.year }}{% if y.source == 'history' %} <span class="muted" style="font-size:.7rem">(history)</span>{% endif %}</td>
+<td class="num">{{ y.collection|floatformat:0|intcomma }}</td><td class="num">{{ y.trust|floatformat:0|intcomma }}</td>
+<td class="num">{{ y.local|floatformat:0|intcomma }}</td><td class="num">{{ y.expense|floatformat:0|intcomma }}</td></tr>{% endfor %}</tbody></table></div></div>
+
+<div class="grid2">
+<!-- 5. LCB expenses by category -->
+<div class="sec"><div class="sh"><div class="n">5 · LCB expenses by category</div><div class="d">{{ notes.lcb_expenses }}</div></div>
+<div class="bd"><table><tbody>{% for c in lcb_expenses %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|floatformat:0|intcomma }}</td></tr>
+{% empty %}<tr><td class="muted">No LCB expenses this month.</td></tr>{% endfor %}</tbody></table></div></div>
+
+<!-- 6. Local funds breakdown -->
+<div class="sec"><div class="sh"><div class="n">6 · Local funds (with activity)</div><div class="d">{{ notes.local_funds }}</div></div>
+<div class="bd"><table><thead><tr><th>Fund</th><th class="num">Received</th><th class="num">Balance</th></tr></thead>
+<tbody>{% for r in local_funds %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td><td class="num">{{ r.closing|floatformat:0|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="3" class="muted">No local-fund activity.</td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+
+<div class="grid2">
+<!-- 7. Income statement -->
+<div class="sec"><div class="sh"><div class="n">7 · Income &amp; expenditure statement</div><div class="d">{{ notes.income_stmt }}</div></div>
+<div class="bd"><table><tbody>
+  <tr><td>Local income</td><td class="num">{{ income_stmt.income|floatformat:0|intcomma }}</td></tr>
+  <tr><td>Operating expenses</td><td class="num">({{ income_stmt.expense|floatformat:0|intcomma }})</td></tr>
+  <tr class="tot"><td>Operating surplus / (deficit)</td><td class="num">{{ income_stmt.surplus|floatformat:0|intcomma }}</td></tr>
+  <tr><td class="muted">Capital expenditure (separate)</td><td class="num muted">{{ income_stmt.capital|floatformat:0|intcomma }}</td></tr>
+</tbody></table></div></div>
+
+<!-- 8. Statement of financial position -->
+<div class="sec"><div class="sh"><div class="n">8 · Statement of financial position</div><div class="d">{{ notes.sofp }}</div></div>
+<div class="bd"><table><tbody>
+  <tr><td>Cash &amp; bank</td><td class="num">{{ sofp.cash|floatformat:0|intcomma }}</td></tr>
+  <tr><td>Property (net book value)</td><td class="num">{{ sofp.nbv|floatformat:0|intcomma }}</td></tr>
+  <tr class="tot"><td>Total assets</td><td class="num">{{ sofp.total_assets|floatformat:0|intcomma }}</td></tr>
+  <tr><td>Trust payable to field</td><td class="num">{{ sofp.trust_payable|floatformat:0|intcomma }}</td></tr>
+  <tr><td>Payables &amp; accruals</td><td class="num">{{ sofp.payables|add:sofp.accruals|floatformat:0|intcomma }}</td></tr>
+  <tr class="tot"><td>Net assets (local funds)</td><td class="num">{{ sofp.net_assets|floatformat:0|intcomma }}</td></tr>
+</tbody></table></div></div>
+</div>
+
+<div class="grid2">
+<!-- 9 & 10. Cash flow statement -->
+<div class="sec"><div class="sh"><div class="n">9 · Cash-flow statement</div><div class="d">{{ notes.cashflow }}</div></div>
+<div class="bd"><table><tbody>
+  <tr><td>Receipts (local + trust)</td><td class="num">{{ cashflow.local_receipts|add:cashflow.trust_receipts|floatformat:0|intcomma }}</td></tr>
+  <tr><td>Operating expenses paid</td><td class="num">({{ cashflow.operating_exp|floatformat:0|intcomma }})</td></tr>
+  <tr><td>Remittances to field</td><td class="num">({{ cashflow.remittances|floatformat:0|intcomma }})</td></tr>
+  <tr class="tot"><td>Net operating cash</td><td class="num">{{ cashflow.net_operating|floatformat:0|intcomma }}</td></tr>
+  <tr><td>Investing (property)</td><td class="num">({{ cashflow.capital|floatformat:0|intcomma }})</td></tr>
+  <tr class="tot"><td>Net change in cash</td><td class="num">{{ cashflow.net_change|floatformat:0|intcomma }}</td></tr>
+  <tr><td class="muted">Cash at start → end</td><td class="num muted">{{ cashflow.cash_open|floatformat:0|intcomma }} → {{ cashflow.cash_close|floatformat:0|intcomma }}</td></tr>
+</tbody></table>
+<a class="link no-print" href="{% url 'report_cash_flow' %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">Full cash-flow statement →</a></div></div>
+
+<!-- 12. Recent reconciliation -->
+<div class="sec"><div class="sh"><div class="n">10 · Latest bank reconciliation</div><div class="d">{{ notes.recon }}</div></div>
+<div class="bd">{% if recon %}<table><tbody>
+  <tr><td>Statement date</td><td class="num">{{ recon.statement_date|date:"d M Y" }}</td></tr>
+  <tr><td>Bank balance</td><td class="num">{{ recon.bank_balance|floatformat:0|intcomma }}</td></tr>
+  {% if recon.is_balanced %}<tr><td colspan="2"><span class="pill pill-green">✓ Reconciled</span></td></tr>{% endif %}
+</tbody></table>
+<a class="link no-print" href="{% url 'reconciliation_detail' recon.id %}">Open reconciliation →</a>
+{% else %}<div class="muted">No bank reconciliation recorded yet for this period.</div>{% endif %}</div></div>
+</div>
+
+<p class="help no-print u-mt">Figures are drawn live from the ledger and tie to the detailed reports. Each section above also exists as its own full report under Reports.</p>
+</div>
+{% endblock %}

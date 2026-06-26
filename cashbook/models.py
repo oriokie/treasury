@@ -82,6 +82,10 @@ class Expense(models.Model):
                                     on_delete=models.SET_NULL,
                                     related_name="expenses_second_approved",
                                     help_text="Second treasurer who co-approved a high-value expense.")
+    rejected_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                    on_delete=models.SET_NULL,
+                                    related_name="expenses_rejected",
+                                    help_text="Treasurer who rejected the claim (kept distinct from approver).")
     paid_date = models.DateField(null=True, blank=True)
 
     bank_transaction = models.ForeignKey("giving.Transaction", null=True, blank=True,

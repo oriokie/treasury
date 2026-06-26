@@ -1,0 +1,33 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}SMS dev groups · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>SMS {% if group %}— {{ group.label }}{% else %}— all development groups{% endif %}</h1>
+  <div class="sub">Send a message to development-group members</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'department_list' %}">← Funds</a>
+</div>
+
+<div class="btn-row no-print u-mt u-mb">
+  <a class="btn btn-xs {% if not group %}btn-brass{% else %}btn-ghost{% endif %}" href="{% url 'dev_group_sms' %}">All groups</a>
+  {% for g in groups %}<a class="btn btn-xs {% if group.id == g.id %}btn-brass{% else %}btn-ghost{% endif %}" href="{% url 'dev_group_sms_one' g.id %}">{{ g.label }}</a>{% endfor %}
+</div>
+
+{% if not sms_enabled %}<div class="info-panel">SMS is currently disabled. Enable it under Settings → SMS to send. You can still preview recipients below.</div>{% endif %}
+
+<form method="post" action="{% if group %}{% url 'dev_group_sms_one' group.id %}{% else %}{% url 'dev_group_sms' %}{% endif %}"
+      onsubmit="return confirm('Send this SMS to {{ recipient_count }} member(s)?');">{% csrf_token %}
+  <div class="card u-mt"><div class="hd">Message</div><div class="bd">
+    <p class="help u-mt-0">Placeholders: <span class="mono">{name}</span>, <span class="mono">{group}</span>, <span class="mono">{church}</span> — filled per member.</p>
+    <textarea name="template" rows="3" class="field" style="width:100%">{{ template }}</textarea>
+    {% if sms_enabled %}<div class="btn-row u-mt-sm"><button class="btn btn-brass">✉ Send to {{ recipient_count }} member{{ recipient_count|pluralize }}</button></div>
+    {% else %}<div class="help u-mt-sm">Enable SMS to send.</div>{% endif %}
+  </div></div>
+</form>
+
+<div class="card u-mt"><div class="hd u-between">Recipients <span class="muted">{{ recipient_count }}</span></div><div class="bd bd-flush">
+  <table class="ledger compact"><thead><tr><th>Member</th><th>Group</th><th>Phone</th></tr></thead><tbody>
+  {% for m in recipients %}<tr><td>{{ m.name }}</td><td class="muted">{{ m.dev_group.label }}</td><td class="mono">{{ m.phone }}</td></tr>
+  {% empty %}<tr><td colspan="3" class="empty">No members with a phone in {% if group %}this group{% else %}any development group{% endif %}.</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+<div class="help u-mt-0">Members without a phone on file are skipped.</div>
+{% endblock %}

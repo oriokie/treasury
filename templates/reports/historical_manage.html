@@ -5,6 +5,44 @@
   <div class="sub">Prior-year totals for trend comparison. Closed years are captured automatically; add earlier years (e.g. 2025) by hand here.</div></div>
   <a class="btn btn-ghost" href="{% url 'report_annual' %}">← Back to annual report</a></div>
 
+<div class="card u-mt"><div class="hd">Monthly history <span class="muted">(for month-on-month trends)</span></div><div class="bd">
+  <p class="help u-mt-0">Enter figures per month to unlock seasonality and trend analysis. When a year has monthly rows, its yearly totals below are computed from them automatically.</p>
+  <div class="btn-row u-mb">
+    <a class="btn btn-ghost btn-sm" href="?sample=1">⬇ Download Excel sample</a>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="document.getElementById('imp').style.display='block'">⬆ Import from Excel</button>
+  </div>
+  <form id="imp" method="post" enctype="multipart/form-data" style="display:none" class="u-mb">{% csrf_token %}
+    <input type="hidden" name="action" value="import">
+    <div class="row" style="display:flex;gap:.5rem;align-items:center">
+      <input type="file" name="file" accept=".xlsx" required class="field">
+      <button class="btn btn-sm">Import</button>
+    </div>
+    <div class="help">Columns: Year · Month (1–12) · Collection · Trust fund · Expenditure. Re-importing a month overwrites it.</div>
+  </form>
+
+  {% if month_rows %}
+  <table class="ledger compact"><thead><tr><th>Year</th><th class="num">Months</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th></tr></thead><tbody>
+    {% for r in month_rows %}<tr>
+      <td><strong>{{ r.year }}</strong></td><td class="num mono">{{ r.count }}/12</td>
+      <td class="num mono">{{ r.collection|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.trust_fund|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.expenditure|floatformat:0|intcomma }}</td>
+    </tr>{% endfor %}
+  </tbody></table>
+  {% endif %}
+
+  <details class="u-mt"><summary class="link">Add / update a single month</summary>
+  <form method="post" class="u-mt-sm"><div class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.5rem">{% csrf_token %}
+    <input type="hidden" name="action" value="save_month">
+    <div class="form-row"><label>Year</label><input class="field mono" name="year" inputmode="numeric" required></div>
+    <div class="form-row"><label>Month</label><select name="month" class="field">{% for m in months %}<option value="{{ forloop.counter }}">{{ m }}</option>{% endfor %}</select></div>
+    <div class="form-row"><label>Collection</label><input class="field num mono" name="collection" value="0"></div>
+    <div class="form-row"><label>Trust fund</label><input class="field num mono" name="trust_fund" value="0"></div>
+    <div class="form-row"><label>Expenditure</label><input class="field num mono" name="expenditure" value="0"></div>
+  </div><div class="btn-row u-mt-sm"><button class="btn">Save month</button></div></form>
+  </details>
+</div></div>
+
 <div class="card u-mt"><div class="hd">Recorded years</div><div class="bd">
   <table class="ledger"><thead><tr><th>Year</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th><th>Note</th><th></th></tr></thead>
   <tbody>

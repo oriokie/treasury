@@ -30,6 +30,7 @@ urlpatterns = [
     path("rules/import/", views.RuleImportView.as_view(), name="rule_import"),
     path("rules/new/", views.RuleCreateView.as_view(), name="rule_create"),
     path("rules/<int:pk>/delete/", views.RuleDeleteView.as_view(), name="rule_delete"),
+    path("rules/<int:pk>/edit/", views.RuleEditView.as_view(), name="rule_edit"),
     path("debits/", views.DebitQueueView.as_view(), name="debit_queue"),
     path("debits/<int:pk>/resolve/", views.DebitResolveView.as_view(), name="debit_resolve"),
 ]

@@ -138,6 +138,7 @@ class DevGroupUnassignedView(TreasurerRequiredMixin, TemplateView):
             EnvelopeLine.objects.filter(transaction_id__in=ids,
                                         dev_group__isnull=True).update(dev_group=grp)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('reports/views.py')
             pass
         messages.success(request, f"Assigned {n} development contribution(s) to {grp.label}.")
         return redirect("dev_unassigned")
@@ -608,28 +609,137 @@ class AnnualSummaryView(ReadAccessMixin, TemplateView):
 
 
 class HistoricalYearManageView(TreasurerRequiredMixin, TemplateView):
-    """Add, edit, or remove prior-year comparison figures (e.g. 2025). Closed
-    years populate automatically; this is for years entered by hand."""
+    """Add, edit, or remove prior-year comparison figures, now with per-month
+    detail. When a year has monthly rows, its yearly totals are computed from
+    them (so the two always agree); a year with no months keeps the figure typed
+    by hand. Monthly data can be imported from Excel for fast back-filling and
+    enables month-on-month trend analysis."""
     template_name = "reports/historical_manage.html"
 
+    MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+              "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    @staticmethod
+    def _recompute_year(year):
+        """Set a HistoricalYear's totals from its months, if any exist."""
+        from decimal import Decimal
+        from django.db.models import Sum
+        from core.models import HistoricalYear, HistoricalMonth
+        months = HistoricalMonth.objects.filter(year=year)
+        if not months.exists():
+            return
+        agg = months.aggregate(c=Sum("collection"), t=Sum("trust_fund"),
+                               e=Sum("expenditure"))
+        HistoricalYear.objects.update_or_create(year=year, defaults=dict(
+            collection=agg["c"] or Decimal(0), trust_fund=agg["t"] or Decimal(0),
+            expenditure=agg["e"] or Decimal(0), note="Computed from monthly records"))
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("sample"):
+            return self._sample_xlsx()
+        return super().get(request, *args, **kwargs)
+
+    def _sample_xlsx(self):
+        import io
+        import datetime as _d
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from django.http import HttpResponse
+        wb = openpyxl.Workbook()
+        ws = wb.active; ws.title = "Monthly history"
+        head = ["Year", "Month (1-12)", "Collection", "Trust fund", "Expenditure"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            cell = ws.cell(1, c)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1F5F4F")
+            cell.alignment = Alignment(horizontal="center")
+        # a couple of illustrative rows for last year
+        ly = _d.date.today().year - 1
+        for m, coll, tr, ex in [(1, 120000, 70000, 45000), (2, 98000, 60000, 52000)]:
+            ws.append([ly, m, coll, tr, ex])
+        for col, w in zip("ABCDE", (8, 14, 14, 14, 14)):
+            ws.column_dimensions[col].width = w
+        info = wb.create_sheet("How to use")
+        for line in [
+            "One row per month. Year and Month (1-12) identify the period.",
+            "Collection = total receipts that month (all funds).",
+            "Trust fund = the portion that is trust/remittable.",
+            "Expenditure = total spending that month.",
+            "Re-importing a month overwrites that month. Yearly totals are computed automatically.",
+        ]:
+            info.append([line])
+        info.column_dimensions["A"].width = 90
+        buf = io.BytesIO(); wb.save(buf)
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = 'attachment; filename="monthly_history_template.xlsx"'
+        return resp
+
     def get_context_data(self, **kwargs):
-        from core.models import HistoricalYear
+        from collections import defaultdict
+        from core.models import HistoricalYear, HistoricalMonth
         ctx = super().get_context_data(**kwargs)
         ctx["years"] = HistoricalYear.objects.all()
+        by_year = defaultdict(lambda: [None] * 13)
+        for hm in HistoricalMonth.objects.all():
+            by_year[hm.year][hm.month] = hm
+        month_rows = []
+        for yr in sorted(by_year, reverse=True):
+            cells = by_year[yr]
+            present = [c for c in cells[1:] if c]
+            month_rows.append({
+                "year": yr, "cells": cells[1:],
+                "collection": sum((c.collection for c in present), 0),
+                "trust_fund": sum((c.trust_fund for c in present), 0),
+                "expenditure": sum((c.expenditure for c in present), 0),
+                "count": len(present)})
+        ctx["month_rows"] = month_rows
+        ctx["months"] = self.MONTHS[1:]
         return ctx
 
     def post(self, request, *args, **kwargs):
         from decimal import Decimal, InvalidOperation
-        from core.models import HistoricalYear
+        from core.models import HistoricalYear, HistoricalMonth
         action = request.POST.get("action")
+
+        def dec(k):
+            return Decimal(str(request.POST.get(k) or "0").replace(",", ""))
+
         if action == "delete":
             HistoricalYear.objects.filter(pk=request.POST.get("pk")).delete()
             messages.success(request, "Historical year removed.")
             return redirect("historical_manage")
+
+        if action == "save_month":
+            try:
+                year = int(request.POST.get("year"))
+                month = int(request.POST.get("month"))
+                assert 1 <= month <= 12
+            except (TypeError, ValueError, AssertionError):
+                messages.error(request, "Enter a valid year and month (1–12).")
+                return redirect("historical_manage")
+            HistoricalMonth.objects.update_or_create(
+                year=year, month=month, defaults=dict(
+                    collection=dec("collection"), trust_fund=dec("trust_fund"),
+                    expenditure=dec("expenditure")))
+            self._recompute_year(year)
+            messages.success(request, f"Saved {self.MONTHS[month]} {year}.")
+            return redirect("historical_manage")
+
+        if action == "delete_month":
+            hm = HistoricalMonth.objects.filter(pk=request.POST.get("pk")).first()
+            if hm:
+                yr = hm.year; hm.delete(); self._recompute_year(yr)
+                messages.success(request, "Month removed.")
+            return redirect("historical_manage")
+
+        if action == "import":
+            return self._import(request)
+
+        # save a whole-year figure by hand (only when there are no months for it)
         try:
             year = int(request.POST.get("year"))
-            def dec(k):
-                return Decimal(str(request.POST.get(k) or "0").replace(",", ""))
             HistoricalYear.objects.update_or_create(
                 year=year, defaults=dict(collection=dec("collection"),
                     trust_fund=dec("trust_fund"), expenditure=dec("expenditure"),
@@ -637,6 +747,44 @@ class HistoricalYearManageView(TreasurerRequiredMixin, TemplateView):
             messages.success(request, f"Saved historical figures for {year}.")
         except (TypeError, ValueError, InvalidOperation):
             messages.error(request, "Enter a valid year and numeric amounts.")
+        return redirect("historical_manage")
+
+    def _import(self, request):
+        from decimal import Decimal, InvalidOperation
+        import openpyxl
+        from core.models import HistoricalMonth
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose an Excel file to import.")
+            return redirect("historical_manage")
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("historical import")
+            messages.error(request, "That file couldn't be read as an Excel workbook.")
+            return redirect("historical_manage")
+        ws = wb["Monthly history"] if "Monthly history" in wb.sheetnames else wb.active
+        n = 0; years = set()
+        for i, row in enumerate(ws.iter_rows(values_only=True)):
+            if i == 0 or row is None:
+                continue
+            try:
+                year = int(row[0]); month = int(row[1])
+                if not (1 <= month <= 12):
+                    continue
+                def d(v):
+                    return Decimal(str(v or "0").replace(",", ""))
+                HistoricalMonth.objects.update_or_create(
+                    year=year, month=month, defaults=dict(
+                        collection=d(row[2]), trust_fund=d(row[3]),
+                        expenditure=d(row[4])))
+                years.add(year); n += 1
+            except (TypeError, ValueError, InvalidOperation, IndexError):
+                continue
+        for yr in years:
+            self._recompute_year(yr)
+        messages.success(request, f"Imported {n} monthly record(s) across "
+                                  f"{len(years)} year(s). Yearly totals updated.")
         return redirect("historical_manage")
 
 
@@ -687,6 +835,7 @@ class AuditLogView(ReadAccessMixin, TemplateView):
                 try:
                     obj = str(h.instance)
                 except Exception:
+                    from core.utils import log_exception as _lx; _lx('reports/views.py')
                     obj = f"{name} #{h.id}"
                 uname = getattr(h.history_user, "username", "") or "system"
                 if q and q not in (obj + " " + uname + " " + name).lower():
@@ -935,6 +1084,7 @@ def _repost_to_ledger(expenses=None):
         if posting.chart_ready():
             posting.rebuild()
     except Exception:
+        from core.utils import log_exception as _lx; _lx('reports/views.py')
         pass
 
 
@@ -1461,6 +1611,7 @@ class BoardReportView(PeriodMixin, TemplateView):
             asset_nbv = sum((a.net_book_value(e) for a in FixedAsset.objects.filter(active=True)),
                             Decimal(0))
         except Exception:
+            from core.utils import log_exception as _lx; _lx('reports/views.py')
             asset_nbv = Decimal(0)
         trust_liab = ctx["trust_outstanding"]
         total_assets = cash_bank + asset_nbv
@@ -1792,6 +1943,7 @@ class FinancialPositionView(ReadAccessMixin, TemplateView):
                     "cash_on_hand": cash_on_hand, "advances": advances,
                     "pending": pending,
                     "trust_payable": trust_payable, "local_funds": local_funds,
+                    "trust_total_payable": trust_payable + pending,
                     "unallocated": unallocated, "allocated": allocated,
                     "net_assets": net_assets, "total_assets": total_assets,
                     "total_liab_and_na": total_liab_and_na,
@@ -1906,8 +2058,12 @@ class StatementOfCashFlowsView(PeriodMixin, TemplateView):
 
         remittances = _sum(Expense.objects.filter(eff, category=Expense.Category.REMITTANCE))
         nonremit = Expense.objects.filter(eff).exclude(category=Expense.Category.REMITTANCE)
-        operating_exp = _sum(nonremit.filter(expenditure_type=Expense.ExpenditureType.RECURRENT))
+        total_nonremit = _sum(nonremit)
         capital = _sum(nonremit.filter(expenditure_type=Expense.ExpenditureType.CAPITAL))
+        # everything non-remittance that isn't explicitly capital is operating —
+        # this way the three buckets always sum to total expenses, so the
+        # statement reconciles even if some rows have no expenditure type set.
+        operating_exp = total_nonremit - capital
 
         net_operating = local_receipts + trust_receipts - operating_exp - remittances
         net_investing = -capital
@@ -2145,15 +2301,36 @@ class BankPositionView(ReadAccessMixin, TemplateView):
             s=Sum("amount"))["s"] or Decimal(0)
         debits = bank.filter(direction=Transaction.Direction.DEBIT).aggregate(
             s=Sum("amount"))["s"] or Decimal(0)
-        system_balance = opening + credits - debits
+        # Bank-paid expenses that AREN'T already represented by a bank DEBIT row
+        # (i.e. entered directly with method=Bank, not resolved from the debit
+        # queue). These are real outflows from the bank account and must reduce the
+        # system bank balance, otherwise it overstates the cash at bank. Expenses
+        # linked to a bank_transaction are excluded — they're already in `debits`.
+        from cashbook.models import Expense
+        bank_exp_qs = Expense.objects.filter(
+            method=Expense.Method.BANK, status=Expense.Status.PAID,
+            bank_transaction__isnull=True)
+        if cutoff:
+            bank_exp_qs = bank_exp_qs.filter(date__lte=cutoff)
+        bank_expenses = bank_exp_qs.aggregate(s=Sum("amount"))["s"] or Decimal(0)
+        system_balance = opening + credits - debits - bank_expenses
 
         ctx["opening"] = opening
         ctx["bank_credits"] = credits
         ctx["bank_debits"] = debits
+        ctx["bank_expenses"] = bank_expenses
         ctx["system_balance"] = system_balance
         ctx["statement_balance"] = stmt.stmt_closing_balance if stmt else None
         ctx["difference"] = ((stmt.stmt_closing_balance - system_balance)
                              if stmt else None)
+
+        # real-time cleared balance from the CBS feed (independent of an imported
+        # statement) — often more current than the last uploaded statement.
+        from statements.services.importer import latest_cleared_balance
+        live = latest_cleared_balance()
+        ctx["live_balance"] = live
+        ctx["live_difference"] = ((live["balance"] - system_balance)
+                                  if live else None)
 
         # if there is a gap, surface candidates: recent bank rows that look
         # suspicious (unallocated, in review, or unconfirmed) which often explain
@@ -2291,3 +2468,152 @@ class FundThankSmsView(ReadAccessMixin, TemplateView):
             messages.error(request, "No messages were sent. "
                                     + ("Check SMS settings." if failed else "No recipients with a phone."))
         return redirect(f"{reverse('report_fund', kwargs={'pk': dept.id})}?start={start}&end={end}")
+
+
+class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
+    """Comprehensive monthly Treasurer's Report: collections, trust & LCB trends,
+    a multi-year trend, expense and local-fund breakdowns, the income statement,
+    statement of financial position, cash-flow statements, and the latest bank
+    reconciliation — each with a short plain-language note. Compact, board-ready."""
+    template_name = "reports/monthly_treasurer.html"
+
+    def get_context_data(self, **kwargs):
+        import datetime as _dt
+        from decimal import Decimal
+        from django.db.models import Sum
+        from reports.services import treasurer as T
+        ctx = super().get_context_data(**kwargs)
+
+        # month selection (default current month)
+        try:
+            as_of = _dt.date.fromisoformat(self.request.GET.get("as_of", ""))
+        except ValueError:
+            as_of = _dt.date.today()
+        s, e = T.month_bounds(as_of)
+        ctx["as_of"] = as_of; ctx["start"] = s; ctx["end"] = e
+        ctx["church"] = SiteConfig.get().church_name
+
+        # 1) collections summary
+        csum = T.collections_summary(s, e)
+        rows = csum["rows"]
+        ctx["collections"] = csum
+
+        # 2) trust receipted trend (this + past 3 months)
+        ctx["trust_trend"] = T.trust_receipted_trend(as_of, months=4)
+        # 3) LCB sub-account trend
+        ctx["lcb_trend"] = T.lcb_subaccount_trend(as_of, months=4)
+        # 4) 5-year YTD trend
+        ctx["yearly"] = T.yearly_trend(as_of, years=5)
+        # 5) LCB expense categories this month
+        ctx["lcb_expenses"] = T.lcb_expense_categories(s, e)
+        # 6) local funds with amounts, sorted
+        ctx["local_funds"] = T.local_funds_breakdown(rows)
+
+        # 7) income statement (recurrent basis)
+        paid = T.PAID
+        income = (Transaction.objects.confirmed_credits().filter(
+            date__gte=s, date__lte=e, department__is_trust=False,
+            excluded_from_income=False).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        op_exp = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid)
+                  .exclude(category=Expense.Category.REMITTANCE)
+                  .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
+                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        capital = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid,
+                   expenditure_type=Expense.ExpenditureType.CAPITAL)
+                   .exclude(category=Expense.Category.REMITTANCE)
+                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        ctx["income_stmt"] = {"income": income, "expense": op_exp,
+                              "surplus": income - op_exp, "capital": capital}
+
+        # 8) statement of financial position (summary, period end)
+        sofp_rows = balances.department_summary(None, e)
+        cash = sum((r["closing"] for r in sofp_rows), Decimal(0))
+        trust_payable = sum((r["closing"] for r in sofp_rows if r["is_trust"]), Decimal(0))
+        local_funds_total = cash - trust_payable
+        from cashbook.views import open_payables_total, open_accruals_total
+        payables = open_payables_total(e); accruals = open_accruals_total(e)
+        pending = balances.pending_receipts_total(e)
+        nbv = Decimal(0)
+        try:
+            from assets.models import nbv_total
+            nbv = nbv_total(e)
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer sofp")
+        ctx["sofp"] = {
+            "cash": cash, "nbv": nbv, "trust_payable": trust_payable,
+            "pending": pending, "payables": payables, "accruals": accruals,
+            "total_assets": cash + nbv + pending,
+            "total_liabilities": trust_payable + payables + accruals + pending,
+            "local_funds": local_funds_total,
+            "net_assets": local_funds_total + nbv - payables - accruals}
+
+        # 9 & 10) cash-flow statements (operating / investing / financing) for the month
+        local_receipts = sum((r["receipts"] for r in rows if not r["is_trust"]), Decimal(0))
+        trust_receipts = sum((r["receipts"] for r in rows if r["is_trust"]), Decimal(0))
+        remittances = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid,
+                       category=Expense.Category.REMITTANCE)
+                       .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        net_operating = local_receipts + trust_receipts - op_exp - remittances
+        cash_open = sum((r["opening"] for r in rows), Decimal(0))
+        ctx["cashflow"] = {
+            "local_receipts": local_receipts, "trust_receipts": trust_receipts,
+            "operating_exp": op_exp, "remittances": remittances,
+            "net_operating": net_operating, "capital": capital,
+            "net_investing": -capital, "net_change": net_operating - capital,
+            "cash_open": cash_open, "cash_close": cash_open + net_operating - capital}
+
+        # 12) most recent reconciliation
+        ctx["recon"] = T.recent_reconciliation(e)
+
+        # short notes per section (AI narrative if available, else concise text)
+        ctx["notes"] = self._notes(ctx)
+        ctx["ai_summary"] = self._ai_summary(ctx)
+        return ctx
+
+    def _notes(self, ctx):
+        """Concise, accurate one-liners describing each section."""
+        f = ctx["end"].strftime("%B %Y")
+        return {
+            "collections": f"Everything received in {f}, split between trust funds "
+                           "(remitted to the field) and local funds (kept by the church).",
+            "trust_trend": "Receipted trust collections over the last four months — the "
+                           "trend in what is owed onward to the field.",
+            "lcb_trend": "Local Church Budget and its sub-accounts month by month, so you "
+                         "can see which areas are growing or slowing.",
+            "yearly": "Year-to-date totals for the same point in each of the last five "
+                      "years, for a like-for-like long-term comparison.",
+            "lcb_expenses": f"How the Local Church Budget was spent in {f}, by category.",
+            "local_funds": "Local funds with activity this period, largest first.",
+            "income_stmt": "Local income less operating expenses for the month — the "
+                           "church's surplus or deficit (capital spend shown separately).",
+            "sofp": "What the church owns and owes at month-end; trust funds are a "
+                    "liability owed to the field, not the church's own money.",
+            "cashflow": "How cash actually moved this month — from operations, into "
+                        "property (investing), and the net change in cash held.",
+            "recon": "The latest check that the cash book agrees with the bank statement.",
+        }
+
+    def _ai_summary(self, ctx):
+        """An AI-written headline for the month, with a rule-based fallback."""
+        try:
+            from core.services.assistant import _llm_call
+            cfg = SiteConfig.get()
+            if not getattr(cfg, "llm_enabled", False):
+                raise RuntimeError("assistant off")
+            c = ctx["collections"]; isr = ctx["income_stmt"]
+            prompt = (
+                "Write 2 short sentences (max 45 words) summarising a church's monthly "
+                "treasury figures for a board. Be factual and encouraging, no preamble.\n"
+                f"Month: {ctx['end']:%B %Y}. Total collections: {c['total']:,.0f}. "
+                f"Trust: {c['trust']:,.0f}. Local: {c['local']:,.0f}. "
+                f"Operating surplus/(deficit): {isr['surplus']:,.0f}.")
+            txt, err = _llm_call(prompt, cfg, context="(monthly treasurer summary)")
+            if txt and not err:
+                return txt.strip()
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer ai")
+        c = ctx["collections"]; isr = ctx["income_stmt"]
+        verdict = "a surplus" if isr["surplus"] >= 0 else "a deficit"
+        return (f"In {ctx['end']:%B %Y} the church received {c['total']:,.0f} "
+                f"({c['trust']:,.0f} trust, {c['local']:,.0f} local) and recorded "
+                f"{verdict} of {abs(isr['surplus']):,.0f} on operations.")

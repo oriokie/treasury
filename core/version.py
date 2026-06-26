@@ -38,6 +38,36 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.69.0": "A redesigned, board-ready Monthly Treasurer's Report (Reports → Monthly Treasurer's "
+              "Report) pulls everything onto one compact page: collections summary, a four-month trust "
+              "and LCB sub-account trend, a five-year year-to-date trend, LCB expense and local-fund "
+              "breakdowns, the income statement, financial position, cash-flow statement and the latest "
+              "bank reconciliation — each with a short plain-language note and an AI-written headline. "
+              "Historical comparison data can now be kept per month (and imported from Excel, with a "
+              "sample provided), with yearly totals computed automatically. And the financial position "
+              "now splits trust funds payable into receipted and not-yet-receipted, and explains the "
+              "general (unallocated) and Board-designated (allocated) fund classes.",
+    "1.68.0": "Reporting accuracy fixes. The bank position now subtracts bank-paid expenses entered "
+              "directly (not just debit rows) so it no longer overstates the balance, and it shows the "
+              "live cleared balance from the real-time bank feed alongside the imported statement. The "
+              "Statement of Cash Flows always reconciles now, even if a payment has no capital/recurrent "
+              "tag. And duplicate-offering detection is smarter: the two halves of a split offering are "
+              "no longer mistaken for duplicates, and bank+envelope matches must now be close in time — "
+              "removing the false positives from two genuine same-amount gifts weeks apart while still "
+              "catching real double counts.",
+    "1.67.0": "The envelopes page now shows each Sabbath collapsed by default — tap a Sabbath to "
+              "expand its list. Pledge campaigns can now be deleted (only when they have no pledges); "
+              "inter-fund transfers already support a reversing entry. You can now send an SMS to "
+              "development-group members — all groups or one group — with a customizable message. And "
+              "allocation rules are now editable and surfaced under Settings → Channels → “Allocation "
+              "& categories”.",
+    "1.66.0": "Several safety and audit hardening fixes: the bank debit queue now respects locked "
+              "accounting periods (you can no longer post an expense into a closed month through it); "
+              "rejecting an expense records a separate ‘rejected by’ (instead of mislabelling it as "
+              "approved) and notifies the person who submitted the claim; unexpected errors are now "
+              "logged on the server with a full trace rather than only shown as a generic message; and "
+              "the HTMX library is now served from the app itself instead of a public CDN, removing a "
+              "supply-chain risk.",
     "1.65.0": "Collection accounts (e.g. Camp Group 1–22) now receive contributions but are never "
               "selectable for expenses, and a one-click consolidation rolls every sub-account balance "
               "into the parent (with full transfer records; the children zero out but keep their "

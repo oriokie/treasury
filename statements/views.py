@@ -219,6 +219,7 @@ class ReconciliationDetailView(ReadAccessMixin, View):
                 rec.save(update_fields=["book_balance"])
                 messages.success(request, "Cash-book balance updated.")
             except Exception:
+                from core.utils import log_exception as _lx; _lx('statements/views.py')
                 messages.error(request, "Enter a valid book balance.")
         elif action == "recompute_book":
             # refresh the stored cash-book balance from the current ledger, as of
@@ -357,6 +358,7 @@ class AutoAllocationReviewView(DataEntryRequiredMixin, View):
             if posting.chart_ready():
                 posting.rebuild()
         except Exception:
+            from core.utils import log_exception as _lx; _lx('statements/views.py')
             pass
         messages.success(request, f"Confirmed {changed} auto-allocated entr"
                                   f"{'y' if changed == 1 else 'ies'}. They now affect balances.")

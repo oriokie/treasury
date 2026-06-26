@@ -13,8 +13,11 @@
     <tr><td>Opening bank balance</td><td class="num mono">KSh {{ opening|floatformat:2|intcomma }}</td></tr>
     <tr><td>+ Bank/M-Pesa receipts (to {{ stmt.stmt_last_date|date:"d M Y" }})</td><td class="num mono">KSh {{ bank_credits|floatformat:2|intcomma }}</td></tr>
     <tr><td>− Bank payments / debits</td><td class="num mono">KSh {{ bank_debits|floatformat:2|intcomma }}</td></tr>
+    <tr><td>− Bank-paid expenses (not on a debit row)</td><td class="num mono">KSh {{ bank_expenses|floatformat:2|intcomma }}</td></tr>
     <tr style="border-top:2px solid var(--line)"><td><strong>System bank balance</strong></td><td class="num mono"><strong>KSh {{ system_balance|floatformat:2|intcomma }}</strong></td></tr>
-    <tr><td>Bank statement closing balance</td><td class="num mono">KSh {{ statement_balance|floatformat:2|intcomma }}</td></tr>
+    {% if statement_balance != None %}<tr><td>Bank statement closing balance{% if stmt %} <span class="muted u-xs">({{ stmt.stmt_last_date|date:"d M Y" }})</span>{% endif %}</td><td class="num mono">KSh {{ statement_balance|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if live_balance %}<tr><td>Live cleared balance <span class="muted u-xs">(bank feed · {{ live_balance.at|date:"d M Y H:i" }})</span></td><td class="num mono">KSh {{ live_balance.balance|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Difference vs live balance</td><td class="num mono"><strong class="{% if live_difference %}text-danger{% endif %}">KSh {{ live_difference|floatformat:2|intcomma }}</strong></td></tr>{% endif %}
     <tr style="border-top:2px solid var(--line)">
       <td><strong>Difference</strong></td>
       <td class="num mono"><strong class="{% if difference %}text-danger{% endif %}">KSh {{ difference|floatformat:2|intcomma }}</strong></td></tr>

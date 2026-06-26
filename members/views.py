@@ -213,6 +213,7 @@ class MemberImportView(DataEntryRequiredMixin, View):
             text = io.TextIOWrapper(f.file, encoding="utf-8-sig")
             reader = csv.DictReader(text)
         except Exception:
+            from core.utils import log_exception as _lx; _lx('members/views.py')
             messages.error(request, "Could not read the CSV.")
             return redirect("member_import")
         groups = {c[0] for c in Member.Group.choices}
