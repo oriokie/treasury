@@ -52,6 +52,17 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["channel_total"] = _ch_total
         ctx["tithe"] = balances.tithe_total(start, end)
 
+        # per-user dashboard widget visibility + order
+        try:
+            from core.models import UserPreference
+            pref = UserPreference.get_for(self.request.user)
+            wlist = pref.merged_widgets() if pref else UserPreference.DEFAULT_WIDGETS
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("dashboard widgets")
+            wlist = []
+        ctx["widget_visible"] = [w["key"] for w in wlist if w.get("visible", True)]
+        ctx["widget_order"] = {w["key"]: i for i, w in enumerate(wlist)}
+
         # live cleared balance from the real-time bank feed (if any)
         try:
             from statements.services.importer import latest_cleared_balance
@@ -1112,3 +1123,113 @@ class OffsiteBackupNowView(TreasurerRequiredMixin, View):
         ok, detail = upload_offsite(filename + ".enc", token.encode("ascii"))
         (messages.success if ok else messages.error)(request, detail)
         return redirect("settings")
+
+
+# ---------------------------------------------------------------------------
+# Appearance & Preferences (per-user)
+# ---------------------------------------------------------------------------
+class PreferencesView(LoginRequiredMixin, View):
+    """The Appearance & Preferences page. GET renders the form; POST saves the
+    full form (non-JS fallback). Live changes use PreferenceUpdateView."""
+    template_name = "preferences.html"
+
+    def get(self, request):
+        from core.models import UserPreference
+        from core.forms import UserPreferenceForm
+        pref = UserPreference.get_for(request.user)
+        return render(request, self.template_name, {
+            "form": UserPreferenceForm(instance=pref),
+            "pref": pref,
+            "widgets": pref.merged_widgets(),
+            "accent_presets": UserPreference.ACCENT_PRESETS,
+        })
+
+    def post(self, request):
+        from core.models import UserPreference
+        from core.forms import UserPreferenceForm
+        pref = UserPreference.get_for(request.user)
+        if "reset" in request.POST:
+            pref.reset_to_defaults()
+            messages.success(request, "Preferences reset to defaults.")
+            return redirect("preferences")
+        form = UserPreferenceForm(request.POST, instance=pref)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Preferences saved.")
+            return redirect("preferences")
+        return render(request, self.template_name, {
+            "form": form, "pref": pref, "widgets": pref.merged_widgets(),
+            "accent_presets": UserPreference.ACCENT_PRESETS})
+
+
+class PreferenceUpdateView(LoginRequiredMixin, View):
+    """Lightweight JSON endpoint to persist a single preference (or the widget
+    order) live, without a page reload."""
+    ALLOWED = {
+        "theme", "accent", "accent_custom", "sidebar", "font_size",
+        "layout_width", "card_style", "landing_page", "rows_per_page",
+        "density", "high_contrast", "reduced_motion", "large_targets",
+        "focus_indicators", "toasts_enabled", "toast_duration",
+        "desktop_notifications",
+    }
+    BOOLS = {"high_contrast", "reduced_motion", "large_targets",
+             "focus_indicators", "toasts_enabled", "desktop_notifications"}
+    INTS = {"rows_per_page", "toast_duration"}
+
+    def post(self, request):
+        from django.http import JsonResponse
+        from core.models import UserPreference
+        pref = UserPreference.get_for(request.user)
+        key = request.POST.get("key", "")
+        # widget order / visibility
+        if key == "dashboard_widgets":
+            import json
+            try:
+                data = json.loads(request.POST.get("value", "[]"))
+                cleaned = [{"key": str(w["key"]), "visible": bool(w.get("visible", True))}
+                           for w in data if isinstance(w, dict) and w.get("key")]
+                pref.dashboard_widgets = cleaned
+                pref.save(update_fields=["dashboard_widgets", "updated_at"])
+                return JsonResponse({"ok": True})
+            except Exception:  # noqa: BLE001
+                from core.utils import log_exception as _lx; _lx("pref widget save")
+                return JsonResponse({"ok": False, "error": "bad data"}, status=400)
+        if key not in self.ALLOWED:
+            return JsonResponse({"ok": False, "error": "unknown key"}, status=400)
+        raw = request.POST.get("value", "")
+        if key in self.BOOLS:
+            val = raw in ("1", "true", "True", "on", "yes")
+        elif key in self.INTS:
+            try:
+                val = int(raw)
+            except (TypeError, ValueError):
+                return JsonResponse({"ok": False, "error": "not a number"}, status=400)
+            if key == "rows_per_page":
+                val = max(5, min(200, val))
+            if key == "toast_duration":
+                val = max(2, min(30, val))
+        else:
+            val = raw[:32]
+        setattr(pref, key, val)
+        pref.save(update_fields=[key, "updated_at"])
+        return JsonResponse({"ok": True, "value": val})
+
+
+class PostLoginRedirectView(LoginRequiredMixin, View):
+    """Sends the user to their chosen landing page after login."""
+    def get(self, request):
+        from core.models import UserPreference
+        from django.urls import reverse, NoReverseMatch
+        pref = UserPreference.get_for(request.user)
+        target = (pref.landing_page if pref else "dashboard") or "dashboard"
+        # leaders always land on their scoped dashboard
+        from core import roles
+        if roles.is_leader(request.user) and not request.user.is_superuser:
+            target = "leader_dashboard"
+        valid = {c[0] for c in UserPreference.LANDING_CHOICES} | {"leader_dashboard"}
+        if target not in valid:
+            target = "dashboard"
+        try:
+            return redirect(reverse(target))
+        except NoReverseMatch:
+            return redirect("dashboard")

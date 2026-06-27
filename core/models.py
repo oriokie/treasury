@@ -204,6 +204,12 @@ class SiteConfig(models.Model):
                   "e.g. 'expense, exp, expe = CAMP_{n}' sends EXPENSE1/exp1/expe1 to "
                   "the fund named CAMP_1, EXPENSE30 to CAMP_30, and so on — no need "
                   "for a rule per group. Only applies when that fund exists.")
+    lcb_departments = models.ManyToManyField("departments.Department", blank=True,
+        related_name="+",
+        help_text="The Local Church Budget fund and its sub-accounts. When set, "
+                  "reports use exactly these (plus any of their sub-accounts) as the "
+                  "LCB group, instead of guessing from the name. Leave empty to fall "
+                  "back to matching funds named 'LCB' / 'Local Church Budget'.")
 
     # --- Outgoing email (SMTP) ---
     email_enabled = models.BooleanField(default=False,
@@ -607,3 +613,159 @@ class TelegramProfile(models.Model):
             if prof.user.is_active and hmac.compare_digest(str(prof.pin), pin):
                 return prof.user
         return None
+
+
+class UserPreference(models.Model):
+    """Per-user workspace preferences (appearance, dashboard, tables, a11y,
+    notifications). One row per user; persists across devices."""
+
+    class Theme(models.TextChoices):
+        SYSTEM = "SYSTEM", "System"
+        LIGHT = "LIGHT", "Light"
+        DARK = "DARK", "Dark"
+
+    class Sidebar(models.TextChoices):
+        EXPANDED = "EXPANDED", "Expanded"
+        COMPACT = "COMPACT", "Compact"
+        ICON = "ICON", "Icon-only"
+
+    class FontSize(models.TextChoices):
+        SMALL = "SMALL", "Small"
+        MEDIUM = "MEDIUM", "Medium"
+        LARGE = "LARGE", "Large"
+
+    class Width(models.TextChoices):
+        BOXED = "BOXED", "Boxed"
+        FULL = "FULL", "Full width"
+
+    class Cards(models.TextChoices):
+        ROUNDED = "ROUNDED", "Rounded"
+        SQUARE = "SQUARE", "Square"
+
+    class Density(models.TextChoices):
+        COMFORTABLE = "COMFORTABLE", "Comfortable"
+        COMPACT = "COMPACT", "Compact"
+
+    # preset accent palette (key -> hex). CUSTOM uses accent_custom.
+    ACCENT_PRESETS = {
+        "forest": "#1f5f4f", "brass": "#b07d2c", "blue": "#2c5d86",
+        "plum": "#6b3b6e", "teal": "#157f7b", "rust": "#a4502b",
+        "indigo": "#3f4d9c", "slate": "#41565f",
+    }
+
+    user = models.OneToOneField("auth.User", on_delete=models.CASCADE,
+                                related_name="preference")
+
+    # --- Appearance ---
+    theme = models.CharField(max_length=8, choices=Theme.choices, default=Theme.SYSTEM)
+    accent = models.CharField(max_length=16, default="forest",
+        help_text="Preset key (e.g. 'forest') or 'custom'.")
+    accent_custom = models.CharField(max_length=7, blank=True, default="",
+        help_text="Custom accent hex when accent='custom'.")
+    sidebar = models.CharField(max_length=10, choices=Sidebar.choices,
+                               default=Sidebar.EXPANDED)
+    font_size = models.CharField(max_length=6, choices=FontSize.choices,
+                                 default=FontSize.MEDIUM)
+    layout_width = models.CharField(max_length=5, choices=Width.choices,
+                                    default=Width.BOXED)
+    card_style = models.CharField(max_length=7, choices=Cards.choices,
+                                  default=Cards.ROUNDED)
+
+    # --- Dashboard ---
+    dashboard_widgets = models.JSONField(default=list, blank=True,
+        help_text="Ordered list of {key, visible} for dashboard widgets.")
+    landing_page = models.CharField(max_length=40, default="dashboard",
+        help_text="URL name to open after login.")
+
+    # --- Tables ---
+    rows_per_page = models.PositiveSmallIntegerField(default=25)
+    density = models.CharField(max_length=11, choices=Density.choices,
+                               default=Density.COMFORTABLE)
+    table_state = models.JSONField(default=dict, blank=True,
+        help_text="Per-table saved columns / sort / filters, keyed by table id.")
+
+    # --- Accessibility ---
+    high_contrast = models.BooleanField(default=False)
+    reduced_motion = models.BooleanField(default=False)
+    large_targets = models.BooleanField(default=False)
+    focus_indicators = models.BooleanField(default=True)
+
+    # --- Notifications ---
+    toasts_enabled = models.BooleanField(default=True)
+    toast_duration = models.PositiveSmallIntegerField(default=6,
+        help_text="Seconds a toast stays on screen.")
+    desktop_notifications = models.BooleanField(default=False)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # landing pages a user may choose (url name -> label)
+    LANDING_CHOICES = [
+        ("dashboard", "Home dashboard"),
+        ("executive", "Executive overview"),
+        ("transaction_list", "Giving ledger"),
+        ("expense_list", "Expenses"),
+        ("report_index", "Reports"),
+        ("report_board", "Monthly Treasurer's Report"),
+        ("reconciliation_list", "Bank reconciliation"),
+    ]
+
+    DEFAULT_WIDGETS = [
+        {"key": "attention", "label": "Needs attention", "visible": True},
+        {"key": "kpis", "label": "Key figures", "visible": True},
+        {"key": "sabbath", "label": "Latest Sabbath snapshot", "visible": True},
+        {"key": "charts", "label": "Income & expense charts", "visible": True},
+        {"key": "funds", "label": "Fund balances", "visible": True},
+        {"key": "trend", "label": "Multi-year trend", "visible": True},
+        {"key": "recent", "label": "Recent imports", "visible": True},
+    ]
+
+    def __str__(self):
+        return f"Preferences for {self.user}"
+
+    @classmethod
+    def get_for(cls, user):
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+        pref, created = cls.objects.get_or_create(user=user)
+        if created or not pref.dashboard_widgets:
+            pref.dashboard_widgets = [dict(w) for w in cls.DEFAULT_WIDGETS]
+            pref.save(update_fields=["dashboard_widgets"])
+        return pref
+
+    @property
+    def accent_hex(self):
+        if self.accent == "custom" and self.accent_custom:
+            return self.accent_custom
+        return self.ACCENT_PRESETS.get(self.accent, self.ACCENT_PRESETS["forest"])
+
+    def merged_widgets(self):
+        """Saved widget order/visibility, reconciled with the current default set
+        (new widgets appended, removed ones dropped)."""
+        saved = {w.get("key"): w for w in (self.dashboard_widgets or [])}
+        out, seen = [], set()
+        for w in (self.dashboard_widgets or []):
+            k = w.get("key")
+            if k and any(d["key"] == k for d in self.DEFAULT_WIDGETS) and k not in seen:
+                label = next(d["label"] for d in self.DEFAULT_WIDGETS if d["key"] == k)
+                out.append({"key": k, "label": label,
+                            "visible": bool(w.get("visible", True))})
+                seen.add(k)
+        for d in self.DEFAULT_WIDGETS:
+            if d["key"] not in seen:
+                out.append(dict(d))
+        return out
+
+    def visible_widget_keys(self):
+        return [w["key"] for w in self.merged_widgets() if w["visible"]]
+
+    def reset_to_defaults(self):
+        f = self._meta
+        for name in ("theme", "accent", "accent_custom", "sidebar", "font_size",
+                     "layout_width", "card_style", "landing_page", "rows_per_page",
+                     "density", "high_contrast", "reduced_motion", "large_targets",
+                     "focus_indicators", "toasts_enabled", "toast_duration",
+                     "desktop_notifications"):
+            setattr(self, name, f.get_field(name).get_default())
+        self.dashboard_widgets = [dict(w) for w in self.DEFAULT_WIDGETS]
+        self.table_state = {}
+        self.save()

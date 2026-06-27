@@ -1,0 +1,172 @@
+{% extends 'base.html' %}{% load humanize static %}
+{% block title %}Appearance & Preferences · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Appearance &amp; Preferences</h1>
+  <div class="sub">Personalise your workspace — these settings follow your account on any device.</div></div>
+  <form method="post" class="u-inline" onsubmit="return confirm('Reset all your preferences to the defaults?')">
+    {% csrf_token %}<button name="reset" value="1" class="btn btn-ghost btn-sm">↺ Reset to defaults</button>
+  </form>
+</div>
+
+<div class="pref-tabs" role="tablist">
+  <button class="pt active" data-pane="appearance" role="tab" aria-selected="true">Appearance</button>
+  <button class="pt" data-pane="dashboard" role="tab" aria-selected="false">Dashboard</button>
+  <button class="pt" data-pane="tables" role="tab" aria-selected="false">Tables</button>
+  <button class="pt" data-pane="access" role="tab" aria-selected="false">Accessibility</button>
+  <button class="pt" data-pane="notify" role="tab" aria-selected="false">Notifications</button>
+</div>
+
+<form method="post" id="prefForm">{% csrf_token %}
+<p class="help no-print" id="liveNote">Changes apply instantly and save automatically. <span class="muted">No save button needed.</span></p>
+
+<!-- APPEARANCE -->
+<section class="pref-pane" data-pane="appearance">
+  <div class="card"><div class="bd">
+    <div class="pref-row"><div class="pl"><label>Theme</label><div class="ph">Light, dark, or follow your device.</div></div>
+      <div class="seg" data-pref="theme">
+        <button type="button" data-val="LIGHT" {% if pref.theme == 'LIGHT' %}class="on"{% endif %}>☀ Light</button>
+        <button type="button" data-val="DARK" {% if pref.theme == 'DARK' %}class="on"{% endif %}>☾ Dark</button>
+        <button type="button" data-val="SYSTEM" {% if pref.theme == 'SYSTEM' %}class="on"{% endif %}>⚙ System</button>
+      </div></div>
+
+    <div class="pref-row"><div class="pl"><label>Accent colour</label><div class="ph">Used for buttons, links and highlights.</div></div>
+      <div class="accent-picker" data-pref="accent">
+        {% for key, hex in accent_presets.items %}
+        <button type="button" class="swatch {% if pref.accent == key %}on{% endif %}" data-val="{{ key }}" data-hex="{{ hex }}" style="--sw:{{ hex }}" title="{{ key|capfirst }}" aria-label="{{ key|capfirst }} accent"></button>
+        {% endfor %}
+        <label class="swatch custom {% if pref.accent == 'custom' %}on{% endif %}" title="Custom colour">
+          <input type="color" id="accentCustom" value="{{ pref.accent_hex }}" aria-label="Custom accent colour">
+        </label>
+      </div></div>
+
+    <div class="pref-row"><div class="pl"><label>Sidebar</label><div class="ph">How much of the navigation to show.</div></div>
+      <div class="seg" data-pref="sidebar">
+        <button type="button" data-val="EXPANDED" {% if pref.sidebar == 'EXPANDED' %}class="on"{% endif %}>Expanded</button>
+        <button type="button" data-val="COMPACT" {% if pref.sidebar == 'COMPACT' %}class="on"{% endif %}>Compact</button>
+        <button type="button" data-val="ICON" {% if pref.sidebar == 'ICON' %}class="on"{% endif %}>Icon-only</button>
+      </div></div>
+
+    <div class="pref-row"><div class="pl"><label>Font size</label><div class="ph">Overall text size.</div></div>
+      <div class="seg" data-pref="font_size">
+        <button type="button" data-val="SMALL" {% if pref.font_size == 'SMALL' %}class="on"{% endif %}>Small</button>
+        <button type="button" data-val="MEDIUM" {% if pref.font_size == 'MEDIUM' %}class="on"{% endif %}>Medium</button>
+        <button type="button" data-val="LARGE" {% if pref.font_size == 'LARGE' %}class="on"{% endif %}>Large</button>
+      </div></div>
+
+    <div class="pref-row"><div class="pl"><label>Layout width</label><div class="ph">Constrain content or use the full screen.</div></div>
+      <div class="seg" data-pref="layout_width">
+        <button type="button" data-val="BOXED" {% if pref.layout_width == 'BOXED' %}class="on"{% endif %}>Boxed</button>
+        <button type="button" data-val="FULL" {% if pref.layout_width == 'FULL' %}class="on"{% endif %}>Full width</button>
+      </div></div>
+
+    <div class="pref-row"><div class="pl"><label>Card corners</label><div class="ph">Rounded or square edges.</div></div>
+      <div class="seg" data-pref="card_style">
+        <button type="button" data-val="ROUNDED" {% if pref.card_style == 'ROUNDED' %}class="on"{% endif %}>Rounded</button>
+        <button type="button" data-val="SQUARE" {% if pref.card_style == 'SQUARE' %}class="on"{% endif %}>Square</button>
+      </div></div>
+  </div></div>
+</section>
+
+<!-- DASHBOARD -->
+<section class="pref-pane" data-pane="dashboard" hidden>
+  <div class="card"><div class="hd">Dashboard widgets</div><div class="bd">
+    <p class="help u-mt-0">Drag to reorder. Toggle to show or hide each section of your home dashboard.</p>
+    <ul class="widget-list" id="widgetList">
+      {% for w in widgets %}
+      <li class="wl-item" draggable="true" data-key="{{ w.key }}">
+        <span class="wl-grip" aria-hidden="true">⠿</span>
+        <span class="wl-label">{{ w.label }}</span>
+        <label class="switch"><input type="checkbox" class="wl-vis" {% if w.visible %}checked{% endif %} aria-label="Show {{ w.label }}"><span class="slider"></span></label>
+      </li>
+      {% endfor %}
+    </ul>
+  </div></div>
+  <div class="card u-mt"><div class="bd">
+    <div class="pref-row"><div class="pl"><label for="landingSel">Landing page after login</label><div class="ph">Where to go when you sign in.</div></div>
+      <select id="landingSel" class="field field--select" data-pref="landing_page" style="max-width:260px">
+        {% for val, lab in form.fields.landing_page.choices %}<option value="{{ val }}" {% if pref.landing_page == val %}selected{% endif %}>{{ lab }}</option>{% endfor %}
+      </select>
+    </div>
+  </div></div>
+</section>
+
+<!-- TABLES -->
+<section class="pref-pane" data-pane="tables" hidden>
+  <div class="card"><div class="bd">
+    <div class="pref-row"><div class="pl"><label for="rppInput">Rows per page</label><div class="ph">Default number of rows in long lists.</div></div>
+      <input type="number" id="rppInput" class="field" style="max-width:120px" value="{{ pref.rows_per_page }}" min="5" max="200" step="5" data-pref="rows_per_page"></div>
+
+    <div class="pref-row"><div class="pl"><label>Density</label><div class="ph">Row height in tables.</div></div>
+      <div class="seg" data-pref="density">
+        <button type="button" data-val="COMFORTABLE" {% if pref.density == 'COMFORTABLE' %}class="on"{% endif %}>Comfortable</button>
+        <button type="button" data-val="COMPACT" {% if pref.density == 'COMPACT' %}class="on"{% endif %}>Compact</button>
+      </div></div>
+    <p class="help">Tables also remember the columns you show and your sorting and filters as you use them — those are saved automatically per table.</p>
+  </div></div>
+</section>
+
+<!-- ACCESSIBILITY -->
+<section class="pref-pane" data-pane="access" hidden>
+  <div class="card"><div class="bd">
+    {% include "ui/pref_toggle.html" with key="high_contrast" label="High contrast" hint="Stronger colours and outlines for readability." on=pref.high_contrast %}
+    {% include "ui/pref_toggle.html" with key="reduced_motion" label="Reduce motion" hint="Minimise animations and transitions." on=pref.reduced_motion %}
+    {% include "ui/pref_toggle.html" with key="large_targets" label="Larger click targets" hint="Bigger buttons and tap areas." on=pref.large_targets %}
+    {% include "ui/pref_toggle.html" with key="focus_indicators" label="Visible keyboard focus" hint="Show a clear outline on the focused element." on=pref.focus_indicators %}
+  </div></div>
+</section>
+
+<!-- NOTIFICATIONS -->
+<section class="pref-pane" data-pane="notify" hidden>
+  <div class="card"><div class="bd">
+    {% include "ui/pref_toggle.html" with key="toasts_enabled" label="Toast notifications" hint="Show brief pop-up messages for actions." on=pref.toasts_enabled %}
+    <div class="pref-row"><div class="pl"><label for="toastDur">Toast duration</label><div class="ph">How long a toast stays on screen.</div></div>
+      <div class="u-inline" style="gap:.5rem;align-items:center"><input type="number" id="toastDur" class="field" style="max-width:90px" value="{{ pref.toast_duration }}" min="2" max="30" data-pref="toast_duration"><span class="muted">seconds</span></div></div>
+    {% include "ui/pref_toggle.html" with key="desktop_notifications" label="Desktop notifications" hint="Show system notifications where your browser supports them." on=pref.desktop_notifications %}
+    <button type="button" class="btn btn-ghost btn-sm" id="testToast">Show a sample toast</button>
+  </div></div>
+</section>
+
+<noscript><div class="card u-mt"><div class="bd"><p class="help u-mt-0">Live updates need JavaScript. Use this button to save.</p><button class="btn">Save preferences</button></div></div></noscript>
+</form>
+
+<style>
+.pref-tabs{display:flex;gap:.3rem;border-bottom:1.5px solid var(--line);margin:.6rem 0 1rem;flex-wrap:wrap}
+.pref-tabs .pt{background:none;border:none;padding:.5rem .85rem;font:inherit;font-weight:600;
+  color:var(--muted);cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;border-radius:6px 6px 0 0}
+.pref-tabs .pt:hover{color:var(--ink);background:var(--forest-tint)}
+.pref-tabs .pt.active{color:var(--forest);border-bottom-color:var(--forest)}
+.pref-row{display:flex;justify-content:space-between;align-items:center;gap:1rem;
+  padding:.85rem 0;border-bottom:1px solid var(--line)}
+.pref-row:last-child{border-bottom:none}
+.pref-row .pl label{font-weight:600;display:block}
+.pref-row .ph{font-size:.8rem;color:var(--muted);margin-top:.1rem}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--radius-sm);overflow:hidden;flex:none}
+.seg button{background:var(--paper);border:none;border-left:1px solid var(--line);padding:.45rem .8rem;
+  font:inherit;font-size:.84rem;cursor:pointer;color:var(--ink-soft)}
+.seg button:first-child{border-left:none}
+.seg button.on{background:var(--forest);color:#fff;font-weight:600}
+.accent-picker{display:flex;gap:.45rem;flex-wrap:wrap;align-items:center}
+.accent-picker .swatch{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);
+  background:var(--sw,#ccc);cursor:pointer;padding:0;position:relative}
+.accent-picker .swatch.on{box-shadow:0 0 0 2px var(--paper),0 0 0 4px var(--ink)}
+.accent-picker .swatch.custom{display:grid;place-items:center;overflow:hidden;background:conic-gradient(red,orange,yellow,lime,cyan,blue,magenta,red)}
+.accent-picker .swatch.custom input{opacity:0;width:100%;height:100%;cursor:pointer}
+.widget-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.4rem}
+.wl-item{display:flex;align-items:center;gap:.7rem;padding:.6rem .7rem;background:var(--paper-2);
+  border:1px solid var(--line);border-radius:var(--radius-sm);cursor:grab}
+.wl-item.dragging{opacity:.5;border-style:dashed}
+.wl-item.drop-target{border-color:var(--forest);box-shadow:var(--ring)}
+.wl-grip{color:var(--muted);font-size:1.1rem;cursor:grab}
+.wl-label{flex:1;font-weight:500}
+.switch{position:relative;display:inline-block;width:42px;height:24px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:var(--line-strong);border-radius:999px;transition:background var(--t);cursor:pointer}
+.switch .slider::before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform var(--t);box-shadow:var(--shadow-sm)}
+.switch input:checked+.slider{background:var(--forest)}
+.switch input:checked+.slider::before{transform:translateX(18px)}
+.switch input:focus-visible+.slider{box-shadow:var(--ring)}
+.field--color{padding:.2rem;height:38px;width:54px;cursor:pointer}
+@media(max-width:620px){.pref-row{flex-direction:column;align-items:flex-start;gap:.5rem}}
+</style>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/preferences.js' %}"></script>{% endblock %}

@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+from core.utils import PrefPaginationMixin
+
 from django.contrib import messages
 from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
@@ -13,7 +15,7 @@ from .models import Member, PossibleDuplicate
 from .services.matching import merge_members
 
 
-class MemberListView(ReadAccessMixin, ListView):
+class MemberListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     model = Member
     template_name = "members/list.html"
     context_object_name = "members"

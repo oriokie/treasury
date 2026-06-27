@@ -49,10 +49,35 @@ def collections_summary(s, e):
     return {"total": total, "trust": trust, "local": total - trust, "rows": rows}
 
 
+def _configured_lcb_depts():
+    """The LCB departments chosen in Settings, expanded to include any of their
+    sub-accounts (children). Returns a queryset, or None if none configured."""
+    from core.models import SiteConfig
+    cfg = SiteConfig.get()
+    chosen = list(cfg.lcb_departments.all())
+    if not chosen:
+        return None
+    ids = set()
+    frontier = list(chosen)
+    while frontier:
+        d = frontier.pop()
+        if d.id in ids:
+            continue
+        ids.add(d.id)
+        # include sub-accounts (self-FK children), so picking the parent is enough
+        for child in getattr(d, "subgroups", Department.objects.none()).all():
+            if child.id not in ids:
+                frontier.append(child)
+    return Department.objects.filter(id__in=ids).order_by("name")
+
+
 def _lcb_dept_ids():
-    """All Local Church Budget departments (the main fund, its sub-accounts, and
-    any other LCB-named funds) — matched by name so a newly added LCB sub-account
-    is picked up automatically."""
+    """All Local Church Budget department ids. Uses the explicit configuration from
+    Settings when present (the flexible, reliable source); otherwise falls back to
+    matching funds named 'LCB' / 'Local Church Budget'."""
+    configured = _configured_lcb_depts()
+    if configured is not None:
+        return list(configured.values_list("id", flat=True))
     from django.db.models import Q
     return list(Department.objects.filter(
         Q(name__icontains="LCB") | Q(name__icontains="Local Church Budget"))
@@ -60,6 +85,9 @@ def _lcb_dept_ids():
 
 
 def _lcb_depts():
+    configured = _configured_lcb_depts()
+    if configured is not None:
+        return configured
     from django.db.models import Q
     return Department.objects.filter(
         Q(name__icontains="LCB") | Q(name__icontains="Local Church Budget")

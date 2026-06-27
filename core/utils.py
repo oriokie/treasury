@@ -133,3 +133,19 @@ def log_exception(context=""):
     'treasury' logger. Use inside a broad `except` that shows the user a generic
     message, so the server still records what actually went wrong."""
     _tlog.exception("Handled exception%s", f" in {context}" if context else "")
+
+
+class PrefPaginationMixin:
+    """ListView mixin: honour the user's 'rows per page' preference, falling back
+    to the view's own ``paginate_by``. Add to a ListView's bases."""
+    def get_paginate_by(self, queryset):
+        default = getattr(self, "paginate_by", None)
+        user = getattr(self.request, "user", None)
+        try:
+            from core.models import UserPreference
+            pref = UserPreference.get_for(user)
+            if pref and pref.rows_per_page:
+                return pref.rows_per_page
+        except Exception:  # noqa: BLE001
+            pass
+        return default

@@ -13,8 +13,9 @@
   </form>
 </div>
 
-{% if attention %}
-<div class="attention-card">
+<div class="dash-widgets">
+{% if attention and "attention" in widget_visible %}
+<div class="attention-card" data-w="attention" style="order:{{ widget_order.attention }}">
   <div class="att-head"><span class="att-title">Needs attention</span><span class="att-count">{{ attention|length }}</span></div>
   <div class="att-grid">
     {% for a in attention %}
@@ -39,16 +40,16 @@
 {% endif %}
 
 {% url 'remittance_dashboard' as remit_url %}
-<div class="kpi-grid">
+{% if "kpis" in widget_visible %}<div class="kpi-grid" data-w="kpis" style="order:{{ widget_order.kpis }}">
   {% include "ui/stat.html" with label="Total receipts" prefix="KSh" value=totals.receipts|floatformat:2|intcomma accent="accent" foot="Across active funds" %}
   {% include "ui/stat.html" with label="Expenses" prefix="KSh" value=totals.expenses_operating|floatformat:2|intcomma accent="warn" foot="Approved & paid · excl. trust remittances" %}
   {% include "ui/stat.html" with label="Trust to remit" prefix="KSh" value=trust_to_remit|floatformat:2|intcomma accent="brass" foot="All trust funds (incl. tithe) → conference" href=remit_url %}
   {% include "ui/stat.html" with label="Closing balance" prefix="KSh" value=totals.closing|floatformat:2|intcomma foot="Opening + receipts − expenses" %}
   {% if live_balance %}{% include "ui/stat.html" with label="Bank balance (live feed)" prefix="KSh" value=live_balance.balance|floatformat:2|intcomma accent="accent" foot=live_balance.at|date:"d M H:i" href="/statements/feed-log/" %}{% endif %}
-</div>
+</div>{% endif %}
 
-{% if sabbath.has_data %}
-<div class="card sabbath-snap u-mb-lg"><div class="bd">
+{% if sabbath.has_data and "sabbath" in widget_visible %}
+<div class="card sabbath-snap u-mb-lg" data-w="sabbath" style="order:{{ widget_order.sabbath }}"><div class="bd">
   <div class="ss-head">
     <div><div class="ss-eyebrow">Latest Sabbath</div>
       <div class="ss-date">{{ sabbath.date|date:"l, j M Y" }}</div></div>
@@ -78,7 +79,7 @@
 </div>
 {% endif %}
 
-<div class="grid cols-3 u-mb-lg">
+{% if "charts" in widget_visible %}<div class="grid cols-3 u-mb-lg" data-w="charts" style="order:{{ widget_order.charts }}">
   <div class="card"><div class="hd">Income by channel</div><div class="bd chart-center">
     <canvas id="channelChart" height="200"></canvas></div></div>
   <div class="card"><div class="hd">Receipts vs expenses by month</div><div class="bd">
@@ -87,8 +88,9 @@
   <div class="card"><div class="hd">Top funds by receipts</div><div class="bd">
     {% if has_topfunds %}<canvas id="topFundsChart" height="200"></canvas>
     {% else %}<div class="chart-empty">No fund receipts in range</div>{% endif %}</div></div>
-</div>
+</div>{% endif %}
 
+{% if "funds" in widget_visible %}<div data-w="funds" style="order:{{ widget_order.funds }}">
 <div class="section-title section-head">Local funds <span class="muted">— {{ local_rows|length }} fund(s)</span>
   <button type="button" class="btn btn-sm btn-ghost no-print toolbar right" onclick="downloadLocalFundsJpeg()" title="Download this table as a JPEG image">⤓ JPEG</button>
 </div>
@@ -215,14 +217,18 @@ function downloadLocalFundsJpeg(){
   </div>
 </div>
 
-{% if has_trend %}
+</div>{% endif %}
+
+{% if has_trend and "trend" in widget_visible %}
+<div data-w="trend" style="order:{{ widget_order.trend }}">
 <div class="section-title section-head">Multi-year trend <span class="muted">— January–{{ trend_through }}, each year</span></div>
 <div class="card u-mb-lg"><div class="bd">
   <canvas id="trendChart" height="110"></canvas>
   <p class="help u-mt-sm">Collection, trust fund, and expenditure for January–{{ trend_through }} of each year, so the year in progress is compared like-for-like. The current year updates from the live ledger.{% if trend_approx %} Years held only as an annual total are pro-rated to this point.{% endif %}</p>
 </div></div>
-{% endif %}
+</div>{% endif %}
 
+{% if "recent" in widget_visible %}<div data-w="recent" style="order:{{ widget_order.recent }}">
 <div class="section-title">Recent imports</div>
 <div class="table-wrap">
   <table class="ledger">
@@ -238,6 +244,8 @@ function downloadLocalFundsJpeg(){
     </tbody>
   </table>
 </div>
+</div>{% endif %}
+</div>{# /dash-widgets #}
 {% endblock %}
 
 {% block scripts %}

@@ -1,5 +1,52 @@
 # Changelog
 
+## v1.75.0 - Appearance & Preferences (per-user workspace customisation)
+- New core.UserPreference model (OneToOne with User, migration core 0036): theme, accent (+custom),
+  sidebar mode, font size, layout width, card style, dashboard widget order/visibility, landing page,
+  rows-per-page, table density, table_state, high_contrast, reduced_motion, large_targets,
+  focus_indicators, toasts_enabled, toast_duration, desktop_notifications. Helpers: get_for(),
+  accent_hex, merged_widgets(), visible_widget_keys(), reset_to_defaults().
+- Exposed app-wide via core.context_processors (prefs) and applied on <html> as data-* attributes +
+  --pref-accent; all rendering handled in CSS (dark theme, accent override via color-mix, sidebar
+  modes, font/width/cards, density, high-contrast, reduced-motion, large-targets, focus toggle).
+- PreferencesView (/preferences/) with tabbed UI + UserPreferenceForm; PreferenceUpdateView
+  (/preferences/update/) JSON endpoint persists each change live; static/js/preferences.js applies
+  changes to <html> instantly and auto-saves (segmented controls, accent swatches/custom picker,
+  toggles, selects, number inputs, drag-and-drop widget reorder). Reset-to-defaults via POST.
+- Landing page: PostLoginRedirectView (/after-login/) honours pref; LOGIN_REDIRECT_URL -> after_login.
+- Dashboard widgets: DashboardView exposes widget_visible/widget_order; dashboard.html wraps sections
+  (attention/kpis/sabbath/charts/funds/trend/recent) in .dash-widgets with show/hide guards + CSS order
+  (DOM-safe; charts use IDs). 
+- Toasts: configurable toast system in base.html (window.toast), flash messages render as toasts when
+  enabled (honouring duration + reduced motion + optional desktop Notification).
+- Tables: PrefPaginationMixin (core.utils) honours rows_per_page on Transaction/Expense/Member lists;
+  density applied globally via data-density.
+- Links from the user menu and the Settings page. Tests: core/test_preferences (13).
+
+## v1.74.0 - app-wide UX/UI & accessibility polish
+All changes live in the shared design system (base.html + app.css + form mixin), so they apply across
+every page without touching individual templates or any business logic.
+- A11y: skip-to-content link + focusable <main id="main">; sr-only utility; ARIA labels on the menu
+  toggle, search box (with aria-keyshortcuts) and notification bell; flash messages now sit in an
+  aria-live region with role=alert/status; form widgets emit aria-required. Darkened --muted (#7a8a83 ->
+  #677770) for WCAG-AA contrast on secondary text.
+- Feedback states: global HTMX top loading bar (htmx:beforeRequest/afterRequest); success/info flashes
+  auto-dismiss after 6s and all flashes get a dismiss (x) button; busy spinner state for submit buttons.
+- Responsiveness: any data table not already wrapped is auto-wrapped in a horizontal scroll container
+  (.table-scroll) so wide tables no longer break mobile layouts.
+- Integrity/UX: double-submit guard marks the triggering button busy and blocks repeat submissions
+  (skips GET forms, htmx, and cancelled confirm() dialogs) - prevents accidental double-posting.
+- Tests: core/test_ux_a11y.
+
+## v1.73.0 - configurable LCB departments + dashboard tile overflow fix
+- SiteConfig.lcb_departments M2M (core 0035) + picker in Settings -> Channels -> Allocation & categories
+  (local funds only, checkboxes). reports/services/treasurer _lcb_dept_ids/_lcb_depts use the configured
+  set expanded to include sub-accounts (children), falling back to name matching when unconfigured.
+  departments.lcb_fund() also honours the config (first selected dept).
+- Dashboard: .stat .value now uses clamp() font-size with overflow-wrap so long values (e.g. Total
+  receipts) no longer spill over the tile. (collectstatic on deploy.)
+- Tests: reports/test_lcb_config.
+
 ## v1.72.0 - receipt archive (#2) + monthly treasurer report rework (#6)
 - #2: ExpenseAttachment.file upload_to is now a callable (expense_receipt_path) filing by the expense's
   INCURRED year/month (cashbook 0020). New ReceiptArchiveView (/expenses/receipts/) groups receipts by

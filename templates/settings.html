@@ -1,7 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Settings · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>System configuration</h1><div class="sub">Branding, features, messaging, signatories &amp; maintenance</div></div></div>
+<div class="page-head"><div><h1>System configuration</h1><div class="sub">Branding, features, messaging, signatories &amp; maintenance</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'preferences' %}">🎨 Appearance &amp; preferences</a></div>
+<p class="help u-mt-0">Looking to change your theme, accent colour, sidebar, dashboard layout or accessibility options? Those are personal, per-user settings on the <a href="{% url 'preferences' %}">Appearance &amp; preferences</a> page.</p>
 
 <div class="settings-tabs" id="tabs">
   <div class="st-group"><span class="st-grouplabel">General</span>
@@ -282,6 +284,13 @@
       {% endif %}{% endfor %}
       </div>
       <a class="btn btn-ghost btn-sm" href="{% url 'expense_categories' %}" class="u-mt-sm">Manage expense categories</a>
+      <hr class="u-divider">
+      <div class="section-title">Local Church Budget (LCB) funds</div>
+      <p class="help">Choose which funds make up the Local Church Budget. Reports (the Monthly Treasurer's Report, LCB trend and LCB expenditure) use exactly these funds and their sub-accounts. Leave all unticked to fall back to matching funds named “LCB” or “Local Church Budget”.</p>
+      {% for f in form %}{% if f.name == 'lcb_departments' %}
+      <div class="lcb-picker">{{ f }}</div>
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% endif %}{% endfor %}
       <hr class="u-divider">
       <div class="section-title">Sabbath close</div>
       <p class="help">When you finish counting a Sabbath, close it from its cash-count page. Any donation that arrives afterwards for a closed Sabbath is automatically credited to the next open Sabbath — there's no fixed time of day, and a closed count is never reopened.</p>

@@ -256,7 +256,17 @@ class BudgetLine(models.Model):
 
 
 def lcb_fund():
-    """The Local Church Budget fund (the account LCB money flows through), or None."""
+    """The Local Church Budget fund (the account LCB money flows through), or None.
+
+    Honours the LCB departments chosen in Settings first (the first configured one
+    is treated as the main fund); otherwise falls back to matching by name."""
+    try:
+        from core.models import SiteConfig
+        chosen = SiteConfig.get().lcb_departments.order_by("name").first()
+        if chosen:
+            return chosen
+    except Exception:  # noqa: BLE001 — config/table may not be ready (e.g. migrations)
+        pass
     qs = Department.objects.filter(fund_type=Department.FundType.LOCAL)
     return (qs.filter(name__istartswith="LCB ").first()
             or qs.filter(name__icontains="Local Church Budget").exclude(

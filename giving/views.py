@@ -27,7 +27,7 @@ def _cash_duplicate(d, dept, amount, name=None):
     return False
 
 
-from core.utils import block_if_locked as _block_if_locked
+from core.utils import block_if_locked as _block_if_locked, PrefPaginationMixin
 from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -43,7 +43,7 @@ from .forms import CashEntryForm, QueueResolveForm, RuleForm
 from .services.allocation import normalize_reference
 
 
-class TransactionListView(ReadAccessMixin, ListView):
+class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     model = Transaction
     template_name = "giving/transaction_list.html"
     context_object_name = "transactions"

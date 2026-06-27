@@ -9,7 +9,7 @@ from django.views.generic import ListView, CreateView, UpdateView, View
 
 from django.views import View
 
-from core.utils import block_if_locked as _block_if_locked
+from core.utils import block_if_locked as _block_if_locked, PrefPaginationMixin
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
 from core.utils import sabbath_week_of
 from departments.models import Department
@@ -27,7 +27,7 @@ def _fund_available(dept_id, as_of):
     return fund_balance(dept_id, as_of)
 
 
-class ExpenseListView(ReadAccessMixin, ListView):
+class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     model = Expense
     template_name = "cashbook/list.html"
     context_object_name = "expenses"

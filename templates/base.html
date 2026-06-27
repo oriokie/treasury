@@ -1,6 +1,6 @@
 {% load static humanize %}
 <!doctype html>
-<html lang="en">
+<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-font="{{ prefs.font_size|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,7 +13,13 @@
   <script src="{% static 'vendor/htmx.min.js' %}"></script>
 </head>
 <body>
+<div id="htmx-progress" aria-hidden="true"></div>
 {% if user.is_authenticated %}
+<div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="false"></div>
+{% if prefs %}<script>window.__prefs={toasts:{{ prefs.toasts_enabled|yesno:"true,false" }},duration:{{ prefs.toast_duration }},desktop:{{ prefs.desktop_notifications|yesno:"true,false" }},motion:"{{ prefs.reduced_motion|yesno:'reduced,normal' }}"};</script>{% endif %}
+{% endif %}
+{% if user.is_authenticated %}
+<a href="#main" class="skip-link">Skip to main content</a>
 <div class="shell">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
@@ -122,9 +128,9 @@
 
   <div class="main">
     <header class="topbar">
-      <button class="menu-toggle" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('navscrim').classList.toggle('show')">☰</button>
+      <button class="menu-toggle" aria-label="Open navigation menu" aria-controls="sidebar" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('navscrim').classList.toggle('show')">☰</button>
 
-      <button class="searchbox" type="button" onclick="openPalette()" title="Search pages (Ctrl+K)">
+      <button class="searchbox" type="button" onclick="openPalette()" title="Search pages (Ctrl+K)" aria-label="Search pages" aria-keyshortcuts="Control+K">
         <span class="sb-ic">⌕</span><span class="sb-text">Search…</span><span class="sb-kbd"><kbd>Ctrl</kbd><kbd>K</kbd></span>
       </button>
 
@@ -145,7 +151,7 @@
       {% endif %}
 
       <div class="topbar-right">
-        <a href="{% url 'notifications' %}" class="iconbtn" title="Notifications">🔔{% if notif_badge %}<span class="dot">{{ notif_badge }}</span>{% endif %}</a>
+        <a href="{% url 'notifications' %}" class="iconbtn" title="Notifications" aria-label="Notifications{% if notif_badge %} ({{ notif_badge }} unread){% endif %}">🔔{% if notif_badge %}<span class="dot">{{ notif_badge }}</span>{% endif %}</a>
         <details class="dd dd-user">
           <summary>
             <span class="avatar">{{ user.get_full_name|default:user.username|first|upper }}</span>
@@ -160,6 +166,7 @@
             {% if is_treasurer %}<a href="{% url 'settings' %}">Settings</a>
             <a href="{% url 'controls' %}">Period locks</a>{% endif %}
             <a href="{% url 'notifications' %}">Notifications</a>
+            <a href="{% url 'preferences' %}">Appearance &amp; preferences</a>
             <a href="{% url 'twofactor_setup' %}">Security &amp; 2FA</a>
             <a href="{% url 'password_change' %}">Change password</a>
             <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="dd-signout">Sign out</button></form>
@@ -167,11 +174,13 @@
         </details>
       </div>
     </header>
-    <main class="content">
+    <main class="content" id="main" tabindex="-1">
       {% if update_available %}<div class="flash" style="background:#e8f3ee;border:1px solid var(--forest);display:flex;align-items:center;gap:.6rem">
         <strong>Update available:</strong> version {{ update_available }} is ready. <a href="{% url 'update_run' %}" style="font-weight:600">Install it →</a></div>{% endif %}
       {% if messages %}
-        {% for m in messages %}<div class="flash {{ m.tags }}">{{ m }}</div>{% endfor %}
+      <div class="flash-region" role="status" aria-live="polite">
+        {% for m in messages %}<div class="flash {{ m.tags }}" role="{% if 'error' in m.tags %}alert{% else %}status{% endif %}"><span class="flash-msg">{{ m }}</span><button type="button" class="flash-x" aria-label="Dismiss message" onclick="this.parentNode.remove()">×</button></div>{% endfor %}
+      </div>
       {% endif %}
       {% block content %}{% endblock %}
     </main>
@@ -239,6 +248,83 @@
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){ e.preventDefault(); openPalette(); }
     else if(e.key==="/"&&!/(INPUT|TEXTAREA|SELECT)/.test(document.activeElement.tagName)){ e.preventDefault(); openPalette(); }
     else if(e.key==="Escape"&&!pal.hidden){ closePalette(); }
+  });
+
+  // --- global HTMX loading bar ---
+  var bar=document.getElementById("htmx-progress"), timer=null;
+  function startBar(){ if(!bar) return; clearTimeout(timer); bar.classList.add("run");
+    bar.style.width="18%"; setTimeout(function(){ bar.style.width="72%"; },120); }
+  function endBar(){ if(!bar) return; bar.style.width="100%";
+    timer=setTimeout(function(){ bar.classList.remove("run"); bar.style.width="0"; },280); }
+  document.body.addEventListener("htmx:beforeRequest", startBar);
+  document.body.addEventListener("htmx:afterRequest", endBar);
+  document.body.addEventListener("htmx:sendError", endBar);
+
+  // --- toast notifications (configurable) ---
+  var prefs = window.__prefs || {toasts:true, duration:6, desktop:false, motion:"normal"};
+  var host = document.getElementById("toastHost");
+  window.toast = function(msg, type, duration){
+    if(!host) return;
+    type = type || "info";
+    var t = document.createElement("div");
+    t.className = "toast " + type; t.setAttribute("role", type==="error"?"alert":"status");
+    var ic = type==="success"?"✓":type==="error"?"!":"i";
+    t.innerHTML = '<span class="t-ic">'+ic+'</span><span class="t-msg"></span>'+
+                  '<button type="button" class="t-x" aria-label="Dismiss">×</button>';
+    t.querySelector(".t-msg").textContent = msg;
+    function close(){ t.classList.add("leaving"); setTimeout(function(){ t.remove(); }, 260); }
+    t.querySelector(".t-x").addEventListener("click", close);
+    host.appendChild(t);
+    var ms = (duration || prefs.duration || 6) * 1000;
+    setTimeout(close, ms);
+    if(prefs.desktop && "Notification" in window && Notification.permission==="granted" && type!=="info"){
+      try{ new Notification(msg); }catch(e){}
+    }
+    return t;
+  };
+
+  // --- flash messages: as toasts if enabled, else inline (auto-dismiss) ---
+  var region = document.querySelector(".flash-region");
+  if(region && prefs.toasts && host){
+    region.querySelectorAll(".flash").forEach(function(f){
+      var type = f.classList.contains("success")?"success":
+                 f.classList.contains("error")?"error":
+                 f.classList.contains("warning")?"warning":"info";
+      var msg = (f.querySelector(".flash-msg")||f).textContent.trim();
+      if(msg) window.toast(msg, type);
+    });
+    region.remove();
+  } else {
+    document.querySelectorAll(".flash.success, .flash.info").forEach(function(f){
+      setTimeout(function(){ f.style.transition="opacity .4s ease"; f.style.opacity="0";
+        setTimeout(function(){ f.remove(); },420); }, 6000);
+    });
+  }
+
+  // --- make every data table horizontally scrollable on small screens ---
+  // (wraps any .ledger table not already inside a scroll container)
+  document.querySelectorAll("table.ledger").forEach(function(t){
+    var p=t.parentElement;
+    if(p && (p.classList.contains("table-wrap") || p.classList.contains("table-scroll"))) return;
+    var w=document.createElement("div"); w.className="table-scroll";
+    t.parentNode.insertBefore(w,t); w.appendChild(t);
+  });
+
+  // --- guard against accidental double submission (financial integrity) ---
+  // On submit, mark the triggering button busy and block repeats; the button is
+  // NOT disabled, so its name/value still posts. GET forms and htmx are skipped.
+  document.addEventListener("submit", function(e){
+    var f=e.target;
+    if(!(f instanceof HTMLFormElement)) return;
+    if(e.defaultPrevented) return;               // a confirm() said no, etc.
+    if((f.method||"post").toLowerCase()==="get") return;
+    if(f.hasAttribute("data-hx-post")||f.hasAttribute("hx-post")||f.hasAttribute("data-no-busy")) return;
+    if(f.dataset.submitting==="1"){ e.preventDefault(); return; }
+    f.dataset.submitting="1";
+    var btn=f.querySelector('button[type="submit"]:focus, button[type="submit"], input[type="submit"]');
+    if(btn){ btn.setAttribute("aria-busy","true"); btn.classList.add("is-busy"); }
+    // safety: clear the lock if the page is restored from bfcache
+    setTimeout(function(){ f.dataset.submitting=""; if(btn){btn.removeAttribute("aria-busy");btn.classList.remove("is-busy");} }, 8000);
   });
 })();
 </script>

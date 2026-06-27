@@ -21,6 +21,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "enforce_petty_float", "require_dual_yearend", "require_import_confirmation",
             "notify_email_enabled", "dev_group_extra_prefixes",
             "numbered_fund_families",
+            "lcb_departments",
             "sabbath_cutoff_enabled",
             "email_enabled", "email_host", "email_port", "email_use_tls", "email_use_ssl",
             "email_host_user", "email_host_password", "email_from",
@@ -46,7 +47,8 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         ]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
                    "receipt_message": forms.Textarea(attrs={"rows": 3}),
-                   "telegram_envelope_funds": forms.CheckboxSelectMultiple()}
+                   "telegram_envelope_funds": forms.CheckboxSelectMultiple(),
+                   "lcb_departments": forms.CheckboxSelectMultiple()}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -61,9 +63,51 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         self.fields["telegram_envelope_funds"].queryset = (
             Department.objects.filter(active=True).order_by("name"))
         self.fields["telegram_envelope_funds"].required = False
+        # LCB department picker — local funds only
+        self.fields["lcb_departments"].queryset = (
+            Department.objects.filter(fund_type=Department.FundType.LOCAL)
+            .order_by("name"))
+        self.fields["lcb_departments"].required = False
         self.fields["asset_depr_method"] = forms.ChoiceField(
             label="Default depreciation method",
             choices=[("STRAIGHT", "Straight-line"), ("REDUCING", "Reducing balance"),
                      ("NONE", "Not depreciated")],
             initial=self.instance.asset_depr_method or "STRAIGHT", required=False)
         self.fields["asset_depr_method"].widget.attrs.update({"class": "field--select"})
+
+
+class UserPreferenceForm(StyledFormMixin, forms.ModelForm):
+    """Per-user appearance & workspace preferences."""
+    class Meta:
+        from core.models import UserPreference
+        model = UserPreference
+        fields = [
+            "theme", "accent", "accent_custom", "sidebar", "font_size",
+            "layout_width", "card_style", "landing_page", "rows_per_page",
+            "density", "high_contrast", "reduced_motion", "large_targets",
+            "focus_indicators", "toasts_enabled", "toast_duration",
+            "desktop_notifications",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        from core.models import UserPreference
+        super().__init__(*args, **kwargs)
+        self._style()
+        self.fields["landing_page"] = forms.ChoiceField(
+            choices=UserPreference.LANDING_CHOICES, required=False,
+            initial=self.instance.landing_page or "dashboard")
+        self.fields["landing_page"].widget.attrs.update({"class": "field field--select"})
+        self.fields["accent_custom"].widget = forms.TextInput(
+            attrs={"type": "color", "class": "field field--color"})
+        self.fields["rows_per_page"].widget.attrs.update(
+            {"min": 10, "max": 200, "step": 5})
+        self.fields["toast_duration"].widget.attrs.update(
+            {"min": 2, "max": 30, "step": 1})
+
+    def clean_rows_per_page(self):
+        n = self.cleaned_data.get("rows_per_page") or 25
+        return max(5, min(200, n))
+
+    def clean_toast_duration(self):
+        n = self.cleaned_data.get("toast_duration") or 6
+        return max(2, min(30, n))

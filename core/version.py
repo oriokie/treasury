@@ -38,6 +38,27 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.75.0": "New Appearance & Preferences page (in the account menu, and linked from Settings) lets "
+              "every user personalise their own workspace: light/dark/system theme, an accent colour "
+              "(presets or a custom pick), sidebar style (expanded, compact or icon-only), font size, "
+              "boxed or full width, rounded or square cards, dashboard widgets you can show/hide and "
+              "drag to reorder, your default landing page after login, rows-per-page and table density, "
+              "accessibility options (high contrast, reduced motion, larger targets, focus outlines), "
+              "and notification toasts (on/off, duration, optional desktop alerts). Changes apply "
+              "instantly and save to your account, so they follow you on any device — with a Reset to "
+              "Defaults button if you want to start over.",
+    "1.74.0": "A round of UX and accessibility polish across the whole app: a skip-to-content link and "
+              "clearer keyboard focus, screen-reader labels on the menu, search and notification icons, "
+              "a slim loading bar during background actions, dismissible (and auto-clearing) status "
+              "messages, data tables that now scroll cleanly on phones, stronger text contrast, and a "
+              "guard that prevents a form being submitted twice by accident — all without changing how "
+              "anything works.",
+    "1.73.0": "You can now choose exactly which funds make up the Local Church Budget under Settings → "
+              "Channels → Allocation & categories. Reports (the Monthly Treasurer's Report, the LCB trend "
+              "and LCB expenditure) use those funds and their sub-accounts, so newly added accounts are "
+              "always included — no more guessing from the fund name (it still falls back to name "
+              "matching if you leave the selection empty). Also fixed dashboard stat tiles where long "
+              "figures such as Total receipts could overflow.",
     "1.72.0": "Expense receipts are now filed by the month each expense was incurred, and a new "
               "Receipts page (Expenses → Receipts) shows them grouped by month for printing, with a "
               "one-click ZIP download of a whole period for audit. The Monthly Treasurer's Report is "

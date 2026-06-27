@@ -8,15 +8,21 @@ from core.roles import ALL_ROLES
 class StyledFormMixin:
     """Apply consistent form-control styling to every widget."""
     def _style(self):
-        for field in self.fields.values():
+        for name, field in self.fields.items():
             w = field.widget
             css = w.attrs.get("class", "")
             if isinstance(w, (forms.CheckboxInput,)):
                 w.attrs["class"] = (css + " form-check").strip()
             elif isinstance(w, forms.Select):
                 w.attrs["class"] = (css + " field field--select").strip()
+            elif isinstance(w, (forms.CheckboxSelectMultiple,
+                                forms.RadioSelect)):
+                pass  # rendered as a list; no single control class
             else:
                 w.attrs["class"] = (css + " field").strip()
+            # accessibility: expose required state to assistive tech
+            if field.required:
+                w.attrs.setdefault("aria-required", "true")
 
 
 class NewUserForm(StyledFormMixin, UserCreationForm):

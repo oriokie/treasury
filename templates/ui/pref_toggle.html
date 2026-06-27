@@ -1,0 +1,6 @@
+{% comment %}Reusable on/off preference toggle. Usage:
+  {% include "ui/pref_toggle.html" with key="high_contrast" label="High contrast" hint="..." on=pref.high_contrast %}
+{% endcomment %}
+<div class="pref-row"><div class="pl"><label for="pt_{{ key }}">{{ label }}</label>{% if hint %}<div class="ph">{{ hint }}</div>{% endif %}</div>
+  <label class="switch"><input type="checkbox" id="pt_{{ key }}" class="pref-bool" data-pref="{{ key }}" {% if on %}checked{% endif %} aria-label="{{ label }}"><span class="slider"></span></label>
+</div>

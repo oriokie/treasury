@@ -265,7 +265,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Auth flow --------------------------------------------------------------
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "dashboard"
+LOGIN_REDIRECT_URL = "after_login"
 LOGOUT_REDIRECT_URL = "login"
 
 # --- App config -------------------------------------------------------------

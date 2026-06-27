@@ -26,6 +26,12 @@ def site_context(request):
     _granted = _rights.user_rights(user) if user else set()
     ctx["rights"] = _granted
     ctx["can"] = {k: (k in _granted) for k in _rights.RIGHT_KEYS}
+    # per-user workspace preferences (appearance, a11y, tables, notifications)
+    try:
+        from .models import UserPreference
+        ctx["prefs"] = UserPreference.get_for(user)
+    except Exception:  # noqa: BLE001 — table may not exist yet (migrations)
+        ctx["prefs"] = None
     ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))
     if user and user.is_authenticated:
         if user.is_superuser or user.groups.filter(name="Treasurer").exists():
