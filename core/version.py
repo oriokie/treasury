@@ -38,6 +38,13 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.76.0": "Staff advances are now easier to run and account for. A staff advance can be issued "
+              "straight from the petty-cash float — it reduces petty cash and shows as a receivable until "
+              "it is accounted for. Department leaders can now open the advances on their own funds, see "
+              "the remaining balance and a clear statement of how the money is flowing, and record the "
+              "expenses that account for an advance (each filed as approved and paid, with the leader "
+              "named as the claimant). The petty-cash float, bank reconciliation and statement of "
+              "financial position all reflect these movements correctly.",
     "1.75.0": "New Appearance & Preferences page (in the account menu, and linked from Settings) lets "
               "every user personalise their own workspace: light/dark/system theme, an accent colour "
               "(presets or a custom pick), sidebar style (expanded, compact or icon-only), font size, "

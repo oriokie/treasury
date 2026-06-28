@@ -12,6 +12,19 @@
     <div class="val mono" style="color:{% if adv.balance > 0 %}var(--brass){% elif adv.balance < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">KES {{ adv.balance|floatformat:2|intcomma }}</div></div>
 </div>
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}{% if adv.reference %} · Ref {{ adv.reference }}{% endif %}</p>{% endif %}
+{% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance was issued from the petty-cash float, which it reduces until accounted for.</p>{% endif %}
+
+<div class="card u-mb"><div class="hd">Statement — how the advance is flowing</div><div class="bd">
+<table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to staff</th><th class="num">Accounted</th><th class="num">Still to account</th></tr></thead>
+<tbody>{% for r in statement %}<tr>
+  <td>{{ r.date|date:"d M y" }}</td><td>{{ r.label }}</td>
+  <td class="num mono">{% if r.out != None %}{{ r.out|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num mono">{% if r.back != None %}{{ r.back|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num mono">{{ r.running|floatformat:2|intcomma }}</td></tr>{% endfor %}
+<tr class="total-row"><td colspan="4"><strong>{% if to_account > 0 %}Still to account for / recover{% elif to_account < 0 %}Reimburse staff{% else %}Fully accounted{% endif %}</strong></td>
+  <td class="num mono"><strong>{{ to_account|floatformat:2|intcomma }}</strong></td></tr>
+</tbody></table>
+</div></div>
 
 <div class="card"><div class="hd">Receipts / expenses settling this advance</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th>Status</th></tr></thead>
@@ -37,6 +50,7 @@
 
 {% if is_treasurer and adv.status != 'CLOSED' %}
 <form method="post" action="{% url 'advance_close' adv.id %}" class="u-mt" onsubmit="return confirm('Close this advance? The surplus/shortfall should already be recovered or reimbursed.');">{% csrf_token %}
+  {% if adv.from_petty_cash and adv.balance > 0 %}<div class="form-row u-m-0" style="display:inline-block;margin-right:.5rem"><label>Unspent cash returned to petty (KSh)</label><input name="returned_to_petty" class="field mono u-right" style="max-width:160px" placeholder="{{ adv.balance|floatformat:2 }}"></div>{% endif %}
   <input name="note" class="field" placeholder="Closing note (e.g. surplus KES 500 returned to cashier)" style="max-width:480px;display:inline-block">
   <button class="btn btn-ghost">Close advance</button>
 </form>{% endif %}

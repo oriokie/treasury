@@ -483,12 +483,17 @@ from .models import PettyCashTopUp as PettyTopUp
 def _petty_balance_asof(on):
     from decimal import Decimal
     from django.db.models import Sum
+    from .models import StaffAdvance
     topups = (PettyTopUp.objects.filter(date__lte=on)
               .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     disb = (Expense.objects.filter(paid_from_petty_cash=True, date__lte=on,
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    return topups - disb
+    # advances issued out of the petty box, still unaccounted, are also "out"
+    adv_out = Decimal(0)
+    for adv in StaffAdvance.objects.filter(from_petty_cash=True, date_issued__lte=on):
+        adv_out += adv.petty_outstanding_asof(on)
+    return topups - disb - adv_out
 
 
 class PettyCashView(ReadAccessMixin, TemplateView):
@@ -856,6 +861,7 @@ class AdvanceCreate(DataEntryRequiredMixin, View):
     def get(self, request):
         return render(request, self.template_name, {
             "departments": Department.objects.filter(active=True).order_by("name"),
+            "petty_balance": _petty_balance_asof(dt.date.today()),
             "today": dt.date.today().isoformat()})
 
     def post(self, request):
@@ -876,13 +882,24 @@ class AdvanceCreate(DataEntryRequiredMixin, View):
             issued = dt.date.today()
         if _block_if_locked(request, issued):
             return redirect("advance_new")
+        from_petty = request.POST.get("from_petty_cash") in ("1", "on", "true")
+        method = request.POST.get("method") or "CASH"
+        if from_petty:
+            method = "CASH"   # petty cash is, by definition, cash
+            avail = _petty_balance_asof(issued)
+            if amount > avail:
+                messages.error(request,
+                    f"The petty-cash float is only KSh {avail:,.2f} on {issued:%d %b %Y}; "
+                    f"top it up before issuing an advance of KSh {amount:,.2f}.")
+                return redirect("advance_new")
         adv = StaffAdvance.objects.create(
             staff_name=name, department=dept, amount=amount, date_issued=issued,
             purpose=(request.POST.get("purpose") or "")[:200],
-            method=request.POST.get("method") or "CASH",
+            method=method, from_petty_cash=from_petty,
             reference=(request.POST.get("reference") or "")[:40],
             issued_by=request.user)
-        messages.success(request, "Advance recorded.")
+        messages.success(request, "Advance recorded." + (
+            " Petty-cash float reduced accordingly." if from_petty else ""))
         return redirect("advance_detail", pk=adv.pk)
 
 
@@ -892,16 +909,62 @@ class AdvanceDetail(ReadAccessMixin, View):
     def get(self, request, pk):
         from .models import StaffAdvance
         adv = get_object_or_404(StaffAdvance, pk=pk)
-        return render(request, self.template_name, {
-            "adv": adv, "expenses": adv.expenses.all(),
-            "categories": Expense.Category.choices, "today": dt.date.today().isoformat()})
+        return render(request, self.template_name, _advance_detail_ctx(adv))
+
+
+def _advance_detail_ctx(adv, *, leader_mode=False):
+    """Shared context for the advance statement (issued → settling lines →
+    balance), used by both the treasurer and leader detail pages."""
+    from decimal import Decimal
+    rows = []
+    running = adv.amount   # money still in the staff member's hands to account for
+    rows.append({"date": adv.date_issued, "label": f"Advance issued — {adv.purpose}",
+                 "out": adv.amount, "back": None, "running": running})
+    for e in adv.expenses.filter(
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID]
+            ).order_by("date", "id"):
+        running -= e.amount
+        rows.append({"date": e.date, "label": e.description, "out": None,
+                     "back": e.amount, "running": running, "expense": e})
+    if adv.returned_to_petty:
+        running -= adv.returned_to_petty
+        rows.append({"date": adv.settled_on or adv.date_issued,
+                     "label": "Unspent cash returned to petty cash",
+                     "out": None, "back": adv.returned_to_petty, "running": running})
+    return {
+        "adv": adv, "expenses": adv.expenses.all(), "statement": rows,
+        "to_account": running,   # >0 still to account; <0 reimburse staff
+        "categories": Expense.Category.choices,
+        "today": dt.date.today().isoformat(), "leader_mode": leader_mode,
+    }
+
+
+def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant=None):
+    """Create an APPROVED+PAID expense that settles part of a staff advance, and
+    refresh the advance's status. If the advance was funded from petty cash, the
+    expense is tagged as a petty-cash disbursement so the float stays accurate."""
+    from .models import StaffAdvance, Expense
+    exp = Expense.objects.create(
+        date=date, sabbath_week=sabbath_week_of(date), department=adv.department,
+        description=desc, amount=amount,
+        category=category or Expense.Category.OTHER,
+        claimant=(claimant or adv.staff_name), method=adv.method,
+        status=Expense.Status.PAID, paid_date=date,
+        paid_from_petty_cash=adv.from_petty_cash,
+        recorded_by=user, advance=adv, approved_by=user)
+    bal = adv.balance
+    if bal == 0:
+        adv.status = StaffAdvance.Status.SETTLED
+    elif adv.settled_total > 0:
+        adv.status = StaffAdvance.Status.PARTLY
+    adv.save(update_fields=["status"])
+    return exp
 
 
 class AdvanceAddExpense(DataEntryRequiredMixin, View):
     """Record a receipt/expense that settles part of an advance."""
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
-        from core.models import SiteConfig
         from .models import StaffAdvance
         adv = get_object_or_404(StaffAdvance, pk=pk)
         try:
@@ -916,32 +979,31 @@ class AdvanceAddExpense(DataEntryRequiredMixin, View):
             d = dt.date.fromisoformat(request.POST.get("date"))
         except (TypeError, ValueError):
             d = dt.date.today()
-        cfg = SiteConfig.get()
-        status = (Expense.Status.PENDING if cfg.require_expense_approval
-                  else Expense.Status.APPROVED)
-        Expense.objects.create(
-            date=d, sabbath_week=sabbath_week_of(d), department=adv.department,
-            description=desc, amount=amount,
-            category=request.POST.get("category") or Expense.Category.OTHER,
-            claimant=adv.staff_name, method=adv.method, status=status,
-            recorded_by=request.user, advance=adv,
-            approved_by=(request.user if status == Expense.Status.APPROVED else None))
-        adv.status = (StaffAdvance.Status.SETTLED if adv.balance == 0
-                      else StaffAdvance.Status.PARTLY)
-        adv.save(update_fields=["status"])
+        _record_advance_expense(adv, date=d, desc=desc, amount=amount,
+            category=request.POST.get("category"), user=request.user)
         messages.success(request, "Settling expense recorded against the advance.")
         return redirect("advance_detail", pk=pk)
 
 
 class AdvanceClose(TreasurerRequiredMixin, View):
     def post(self, request, pk):
+        from decimal import Decimal, InvalidOperation
         from .models import StaffAdvance
         adv = get_object_or_404(StaffAdvance, pk=pk)
+        if adv.from_petty_cash:
+            try:
+                ret = Decimal(request.POST.get("returned_to_petty") or "0")
+            except InvalidOperation:
+                ret = Decimal(0)
+            if ret > 0:
+                adv.returned_to_petty = ret
         adv.status = StaffAdvance.Status.CLOSED
         adv.settled_on = dt.date.today()
         adv.note = (request.POST.get("note") or adv.note)[:1000]
-        adv.save(update_fields=["status", "settled_on", "note"])
-        messages.success(request, "Advance closed.")
+        adv.save(update_fields=["status", "settled_on", "note", "returned_to_petty"])
+        messages.success(request, "Advance closed." + (
+            " Returned cash credited back to petty cash." if adv.from_petty_cash
+            and adv.returned_to_petty else ""))
         return redirect("advance_detail", pk=pk)
 
 

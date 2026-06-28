@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% load humanize %}
 {% block title %}New advance · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Issue a staff advance</h1><div class="sub">Record cash given to staff ahead of expenses</div></div>
@@ -13,6 +13,11 @@
   </div>
   <div class="form-row"><label>Purpose</label><input name="purpose" class="field" placeholder="e.g. Advance for camp meeting travel"></div>
   <div class="form-row"><label>Reference (optional)</label><input name="reference" class="field"></div>
+  <label class="check-row" style="display:flex;gap:.5rem;align-items:flex-start;margin:.4rem 0">
+    <input type="checkbox" name="from_petty_cash" value="1" class="form-check" id="fromPetty" style="margin-top:.2rem">
+    <span>Issue from the <strong>petty-cash float</strong> (reduces petty cash; method is treated as cash).
+      <span class="muted">Available now: KSh {{ petty_balance|floatformat:2|intcomma }}</span></span>
+  </label>
   <div class="btn-row"><button class="btn">Issue advance</button></div>
 </div></form>
 {% endblock %}

@@ -11,6 +11,8 @@ urlpatterns = [
          name="leader_expenses"),
     path("leader/department/<int:pk>/pledges/", views.LeaderPledgesView.as_view(),
          name="leader_pledges"),
+    path("leader/advances/", views.LeaderAdvancesView.as_view(), name="leader_advances"),
+    path("leader/advances/<int:pk>/", views.LeaderAdvanceDetailView.as_view(), name="leader_advance_detail"),
     path("leader/group/<int:pk>/", views.LeaderGroupDetailView.as_view(),
          name="leader_group_detail"),
 ]

@@ -451,3 +451,83 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
         ctx["pct"] = (int(min(ctx["paid"] / ctx["pledged"] * 100, 100))
                       if ctx["pledged"] else 0)
         return ctx
+
+
+# ---------------------------------------------------------------------------
+# Leader: staff advances issued to their departments
+# A leader may view advances on their funds and record the expenses that
+# account for them. Each settling expense is APPROVED + PAID, with the leader
+# named as the claimant. Scope is enforced server-side via allowed_departments.
+# ---------------------------------------------------------------------------
+from django.contrib import messages  # noqa: E402
+from django.views import View  # noqa: E402
+from cashbook.models import StaffAdvance, Expense  # noqa: E402
+from .permissions import LeaderRequiredMixin  # noqa: E402
+
+
+def _leader_advances(user):
+    ids = set(allowed_departments(user).values_list("id", flat=True))
+    return (StaffAdvance.objects.filter(department_id__in=ids)
+            .select_related("department").order_by("-date_issued", "-id"))
+
+
+class LeaderAdvancesView(LeaderRequiredMixin, TemplateView):
+    template_name = "leaders/advances.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        advs = list(_leader_advances(self.request.user))
+        ctx["advances"] = advs
+        ctx["outstanding"] = sum((a.balance for a in advs
+                                  if a.status != StaffAdvance.Status.CLOSED
+                                  and a.balance > 0), Decimal(0))
+        return ctx
+
+
+class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
+    template_name = "leaders/advance_detail.html"
+
+    def _get_advance(self, request, pk):
+        adv = get_object_or_404(StaffAdvance, pk=pk)
+        if not assert_department_allowed(request.user, adv.department_id):
+            return None
+        return adv
+
+    def get(self, request, pk):
+        from cashbook.views import _advance_detail_ctx
+        adv = self._get_advance(request, pk)
+        if not adv:
+            return redirect("leader_advances")
+        return render(request, self.template_name,
+                      _advance_detail_ctx(adv, leader_mode=True))
+
+    def post(self, request, pk):
+        from decimal import Decimal, InvalidOperation
+        from cashbook.views import _record_advance_expense
+        from core.utils import block_if_locked
+        adv = self._get_advance(request, pk)
+        if not adv:
+            return redirect("leader_advances")
+        if adv.status == StaffAdvance.Status.CLOSED:
+            messages.error(request, "This advance is closed.")
+            return redirect("leader_advance_detail", pk=pk)
+        try:
+            amount = Decimal(request.POST.get("amount") or "0")
+        except InvalidOperation:
+            amount = Decimal(0)
+        desc = (request.POST.get("description") or "").strip()
+        if not (desc and amount > 0):
+            messages.error(request, "A description and a positive amount are required.")
+            return redirect("leader_advance_detail", pk=pk)
+        try:
+            d = dt.date.fromisoformat(request.POST.get("date"))
+        except (TypeError, ValueError):
+            d = dt.date.today()
+        if block_if_locked(request, d):
+            return redirect("leader_advance_detail", pk=pk)
+        claimant = (request.user.get_full_name() or request.user.username)
+        _record_advance_expense(adv, date=d, desc=desc, amount=amount,
+            category=request.POST.get("category"), user=request.user,
+            claimant=claimant)
+        messages.success(request, "Expense recorded against the advance.")
+        return redirect("leader_advance_detail", pk=pk)

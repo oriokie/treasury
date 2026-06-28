@@ -449,6 +449,11 @@ class StaffAdvance(models.Model):
     date_issued = models.DateField()
     purpose = models.CharField(max_length=200)
     method = models.CharField(max_length=8, choices=Method.choices, default=Method.CASH)
+    from_petty_cash = models.BooleanField(default=False,
+        help_text="Issued out of the petty-cash float (reduces petty cash; the "
+                  "advance is a receivable until accounted for).")
+    returned_to_petty = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+        help_text="Unspent cash the staff member returned to the petty-cash box.")
     reference = models.CharField(max_length=40, blank=True)
     status = models.CharField(max_length=8, choices=Status.choices, default=Status.ISSUED,
                               db_index=True)
@@ -472,10 +477,29 @@ class StaffAdvance(models.Model):
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID]
         ).aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
+    def settled_asof(self, on):
+        from django.db.models import Sum
+        return self.expenses.filter(
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
+            date__lte=on).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
     @property
     def balance(self):
         """Positive = surplus to recover from staff; negative = shortfall owed to staff."""
-        return self.amount - self.settled_total
+        return self.amount - self.settled_total - (self.returned_to_petty or Decimal(0))
+
+    @property
+    def accounted_total(self):
+        """Everything accounted for: expenses settled + any cash returned."""
+        return self.settled_total + (self.returned_to_petty or Decimal(0))
+
+    def petty_outstanding_asof(self, on):
+        """For a petty-cash-funded advance: cash still out of the box as an advance
+        (issued − settled − returned), never below zero."""
+        if not self.from_petty_cash or self.date_issued > on:
+            return Decimal(0)
+        out = self.amount - self.settled_asof(on) - (self.returned_to_petty or Decimal(0))
+        return out if out > 0 else Decimal(0)
 
 
 class ExpenseCategory(models.Model):

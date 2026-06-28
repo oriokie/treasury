@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.76.0 - staff advances: petty-cash funding + leader self-service
+- StaffAdvance gains from_petty_cash + returned_to_petty (cashbook 0021) and helpers settled_asof(),
+  accounted_total, petty_outstanding_asof(), balance now nets returned cash.
+- Issuing an advance from petty cash reduces the float: _petty_balance_asof() subtracts each petty
+  advance's outstanding (issued - settled - returned); settling expenses against it are flagged
+  paid_from_petty_cash, so the float stays exact (advance-out reclassifies to spent, net zero).
+  AdvanceCreate validates the float can cover a petty advance.
+- Settling expenses are now APPROVED+PAID (paid_date set). Shared helper _record_advance_expense().
+- Leaders: new LeaderAdvancesView (/leader/advances/) + LeaderAdvanceDetailView with a statement and an
+  add-expense form, strictly scoped to departments_led_by(); claimant = the leader's name. Link added on
+  the leader dashboard. The leader area stays read-only everywhere else.
+- Advance detail now shows a running statement (issued -> settling lines -> still-to-account) and the
+  petty-cash source; AdvanceClose captures surplus returned to petty cash.
+- Financial-statement impact verified: the SoFP reclassifies the advance within assets (cash_on_hand +
+  receivable), so totals tie regardless of source; only settling expenses hit I&E/cash-flow; the petty
+  float + bank reconciliation reflect a petty advance as cash physically out of the box.
+- Tests: cashbook/test_advance_petty_leader (10).
+
 ## v1.75.0 - Appearance & Preferences (per-user workspace customisation)
 - New core.UserPreference model (OneToOne with User, migration core 0036): theme, accent (+custom),
   sidebar mode, font size, layout width, card style, dashboard widget order/visibility, landing page,
