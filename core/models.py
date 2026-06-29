@@ -198,6 +198,10 @@ class SiteConfig(models.Model):
         help_text="Extra words (comma-separated) that mean a development group in "
                   "bank references, e.g. 'project, phase'. The common 'grp/devgroup' "
                   "spellings are always recognised.")
+    dev_group_builder_apply = models.BooleanField(default=False,
+        help_text="Allow the development-group builder to actually create groups and "
+                  "reassign members in the system. Off = the builder only produces a "
+                  "downloadable Excel/CSV proposal and never changes any data.")
     numbered_fund_families = models.TextField(blank=True, default="",
         help_text="Route numbered narrations straight to numbered funds, one family "
                   "per line as 'prefixes = NAME_TEMPLATE'. {n} is the number found. "

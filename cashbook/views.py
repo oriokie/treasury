@@ -10,7 +10,7 @@ from django.views.generic import ListView, CreateView, UpdateView, View
 from django.views import View
 
 from core.utils import block_if_locked as _block_if_locked, PrefPaginationMixin
-from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
+from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin, AdvanceAccessMixin
 from core.utils import sabbath_week_of
 from departments.models import Department
 from .forms import ExpenseForm, FundTransferForm, RecurringExpenseForm
@@ -893,7 +893,7 @@ class AdvanceListView(ReadAccessMixin, ListView):
         return StaffAdvance.objects.select_related("department").all()
 
 
-class AdvanceCreate(DataEntryRequiredMixin, View):
+class AdvanceCreate(AdvanceAccessMixin, View):
     template_name = "cashbook/advance_form.html"
 
     def get(self, request):
@@ -1007,7 +1007,7 @@ def apply_advance_edit(adv, post, user, *, allow_petty_toggle=True):
     return True, None
 
 
-class AdvanceEdit(DataEntryRequiredMixin, View):
+class AdvanceEdit(AdvanceAccessMixin, View):
     """Edit an advance. Treasurers/assistants may edit any advance; a closed
     advance can only be amended by a treasurer (enforced below)."""
     template_name = "cashbook/advance_form.html"
@@ -1137,9 +1137,10 @@ def _sync_advance_charge(adv, user):
             exp.department = adv.department
             exp.method = adv.method
             exp.claimant = adv.staff_name
+            exp.paid_from_petty_cash = adv.from_petty_cash
             exp.description = f"Bank/M-Pesa charge — sending advance to {adv.staff_name}"
             exp.save(update_fields=["date", "amount", "department", "method",
-                                    "claimant", "description"])
+                                    "claimant", "paid_from_petty_cash", "description"])
         else:
             exp = Expense.objects.create(
                 date=adv.date_issued, sabbath_week=sabbath_week_of(adv.date_issued),
@@ -1147,6 +1148,7 @@ def _sync_advance_charge(adv, user):
                 description=f"Bank/M-Pesa charge — sending advance to {adv.staff_name}",
                 amount=charge, category=Expense.Category.BANK_CHARGE,
                 claimant=adv.staff_name, method=adv.method,
+                paid_from_petty_cash=adv.from_petty_cash,
                 status=Expense.Status.PAID, paid_date=adv.date_issued,
                 recorded_by=user, approved_by=user)
             adv.charge_expense = exp
@@ -1201,7 +1203,7 @@ def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant
     return exp, None
 
 
-class AdvanceAddExpense(DataEntryRequiredMixin, View):
+class AdvanceAddExpense(AdvanceAccessMixin, View):
     """Record a receipt/expense that settles part of an advance."""
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
@@ -1235,7 +1237,7 @@ class AdvanceAddExpense(DataEntryRequiredMixin, View):
         return redirect("advance_detail", pk=pk)
 
 
-class AdvanceTopUpView(DataEntryRequiredMixin, View):
+class AdvanceTopUpView(AdvanceAccessMixin, View):
     """Issue more cash onto an open advance (carry a small leftover forward into a
     larger working advance instead of retiring and re-issuing)."""
     def post(self, request, pk):

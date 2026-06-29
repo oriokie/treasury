@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.81.0 - dev-group builder: download-first, live apply opt-in
+- DevGroupBuilderView now exports the balanced proposal to Excel/CSV (group, member, phone, capability)
+  via ?export=xlsx|csv, including member phone numbers where present; with no group count it exports the
+  member list by capability.
+- New SiteConfig.dev_group_builder_apply (core 0037, default False): the live "create groups & reassign
+  members" action is disabled by default and gated on this flag; POST is blocked with a message when off.
+  Toggle added to Settings → Channels (allocation card). The preview hides the create form when off.
+- Tests: core/test_rights_batch updated (apply requires the setting) + download-only test.
+
+## v1.80.0 - delegated rights, balanced dev-group builder, assistant + settings
+- #1 removed the duplicate "Allocation & categories" (allocation rules) card from settings; the dev-group
+  prefixes / numbered-fund-families card is retained.
+- #4 three new assignable rights in core.rights: allocate_dev_offering, manage_advances, build_dev_groups
+  (granted to Treasurer always; allocate/advances also to Assistant by default). Helpers in core.roles;
+  AdvanceAccessMixin gates the advance views on manage_advances.
+- #3 DevGroupUnassignedView now requires the allocate_dev_offering right (treasurers included); a leader
+  granted it sees a sidebar "Allocate dev offering" item.
+- #7 DevGroupBuilderView (/reports/dev-groups/build/): generate N groups balanced by members' historical
+  development giving (greedy longest-processing-time partition); preview + create; gated on build_dev_groups.
+  Buttons added to the dev-groups page.
+- #5 a petty-cash-funded advance's sending charge is now paid_from_petty_cash (reduces the float too).
+- #6 assistant: new staff-advances and petty-cash intents, enriched data context, refreshed suggestions.
+- Tests: core/test_rights_batch (9); settings test updated for the removed card.
+
 ## v1.79.0 - advance refinements, by-member fund view, recon export, global search
 - #9 sending charge no longer reduces the advance (church cost; posts to the fund, not linked via the
   advance FK). #7 per-line transaction charges when recording an expense DO reduce the advance. #4 an

@@ -38,6 +38,18 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.81.0": "The development-group builder is now a download-first tool: enter the number of groups and "
+              "download a balanced Excel (or CSV) listing every member with their phone number, where known, "
+              "and the group they fall into — without changing any data. Actually creating the groups in the "
+              "system is now off by default and can be switched on under Settings → Channels if you ever want it.",
+    "1.80.0": "New delegated rights and a balanced group builder. You can now grant individual users two "
+              "new functions without making them treasurers — allocating development offering, and managing "
+              "staff advances — and there's a new right for building development groups. A development "
+              "leader granted the offering right gets a menu item to allocate unassigned development "
+              "giving. From the development groups page, a new tool builds any number of groups balanced "
+              "by members' past giving capacity. When an advance is issued from petty cash, its sending "
+              "charge now also comes out of the petty float. The assistant knows about staff advances and "
+              "petty cash. And the settings page is tidier — the duplicate allocation card was removed.",
     "1.79.0": "A big round of staff-advance and reporting improvements. On advances: the charge for "
               "sending an advance is now treated as the church's cost (it posts to the fund and no longer "
               "reduces the advance), while charges the holder incurs while spending can be added per "

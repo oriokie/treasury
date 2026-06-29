@@ -61,6 +61,46 @@ def can_approve(user):
     return is_treasurer(user)
 
 
+def can_allocate_dev_offering(user):
+    """Treasurers, and anyone granted the development-offering right, may view and
+    allocate unassigned development offering."""
+    return is_treasurer(user) or has_right(user, RIGHT_DEV_OFFERING)
+
+
+def can_manage_advances(user):
+    """Treasurers and assistants manage advances by default; the right can also be
+    granted to any other user (e.g. a leader who runs their own advances)."""
+    return is_treasurer(user) or is_assistant(user) or has_right(user, RIGHT_ADVANCES)
+
+
+def can_build_dev_groups(user):
+    """Treasurers, and anyone granted the dev-group-builder right, may generate
+    balanced development groups."""
+    return is_treasurer(user) or has_right(user, RIGHT_DEV_GROUP_BUILDER)
+
+
+def can_allocate_dev_offering(user):
+    """Treasurers, and anyone granted the development-offering right, may view and
+    allocate unassigned development offering."""
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "allocate_dev_offering")
+
+
+def can_manage_advances(user):
+    """Treasurers and assistants manage advances by default; the right can also be
+    granted to any other user (e.g. a leader who runs their own advances)."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "manage_advances"))
+
+
+def can_build_dev_groups(user):
+    """Treasurers, and anyone granted the dev-group-builder right, may generate
+    balanced development groups."""
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "build_dev_groups")
+
+
 def role_label(user):
     """Human label for a user's primary role."""
     if user.is_superuser:

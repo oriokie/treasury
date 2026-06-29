@@ -168,6 +168,15 @@ def _data_context():
         lines.append(f"Fixed assets net book value: {nbv}.")
     except Exception:
         pass
+    # staff advances outstanding + petty cash float
+    try:
+        from cashbook.views import outstanding_advances_total, _petty_balance_asof
+        adv_out = outstanding_advances_total(today)
+        petty = _petty_balance_asof(today)
+        lines.append(f"Staff advances outstanding (receivable, not yet accounted): {adv_out}. "
+                     f"Petty cash float on hand: {petty}.")
+    except Exception:
+        pass
     try:
         from core.version import get_version, WHATS_NEW
         notes = "; ".join(f"v{v}: {n}" for v, n in list(WHATS_NEW.items())[:3])
@@ -431,6 +440,23 @@ def _answer_rules(question, user=None):
     # fund balance
     if ("balance" in t or "how much is in" in t or "how much does" in t) and _find_fund(t):
         return _fund_balance(_find_fund(t))
+
+    # staff advances outstanding
+    if ("advance" in t and ("outstanding" in t or "how much" in t or "total" in t
+            or "owe" in t or "unaccounted" in t)) or t in ("staff advances", "advances"):
+        from cashbook.views import outstanding_advances_total
+        total = outstanding_advances_total()
+        return {"text": f"Staff advances outstanding (issued but not yet accounted "
+                f"for): {_money(total)}.",
+                "link": reverse("advance_list"), "link_label": "Staff advances"}
+
+    # petty cash float
+    if "petty cash" in t or ("petty" in t and ("float" in t or "balance" in t)):
+        import datetime as _dt
+        from cashbook.views import _petty_balance_asof
+        bal = _petty_balance_asof(_dt.date.today())
+        return {"text": f"Petty cash float on hand: {_money(bal)}.",
+                "link": reverse("petty_cash"), "link_label": "Petty cash register"}
 
     # tithe
     if "tithe" in t:
@@ -728,6 +754,8 @@ SUGGESTIONS = [
     "Tithe last month",
     "Trust funds to remit",
     "Outstanding expenses",
+    "Staff advances outstanding",
+    "Petty cash balance",
     "Are the books balanced?",
     "Are we in surplus this year?",
     "How much cash do we have?",
@@ -745,8 +773,8 @@ SUGGESTION_GROUPS = [
         "Total collections this month", "Tithe last month",
         "Top givers this year", "Offerings this month"]},
     {"label": "Money out", "icon": "↑", "items": [
-        "Outstanding expenses", "Capital expenditure this year",
-        "Biggest expenses this month", "Recent activity"]},
+        "Outstanding expenses", "Staff advances outstanding",
+        "Petty cash balance", "Biggest expenses this month"]},
     {"label": "Funds & balances", "icon": "▦", "items": [
         "How much cash do we have?", "Balance of Development",
         "Net assets", "Recent transfers"]},

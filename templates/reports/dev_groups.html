@@ -5,6 +5,8 @@
 <div class="btn-row">
   <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel (this period)</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'dev_groups_excel' %}">⬇ Detailed Excel (all groups)</a>
+  {% if can.allocate_dev_offering %}<a class="btn btn-ghost btn-sm" href="{% url 'dev_unassigned' %}">🎯 Allocate offering</a>{% endif %}
+  {% if can.build_dev_groups %}<a class="btn btn-sm" href="{% url 'dev_group_builder' %}">⚖ Build balanced groups</a>{% endif %}
   {% if is_treasurer %}<form method="post" action="{% url 'dev_groups_email_all' %}" class="u-inline" onsubmit="return confirm('Email each group its contribution report to the leader? Sends are spaced 30s apart.');">{% csrf_token %}<button class="btn btn-sm">✉ Email all leaders</button></form>{% endif %}
 </div></div>
 {% include 'partials/period_filter.html' %}

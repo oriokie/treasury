@@ -220,17 +220,7 @@
   </section>
 
   <section class="tabpane" data-pane="channels">
-    <div class="card"><div class="hd">Allocation &amp; categories</div><div class="bd">
-      <div class="help u-mb-sm">Allocation rules map a payment reference (e.g. a paybill account number or a development-group code) to the fund it belongs to, so imported giving is sorted automatically. Edit or add rules here; learned rules are also created when you tick “remember” while clearing the review queue.</div>
-      <div class="btn-row">
-        <a class="btn btn-ghost btn-sm" href="{% url 'rule_list' %}">⚙ Manage allocation rules</a>
-        <a class="btn btn-ghost btn-sm" href="{% url 'rule_create' %}">＋ New rule</a>
-        <a class="btn btn-ghost btn-sm" href="{% url 'rule_import' %}">⬆ Import rules</a>
-      </div>
-      <p class="help u-mt-sm">Development-group references (e.g. <span class="mono">grp12dev</span>) are recognised automatically and routed to the matching group; add a rule only to override or for non-standard references.</p>
-    </div></div>
-
-    <div class="card u-mt"><div class="hd">Notifications</div><div class="bd">
+    <div class="card"><div class="hd">Notifications</div><div class="bd">
       <div class="form-grid">
       {% for f in form %}{% if f.name == 'notify_email_enabled' %}
         <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
@@ -283,6 +273,9 @@
         <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
+      {% for f in form %}{% if f.name == 'dev_group_builder_apply' %}
+        <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
       <a class="btn btn-ghost btn-sm" href="{% url 'expense_categories' %}" class="u-mt-sm">Manage expense categories</a>
       <hr class="u-divider">
       <div class="section-title">Local Church Budget (LCB) funds</div>

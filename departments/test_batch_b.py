@@ -72,5 +72,7 @@ class BatchBTests(TestCase):
 
     def test_settings_exposes_allocation(self):
         b = self.c.get("/settings/").content.decode()
+        # the allocation-rules card was removed; the dev-group / numbered-fund
+        # families card remains
         self.assertIn("Allocation &amp; categories", b)
-        self.assertIn("Manage allocation rules", b)
+        self.assertIn("Dev group extra prefixes", b)

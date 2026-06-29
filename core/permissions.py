@@ -36,6 +36,13 @@ class TreasurerRequiredMixin(RoleRequiredMixin):
     permission_message = "This action is restricted to Treasurers."
 
 
+class AdvanceAccessMixin(RoleRequiredMixin):
+    """Staff-advance management: treasurers/assistants, or any user granted the
+    'manage staff advances' right."""
+    allow_check = staticmethod(roles.can_manage_advances)
+    permission_message = "You don't have the staff-advances right."
+
+
 class ReadAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
     """Staff read access: Treasurer / Assistant / Auditor / admin.
 

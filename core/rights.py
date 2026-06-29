@@ -27,6 +27,9 @@ RIGHTS = [
     ("record_expenses",      "Record expenses / claims",           "Data entry"),
     ("manage_members",       "Add / edit members",                 "Data entry"),
     ("manage_campaigns",     "Manage campaigns",                   "Data entry"),
+    ("allocate_dev_offering","Allocate development offering",       "Data entry"),
+    ("manage_advances",      "Manage staff advances",              "Data entry"),
+    ("build_dev_groups",     "Build balanced development groups",   "Data entry"),
     # Money controls
     ("approve_expenses",     "Approve / reject expenses",          "Money controls"),
     ("second_approve",       "Second approval (high value)",       "Money controls"),
@@ -73,7 +76,7 @@ def grouped_rights():
 _ALL = set(RIGHT_KEYS)
 _DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
                "record_expenses", "manage_members", "manage_campaigns",
-               "manage_rules"}
+               "manage_rules", "allocate_dev_offering", "manage_advances"}
 _SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}
 _REPORTS = {"view_reports", "export_reports"}
 

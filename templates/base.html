@@ -30,6 +30,7 @@
       {% if is_leader %}
       <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name and 'advance' not in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> {% if leader_single_dept %}My department{% else %}My departments{% endif %}</a>
       <a href="{% url 'leader_advances' %}" class="{% if 'advance' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">💵</span> Staff advances</a>
+      {% if can.allocate_dev_offering %}<a href="{% url 'dev_unassigned' %}" class="{% if request.resolver_match.url_name == 'dev_unassigned' %}active{% endif %}"><span class="ic">🎯</span> Allocate dev offering</a>{% endif %}
       {% else %}
       <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>

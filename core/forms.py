@@ -20,6 +20,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "dual_approval_threshold", "enforce_fund_balance",
             "enforce_petty_float", "require_dual_yearend", "require_import_confirmation",
             "notify_email_enabled", "dev_group_extra_prefixes",
+            "dev_group_builder_apply",
             "numbered_fund_families",
             "lcb_departments",
             "sabbath_cutoff_enabled",

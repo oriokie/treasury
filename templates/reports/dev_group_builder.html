@@ -1,0 +1,49 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Build development groups · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Balanced development groups</h1>
+  <div class="sub">Split members into groups of comparable giving capacity, based on their development giving history</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'report_dev_groups' %}">← Dev groups</a></div>
+
+<div class="kpi-grid u-mb">
+  {% include "ui/stat.html" with label="Active members" value=member_count %}
+  {% include "ui/stat.html" with label="Total giving capability" prefix="KSh" value=total_capability|floatformat:2|intcomma accent="brass" %}
+  {% if n >= 2 %}{% include "ui/stat.html" with label="Capability spread across groups" prefix="KSh" value=spread|floatformat:2|intcomma foot="max − min group total (lower is better)" %}{% endif %}
+</div>
+
+<div class="card u-mb"><div class="bd">
+  <form method="get" class="btn-row u-items-end">
+    <div class="form-row u-m-0"><label>Number of groups</label><input type="number" name="n" min="2" max="50" value="{{ n|default:'' }}" class="field u-w-auto" placeholder="e.g. 20"></div>
+    <button class="btn">Preview balance</button>
+    {% if n >= 2 %}
+    <a class="btn btn-ghost" href="?n={{ n }}&export=xlsx">⤓ Download Excel</a>
+    <a class="btn btn-ghost" href="?n={{ n }}&export=csv">CSV</a>
+    {% endif %}
+  </form>
+  <p class="help u-mt-sm">Members are placed heaviest-giver-first into the lightest group, so totals come out close. Members with no development history are spread evenly. The download lists each member with their phone number (where known) and group.</p>
+</div></div>
+
+{% if preview %}
+<div class="card"><div class="hd u-between">Proposed {{ n }} groups
+  <div class="btn-row">
+    <a class="btn btn-sm" href="?n={{ n }}&export=xlsx">⤓ Download Excel</a>
+    {% if apply_enabled %}
+    <form method="post" onsubmit="return confirm('Create {{ n }} groups and reassign every active member to them? This replaces current group membership.');">{% csrf_token %}
+      <input type="hidden" name="n" value="{{ n }}">
+      <input name="prefix" value="Group" class="field u-w-auto" style="max-width:120px" title="Group name prefix">
+      <button class="btn btn-sm">✓ Create these groups</button>
+    </form>
+    {% endif %}
+  </div></div><div class="bd">
+  {% if not apply_enabled %}<p class="help u-mt-0">This is a proposal only — no groups are created and nothing is changed. Download it as Excel above. (A treasurer can switch on live group creation under <a class="link" href="{% url 'settings' %}">Settings → Channels</a>.)</p>{% endif %}
+<div class="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.8rem">
+  {% for b in preview %}
+  <div class="card" style="margin:0"><div class="hd u-between" style="font-size:.85rem">{{ b.number }} · {{ b.members|length }} member{{ b.members|length|pluralize }}<span class="mono">KSh {{ b.total|floatformat:0|intcomma }}</span></div>
+  <div class="bd" style="max-height:240px;overflow:auto;padding:.5rem .8rem">
+    {% for m in b.members %}<div class="u-between" style="font-size:.82rem;gap:.5rem"><span>{{ m.name }}{% if m.phone %} <span class="muted">· {{ m.phone }}</span>{% endif %}</span><span class="muted mono">{{ m.weight|floatformat:0|intcomma }}</span></div>{% endfor %}
+  </div></div>
+  {% endfor %}
+</div>
+</div></div>
+{% elif n >= 2 %}<p class="help">No active members to group.</p>{% endif %}
+{% endblock %}

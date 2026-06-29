@@ -13,6 +13,7 @@ urlpatterns = [
     path("dev-groups/email-all/", views.DevGroupEmailAllView.as_view(), name="dev_groups_email_all"),
     path("dev-groups/excel/", views.DevGroupAllExcelView.as_view(), name="dev_groups_excel"),
     path("dev-groups/unassigned/", views.DevGroupUnassignedView.as_view(), name="dev_unassigned"),
+    path("dev-groups/build/", views.DevGroupBuilderView.as_view(), name="dev_group_builder"),
 
     path("dev-groups/<int:pk>/members/", views.DevGroupMembersView.as_view(), name="report_dev_group_members"),
     path("expenses/", views.ExpenseReportView.as_view(), name="report_expenses"),
