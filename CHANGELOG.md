@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.79.0 - advance refinements, by-member fund view, recon export, global search
+- #9 sending charge no longer reduces the advance (church cost; posts to the fund, not linked via the
+  advance FK). #7 per-line transaction charges when recording an expense DO reduce the advance. #4 an
+  expense+charge can't exceed the advance balance. #3 AdvanceTopUp (cashbook 0023) to add cash to an
+  open advance; petty timing + statement updated. #6 leaders can edit only their own expense lines (not
+  the advance); #10 leaders attach receipts/M-Pesa messages to lines, no delete. #8 advance deletable
+  only with no expenses.
+- #11 FundMembersView (/reports/fund/<id>/members/): giving rolled up across the fund + all sub-accounts
+  grouped by member, with Excel/CSV; buttons added to the fund ledger (original page retained).
+- #5 closing a parent fund cascades to its sub-accounts (zero-balance guard on each); sub-accounts get
+  their own close/reopen; reopen keeps parent/sub consistent; the main department list shows ACTIVE only
+  (closed/archived live on /departments/historical/).
+- #1 reconciliation: Excel/CSV export, print-only statement with a print header, diagnostic + management
+  panels hidden from print, column alignment fixes.
+- #2 GlobalSearchView (/search/): command palette now also searches members, funds, staff advances,
+  expenses and receipts, merged under grouped headers with sublabels.
+- Tests: departments/test_close_cascade (+FundMembers/ReconExport/GlobalSearch); advance tests updated.
+
 ## v1.78.0 - charge reduces advance + auto-populated reconciliation
 - Bank/M-Pesa charge on an advance now REDUCES the advance: _sync_advance_charge() links the BANK_CHARGE
   expense via the `advance` FK, so it counts toward settled_total and lowers the balance to account for

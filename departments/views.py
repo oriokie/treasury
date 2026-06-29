@@ -14,17 +14,22 @@ class DepartmentListView(ReadAccessMixin, ListView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        tops = (Department.objects.filter(parent__isnull=True)
-                .prefetch_related("subgroups"))
+        # the main list shows only ACTIVE funds; closed/archived ones live on the
+        # historical accounts page
+        tops = (Department.objects.filter(parent__isnull=True,
+                status=Department.Status.ACTIVE).prefetch_related("subgroups"))
         dev_groups = DevelopmentGroup.objects.all()
         tree = []
         for f in tops:
-            node = {"fund": f, "subs": list(f.subgroups.all()), "dev_groups": []}
+            subs = [s for s in f.subgroups.all() if s.status == Department.Status.ACTIVE]
+            node = {"fund": f, "subs": subs, "dev_groups": []}
             if f.name.lower() == "development":
                 node["dev_groups"] = list(dev_groups)
             tree.append(node)
         ctx["fund_tree"] = tree
         ctx["dev_groups"] = dev_groups
+        ctx["closed_count"] = Department.objects.exclude(
+            status=Department.Status.ACTIVE).count()
         from giving.models import SplitFund
         ctx["split_funds"] = SplitFund.objects.prefetch_related("components__department")
         return ctx
@@ -1065,25 +1070,41 @@ class ConsolidateView(TreasurerRequiredMixin, View):
 
 class CloseAccountView(TreasurerRequiredMixin, View):
     """Close an account once its purpose is complete. Only allowed at a zero
-    balance (transfer or consolidate any remainder first)."""
+    balance. Closing a parent fund also closes its sub-accounts (a sub-account
+    cannot outlive its parent) — provided every one of them is also at zero."""
     def post(self, request, pk):
         dept = get_object_or_404(Department, pk=pk)
-        bal = _balance(dept)
-        if bal != 0:
-            messages.error(request, f"{dept.name} can't be closed — its balance is "
-                                    f"{bal:,.2f}. Transfer or consolidate the remaining "
-                                    f"balance to zero first.")
+        active_subs = list(dept.subgroups.filter(status=Department.Status.ACTIVE))
+        # every balance involved must be zero
+        offenders = []
+        if _balance(dept) != 0:
+            offenders.append(dept.name)
+        for sub in active_subs:
+            if _balance(sub) != 0:
+                offenders.append(sub.name)
+        if offenders:
+            messages.error(request, "Can't close — these still hold a balance: "
+                + ", ".join(offenders) + ". Transfer or consolidate to zero first.")
             return redirect("department_list")
         if dept.status != Department.Status.ACTIVE:
             messages.info(request, f"{dept.name} is already {dept.get_status_display().lower()}.")
             return redirect("department_list")
+        note = request.POST.get("note", "")[:200]
+        # close the sub-accounts first, then the parent
+        for sub in active_subs:
+            prev = sub.status
+            sub.status = Department.Status.CLOSED
+            sub.save()
+            _log_status(sub, prev, sub.status, request.user,
+                        note=f"Closed with parent {dept.name}")
         prev = dept.status
         dept.status = Department.Status.CLOSED
         dept.save()
-        _log_status(dept, prev, dept.status, request.user,
-                    note=request.POST.get("note", "")[:200])
+        _log_status(dept, prev, dept.status, request.user, note=note)
+        extra = (f" Its {len(active_subs)} sub-account{'s' if len(active_subs) != 1 else ''} "
+                 f"were closed too." if active_subs else "")
         messages.success(request, f"{dept.name} closed. It stays in historical reports "
-                                  f"but won't accept new transactions.")
+                                  f"but won't accept new transactions.{extra}")
         return redirect("department_list")
 
 
@@ -1100,13 +1121,26 @@ class ArchiveAccountView(TreasurerRequiredMixin, View):
 
 
 class ReopenAccountView(TreasurerRequiredMixin, View):
-    """Reopen a closed/archived account back to active."""
+    """Reopen a closed/archived account back to active. Keeps the parent/sub
+    relationship consistent: reopening a sub also reopens a closed parent, and
+    reopening a parent reopens the sub-accounts that were closed alongside it."""
     def post(self, request, pk):
         dept = get_object_or_404(Department, pk=pk)
-        prev = dept.status
-        dept.status = Department.Status.ACTIVE
-        dept.save()
-        _log_status(dept, prev, dept.status, request.user, note="Reopened")
+
+        def _reopen(d):
+            prev = d.status
+            d.status = Department.Status.ACTIVE
+            d.save()
+            _log_status(d, prev, d.status, request.user, note="Reopened")
+
+        # a sub can't be active under a closed parent
+        if dept.parent_id and dept.parent.status != Department.Status.ACTIVE:
+            _reopen(dept.parent)
+        _reopen(dept)
+        # reopening a parent brings back its closed sub-accounts
+        if dept.parent_id is None:
+            for sub in dept.subgroups.exclude(status=Department.Status.ACTIVE):
+                _reopen(sub)
         messages.success(request, f"{dept.name} reopened and active again.")
         return redirect("department_list")
 

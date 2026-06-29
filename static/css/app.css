@@ -1087,3 +1087,27 @@ html[data-motion="reduced"] .toast{animation:none}
   overflow-wrap:normal;word-break:normal;letter-spacing:-.015em}
 .kpi-grid .stat .value .ksh{font-size:.66em;margin-right:.15rem}
 @media(max-width:420px){.kpi-grid .stat .value{font-size:1.12rem}}
+
+/* Reconciliation page — print only the statement, nicely aligned */
+.print-only{display:none}
+.recon-sheet table.ledger{table-layout:fixed;width:100%}
+.recon-sheet table.ledger td:first-child{width:auto}
+.recon-sheet table.ledger td.num{width:9.5rem;text-align:right;white-space:nowrap}
+.recon-sheet table.ledger td.act{width:2.2rem}
+.recon-sheet .indent{padding-left:1.4rem}
+.recon-print-head .rp-church{font-family:Fraunces,Georgia,serif;font-size:1.5rem;font-weight:700}
+.recon-print-head .rp-title{font-size:1.05rem;margin-top:.1rem;font-weight:600}
+.recon-print-head .rp-date{font-size:.85rem;color:#333;margin-top:.15rem}
+@media print{
+  .print-only{display:block}
+  .recon-print-head{text-align:center;margin:0 0 1.2rem;padding-bottom:.6rem;border-bottom:2px solid #000}
+  .recon-sheet{border:none!important;box-shadow:none!important;max-width:100%!important}
+  .recon-sheet .hd{border-bottom:1px solid #000}
+  .recon-sheet table.ledger td.act{display:none}
+}
+
+/* Command palette: data results with sublabel + icon */
+.palette .pi .pg-ic{display:inline-block;width:1.3rem;opacity:.7}
+.palette .pi .ps{color:var(--muted);font-size:.82rem;margin-left:.25rem}
+.palette .pi{display:flex;align-items:center;gap:.1rem}
+.palette .pi .pg{margin-left:auto;font-size:.72rem;color:var(--muted);background:var(--wash,#f0f3f2);padding:.05rem .4rem;border-radius:5px}

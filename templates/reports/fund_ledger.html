@@ -5,6 +5,7 @@
 <div class="page-head"><div><h1>{{ department.name }}</h1><div class="sub">Fund ledger · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% if parent %} · sub-account of <a class="link" href="{% url 'report_fund' parent.id %}">{{ parent.name }}</a>{% endif %}</div></div>
 <div class="btn-row no-print"><a class="btn btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
 <a class="btn btn-ghost" href="{% url 'fund_budget' department.id %}">◷ Budget &amp; goals</a>
+<a class="btn" href="{% url 'report_fund_members' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">👤 By member</a>
 <a class="btn btn-ghost" href="{% url 'fund_thank_sms' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">✉ Thank contributors (SMS)</a>
 <button class="btn btn-ghost" onclick="window.print()">⎙ Print</button></div></div>
 {% include 'partials/period_filter.html' %}
@@ -28,7 +29,8 @@
 
 {% if subgroups or dev_rows %}
 <div class="page-head"><h2 class="u-mt-lg">Sub-accounts</h2>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups">⤓ Excel</a>
+<div class="btn-row no-print"><a class="btn btn-sm" href="{% url 'report_fund_members' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">👤 By member</a>
+<a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups">⤓ Excel</a>
 <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups-csv">CSV</a>
 <button type="button" class="btn btn-ghost btn-sm" onclick="tableToJpeg('subAccountsTable', {title:'{{ department.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'fund-{{ department.slug|default:department.id }}-subaccounts', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download the sub-accounts as a JPEG image">⤓ JPEG</button></div></div>
 <div class="table-wrap"><table class="ledger" id="subAccountsTable">

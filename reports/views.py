@@ -416,6 +416,83 @@ class FundLedgerView(PeriodMixin, TemplateView):
         return ctx
 
 
+class FundMembersView(PeriodMixin, TemplateView):
+    """Aggregated giving for a fund and all its sub-accounts, grouped by member,
+    so leaders/treasurers can see how much each person has given. Complements the
+    chronological fund ledger (which this links to and from)."""
+    template_name = "reports/fund_members.html"
+
+    def get(self, request, *args, **kwargs):
+        if request.GET.get("export") in ("xlsx", "csv"):
+            return self._export(request, *args, **kwargs)
+        return super().get(request, *args, **kwargs)
+
+    def _fund_ids(self, dept):
+        # the fund itself plus every descendant sub-account
+        ids, frontier = {dept.id}, [dept]
+        while frontier:
+            nxt = []
+            for d in frontier:
+                for sub in d.subgroups.all():
+                    if sub.id not in ids:
+                        ids.add(sub.id); nxt.append(sub)
+            frontier = nxt
+        return ids
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        dept = get_object_or_404(Department, pk=kwargs["pk"])
+        s, e = ctx["start"], ctx["end"]
+        fund_ids = self._fund_ids(dept)
+        qs = (Transaction.objects.confirmed_credits().filter(
+            department_id__in=fund_ids, date__gte=s, date__lte=e,
+            excluded_from_income=False))
+        # group by member (named) and, separately, anonymous/loose giving
+        rows = {}
+        anon_total, anon_count = Decimal(0), 0
+        for r in (qs.values("member", "member__name", "payer_name")
+                    .annotate(total=Sum("amount"), n=Count("id"))):
+            mid = r["member"]
+            if mid:
+                key, name = mid, r["member__name"]
+            elif (r["payer_name"] or "").strip():
+                key, name = f"p:{r['payer_name'].strip().lower()}", r["payer_name"].strip()
+            else:
+                anon_total += r["total"] or Decimal(0); anon_count += r["n"]; continue
+            if key in rows:
+                rows[key]["total"] += r["total"] or Decimal(0)
+                rows[key]["n"] += r["n"]
+            else:
+                rows[key] = {"member_id": mid, "name": name,
+                             "total": r["total"] or Decimal(0), "n": r["n"]}
+        members = sorted(rows.values(), key=lambda x: x["total"], reverse=True)
+        named_total = sum((m["total"] for m in members), Decimal(0))
+        ctx.update({
+            "department": dept, "members": members,
+            "named_total": named_total, "anon_total": anon_total,
+            "anon_count": anon_count, "grand_total": named_total + anon_total,
+            "giver_count": len(members), "subaccount_count": len(fund_ids) - 1,
+        })
+        return ctx
+
+    def _export(self, request, *args, **kwargs):
+        from reports.exports import csv_response, xlsx_response
+        from core.models import SiteConfig
+        ctx = self.get_context_data(**kwargs)
+        dept = ctx["department"]
+        header = ["Member", "Gifts", "Total"]
+        rows = [[m["name"], m["n"], float(m["total"])] for m in ctx["members"]]
+        if ctx["anon_total"]:
+            rows.append(["(unnamed / loose)", ctx["anon_count"], float(ctx["anon_total"])])
+        rows.append(["TOTAL", "", float(ctx["grand_total"])])
+        fname = f"fund-{dept.slug or dept.id}-by-member-{ctx['start']}-{ctx['end']}"
+        if request.GET["export"] == "csv":
+            return csv_response(fname + ".csv", header, rows)
+        return xlsx_response(fname + ".xlsx", header, rows,
+                             title=f"{dept.name} — giving by member ({ctx['start']} to {ctx['end']})",
+                             church=SiteConfig.get().church_name)
+
+
 class TrustFundView(PeriodMixin, TemplateView):
     template_name = "reports/trust.html"
 

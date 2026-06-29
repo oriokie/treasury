@@ -525,11 +525,12 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
         if not adv:
             return redirect("leader_advances")
         return render(request, self.template_name,
-                      _advance_detail_ctx(adv, leader_mode=True))
+                      _advance_detail_ctx(adv, leader_mode=True, user=request.user))
 
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
-        from cashbook.views import _record_advance_expense, apply_advance_edit
+        from cashbook.views import _record_advance_expense
+        from cashbook.models import Expense, ExpenseAttachment
         from core.utils import block_if_locked
         adv = self._get_advance(request, pk)
         if not adv:
@@ -538,19 +539,73 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
             messages.error(request, "This advance is closed; ask the treasurer to amend it.")
             return redirect("leader_advance_detail", pk=pk)
         action = request.POST.get("action", "add_expense")
-        if action == "edit":
-            # leaders may correct an open advance (incl. its bank/M-Pesa charge)
-            if block_if_locked(request, adv.date_issued):
+
+        # --- attach a receipt / M-Pesa confirmation to one of the advance's lines ---
+        if action == "add_attachment":
+            exp = Expense.objects.filter(pk=request.POST.get("expense_id"),
+                                         advance=adv).first()
+            if not exp:
+                messages.error(request, "That expense is not on this advance.")
                 return redirect("leader_advance_detail", pk=pk)
-            ok, err = apply_advance_edit(adv, request.POST, request.user)
-            messages.success(request, "Advance updated.") if ok else \
-                messages.error(request, err)
+            f = request.FILES.get("file")
+            text = (request.POST.get("text") or "").strip()
+            link = (request.POST.get("link") or "").strip()
+            ALLOWED = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
+            if f and (not f.name.lower().endswith(ALLOWED) or f.size > 10 * 1024 * 1024):
+                messages.error(request, "Receipts must be a PDF or image up to 10 MB.")
+                return redirect("leader_advance_detail", pk=pk)
+            if f or text or link:
+                ExpenseAttachment.objects.create(expense=exp, file=f or None,
+                    text=text, link=link, label=(request.POST.get("label") or "")[:120],
+                    uploaded_by=request.user)
+                messages.success(request, "Receipt attached.")
+            else:
+                messages.error(request, "Add a file, paste an M-Pesa message, or enter a link.")
             return redirect("leader_advance_detail", pk=pk)
-        # default: record a settling expense
+
+        # --- edit one of the leader's own expense lines (before closure) ---
+        if action == "edit_expense":
+            exp = Expense.objects.filter(pk=request.POST.get("expense_id"),
+                                         advance=adv).first()
+            mine = (request.user.get_full_name() or request.user.username)
+            if not exp or exp.recorded_by_id != request.user.id:
+                messages.error(request, "You can only edit expenses you entered.")
+                return redirect("leader_advance_detail", pk=pk)
+            if exp.category == Expense.Category.BANK_CHARGE:
+                messages.error(request, "Transaction-charge lines can't be edited directly.")
+                return redirect("leader_advance_detail", pk=pk)
+            try:
+                new_amt = Decimal(request.POST.get("amount") or exp.amount)
+            except InvalidOperation:
+                new_amt = exp.amount
+            if new_amt <= 0:
+                messages.error(request, "Amount must be positive.")
+                return redirect("leader_advance_detail", pk=pk)
+            # re-check the advance limit with the proposed amount swapped in
+            if (adv.balance + exp.amount - new_amt) < 0:
+                messages.error(request, "That amount would exceed the advance balance.")
+                return redirect("leader_advance_detail", pk=pk)
+            try:
+                exp.date = dt.date.fromisoformat(request.POST.get("date"))
+            except (TypeError, ValueError):
+                pass
+            exp.amount = new_amt
+            exp.description = (request.POST.get("description") or exp.description)[:200]
+            exp.save(update_fields=["date", "amount", "description"])
+            messages.success(request, "Expense updated.")
+            return redirect("leader_advance_detail", pk=pk)
+
+        # --- default: record a new expense (with optional transaction charge) ---
         try:
             amount = Decimal(request.POST.get("amount") or "0")
         except InvalidOperation:
             amount = Decimal(0)
+        try:
+            charge = Decimal(request.POST.get("charge") or "0")
+        except InvalidOperation:
+            charge = Decimal(0)
+        if charge < 0:
+            charge = Decimal(0)
         desc = (request.POST.get("description") or "").strip()
         if not (desc and amount > 0):
             messages.error(request, "A description and a positive amount are required.")
@@ -562,8 +617,12 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
         if block_if_locked(request, d):
             return redirect("leader_advance_detail", pk=pk)
         claimant = (request.user.get_full_name() or request.user.username)
-        _record_advance_expense(adv, date=d, desc=desc, amount=amount,
+        _exp, err = _record_advance_expense(adv, date=d, desc=desc, amount=amount,
             category=request.POST.get("category"), user=request.user,
-            claimant=claimant)
-        messages.success(request, "Expense recorded against the advance.")
+            claimant=claimant, charge=charge)
+        if err:
+            messages.error(request, err)
+        else:
+            messages.success(request, "Expense recorded against the advance."
+                + (f" Transaction charge of KSh {charge:,.2f} added." if charge else ""))
         return redirect("leader_advance_detail", pk=pk)

@@ -474,6 +474,95 @@ class FundSearchView(ReadAccessMixin, View):
         return JsonResponse({"results": results[:20]})
 
 
+class GlobalSearchView(ReadAccessMixin, View):
+    """Server-backed search across records (members, funds, staff advances,
+    expenses, recent receipts) for the command palette — so a search finds the
+    actual thing, not just a page. Capped per category for speed."""
+    def get(self, request):
+        from django.db.models import Q
+        from django.urls import reverse
+        q = (request.GET.get("q") or "").strip()
+        out = []
+        if len(q) < 2:
+            return JsonResponse({"results": out})
+        ql = q.lower()
+
+        # Members ---------------------------------------------------------
+        try:
+            from members.models import Member
+            mqs = (Member.objects.filter(
+                Q(name__icontains=q) | Q(phone__icontains=q) |
+                Q(envelope_no__icontains=q))
+                .order_by("name")[:6])
+            for m in mqs:
+                sub = " · ".join(filter(None, [
+                    m.phone or "", f"Env {m.envelope_no}" if getattr(m, "envelope_no", "") else ""]))
+                out.append({"label": m.name, "sublabel": sub or "Member",
+                            "group": "Members", "icon": "👤",
+                            "href": reverse("report_member", args=[m.id])})
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Funds / departments --------------------------------------------
+        try:
+            from departments.models import Department
+            for d in Department.objects.filter(name__icontains=q).order_by("name")[:6]:
+                out.append({"label": d.name,
+                            "sublabel": ("Trust fund" if d.is_trust else "Local fund")
+                            + (" · closed" if d.status != "ACTIVE" else ""),
+                            "group": "Funds", "icon": "🏦",
+                            "href": reverse("report_fund", args=[d.id])})
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Staff advances --------------------------------------------------
+        try:
+            from cashbook.models import StaffAdvance
+            for a in (StaffAdvance.objects.filter(
+                    Q(staff_name__icontains=q) | Q(purpose__icontains=q) |
+                    Q(reference__icontains=q)).order_by("-date_issued")[:6]):
+                out.append({"label": f"Advance · {a.staff_name}",
+                            "sublabel": f"{a.department.name} · {a.get_status_display()} · "
+                                        f"bal {a.balance:,.0f}",
+                            "group": "Staff advances", "icon": "💵",
+                            "href": reverse("advance_detail", args=[a.id])})
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Expenses --------------------------------------------------------
+        try:
+            from cashbook.models import Expense
+            for x in (Expense.objects.filter(
+                    Q(description__icontains=q) | Q(claimant__icontains=q) |
+                    Q(voucher_no__icontains=q)).select_related("department")
+                    .order_by("-date")[:6]):
+                out.append({"label": x.description,
+                            "sublabel": f"{x.department.name} · {x.date:%d %b %Y} · "
+                                        f"KSh {x.amount:,.0f}",
+                            "group": "Expenses", "icon": "🧾",
+                            "href": reverse("expense_detail", args=[x.id])})
+        except Exception:  # noqa: BLE001
+            pass
+
+        # Recent receipts by reference / payer ----------------------------
+        try:
+            from giving.models import Transaction
+            for t in (Transaction.objects.filter(
+                    Q(reference__icontains=q) | Q(payer_name__icontains=q) |
+                    Q(mpesa_ref__icontains=q) | Q(core_ref__icontains=q)).select_related("department")
+                    .order_by("-date")[:6]):
+                who = t.payer_name or t.reference or "Receipt"
+                out.append({"label": who,
+                            "sublabel": f"{t.department.name if t.department else 'Unallocated'} · "
+                                        f"{t.date:%d %b %Y} · KSh {t.amount:,.0f}",
+                            "group": "Receipts", "icon": "↘",
+                            "href": reverse("transaction_list") + f"?q={who}"})
+        except Exception:  # noqa: BLE001
+            pass
+
+        return JsonResponse({"results": out[:30]})
+
+
 class ControlsView(TreasurerRequiredMixin, View):
     """Treasury controls: lock/unlock accounting periods and review possible
     duplicate entries."""

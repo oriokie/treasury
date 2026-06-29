@@ -1,0 +1,38 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ department.name }} — by member · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ department.name }} — giving by member</h1>
+  <div class="sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}{% if subaccount_count %} · includes {{ subaccount_count }} sub-account{{ subaccount_count|pluralize }}{% endif %}</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'report_fund' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">Ledger view</a>
+  <a class="btn btn-ghost btn-sm" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">Excel</a>
+  <a class="btn btn-ghost btn-sm" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">CSV</a>
+  <button class="btn btn-ghost btn-sm" onclick="window.print()">Print</button>
+</div></div>
+
+<form method="get" class="btn-row u-items-end no-print u-mb">
+  <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">
+  <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto">
+  <button class="btn btn-sm">Apply</button>
+</form>
+
+<div class="kpi-grid u-mb">
+  {% include "ui/stat.html" with label="Givers" value=giver_count foot="Distinct members/payers" %}
+  {% include "ui/stat.html" with label="Named giving" prefix="KSh" value=named_total|floatformat:2|intcomma accent="accent" %}
+  {% include "ui/stat.html" with label="Total receipts" prefix="KSh" value=grand_total|floatformat:2|intcomma accent="brass" %}
+</div>
+
+<div class="card"><div class="hd">By member <span class="muted u-xs">(highest first)</span></div><div class="bd">
+<table class="ledger"><thead><tr><th>#</th><th>Member</th><th class="num">Gifts</th><th class="num">Total given</th><th class="num">Share</th></tr></thead>
+<tbody>{% for m in members %}<tr>
+  <td class="muted">{{ forloop.counter }}</td>
+  <td>{% if m.member_id %}<a href="{% url 'report_member' m.member_id %}">{{ m.name }}</a>{% else %}{{ m.name }} <span class="muted u-xs">(unlinked)</span>{% endif %}</td>
+  <td class="num mono">{{ m.n }}</td>
+  <td class="num mono">{{ m.total|floatformat:2|intcomma }}</td>
+  <td class="num mono muted">{% widthratio m.total grand_total 100 %}%</td>
+</tr>{% empty %}<tr><td colspan="5" class="empty">No giving recorded in this period.</td></tr>{% endfor %}
+{% if anon_total %}<tr><td></td><td class="muted">(unnamed / loose offerings)</td><td class="num mono">{{ anon_count }}</td><td class="num mono">{{ anon_total|floatformat:2|intcomma }}</td><td></td></tr>{% endif %}
+<tr class="total-row"><td colspan="3"><strong>Total</strong></td><td class="num mono"><strong>{{ grand_total|floatformat:2|intcomma }}</strong></td><td></td></tr>
+</tbody></table>
+</div></div>
+{% endblock %}

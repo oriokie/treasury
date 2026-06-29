@@ -21,6 +21,7 @@ urlpatterns = [
     path("envelopes/next-receipt/", views.NextReceiptView.as_view(), name="next_receipt"),
     path("departments/balance/", views.DepartmentBalanceView.as_view(), name="department_balance"),
     path("funds/search/", views.FundSearchView.as_view(), name="fund_search"),
+    path("search/", views.GlobalSearchView.as_view(), name="global_search"),
     path("assistant/", views.AssistantView.as_view(), name="assistant"),
     path("assistant/ask/", views.AssistantAskView.as_view(), name="assistant_ask"),
     path("controls/", views.ControlsView.as_view(), name="controls"),

@@ -38,6 +38,18 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.79.0": "A big round of staff-advance and reporting improvements. On advances: the charge for "
+              "sending an advance is now treated as the church's cost (it posts to the fund and no longer "
+              "reduces the advance), while charges the holder incurs while spending can be added per "
+              "expense line and do reduce the balance. You can top up an open advance when a small balance "
+              "is left, expenses can't exceed what's left on the advance, leaders can edit only their own "
+              "expense lines and attach receipts/M-Pesa messages (not the advance itself), and an advance "
+              "can only be deleted once it has no expenses. Funds: a new By member view rolls up giving "
+              "across a fund and its sub-accounts per person (with Excel/CSV); closing a parent fund now "
+              "closes its sub-accounts too, sub-accounts can be closed on their own, and closed accounts "
+              "move off the main list onto the historical page. The bank reconciliation prints cleanly "
+              "(just the statement) and exports to Excel. And search now finds members, funds, advances, "
+              "expenses and receipts — not only pages.",
     "1.78.0": "Two refinements to staff advances. Bank and M-Pesa charges now reduce the advance: if you "
               "send an advance to someone's personal account and they incur transaction charges while "
               "paying for things, those charges are accounted against the advance and lower the balance "

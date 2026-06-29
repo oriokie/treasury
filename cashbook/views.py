@@ -1048,15 +1048,20 @@ class AdvanceDelete(TreasurerRequiredMixin, View):
         adv = get_object_or_404(StaffAdvance, pk=pk)
         if _block_if_locked(request, adv.date_issued):
             return redirect("advance_detail", pk=pk)
-        # the charge expense is now linked via the `advance` FK too, so detach it
-        # first to avoid a stale-cache lookup, then remove all linked expenses
-        # (settlements + the charge) in one sweep
+        # an advance can only be deleted if nothing has been accounted against it
+        if adv.expenses.exists():
+            messages.error(request, "This advance has expenses recorded against it. "
+                "Remove those expenses first, then delete the advance.")
+            return redirect("advance_detail", pk=pk)
+        # detach and remove the church's sending-charge expense (not an accounting
+        # line against the advance), then delete the advance
         if adv.charge_expense_id:
+            ce = adv.charge_expense
             adv.charge_expense = None
             adv.save(update_fields=["charge_expense"])
-        adv.expenses.all().delete()
+            ce.delete()
         adv.delete()
-        messages.success(request, "Advance and its linked entries were deleted.")
+        messages.success(request, "Advance deleted.")
         return redirect("advance_list")
 
 
@@ -1066,28 +1071,47 @@ class AdvanceDetail(ReadAccessMixin, View):
     def get(self, request, pk):
         from .models import StaffAdvance
         adv = get_object_or_404(StaffAdvance, pk=pk)
-        return render(request, self.template_name, _advance_detail_ctx(adv))
+        return render(request, self.template_name, _advance_detail_ctx(adv, user=request.user))
 
 
-def _advance_detail_ctx(adv, *, leader_mode=False):
-    """Shared context for the advance statement (issued → settling lines →
+def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
+    """Shared context for the advance statement (issued + top-ups → expense lines →
     balance), used by both the treasurer and leader detail pages."""
     from decimal import Decimal
-    rows = []
-    running = adv.amount   # money still in the staff member's hands to account for
-    rows.append({"date": adv.date_issued, "label": f"Advance issued — {adv.purpose}",
-                 "out": adv.amount, "back": None, "running": running})
+    # build a dated time-line of issues (base + top-ups) and expense lines
+    events = [{"date": adv.date_issued, "kind": "issue",
+               "label": f"Advance issued — {adv.purpose}", "amount": adv.base_amount}]
+    for t in adv.topups.all():
+        events.append({"date": t.date, "kind": "topup",
+                       "label": "Top-up issued" + (f" — {t.note}" if t.note else ""),
+                       "amount": t.amount})
     for e in adv.expenses.filter(
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID]
-            ).order_by("date", "id"):
-        running -= e.amount
-        rows.append({"date": e.date, "label": e.description, "out": None,
-                     "back": e.amount, "running": running, "expense": e})
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID]).order_by("date", "id"):
+        events.append({"date": e.date, "kind": "expense", "label": e.description,
+                       "amount": e.amount, "expense": e})
     if adv.returned_to_petty:
-        running -= adv.returned_to_petty
-        rows.append({"date": adv.settled_on or adv.date_issued,
-                     "label": "Unspent cash returned to petty cash",
-                     "out": None, "back": adv.returned_to_petty, "running": running})
+        events.append({"date": adv.settled_on or adv.date_issued, "kind": "return",
+                       "label": "Unspent cash returned to petty cash",
+                       "amount": adv.returned_to_petty})
+    events.sort(key=lambda x: (x["date"], 0 if x["kind"] in ("issue", "topup") else 1))
+    rows, running = [], Decimal(0)
+    can_edit_line = bool(leader_mode and user and adv.status != adv.Status.CLOSED)
+    for ev in events:
+        if ev["kind"] in ("issue", "topup"):
+            running += ev["amount"]
+            rows.append({"date": ev["date"], "label": ev["label"],
+                         "out": ev["amount"], "back": None, "running": running})
+        else:
+            running -= ev["amount"]
+            e = ev.get("expense")
+            mine = bool(e and user and e.recorded_by_id == getattr(user, "id", None))
+            is_charge = bool(e and e.category == Expense.Category.BANK_CHARGE)
+            rows.append({"date": ev["date"], "label": ev["label"], "out": None,
+                         "back": ev["amount"], "running": running, "expense": e,
+                         "editable": can_edit_line and mine and not is_charge,
+                         "attachable": bool(leader_mode and e and adv.status != adv.Status.CLOSED),
+                         "is_charge": is_charge,
+                         "attachments": list(e.attachments.all()) if e else []})
     return {
         "adv": adv, "expenses": adv.expenses.all(), "statement": rows,
         "to_account": running,   # >0 still to account; <0 reimburse staff
@@ -1097,12 +1121,11 @@ def _advance_detail_ctx(adv, *, leader_mode=False):
 
 
 def _sync_advance_charge(adv, user):
-    """Create / update / remove the BANK_CHARGE expense that records an advance's
-    bank or M-Pesa charge, keeping it in step with adv.bank_charge. The charge is a
-    legitimate cost met out of the advance (e.g. M-Pesa fees the holder pays while
-    spending), so it is linked to the advance (via the `advance` FK) and therefore
-    REDUCES the balance the holder still has to account for. The charge_expense
-    one-to-one keeps a handle on it for edits/removal."""
+    """Create / update / remove the BANK_CHARGE expense for the charge the CHURCH
+    incurs when sending an advance to the holder (adv.bank_charge). This is the
+    church's cost, so it is booked against the fund but does NOT reduce the advance
+    the holder must account for — it is not linked via the `advance` FK. The
+    charge_expense one-to-one keeps a handle on it for edits/removal."""
     from decimal import Decimal
     from .models import Expense
     charge = adv.bank_charge or Decimal(0)
@@ -1114,17 +1137,16 @@ def _sync_advance_charge(adv, user):
             exp.department = adv.department
             exp.method = adv.method
             exp.claimant = adv.staff_name
-            exp.advance = adv
-            exp.description = f"Bank/M-Pesa charge — advance to {adv.staff_name}"
+            exp.description = f"Bank/M-Pesa charge — sending advance to {adv.staff_name}"
             exp.save(update_fields=["date", "amount", "department", "method",
-                                    "claimant", "advance", "description"])
+                                    "claimant", "description"])
         else:
             exp = Expense.objects.create(
                 date=adv.date_issued, sabbath_week=sabbath_week_of(adv.date_issued),
                 department=adv.department,
-                description=f"Bank/M-Pesa charge — advance to {adv.staff_name}",
+                description=f"Bank/M-Pesa charge — sending advance to {adv.staff_name}",
                 amount=charge, category=Expense.Category.BANK_CHARGE,
-                claimant=adv.staff_name, method=adv.method, advance=adv,
+                claimant=adv.staff_name, method=adv.method,
                 status=Expense.Status.PAID, paid_date=adv.date_issued,
                 recorded_by=user, approved_by=user)
             adv.charge_expense = exp
@@ -1136,11 +1158,24 @@ def _sync_advance_charge(adv, user):
         exp.delete()
 
 
-def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant=None):
-    """Create an APPROVED+PAID expense that settles part of a staff advance, and
-    refresh the advance's status. If the advance was funded from petty cash, the
-    expense is tagged as a petty-cash disbursement so the float stays accurate."""
+def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant=None,
+                            charge=None):
+    """Create an APPROVED+PAID expense that accounts for part of a staff advance,
+    and refresh the advance's status. Optionally also book a transaction `charge`
+    the holder incurred on that payment (M-Pesa/bank fee) as a linked BANK_CHARGE
+    line — that, too, is met out of the advance and reduces the balance.
+
+    Enforces that the total accounted (expense + its charge) cannot exceed the
+    advance's remaining balance (#4): you can't account for more than was advanced.
+    Returns (expense, error_message); expense is None when blocked."""
+    from decimal import Decimal
     from .models import StaffAdvance, Expense
+    charge = charge or Decimal(0)
+    needed = amount + charge
+    if needed > adv.balance:
+        return None, (f"This would account for KSh {needed:,.2f}, but only "
+                      f"KSh {adv.balance:,.2f} is left on the advance. Reduce the "
+                      f"amount, or ask the treasurer to top up the advance first.")
     exp = Expense.objects.create(
         date=date, sabbath_week=sabbath_week_of(date), department=adv.department,
         description=desc, amount=amount,
@@ -1149,13 +1184,21 @@ def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant
         status=Expense.Status.PAID, paid_date=date,
         paid_from_petty_cash=False,   # the petty box lost the cash at issuance
         recorded_by=user, advance=adv, approved_by=user)
+    if charge and charge > 0:
+        Expense.objects.create(
+            date=date, sabbath_week=sabbath_week_of(date), department=adv.department,
+            description=f"Transaction charge — {desc}", amount=charge,
+            category=Expense.Category.BANK_CHARGE,
+            claimant=(claimant or adv.staff_name), method=adv.method,
+            status=Expense.Status.PAID, paid_date=date, paid_from_petty_cash=False,
+            recorded_by=user, advance=adv, approved_by=user)
     bal = adv.balance
     if bal == 0:
         adv.status = StaffAdvance.Status.SETTLED
     elif adv.settled_total > 0:
         adv.status = StaffAdvance.Status.PARTLY
     adv.save(update_fields=["status"])
-    return exp
+    return exp, None
 
 
 class AdvanceAddExpense(DataEntryRequiredMixin, View):
@@ -1168,6 +1211,12 @@ class AdvanceAddExpense(DataEntryRequiredMixin, View):
             amount = Decimal(request.POST.get("amount") or "0")
         except InvalidOperation:
             amount = Decimal(0)
+        try:
+            charge = Decimal(request.POST.get("charge") or "0")
+        except InvalidOperation:
+            charge = Decimal(0)
+        if charge < 0:
+            charge = Decimal(0)
         desc = (request.POST.get("description") or "").strip()
         if not (desc and amount > 0):
             messages.error(request, "A description and positive amount are required.")
@@ -1176,9 +1225,53 @@ class AdvanceAddExpense(DataEntryRequiredMixin, View):
             d = dt.date.fromisoformat(request.POST.get("date"))
         except (TypeError, ValueError):
             d = dt.date.today()
-        _record_advance_expense(adv, date=d, desc=desc, amount=amount,
-            category=request.POST.get("category"), user=request.user)
-        messages.success(request, "Settling expense recorded against the advance.")
+        _exp, err = _record_advance_expense(adv, date=d, desc=desc, amount=amount,
+            category=request.POST.get("category"), user=request.user, charge=charge)
+        if err:
+            messages.error(request, err)
+        else:
+            messages.success(request, "Expense recorded against the advance."
+                + (f" Transaction charge of KSh {charge:,.2f} added." if charge else ""))
+        return redirect("advance_detail", pk=pk)
+
+
+class AdvanceTopUpView(DataEntryRequiredMixin, View):
+    """Issue more cash onto an open advance (carry a small leftover forward into a
+    larger working advance instead of retiring and re-issuing)."""
+    def post(self, request, pk):
+        from decimal import Decimal, InvalidOperation
+        from .models import StaffAdvance, AdvanceTopUp
+        adv = get_object_or_404(StaffAdvance, pk=pk)
+        if adv.status == StaffAdvance.Status.CLOSED:
+            messages.error(request, "This advance is closed; issue a new one instead.")
+            return redirect("advance_detail", pk=pk)
+        try:
+            amount = Decimal(request.POST.get("amount") or "0")
+        except InvalidOperation:
+            amount = Decimal(0)
+        if amount <= 0:
+            messages.error(request, "Enter a positive top-up amount.")
+            return redirect("advance_detail", pk=pk)
+        try:
+            d = dt.date.fromisoformat(request.POST.get("date"))
+        except (TypeError, ValueError):
+            d = dt.date.today()
+        if _block_if_locked(request, d):
+            return redirect("advance_detail", pk=pk)
+        if adv.from_petty_cash:
+            avail = _petty_balance_asof(d)
+            if amount > avail:
+                messages.error(request, f"The petty-cash float is only KSh {avail:,.2f} "
+                    f"on {d:%d %b %Y}; top it up before issuing more.")
+                return redirect("advance_detail", pk=pk)
+        AdvanceTopUp.objects.create(advance=adv, date=d, amount=amount,
+            note=(request.POST.get("note") or "")[:200], issued_by=request.user)
+        adv.amount = (adv.amount or Decimal(0)) + amount
+        if adv.status == StaffAdvance.Status.SETTLED:
+            adv.status = StaffAdvance.Status.PARTLY   # reopened by fresh cash
+        adv.save(update_fields=["amount", "status"])
+        messages.success(request, f"Topped up by KSh {amount:,.2f}. New advance total "
+            f"KSh {adv.amount:,.2f}.")
         return redirect("advance_detail", pk=pk)
 
 

@@ -18,6 +18,7 @@ urlpatterns = [
     path("expenses/", views.ExpenseReportView.as_view(), name="report_expenses"),
     path("income-expenditure/", views.IncomeExpenditureView.as_view(), name="report_ie"),
     path("fund/<int:pk>/", views.FundLedgerView.as_view(), name="report_fund"),
+    path("fund/<int:pk>/members/", views.FundMembersView.as_view(), name="report_fund_members"),
     path("trust/", views.TrustFundView.as_view(), name="report_trust"),
     path("remittance/", views.RemittanceView.as_view(), name="report_remittance"),
     path("remittance/remit/", views.RemitTrustView.as_view(), name="remit_trust"),

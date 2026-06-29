@@ -498,15 +498,48 @@ class StaffAdvance(models.Model):
         """Everything accounted for: expenses settled + any cash returned."""
         return self.settled_total + (self.returned_to_petty or Decimal(0))
 
+    @property
+    def topups_total(self):
+        from django.db.models import Sum
+        return self.topups.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+    @property
+    def base_amount(self):
+        """The originally issued amount (total advanced less later top-ups)."""
+        return (self.amount or Decimal(0)) - self.topups_total
+
     def petty_outstanding_asof(self, on):
         """For a petty-cash-funded advance: cash that has left the petty-cash box
-        and not yet been returned (issued − returned). The full advance leaves the
-        box at issuance; settling expenses account for how it was spent but do not
-        return cash to the box, so only an actual return reduces this."""
-        if not self.from_petty_cash or self.date_issued > on:
+        and not yet been returned. The base issue leaves the box on date_issued and
+        each top-up on its own date; only a return reduces this."""
+        if not self.from_petty_cash:
             return Decimal(0)
-        out = self.amount - (self.returned_to_petty or Decimal(0))
+        out = Decimal(0)
+        if self.date_issued <= on:
+            out += self.base_amount
+        for t in self.topups.all():
+            if t.date <= on:
+                out += t.amount
+        out -= (self.returned_to_petty or Decimal(0))
         return out if out > 0 else Decimal(0)
+
+
+class AdvanceTopUp(models.Model):
+    """Additional cash issued onto an existing open advance — e.g. the holder had
+    a small unspent balance and needs more for further payments, so rather than
+    retiring and re-issuing, the advance is topped up. The parent advance's
+    `amount` is the running total (base issue + all top-ups)."""
+    advance = models.ForeignKey(StaffAdvance, on_delete=models.CASCADE,
+                                related_name="topups")
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    note = models.CharField(max_length=200, blank=True)
+    issued_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["date", "id"]
 
 
 class ExpenseCategory(models.Model):

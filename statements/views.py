@@ -211,6 +211,30 @@ def _sync_managed_recon_items(rec):
 class ReconciliationDetailView(ReadAccessMixin, View):
     template_name = "statements/reconciliation_detail.html"
 
+    def _export(self, request, rec):
+        from reports.exports import csv_response, xlsx_response
+        from core.models import SiteConfig
+        from statements.models import ReconciliationItem
+        adds = rec.items.filter(effect=ReconciliationItem.Effect.ADD)
+        subs = rec.items.filter(effect=ReconciliationItem.Effect.SUBTRACT)
+        header = ["Line", "Detail", "Amount"]
+        rows = [["Balance per bank statement", "", float(rec.bank_balance or 0)]]
+        for it in adds:
+            rows.append(["Add", it.get_kind_display() + (f" — {it.description}"
+                         if it.description else ""), float(it.amount)])
+        for it in subs:
+            rows.append(["Less", it.get_kind_display() + (f" — {it.description}"
+                         if it.description else ""), -float(it.amount)])
+        rows.append(["Adjusted bank balance", "", float(rec.adjusted_balance or 0)])
+        rows.append(["Balance per cash book", "", float(rec.book_balance or 0)])
+        rows.append(["Difference", "", float(rec.difference or 0)])
+        fname = f"bank-reconciliation-{rec.statement_date}"
+        if request.GET["export"] == "csv":
+            return csv_response(fname + ".csv", header, rows)
+        return xlsx_response(fname + ".xlsx", header, rows,
+            title=f"Bank Reconciliation — {rec.statement_date:%d %b %Y}",
+            church=SiteConfig.get().church_name)
+
     def get(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
         from cashbook.models import ChequeRegister
@@ -221,6 +245,8 @@ class ReconciliationDetailView(ReadAccessMixin, View):
         from core import roles
         if roles.can_enter_data(request.user):
             _sync_managed_recon_items(rec)
+        if request.GET.get("export") in ("xlsx", "csv"):
+            return self._export(request, rec)
         unpresented = (ChequeRegister.objects.filter(
             status=ChequeRegister.Status.ISSUED,
             date_issued__lte=rec.statement_date).order_by("date_issued"))

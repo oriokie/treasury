@@ -1,8 +1,18 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Reconciliation {{ rec.statement_date|date:"d M Y" }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Bank reconciliation</h1><div class="sub">{{ CHURCH_NAME }} · statement dated {{ rec.statement_date|date:"d M Y" }}</div></div>
-<div class="toolbar no-print"><a class="btn btn-ghost btn-sm" href="{% url 'reconciliation_list' %}">← All</a><button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+<div class="print-only recon-print-head">
+  <div class="rp-church">{{ CHURCH_NAME }}</div>
+  <div class="rp-title">Bank Reconciliation</div>
+  <div class="rp-date">As at {{ rec.statement_date|date:"d F Y" }}</div>
+</div>
+<div class="page-head no-print"><div><h1>Bank reconciliation</h1><div class="sub">{{ CHURCH_NAME }} · statement dated {{ rec.statement_date|date:"d M Y" }}</div></div>
+<div class="toolbar no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'reconciliation_list' %}">← All</a>
+  <a class="btn btn-ghost btn-sm" href="?export=xlsx">⤓ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="?export=csv">CSV</a>
+  <button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button>
+</div></div>
 
 <div class="recon-kpis no-print">
   <div class="rk"><div class="l">Per bank statement</div><div class="v">{{ rec.bank_balance|floatformat:2|intcomma }}</div></div>
@@ -19,13 +29,13 @@
       {% for it in additions %}<tr>
         <td class="indent">＋ {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
         <td class="num mono">{{ it.amount|floatformat:2|intcomma }}</td>
-        <td class="num">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
+        <td class="num act no-print">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
       </tr>{% endfor %}{% endif %}
       {% if subtractions %}<tr class="grp-row"><td colspan="3">Less: items on the statement not yet in the cash book</td></tr>
       {% for it in subtractions %}<tr>
         <td class="indent">− {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
         <td class="num mono row-debit">({{ it.amount|floatformat:2|intcomma }})</td>
-        <td class="num">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
+        <td class="num act no-print">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
       </tr>{% endfor %}{% endif %}
       <tr class="total-row"><td><strong>Adjusted bank balance</strong></td><td class="num mono"><strong>{{ rec.adjusted_balance|floatformat:2|intcomma }}</strong></td><td></td></tr>
       <tr><td>Balance as per cash book</td><td class="num mono">{{ rec.book_balance|floatformat:2|intcomma }}</td><td></td></tr>
@@ -37,7 +47,7 @@
   {% if rec.is_reconciled %}<p class="help" style="color:var(--accent)">Reconciled — the adjusted bank balance matches the cash book.</p>{% endif %}
 
   {% if not rec.is_reconciled and rec.difference != None %}
-  <div class="card" style="margin-top:1rem;border-left:3px solid var(--amber)"><div class="hd">Why might this not balance?</div><div class="bd">
+  <div class="card no-print" style="margin-top:1rem;border-left:3px solid var(--amber)"><div class="hd">Why might this not balance?</div><div class="bd">
     <p class="help u-mt-0">The cash-book balance of <strong class="mono">{{ diag.book|floatformat:2|intcomma }}</strong> = opening {{ diag.opening|floatformat:2|intcomma }} + confirmed giving {{ diag.income|floatformat:2|intcomma }} − payments {{ diag.expenses|floatformat:2|intcomma }}. These bank receipts have <em>not</em> reached the cash book yet, and usually explain a difference right after an import:</p>
     <table class="ledger compact"><tbody>
       {% if diag.in_review %}<tr><td>In the review queue (unallocated)</td><td class="num mono">{{ diag.in_review|floatformat:2|intcomma }}</td><td><a class="link" href="{% url 'queue' %}">Allocate →</a></td></tr>{% endif %}

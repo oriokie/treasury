@@ -24,7 +24,7 @@
       <td class="muted">sub-account</td>
       <td class="num mono">{{ s.opening_balance|floatformat:2|intcomma }}</td>
       <td class="num mono muted">{% if s.annual_budget %}{{ s.annual_budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
-      <td class="num"><a class="link" href="{% url 'report_fund' s.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' s.id %}">Edit</a>{% endif %}</td>
+      <td class="num"><a class="link" href="{% url 'report_fund' s.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' s.id %}">Edit</a>{% if s.status == 'ACTIVE' %} · <form method="post" action="{% url 'department_close' s.id %}" class="u-inline" onsubmit="return confirm('Close {{ s.name|escapejs }}? Only possible at a zero balance.');">{% csrf_token %}<button class="link">Close</button></form>{% else %} · <form method="post" action="{% url 'department_reopen' s.id %}" class="u-inline">{% csrf_token %}<button class="link">Reopen</button></form>{% endif %}{% endif %}</td>
     </tr>
     {% endfor %}
     {% for g in node.dev_groups %}

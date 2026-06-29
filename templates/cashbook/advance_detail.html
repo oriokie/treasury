@@ -16,7 +16,7 @@
 </div>
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}{% if adv.reference %} · Ref {{ adv.reference }}{% endif %}</p>{% endif %}
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance was issued from the petty-cash float, which it reduces until accounted for.</p>{% endif %}
-{% if adv.bank_charge %}<p class="help"><span class="pill">Charge</span> Bank/M-Pesa charge of KSh {{ adv.bank_charge|floatformat:2|intcomma }} was recorded as a bank-charge expense on {{ adv.department.name }}.</p>{% endif %}
+{% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> KSh {{ adv.bank_charge|floatformat:2|intcomma }} — the charge the church paid to send this advance. It's booked on {{ adv.department.name }} but does not reduce the holder's balance.</p>{% endif %}
 
 <div class="card u-mb"><div class="hd">Statement — how the advance is flowing</div><div class="bd">
 <table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to staff</th><th class="num">Accounted</th><th class="num">Still to account</th></tr></thead>
@@ -41,14 +41,28 @@
 {% if can_enter_data and adv.status != 'CLOSED' %}
 <form method="post" action="{% url 'advance_add_expense' adv.id %}" class="u-mt">{% csrf_token %}
   <div class="section-title">Record a settling expense</div>
-  <div class="form-grid" style="display:grid;grid-template-columns:120px 1.6fr 1fr .8fr auto;gap:.6rem;align-items:end">
+  <div class="form-grid" style="display:grid;grid-template-columns:110px 1.5fr 1fr .8fr .8fr auto;gap:.6rem;align-items:end">
     <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
     <div class="form-row u-m-0"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, hotel"></div>
     <div class="form-row u-m-0"><label>Category</label><select name="category" class="field--select">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
     <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right"></div>
+    <div class="form-row u-m-0"><label>Charge</label><input name="charge" class="field mono u-right" placeholder="0.00"></div>
     <button class="btn">Add</button>
   </div>
+  <p class="help u-mt-0">Charge = a transaction fee the holder paid on this line (met out of the advance). The total accounted can't exceed the advance balance.</p>
 </form>
+{% if can_enter_data and adv.status != 'CLOSED' %}
+<form method="post" action="{% url 'advance_topup' adv.id %}" class="u-mt">{% csrf_token %}
+  <div class="section-title">Top up this advance</div>
+  <p class="help u-mt-0">Issue more cash onto this advance — useful when a small balance is left and the holder needs more for further payments.</p>
+  <div class="form-grid" style="display:grid;grid-template-columns:120px 1fr 1.6fr auto;gap:.6rem;align-items:end">
+    <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
+    <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right"></div>
+    <div class="form-row u-m-0"><label>Note</label><input name="note" class="field" placeholder="e.g. further travel"></div>
+    <button class="btn btn-ghost">Top up</button>
+  </div>
+</form>
+{% endif %}
 {% endif %}
 </div></div>
 

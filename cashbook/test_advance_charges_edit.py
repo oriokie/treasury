@@ -26,15 +26,16 @@ class AdvanceChargeEditTests(TestCase):
         self.c.post("/advances/new/", data)
         return StaffAdvance.objects.filter(staff_name=data["staff_name"]).first()
 
-    def test_bank_charge_reduces_advance(self):
+    def test_bank_charge_does_not_reduce_advance(self):
+        # the church's sending charge is booked on the fund but is NOT met out of
+        # the advance, so it does not reduce the holder's balance
         adv = self._make(bank_charge="55")
         self.assertEqual(adv.bank_charge, Decimal("55"))
         self.assertIsNotNone(adv.charge_expense)
         self.assertEqual(adv.charge_expense.category, "BANK_CHARGE")
-        self.assertEqual(adv.charge_expense.status, "PAID")
-        # the charge is met out of the advance, so it reduces the balance
-        self.assertEqual(adv.settled_total, Decimal("55"))
-        self.assertEqual(adv.balance, Decimal("6000") - Decimal("55"))
+        self.assertIsNone(adv.charge_expense.advance_id)   # not linked to the advance
+        self.assertEqual(adv.settled_total, Decimal("0"))
+        self.assertEqual(adv.balance, Decimal("6000"))
 
     def test_edit_syncs_charge_and_amount(self):
         adv = self._make(bank_charge="55")
@@ -55,15 +56,21 @@ class AdvanceChargeEditTests(TestCase):
         self.assertIsNone(adv.charge_expense)
         self.assertFalse(Expense.objects.filter(id=cid).exists())
 
-    def test_delete_is_end_to_end(self):
+    def test_delete_blocked_when_expenses_exist(self):
         adv = self._make(bank_charge="55")
         Expense.objects.create(date=dt.date(2026, 6, 10), department=self.dept,
             description="settle", amount=Decimal("1000"), status="PAID",
             recorded_by=self.tr, advance=adv)
+        self.c.post(f"/advances/{adv.id}/delete/", {})
+        # still there — must remove expenses first
+        self.assertTrue(StaffAdvance.objects.filter(id=adv.id).exists())
+
+    def test_delete_ok_when_no_expenses(self):
+        adv = self._make(bank_charge="55")
         cid = adv.charge_expense_id
         self.c.post(f"/advances/{adv.id}/delete/", {})
         self.assertFalse(StaffAdvance.objects.filter(id=adv.id).exists())
-        self.assertFalse(Expense.objects.filter(advance_id=adv.id).exists())
+        # the church sending-charge expense goes with it
         self.assertFalse(Expense.objects.filter(id=cid).exists())
 
     def test_closed_advance_amend_treasurer_only(self):

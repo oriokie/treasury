@@ -190,7 +190,7 @@
 
 <div class="palette" id="palette" hidden>
   <div class="palette-card">
-    <input id="paletteInput" class="palette-input" type="text" placeholder="Jump to a page… (↑↓ to choose, Enter to open)" autocomplete="off">
+    <input id="paletteInput" class="palette-input" type="text" placeholder="Search members, funds, advances, expenses, pages…" autocomplete="off">
     <div class="palette-list" id="paletteList"></div>
   </div>
 </div>
@@ -227,17 +227,34 @@
   });
   function render(q){
     q=(q||"").toLowerCase();
-    var hits=items.filter(function(i){return (i.label+" "+i.group).toLowerCase().indexOf(q)>-1}).slice(0,12);
+    var hits=items.filter(function(i){return (i.label+" "+i.group).toLowerCase().indexOf(q)>-1}).slice(0,8);
     sel=Math.min(sel,Math.max(0,hits.length-1));
-    list.innerHTML=hits.map(function(i,n){
-      return '<a class="pi'+(n===sel?" sel":"")+'" href="'+i.href+'">'+i.label+
+    var html=hits.map(function(i,n){
+      return '<a class="pi'+(n===sel?" sel":"")+'" href="'+i.href+'"><span class="pg-ic">↪</span>'+i.label+
              (i.group?'<span class="pg">'+i.group+'</span>':"")+'</a>';
-    }).join("")||'<div class="pi-empty">No matching page</div>';
+    }).join("");
+    html += (window.__searchData||[]).map(function(i){
+      return '<a class="pi" href="'+i.href+'"><span class="pg-ic">'+(i.icon||"•")+'</span>'+i.label+
+             (i.sublabel?' <span class="ps">'+i.sublabel+'</span>':"")+
+             '<span class="pg">'+i.group+'</span></a>';
+    }).join("");
+    list.innerHTML = html || '<div class="pi-empty">No matches</div>';
   }
-  window.openPalette=function(){ pal.hidden=false; inp.value=""; sel=0; render(""); inp.focus(); };
+  var searchTimer=null;
+  function fetchData(q){
+    if(q.length<2){ window.__searchData=[]; render(q); return; }
+    clearTimeout(searchTimer);
+    searchTimer=setTimeout(function(){
+      fetch("{% url 'global_search' %}?q="+encodeURIComponent(q),{headers:{"X-Requested-With":"fetch"}})
+        .then(function(r){return r.ok?r.json():{results:[]};})
+        .then(function(d){ window.__searchData=d.results||[]; render(inp.value); })
+        .catch(function(){ window.__searchData=[]; });
+    },180);
+  }
+  window.openPalette=function(){ pal.hidden=false; inp.value=""; sel=0; window.__searchData=[]; render(""); inp.focus(); };
   function closePalette(){ pal.hidden=true; }
   pal.addEventListener("click",function(e){ if(e.target===pal) closePalette(); });
-  inp.addEventListener("input",function(){ sel=0; render(inp.value); });
+  inp.addEventListener("input",function(){ sel=0; render(inp.value); fetchData(inp.value.trim()); });
   inp.addEventListener("keydown",function(e){
     var hits=list.querySelectorAll(".pi");
     if(e.key==="ArrowDown"){ sel=Math.min(sel+1,hits.length-1); render(inp.value); e.preventDefault(); }
