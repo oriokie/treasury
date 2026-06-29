@@ -28,7 +28,8 @@
     </div>
     <nav class="nav" id="mainnav">
       {% if is_leader %}
-      <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> My departments</a>
+      <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name and 'advance' not in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> {% if leader_single_dept %}My department{% else %}My departments{% endif %}</a>
+      <a href="{% url 'leader_advances' %}" class="{% if 'advance' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">💵</span> Staff advances</a>
       {% else %}
       <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>

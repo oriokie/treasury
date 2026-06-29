@@ -24,6 +24,17 @@ def _scoped_rows(user, start, end):
 class LeaderDashboardView(LeaderRequiredMixin, TemplateView):
     template_name = "leaders/dashboard.html"
 
+    def get(self, request, *args, **kwargs):
+        # a leader who leads exactly one department goes straight to that
+        # department's page — no need for an intermediate overview
+        if not request.GET.get("stay"):
+            led = list(allowed_departments(request.user))
+            led_ids = {d.id for d in led}
+            roots = [d for d in led if d.parent_id not in led_ids]
+            if len(roots) == 1:
+                return redirect("leader_department_detail", pk=roots[0].pk)
+        return super().get(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         start, end = parse_period(self.request)
@@ -236,6 +247,21 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
             } if pledges.exists() else None
         except Exception:
             ctx["pledge_summary"] = None
+
+        # staff advances on this fund (and its sub-accounts the leader sees)
+        try:
+            from cashbook.models import StaffAdvance
+            advs = list(StaffAdvance.objects.filter(department_id__in=dept_ids)
+                        .order_by("-date_issued")[:50])
+            open_advs = [a for a in advs if a.status != StaffAdvance.Status.CLOSED]
+            ctx["advance_summary"] = {
+                "open_count": len(open_advs),
+                "outstanding": sum((a.balance for a in open_advs if a.balance > 0),
+                                   Decimal(0)),
+                "recent": advs[:5],
+            } if advs else None
+        except Exception:  # noqa: BLE001
+            ctx["advance_summary"] = None
 
         return ctx
 
@@ -503,14 +529,24 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
 
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
-        from cashbook.views import _record_advance_expense
+        from cashbook.views import _record_advance_expense, apply_advance_edit
         from core.utils import block_if_locked
         adv = self._get_advance(request, pk)
         if not adv:
             return redirect("leader_advances")
         if adv.status == StaffAdvance.Status.CLOSED:
-            messages.error(request, "This advance is closed.")
+            messages.error(request, "This advance is closed; ask the treasurer to amend it.")
             return redirect("leader_advance_detail", pk=pk)
+        action = request.POST.get("action", "add_expense")
+        if action == "edit":
+            # leaders may correct an open advance (incl. its bank/M-Pesa charge)
+            if block_if_locked(request, adv.date_issued):
+                return redirect("leader_advance_detail", pk=pk)
+            ok, err = apply_advance_edit(adv, request.POST, request.user)
+            messages.success(request, "Advance updated.") if ok else \
+                messages.error(request, err)
+            return redirect("leader_advance_detail", pk=pk)
+        # default: record a settling expense
         try:
             amount = Decimal(request.POST.get("amount") or "0")
         except InvalidOperation:

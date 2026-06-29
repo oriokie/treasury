@@ -1,23 +1,32 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}New advance · {{ SITE_NAME }}{% endblock %}
+{% block title %}{% if editing %}Edit advance{% else %}New advance{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Issue a staff advance</h1><div class="sub">Record cash given to staff ahead of expenses</div></div>
-<a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div>
-<form method="post" class="card form-card u-narrow-md"><div class="bd">{% csrf_token %}
-  <div class="form-row"><label>Staff name</label><input name="staff_name" class="field" required></div>
-  <div class="form-row"><label>Fund charged</label><select name="department" class="field--select" required><option value="">Choose…</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+<div class="page-head"><div><h1>{% if editing %}Edit staff advance{% else %}Issue a staff advance{% endif %}</h1>
+  <div class="sub">{% if editing %}Correct the details — linked entries update automatically{% else %}Record cash given to staff ahead of expenses{% endif %}</div></div>
+<a class="btn btn-ghost btn-sm" href="{% if editing %}{% url 'advance_detail' adv.id %}{% else %}{% url 'advance_list' %}{% endif %}">← Back</a></div>
+<form method="post" class="card form-card u-narrow-md" {% if editing %}action="{% url 'advance_edit' adv.id %}"{% endif %}><div class="bd">{% csrf_token %}
+  <div class="form-row"><label>Staff name</label><input name="staff_name" class="field" required value="{{ adv.staff_name }}"></div>
+  <div class="form-row"><label>Fund charged</label><select name="department" class="field--select" required><option value="">Choose…</option>{% for d in departments %}<option value="{{ d.id }}" {% if adv.department_id == d.id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
   <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.7rem">
-    <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right" required></div>
-    <div class="form-row u-m-0"><label>Date issued</label><input type="date" name="date_issued" value="{{ today }}" class="field"></div>
-    <div class="form-row u-m-0"><label>Method</label><select name="method" class="field--select"><option>CASH</option><option>BANK</option><option>CHEQUE</option><option>MPESA</option></select></div>
+    <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right" required value="{{ adv.amount|default_if_none:'' }}"></div>
+    <div class="form-row u-m-0"><label>Date issued</label><input type="date" name="date_issued" value="{% if editing %}{{ adv.date_issued|date:'Y-m-d' }}{% else %}{{ today }}{% endif %}" class="field"></div>
+    <div class="form-row u-m-0"><label>Method</label><select name="method" class="field--select">
+      <option {% if adv.method == 'CASH' %}selected{% endif %}>CASH</option>
+      <option {% if adv.method == 'BANK' %}selected{% endif %}>BANK</option>
+      <option {% if adv.method == 'CHEQUE' %}selected{% endif %}>CHEQUE</option>
+      <option {% if adv.method == 'MPESA' %}selected{% endif %}>MPESA</option></select></div>
   </div>
-  <div class="form-row"><label>Purpose</label><input name="purpose" class="field" placeholder="e.g. Advance for camp meeting travel"></div>
-  <div class="form-row"><label>Reference (optional)</label><input name="reference" class="field"></div>
+  <div class="form-row"><label>Bank / M-Pesa charge (optional)</label>
+    <input name="bank_charge" class="field mono u-right" value="{{ adv.bank_charge|default_if_none:'' }}" placeholder="0.00">
+    <span class="help u-mt-0">Recorded as a bank-charge expense on the same fund — a cost of issuing the advance, not part of the amount advanced.</span></div>
+  <div class="form-row"><label>Purpose</label><input name="purpose" class="field" placeholder="e.g. Advance for camp meeting travel" value="{{ adv.purpose }}"></div>
+  <div class="form-row"><label>Reference (optional)</label><input name="reference" class="field" value="{{ adv.reference }}"></div>
   <label class="check-row" style="display:flex;gap:.5rem;align-items:flex-start;margin:.4rem 0">
-    <input type="checkbox" name="from_petty_cash" value="1" class="form-check" id="fromPetty" style="margin-top:.2rem">
+    <input type="checkbox" name="from_petty_cash" value="1" class="form-check" id="fromPetty" style="margin-top:.2rem" {% if adv.from_petty_cash %}checked{% endif %}>
     <span>Issue from the <strong>petty-cash float</strong> (reduces petty cash; method is treated as cash).
       <span class="muted">Available now: KSh {{ petty_balance|floatformat:2|intcomma }}</span></span>
   </label>
-  <div class="btn-row"><button class="btn">Issue advance</button></div>
+  {% if editing %}<input type="hidden" name="action" value="edit">{% endif %}
+  <div class="btn-row"><button class="btn">{% if editing %}Save changes{% else %}Issue advance{% endif %}</button></div>
 </div></form>
 {% endblock %}

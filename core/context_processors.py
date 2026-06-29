@@ -32,6 +32,18 @@ def site_context(request):
         ctx["prefs"] = UserPreference.get_for(user)
     except Exception:  # noqa: BLE001 — table may not exist yet (migrations)
         ctx["prefs"] = None
+    # for a leader who leads exactly one department, expose it so the nav can
+    # label and link straight to that department
+    ctx["leader_single_dept"] = None
+    try:
+        from core import roles as _roles
+        if user and getattr(user, "is_authenticated", False) and _roles.is_leader(user):
+            from departments.models import departments_led_by
+            led = list(departments_led_by(user))
+            if len(led) == 1:
+                ctx["leader_single_dept"] = led[0]
+    except Exception:  # noqa: BLE001
+        pass
     ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))
     if user and user.is_authenticated:
         if user.is_superuser or user.groups.filter(name="Treasurer").exists():

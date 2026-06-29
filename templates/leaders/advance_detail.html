@@ -13,6 +13,25 @@
 </div>
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}</p>{% endif %}
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance came from the petty-cash float.</p>{% endif %}
+{% if adv.bank_charge %}<p class="help"><span class="pill">Charge</span> Bank/M-Pesa charge: KSh {{ adv.bank_charge|floatformat:2|intcomma }}.</p>{% endif %}
+
+{% if adv.status != 'CLOSED' %}
+<details class="card u-mb"><summary class="hd" style="cursor:pointer">✎ Correct this advance (amount, charge, details)</summary><div class="bd">
+<p class="help u-mt-0">Fix a mistake while the advance is open. Larger changes or a closed advance need the treasurer.</p>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="edit">
+  <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
+    <div class="form-row u-m-0"><label>Amount advanced</label><input name="amount" class="field mono u-right" value="{{ adv.amount }}"></div>
+    <div class="form-row u-m-0"><label>Date issued</label><input type="date" name="date_issued" class="field" value="{{ adv.date_issued|date:'Y-m-d' }}"></div>
+    <div class="form-row u-m-0"><label>Bank / M-Pesa charge</label><input name="bank_charge" class="field mono u-right" value="{{ adv.bank_charge|default_if_none:'' }}" placeholder="0.00"></div>
+    <div class="form-row u-m-0"><label>Purpose</label><input name="purpose" class="field" value="{{ adv.purpose }}"></div>
+  </div>
+  <input type="hidden" name="staff_name" value="{{ adv.staff_name }}">
+  <input type="hidden" name="department" value="{{ adv.department_id }}">
+  <input type="hidden" name="from_petty_cash" value="{% if adv.from_petty_cash %}1{% endif %}">
+  <div class="btn-row"><button class="btn btn-sm">Save changes</button></div>
+</form>
+</div></details>
+{% endif %}
 
 <div class="card u-mb"><div class="hd">Statement</div><div class="bd">
 <table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to you</th><th class="num">Accounted</th><th class="num">Still to account</th></tr></thead>

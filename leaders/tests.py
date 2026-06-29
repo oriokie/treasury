@@ -33,7 +33,7 @@ class LeaderScopingTests(TestCase):
         self.c = Client(); self.c.force_login(self.leader)
 
     def test_dashboard_loads(self):
-        self.assertEqual(self.c.get("/leader/").status_code, 200)
+        self.assertEqual(self.c.get("/leader/?stay=1").status_code, 200)
 
     def test_can_view_own_department(self):
         r = self.c.get(f"/leader/department/{self.mine.id}/")
@@ -318,13 +318,13 @@ class LeaderSubgroupScopingTests(TestCase):
         self.assertEqual(c.get(f"/leader/department/{self.c1.id}/").status_code, 200)
         self.assertEqual(c.get(f"/leader/department/{self.grand.id}/").status_code, 200)
         # landing page links through to a child
-        self.assertContains(c.get("/leader/"),
+        self.assertContains(c.get("/leader/?stay=1"),
                             f"/leader/department/{self.c1.id}/")
 
     def test_subgroup_leader_sees_only_their_subgroup(self):
         leader = _make_leader("camp_sub", self.c2)   # assigned CAMP_2 directly
         c = Client(); c.force_login(leader)
-        body = c.get("/leader/").content.decode()
+        body = c.get("/leader/?stay=1").content.decode()
         self.assertNotIn("No departments assigned", body)   # not blank
         self.assertIn("CAMP_2", body)
         self.assertNotIn("CAMP_1", body)                    # no siblings

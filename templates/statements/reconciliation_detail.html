@@ -19,13 +19,13 @@
       {% for it in additions %}<tr>
         <td class="indent">＋ {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
         <td class="num mono">{{ it.amount|floatformat:2|intcomma }}</td>
-        <td class="num">{% if can_enter_data %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% endif %}</td>
+        <td class="num">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
       </tr>{% endfor %}{% endif %}
       {% if subtractions %}<tr class="grp-row"><td colspan="3">Less: items on the statement not yet in the cash book</td></tr>
       {% for it in subtractions %}<tr>
         <td class="indent">− {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
         <td class="num mono row-debit">({{ it.amount|floatformat:2|intcomma }})</td>
-        <td class="num">{% if can_enter_data %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% endif %}</td>
+        <td class="num">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
       </tr>{% endfor %}{% endif %}
       <tr class="total-row"><td><strong>Adjusted bank balance</strong></td><td class="num mono"><strong>{{ rec.adjusted_balance|floatformat:2|intcomma }}</strong></td><td></td></tr>
       <tr><td>Balance as per cash book</td><td class="num mono">{{ rec.book_balance|floatformat:2|intcomma }}</td><td></td></tr>
@@ -56,10 +56,17 @@
   <p class="help u-mt-0">The cash-book balance already includes the petty-cash float (cash drawn from the bank but physically held). To reconcile to the bank statement, that cash is added back as <em>cash at hand</em> — it isn't double-counted, it's just held outside the bank.</p>
   {% if petty_float %}
     <p>Petty cash float as at {{ rec.statement_date|date:"d M Y" }}: <strong class="mono">KSh {{ petty_float|floatformat:2|intcomma }}</strong>
-    {% if petty_listed %}<span class="pill pill-green">already added</span>{% endif %}</p>
-    {% if can_enter_data and not petty_listed %}<form method="post" class="no-print">{% csrf_token %}<input type="hidden" name="action" value="add_petty_cash">
-      <button class="btn btn-sm">↧ Add petty cash float as a reconciling item</button></form>{% endif %}
+    {% if petty_listed %}<span class="pill pill-green">added automatically</span>{% endif %}</p>
   {% else %}<p class="help u-mt-0">No petty cash float held as at this date.</p>{% endif %}
+</div></div>
+
+<div class="card no-print u-narrow-md u-mt"><div class="hd u-between">Staff advances (bank-funded)
+  <a class="link u-xs" href="{% url 'advance_list' %}">View advances →</a></div><div class="bd">
+  <p class="help u-mt-0">An advance issued from the <em>bank</em> leaves the bank account at issuance, but it isn't an expense in the cash book until it's accounted for. So until then it's money out of the bank that the books still hold as a receivable — added back here to reconcile. (Advances issued from petty cash are already covered by the petty-cash float above.)</p>
+  {% if bank_advances %}
+    <p>Outstanding bank-funded advances as at {{ rec.statement_date|date:"d M Y" }}: <strong class="mono">KSh {{ bank_advances|floatformat:2|intcomma }}</strong>
+    {% if advances_listed %}<span class="pill pill-green">added automatically</span>{% endif %}</p>
+  {% else %}<p class="help u-mt-0">No outstanding bank-funded staff advances as at this date.</p>{% endif %}
 </div></div>
 
 {% if can_enter_data %}

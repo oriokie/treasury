@@ -1,13 +1,15 @@
 {% extends 'base.html' %}{% load humanize static %}
 {% block title %}{{ dept.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head">
-  <div class="ws-titles"><h1>{{ dept.name }}</h1>
-    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · your department · read-only</div></div>
-  <form method="get" class="btn-row u-items-end">
-    <a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a>
-    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">
-    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto">
+<div class="ld-hero">
+  <div class="ld-hero-main">
+    <div class="ld-eyebrow">My department</div>
+    <h1>{{ dept.name }}</h1>
+    <div class="ld-period">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</div>
+  </div>
+  <form method="get" class="ld-hero-tools no-print">
+    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto" aria-label="From">
+    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto" aria-label="To">
     <button class="btn btn-sm">Apply</button>
   </form>
 </div>
@@ -41,6 +43,11 @@
   <a class="ld-link" href="{% url 'leader_pledges' dept.id %}">
     <span class="ic">🤝</span><span class="t">Pledges</span>
     <span class="s">{{ pledge_summary.count }} pledge{{ pledge_summary.count|pluralize }} · {{ pledge_summary.pct }}% fulfilled</span></a>
+  {% endif %}
+  {% if advance_summary %}
+  <a class="ld-link" href="{% url 'leader_advances' %}">
+    <span class="ic">💵</span><span class="t">Staff advances</span>
+    <span class="s">{{ advance_summary.open_count }} open · KSh {{ advance_summary.outstanding|floatformat:0|intcomma }} to account for</span></a>
   {% endif %}
 </div>
 
@@ -158,15 +165,29 @@
 {% endif %}
 
 <style>
+.ld-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;
+  padding:1.3rem 1.5rem;margin-bottom:1.4rem;border-radius:16px;
+  background:linear-gradient(135deg,var(--forest) 0%,var(--forest-deep,#16463a) 100%);
+  color:#fff;box-shadow:var(--shadow-md)}
+.ld-hero h1{margin:.1rem 0 .15rem;color:#fff;font-size:1.7rem;line-height:1.1}
+.ld-hero .ld-eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.8;font-weight:600}
+.ld-hero .ld-period{font-size:.82rem;opacity:.85}
+.ld-hero-tools{display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap}
+.ld-hero-tools .field{background:rgba(255,255,255,.92);border-color:transparent}
+.ld-hero-tools .btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.5);color:#fff}
+.ld-hero-tools .btn:hover{background:rgba(255,255,255,.28)}
 .ld-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin-bottom:1.4rem}
+.ld-kpis .stat{border-radius:14px}
+.ld-kpis .stat .value{font-size:clamp(1.05rem,2.1vw,1.45rem);white-space:nowrap;letter-spacing:-.015em}
+.ld-kpis .stat .value .ksh{font-size:.66em;margin-right:.12rem;opacity:.7}
 .ld-links{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.8rem;margin-bottom:1.4rem}
-.ld-link{display:flex;flex-direction:column;gap:.15rem;padding:1rem 1.1rem;background:var(--paper);border:1px solid var(--line);border-radius:14px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s}
-.ld-link:hover{border-color:var(--forest);transform:translateY(-2px)}
+.ld-link{display:flex;flex-direction:column;gap:.15rem;padding:1rem 1.1rem;background:var(--paper);border:1px solid var(--line);border-radius:14px;text-decoration:none;color:inherit;transition:border-color .15s,transform .15s,box-shadow .15s}
+.ld-link:hover{border-color:var(--forest);transform:translateY(-2px);box-shadow:var(--shadow)}
 .ld-link .ic{font-size:1.4rem}
 .ld-link .t{font-weight:600;font-family:var(--font-display,inherit)}
 .ld-link .s{font-size:.8rem;color:var(--muted)}
 .ld-charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.4rem;align-items:start}
-@media(max-width:820px){.ld-kpis{grid-template-columns:repeat(2,1fr)}.ld-charts{grid-template-columns:1fr}}
+@media(max-width:820px){.ld-kpis{grid-template-columns:repeat(2,1fr)}.ld-charts{grid-template-columns:1fr}.ld-hero h1{font-size:1.4rem}}
 </style>
 <script src="{% static 'js/table_jpeg.js' %}"></script>
 {% endblock %}

@@ -56,7 +56,9 @@ class AdvancePettyLeaderTests(TestCase):
         exp = adv.expenses.first()
         self.assertEqual(exp.status, "PAID")
         self.assertEqual(exp.claimant, "Jane Leader")
-        self.assertTrue(exp.paid_from_petty_cash)
+        # the petty box lost the cash at issuance, so the settling expense itself
+        # is not a petty-cash disbursement
+        self.assertFalse(exp.paid_from_petty_cash)
         adv.refresh_from_db()
         self.assertEqual(adv.status, "PARTLY")
         self.assertEqual(adv.balance, Decimal("3000"))

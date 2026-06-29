@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.78.0 - charge reduces advance + auto-populated reconciliation
+- Bank/M-Pesa charge on an advance now REDUCES the advance: _sync_advance_charge() links the BANK_CHARGE
+  expense via the `advance` FK, so it counts toward settled_total and lowers the balance to account for
+  (rationale: advance sent to a personal account, holder incurs charges while spending). Shows in the
+  advance statement. Petty float unaffected (charge is bank-paid, not petty-flagged); SoFP still ties
+  (fund balance and advance receivable both drop by the charge).
+- Bank reconciliation auto-populates the petty-cash float and outstanding bank-funded staff advances:
+  _sync_managed_recon_items() upserts both as ADD items on view (for data-entry users), updates their
+  amount as values change, and removes them when zero. New ReconciliationItem.auto flag (statements 0009);
+  auto items can't be hand-deleted (show an 'auto' marker). Manual add_petty_cash/add_advances actions
+  retained but the panels now show 'added automatically'.
+- AdvanceDelete fixed for the new charge link (detach charge_expense before cascading adv.expenses).
+- Tests: cashbook/test_advance_charges_edit updated (charge reduces advance) + AutoReconAndChargeTests.
+
+## v1.77.0 - advance charges + edit/delete, recon advances, leader UX
+- #1 StaffAdvance.bank_charge + charge_expense (cashbook 0022); _sync_advance_charge() books/updates/
+  removes a BANK_CHARGE expense (excluded from settled_total). AdvanceCreate captures it.
+- #3 AdvanceEdit + AdvanceDelete + apply_advance_edit() (end-to-end: charge re-synced, petty float
+  recomputed, settling/charge expenses cascade on delete). Leaders may correct an OPEN advance via the
+  leader detail page; closed advances are treasurer-only to amend.
+- #2 outstanding_bank_advances_total() + recon 'add_advances' action + panel: bank-funded advances are
+  added back as a reconciling item (cash out of bank, not yet expensed). Petty advances already sit in
+  the petty-cash float, so they're excluded here. (Answer: petty = already accounted; bank = now added.)
+- #6 petty-cash register shows petty-funded advance issuance (out) and returns (in); model simplified so
+  the box loses the full advance at issuance (settling expenses no longer petty-flagged) and the register
+  reconciles to _petty_balance_asof.
+- #4 leader sidebar: 'Staff advances' menu item; single-department leaders redirect straight to their
+  department (?stay=1 keeps the overview); button removed; nav label singular when one dept.
+- #5 leader department page: gradient hero header, one-line KPI values, advances summary in Explore.
+- #7 .kpi-grid .stat .value stays on one line (no cent wrap).
+- #8 executive overview: 'Staff advances outstanding' + 'Petty cash remaining' tiles.
+- Tests: cashbook/test_advance_charges_edit (10); leader tests updated for the single-dept redirect.
+
 ## v1.76.0 - staff advances: petty-cash funding + leader self-service
 - StaffAdvance gains from_petty_cash + returned_to_petty (cashbook 0021) and helpers settled_asof(),
   accounted_total, petty_outstanding_asof(), balance now nets returned cash.

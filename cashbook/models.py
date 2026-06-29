@@ -454,6 +454,11 @@ class StaffAdvance(models.Model):
                   "advance is a receivable until accounted for).")
     returned_to_petty = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Unspent cash the staff member returned to the petty-cash box.")
+    bank_charge = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+        help_text="Bank / M-Pesa transaction charge incurred to issue this advance.")
+    charge_expense = models.OneToOneField("cashbook.Expense", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="advance_charge",
+        help_text="The expense that records this advance's bank/M-Pesa charge.")
     reference = models.CharField(max_length=40, blank=True)
     status = models.CharField(max_length=8, choices=Status.choices, default=Status.ISSUED,
                               db_index=True)
@@ -494,11 +499,13 @@ class StaffAdvance(models.Model):
         return self.settled_total + (self.returned_to_petty or Decimal(0))
 
     def petty_outstanding_asof(self, on):
-        """For a petty-cash-funded advance: cash still out of the box as an advance
-        (issued − settled − returned), never below zero."""
+        """For a petty-cash-funded advance: cash that has left the petty-cash box
+        and not yet been returned (issued − returned). The full advance leaves the
+        box at issuance; settling expenses account for how it was spent but do not
+        return cash to the box, so only an actual return reduces this."""
         if not self.from_petty_cash or self.date_issued > on:
             return Decimal(0)
-        out = self.amount - self.settled_asof(on) - (self.returned_to_petty or Decimal(0))
+        out = self.amount - (self.returned_to_petty or Decimal(0))
         return out if out > 0 else Decimal(0)
 
 

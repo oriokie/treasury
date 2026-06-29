@@ -3,7 +3,10 @@
 {% block content %}
 <div class="page-head"><div><h1>Advance — {{ adv.staff_name }}</h1>
 <div class="sub">{{ adv.department.name }} · issued {{ adv.date_issued|date:"d M Y" }} · {{ adv.get_status_display }}</div></div>
-<a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div>
+<div class="btn-row no-print">
+  {% if can_enter_data %}{% if adv.status != 'CLOSED' or is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'advance_edit' adv.id %}">✎ Edit</a>{% endif %}{% endif %}
+  {% if is_treasurer %}<form method="post" action="{% url 'advance_delete' adv.id %}" class="u-inline" onsubmit="return confirm('Delete this advance and all its linked entries (settling expenses and any bank charge)? This cannot be undone.');">{% csrf_token %}<button class="btn btn-ghost btn-sm" style="color:var(--red,#b00)">🗑 Delete</button></form>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div></div>
 
 <div class="grid cols-3 u-mb">
   <div class="stat"><div class="lbl">Advanced</div><div class="val mono">KES {{ adv.amount|floatformat:2|intcomma }}</div></div>
@@ -13,6 +16,7 @@
 </div>
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}{% if adv.reference %} · Ref {{ adv.reference }}{% endif %}</p>{% endif %}
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance was issued from the petty-cash float, which it reduces until accounted for.</p>{% endif %}
+{% if adv.bank_charge %}<p class="help"><span class="pill">Charge</span> Bank/M-Pesa charge of KSh {{ adv.bank_charge|floatformat:2|intcomma }} was recorded as a bank-charge expense on {{ adv.department.name }}.</p>{% endif %}
 
 <div class="card u-mb"><div class="hd">Statement — how the advance is flowing</div><div class="bd">
 <table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to staff</th><th class="num">Accounted</th><th class="num">Still to account</th></tr></thead>

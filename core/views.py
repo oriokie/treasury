@@ -889,9 +889,14 @@ class ExecutiveDashboardView(ReadAccessMixin, View):
         ch = dashboard.charts()
         pledges_out = sum((p.outstanding for p in
                            Pledge.objects.filter(status=Pledge.Status.ACTIVE)), Decimal(0))
+        from cashbook.views import outstanding_advances_total, _petty_balance_asof
+        import datetime as _dt
+        _today = _dt.date.today()
         return render(request, self.template_name, {
             "forecast": forecast.horizons(),
             "pledges_outstanding": pledges_out,
+            "advances_outstanding": outstanding_advances_total(_today),
+            "petty_balance": _petty_balance_asof(_today),
             "cards": dashboard.cards(),
             "insights": dashboard.insights(),
             "kpis": health.kpis(),

@@ -541,6 +541,22 @@ class PettyCashView(ReadAccessMixin, TemplateView):
             movements.append({"date": x.date, "desc": x.description
                               + (f" · {x.claimant}" if x.claimant else ""), "in": None,
                               "out": x.amount, "fund": x.department.name, "cat": x.get_category_display()})
+        # petty-cash-funded staff advances: the float drops when issued and rises
+        # again only if unspent cash is returned
+        from .models import StaffAdvance
+        for adv in StaffAdvance.objects.filter(from_petty_cash=True,
+                date_issued__gte=start, date_issued__lte=end).select_related("department"):
+            movements.append({"date": adv.date_issued,
+                "desc": f"Advance to {adv.staff_name} — {adv.purpose}",
+                "in": None, "out": adv.amount, "fund": adv.department.name,
+                "cat": "Staff advance"})
+        for adv in StaffAdvance.objects.filter(from_petty_cash=True,
+                returned_to_petty__gt=0, settled_on__gte=start,
+                settled_on__lte=end).select_related("department"):
+            movements.append({"date": adv.settled_on,
+                "desc": f"Unspent advance returned — {adv.staff_name}",
+                "in": adv.returned_to_petty, "out": None,
+                "fund": adv.department.name, "cat": "Advance return"})
         movements.sort(key=lambda m: m["date"])
         running = opening
         for m in movements:
@@ -714,6 +730,28 @@ def unexpired_prepayments_total(as_of=None):
     return sum((p.unexpired(as_of) for p in Prepayment.objects.all()), Decimal(0))
 
 
+def outstanding_bank_advances_total(as_of=None):
+    """Outstanding advances issued from the BANK (not petty cash). These reduce
+    the bank statement balance at issuance but are not yet an expense in the cash
+    book, so until accounted for they are a reconciling item between bank and book.
+    Petty-funded advances are excluded — those sit in the petty-cash float."""
+    from decimal import Decimal
+    import datetime as _dt
+    from django.db.models import Sum
+    from cashbook.models import StaffAdvance, Expense
+    as_of = as_of or _dt.date.today()
+    total = Decimal(0)
+    for adv in StaffAdvance.objects.filter(date_issued__lte=as_of, from_petty_cash=False
+            ).exclude(status=StaffAdvance.Status.CLOSED):
+        settled = (adv.expenses.filter(
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
+            date__lte=as_of).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        bal = adv.amount - settled - (adv.returned_to_petty or Decimal(0))
+        if bal > 0:
+            total += bal
+    return total
+
+
 def outstanding_advances_total(as_of=None):
     """Money advanced to staff that has not yet been accounted for by receipts —
     i.e. a receivable. Computed as (amount issued − expenses settled up to the
@@ -884,6 +922,12 @@ class AdvanceCreate(DataEntryRequiredMixin, View):
             return redirect("advance_new")
         from_petty = request.POST.get("from_petty_cash") in ("1", "on", "true")
         method = request.POST.get("method") or "CASH"
+        try:
+            charge = Decimal(request.POST.get("bank_charge") or "0")
+        except InvalidOperation:
+            charge = Decimal(0)
+        if charge < 0:
+            charge = Decimal(0)
         if from_petty:
             method = "CASH"   # petty cash is, by definition, cash
             avail = _petty_balance_asof(issued)
@@ -895,12 +939,125 @@ class AdvanceCreate(DataEntryRequiredMixin, View):
         adv = StaffAdvance.objects.create(
             staff_name=name, department=dept, amount=amount, date_issued=issued,
             purpose=(request.POST.get("purpose") or "")[:200],
-            method=method, from_petty_cash=from_petty,
+            method=method, from_petty_cash=from_petty, bank_charge=charge,
             reference=(request.POST.get("reference") or "")[:40],
             issued_by=request.user)
+        _sync_advance_charge(adv, request.user)
         messages.success(request, "Advance recorded." + (
-            " Petty-cash float reduced accordingly." if from_petty else ""))
+            " Petty-cash float reduced accordingly." if from_petty else "")
+            + (f" Bank/M-Pesa charge of KSh {charge:,.2f} recorded." if charge else ""))
         return redirect("advance_detail", pk=adv.pk)
+
+
+def apply_advance_edit(adv, post, user, *, allow_petty_toggle=True):
+    """Apply an edit to an advance from POST data and keep everything in step
+    (petty float recomputes from the live fields; the bank-charge expense is
+    re-synced). Returns (ok, error_message)."""
+    from decimal import Decimal, InvalidOperation
+    from .models import StaffAdvance
+    name = (post.get("staff_name") or adv.staff_name).strip()
+    dept = Department.objects.filter(pk=post.get("department")).first() or adv.department
+    try:
+        amount = Decimal(post.get("amount") or adv.amount)
+    except InvalidOperation:
+        amount = adv.amount
+    try:
+        charge = Decimal(post.get("bank_charge") or "0")
+    except InvalidOperation:
+        charge = Decimal(0)
+    if amount <= 0:
+        return False, "Amount must be positive."
+    if charge < 0:
+        charge = Decimal(0)
+    try:
+        issued = dt.date.fromisoformat(post.get("date_issued"))
+    except (TypeError, ValueError):
+        issued = adv.date_issued
+    from_petty = adv.from_petty_cash
+    if allow_petty_toggle:
+        from_petty = post.get("from_petty_cash") in ("1", "on", "true")
+    method = "CASH" if from_petty else (post.get("method") or adv.method)
+    # validate petty float can still cover a petty advance (excluding this advance's
+    # own current contribution so an unchanged edit doesn't false-trip)
+    if from_petty:
+        avail = _petty_balance_asof(issued) + adv.petty_outstanding_asof(issued)
+        if amount - adv.settled_asof(issued) - (adv.returned_to_petty or Decimal(0)) > avail:
+            return False, (f"The petty-cash float can't cover that amount on "
+                           f"{issued:%d %b %Y}.")
+    adv.staff_name = name[:120]
+    adv.department = dept
+    adv.amount = amount
+    adv.date_issued = issued
+    adv.method = method
+    adv.from_petty_cash = from_petty
+    adv.bank_charge = charge
+    adv.purpose = (post.get("purpose") or adv.purpose)[:200]
+    adv.reference = (post.get("reference") or adv.reference)[:40]
+    adv.save()
+    _sync_advance_charge(adv, user)
+    # refresh status against the new amount
+    bal = adv.balance
+    if bal == 0 and adv.settled_total > 0:
+        adv.status = StaffAdvance.Status.SETTLED
+    elif adv.settled_total > 0:
+        adv.status = StaffAdvance.Status.PARTLY
+    elif adv.status in (StaffAdvance.Status.SETTLED, StaffAdvance.Status.PARTLY):
+        adv.status = StaffAdvance.Status.ISSUED
+    adv.save(update_fields=["status"])
+    return True, None
+
+
+class AdvanceEdit(DataEntryRequiredMixin, View):
+    """Edit an advance. Treasurers/assistants may edit any advance; a closed
+    advance can only be amended by a treasurer (enforced below)."""
+    template_name = "cashbook/advance_form.html"
+
+    def _get(self, pk):
+        from .models import StaffAdvance
+        return get_object_or_404(StaffAdvance, pk=pk)
+
+    def get(self, request, pk):
+        adv = self._get(pk)
+        return render(request, self.template_name, {
+            "adv": adv, "editing": True,
+            "departments": Department.objects.filter(active=True).order_by("name"),
+            "petty_balance": _petty_balance_asof(dt.date.today()),
+            "today": adv.date_issued.isoformat()})
+
+    def post(self, request, pk):
+        from core import roles
+        adv = self._get(pk)
+        if adv.status == "CLOSED" and not roles.is_treasurer(request.user):
+            messages.error(request, "A closed advance can only be amended by a treasurer.")
+            return redirect("advance_detail", pk=pk)
+        if _block_if_locked(request, adv.date_issued):
+            return redirect("advance_detail", pk=pk)
+        ok, err = apply_advance_edit(adv, request.POST, request.user)
+        if not ok:
+            messages.error(request, err)
+            return redirect("advance_edit", pk=pk)
+        messages.success(request, "Advance updated.")
+        return redirect("advance_detail", pk=pk)
+
+
+class AdvanceDelete(TreasurerRequiredMixin, View):
+    """Delete an advance end-to-end: its settling expenses and bank-charge expense
+    go with it, and the petty float recomputes automatically."""
+    def post(self, request, pk):
+        from .models import StaffAdvance
+        adv = get_object_or_404(StaffAdvance, pk=pk)
+        if _block_if_locked(request, adv.date_issued):
+            return redirect("advance_detail", pk=pk)
+        # the charge expense is now linked via the `advance` FK too, so detach it
+        # first to avoid a stale-cache lookup, then remove all linked expenses
+        # (settlements + the charge) in one sweep
+        if adv.charge_expense_id:
+            adv.charge_expense = None
+            adv.save(update_fields=["charge_expense"])
+        adv.expenses.all().delete()
+        adv.delete()
+        messages.success(request, "Advance and its linked entries were deleted.")
+        return redirect("advance_list")
 
 
 class AdvanceDetail(ReadAccessMixin, View):
@@ -939,6 +1096,46 @@ def _advance_detail_ctx(adv, *, leader_mode=False):
     }
 
 
+def _sync_advance_charge(adv, user):
+    """Create / update / remove the BANK_CHARGE expense that records an advance's
+    bank or M-Pesa charge, keeping it in step with adv.bank_charge. The charge is a
+    legitimate cost met out of the advance (e.g. M-Pesa fees the holder pays while
+    spending), so it is linked to the advance (via the `advance` FK) and therefore
+    REDUCES the balance the holder still has to account for. The charge_expense
+    one-to-one keeps a handle on it for edits/removal."""
+    from decimal import Decimal
+    from .models import Expense
+    charge = adv.bank_charge or Decimal(0)
+    exp = adv.charge_expense
+    if charge and charge > 0:
+        if exp:
+            exp.date = adv.date_issued
+            exp.amount = charge
+            exp.department = adv.department
+            exp.method = adv.method
+            exp.claimant = adv.staff_name
+            exp.advance = adv
+            exp.description = f"Bank/M-Pesa charge — advance to {adv.staff_name}"
+            exp.save(update_fields=["date", "amount", "department", "method",
+                                    "claimant", "advance", "description"])
+        else:
+            exp = Expense.objects.create(
+                date=adv.date_issued, sabbath_week=sabbath_week_of(adv.date_issued),
+                department=adv.department,
+                description=f"Bank/M-Pesa charge — advance to {adv.staff_name}",
+                amount=charge, category=Expense.Category.BANK_CHARGE,
+                claimant=adv.staff_name, method=adv.method, advance=adv,
+                status=Expense.Status.PAID, paid_date=adv.date_issued,
+                recorded_by=user, approved_by=user)
+            adv.charge_expense = exp
+            adv.save(update_fields=["charge_expense"])
+    elif exp:
+        # charge removed — delete the linked expense
+        adv.charge_expense = None
+        adv.save(update_fields=["charge_expense"])
+        exp.delete()
+
+
 def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant=None):
     """Create an APPROVED+PAID expense that settles part of a staff advance, and
     refresh the advance's status. If the advance was funded from petty cash, the
@@ -950,7 +1147,7 @@ def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant
         category=category or Expense.Category.OTHER,
         claimant=(claimant or adv.staff_name), method=adv.method,
         status=Expense.Status.PAID, paid_date=date,
-        paid_from_petty_cash=adv.from_petty_cash,
+        paid_from_petty_cash=False,   # the petty box lost the cash at issuance
         recorded_by=user, advance=adv, approved_by=user)
     bal = adv.balance
     if bal == 0:

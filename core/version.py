@@ -38,6 +38,22 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.78.0": "Two refinements to staff advances. Bank and M-Pesa charges now reduce the advance: if you "
+              "send an advance to someone's personal account and they incur transaction charges while "
+              "paying for things, those charges are accounted against the advance and lower the balance "
+              "they still owe. And the bank reconciliation now fills in the petty-cash float and "
+              "outstanding bank-funded staff advances for you automatically — no need to add them by "
+              "hand; they stay in step with their current values each time you open the reconciliation.",
+    "1.77.0": "Staff advances got more flexible. You can record a bank or M-Pesa charge when issuing "
+              "an advance (booked as a bank-charge expense), and you can now edit or delete an advance "
+              "end-to-end — its linked charge and settling entries move with it. Leaders and treasurers "
+              "can correct an open advance; once it's closed, only a treasurer can amend it. Bank-funded "
+              "advances can be added to the bank reconciliation in one click (petty-cash advances are "
+              "already covered by the petty-cash float), and petty advances now show in the petty-cash "
+              "register. On the leader side, Staff advances is now a sidebar menu item, a leader with a "
+              "single department lands straight on it, and the department page got a refreshed look. The "
+              "executive overview now shows staff advances outstanding and petty cash remaining, and the "
+              "dashboard KPI amounts no longer wrap onto two lines.",
     "1.76.0": "Staff advances are now easier to run and account for. A staff advance can be issued "
               "straight from the petty-cash float — it reduces petty cash and shows as a receivable until "
               "it is accounted for. Department leaders can now open the advances on their own funds, see "

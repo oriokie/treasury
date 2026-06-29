@@ -138,6 +138,14 @@ function loadInsights(){
     <div class="val mono">{{ pledges_outstanding|floatformat:0|intcomma }}</div>
     <div class="muted u-xs"><a class="link" href="{% url 'pledge_list' %}">View pledges →</a></div>
   </div>
+  <div class="stat u-mt-sm"><div class="lbl">Staff advances outstanding</div>
+    <div class="val mono">{{ advances_outstanding|floatformat:0|intcomma }}</div>
+    <div class="muted u-xs"><a class="link" href="{% url 'advance_list' %}">View advances →</a></div>
+  </div>
+  <div class="stat u-mt-sm"><div class="lbl">Petty cash remaining</div>
+    <div class="val mono">{{ petty_balance|floatformat:0|intcomma }}</div>
+    <div class="muted u-xs"><a class="link" href="{% url 'petty_cash' %}">Petty cash register →</a></div>
+  </div>
 </div></div>
 
 <div class="kpi-strip">

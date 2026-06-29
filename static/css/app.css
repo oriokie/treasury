@@ -1081,3 +1081,9 @@ html[data-motion="reduced"] .toast{animation:none}
 /* Dashboard widget container — allows per-user reordering via CSS order */
 .dash-widgets{display:flex;flex-direction:column;gap:1.15rem}
 .dash-widgets>[data-w]{margin-bottom:0}
+
+/* Keep KPI amounts on a single line (e.g. "KSh 2,013,168.00") */
+.kpi-grid .stat .value{font-size:clamp(1.02rem,2.1vw,1.4rem);white-space:nowrap;
+  overflow-wrap:normal;word-break:normal;letter-spacing:-.015em}
+.kpi-grid .stat .value .ksh{font-size:.66em;margin-right:.15rem}
+@media(max-width:420px){.kpi-grid .stat .value{font-size:1.12rem}}

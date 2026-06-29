@@ -182,6 +182,9 @@ class ReconciliationItem(models.Model):
     description = models.CharField(max_length=200, blank=True)
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     effect = models.CharField(max_length=8, choices=Effect.choices, default=Effect.SUBTRACT)
+    auto = models.BooleanField(default=False,
+        help_text="Auto-managed item (petty cash float / staff advances), kept in "
+                  "step with its computed value.")
 
     # sensible default direction per kind
     DEFAULT_EFFECT = {

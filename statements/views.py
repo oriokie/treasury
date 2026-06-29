@@ -177,13 +177,50 @@ class ReconciliationDeleteView(TreasurerRequiredMixin, View):
         return redirect("reconciliation_list")
 
 
+def _sync_managed_recon_items(rec):
+    """Keep the auto-managed reconciling items (petty-cash float and outstanding
+    bank-funded staff advances) in step with their current values: upsert when
+    non-zero, remove when zero. Both are cash that has left the bank but the cash
+    book still holds, so they ADD back to the bank balance to reach the book."""
+    from decimal import Decimal
+    from cashbook.views import _petty_balance_asof, outstanding_bank_advances_total
+    managed = [
+        ("Petty cash float (cash on hand)", _petty_balance_asof(rec.statement_date),
+         ReconciliationItem.Kind.CASH_AT_HAND),
+        ("Staff advances issued (not yet accounted)",
+         outstanding_bank_advances_total(rec.statement_date),
+         ReconciliationItem.Kind.CASH_AT_HAND),
+    ]
+    for desc, amount, kind in managed:
+        existing = rec.items.filter(description=desc).first()
+        if amount and amount > 0:
+            if existing:
+                if existing.amount != amount or existing.effect != ReconciliationItem.Effect.ADD:
+                    existing.amount = amount
+                    existing.effect = ReconciliationItem.Effect.ADD
+                    existing.save(update_fields=["amount", "effect"])
+            else:
+                ReconciliationItem.objects.create(
+                    reconciliation=rec, kind=kind, description=desc,
+                    amount=amount, effect=ReconciliationItem.Effect.ADD,
+                    auto=True)
+        elif existing and getattr(existing, "auto", False):
+            existing.delete()
+
+
 class ReconciliationDetailView(ReadAccessMixin, View):
     template_name = "statements/reconciliation_detail.html"
 
     def get(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
         from cashbook.models import ChequeRegister
-        from cashbook.views import unpresented_cheques_total, _petty_balance_asof
+        from cashbook.views import (unpresented_cheques_total, _petty_balance_asof,
+                                    outstanding_bank_advances_total)
+        # auto-populate the petty-cash float and bank-funded staff advances as
+        # reconciling items, kept in step with their current values
+        from core import roles
+        if roles.can_enter_data(request.user):
+            _sync_managed_recon_items(rec)
         unpresented = (ChequeRegister.objects.filter(
             status=ChequeRegister.Status.ISSUED,
             date_issued__lte=rec.statement_date).order_by("date_issued"))
@@ -191,6 +228,9 @@ class ReconciliationDetailView(ReadAccessMixin, View):
         # is the petty-cash float already entered as a reconciling item?
         petty_listed = rec.items.filter(
             description__icontains="petty cash").exists()
+        bank_advances = outstanding_bank_advances_total(rec.statement_date)
+        advances_listed = rec.items.filter(
+            description__icontains="staff advance").exists()
         return render(request, self.template_name, {
             "rec": rec, "items": rec.items.all(),
             "item_form": ReconciliationItemForm(),
@@ -200,6 +240,7 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             "unpresented_cheques": unpresented,
             "unpresented_total": unpresented_cheques_total(rec.statement_date),
             "petty_float": petty_float, "petty_listed": petty_listed,
+            "bank_advances": bank_advances, "advances_listed": advances_listed,
             "additions": rec.items.filter(effect=ReconciliationItem.Effect.ADD),
             "subtractions": rec.items.filter(effect=ReconciliationItem.Effect.SUBTRACT),
         })
@@ -251,6 +292,19 @@ class ReconciliationDetailView(ReadAccessMixin, View):
                 messages.success(request, "Petty cash float added as a reconciling item.")
             else:
                 messages.info(request, "Petty cash float is already listed or is zero.")
+            return redirect("reconciliation_detail", pk=rec.pk)
+        elif action == "add_advances":
+            from cashbook.views import outstanding_bank_advances_total
+            amt = outstanding_bank_advances_total(rec.statement_date)
+            if amt and amt > 0 and not rec.items.filter(
+                    description__icontains="staff advance").exists():
+                ReconciliationItem.objects.create(
+                    reconciliation=rec, kind=ReconciliationItem.Kind.CASH_AT_HAND,
+                    description="Staff advances issued (not yet accounted)",
+                    amount=amt, effect=ReconciliationItem.Effect.ADD)
+                messages.success(request, "Outstanding staff advances added as a reconciling item.")
+            else:
+                messages.info(request, "No bank-funded staff advances to add (or already listed).")
             return redirect("reconciliation_detail", pk=rec.pk)
         elif action == "add_unpresented_cheques":
             from cashbook.models import ChequeRegister
