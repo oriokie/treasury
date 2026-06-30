@@ -34,9 +34,9 @@
     </table></div>
     {% if is_paginated %}
     <div class="pager no-print" style="display:flex;gap:.5rem;align-items:center;justify-content:center;margin-top:1rem">
-      {% if page_obj.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page_obj.previous_page_number }}">← Prev</a>{% endif %}
+      {% if page_obj.has_previous %}<a class="btn btn-ghost btn-sm" href="{% querystring page=page_obj.previous_page_number %}">← Prev</a>{% endif %}
       <span class="muted u-small">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ page_obj.paginator.count }} rule{{ page_obj.paginator.count|pluralize }}</span>
-      {% if page_obj.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
+      {% if page_obj.has_next %}<a class="btn btn-ghost btn-sm" href="{% querystring page=page_obj.next_page_number %}">Next →</a>{% endif %}
     </div>
     {% endif %}
   </div>

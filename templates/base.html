@@ -1,6 +1,6 @@
 {% load static humanize %}
 <!doctype html>
-<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% endif %}>
+<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-sidebarstyle="{{ prefs.sidebar_style|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">

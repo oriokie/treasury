@@ -27,7 +27,7 @@ class ReconPettyCashTests(TestCase):
         PettyCashTopUp.objects.create(date=dt.date(2026, 6, 1),
             amount=Decimal("5000"), recorded_by=self.u)
         before = self.rec.adjusted_balance
-        self.c.post(f"/reconciliations/{self.rec.id}/", {"action": "add_petty_cash"})
+        self.c.get(f"/reconciliations/{self.rec.id}/")   # auto-syncs managed items
         it = ReconciliationItem.objects.filter(
             reconciliation=self.rec, description__icontains="petty cash").first()
         self.assertIsNotNone(it)
@@ -39,8 +39,8 @@ class ReconPettyCashTests(TestCase):
     def test_petty_cash_idempotent(self):
         PettyCashTopUp.objects.create(date=dt.date(2026, 6, 1),
             amount=Decimal("5000"), recorded_by=self.u)
-        self.c.post(f"/reconciliations/{self.rec.id}/", {"action": "add_petty_cash"})
-        self.c.post(f"/reconciliations/{self.rec.id}/", {"action": "add_petty_cash"})
+        self.c.get(f"/reconciliations/{self.rec.id}/")
+        self.c.get(f"/reconciliations/{self.rec.id}/")
         self.assertEqual(ReconciliationItem.objects.filter(
             reconciliation=self.rec, description__icontains="petty cash").count(), 1)
 

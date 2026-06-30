@@ -2909,6 +2909,46 @@ class FundThankSmsView(ReadAccessMixin, TemplateView):
         return redirect(f"{reverse('report_fund', kwargs={'pk': dept.id})}?start={start}&end={end}")
 
 
+def _camp_goal_records(year):
+    """Camp Meeting expense goal (Local fund flagged CAMP_EXPENSE, aggregated over
+    its sub-accounts) and the paired offering goal (its configured Trust fund).
+    Group contribution goals are deliberately excluded — this is fund-level only."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from departments.models import Department as _D
+
+    def _ids(d):
+        out = [d.id]
+        for sub in d.subgroups.all():
+            out.extend(_ids(sub))
+        return out
+
+    def _collected(fund):
+        if fund is None:
+            return Decimal(0)
+        return (Transaction.objects.confirmed_credits().filter(
+            department_id__in=_ids(fund), excluded_from_income=False,
+            date__year=year).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+    def _row(name, kind, goal, fund):
+        goal = goal or Decimal(0)
+        col = _collected(fund)
+        return {"name": name, "kind": kind, "goal": goal, "collected": col,
+                "variance": col - goal,
+                "pct": int(min(col / goal * 100, 999)) if goal else 0,
+                "short": max(goal - col, Decimal(0))}
+
+    rows = []
+    for d in _D.objects.filter(active=True, goal_type="CAMP_EXPENSE").prefetch_related("subgroups"):
+        if d.year_goal:
+            rows.append(_row("Camp Meeting Expense Goal", "Expense (local)",
+                             d.year_goal, d))
+        if d.offering_goal and d.offering_fund:
+            rows.append(_row("Camp Meeting Offering Goal", "Offering (trust)",
+                             d.offering_goal, d.offering_fund))
+    return rows
+
+
 class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
     """Comprehensive monthly Treasurer's Report: collections, trust & LCB trends,
     a multi-year trend, expense and local-fund breakdowns, the income statement,
@@ -3054,6 +3094,9 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         # 12) most recent reconciliation
         ctx["recon"] = T.recent_reconciliation(e)
 
+        # 13) Camp Meeting goal records (expense + offering, never group goals)
+        ctx["camp_goals"] = _camp_goal_records(as_of.year)
+
         # short notes per section (AI narrative if available, else concise text)
         ctx["notes"] = self._notes(ctx)
         ctx["ai_summary"] = self._ai_summary(ctx)
@@ -3105,3 +3148,135 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         return (f"In {ctx['end']:%B %Y} the church received {c['total']:,.0f} "
                 f"({c['trust']:,.0f} trust, {c['local']:,.0f} local) and recorded "
                 f"{verdict} of {abs(isr['surplus']):,.0f} on operations.")
+
+
+# ===================== Monthly Treasurer's Report exports ===================
+def _monthly_report_context(request):
+    """Reuse the full MonthlyTreasurerReportView context for exports."""
+    view = MonthlyTreasurerReportView()
+    view.request = request
+    view.kwargs = {}
+    view.args = ()
+    return view.get_context_data()
+
+
+class MonthlyReportExcelView(ReadAccessMixin, View):
+    """Download the Monthly Treasurer's Report as a multi-sheet Excel workbook."""
+    def get(self, request):
+        import io
+        from decimal import Decimal
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from django.http import HttpResponse
+
+        ctx = _monthly_report_context(request)
+        wb = Workbook()
+        forest = "1F5F4F"; brass = "B07D2C"
+        head_fill = PatternFill("solid", fgColor=forest)
+        sub_fill = PatternFill("solid", fgColor="E8F0ED")
+        white = Font(color="FFFFFF", bold=True, size=12)
+        bold = Font(bold=True)
+        thin = Side(style="thin", color="CCCCCC")
+        border = Border(bottom=thin)
+        money = '#,##0.00'
+
+        def sheet(ws, title, subtitle=None):
+            ws.column_dimensions["A"].width = 42
+            for col in "BCDE":
+                ws.column_dimensions[col].width = 16
+            ws["A1"] = ctx.get("church") or "Church Treasury"
+            ws["A1"].font = Font(bold=True, size=14, color=forest)
+            ws["A2"] = title
+            ws["A2"].font = Font(bold=True, size=12)
+            ws["A3"] = subtitle or f"Period ending {ctx['end']:%d %B %Y}"
+            ws["A3"].font = Font(italic=True, color="666666")
+            return 5
+
+        def hrow(ws, r, cells):
+            for i, c in enumerate(cells):
+                cell = ws.cell(row=r, column=1 + i, value=c)
+                cell.fill = head_fill; cell.font = white
+                cell.alignment = Alignment(horizontal="left" if i == 0 else "right")
+            return r + 1
+
+        def drow(ws, r, label, *vals, bold_row=False):
+            cell = ws.cell(row=r, column=1, value=label)
+            if bold_row:
+                cell.font = bold
+            for i, v in enumerate(vals):
+                vc = ws.cell(row=r, column=2 + i, value=float(v) if isinstance(v, Decimal) else v)
+                vc.number_format = money if isinstance(v, Decimal) else "General"
+                vc.alignment = Alignment(horizontal="right")
+                if bold_row:
+                    vc.font = bold
+            return r + 1
+
+        # --- Income & Expenditure ---
+        ws = wb.active; ws.title = "Income & Expenditure"
+        r = sheet(ws, "Income and Expenditure Statement")
+        isr = ctx["income_stmt"]
+        r = hrow(ws, r, ["Item", "Amount"])
+        r = drow(ws, r, "Local income", isr["income"])
+        r = drow(ws, r, "Operating expenditure", -isr["expense"])
+        r = drow(ws, r, "Surplus / (deficit)", isr["surplus"], bold_row=True)
+        if isr.get("capital"):
+            r = drow(ws, r, "Capital additions (memo)", isr["capital"])
+
+        # --- Statement of Financial Position ---
+        ws2 = wb.create_sheet("Financial Position")
+        r = sheet(ws2, "Statement of Financial Position")
+        sof = ctx["sofp"]
+        r = hrow(ws2, r, ["Item", "Amount"])
+        r = drow(ws2, r, "Cash and bank", sof.get("cash", Decimal(0)))
+        if sof.get("nbv"):
+            r = drow(ws2, r, "Fixed assets (NBV)", sof["nbv"])
+        if sof.get("advances"):
+            r = drow(ws2, r, "Staff advances (receivable)", sof["advances"])
+        r = drow(ws2, r, "Trust funds to remit", sof.get("trust_payable", Decimal(0)))
+        r = drow(ws2, r, "Net assets / funds",
+                 sof.get("net_assets", sof.get("cash", Decimal(0))), bold_row=True)
+
+        # --- Fund movements ---
+        ws3 = wb.create_sheet("Fund Balances")
+        r = sheet(ws3, "Local Fund Movements")
+        r = hrow(ws3, r, ["Fund", "Opening", "Receipts", "Payments", "Closing"])
+        for row in ctx.get("local_statement", {}).get("rows", []):
+            nm = getattr(row.get("department"), "name", "") or row.get("name", "")
+            r = drow(ws3, r, nm, row.get("opening", Decimal(0)),
+                     row.get("receipts", Decimal(0)), row.get("expenses", Decimal(0)),
+                     row.get("closing", Decimal(0)))
+        tot = ctx.get("local_statement", {}).get("totals", {})
+        if tot:
+            r = drow(ws3, r, "Total", tot.get("opening", Decimal(0)),
+                     tot.get("receipts", Decimal(0)), tot.get("expenses", Decimal(0)),
+                     tot.get("closing", Decimal(0)), bold_row=True)
+
+        # --- Camp goals ---
+        if ctx.get("camp_goals"):
+            ws4 = wb.create_sheet("Camp Goals")
+            r = sheet(ws4, "Camp Meeting Goals")
+            r = hrow(ws4, r, ["Goal", "Target", "Collected", "Variance", "% Complete"])
+            for g in ctx["camp_goals"]:
+                r = drow(ws4, r, g["name"], g["goal"], g["collected"],
+                         g["variance"], f"{g['pct']}%")
+
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        fname = f"treasurer_report_{ctx['end']:%Y_%m}.xlsx"
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+
+class MonthlyReportWordView(ReadAccessMixin, View):
+    """Download the Monthly Treasurer's Report as a Word document. Rendered as a
+    Word-compatible HTML document (opens natively in Microsoft Word) so it needs
+    no extra library on the server."""
+    def get(self, request):
+        from django.http import HttpResponse
+        ctx = _monthly_report_context(request)
+        html = render(request, "reports/monthly_treasurer_word.html", ctx).content
+        fname = f"treasurer_report_{ctx['end']:%Y_%m}.doc"
+        resp = HttpResponse(html, content_type="application/msword")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp

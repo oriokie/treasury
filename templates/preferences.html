@@ -46,6 +46,14 @@
         <button type="button" data-val="ICON" {% if pref.sidebar == 'ICON' %}class="on"{% endif %}>Icon-only</button>
       </div></div>
 
+    <div class="pref-row"><div class="pl"><label>Sidebar colour</label><div class="ph">The colour treatment of the navigation sidebar.</div></div>
+      <div class="seg" data-pref="sidebar_style">
+        <button type="button" data-val="FOREST" {% if pref.sidebar_style == 'FOREST' %}class="on"{% endif %}>Forest</button>
+        <button type="button" data-val="MIDNIGHT" {% if pref.sidebar_style == 'MIDNIGHT' %}class="on"{% endif %}>Midnight</button>
+        <button type="button" data-val="BRASS" {% if pref.sidebar_style == 'BRASS' %}class="on"{% endif %}>Brass</button>
+        <button type="button" data-val="CHARCOAL" {% if pref.sidebar_style == 'CHARCOAL' %}class="on"{% endif %}>Charcoal</button>
+      </div></div>
+
     <div class="pref-row"><div class="pl"><label>Font size</label><div class="ph">Overall text size.</div></div>
       <div class="seg" data-pref="font_size">
         <button type="button" data-val="SMALL" {% if pref.font_size == 'SMALL' %}class="on"{% endif %}>Small</button>

@@ -709,6 +709,10 @@ class UserPreference(models.Model):
         help_text="Custom accent hex when accent='custom'.")
     sidebar = models.CharField(max_length=10, choices=Sidebar.choices,
                                default=Sidebar.EXPANDED)
+    sidebar_style = models.CharField(max_length=10, default="FOREST",
+        choices=[("FOREST", "Forest (default)"), ("MIDNIGHT", "Midnight"),
+                 ("BRASS", "Brass"), ("CHARCOAL", "Charcoal")],
+        help_text="The colour treatment of the navigation sidebar.")
     font_size = models.CharField(max_length=6, choices=FontSize.choices,
                                  default=FontSize.MEDIUM)
     font_family = models.CharField(max_length=8, choices=FontFamily.choices,

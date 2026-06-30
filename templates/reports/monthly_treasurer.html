@@ -38,6 +38,8 @@
   <form method="get" class="u-inline" style="margin-left:auto">
     <input type="month" name="as_of" value="{{ end|date:'Y-m' }}" class="field" onchange="this.form.submit()">
     <button class="btn btn-ghost btn-sm" onclick="window.print();return false;">🖨 Print</button>
+    <a class="btn btn-ghost btn-sm" href="{% url 'report_board_excel' %}?as_of={{ end|date:'Y-m-d' }}">⬇ Excel</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'report_board_word' %}?as_of={{ end|date:'Y-m-d' }}">⬇ Word</a>
   </form>
 </div>
 
@@ -87,6 +89,10 @@
 <div class="sec"><div class="sh"><div class="n">4 · Five-year trend (year-to-date)</div><div class="d">{{ notes.yearly }}</div></div>
 <div class="bd">
   <div style="height:240px"><canvas id="yearlyChart"></canvas></div>
+  <div class="grid-2 u-mt" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div style="height:220px"><canvas id="incomeExpChart"></canvas></div>
+    <div style="height:220px"><canvas id="fundMixChart"></canvas></div>
+  </div>
   <table class="u-mt-sm"><thead><tr><th>Year (to {{ end|date:"M" }})</th><th class="num">Collections</th><th class="num">Trust</th><th class="num">Local</th><th class="num">Expenses</th></tr></thead>
   <tbody>{% for y in yearly %}<tr><td>{{ y.year }}{% if y.source == 'history' %} <span class="muted" style="font-size:.7rem">(history)</span>{% endif %}</td>
   <td class="num">{{ y.collection|floatformat:0|intcomma }}</td><td class="num">{{ y.trust|floatformat:0|intcomma }}</td>
@@ -142,6 +148,22 @@
 </tbody></table>
 <a class="link no-print" href="{% url 'report_financial_position' %}?as_of={{ end|date:'Y-m-d' }}">Full statement of financial position →</a></div></div>
 
+{% if camp_goals %}
+<div class="sec"><div class="sh"><div class="n">Camp Meeting goals</div><div class="d">Fund-level expense and offering goals for {{ end|date:"Y" }} (group contribution goals are tracked separately on each fund's budget page)</div></div>
+<div class="bd">
+  <table><thead><tr><th>Goal</th><th>Type</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% Complete</th></tr></thead>
+  <tbody>
+  {% for g in camp_goals %}<tr>
+    <td>{{ g.name }}</td><td class="muted">{{ g.kind }}</td>
+    <td class="num">{{ g.goal|floatformat:0|intcomma }}</td>
+    <td class="num">{{ g.collected|floatformat:0|intcomma }}</td>
+    <td class="num">{{ g.variance|floatformat:0|intcomma }}</td>
+    <td class="num"><strong>{{ g.pct }}%</strong></td></tr>{% endfor %}
+  </tbody></table>
+  <p class="d" style="font-size:.74rem;margin-top:.3rem">Expense (local fund) and offering (trust fund) goals are tracked independently and never merged.</p>
+</div></div>
+{% endif %}
+
 <!-- 8. Cash-flow statement -->
 <div class="sec"><div class="sh"><div class="n">8 · Cash-flow statement</div><div class="d">{{ notes.cashflow }}</div></div>
 <div class="bd"><table><tbody>
@@ -195,6 +217,33 @@
       plugins: { legend: { position: 'bottom', labels:{ boxWidth:12, font:{size:11} } } },
       scales: { y: { ticks: { callback: function(v){ return v.toLocaleString(); } } } } }
   });
+
+  // Income vs expenditure (this period)
+  var ie = document.getElementById('incomeExpChart');
+  if (ie && window.Chart) {
+    new Chart(ie.getContext('2d'), {
+      type: 'bar',
+      data: { labels: ['Income','Expenditure','Surplus'],
+        datasets: [{ data: [{{ income_stmt.income|default:0 }}, {{ income_stmt.expense|default:0 }}, {{ income_stmt.surplus|default:0 }}],
+          backgroundColor: ['rgba(31,95,79,.85)','rgba(160,80,70,.8)','rgba(176,125,44,.85)'] }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, title:{ display:true, text:'Income vs expenditure', font:{size:12} } },
+        scales:{ y:{ ticks:{ callback:function(v){ return v.toLocaleString(); } } } } }
+    });
+  }
+  // Fund composition (net assets split)
+  var fm = document.getElementById('fundMixChart');
+  if (fm && window.Chart) {
+    new Chart(fm.getContext('2d'), {
+      type: 'doughnut',
+      data: { labels: ['Unallocated','Allocated','Property','Trust to remit'],
+        datasets: [{ data: [{{ sofp.unallocated|default:0 }}, {{ sofp.allocated|default:0 }}, {{ sofp.nbv|default:0 }}, {{ sofp.trust_payable|default:0 }}],
+          backgroundColor: ['rgba(31,95,79,.85)','rgba(70,130,110,.8)','rgba(176,125,44,.85)','rgba(160,80,70,.75)'] }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ boxWidth:11, font:{size:10} } },
+          title:{ display:true, text:'Fund composition', font:{size:12} } } }
+    });
+  }
 })();
 </script>
 

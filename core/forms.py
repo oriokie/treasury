@@ -83,7 +83,7 @@ class UserPreferenceForm(StyledFormMixin, forms.ModelForm):
         from core.models import UserPreference
         model = UserPreference
         fields = [
-            "theme", "accent", "accent_custom", "sidebar", "font_size",
+            "theme", "accent", "accent_custom", "sidebar", "sidebar_style", "font_size",
             "font_family",
             "layout_width", "card_style", "landing_page", "rows_per_page",
             "density", "high_contrast", "reduced_motion", "large_targets",

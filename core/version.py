@@ -38,6 +38,15 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.87.0": "A batch of refinements. The Monthly Treasurer's / Board report now includes Camp Meeting "
+              "expense and offering goal records, extra charts (income vs expenditure and fund composition), "
+              "and can be downloaded as Excel or Word. On a fund's budget page, the offering goal now shows "
+              "only for the Camp Meeting Expense fund, and each development group has its own contribution "
+              "goal with its own progress. In Appearance settings the chosen font now also applies to the "
+              "headers and church name, and you can pick a sidebar colour (Forest, Midnight, Brass, "
+              "Charcoal). Bank reconciliation now includes the petty-cash float, outstanding staff advances "
+              "and unpresented cheques automatically — the manual add buttons are gone. And list filters now "
+              "stay applied when you move between pages.",
     "1.86.0": "There is now a single payment architecture across the whole app. The older one-step Remit "
               "trust funds action no longer takes an inline cheque number: instead it raises the per-fund "
               "remittance expenses, groups them into a remittance batch, and settles the whole batch with a "

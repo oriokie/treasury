@@ -23,5 +23,5 @@
   {% empty %}<tr><td colspan="{% if can_enter_data %}6{% else %}5{% endif %}" class="empty"><div class="big">⇄</div>No transfers recorded.</td></tr>{% endfor %}
   </tbody>
 </table></div>
-{% if is_paginated %}<div class="pagination">{% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">‹ Prev</a>{% endif %}<span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next ›</a>{% endif %}</div>{% endif %}
+{% if is_paginated %}<div class="pagination">{% if page_obj.has_previous %}<a href="{% querystring page=page_obj.previous_page_number %}">‹ Prev</a>{% endif %}<span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>{% if page_obj.has_next %}<a href="{% querystring page=page_obj.next_page_number %}">Next ›</a>{% endif %}</div>{% endif %}
 {% endblock %}

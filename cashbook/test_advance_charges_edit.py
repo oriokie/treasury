@@ -121,7 +121,7 @@ class BankAdvanceReconTests(TestCase):
         rec = BankReconciliation.objects.create(statement_date=dt.date(2026, 6, 30),
             bank_balance=Decimal("80000"), created_by=self.tr)
         before = rec.adjusted_balance
-        self.c.post(f"/reconciliations/{rec.id}/", {"action": "add_advances"})
+        self.c.get(f"/reconciliations/{rec.id}/")   # auto-syncs managed items
         it = ReconciliationItem.objects.filter(reconciliation=rec,
             description__icontains="staff advance").first()
         self.assertIsNotNone(it)

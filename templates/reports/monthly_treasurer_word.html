@@ -1,0 +1,77 @@
+{% load humanize %}<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head><meta charset="utf-8">
+<style>
+@page { size: A4; margin: 2cm; }
+body { font-family: "Calibri", "Segoe UI", sans-serif; font-size: 11pt; color: #1b2420; }
+h1 { font-size: 18pt; color: #1f5f4f; margin: 0; text-align: center; }
+.rt { font-size: 13pt; font-weight: bold; text-align: center; margin: 2pt 0; }
+.pd { font-size: 10pt; color: #666; text-align: center; margin-bottom: 14pt; }
+h2 { font-size: 12.5pt; color: #1f5f4f; border-bottom: 1.5pt solid #1f5f4f; padding-bottom: 2pt; margin: 16pt 0 6pt; }
+table { width: 100%; border-collapse: collapse; font-size: 10.5pt; margin-bottom: 8pt; }
+th, td { padding: 4pt 6pt; border-bottom: 0.5pt solid #ccc; text-align: left; }
+th { background: #e8f0ed; font-weight: bold; }
+td.num, th.num { text-align: right; }
+tr.total td { border-top: 1pt solid #1f5f4f; font-weight: bold; }
+tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f0f5f3; }
+.note { font-size: 9.5pt; color: #555; font-style: italic; margin: 2pt 0 8pt; }
+.sig { margin-top: 30pt; }
+.sig td { border: none; padding-top: 24pt; }
+.sigline { border-top: 0.5pt solid #333; width: 70%; }
+</style></head>
+<body>
+<h1>{{ church|default:"Church Treasury" }}</h1>
+<div class="rt">Monthly Treasurer's Report</div>
+<div class="pd">For the period {{ start|date:"d F Y" }} to {{ end|date:"d F Y" }}</div>
+
+{% if ai_summary %}<p class="note">{{ ai_summary }}</p>{% endif %}
+
+<h2>1. Collections summary</h2>
+<table><tr><th>Fund</th><th class="num">Receipts</th></tr>
+{% for r in collections.rows %}{% if r.receipts %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endif %}{% endfor %}
+<tr class="total"><td>Total collections</td><td class="num">{{ collections.total|floatformat:2|intcomma }}</td></tr>
+</table>
+
+<h2>2. Income and expenditure statement</h2>
+<table>
+<tr><td>Local income</td><td class="num">{{ income_stmt.income|floatformat:2|intcomma }}</td></tr>
+<tr><td>Operating expenditure</td><td class="num">({{ income_stmt.expense|floatformat:2|intcomma }})</td></tr>
+<tr class="total"><td>Surplus / (deficit)</td><td class="num">{{ income_stmt.surplus|floatformat:2|intcomma }}</td></tr>
+{% if income_stmt.capital %}<tr><td>Capital additions (memo)</td><td class="num">{{ income_stmt.capital|floatformat:2|intcomma }}</td></tr>{% endif %}
+</table>
+
+<h2>3. Local fund movements</h2>
+<table><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr>
+{% for r in local_statement.rows %}<tr><td>{{ r.department.name }}</td>
+<td class="num">{{ r.opening|floatformat:0|intcomma }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
+<td class="num">{{ r.expenses|floatformat:0|intcomma }}</td><td class="num">{{ r.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
+<tr class="total"><td>Total</td><td class="num">{{ local_statement.totals.opening|floatformat:0|intcomma }}</td>
+<td class="num">{{ local_statement.totals.receipts|floatformat:0|intcomma }}</td><td class="num">{{ local_statement.totals.expenses|floatformat:0|intcomma }}</td>
+<td class="num">{{ local_statement.totals.closing|floatformat:0|intcomma }}</td></tr>
+</table>
+
+<h2>4. Statement of financial position</h2>
+<table>
+<tr><th colspan="2">Assets</th></tr>
+<tr><td>Cash and bank</td><td class="num">{{ sofp.cash|floatformat:2|intcomma }}</td></tr>
+{% if sofp.nbv %}<tr><td>Fixed assets (net book value)</td><td class="num">{{ sofp.nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
+{% if sofp.advances %}<tr><td>Staff advances (receivable)</td><td class="num">{{ sofp.advances|floatformat:2|intcomma }}</td></tr>{% endif %}
+<tr><th colspan="2">Liabilities</th></tr>
+<tr><td>Trust funds to remit</td><td class="num">{{ sofp.trust_payable|floatformat:2|intcomma }}</td></tr>
+<tr class="grand"><td>Net assets / funds</td><td class="num">{{ sofp.net_assets|floatformat:2|intcomma }}</td></tr>
+</table>
+
+{% if camp_goals %}
+<h2>5. Camp Meeting goals</h2>
+<table><tr><th>Goal</th><th>Type</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% Complete</th></tr>
+{% for g in camp_goals %}<tr><td>{{ g.name }}</td><td>{{ g.kind }}</td>
+<td class="num">{{ g.goal|floatformat:0|intcomma }}</td><td class="num">{{ g.collected|floatformat:0|intcomma }}</td>
+<td class="num">{{ g.variance|floatformat:0|intcomma }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
+</table>
+<p class="note">Expense (local fund) and offering (trust fund) goals are tracked independently and never merged.</p>
+{% endif %}
+
+<table class="sig"><tr>
+<td><div class="sigline">Treasurer</div></td>
+<td><div class="sigline">Reviewed by</div></td>
+</tr></table>
+</body></html>

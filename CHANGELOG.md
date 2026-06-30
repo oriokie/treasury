@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.87.0 - board report exports/goals, budget goals, appearance, reconciliation, filters
+- #1 Monthly Treasurer's Report: added Camp Meeting goal records (expense + offering, fund-level, never
+  group), income-vs-expenditure and fund-composition charts, and Excel (openpyxl, multi-sheet) + Word
+  (Word-compatible HTML, no server library) downloads. New _camp_goal_records helper; export views/urls.
+- #2 Fund budget page: offering goal shown only for CAMP_EXPENSE funds (cleared on save for others); each
+  development group has its own contribution_goal with per-group progress; aggregate total row.
+- #3 Appearance: font preference now drives --font-display so headings, church name and logo use it;
+  added sidebar_style preference (core 0040: Forest/Midnight/Brass/Charcoal) with live apply.
+- #4 Bank reconciliation auto-includes petty-cash float, outstanding staff advances AND unpresented
+  cheques via _sync_managed_recon_items; removed the manual add_petty_cash / add_advances /
+  add_unpresented_cheques actions and buttons.
+- #5 Pagination preserves the current query string (Django 5.2 {% querystring %}) across all lists, so
+  filters persist between pages.
+- Tests: reports/test_board_exports (5), cashbook/test_budget_goals_v2 (7), statements/test_auto_recon (4);
+  recon + fund-budget tests updated. 539 green.
+
 ## v1.86.0 - unified legacy remittance onto the PaymentInstrument workflow
 - RemitTrustView (/reports/remittance/remit/) reworked: instead of embedding a cheque number in each
   expense, it now creates a RemittanceBatch (status REMITTED), raises the per-fund remittance expenses

@@ -178,32 +178,40 @@ class ReconciliationDeleteView(TreasurerRequiredMixin, View):
 
 
 def _sync_managed_recon_items(rec):
-    """Keep the auto-managed reconciling items (petty-cash float and outstanding
-    bank-funded staff advances) in step with their current values: upsert when
-    non-zero, remove when zero. Both are cash that has left the bank but the cash
-    book still holds, so they ADD back to the bank balance to reach the book."""
+    """Keep the auto-managed reconciling items in step with their current values:
+    the petty-cash float, outstanding bank-funded staff advances (both cash that
+    has left the bank but the cash book still holds — they ADD back), and
+    unpresented cheques (issued but not yet cleared — they SUBTRACT from the bank
+    balance). Each is upserted when non-zero and removed when zero, so the
+    treasurer never has to add them by hand."""
     from decimal import Decimal
-    from cashbook.views import _petty_balance_asof, outstanding_bank_advances_total
+    from cashbook.views import (_petty_balance_asof, outstanding_bank_advances_total,
+                                unpresented_cheques_total)
+    ADD = ReconciliationItem.Effect.ADD
+    SUB = ReconciliationItem.Effect.SUBTRACT
     managed = [
-        ("Petty cash float (cash on hand)", _petty_balance_asof(rec.statement_date),
-         ReconciliationItem.Kind.CASH_AT_HAND),
+        ("Petty cash float (cash on hand)",
+         _petty_balance_asof(rec.statement_date),
+         ReconciliationItem.Kind.CASH_AT_HAND, ADD),
         ("Staff advances issued (not yet accounted)",
          outstanding_bank_advances_total(rec.statement_date),
-         ReconciliationItem.Kind.CASH_AT_HAND),
+         ReconciliationItem.Kind.CASH_AT_HAND, ADD),
+        ("Unpresented cheques (not yet cleared)",
+         unpresented_cheques_total(rec.statement_date),
+         ReconciliationItem.Kind.UNPRESENTED, SUB),
     ]
-    for desc, amount, kind in managed:
+    for desc, amount, kind, effect in managed:
         existing = rec.items.filter(description=desc).first()
         if amount and amount > 0:
             if existing:
-                if existing.amount != amount or existing.effect != ReconciliationItem.Effect.ADD:
+                if existing.amount != amount or existing.effect != effect:
                     existing.amount = amount
-                    existing.effect = ReconciliationItem.Effect.ADD
+                    existing.effect = effect
                     existing.save(update_fields=["amount", "effect"])
             else:
                 ReconciliationItem.objects.create(
                     reconciliation=rec, kind=kind, description=desc,
-                    amount=amount, effect=ReconciliationItem.Effect.ADD,
-                    auto=True)
+                    amount=amount, effect=effect, auto=True)
         elif existing and getattr(existing, "auto", False):
             existing.delete()
 
@@ -305,55 +313,6 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             messages.success(request,
                 f"Cash-book balance recomputed from the ledger: "
                 f"KSh {rec.book_balance:,.2f}.")
-        elif action == "add_petty_cash":
-            from cashbook.views import _petty_balance_asof
-            amt = _petty_balance_asof(rec.statement_date)
-            if amt and amt != 0 and not rec.items.filter(
-                    description__icontains="petty cash").exists():
-                ReconciliationItem.objects.create(
-                    reconciliation=rec, kind=ReconciliationItem.Kind.CASH_AT_HAND,
-                    description="Petty cash float (cash on hand)",
-                    amount=abs(amt),
-                    effect=(ReconciliationItem.Effect.ADD if amt > 0
-                            else ReconciliationItem.Effect.SUBTRACT))
-                messages.success(request, "Petty cash float added as a reconciling item.")
-            else:
-                messages.info(request, "Petty cash float is already listed or is zero.")
-            return redirect("reconciliation_detail", pk=rec.pk)
-        elif action == "add_advances":
-            from cashbook.views import outstanding_bank_advances_total
-            amt = outstanding_bank_advances_total(rec.statement_date)
-            if amt and amt > 0 and not rec.items.filter(
-                    description__icontains="staff advance").exists():
-                ReconciliationItem.objects.create(
-                    reconciliation=rec, kind=ReconciliationItem.Kind.CASH_AT_HAND,
-                    description="Staff advances issued (not yet accounted)",
-                    amount=amt, effect=ReconciliationItem.Effect.ADD)
-                messages.success(request, "Outstanding staff advances added as a reconciling item.")
-            else:
-                messages.info(request, "No bank-funded staff advances to add (or already listed).")
-            return redirect("reconciliation_detail", pk=rec.pk)
-        elif action == "add_unpresented_cheques":
-            from cashbook.models import PaymentInstrument
-            existing = " ".join(rec.items.values_list("description", flat=True))
-            added = 0
-            for chq in PaymentInstrument.objects.filter(
-                    method=PaymentInstrument.Method.CHEQUE,
-                    status__in=PaymentInstrument.OUTSTANDING_STATES,
-                    date_issued__lte=rec.statement_date):
-                if chq.instrument_number and chq.instrument_number in existing:
-                    continue
-                ReconciliationItem.objects.create(
-                    reconciliation=rec, kind=ReconciliationItem.Kind.UNPRESENTED,
-                    description=f"Cheque {chq.instrument_number}"
-                                + (f" — {chq.payee}" if chq.payee else ""),
-                    amount=chq.amount, effect=ReconciliationItem.Effect.SUBTRACT)
-                added += 1
-            if added:
-                messages.success(request, f"Added {added} unpresented cheque(s) from the register.")
-            else:
-                messages.info(request, "No new unpresented cheques to add — they're already listed "
-                                       "or all cheques have cleared.")
         return redirect("reconciliation_detail", pk=rec.pk)
 from django.shortcuts import render, get_object_or_404
 from django.views import View

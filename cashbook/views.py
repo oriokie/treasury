@@ -1960,9 +1960,13 @@ class FundBudgetView(TreasurerRequiredMixin, View):
         group_rows = []
         for sub in dept.subgroups.all():
             c = _collected(sub, year)
-            group_rows.append({"name": sub.name, "id": sub.id, "collected": c})
+            g = sub.contribution_goal or Decimal(0)
+            group_rows.append({"name": sub.name, "id": sub.id, "collected": c,
+                "goal": g, "pct": int(min(c / g * 100, 100)) if g else 0,
+                "short": max(g - c, Decimal(0))})
         group_rows.sort(key=lambda r: r["collected"], reverse=True)
         contribution_collected = sum((r["collected"] for r in group_rows), Decimal(0))
+        contribution_target = sum((r["goal"] for r in group_rows), Decimal(0))
 
         # Camp Meeting OFFERING goal: a SEPARATE trust fund, never merged here
         offering = dept.offering_fund
@@ -1974,7 +1978,7 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             "rows": rows, "tot_budget": tot_budget, "tot_actual": tot_actual,
             "tot_variance": tot_budget - tot_actual, "untagged": untagged,
             "expense_goal": _goal(dept.year_goal, expense_collected),
-            "contribution_goal": _goal(dept.contribution_goal, contribution_collected),
+            "contribution_goal": _goal(contribution_target, contribution_collected),
             "group_rows": group_rows,
             "offering": offering,
             "offering_goal": _goal(dept.offering_goal, offering_collected),
@@ -2005,16 +2009,26 @@ class FundBudgetView(TreasurerRequiredMixin, View):
                     return Decimal(v) if v else None
                 except InvalidOperation:
                     return None
-            dept.contribution_goal = _dec("contribution_goal")
             dept.year_goal = _dec("expense_goal")          # Camp Meeting Expense goal
-            dept.offering_goal = _dec("offering_goal")     # Camp Meeting Offering goal
             gt = request.POST.get("goal_type") or "NONE"
             dept.goal_type = gt if gt in ("NONE", "CAMP_EXPENSE") else "NONE"
-            of_id = request.POST.get("offering_fund") or ""
-            dept.offering_fund = (Department.objects.filter(pk=of_id).first()
-                                  if of_id.isdigit() else None)
-            dept.save(update_fields=["contribution_goal", "year_goal",
-                                     "offering_goal", "offering_fund", "goal_type"])
+            # the offering goal applies only to a Camp Meeting Expense fund
+            if dept.goal_type == "CAMP_EXPENSE":
+                dept.offering_goal = _dec("offering_goal")
+                of_id = request.POST.get("offering_fund") or ""
+                dept.offering_fund = (Department.objects.filter(pk=of_id).first()
+                                      if of_id.isdigit() else None)
+            else:
+                dept.offering_goal = None
+                dept.offering_fund = None
+            dept.save(update_fields=["year_goal", "offering_goal",
+                                     "offering_fund", "goal_type"])
+            # each development group has its own contribution goal
+            for sub in dept.subgroups.all():
+                val = _dec(f"group_goal_{sub.id}")
+                if sub.contribution_goal != val:
+                    sub.contribution_goal = val
+                    sub.save(update_fields=["contribution_goal"])
             messages.success(request, "Goals updated.")
             return redirect(f"{request.path}?year={year}")
         # add / update a named budget item

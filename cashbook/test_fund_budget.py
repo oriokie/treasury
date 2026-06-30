@@ -21,8 +21,10 @@ class FundBudgetTests(TestCase):
         self.c = Client(); self.c.force_login(self.u)
         self.yr = dt.date.today().year
         self.camp = Department.objects.create(name="Camp Meeting", fund_type="LOCAL",
-            category="MINISTRY", contribution_goal=Decimal("200000"),
+            category="MINISTRY", goal_type="CAMP_EXPENSE",
             year_goal=Decimal("500000"), show_in_expenses=True)
+        self.group = Department.objects.create(name="Youth Group", fund_type="LOCAL",
+            category="MINISTRY", parent=self.camp, contribution_goal=Decimal("200000"))
         Transaction.objects.create(date=dt.date(self.yr, 3, 1), channel="CASH",
             direction="CREDIT", amount=Decimal("80000"), department=self.camp,
             allocation_status="MANUAL", confirmed=True)
@@ -39,7 +41,7 @@ class FundBudgetTests(TestCase):
         self._add_item("Accommodation", "50000", "MATERIALS")
         b = self.c.get(self._url()).content.decode()
         self.assertIn("Accommodation", b)
-        self.assertIn("Group Contribution Goal", b)
+        self.assertIn("Group Contribution Goals", b)
         self.assertIn("80,000", b)
         self.assertIn("200,000", b)
         self.assertIn("500,000", b)
@@ -79,10 +81,10 @@ class FundBudgetTests(TestCase):
 
     def test_save_goals(self):
         self.c.post(f"/reports/fund/{self.camp.id}/budget/",
-            {"year": str(self.yr), "save_goals": "1",
-             "contribution_goal": "250000", "expense_goal": "600000"})
-        self.camp.refresh_from_db()
-        self.assertEqual(self.camp.contribution_goal, Decimal("250000"))
+            {"year": str(self.yr), "save_goals": "1", "goal_type": "CAMP_EXPENSE",
+             f"group_goal_{self.group.id}": "250000", "expense_goal": "600000"})
+        self.camp.refresh_from_db(); self.group.refresh_from_db()
+        self.assertEqual(self.group.contribution_goal, Decimal("250000"))
         self.assertEqual(self.camp.year_goal, Decimal("600000"))
 
     def test_link_on_fund_report(self):

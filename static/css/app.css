@@ -4,6 +4,8 @@
    Palette: forest green + brass on parchment
    ============================================================ */
 :root{
+  --font-body:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --font-display:"Fraunces",Georgia,serif;
   --ink:#1b2420;
   --ink-soft:#3f4f48;
   --muted:#677770;
@@ -51,7 +53,7 @@ body{
 }
 a{color:var(--forest);text-decoration:none;transition:color var(--t)}
 a:hover{color:var(--forest-deep)}
-h1,h2,h3,h4{font-family:"Fraunces",Georgia,serif;font-weight:600;color:var(--ink);
+h1,h2,h3,h4{font-family:var(--font-display,"Fraunces",Georgia,serif);font-weight:600;color:var(--ink);
   letter-spacing:-.012em;line-height:1.14;margin:0 0 .4em}
 h1{font-size:1.95rem}h2{font-size:1.4rem}h3{font-size:1.12rem}
 .mono,.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
@@ -65,19 +67,19 @@ h1{font-size:1.95rem}h2{font-size:1.4rem}h3{font-size:1.12rem}
 
 /* ---------- App shell ---------- */
 .shell{display:grid;grid-template-columns:256px 1fr;min-height:100vh}
-.sidebar{background:linear-gradient(180deg,#184337 0%, #143a31 55%, #11342b 100%);
+.sidebar{background:var(--sidebar-bg,linear-gradient(180deg,#184337 0%, #143a31 55%, #11342b 100%));
   color:#dfeae4;padding:0;position:sticky;top:0;height:100vh;overflow-y:auto;
   border-right:1px solid rgba(0,0,0,.25);box-shadow:inset -1px 0 0 rgba(255,255,255,.03)}
 .sidebar::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);background-clip:content-box}
 .brand{display:flex;align-items:center;gap:.7rem;padding:1.25rem 1.3rem;
   border-bottom:1px solid rgba(255,255,255,.08);position:sticky;top:0;
-  background:linear-gradient(180deg,#184337,#163f35);z-index:1}
+  background:var(--sidebar-brand,linear-gradient(180deg,#184337,#163f35));z-index:1}
 .brand .mark{width:38px;height:38px;border-radius:11px;
   background:linear-gradient(145deg,var(--brass-2),var(--brass));
-  display:grid;place-items:center;font-family:"Fraunces",serif;font-weight:700;
+  display:grid;place-items:center;font-family:var(--font-display,"Fraunces",serif);font-weight:700;
   color:#231a09;font-size:1.2rem;flex:none;
   box-shadow:0 4px 12px -4px rgba(176,125,44,.6),inset 0 1px 0 rgba(255,255,255,.35)}
-.brand b{font-family:"Fraunces",serif;font-size:1.06rem;color:#fff;display:block;line-height:1.12;
+.brand b{font-family:var(--font-display,"Fraunces",serif);font-size:1.06rem;color:#fff;display:block;line-height:1.12;
   letter-spacing:-.01em}
 .brand span{font-size:.7rem;color:#9fb8ad;letter-spacing:.16em;text-transform:uppercase}
 .nav{padding:.7rem .65rem 2.4rem}
@@ -324,7 +326,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--forest)}
   box-shadow:var(--shadow-lg);border:1px solid rgba(255,255,255,.5)}
 .auth-card .mark{width:52px;height:52px;border-radius:14px;
   background:linear-gradient(145deg,var(--brass-2),var(--brass));
-  display:grid;place-items:center;font-family:"Fraunces",serif;font-weight:700;
+  display:grid;place-items:center;font-family:var(--font-display,"Fraunces",serif);font-weight:700;
   font-size:1.6rem;color:#231a09;margin-bottom:1.1rem;
   box-shadow:0 8px 20px -6px rgba(176,125,44,.6),inset 0 1px 0 rgba(255,255,255,.4)}
 .auth-card h1{font-size:1.55rem;margin-bottom:.15rem}
@@ -1113,7 +1115,12 @@ html[data-motion="reduced"] .toast{animation:none}
 .palette .pi .pg{margin-left:auto;font-size:.72rem;color:var(--muted);background:var(--wash,#f0f3f2);padding:.05rem .4rem;border-radius:5px}
 
 /* User-selectable body font family (Appearance → Font) */
-:root[data-fontfamily="system"]{--font-body:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-:root[data-fontfamily="serif"]{--font-body:Georgia,"Times New Roman",Cambria,serif}
-:root[data-fontfamily="legible"]{--font-body:"Atkinson Hyperlegible","Public Sans",system-ui,sans-serif}
-:root[data-fontfamily="mono"]{--font-body:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace}
+:root[data-fontfamily="system"]{--font-body:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--font-display:system-ui,-apple-system,"Segoe UI",sans-serif}
+:root[data-fontfamily="serif"]{--font-body:Georgia,"Times New Roman",Cambria,serif;--font-display:Georgia,"Times New Roman",Cambria,serif}
+:root[data-fontfamily="legible"]{--font-body:"Atkinson Hyperlegible","Public Sans",system-ui,sans-serif;--font-display:"Atkinson Hyperlegible","Public Sans",system-ui,sans-serif}
+:root[data-fontfamily="mono"]{--font-body:"IBM Plex Mono",ui-monospace,SFMono-Regular,monospace;--font-display:"IBM Plex Mono",ui-monospace,monospace}
+
+/* Sidebar colour treatments (Appearance → Sidebar style) */
+:root[data-sidebarstyle="midnight"]{--sidebar-bg:linear-gradient(180deg,#1a2233 0%,#161d2b 55%,#11161f 100%);--sidebar-brand:linear-gradient(180deg,#1e2740,#1a2336)}
+:root[data-sidebarstyle="brass"]{--sidebar-bg:linear-gradient(180deg,#3a2c14 0%,#332710 55%,#2a1f0c 100%);--sidebar-brand:linear-gradient(180deg,#43320f,#3a2c12)}
+:root[data-sidebarstyle="charcoal"]{--sidebar-bg:linear-gradient(180deg,#26282b 0%,#1f2123 55%,#191b1d 100%);--sidebar-brand:linear-gradient(180deg,#2c2f33,#26282b)}
