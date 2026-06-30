@@ -1260,7 +1260,7 @@ class PreferenceUpdateView(LoginRequiredMixin, View):
     """Lightweight JSON endpoint to persist a single preference (or the widget
     order) live, without a page reload."""
     ALLOWED = {
-        "theme", "accent", "accent_custom", "sidebar", "font_size",
+        "theme", "accent", "accent_custom", "sidebar", "font_size", "font_family",
         "layout_width", "card_style", "landing_page", "rows_per_page",
         "density", "high_contrast", "reduced_motion", "large_targets",
         "focus_indicators", "toasts_enabled", "toast_duration",

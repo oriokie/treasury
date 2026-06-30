@@ -1,6 +1,12 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="page-head"><div><h1>Allocation rules</h1><div class="sub">References the importer maps to funds automatically</div></div><div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'rule_import' %}">⬆ Import rules</a></div></div>
+<div class="page-head"><div><h1>Allocation rules</h1><div class="sub">References the importer maps to funds automatically</div></div><div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'rule_import' %}">⬆ Import rules</a>{% if is_treasurer and expired_count %}<form method="post" action="{% url 'rule_archive_expired' %}" class="u-inline" onsubmit="return confirm('Archive all {{ expired_count }} expired rule(s)? They stay on record but stop allocating new giving.');">{% csrf_token %}<button class="btn btn-sm">🗄 Archive {{ expired_count }} expired</button></form>{% endif %}</div></div>
+
+<div class="seg u-mb" role="tablist">
+  <a class="{% if view == 'active' %}on{% endif %}" href="?view=active">Active</a>
+  <a class="{% if view == 'expired' %}on{% endif %}" href="?view=expired">Expired{% if expired_count %} ({{ expired_count }}){% endif %}</a>
+  <a class="{% if view == 'archived' %}on{% endif %}" href="?view=archived">Archived{% if archived_count %} ({{ archived_count }}){% endif %}</a>
+</div>
 <div class="info-panel">
   <strong>Development groups are matched automatically</strong> — references like
   <span class="mono">DEVGR7</span>, <span class="mono">devgrp 11</span>,
@@ -16,9 +22,14 @@
       <tbody>{% for r in rules %}<tr>
         <td class="mono">{{ r.reference }}</td>
         <td>{% if r.split_fund %}{{ r.split_fund.name }} <span class="pill pill-brass" style="font-size:.65rem">split</span>{% else %}{{ r.department.name }}{% endif %}</td>
-        <td>{% if r.is_period %}<span class="pill pill-blue u-xs">{{ r.valid_from|date:"d M y"|default:"…" }} – {{ r.valid_to|date:"d M y"|default:"…" }}</span>{% else %}<span class="muted u-xs">Permanent</span>{% endif %}</td>
+        <td>{% if r.is_period %}<span class="pill {% if r.is_expired %}pill-amber{% else %}pill-blue{% endif %} u-xs">{{ r.valid_from|date:"d M y"|default:"…" }} – {{ r.valid_to|date:"d M y"|default:"…" }}</span>{% if r.is_expired and not r.archived %} <span class="pill pill-grey u-xs">expired</span>{% endif %}{% else %}<span class="muted u-xs">Permanent</span>{% endif %}</td>
         <td><span class="pill pill-grey u-xs">{{ r.get_match_type_display }}</span></td>
-        {% if is_treasurer %}<td><a class="btn btn-sm btn-ghost" href="{% url 'rule_edit' r.id %}">Edit</a> <a class="btn btn-sm btn-danger" href="{% url 'rule_delete' r.id %}" onclick="return confirm('Delete this rule?')">Delete</a></td>{% endif %}
+        {% if is_treasurer %}<td class="u-nowrap">
+          {% if r.archived %}<form method="post" action="{% url 'rule_archive' r.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="restore"><input type="hidden" name="view" value="{{ view }}"><button class="btn btn-sm btn-ghost">Restore</button></form>
+          <a class="btn btn-sm btn-danger" href="{% url 'rule_delete' r.id %}" onclick="return confirm('Permanently delete this archived rule? This cannot be undone.')">Delete</a>
+          {% else %}<a class="btn btn-sm btn-ghost" href="{% url 'rule_edit' r.id %}">Edit</a>
+          <form method="post" action="{% url 'rule_archive' r.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="view" value="{{ view }}"><button class="btn btn-sm btn-ghost">Archive</button></form>{% endif %}
+        </td>{% endif %}
       </tr>{% empty %}<tr><td colspan="5" class="muted">No rules yet — they're created when you tick "remember" in the queue.</td></tr>{% endfor %}</tbody>
     </table></div>
     {% if is_paginated %}

@@ -44,7 +44,22 @@ class Department(models.Model):
     contribution_goal = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="Collection goal that groups contribute towards (e.g. a camp expenses goal).")
     year_goal = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
-        help_text="Annual goal for this fund (e.g. the Camp Meeting goal for the year).")
+        help_text="Annual goal for this fund (e.g. the Camp Meeting Expense goal for the year).")
+    goal_type = models.CharField(max_length=20, default="NONE", db_index=True,
+        choices=[("NONE", "General annual goal"),
+                 ("CAMP_EXPENSE", "Camp Meeting Expense goal")],
+        help_text="Classifies what this fund's annual goal represents, so reports "
+                  "label and pair it correctly regardless of the fund's name.")
+    offering_fund = models.ForeignKey("self", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="expense_counterpart",
+        help_text="For an expense fund (e.g. Camp Meeting Expense, a Local fund): "
+                  "the separate Trust offering fund it is paired with (e.g. Camp "
+                  "Meeting Offering). Lets both goals be tracked on one budget page "
+                  "without ever merging their totals.")
+    offering_goal = models.DecimalField(max_digits=12, decimal_places=2, null=True,
+        blank=True,
+        help_text="Annual goal for the paired Trust offering fund — tracked "
+                  "independently of this fund's expense goal.")
     children_in_expenses = models.BooleanField(
         default=False,
         help_text="For a parent fund: if on, its sub-accounts can be charged "

@@ -39,7 +39,7 @@ class FundBudgetTests(TestCase):
         self._add_item("Accommodation", "50000", "MATERIALS")
         b = self.c.get(self._url()).content.decode()
         self.assertIn("Accommodation", b)
-        self.assertIn("Contribution goal", b)
+        self.assertIn("Group Contribution Goal", b)
         self.assertIn("80,000", b)
         self.assertIn("200,000", b)
         self.assertIn("500,000", b)
@@ -80,7 +80,7 @@ class FundBudgetTests(TestCase):
     def test_save_goals(self):
         self.c.post(f"/reports/fund/{self.camp.id}/budget/",
             {"year": str(self.yr), "save_goals": "1",
-             "contribution_goal": "250000", "annual_goal": "600000"})
+             "contribution_goal": "250000", "expense_goal": "600000"})
         self.camp.refresh_from_db()
         self.assertEqual(self.camp.contribution_goal, Decimal("250000"))
         self.assertEqual(self.camp.year_goal, Decimal("600000"))

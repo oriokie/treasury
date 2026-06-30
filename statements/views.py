@@ -237,7 +237,7 @@ class ReconciliationDetailView(ReadAccessMixin, View):
 
     def get(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
-        from cashbook.models import ChequeRegister
+        from cashbook.models import PaymentInstrument
         from cashbook.views import (unpresented_cheques_total, _petty_balance_asof,
                                     outstanding_bank_advances_total)
         # auto-populate the petty-cash float and bank-funded staff advances as
@@ -247,8 +247,9 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             _sync_managed_recon_items(rec)
         if request.GET.get("export") in ("xlsx", "csv"):
             return self._export(request, rec)
-        unpresented = (ChequeRegister.objects.filter(
-            status=ChequeRegister.Status.ISSUED,
+        unpresented = (PaymentInstrument.objects.filter(
+            method=PaymentInstrument.Method.CHEQUE,
+            status__in=PaymentInstrument.OUTSTANDING_STATES,
             date_issued__lte=rec.statement_date).order_by("date_issued"))
         petty_float = _petty_balance_asof(rec.statement_date)
         # is the petty-cash float already entered as a reconciling item?
@@ -333,17 +334,18 @@ class ReconciliationDetailView(ReadAccessMixin, View):
                 messages.info(request, "No bank-funded staff advances to add (or already listed).")
             return redirect("reconciliation_detail", pk=rec.pk)
         elif action == "add_unpresented_cheques":
-            from cashbook.models import ChequeRegister
+            from cashbook.models import PaymentInstrument
             existing = " ".join(rec.items.values_list("description", flat=True))
             added = 0
-            for chq in ChequeRegister.objects.filter(
-                    status=ChequeRegister.Status.ISSUED,
+            for chq in PaymentInstrument.objects.filter(
+                    method=PaymentInstrument.Method.CHEQUE,
+                    status__in=PaymentInstrument.OUTSTANDING_STATES,
                     date_issued__lte=rec.statement_date):
-                if chq.cheque_number and chq.cheque_number in existing:
+                if chq.instrument_number and chq.instrument_number in existing:
                     continue
                 ReconciliationItem.objects.create(
                     reconciliation=rec, kind=ReconciliationItem.Kind.UNPRESENTED,
-                    description=f"Cheque {chq.cheque_number}"
+                    description=f"Cheque {chq.instrument_number}"
                                 + (f" — {chq.payee}" if chq.payee else ""),
                     amount=chq.amount, effect=ReconciliationItem.Effect.SUBTRACT)
                 added += 1

@@ -53,6 +53,15 @@
         <button type="button" data-val="LARGE" {% if pref.font_size == 'LARGE' %}class="on"{% endif %}>Large</button>
       </div></div>
 
+    <div class="pref-row"><div class="pl"><label>Font family</label><div class="ph">The typeface used across the app.</div></div>
+      <div class="seg" data-pref="font_family">
+        <button type="button" data-val="DEFAULT" {% if pref.font_family == 'DEFAULT' %}class="on"{% endif %}>Public Sans</button>
+        <button type="button" data-val="SYSTEM" {% if pref.font_family == 'SYSTEM' %}class="on"{% endif %}>System</button>
+        <button type="button" data-val="SERIF" {% if pref.font_family == 'SERIF' %}class="on"{% endif %}>Serif</button>
+        <button type="button" data-val="LEGIBLE" {% if pref.font_family == 'LEGIBLE' %}class="on"{% endif %}>Hyperlegible</button>
+        <button type="button" data-val="MONO" {% if pref.font_family == 'MONO' %}class="on"{% endif %}>Mono</button>
+      </div></div>
+
     <div class="pref-row"><div class="pl"><label>Layout width</label><div class="ph">Constrain content or use the full screen.</div></div>
       <div class="seg" data-pref="layout_width">
         <button type="button" data-val="BOXED" {% if pref.layout_width == 'BOXED' %}class="on"{% endif %}>Boxed</button>

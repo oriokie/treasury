@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}Development-group patterns · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Development-group reference patterns</h1>
+  <div class="sub">The regexes that recognise development giving in bank narrations (e.g. <span class="mono">DEVGR7</span>, <span class="mono">dev grp 11</span>, <span class="mono">DEV GP39</span>)</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'rule_list' %}">Allocation rules</a></div>
+
+<div class="card u-mb"><div class="hd">Try a reference</div><div class="bd">
+  <form method="get" class="filters u-m-0">
+    <div class="f u-grow"><label>Test reference</label><input type="text" name="test" value="{{ sample }}" class="field" placeholder="e.g. DEVGR7 or dev grp 11"></div>
+    <button class="btn btn-sm">Test match</button>
+  </form>
+  {% if result %}
+  <div class="alert {% if result.ok %}alert-info{% else %}alert-amber{% endif %} u-mt-sm">
+    <strong>{{ result.msg }}</strong><br><span class="muted mono">normalised: {{ result.norm }}</span>
+  </div>{% endif %}
+</div></div>
+
+<div class="card u-mb"><div class="hd">Patterns</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Order</th><th>Label</th><th>Pattern</th><th>Type</th><th>Status</th><th></th></tr></thead><tbody>
+  {% for p in patterns %}
+  <tr{% if not p.enabled %} class="muted"{% endif %}>
+    <td class="mono">{{ p.sort_order }}</td>
+    <td>{{ p.label }}{% if p.note %}<div class="help u-mt-0">{{ p.note }}</div>{% endif %}</td>
+    <td class="mono u-xs">{{ p.pattern }}</td>
+    <td>{% if p.kind == 'NUMBERED' %}<span class="pill pill-blue">numbered</span>{% else %}<span class="pill pill-grey">marker</span>{% endif %}</td>
+    <td>{% if p.enabled %}<span class="pill pill-green">on</span>{% else %}<span class="pill pill-grey">off</span>{% endif %}</td>
+    <td class="u-nowrap u-right">
+      <button type="button" class="link" onclick="editPattern({{ p.id }}, '{{ p.label|escapejs }}', '{{ p.pattern|escapejs }}', '{{ p.kind }}', {{ p.sort_order }}, '{{ p.note|escapejs }}', {{ p.enabled|yesno:'true,false' }})">Edit</button>
+      · <form method="post" action="{% url 'dev_pattern_toggle' p.id %}" class="u-inline">{% csrf_token %}<button class="link">{% if p.enabled %}Disable{% else %}Enable{% endif %}</button></form>
+      · <form method="post" action="{% url 'dev_pattern_delete' p.id %}" class="u-inline" onsubmit="return confirm('Delete this pattern?');">{% csrf_token %}<button class="link link-danger">Delete</button></form>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="6" class="empty">No patterns — the built-in defaults will be used until you add some.</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+
+<div class="card"><div class="hd" id="formHd">Add a pattern</div><div class="bd">
+  <form method="post">{% csrf_token %}
+    <input type="hidden" name="id" id="pat_id" value="">
+    <div class="form-grid">
+      <div class="form-row"><label>Label</label><input type="text" name="label" id="pat_label" class="field" required></div>
+      <div class="form-row"><label>Pattern (regex)</label><input type="text" name="pattern" id="pat_pattern" class="field mono" placeholder="e.g. (?:dev|grp)0*(\d+)" required></div>
+      <div class="form-row"><label>Type</label><select name="kind" id="pat_kind" class="field field--select">
+        <option value="NUMBERED">Captures a group number</option>
+        <option value="WORD">Development marker (no number)</option></select></div>
+      <div class="form-row"><label>Order</label><input type="number" name="sort_order" id="pat_order" class="field" value="100" min="0"></div>
+      <div class="form-row u-col-span"><label>Note</label><input type="text" name="note" id="pat_note" class="field"></div>
+      <div class="form-row"><label class="check-row"><input type="checkbox" name="enabled" id="pat_enabled" class="form-check" checked> Enabled</label></div>
+    </div>
+    <p class="help">Numbered patterns need one capturing group <span class="mono">(\d+)</span> for the group number. Patterns are matched against the normalised reference (lowercase, no spaces). Invalid regexes are rejected.</p>
+    <div class="btn-row"><button class="btn">Save pattern</button> <button type="button" class="btn btn-ghost" onclick="resetForm()">Clear</button></div>
+  </form>
+</div></div>
+
+<script>
+function editPattern(id,label,pattern,kind,order,note,enabled){
+  document.getElementById('pat_id').value=id;
+  document.getElementById('pat_label').value=label;
+  document.getElementById('pat_pattern').value=pattern;
+  document.getElementById('pat_kind').value=kind;
+  document.getElementById('pat_order').value=order;
+  document.getElementById('pat_note').value=note;
+  document.getElementById('pat_enabled').checked=enabled;
+  document.getElementById('formHd').textContent='Edit pattern';
+  window.scrollTo(0,document.body.scrollHeight);
+}
+function resetForm(){
+  document.getElementById('pat_id').value='';
+  ['pat_label','pat_pattern','pat_note'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('pat_order').value=100;
+  document.getElementById('pat_kind').value='NUMBERED';
+  document.getElementById('pat_enabled').checked=true;
+  document.getElementById('formHd').textContent='Add a pattern';
+}
+</script>
+{% endblock %}

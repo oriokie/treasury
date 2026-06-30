@@ -1,5 +1,6 @@
 from decimal import Decimal
 from django.db import models
+from django.db.models import Sum
 from simple_history.models import HistoricalRecords
 
 
@@ -112,6 +113,73 @@ class Expense(models.Model):
     def affects_balance(self):
         return self.status in (self.Status.APPROVED, self.Status.PAID)
 
+    @property
+    def refunds_total(self):
+        return self.refunds.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+    @property
+    def net_amount(self):
+        """The expense actually borne by the fund after any refunds returned."""
+        return (self.amount or Decimal(0)) - self.refunds_total
+
+    @property
+    def refundable_balance(self):
+        """How much of this expense could still be refunded."""
+        if not self.affects_balance:
+            return Decimal(0)
+        return max(Decimal(0), (self.amount or Decimal(0)) - self.refunds_total)
+
+
+class ExpenseRefund(models.Model):
+    """Money returned to a fund against an expense — e.g. unspent cash from an
+    over-issued purchase (KSh 5,000 issued, KSh 4,200 spent, KSh 800 returned).
+
+    It is a *contra-entry*: it never alters the original expense (the
+    authorization for the full amount stands on record), it reduces the NET
+    expense charged to the fund, and it restores that fund's available balance
+    by the returned amount."""
+    expense = models.ForeignKey(Expense, on_delete=models.CASCADE,
+                                related_name="refunds")
+    date = models.DateField(db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    method = models.CharField(max_length=8, choices=Expense.Method.choices,
+                              default=Expense.Method.CASH)
+    to_petty_cash = models.BooleanField(default=False,
+        help_text="Returned into the petty-cash float (tops the float back up).")
+    reference = models.CharField(max_length=40, blank=True)
+    note = models.CharField(max_length=200, blank=True)
+    recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
+                                    related_name="refunds_recorded")
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-date", "-id"]
+
+    def __str__(self):
+        return f"Refund {self.amount} on {self.expense_id}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.amount is None or self.amount <= 0:
+            raise ValidationError("Refund amount must be greater than zero.")
+        if self.expense_id:
+            if not self.expense.affects_balance:
+                raise ValidationError("Only approved or paid expenses can be refunded.")
+            already = self.expense.refunds.exclude(pk=self.pk).aggregate(
+                t=Sum("amount"))["t"] or Decimal(0)
+            if already + self.amount > self.expense.amount:
+                remaining = self.expense.amount - already
+                raise ValidationError(
+                    f"Refund exceeds what's left to refund on this expense "
+                    f"(at most {remaining:,.2f}).")
+            if self.date and self.expense.date and self.date < self.expense.date:
+                raise ValidationError("A refund can't pre-date the expense it returns.")
+
+    @property
+    def department(self):
+        return self.expense.department
+
 
 class RemittanceBatch(models.Model):
     """A batch of trust-fund remittances to the conference/field. Moves through
@@ -129,6 +197,11 @@ class RemittanceBatch(models.Model):
     period_end = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # The payment instrument that settles this remittance liability (cheque, EFT,
+    # RTGS, M-Pesa, etc.). A batch cannot be marked sent until one is issued.
+    payment = models.ForeignKey("cashbook.PaymentInstrument", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="settled_remittance")
+    # Legacy cheque fields — retained for historical data; superseded by `payment`.
     cheque_no = models.CharField(max_length=30, blank=True)
     cheque_date = models.DateField(null=True, blank=True)
     notes = models.CharField(max_length=200, blank=True)
@@ -145,6 +218,22 @@ class RemittanceBatch(models.Model):
 
     def __str__(self):
         return self.batch_number
+
+    @property
+    def is_settled(self):
+        """True once an issued payment instrument is linked (the obligation is
+        being settled), regardless of whether it has cleared yet."""
+        return self.payment_id is not None and self.payment.status in (
+            "ISSUED", "OUTSTANDING", "CLEARED")
+
+    @property
+    def settlement_label(self):
+        if self.payment_id:
+            p = self.payment
+            return f"{p.get_method_display()} {p.instrument_number}".strip()
+        if self.cheque_no:                      # legacy, pre-migration
+            return f"Cheque {self.cheque_no}"
+        return ""
 
     @staticmethod
     def next_number():
@@ -212,6 +301,17 @@ class FundTransfer(models.Model):
 
     def __str__(self):
         return f"{self.amount} {self.source} → {self.destination}"
+
+    @property
+    def is_locked(self):
+        """A transfer can't be edited once it has been reversed, is itself a
+        reversal entry, or falls inside a locked accounting period."""
+        from core.models import period_locked
+        if self.is_reversed or self.is_reversal:
+            return True
+        if self.date and period_locked(self.date):
+            return True
+        return False
 
     def clean(self):
         from django.core.exceptions import ValidationError
@@ -702,3 +802,181 @@ class ChequeRegister(models.Model):
     @property
     def is_unpresented(self):
         return self.status == self.Status.ISSUED
+
+
+class PaymentInstrument(models.Model):
+    """A payment instrument the church issues to settle an existing accounting
+    obligation — a cheque today, but the same framework supports EFT, RTGS,
+    M-Pesa and other methods.
+
+    Crucially this is *not* an accounting transaction on its own. The underlying
+    source (an expense voucher, a trust-fund remittance, a refund, or a fund
+    transfer) is what posts to the ledger. The instrument only records HOW that
+    obligation is being paid and tracks its clearing status, so it never creates
+    duplicate journal entries. Bank reconciliation simply flips an issued
+    instrument to Cleared."""
+
+    class Method(models.TextChoices):
+        CHEQUE = "CHEQUE", "Cheque"
+        EFT = "EFT", "EFT (bank transfer)"
+        RTGS = "RTGS", "RTGS"
+        MPESA = "MPESA", "M-Pesa"
+        CASH = "CASH", "Cash"
+        OTHER = "OTHER", "Other"
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        APPROVED = "APPROVED", "Approved"
+        ISSUED = "ISSUED", "Issued"
+        OUTSTANDING = "OUTSTANDING", "Outstanding"
+        CLEARED = "CLEARED", "Cleared"
+        VOIDED = "VOIDED", "Voided"
+        STOPPED = "STOPPED", "Stopped"
+
+    class SourceKind(models.TextChoices):
+        EXPENSE = "EXPENSE", "Expense voucher"
+        REMITTANCE = "REMITTANCE", "Trust fund remittance"
+        REFUND = "REFUND", "Refund"
+        TRANSFER = "TRANSFER", "Fund transfer"
+        SUPPLIER = "SUPPLIER", "Supplier payment"
+        MANUAL = "MANUAL", "Manual / standalone"
+
+    # states still outstanding at the bank (not yet cleared, not cancelled)
+    OUTSTANDING_STATES = ("ISSUED", "OUTSTANDING")
+    # states whose details are locked (cannot be edited or deleted)
+    LOCKED_STATES = ("CLEARED",)
+
+    method = models.CharField(max_length=8, choices=Method.choices,
+                              default=Method.CHEQUE, db_index=True)
+    instrument_number = models.CharField(max_length=40, blank=True, db_index=True,
+        help_text="Cheque number, EFT/RTGS reference, or M-Pesa code.")
+    payee = models.CharField(max_length=160, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    bank_account = models.ForeignKey("statements.BankAccount", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="payment_instruments")
+
+    date_issued = models.DateField(null=True, blank=True, db_index=True)
+    date_cleared = models.DateField(null=True, blank=True)
+
+    status = models.CharField(max_length=12, choices=Status.choices,
+                              default=Status.DRAFT, db_index=True)
+
+    # --- source obligation (exactly one, unless a permitted manual payment) ---
+    source_kind = models.CharField(max_length=12, choices=SourceKind.choices,
+                                   default=SourceKind.EXPENSE)
+    expense = models.ForeignKey("cashbook.Expense", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="payments")
+    remittance_batch = models.ForeignKey("cashbook.RemittanceBatch", null=True,
+        blank=True, on_delete=models.SET_NULL, related_name="payments")
+    refund = models.ForeignKey("cashbook.ExpenseRefund", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="payments")
+    transfer = models.ForeignKey("cashbook.FundTransfer", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="payments")
+
+    # --- approval & dual signatories ---
+    approved_by = models.ForeignKey("auth.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="payments_approved")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    signatory_1 = models.CharField(max_length=120, blank=True)
+    signatory_2 = models.CharField(max_length=120, blank=True)
+
+    note = models.CharField(max_length=200, blank=True)
+    recorded_by = models.ForeignKey("auth.User", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="payments_recorded")
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-date_issued", "-id"]
+        indexes = [models.Index(fields=["status", "date_issued"]),
+                   models.Index(fields=["method", "status"])]
+
+    def __str__(self):
+        return f"{self.get_method_display()} {self.instrument_number} — {self.amount}"
+
+    # ---- source resolution ----
+    @property
+    def source(self):
+        return {self.SourceKind.EXPENSE: self.expense,
+                self.SourceKind.REMITTANCE: self.remittance_batch,
+                self.SourceKind.REFUND: self.refund,
+                self.SourceKind.TRANSFER: self.transfer}.get(self.source_kind)
+
+    @property
+    def source_label(self):
+        s = self.source
+        if self.source_kind == self.SourceKind.MANUAL:
+            return "Manual / standalone"
+        if self.source_kind == self.SourceKind.SUPPLIER:
+            return f"Supplier: {self.payee}" if self.payee else "Supplier payment"
+        return str(s) if s else self.get_source_kind_display()
+
+    @property
+    def is_outstanding(self):
+        return self.status in self.OUTSTANDING_STATES
+
+    @property
+    def is_locked(self):
+        """Cleared instruments are immutable — reverse/void instead of editing."""
+        return self.status in self.LOCKED_STATES
+
+    @property
+    def needs_source(self):
+        return self.source_kind not in (self.SourceKind.MANUAL,
+                                        self.SourceKind.SUPPLIER)
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.amount is None or self.amount <= 0:
+            raise ValidationError({"amount": "Amount must be greater than zero."})
+        # every instrument must reference a source obligation, unless it is an
+        # explicitly manual/supplier payment (which the view gates on permission)
+        if self.needs_source and self.source is None:
+            raise ValidationError(
+                "A payment must reference its source "
+                f"({self.get_source_kind_display()}).")
+        # the linked source amount should match (guards against mis-linking)
+        src = self.source
+        src_amt = getattr(src, "amount", None) if src else None
+        if src_amt is not None and self.source_kind == self.SourceKind.EXPENSE \
+                and self.amount > src_amt:
+            raise ValidationError(
+                {"amount": "Payment exceeds the linked expense amount."})
+
+    def approve(self, user):
+        from django.utils import timezone
+        self.status = self.Status.APPROVED
+        self.approved_by = user
+        self.approved_at = timezone.now()
+        self.save(update_fields=["status", "approved_by", "approved_at"])
+
+    def issue(self, on=None):
+        import datetime as _d
+        self.status = self.Status.ISSUED
+        self.date_issued = on or self.date_issued or _d.date.today()
+        self.save(update_fields=["status", "date_issued"])
+
+    def clear(self, on=None):
+        import datetime as _d
+        self.status = self.Status.CLEARED
+        self.date_cleared = on or _d.date.today()
+        self.save(update_fields=["status", "date_cleared"])
+
+    def void(self):
+        self.status = self.Status.VOIDED
+        self.save(update_fields=["status"])
+
+    def stop(self):
+        self.status = self.Status.STOPPED
+        self.save(update_fields=["status"])
+
+
+class PaymentAttachment(models.Model):
+    payment = models.ForeignKey(PaymentInstrument, on_delete=models.CASCADE,
+                                related_name="attachments")
+    file = models.FileField(upload_to="payments/", null=True, blank=True)
+    label = models.CharField(max_length=120, blank=True)
+    text = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                    on_delete=models.SET_NULL)
+    uploaded_at = models.DateTimeField(auto_now_add=True)

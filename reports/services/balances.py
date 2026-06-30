@@ -55,7 +55,26 @@ def expenses_by_department(start=None, end=None, only_effective=True,
     if not include_remittance:
         f &= ~Q(category=Expense.Category.REMITTANCE)
     qs = (Expense.objects.filter(f).values("department").annotate(total=Sum("amount")))
-    return {r["department"]: (r["total"] or Decimal(0)) for r in qs}
+    out = {r["department"]: (r["total"] or Decimal(0)) for r in qs}
+    # refunds are contra-entries: money returned to the fund reduces the net
+    # expense (and restores the fund balance). Date the reduction when received.
+    for dept_id, total in refunds_by_department(start, end).items():
+        out[dept_id] = out.get(dept_id, Decimal(0)) - total
+    return out
+
+
+def refunds_by_department(start=None, end=None):
+    """Expense refunds (cash returned to a fund) per department, by refund date."""
+    from cashbook.models import ExpenseRefund
+    f = Q()
+    if start:
+        f &= Q(date__gte=start)
+    if end:
+        f &= Q(date__lte=end)
+    qs = (ExpenseRefund.objects.filter(f, expense__status__in=[
+              Expense.Status.APPROVED, Expense.Status.PAID])
+          .values("expense__department").annotate(total=Sum("amount")))
+    return {r["expense__department"]: (r["total"] or Decimal(0)) for r in qs}
 
 
 def _transfer_filter(start=None, end=None):
@@ -325,7 +344,7 @@ def fund_balance(dept, as_of=None):
     opening + active receipts − approved/paid expenses + transfers in − out."""
     from decimal import Decimal
     from django.db.models import Sum
-    from cashbook.models import Expense, FundTransfer
+    from cashbook.models import Expense, FundTransfer, ExpenseRefund
     if dept is None:
         return None
     dept_id = getattr(dept, "id", dept)
@@ -347,12 +366,18 @@ def fund_balance(dept, as_of=None):
           status__in=[Expense.Status.APPROVED, Expense.Status.PAID]) & end)
         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
+    # refunds returned to this fund reduce net expense (restore the balance)
+    refunded = (ExpenseRefund.objects.filter(
+        Q(expense__department_id=dept_id,
+          expense__status__in=[Expense.Status.APPROVED, Expense.Status.PAID]) & end)
+        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
     tin = (FundTransfer.objects.filter(Q(destination_id=dept_id) & end)
            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     tout = (FundTransfer.objects.filter(Q(source_id=dept_id) & end)
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
-    return opening + receipts - spent + tin - tout
+    return opening + receipts - spent + refunded + tin - tout
 
 
 def pending_receipts_total(as_of=None):

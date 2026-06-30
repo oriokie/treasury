@@ -345,6 +345,41 @@ class SiteConfig(models.Model):
         obj, _ = cls.objects.get_or_create(pk=1)
         return obj
 
+    # ---- Board report configuration (#4) ----
+    BOARD_SECTIONS = [
+        ("narrative",  "Narrative & insights"),
+        ("income_exp", "Income and expenditure"),
+        ("position",   "Statement of financial position"),
+        ("funds",      "Fund balances"),
+        ("trust",      "Trust funds and remittance"),
+        ("goals",      "Goals and targets"),
+        ("trend",      "Multi-year trend"),
+        ("notes",      "Notes"),
+        ("signatures", "Signature block"),
+    ]
+
+    board_config = models.JSONField(default=dict, blank=True,
+        help_text="Board report layout: ordered section visibility and options.")
+
+    def board_settings(self):
+        """Merged board config: an ordered list of {key,label,visible} plus the
+        notes text. Missing/legacy config falls back to all sections visible in
+        the default order."""
+        cfg = self.board_config or {}
+        saved = {s["key"]: s for s in cfg.get("sections", []) if "key" in s}
+        sections, seen = [], set()
+        # keep any saved order first, then append any new sections at the end
+        for s in cfg.get("sections", []):
+            key = s.get("key")
+            if key and key in dict(self.BOARD_SECTIONS) and key not in seen:
+                sections.append({"key": key, "label": dict(self.BOARD_SECTIONS)[key],
+                                 "visible": s.get("visible", True)})
+                seen.add(key)
+        for key, label in self.BOARD_SECTIONS:
+            if key not in seen:
+                sections.append({"key": key, "label": label, "visible": True})
+        return {"sections": sections, "notes": cfg.get("notes", "")}
+
 
 class SmsLog(models.Model):
     class Status(models.TextChoices):
@@ -637,6 +672,12 @@ class UserPreference(models.Model):
         SMALL = "SMALL", "Small"
         MEDIUM = "MEDIUM", "Medium"
         LARGE = "LARGE", "Large"
+    class FontFamily(models.TextChoices):
+        DEFAULT = "DEFAULT", "Public Sans (default)"
+        SYSTEM = "SYSTEM", "System UI"
+        SERIF = "SERIF", "Serif (Georgia)"
+        LEGIBLE = "LEGIBLE", "Atkinson Hyperlegible"
+        MONO = "MONO", "Monospace"
 
     class Width(models.TextChoices):
         BOXED = "BOXED", "Boxed"
@@ -670,6 +711,9 @@ class UserPreference(models.Model):
                                default=Sidebar.EXPANDED)
     font_size = models.CharField(max_length=6, choices=FontSize.choices,
                                  default=FontSize.MEDIUM)
+    font_family = models.CharField(max_length=8, choices=FontFamily.choices,
+                                   default=FontFamily.DEFAULT,
+        help_text="The typeface used across the app's body text.")
     layout_width = models.CharField(max_length=5, choices=Width.choices,
                                     default=Width.BOXED)
     card_style = models.CharField(max_length=7, choices=Cards.choices,

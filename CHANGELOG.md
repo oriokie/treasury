@@ -1,5 +1,93 @@
 # Changelog
 
+## v1.86.0 - unified legacy remittance onto the PaymentInstrument workflow
+- RemitTrustView (/reports/remittance/remit/) reworked: instead of embedding a cheque number in each
+  expense, it now creates a RemittanceBatch (status REMITTED), raises the per-fund remittance expenses
+  against it, and settles the whole batch with one generic PaymentInstrument (method/reference/date/bank
+  account). The instrument posts no journal entries; clearing only flips status. Single payment
+  architecture for both batch and one-step remittances.
+- Remittance report form replaced cheque_no/cheque_date inputs with method + reference + date + bank
+  account; RemittanceView passes bank_accounts. Legacy cheque fields kept in step for the CHEQUE method.
+- Data migration 0029: back-fills historical standalone remittance expenses (REMITTANCE category, cheque
+  voucher_no, no batch) by grouping them per cheque into batches and creating matching PaymentInstruments,
+  so all historical remittances share the unified settlement architecture.
+- Tests: reports/test_legacy_remit_payment (6). 370 green across cashbook/reports/statements.
+
+## v1.85.0 - Payment Register route + remittance settlement workflow
+- Renamed /cheques/ -> /payments/ (names payment_register / payment_outstanding / payment_print);
+  /cheques/ paths kept as permanent (301) redirects for backward compatibility. Templates renamed to
+  payment_*.html; UI labelled "Payment register" consistently; added to the Banking nav group.
+- RemittanceBatch.payment FK (cashbook 0027) -> PaymentInstrument: the generic settlement record (method,
+  reference, date, bank account, status, cleared date). Legacy cheque_no/cheque_date retained but
+  superseded; existing values migrated into PaymentInstruments and linked (cashbook 0028).
+- Remittance workflow now: Draft -> Approve -> Issue payment instrument -> (linked) -> Mark sent -> await
+  clearance -> Cleared. RemittanceBatchRemitView refuses to mark a batch sent until an issued payment is
+  linked (batch.is_settled). New RemittanceBatchIssuePaymentView issues + links the instrument; it posts
+  no journal entries (the batch expenses already account for the liability). Clearing only flips status.
+- Batch detail page: settlement-payment card, issue-payment form (method/reference/date/bank account),
+  5-step wizard (selected/approved/issued/sent/cleared), and clearance guidance.
+- Tests: reports/test_remittance_payment (6) + route/label coverage; payment tests repointed to /payments/.
+  364 green across cashbook/reports/statements.
+
+## v1.84.0 - payment-instrument framework (cheque register rework)
+- New PaymentInstrument model (cashbook 0025) + PaymentAttachment: generic payment framework supporting
+  CHEQUE, EFT, RTGS, MPESA, CASH and OTHER methods. Existing ChequeRegister rows ported over (cashbook
+  0026); the legacy model is retained read-only for history.
+- Every payment references its source obligation (Expense / RemittanceBatch / ExpenseRefund / FundTransfer)
+  via typed FKs; clean() enforces a source unless it is an explicitly manual/supplier payment, which the
+  view gates on treasurer rights.
+- Accounting integrity: a payment instrument posts NO journal entries — the source already accounts for it.
+  Issuing a cheque against a trust remittance settles that obligation; clearing during reconciliation only
+  changes status. Verified by tests that assert journal-entry counts are unchanged on issue and clear.
+- Lifecycle: Draft -> Approved -> Issued -> Outstanding -> Cleared, plus Voided / Stopped. Cleared
+  instruments are immutable (is_locked) — edit/delete blocked; void or reverse instead.
+- Dual signatories, approval (approved_by/at), cheque printing with amount-in-words (/cheques/<id>/print/),
+  outstanding-payments report with Excel/CSV (/cheques/outstanding/), and bank-reconciliation integration
+  repointed to PaymentInstrument (unpresented_cheques_total + ReconciliationDetailView + add_unpresented).
+- Tests: cashbook/test_payment_instrument (11) + rewritten test_cheque_register (4). 537 green across
+  cashbook/statements/ledger/reports/core.
+
+## v1.83.1 - stable goal-type identifier (no name matching)
+- Department.goal_type (departments 0019): classifies a fund's annual goal as a general goal or the Camp
+  Meeting Expense goal, replacing the previous fund-name match in the board report and budget page. Labels
+  now follow goal_type and the configured offering_fund link, so renaming a fund no longer changes the
+  report. Goal type is set on the fund budget page's Edit goals form.
+- Tests updated to set goal_type; added rename-resilience coverage.
+
+## v1.83.0 - Camp Meeting goals, board report sections & settings, chart of accounts
+- #3 Fund budget page: Camp Meeting Expense goal (Local) now aggregates collections across the fund and
+  all its sub-groups; renamed from "Camp Meeting Goal (Year)" to "Camp Meeting Expense Goal". A separate
+  Camp Meeting Offering goal (Trust fund) is configured on the same page and tracked independently — the
+  two totals are never merged. Group Contribution goal shows each group's own sub-account collection.
+  New Department.offering_fund / offering_goal (departments 0018).
+- #3 Board report: new "Goals and targets" section with target, collected, variance and completion %,
+  covering expense, offering and contribution goals, kept separate.
+- #4 BoardReportSettingsView (/reports/board-settings/): choose which sections appear, drag to reorder,
+  and add report notes (SiteConfig.board_config, core 0039). Board report rewritten to render sections in
+  configured order with sentence-case headings, clearer hierarchy/spacing and print-ready styling.
+- #5 Chart of accounts expanded with standard church accounts: petty cash, mobile money, staff advances,
+  prepayments, other receivables, accumulated depreciation, accruals, payables, statutory deductions,
+  designated/restricted funds, opening-balance equity, and interest / fundraising / donations income.
+- Tests: reports/test_board_goals (6); fund-budget tests updated for the renamed goal fields. 611 green.
+
+## v1.82.0 - transfer editing, expense refunds, fonts, balancing, dev-patterns, rule lifecycle
+- #1 TransferEdit (/transfers/<id>/edit/): editing re-syncs balances, journals (post_save signal) and
+  history; is_locked guard blocks reversed/reversal/locked-period transfers; Edit button on the list.
+- #2 ExpenseRefund (cashbook 0024): contra-entry preserving the original expense; net_amount /
+  refundable_balance; netted into fund_balance + expenses_by_department (date-aware, effective-only);
+  post_refund ledger posting + signals + rebuild; petty-float restore; refund UI on the expense detail.
+- #6 UserPreference.font_family (core 0038): per-user body typeface (Public Sans / System / Serif /
+  Atkinson Hyperlegible / Mono), applied live via data-fontfamily and CSS --font-body.
+- #7 _balanced_partition rewritten: size-capped greedy seed + local-search swaps balance both capability
+  and member count; documents the inherent skew limit; spread cut markedly.
+- #8 DevGroupPattern (giving 0019/0020, seeded defaults): configurable dev-group regexes with a manager
+  page (add/edit/enable/disable/delete), regex validation, capture-group check, live tester; allocate()
+  uses cached configured patterns (signal-invalidated) with a built-in fallback.
+- #9 AllocationRule lifecycle (giving 0021): archived/archived_at + is_expired; archived rules excluded
+  from allocation; active/expired/archived views; bulk archive-expired; archive/restore/permanent-delete;
+  archive_expired_rules management command with a grace period for nightly cron.
+- Tests: cashbook/test_transfer_refund (8), giving/test_patterns_lifecycle (13). 633 tests green.
+
 ## v1.81.0 - dev-group builder: download-first, live apply opt-in
 - DevGroupBuilderView now exports the balanced proposal to Excel/CSV (group, member, phone, capability)
   via ?export=xlsx|csv, including member phone numbers where present; with no group count it exports the

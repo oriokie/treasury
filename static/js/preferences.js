@@ -33,6 +33,7 @@
       case "theme": root.setAttribute("data-theme", v); break;
       case "sidebar": root.setAttribute("data-sidebar", v); break;
       case "font_size": root.setAttribute("data-font", v); break;
+      case "font_family": root.setAttribute("data-fontfamily", String(v).toLowerCase()); break;
       case "layout_width": root.setAttribute("data-width", v); break;
       case "card_style": root.setAttribute("data-cards", v); break;
       case "density": root.setAttribute("data-density", v); break;

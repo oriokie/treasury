@@ -44,3 +44,16 @@ def _transfer_saved(sender, instance, **kwargs):
 def _transfer_deleted(sender, instance, **kwargs):
     from ledger.models import JournalEntry
     JournalEntry.objects.filter(source_type="transfer", source_id=instance.pk).delete()
+
+
+@receiver(post_save, sender="cashbook.ExpenseRefund")
+def _refund_saved(sender, instance, **kwargs):
+    if _ready():
+        from ledger.services import posting
+        posting.post_refund(instance)
+
+
+@receiver(post_delete, sender="cashbook.ExpenseRefund")
+def _refund_deleted(sender, instance, **kwargs):
+    from ledger.models import JournalEntry
+    JournalEntry.objects.filter(source_type="refund", source_id=instance.pk).delete()

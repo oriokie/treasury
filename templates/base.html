@@ -1,13 +1,13 @@
 {% load static humanize %}
 <!doctype html>
-<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-font="{{ prefs.font_size|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% endif %}>
+<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
   <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <script src="{% static 'vendor/htmx.min.js' %}"></script>
@@ -53,6 +53,7 @@
           <a href="{% url 'statement_list' %}" class="{% if request.resolver_match.url_name == 'statement_list' %}active{% endif %}">Statement imports</a>
           <a href="{% url 'debit_queue' %}" class="{% if request.resolver_match.url_name == 'debit_queue' %}active{% endif %}">Bank debits</a>
           <a href="{% url 'reconciliation_list' %}" class="{% if 'reconciliation' in request.resolver_match.url_name %}active{% endif %}">Bank reconciliation</a>
+          <a href="{% url 'payment_register' %}" class="{% if 'payment' in request.resolver_match.url_name %}active{% endif %}">Payment register</a>
         </div>
       </details>
 

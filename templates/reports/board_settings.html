@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Board report settings · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Board report settings</h1>
+  <div class="sub">Choose which sections appear, their order, and the notes shown on the report</div></div>
+<a class="btn btn-ghost btn-sm" href="{% url 'report_board_classic' %}">View board report</a></div>
+
+<form method="post"><div class="card"><div class="hd">Sections</div><div class="bd">
+  {% csrf_token %}
+  <p class="help u-mt-0">Drag to reorder. Untick a section to hide it from the report.</p>
+  <ul class="board-sortable" id="sortable">
+    {% for s in sections %}
+    <li class="bs-item" draggable="true" data-key="{{ s.key }}">
+      <span class="bs-grip" aria-hidden="true">⋮⋮</span>
+      <label class="check-row u-grow"><input type="checkbox" name="visible_{{ s.key }}" class="form-check" {% if s.visible %}checked{% endif %}> {{ s.label }}</label>
+      <input type="hidden" name="order" value="{{ s.key }}">
+    </li>
+    {% endfor %}
+  </ul>
+</div></div>
+
+<div class="card u-mt"><div class="hd">Notes</div><div class="bd">
+  <p class="help u-mt-0">Optional notes printed at the foot of the board report (e.g. context for the meeting, caveats, or thanks).</p>
+  <textarea name="notes" class="field" rows="4" placeholder="Notes for the board…">{{ notes }}</textarea>
+</div></div>
+
+<div class="btn-row u-mt"><button class="btn">Save settings</button></div>
+</form>
+
+<style>
+.board-sortable{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.4rem}
+.bs-item{display:flex;align-items:center;gap:.6rem;padding:.55rem .7rem;background:var(--paper);
+  border:1px solid var(--line);border-radius:8px;cursor:grab}
+.bs-item.dragging{opacity:.5}
+.bs-grip{color:var(--muted);cursor:grab;font-size:.9rem;letter-spacing:-2px}
+</style>
+<script>
+(function(){
+  var list=document.getElementById("sortable"), dragging=null;
+  list.querySelectorAll(".bs-item").forEach(function(it){
+    it.addEventListener("dragstart",function(){ dragging=it; it.classList.add("dragging"); });
+    it.addEventListener("dragend",function(){ it.classList.remove("dragging"); dragging=null; });
+  });
+  list.addEventListener("dragover",function(e){
+    e.preventDefault();
+    var after=null, items=[].slice.call(list.querySelectorAll(".bs-item:not(.dragging)"));
+    for(var i=0;i<items.length;i++){
+      var r=items[i].getBoundingClientRect();
+      if(e.clientY < r.top + r.height/2){ after=items[i]; break; }
+    }
+    if(!dragging) return;
+    if(after) list.insertBefore(dragging, after); else list.appendChild(dragging);
+  });
+})();
+</script>
+{% endblock %}

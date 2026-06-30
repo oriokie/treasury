@@ -23,14 +23,32 @@ from ledger.models import Account, JournalEntry, JournalLine
 
 # ---- Chart of accounts ----------------------------------------------------
 CHART = [
+    # --- Assets (1xxx) ---
     ("1000", "Cash & bank", "ASSET", "CASH"),
+    ("1010", "Petty cash on hand", "ASSET", "PETTY_CASH"),
+    ("1020", "Mobile money (M-Pesa)", "ASSET", "MOBILE_MONEY"),
+    ("1200", "Staff advances (receivable)", "ASSET", "STAFF_ADVANCES"),
+    ("1300", "Prepayments", "ASSET", "PREPAYMENTS"),
+    ("1400", "Other receivables", "ASSET", "RECEIVABLES"),
     ("1500", "Fixed assets", "ASSET", "FIXED_ASSETS"),
-    ("2000", "Trust funds payable", "LIABILITY", "TRUST_PAYABLE"),
+    ("1600", "Accumulated depreciation", "ASSET", "ACCUM_DEPRECIATION"),
+    # --- Liabilities (2xxx) ---
+    ("2000", "Trust funds payable (to field)", "LIABILITY", "TRUST_PAYABLE"),
+    ("2100", "Accruals", "LIABILITY", "ACCRUALS"),
+    ("2200", "Accounts payable", "LIABILITY", "PAYABLES"),
+    ("2400", "Statutory deductions payable (PAYE/NSSF/NHIF)", "LIABILITY", "STATUTORY_PAYABLE"),
+    # --- Equity / fund balances (3xxx) ---
     ("3000", "Accumulated fund balances", "EQUITY", "ACCUM_FUNDS"),
     ("3100", "Capital (asset) fund", "EQUITY", "CAPITAL_FUND"),
+    ("3200", "Designated / restricted funds", "EQUITY", "DESIGNATED_FUNDS"),
+    ("3900", "Opening balance equity", "EQUITY", "OPENING_EQUITY"),
+    # --- Income (4xxx) ---
     ("4100", "Tithe", "INCOME", "INC_TITHE"),
     ("4200", "Offerings & general income", "INCOME", "INC_OFFERINGS"),
     ("4300", "Development & projects", "INCOME", "INC_DEVELOPMENT"),
+    ("4400", "Interest & investment income", "INCOME", "INC_INTEREST"),
+    ("4500", "Fundraising & camp meeting", "INCOME", "INC_FUNDRAISING"),
+    ("4600", "Donations & gifts in kind", "INCOME", "INC_DONATIONS"),
     ("4900", "Other income", "INCOME", "INC_OTHER"),
 ]
 # expense accounts are generated per Expense.Category as 5xxx
@@ -140,6 +158,27 @@ def post_expense(exp):
 
 
 @db_tx.atomic
+def post_refund(ref):
+    """An expense refund: cash returned to a fund, reversing part of the original
+    expense. Mirrors post_expense with the sides flipped (DR Cash, CR Expense)."""
+    from cashbook.models import Expense
+    JournalEntry.objects.filter(source_type="refund", source_id=ref.pk).delete()
+    exp = ref.expense
+    if exp.status not in (Expense.Status.APPROVED, Expense.Status.PAID):
+        return
+    cash = _acct("CASH")
+    if exp.category == Expense.Category.REMITTANCE:
+        exp_acct = _acct("TRUST_PAYABLE")
+    elif exp.expenditure_type == Expense.ExpenditureType.CAPITAL:
+        exp_acct = _acct("FIXED_ASSETS")
+    else:
+        exp_acct = _acct(f"EXP_{exp.category}") or _acct("EXP_OTHER")
+    # negative amount flips the pair: DR Cash, CR Expense
+    _post_pair(ref.date, f"Refund: {exp.description}", "refund", ref.pk,
+               exp_acct, cash, -ref.amount, exp.department)
+
+
+@db_tx.atomic
 def post_transfer(tr):
     """Inter-fund transfer: an equity reclassification between two funds. Net zero
     for the whole church, but moves the fund-balance claim from source to
@@ -181,7 +220,7 @@ def post_opening():
 def rebuild():
     """Regenerate the entire general ledger from the source documents."""
     from giving.models import Transaction
-    from cashbook.models import Expense, FundTransfer
+    from cashbook.models import Expense, FundTransfer, ExpenseRefund
     ensure_chart()
     JournalEntry.objects.exclude(source_type="manual").delete()  # keep manual adjustments
     post_opening()
@@ -189,6 +228,8 @@ def rebuild():
         post_transaction(t)
     for e in Expense.objects.filter(status__in=[Expense.Status.APPROVED, Expense.Status.PAID]):
         post_expense(e)
+    for r in ExpenseRefund.objects.select_related("expense"):
+        post_refund(r)
     for tr in FundTransfer.objects.all():
         post_transfer(tr)
     return JournalEntry.objects.count()

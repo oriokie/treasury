@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from . import views
 
 urlpatterns = [
@@ -15,6 +16,7 @@ urlpatterns = [
     path("expenses/<int:pk>/delete/", views.ExpenseDeleteView.as_view(), name="expense_delete"),
     path("transfers/", views.TransferListView.as_view(), name="transfer_list"),
     path("transfers/new/", views.TransferCreate.as_view(), name="transfer_create"),
+    path("transfers/<int:pk>/edit/", views.TransferEdit.as_view(), name="transfer_edit"),
     path("transfers/<int:pk>/reverse/", views.TransferReverseView.as_view(), name="transfer_reverse"),
     path("expenses/recurring/", views.RecurringListView.as_view(), name="recurring_list"),
     path("expenses/recurring/new/", views.RecurringCreate.as_view(), name="recurring_create"),
@@ -26,10 +28,19 @@ urlpatterns = [
     path("petty-cash/top-up/", views.PettyCashTopUp.as_view(), name="petty_cash_topup"),
     path("petty-cash/disburse/", views.PettyCashDisburse.as_view(), name="petty_cash_disburse"),
     path("expenses/<int:pk>/", views.ExpenseDetailView.as_view(), name="expense_detail"),
+    path("expenses/<int:pk>/refund/", views.ExpenseRefundCreate.as_view(), name="expense_refund"),
+    path("expenses/<int:pk>/refund/<int:ref>/delete/", views.ExpenseRefundDelete.as_view(), name="expense_refund_delete"),
     path("expenses/<int:pk>/attach/", views.ExpenseAttachmentUpload.as_view(), name="expense_attachment_upload"),
     path("expenses/<int:pk>/attach/<int:att>/delete/", views.ExpenseAttachmentDelete.as_view(), name="expense_attachment_delete"),
     path("payables/", views.AccrualsView.as_view(), name="accruals"),
-    path("cheques/", views.ChequeRegisterView.as_view(), name="cheque_register"),
+    # Payment register (cheques, EFT, RTGS, M-Pesa, etc.)
+    path("payments/", views.ChequeRegisterView.as_view(), name="payment_register"),
+    path("payments/outstanding/", views.ChequeOutstandingView.as_view(), name="payment_outstanding"),
+    path("payments/<int:pk>/print/", views.ChequePrintView.as_view(), name="payment_print"),
+    # backward-compatible permanent redirects from the old /cheques/ paths
+    path("cheques/", RedirectView.as_view(pattern_name="payment_register", permanent=True), name="cheque_register"),
+    path("cheques/outstanding/", RedirectView.as_view(pattern_name="payment_outstanding", permanent=True), name="cheque_outstanding"),
+    path("cheques/<int:pk>/print/", RedirectView.as_view(pattern_name="payment_print", permanent=True), name="cheque_print"),
     path("payables/payable/add/", views.PayableCreate.as_view(), name="payable_create"),
     path("payables/payable/<int:pk>/settle/", views.PayableSettle.as_view(), name="payable_settle"),
     path("payables/accrual/add/", views.AccrualCreate.as_view(), name="accrual_create"),

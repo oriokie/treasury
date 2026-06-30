@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.db.models import Sum, Count, Q
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
@@ -494,15 +494,70 @@ class FundMembersView(PeriodMixin, TemplateView):
                              church=SiteConfig.get().church_name)
 
 
-def _balanced_partition(items, n):
-    """Longest-processing-time heuristic: greedily place each member (heaviest
-    first) into the lightest group so the group capability totals come out close.
-    `items` = [(member_id, name, phone, weight), ...]. Returns n buckets."""
+def _balanced_partition(items, n, balance_size=True):
+    """Partition members into n development groups balanced by giving capability.
+
+    Two phases:
+
+    1. **Greedy seed** - heaviest giver first into the currently lightest group,
+       with a soft size cap (ceil(members / n)) so the groups also end up with an
+       even *number* of members, not just even totals. (The previous version
+       balanced totals only, which could leave one big giver alone in a group
+       while everyone else clustered elsewhere.)
+
+    2. **Local-search refinement** - repeatedly swap a member of the richest
+       group with a lighter member of the poorest group whenever doing so shrinks
+       the gap between them. Sizes are preserved (a swap is one-for-one), so this
+       only redistributes capability to cut the variance between groups.
+
+    Inherent limit: when giving is highly skewed - e.g. one member contributes
+    ~90% of all development giving - *no* partition can equalise the totals; that
+    member's group is unavoidably heavier. The algorithm still spreads everyone
+    else as evenly as possible and keeps group sizes within one member of each
+    other. `items` = [(member_id, name, phone, weight), ...].
+    """
+    items = sorted(items, key=lambda x: x[3], reverse=True)
+    m = len(items)
+    cap = (-(-m // n)) if (balance_size and n) else None  # ceil(m / n)
     buckets = [{"members": [], "total": Decimal(0)} for _ in range(n)]
-    for mid, name, phone, w in sorted(items, key=lambda x: x[3], reverse=True):
-        b = min(buckets, key=lambda x: (x["total"], len(x["members"])))
+
+    def lightest(respect_cap=True):
+        cands = buckets
+        if respect_cap and cap is not None:
+            open_b = [b for b in buckets if len(b["members"]) < cap]
+            if open_b:
+                cands = open_b
+        return min(cands, key=lambda x: (x["total"], len(x["members"])))
+
+    for mid, name, phone, w in items:
+        b = lightest()
         b["members"].append({"id": mid, "name": name, "phone": phone, "weight": w})
         b["total"] += w
+
+    # Phase 2: variance-reducing swaps between the richest and poorest groups.
+    for _ in range(2000):
+        hi = max(buckets, key=lambda b: b["total"])
+        lo = min(buckets, key=lambda b: b["total"])
+        if hi is lo or hi["total"] == lo["total"]:
+            break
+        gap = hi["total"] - lo["total"]
+        best = None  # (improvement, hi_member, lo_member)
+        for hm in hi["members"]:
+            for lm in lo["members"]:
+                delta = hm["weight"] - lm["weight"]   # hm to lo, lm to hi
+                if delta <= 0:
+                    continue
+                new_gap = abs(gap - 2 * delta)
+                improve = gap - new_gap
+                if improve > 0 and (best is None or improve > best[0]):
+                    best = (improve, hm, lm)
+        if not best:
+            break
+        _, hm, lm = best
+        hi["members"].remove(hm); hi["total"] -= hm["weight"]
+        lo["members"].remove(lm); lo["total"] -= lm["weight"]
+        hi["members"].append(lm); hi["total"] += lm["weight"]
+        lo["members"].append(hm); lo["total"] += hm["weight"]
     return buckets
 
 
@@ -641,16 +696,22 @@ class RemittanceView(PeriodMixin, TemplateView):
         ctx["rows"] = balances.trust_summary(ctx["start"], ctx["end"])
         ctx["total"] = sum(r["to_remit"] for r in ctx["rows"])
         ctx["total_unreceipted"] = sum((r["unreceipted"] for r in ctx["rows"]), Decimal(0))
+        from statements.models import BankAccount
+        ctx["bank_accounts"] = BankAccount.objects.all()
         return ctx
 
 
 class RemitTrustView(TreasurerRequiredMixin, View):
-    """Raise a remittance expense against each trust fund for the amount still to
-    remit in the period — the monthly lump sum sent to the field."""
+    """Remit the amount still outstanding for each trust fund in the period as a
+    single field payment. This now uses the same payment architecture as the
+    batch workflow: it creates a remittance batch, raises the per-fund expenses
+    against it, and settles the whole batch with one PaymentInstrument (cheque,
+    EFT, RTGS, M-Pesa, etc.). The instrument is the settlement record; it posts
+    no separate accounting entries."""
 
     def post(self, request):
         import datetime as _dt
-        from cashbook.models import Expense
+        from cashbook.models import (Expense, RemittanceBatch, PaymentInstrument)
         from core.models import SiteConfig
         from core.utils import sabbath_week_of
         try:
@@ -660,33 +721,65 @@ class RemitTrustView(TreasurerRequiredMixin, View):
             messages.error(request, "Pick a valid period to remit.")
             return redirect("report_remittance")
         field = SiteConfig.get().field_name or "the field"
-        cheque = (request.POST.get("cheque_no") or "").strip()
+
+        method = (request.POST.get("method") or "CHEQUE").upper()
+        valid_methods = dict(PaymentInstrument.Method.choices)
+        if method not in valid_methods:
+            method = "CHEQUE"
+        reference = (request.POST.get("instrument_number") or "").strip()
         try:
-            paid = _dt.date.fromisoformat(request.POST.get("cheque_date")) if request.POST.get("cheque_date") else e
+            paid = (_dt.date.fromisoformat(request.POST.get("date_issued"))
+                    if request.POST.get("date_issued") else e)
         except ValueError:
             paid = e
+        bank_id = request.POST.get("bank_account") or ""
+
         rows = balances.trust_summary(s, e)
-        n = 0
-        total = Decimal(0)
-        for r in rows:
-            amt = r["to_remit"]
-            if amt and amt > 0:
-                Expense.objects.create(
-                    date=paid, sabbath_week=sabbath_week_of(paid), department=r["department"],
-                    description=f"Remittance to {field} ({s:%d %b}–{e:%d %b %Y})"
-                                + (f", cheque {cheque}" if cheque else ""),
-                    amount=amt, category=Expense.Category.REMITTANCE,
-                    claimant=field, method=Expense.Method.CHEQUE,
-                    voucher_no=cheque[:30], status=Expense.Status.PAID, paid_date=paid,
-                    recorded_by=request.user, approved_by=request.user)
-                n += 1
-                total += amt
-        if n:
-            messages.success(
-                request, f"Remitted {n} trust fund(s) totalling KES {total:,.2f} to {field}"
-                         + (f" by cheque {cheque}." if cheque else "."))
-        else:
+        outstanding = [(r["department"], r["to_remit"]) for r in rows
+                       if r["to_remit"] and r["to_remit"] > 0]
+        if not outstanding:
             messages.info(request, "Nothing outstanding to remit for this period.")
+            return redirect(f"{reverse('report_remittance')}?start={s}&end={e}")
+
+        total = sum((amt for _, amt in outstanding), Decimal(0))
+        batch = RemittanceBatch.create_batch(
+            total_amount=total, status=RemittanceBatch.Status.REMITTED,
+            period_start=s, period_end=e, created_by=request.user,
+            approved_by=request.user, remitted_at=_tz.now())
+
+        # one settlement instrument for the whole field payment
+        inst = PaymentInstrument(
+            method=method, instrument_number=reference[:40],
+            payee=field, amount=total, date_issued=paid,
+            status=PaymentInstrument.Status.ISSUED,
+            source_kind=PaymentInstrument.SourceKind.REMITTANCE,
+            remittance_batch=batch, recorded_by=request.user)
+        if bank_id.isdigit():
+            from statements.models import BankAccount
+            inst.bank_account = BankAccount.objects.filter(pk=bank_id).first()
+        inst.save()
+        batch.payment = inst
+        if method == "CHEQUE":          # keep legacy fields in step for old reports
+            batch.cheque_no = reference[:30]
+            batch.cheque_date = paid
+        batch.save(update_fields=["payment", "cheque_no", "cheque_date"])
+
+        for dept, amt in outstanding:
+            Expense.objects.create(
+                date=paid, sabbath_week=sabbath_week_of(paid), department=dept,
+                description=f"Remittance to {field} ({s:%d %b}-{e:%d %b %Y})",
+                amount=amt, category=Expense.Category.REMITTANCE,
+                claimant=field, method=Expense.Method.CHEQUE,
+                voucher_no=reference[:30], status=Expense.Status.PAID,
+                paid_date=paid, remittance_batch=batch,
+                recorded_by=request.user, approved_by=request.user)
+
+        messages.success(
+            request, f"Remitted {len(outstanding)} trust fund(s) totalling "
+                     f"KES {total:,.2f} to {field}, settled by "
+                     f"{inst.get_method_display()} {reference}." if reference else
+                     f"Remitted {len(outstanding)} trust fund(s) totalling "
+                     f"KES {total:,.2f} to {field} by {inst.get_method_display()}.")
         return redirect(f"{reverse('report_remittance')}?start={s}&end={e}")
 
 
@@ -1432,6 +1525,8 @@ class RemittanceBatchDetailView(ReadAccessMixin, TemplateView):
         ctx["batch"] = batch
         ctx["lines"] = batch.expenses.select_related("department").all()
         ctx["field_name"] = SiteConfig.get().field_name or "the field"
+        from statements.models import BankAccount
+        ctx["bank_accounts"] = BankAccount.objects.all()
         return ctx
 
 
@@ -1451,26 +1546,69 @@ class RemittanceBatchApproveView(TreasurerRequiredMixin, View):
 
 
 class RemittanceBatchRemitView(TreasurerRequiredMixin, View):
+    """Mark a batch as sent — only once a payment instrument has been issued and
+    linked. The instrument is the settlement record for the trust liability;
+    bank reconciliation later only flips it to Cleared (no extra journals)."""
     def post(self, request, pk):
         batch = get_object_or_404(RemittanceBatch, pk=pk)
         if batch.status != RemittanceBatch.Status.APPROVED:
-            messages.error(request, "Approve the batch before marking it remitted.")
+            messages.error(request, "Approve the batch before marking it sent.")
             return redirect("remittance_batch_detail", pk=pk)
-        cheque = (request.POST.get("cheque_no") or "").strip()
-        try:
-            cdate = _dt.date.fromisoformat(request.POST.get("cheque_date")) if request.POST.get("cheque_date") else _dt.date.today()
-        except ValueError:
-            cdate = _dt.date.today()
+        if not batch.is_settled:
+            messages.error(request, "Issue and link a payment instrument (cheque, "
+                "EFT, M-Pesa, etc.) before marking this batch as sent.")
+            return redirect("remittance_batch_detail", pk=pk)
+        inst = batch.payment
+        paid_date = inst.date_issued or _dt.date.today()
         batch.status = RemittanceBatch.Status.REMITTED
-        batch.cheque_no = cheque[:30]
-        batch.cheque_date = cdate
         batch.remitted_at = _tz.now()
-        batch.save(update_fields=["status", "cheque_no", "cheque_date", "remitted_at"])
-        batch.expenses.update(status=Expense.Status.PAID, paid_date=cdate,
-                              voucher_no=cheque[:30])
+        # keep the legacy fields in step for any old reports still reading them
+        if inst.method == "CHEQUE":
+            batch.cheque_no = inst.instrument_number[:30]
+            batch.cheque_date = inst.date_issued
+        batch.save(update_fields=["status", "remitted_at", "cheque_no", "cheque_date"])
+        batch.expenses.update(status=Expense.Status.PAID, paid_date=paid_date,
+                              voucher_no=inst.instrument_number[:30])
         _repost_to_ledger(batch.expenses.all())
-        messages.success(request, f"Batch {batch.batch_number} marked remitted"
-                                  + (f" by cheque {cheque}." if cheque else "."))
+        messages.success(request, f"Batch {batch.batch_number} marked sent, settled by "
+                                  f"{inst.get_method_display()} {inst.instrument_number}.")
+        return redirect("remittance_batch_detail", pk=pk)
+
+
+class RemittanceBatchIssuePaymentView(TreasurerRequiredMixin, View):
+    """Issue a payment instrument that settles this remittance batch and link it.
+    Posts no journal entries — the batch's remittance expenses already account
+    for the liability; this only records how it is being paid."""
+    def post(self, request, pk):
+        from cashbook.models import PaymentInstrument
+        batch = get_object_or_404(RemittanceBatch, pk=pk)
+        if batch.status not in (RemittanceBatch.Status.APPROVED,
+                                RemittanceBatch.Status.DRAFT):
+            messages.error(request, "A payment can only be issued for a draft or "
+                                    "approved batch.")
+            return redirect("remittance_batch_detail", pk=pk)
+        method = request.POST.get("method") or "CHEQUE"
+        number = (request.POST.get("instrument_number") or "").strip()[:40]
+        try:
+            issued = _dt.date.fromisoformat(request.POST.get("date_issued")) \
+                if request.POST.get("date_issued") else _dt.date.today()
+        except ValueError:
+            issued = _dt.date.today()
+        bank_id = request.POST.get("bank_account") or ""
+        inst = PaymentInstrument(
+            method=method, instrument_number=number,
+            payee="Conference remittance", amount=batch.total_amount,
+            date_issued=issued, status=PaymentInstrument.Status.ISSUED,
+            source_kind=PaymentInstrument.SourceKind.REMITTANCE,
+            remittance_batch=batch, recorded_by=request.user)
+        if bank_id.isdigit():
+            from statements.models import BankAccount
+            inst.bank_account = BankAccount.objects.filter(pk=bank_id).first()
+        inst.save()
+        batch.payment = inst
+        batch.save(update_fields=["payment"])
+        messages.success(request, f"Issued {inst.get_method_display()} "
+                                  f"{inst.instrument_number} for this remittance.")
         return redirect("remittance_batch_detail", pk=pk)
 
 
@@ -1757,6 +1895,34 @@ class CashFlowView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
+class BoardReportSettingsView(TreasurerRequiredMixin, View):
+    """Configure which board-report sections appear, their order, and the notes
+    shown on the report."""
+    template_name = "reports/board_settings.html"
+
+    def get(self, request):
+        cfg = SiteConfig.get()
+        return render(request, self.template_name, {
+            "sections": cfg.board_settings()["sections"],
+            "notes": cfg.board_settings()["notes"]})
+
+    def post(self, request):
+        cfg = SiteConfig.get()
+        # ordering arrives as a list of keys; visibility as checkboxes
+        order = request.POST.getlist("order")
+        valid = dict(SiteConfig.BOARD_SECTIONS)
+        sections = []
+        for key in order:
+            if key in valid:
+                sections.append({"key": key,
+                                 "visible": bool(request.POST.get(f"visible_{key}"))})
+        cfg.board_config = {"sections": sections,
+                            "notes": (request.POST.get("notes") or "")[:4000]}
+        cfg.save(update_fields=["board_config"])
+        messages.success(request, "Board report settings saved.")
+        return redirect("board_settings")
+
+
 class BoardReportView(PeriodMixin, TemplateView):
     """One-page board summary: position, fund groups, trust, budget, KPIs, plus an
     AI-written narrative (insights, trends, recommendations) with a rule-based
@@ -1888,6 +2054,56 @@ class BoardReportView(PeriodMixin, TemplateView):
         ctx["narrative_source"] = source
         ctx["ai_enabled"] = cfg.llm_enabled
         ctx["ai_error"] = err
+
+        # ---- Goals & targets (#3): expense, offering, group contribution ----
+        import datetime as _gd
+        from departments.models import Department as _Dept
+        gyear = e.year
+
+        def _fund_ids(d):
+            ids = [d.id]
+            for sub in d.subgroups.all():
+                ids.extend(_fund_ids(sub))
+            return ids
+
+        def _collected(fund):
+            return (Transaction.objects.confirmed_credits().filter(
+                department_id__in=_fund_ids(fund), excluded_from_income=False,
+                date__year=gyear).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+        def _goal_row(name, kind, goal, collected):
+            goal = goal or Decimal(0)
+            return {"name": name, "kind": kind, "goal": goal, "collected": collected,
+                    "variance": collected - goal,
+                    "pct": int(min(collected / goal * 100, 999)) if goal else 0,
+                    "short": max(goal - collected, Decimal(0))}
+
+        goals = []
+        for d in _Dept.objects.filter(active=True).prefetch_related("subgroups"):
+            is_camp = (d.goal_type == "CAMP_EXPENSE")
+            if d.year_goal:
+                label = ("Camp Meeting Expense Goal" if is_camp
+                         else f"{d.name} — annual goal")
+                goals.append(_goal_row(label, "Expense (local)", d.year_goal,
+                                       _collected(d)))
+            if d.offering_goal and d.offering_fund:
+                # the offering relationship is configured (offering_fund FK); its
+                # label follows the paired expense fund's goal_type, not any name
+                off_label = ("Camp Meeting Offering Goal" if is_camp
+                             else f"{d.offering_fund.name} — offering goal")
+                goals.append(_goal_row(off_label, "Offering (trust)",
+                                       d.offering_goal, _collected(d.offering_fund)))
+            if d.contribution_goal:
+                grp_total = sum((_collected(s) for s in d.subgroups.all()), Decimal(0))
+                goals.append(_goal_row(f"{d.name} — group contribution goal",
+                                       "Contribution", d.contribution_goal, grp_total))
+        ctx["goals"] = goals
+        ctx["goals_year"] = gyear
+
+        ctx["board_sections"] = cfg.board_settings()["sections"]
+        ctx["board_notes"] = cfg.board_settings()["notes"]
+        ctx["bvis"] = {s["key"]: s["visible"] for s in ctx["board_sections"]}
+        ctx["border_order"] = [s["key"] for s in ctx["board_sections"] if s["visible"]]
         return ctx
 
     def _context_str(self, ctx, label, income, expenditure):

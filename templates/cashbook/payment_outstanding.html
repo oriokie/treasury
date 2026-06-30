@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Outstanding payments · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Outstanding payments</h1>
+  <div class="sub">Issued but not yet cleared at the bank</div></div>
+<div class="btn-row">
+  <a class="btn btn-ghost btn-sm" href="?export=xlsx{% if method %}&method={{ method }}{% endif %}">Excel</a>
+  <a class="btn btn-ghost btn-sm" href="?export=csv{% if method %}&method={{ method }}{% endif %}">CSV</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'payment_register' %}">Register</a>
+</div></div>
+
+<div class="card u-mb"><div class="bd" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
+  <div><div class="muted u-xs">Total outstanding</div>
+    <div class="mono" style="font-size:1.5rem;font-weight:700;color:var(--brass)">KES {{ total|floatformat:2|intcomma }}</div></div>
+  <form method="get"><select name="method" class="field field--select" onchange="this.form.submit()">
+    <option value="">All methods</option>
+    {% for v,l in methods %}<option value="{{ v }}" {% if method == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select></form>
+</div></div>
+
+<div class="card"><div class="bd"><div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Method / No.</th><th>Payee</th><th>Source</th><th class="num">Amount</th><th>Issued</th></tr></thead>
+  <tbody>
+  {% for c in rows %}<tr>
+    <td><span class="pill pill-grey u-xs">{{ c.get_method_display }}</span> <span class="mono">{{ c.instrument_number|default:"—" }}</span></td>
+    <td>{{ c.payee|default:"—" }}</td><td class="u-xs">{{ c.source_label }}</td>
+    <td class="num mono">{{ c.amount|floatformat:2|intcomma }}</td>
+    <td class="mono u-xs">{{ c.date_issued|date:"d/m/y"|default:"—" }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="empty">No outstanding payments.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div></div>
+{% endblock %}

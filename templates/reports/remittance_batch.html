@@ -10,7 +10,9 @@
 <div class="wizard">
   <div class="step {% if batch.status != 'CANCELLED' %}done{% endif %}">1 · Funds selected</div>
   <div class="step {% if batch.status == 'APPROVED' or batch.status == 'REMITTED' %}done{% endif %}">2 · Approved</div>
-  <div class="step {% if batch.status == 'REMITTED' %}done{% endif %}">3 · Remitted</div>
+  <div class="step {% if batch.is_settled %}done{% endif %}">3 · Payment issued</div>
+  <div class="step {% if batch.status == 'REMITTED' %}done{% endif %}">4 · Sent</div>
+  <div class="step {% if batch.payment and batch.payment.status == 'CLEARED' %}done{% endif %}">5 · Cleared</div>
 </div>
 
 <div class="table-wrap"><table class="ledger">
@@ -25,21 +27,50 @@
   </tbody>
 </table></div>
 
-{% if batch.cheque_no %}<p class="help">Remitted by cheque <strong>{{ batch.cheque_no }}</strong> on {{ batch.cheque_date|date:"d M Y" }}.</p>{% endif %}
+{% if batch.payment %}
+<div class="card u-mt"><div class="hd">Settlement payment</div><div class="bd" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;align-items:center">
+  <div>
+    <div><strong>{{ batch.payment.get_method_display }}</strong> <span class="mono">{{ batch.payment.instrument_number|default:"—" }}</span></div>
+    <div class="help u-mt-0">Issued {{ batch.payment.date_issued|date:"d M Y"|default:"—" }} · KES {{ batch.payment.amount|floatformat:2|intcomma }}
+      {% if batch.payment.bank_account %} · {{ batch.payment.bank_account }}{% endif %}</div>
+  </div>
+  <div>{% if batch.payment.status == 'CLEARED' %}<span class="pill pill-green">Cleared</span>
+       {% elif batch.payment.is_outstanding %}<span class="pill pill-amber">{{ batch.payment.get_status_display }}</span>
+       {% else %}<span class="pill pill-grey">{{ batch.payment.get_status_display }}</span>{% endif %}
+    <a class="link u-xs" href="{% url 'payment_register' %}">Open register →</a></div>
+</div></div>
+{% elif batch.cheque_no %}<p class="help">Remitted by cheque <strong>{{ batch.cheque_no }}</strong> on {{ batch.cheque_date|date:"d M Y" }}.</p>{% endif %}
 
 {% if is_treasurer %}
 <div class="btn-row">
   {% if batch.status == 'DRAFT' %}
     <form method="post" action="{% url 'remittance_batch_approve' batch.id %}">{% csrf_token %}<button class="btn">Approve batch</button></form>
   {% elif batch.status == 'APPROVED' %}
-    <form method="post" action="{% url 'remittance_batch_remit' batch.id %}" class="u-inline-flex" onsubmit="return confirm('Mark this batch as remitted? This records the funds as sent to the field.');">{% csrf_token %}
-      <input name="cheque_no" class="field" placeholder="Cheque no." style="width:130px">
-      <input type="date" name="cheque_date" class="field" style="width:150px">
-      <button class="btn">Mark remitted</button>
-    </form>
+    {% if not batch.is_settled %}
+      <details class="card" style="width:100%"><summary class="hd" style="cursor:pointer">Step 1 · Issue payment instrument</summary><div class="bd">
+        <p class="help u-mt-0">Issue the cheque, EFT, bank transfer or M-Pesa payment that settles this remittance. This records the settlement; it does not post a separate accounting entry.</p>
+        <form method="post" action="{% url 'remittance_batch_issue_payment' batch.id %}" class="filters u-m-0">{% csrf_token %}
+          <div class="f"><label>Method</label><select name="method" class="field field--select">
+            <option value="CHEQUE">Cheque</option><option value="EFT">EFT (bank transfer)</option>
+            <option value="RTGS">RTGS</option><option value="MPESA">M-Pesa</option><option value="OTHER">Other</option></select></div>
+          <div class="f"><label>Reference / number</label><input name="instrument_number" class="field mono" placeholder="Cheque no. / EFT ref"></div>
+          <div class="f"><label>Date</label><input type="date" name="date_issued" class="field"></div>
+          {% if bank_accounts %}<div class="f"><label>Bank account</label><select name="bank_account" class="field field--select"><option value="">—</option>{% for a in bank_accounts %}<option value="{{ a.id }}">{{ a }}</option>{% endfor %}</select></div>{% endif %}
+          <button class="btn">Issue payment</button>
+        </form>
+      </div></details>
+    {% else %}
+      <form method="post" action="{% url 'remittance_batch_remit' batch.id %}" class="u-inline" onsubmit="return confirm('Mark this batch as sent? It is settled by {{ batch.settlement_label }}.');">{% csrf_token %}
+        <button class="btn">Step 2 · Mark as sent</button>
+      </form>
+    {% endif %}
   {% endif %}
   <a class="btn btn-ghost" href="{% url 'remittance_dashboard' %}">Back to dashboard</a>
-</div>{% endif %}
+</div>
+{% if batch.status == 'REMITTED' and batch.payment and batch.payment.status != 'CLEARED' %}
+<p class="help u-mt-sm">Awaiting bank clearance. When the payment clears, mark it Cleared in the <a class="link" href="{% url 'payment_register' %}">payment register</a> or during bank reconciliation — this only updates the status and posts no further entries.</p>
+{% endif %}
+{% endif %}
 <style>
 .wizard{display:flex;gap:.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
 .wizard .step{padding:.4rem .8rem;border-radius:999px;background:var(--card-head);color:var(--muted);font-size:.82rem;font-weight:600}

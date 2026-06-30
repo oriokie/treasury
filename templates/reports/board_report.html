@@ -1,22 +1,22 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}Board report · {{ SITE_NAME }}{% include "ui/print_signatures.html" %}
+{% block title %}Board report · {{ SITE_NAME }}{% if bvis.signatures %}{% include "ui/print_signatures.html" %}{% endif %}
 {% endblock %}
 {% block content %}
-{% include "ui/print_header.html" with title="Board Financial Report" %}
+{% include "ui/print_header.html" with title="Board financial report" %}
 <div class="page-head no-print"><div><h1>Board financial report</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
-<div class="btn-row">{% include 'partials/period_filter.html' %}<button class="btn btn-sm" onclick="window.print()">⎙ Print / PDF</button></div></div>
-<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Board Financial Report</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
+<div class="btn-row">{% include 'partials/period_filter.html' %}{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'board_settings' %}">⚙ Settings</a>{% endif %}<button class="btn btn-sm" onclick="window.print()">⎙ Print / PDF</button></div></div>
+<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Board financial report</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
 
-<div class="card u-mb-lg"><div class="hd">Board narrative
-  <span class="pill {% if narrative_source == 'ai' %}pill-green{% else %}pill-grey{% endif %} no-print" style="float:right;font-weight:600">{% if narrative_source == 'ai' %}AI-generated{% else %}Auto (rule-based){% endif %}</span></div>
-  <div class="bd">
-    {% if ai_error and not ai_enabled %}<p class="help no-print">AI assistant off — showing the built-in summary. Enable it in Settings → Assistant for a richer narrative.</p>
-    {% elif ai_error %}<p class="help no-print">AI narrative unavailable ({{ ai_error }}); showing the rule-based summary.</p>{% endif %}
-    <div style="white-space:pre-wrap;line-height:1.55">{{ narrative }}</div>
-  </div></div>
+{% for key in border_order %}
+{% if key == 'narrative' %}
+<div class="board-block"><div class="board-h">Narrative and insights<span class="pill {% if narrative_source == 'ai' %}pill-green{% else %}pill-grey{% endif %} no-print" style="float:right;font-weight:600">{% if narrative_source == 'ai' %}AI-generated{% else %}Auto summary{% endif %}</span></div>
+  {% if ai_error and not ai_enabled %}<p class="help no-print">AI assistant off — showing the built-in summary. Enable it in Settings → Assistant for a richer narrative.</p>
+  {% elif ai_error %}<p class="help no-print">AI narrative unavailable ({{ ai_error }}); showing the rule-based summary.</p>{% endif %}
+  <div class="board-prose">{{ narrative }}</div>
+</div>
 
-<div class="two-col">
-  <div class="card"><div class="hd">Income &amp; Expenditure (this period)</div><div class="bd">
+{% elif key == 'income_exp' %}<div class="two-col">
+  <div class="card"><div class="hd">Income and expenditure (this period)</div><div class="bd">
     <table class="ledger compact"><tbody>
       <tr><td>Local income</td><td class="num mono">{{ ie_income|floatformat:2|intcomma }}</td></tr>
       {% for c in ie_expense_by_cat %}<tr><td style="padding-left:1.2rem" class="muted">{{ c.label }}</td><td class="num mono muted">({{ c.total|floatformat:2|intcomma }})</td></tr>{% endfor %}
@@ -25,11 +25,10 @@
       {% if ie_capital %}<tr><td class="muted">Memo: capital additions</td><td class="num mono muted">{{ ie_capital|floatformat:2|intcomma }}</td></tr>{% endif %}
     </tbody></table>
   </div></div>
-
-  <div class="card"><div class="hd">Statement of Financial Position (period end)</div><div class="bd">
+  {% if bvis.position %}<div class="card"><div class="hd">Statement of financial position (period end)</div><div class="bd">
     <table class="ledger compact"><tbody>
       <tr class="section-row"><td colspan="2"><strong>Assets</strong></td></tr>
-      <tr><td>Cash &amp; bank</td><td class="num mono">{{ sofp.cash_bank|floatformat:2|intcomma }}</td></tr>
+      <tr><td>Cash and bank</td><td class="num mono">{{ sofp.cash_bank|floatformat:2|intcomma }}</td></tr>
       {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
       <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|floatformat:2|intcomma }}</strong></td></tr>
       <tr class="section-row"><td colspan="2"><strong>Liabilities</strong></td></tr>
@@ -39,10 +38,23 @@
       <tr class="total-row"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ sofp.total_liab|floatformat:2|intcomma }}</strong></td></tr>
       <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|floatformat:2|intcomma }}</strong></td></tr>
     </tbody></table>
-  </div></div>
+  </div></div>{% endif %}
 </div>
 
-<div class="section-title u-mt-lg">Fund summaries</div>
+{% elif key == 'position' %}
+{% if not bvis.income_exp %}<div class="board-h">Statement of financial position (period end)</div>
+<div class="table-wrap u-narrow-md"><table class="ledger compact"><tbody>
+  <tr class="section-row"><td colspan="2"><strong>Assets</strong></td></tr>
+  <tr><td>Cash and bank</td><td class="num mono">{{ sofp.cash_bank|floatformat:2|intcomma }}</td></tr>
+  {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
+  <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|floatformat:2|intcomma }}</strong></td></tr>
+  <tr class="section-row"><td colspan="2"><strong>Liabilities</strong></td></tr>
+  <tr><td>Trust funds to remit</td><td class="num mono">{{ sofp.trust_liab|floatformat:2|intcomma }}</td></tr>
+  <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|floatformat:2|intcomma }}</strong></td></tr>
+</tbody></table></div>{% endif %}
+
+{% elif key == 'funds' %}
+<div class="board-h">Fund balances</div>
 <div class="table-wrap"><table class="ledger compact">
   <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
   <tbody>
@@ -51,13 +63,7 @@
     <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
     <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
     <td class="num mono"><strong>{{ r.closing|floatformat:0|intcomma }}</strong></td></tr>{% endfor %}
-  <tr class="section-row"><td colspan="5"><strong>Trust funds (remitted to {{ FIELD_NAME }})</strong></td></tr>
-  {% for r in trust_rows %}<tr><td>{{ r.department.name }}</td>
-    <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
-  <tr class="grand-row"><td><strong>All funds</strong></td>
+  <tr class="grand-row"><td><strong>Local funds</strong></td>
     <td class="num mono"><strong>{{ totals.opening|floatformat:0|intcomma }}</strong></td>
     <td class="num mono"><strong>{{ totals.receipts|floatformat:0|intcomma }}</strong></td>
     <td class="num mono"><strong>{{ totals.expenses|floatformat:0|intcomma }}</strong></td>
@@ -65,7 +71,42 @@
   </tbody>
 </table></div>
 
-<div class="section-title u-mt-lg">Trend analysis (by year){{ trend_ytd_label }}</div>
+{% elif key == 'trust' %}
+<div class="board-h">Trust funds and remittance</div>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Trust fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Remitted</th><th class="num">To remit</th></tr></thead>
+  <tbody>
+  {% for r in trust_summary %}<tr><td>{{ r.department.name }}</td>
+    <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.collected|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ r.remitted|floatformat:0|intcomma }}</td>
+    <td class="num mono"><strong>{{ r.to_remit|floatformat:0|intcomma }}</strong></td></tr>{% endfor %}
+  <tr class="grand-row"><td><strong>Outstanding to remit to {{ FIELD_NAME }}</strong></td>
+    <td></td><td></td><td></td>
+    <td class="num mono"><strong>{{ trust_outstanding|floatformat:0|intcomma }}</strong></td></tr>
+  </tbody>
+</table></div>
+
+{% elif key == 'goals' %}
+{% if goals %}
+<div class="board-h">Goals and targets ({{ goals_year }})</div>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Goal</th><th>Type</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">Complete</th></tr></thead>
+  <tbody>
+  {% for g in goals %}<tr>
+    <td>{{ g.name }}</td>
+    <td class="muted">{{ g.kind }}</td>
+    <td class="num mono">{{ g.goal|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
+    <td class="num mono {% if g.variance < 0 %}row-debit{% endif %}">{{ g.variance|floatformat:0|intcomma }}</td>
+    <td class="num mono"><strong>{{ g.pct }}%</strong></td></tr>{% endfor %}
+  </tbody>
+</table></div>
+<p class="help">Expense goals (local funds) and offering goals (trust funds) are tracked independently and are never merged.</p>
+{% endif %}
+
+{% elif key == 'trend' %}
+<div class="board-h">Multi-year trend{{ trend_ytd_label }}</div>
 <div class="table-wrap u-narrow-md"><table class="ledger compact">
   <thead><tr><th>Year</th><th class="num">Income</th><th class="num">Expenditure</th><th class="num">Net</th></tr></thead>
   <tbody>
@@ -77,7 +118,21 @@
 </table></div>
 {% if trend|length < 2 %}<p class="help">Add prior-year figures under Reports → Historical years to enable a fuller multi-year trend.</p>{% endif %}
 
-<style>.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem}@media(max-width:760px){.two-col{grid-template-columns:1fr}}
+{% elif key == 'notes' %}
+{% if board_notes %}<div class="board-h">Notes</div>
+<div class="board-prose">{{ board_notes }}</div>{% endif %}
+
+{% endif %}
+{% endfor %}
+
+<style>
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem}@media(max-width:760px){.two-col{grid-template-columns:1fr}}
 .section-row td{background:var(--card-head)}.total-row td{border-top:1.5px solid var(--line)}
-.grand-row td{border-top:2px solid var(--forest);background:var(--forest-soft)}</style>
+.grand-row td{border-top:2px solid var(--forest);background:var(--forest-soft)}
+.board-h{font-family:Fraunces,Georgia,serif;font-weight:600;font-size:1.18rem;color:var(--ink);
+  margin:1.9rem 0 .7rem;padding-bottom:.35rem;border-bottom:2px solid var(--forest-soft)}
+.board-block{margin-bottom:1.6rem}.board-block .board-h{margin-top:0}
+.board-prose{white-space:pre-wrap;line-height:1.6;font-size:.95rem;color:var(--ink-soft,#3a3a3a)}
+@media print{.board-h{margin-top:1.3rem;border-color:#999}}
+</style>
 {% endblock %}

@@ -373,6 +373,36 @@ class TransferCreate(DataEntryRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
+class TransferEdit(DataEntryRequiredMixin, UpdateView):
+    from .models import FundTransfer
+    model = FundTransfer
+    form_class = FundTransferForm
+    template_name = "cashbook/transfer_form.html"
+    success_url = reverse_lazy("transfer_list")
+
+    def dispatch(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.is_locked:
+            messages.error(request, "This transfer can't be edited — it has been "
+                "reversed, is a reversal entry, or falls in a locked period.")
+            return redirect("transfer_list")
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        # block if either the original date or the new date is locked
+        if _block_if_locked(self.request, self.object.date) or \
+           _block_if_locked(self.request, form.cleaned_data.get("date")):
+            return redirect("transfer_edit", pk=self.object.pk)
+        messages.success(self.request, "Transfer updated — balances, the journal and "
+            "the audit trail were adjusted to match.")
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["editing"] = True
+        return ctx
+
+
 class TransferReverseView(TreasurerRequiredMixin, View):
     def post(self, request, pk):
         from .models import FundTransfer
@@ -483,17 +513,20 @@ from .models import PettyCashTopUp as PettyTopUp
 def _petty_balance_asof(on):
     from decimal import Decimal
     from django.db.models import Sum
-    from .models import StaffAdvance
+    from .models import StaffAdvance, ExpenseRefund
     topups = (PettyTopUp.objects.filter(date__lte=on)
               .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     disb = (Expense.objects.filter(paid_from_petty_cash=True, date__lte=on,
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+    # cash refunded back into the petty box tops the float up again
+    refunds_in = (ExpenseRefund.objects.filter(to_petty_cash=True, date__lte=on)
+                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     # advances issued out of the petty box, still unaccounted, are also "out"
     adv_out = Decimal(0)
     for adv in StaffAdvance.objects.filter(from_petty_cash=True, date_issued__lte=on):
         adv_out += adv.petty_outstanding_asof(on)
-    return topups - disb - adv_out
+    return topups - disb + refunds_in - adv_out
 
 
 class PettyCashView(ReadAccessMixin, TemplateView):
@@ -648,7 +681,59 @@ class ExpenseDetailView(ReadAccessMixin, DetailView):
         ctx = super().get_context_data(**kwargs)
         # same source as the list, so the dual-approval gate behaves identically
         ctx["dual_threshold"] = SiteConfig.get().dual_approval_threshold or 0
+        ctx["refunds"] = self.object.refunds.select_related("recorded_by")
+        ctx["refundable"] = self.object.refundable_balance
+        import datetime as _dt
+        ctx["today_iso"] = _dt.date.today().isoformat()
         return ctx
+
+
+class ExpenseRefundCreate(DataEntryRequiredMixin, View):
+    """Record cash returned to the fund against an expense (e.g. unspent change
+    from an over-issued purchase). The original expense is never altered."""
+    def post(self, request, pk):
+        from .models import ExpenseRefund
+        from django.core.exceptions import ValidationError
+        from decimal import Decimal
+        exp = get_object_or_404(Expense, pk=pk)
+        if _block_if_locked(request, exp.date):
+            return redirect("expense_detail", pk=pk)
+        import datetime as _dt
+        raw_date = request.POST.get("date") or ""
+        try:
+            d = _dt.date.fromisoformat(raw_date) if raw_date else _dt.date.today()
+        except ValueError:
+            d = _dt.date.today()
+        try:
+            amount = Decimal(request.POST.get("amount") or "0")
+        except Exception:  # noqa: BLE001
+            amount = Decimal(0)
+        ref = ExpenseRefund(expense=exp, date=d, amount=amount,
+            method=request.POST.get("method") or Expense.Method.CASH,
+            to_petty_cash=bool(request.POST.get("to_petty_cash")),
+            reference=request.POST.get("reference", "")[:40],
+            note=request.POST.get("note", "")[:200], recorded_by=request.user)
+        try:
+            ref.full_clean(exclude=["recorded_by"])
+        except ValidationError as exc:
+            messages.error(request, "; ".join(
+                m for msgs in exc.message_dict.values() for m in msgs))
+            return redirect("expense_detail", pk=pk)
+        ref.save()
+        messages.success(request, f"Refund of {amount:,.2f} recorded — the fund "
+            f"balance has been restored by this amount.")
+        return redirect("expense_detail", pk=pk)
+
+
+class ExpenseRefundDelete(TreasurerRequiredMixin, View):
+    def post(self, request, pk, ref):
+        from .models import ExpenseRefund
+        r = get_object_or_404(ExpenseRefund, pk=ref, expense_id=pk)
+        if _block_if_locked(request, r.date):
+            return redirect("expense_detail", pk=pk)
+        r.delete()
+        messages.success(request, "Refund removed.")
+        return redirect("expense_detail", pk=pk)
 
 
 class ExpenseAttachmentUpload(DataEntryRequiredMixin, View):
@@ -1844,25 +1929,60 @@ class FundBudgetView(TreasurerRequiredMixin, View):
                          "pct": int(min(actual / b.amount * 100, 999)) if b.amount else 0,
                          "note": b.note})
 
-        collected = (Transaction.objects.filter(
-            department=dept, direction=Transaction.Direction.CREDIT, confirmed=True,
-            is_reversal=False, is_reversed=False, excluded_from_income=False,
-            date__year=year).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        # --- collections aggregated across this fund AND its sub-accounts ---
+        def _fund_ids(d):
+            ids = [d.id]
+            for sub in d.subgroups.all():
+                ids.extend(_fund_ids(sub))
+            return ids
 
-        def _goal(g):
+        def _collected(fund, year_):
+            if fund is None:
+                return Decimal(0)
+            return (Transaction.objects.filter(
+                department_id__in=_fund_ids(fund),
+                direction=Transaction.Direction.CREDIT, confirmed=True,
+                is_reversal=False, is_reversed=False, excluded_from_income=False,
+                date__year=year_).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+        # Camp Meeting EXPENSE goal: collected across the expense fund + subgroups
+        expense_collected = _collected(dept, year)
+
+        def _goal(g, collected):
             g = g or Decimal(0)
             return {"goal": g, "collected": collected,
                     "pct": int(min(collected / g * 100, 100)) if g else 0,
-                    "short": max(g - collected, Decimal(0))}
+                    "short": max(g - collected, Decimal(0)),
+                    "variance": collected - g}
+
+        # Group Contribution goal: one goal set on the parent, progress from each
+        # sub-account's own collection (shown per group, plus the aggregate)
+        group_rows = []
+        for sub in dept.subgroups.all():
+            c = _collected(sub, year)
+            group_rows.append({"name": sub.name, "id": sub.id, "collected": c})
+        group_rows.sort(key=lambda r: r["collected"], reverse=True)
+        contribution_collected = sum((r["collected"] for r in group_rows), Decimal(0))
+
+        # Camp Meeting OFFERING goal: a SEPARATE trust fund, never merged here
+        offering = dept.offering_fund
+        offering_collected = _collected(offering, year)
 
         return {
             "dept": dept, "year": year,
             "years": range(dt.date.today().year + 1, dt.date.today().year - 4, -1),
             "rows": rows, "tot_budget": tot_budget, "tot_actual": tot_actual,
             "tot_variance": tot_budget - tot_actual, "untagged": untagged,
-            "contribution_goal": _goal(dept.contribution_goal),
-            "annual_goal": _goal(dept.year_goal),
+            "expense_goal": _goal(dept.year_goal, expense_collected),
+            "contribution_goal": _goal(dept.contribution_goal, contribution_collected),
+            "group_rows": group_rows,
+            "offering": offering,
+            "offering_goal": _goal(dept.offering_goal, offering_collected),
             "categories": Expense.Category.choices,
+            "is_camp_expense": dept.goal_type == "CAMP_EXPENSE",
+            "goal_type": dept.goal_type,
+            "all_funds": Department.objects.filter(active=True, is_trust=True)
+                         .exclude(pk=dept.pk).order_by("name"),
         }
 
     def get(self, request, pk):
@@ -1886,8 +2006,15 @@ class FundBudgetView(TreasurerRequiredMixin, View):
                 except InvalidOperation:
                     return None
             dept.contribution_goal = _dec("contribution_goal")
-            dept.year_goal = _dec("annual_goal")
-            dept.save(update_fields=["contribution_goal", "year_goal"])
+            dept.year_goal = _dec("expense_goal")          # Camp Meeting Expense goal
+            dept.offering_goal = _dec("offering_goal")     # Camp Meeting Offering goal
+            gt = request.POST.get("goal_type") or "NONE"
+            dept.goal_type = gt if gt in ("NONE", "CAMP_EXPENSE") else "NONE"
+            of_id = request.POST.get("offering_fund") or ""
+            dept.offering_fund = (Department.objects.filter(pk=of_id).first()
+                                  if of_id.isdigit() else None)
+            dept.save(update_fields=["contribution_goal", "year_goal",
+                                     "offering_goal", "offering_fund", "goal_type"])
             messages.success(request, "Goals updated.")
             return redirect(f"{request.path}?year={year}")
         # add / update a named budget item
@@ -2044,38 +2171,58 @@ def unpresented_cheques_total(as_of=None):
     """Total of cheques issued but not yet cleared (still unpresented at the bank)."""
     from decimal import Decimal
     from django.db.models import Sum
-    from .models import ChequeRegister
-    qs = ChequeRegister.objects.filter(status=ChequeRegister.Status.ISSUED)
+    from .models import PaymentInstrument
+    qs = PaymentInstrument.objects.filter(
+        method=PaymentInstrument.Method.CHEQUE,
+        status__in=PaymentInstrument.OUTSTANDING_STATES)
     if as_of:
         qs = qs.filter(date_issued__lte=as_of)
     return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
 
 class ChequeRegisterView(ReadAccessMixin, View):
-    template_name = "cashbook/cheque_register.html"
+    """Payment register — cheques today, extensible to EFT/RTGS/M-Pesa. Lists
+    payment instruments, filterable by method and status, and drives the full
+    lifecycle (draft -> approved -> issued -> cleared, plus void/stop)."""
+    template_name = "cashbook/payment_register.html"
 
     def get(self, request):
-        from .models import ChequeRegister
+        from .models import PaymentInstrument
         from core.roles import is_treasurer
         status = request.GET.get("status", "")
-        qs = ChequeRegister.objects.select_related("expense", "remittance_batch")
+        method = request.GET.get("method", "")
+        qs = PaymentInstrument.objects.select_related(
+            "expense", "remittance_batch", "refund", "transfer", "bank_account")
         if status:
             qs = qs.filter(status=status)
+        if method:
+            qs = qs.filter(method=method)
         ctx = {
             "cheques": qs[:500],
-            "status": status,
-            "statuses": ChequeRegister.Status.choices,
+            "status": status, "method": method,
+            "statuses": PaymentInstrument.Status.choices,
+            "methods": PaymentInstrument.Method.choices,
+            "source_kinds": PaymentInstrument.SourceKind.choices,
             "unpresented_total": unpresented_cheques_total(),
             "can_enter_data": is_treasurer(request.user)
                               or getattr(request.user, "is_superuser", False),
+            "is_treasurer": is_treasurer(request.user)
+                            or getattr(request.user, "is_superuser", False),
         }
         return render(request, self.template_name, ctx)
 
     def post(self, request):
         from decimal import Decimal, InvalidOperation
         import datetime as dt
-        from .models import ChequeRegister
+        from django.core.exceptions import ValidationError
+        from core.roles import is_treasurer
+        from .models import (PaymentInstrument, Expense, RemittanceBatch,
+                             ExpenseRefund, FundTransfer)
         action = request.POST.get("action")
+        treas = is_treasurer(request.user) or getattr(request.user, "is_superuser", False)
+        if not treas:
+            messages.error(request, "You do not have permission to manage payments.")
+            return redirect("payment_register")
 
         if action == "add":
             try:
@@ -2085,64 +2232,104 @@ class ChequeRegisterView(ReadAccessMixin, View):
             try:
                 issued = dt.date.fromisoformat(request.POST.get("date_issued"))
             except (TypeError, ValueError):
-                issued = dt.date.today()
-            num = (request.POST.get("cheque_number") or "").strip()
-            if not num or amount <= 0:
-                messages.error(request, "A cheque number and a positive amount are required.")
-                return redirect("cheque_register")
-            ChequeRegister.objects.create(
-                cheque_number=num[:40], payee=(request.POST.get("payee") or "")[:160],
-                amount=amount, date_issued=issued,
-                note=(request.POST.get("note") or "")[:200], recorded_by=request.user)
-            messages.success(request, f"Cheque {num} recorded.")
+                issued = None
+            kind = request.POST.get("source_kind") or "EXPENSE"
+            src_id = (request.POST.get("source_id") or "").strip()
+            inst = PaymentInstrument(
+                method=request.POST.get("method") or "CHEQUE",
+                instrument_number=(request.POST.get("instrument_number") or "")[:40],
+                payee=(request.POST.get("payee") or "")[:160],
+                amount=amount, date_issued=issued, source_kind=kind,
+                signatory_1=(request.POST.get("signatory_1") or "")[:120],
+                signatory_2=(request.POST.get("signatory_2") or "")[:120],
+                note=(request.POST.get("note") or "")[:200],
+                recorded_by=request.user, status="DRAFT")
+            # attach the referenced source
+            if kind == "EXPENSE" and src_id.isdigit():
+                inst.expense = Expense.objects.filter(pk=src_id).first()
+            elif kind == "REMITTANCE" and src_id.isdigit():
+                inst.remittance_batch = RemittanceBatch.objects.filter(pk=src_id).first()
+            elif kind == "REFUND" and src_id.isdigit():
+                inst.refund = ExpenseRefund.objects.filter(pk=src_id).first()
+            elif kind == "TRANSFER" and src_id.isdigit():
+                inst.transfer = FundTransfer.objects.filter(pk=src_id).first()
+            # manual / supplier payments need the standalone permission
+            if kind in ("MANUAL", "SUPPLIER") and not treas:
+                messages.error(request, "Standalone payments require treasurer rights.")
+                return redirect("payment_register")
+            try:
+                inst.full_clean(exclude=["amount"] if amount <= 0 else None)
+            except ValidationError as exc:
+                msg = "; ".join(m for v in getattr(exc, "message_dict", {}).values()
+                                for m in v) or "; ".join(exc.messages)
+                messages.error(request, msg)
+                return redirect("payment_register")
+            inst.save()
+            messages.success(request, f"Payment {inst.instrument_number or '(draft)'} recorded.")
 
-        elif action in ("clear", "bounce", "cancel", "reopen"):
-            chq = get_object_or_404(ChequeRegister, pk=request.POST.get("pk"))
-            if action == "clear":
-                chq.status = ChequeRegister.Status.CLEARED
-                chq.date_cleared = dt.date.today()
-            elif action == "bounce":
-                chq.status = ChequeRegister.Status.BOUNCED
-                chq.date_cleared = dt.date.today()
-            elif action == "cancel":
-                chq.status = ChequeRegister.Status.CANCELLED
+        elif action in ("approve", "issue", "clear", "void", "stop"):
+            inst = get_object_or_404(PaymentInstrument, pk=request.POST.get("pk"))
+            if inst.is_locked and action != "clear":
+                messages.error(request, "A cleared payment cannot be changed — void "
+                                        "or reverse it instead.")
+                return redirect("payment_register")
+            if action == "approve":
+                inst.approve(request.user)
+            elif action == "issue":
+                inst.issue()
+            elif action == "clear":
+                inst.clear()
+            elif action == "void":
+                inst.void()
+            elif action == "stop":
+                inst.stop()
+            messages.success(request, f"Payment marked {inst.get_status_display()}.")
+
+        elif action == "delete":
+            inst = get_object_or_404(PaymentInstrument, pk=request.POST.get("pk"))
+            if inst.is_locked:
+                messages.error(request, "A cleared payment cannot be deleted — void it instead.")
             else:
-                chq.status = ChequeRegister.Status.ISSUED
-                chq.date_cleared = None
-            chq.save()
-            messages.success(request, f"Cheque {chq.cheque_number} marked {chq.get_status_display()}.")
+                inst.delete()
+                messages.success(request, "Payment removed.")
 
         elif action == "sync":
             created = self._sync_from_records(request.user)
-            messages.success(request, f"Imported {created} cheque(s) from existing "
-                                      f"cheque payments and remittances.")
-        return redirect("cheque_register")
+            messages.success(request, f"Imported {created} payment(s) from existing "
+                                      f"cheque expenses and remittances.")
+        return redirect("payment_register")
 
     def _sync_from_records(self, user):
-        """Create register entries for cheque-method expenses and cheque
+        """Create instrument entries for cheque-method expenses and cheque
         remittance batches that aren't in the register yet."""
-        from .models import ChequeRegister, Expense, RemittanceBatch
-        have = set(ChequeRegister.objects.exclude(cheque_number="")
-                   .values_list("cheque_number", flat=True))
+        from .models import PaymentInstrument, Expense, RemittanceBatch
+        have = set(PaymentInstrument.objects.exclude(instrument_number="")
+                   .values_list("instrument_number", flat=True))
         created = 0
         for e in Expense.objects.filter(method=Expense.Method.CHEQUE).exclude(voucher_no=""):
             if e.voucher_no in have:
                 continue
-            ChequeRegister.objects.create(
-                cheque_number=e.voucher_no[:40], payee=e.claimant or e.description[:160],
-                amount=e.amount, date_issued=e.paid_date or e.date,
-                status=ChequeRegister.Status.ISSUED, expense=e, recorded_by=user)
-            have.add(e.voucher_no); created += 1
-        for b in RemittanceBatch.objects.exclude(cheque_no=""):
+            PaymentInstrument.objects.create(
+                method="CHEQUE", instrument_number=e.voucher_no[:40],
+                payee=e.claimant or e.description[:160], amount=e.amount,
+                date_issued=e.paid_date or e.date, status="OUTSTANDING",
+                source_kind="EXPENSE", expense=e, recorded_by=user)
+            have.add(e.voucher_no)
+            created += 1
+        for b in RemittanceBatch.objects.filter(payment__isnull=True).exclude(cheque_no=""):
             if b.cheque_no in have:
                 continue
-            ChequeRegister.objects.create(
-                cheque_number=b.cheque_no[:40], payee="Conference remittance",
-                amount=getattr(b, "total", None) or Decimal(0),
-                date_issued=b.cheque_date or b.date, status=ChequeRegister.Status.ISSUED,
-                remittance_batch=b, recorded_by=user)
-            have.add(b.cheque_no); created += 1
+            inst = PaymentInstrument.objects.create(
+                method="CHEQUE", instrument_number=b.cheque_no[:40],
+                payee="Conference remittance", amount=b.total_amount,
+                date_issued=b.cheque_date or b.date, status="OUTSTANDING",
+                source_kind="REMITTANCE", remittance_batch=b, recorded_by=user)
+            b.payment = inst
+            b.save(update_fields=["payment"])
+            have.add(b.cheque_no)
+            created += 1
         return created
+
 
 
 class ReceiptArchiveView(ReadAccessMixin, TemplateView):
@@ -2216,3 +2403,80 @@ class ReceiptArchiveView(ReadAccessMixin, TemplateView):
         resp["Content-Disposition"] = (
             f'attachment; filename="receipts_{start}_{end}.zip"')
         return resp
+
+
+def _amount_in_words(amount):
+    """Render a KES amount in words for cheque printing."""
+    from decimal import Decimal
+    ones = ["", "one", "two", "three", "four", "five", "six", "seven", "eight",
+            "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+            "sixteen", "seventeen", "eighteen", "nineteen"]
+    tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+            "eighty", "ninety"]
+
+    def under_1000(n):
+        w = []
+        if n >= 100:
+            w.append(ones[n // 100] + " hundred")
+            n %= 100
+        if n >= 20:
+            w.append(tens[n // 10])
+            n %= 10
+        if n:
+            w.append(ones[n])
+        return " ".join(w)
+
+    amount = Decimal(amount)
+    shillings = int(amount)
+    cents = int((amount - shillings) * 100)
+    if shillings == 0:
+        words = "zero"
+    else:
+        parts, scale = [], [(1_000_000, "million"), (1_000, "thousand"), (1, "")]
+        for div, name in scale:
+            if shillings >= div:
+                chunk = shillings // div
+                parts.append(under_1000(chunk) + (f" {name}" if name else ""))
+                shillings %= div
+        words = " ".join(p for p in parts if p.strip())
+    words = words.strip().capitalize() + " shillings"
+    if cents:
+        words += f" and {cents} cents"
+    return words + " only"
+
+
+class ChequePrintView(ReadAccessMixin, View):
+    """Print-friendly cheque: payee, amount in figures and words, date,
+    signatories. Method-agnostic but most useful for cheques."""
+    def get(self, request, pk):
+        from .models import PaymentInstrument
+        inst = get_object_or_404(PaymentInstrument, pk=pk)
+        return render(request, "cashbook/payment_print.html", {
+            "c": inst, "amount_words": _amount_in_words(inst.amount)})
+
+
+class ChequeOutstandingView(ReadAccessMixin, View):
+    """Outstanding (unpresented) payments report with Excel/CSV export."""
+    def get(self, request):
+        from .models import PaymentInstrument
+        from reports.exports import csv_response, xlsx_response
+        qs = (PaymentInstrument.objects.filter(
+                status__in=PaymentInstrument.OUTSTANDING_STATES)
+              .select_related("expense", "remittance_batch")
+              .order_by("date_issued"))
+        method = request.GET.get("method", "")
+        if method:
+            qs = qs.filter(method=method)
+        header = ["Method", "Number", "Payee", "Source", "Amount", "Date issued"]
+        rows = [[c.get_method_display(), c.instrument_number, c.payee,
+                 c.source_label, c.amount, c.date_issued] for c in qs]
+        export = request.GET.get("export")
+        if export == "csv":
+            return csv_response("outstanding_payments", header, rows)
+        if export == "xlsx":
+            return xlsx_response("outstanding_payments", header, rows,
+                                 title="Outstanding payments")
+        total = sum((c.amount for c in qs), __import__("decimal").Decimal(0))
+        return render(request, "cashbook/payment_outstanding.html", {
+            "rows": qs, "total": total, "method": method,
+            "methods": PaymentInstrument.Method.choices})

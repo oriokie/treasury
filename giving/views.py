@@ -34,6 +34,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.views.generic import ListView, CreateView, View, DeleteView
+from django import forms
 
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
 from core.utils import sabbath_week_of
@@ -512,12 +513,27 @@ class RuleListView(DataEntryRequiredMixin, ListView):
     paginate_by = 50
 
     def get_queryset(self):
-        return (AllocationRule.objects.select_related("department", "split_fund")
-                .order_by("reference", "id"))
+        view = self.request.GET.get("view", "active")
+        qs = (AllocationRule.objects.select_related("department", "split_fund")
+              .order_by("reference", "id"))
+        if view == "archived":
+            qs = qs.filter(archived=True)
+        elif view == "expired":
+            import datetime as _d
+            qs = qs.filter(archived=False, valid_to__lt=_d.date.today())
+        else:  # active = not archived
+            qs = qs.filter(archived=False)
+        return qs
 
     def get_context_data(self, **kwargs):
+        import datetime as _d
         ctx = super().get_context_data(**kwargs)
         ctx["form"] = RuleForm()
+        ctx["view"] = self.request.GET.get("view", "active")
+        ctx["archived_count"] = AllocationRule.objects.filter(archived=True).count()
+        ctx["expired_count"] = AllocationRule.objects.filter(
+            archived=False, valid_to__lt=_d.date.today()).count()
+        ctx["today"] = _d.date.today()
         return ctx
 
 
@@ -1629,3 +1645,111 @@ class RuleEditView(DataEntryRequiredMixin, View):
             messages.success(request, "Rule updated.")
             return redirect("rule_list")
         return render(request, self.template_name, {"form": form, "edit_obj": rule})
+
+
+# ===================== Development-group reference patterns (#8) =============
+class DevPatternForm(forms.ModelForm):
+    class Meta:
+        from giving.models import DevGroupPattern
+        model = DevGroupPattern
+        fields = ["label", "pattern", "kind", "enabled", "sort_order", "note"]
+        widgets = {"kind": forms.Select(attrs={"class": "field--select"})}
+
+
+class DevPatternListView(TreasurerRequiredMixin, View):
+    """Manage the regexes that recognise development-group references, with a
+    live tester so you can see what a sample reference would match."""
+    template_name = "giving/dev_patterns.html"
+
+    def get(self, request):
+        from giving.models import DevGroupPattern
+        from giving.services.allocation import normalize_reference, detect_dev_group
+        patterns = DevGroupPattern.objects.all()
+        sample = request.GET.get("test", "")
+        result = None
+        if sample:
+            norm = normalize_reference(sample)
+            hit = detect_dev_group(norm)
+            if hit and hit[0] == "NUMBER":
+                result = {"ok": True, "msg": f"Matches → development group {hit[1]}.",
+                          "norm": norm}
+            elif hit and hit[0] == "WORD":
+                result = {"ok": True, "msg": "Matches as development (no number) → "
+                          "booked to development, awaiting a group.", "norm": norm}
+            else:
+                result = {"ok": False, "msg": "No development pattern matches this "
+                          "reference.", "norm": norm}
+        return render(request, self.template_name, {
+            "patterns": patterns, "form": DevPatternForm(),
+            "sample": sample, "result": result})
+
+    def post(self, request):
+        from giving.models import DevGroupPattern
+        pk = request.POST.get("id")
+        instance = DevGroupPattern.objects.filter(pk=pk).first() if pk else None
+        form = DevPatternForm(request.POST, instance=instance)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            if not obj.created_by_id:
+                obj.created_by = request.user
+            try:
+                obj.full_clean()
+            except Exception as exc:  # noqa: BLE001
+                from django.core.exceptions import ValidationError
+                msg = "; ".join(m for v in exc.message_dict.values() for m in v) \
+                    if isinstance(exc, ValidationError) else str(exc)
+                messages.error(request, msg)
+                return redirect("dev_patterns")
+            obj.save()
+            messages.success(request, "Pattern saved." if instance else "Pattern added.")
+        else:
+            messages.error(request, "; ".join(
+                f"{f}: {', '.join(e)}" for f, e in form.errors.items()))
+        return redirect("dev_patterns")
+
+
+class DevPatternToggle(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        from giving.models import DevGroupPattern
+        p = get_object_or_404(DevGroupPattern, pk=pk)
+        p.enabled = not p.enabled
+        p.save()
+        messages.success(request, f"{p.label} {'enabled' if p.enabled else 'disabled'}.")
+        return redirect("dev_patterns")
+
+
+class DevPatternDelete(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        from giving.models import DevGroupPattern
+        p = get_object_or_404(DevGroupPattern, pk=pk)
+        p.delete()
+        messages.success(request, "Pattern removed.")
+        return redirect("dev_patterns")
+
+
+# ===================== Allocation-rule lifecycle (#9) =======================
+class RuleArchiveView(TreasurerRequiredMixin, View):
+    """Archive a single rule (soft) or, with ?action=restore, bring it back."""
+    def post(self, request, pk):
+        rule = get_object_or_404(AllocationRule, pk=pk)
+        if request.POST.get("action") == "restore":
+            rule.restore()
+            messages.success(request, "Rule restored — it can allocate giving again.")
+        else:
+            rule.archive()
+            messages.success(request, "Rule archived — kept for the audit trail but "
+                "no longer used for new giving.")
+        return redirect(f"{reverse_lazy('rule_list')}?view="
+                        f"{request.POST.get('view', 'active')}")
+
+
+class RuleArchiveExpiredView(TreasurerRequiredMixin, View):
+    """Bulk-archive every rule whose validity window has already ended."""
+    def post(self, request):
+        import datetime as _d
+        qs = AllocationRule.objects.filter(archived=False, valid_to__lt=_d.date.today())
+        n = 0
+        for r in qs:
+            r.archive(); n += 1
+        messages.success(request, f"Archived {n} expired rule{'s' if n != 1 else ''}.")
+        return redirect("rule_list")

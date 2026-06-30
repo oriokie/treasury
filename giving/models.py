@@ -94,12 +94,35 @@ class AllocationRule(models.Model):
                                    null=True, blank=True,
                                    help_text="If set, the reference splits across funds.")
     source = models.CharField(max_length=8, choices=Source.choices, default=Source.LEARNED)
+    archived = models.BooleanField(default=False, db_index=True,
+        help_text="Archived rules are kept for the audit trail but no longer "
+                  "used to allocate new giving.")
+    archived_at = models.DateTimeField(null=True, blank=True)
     history = HistoricalRecords()
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
     def is_period(self):
         return bool(self.valid_from or self.valid_to)
+
+    @property
+    def is_expired(self):
+        """A temporary rule whose validity window has ended."""
+        import datetime as _d
+        return bool(self.valid_to and self.valid_to < _d.date.today())
+
+    def archive(self):
+        from django.utils import timezone
+        if not self.archived:
+            self.archived = True
+            self.archived_at = timezone.now()
+            self.save(update_fields=["archived", "archived_at"])
+
+    def restore(self):
+        if self.archived:
+            self.archived = False
+            self.archived_at = None
+            self.save(update_fields=["archived", "archived_at"])
 
     def covers(self, date):
         """True if this rule applies on the given date (permanent rules always do)."""
@@ -119,6 +142,57 @@ class AllocationRule(models.Model):
     def __str__(self):
         target = self.split_fund or self.department
         return f"{self.reference} -> {target}"
+
+
+class DevGroupPattern(models.Model):
+    """A configurable regex used to recognise development-group contributions in
+    bank narrations (e.g. 'DEVGR7', 'dev grp 11', 'DEV GP39'). Patterns are
+    matched against the normalised (lowercased, spaces removed) reference.
+
+    - NUMBERED patterns must contain one capturing group for the group number;
+      a match routes the gift to that development group.
+    - WORD patterns just flag the reference as development (no number) so it is
+      booked to the development fund and queued for a group to be assigned.
+
+    Replaces the previously hard-coded regexes so treasurers can manage the
+    spellings without a code change."""
+    class Kind(models.TextChoices):
+        NUMBERED = "NUMBERED", "Captures a group number"
+        WORD = "WORD", "Development marker (no number)"
+
+    label = models.CharField(max_length=60,
+        help_text="A short name for this pattern, e.g. 'dev/grp + number'.")
+    pattern = models.CharField(max_length=200,
+        help_text="Python regex, matched against the normalised reference "
+                  "(lowercase, no spaces). NUMBERED patterns need one (…) group "
+                  "for the number.")
+    kind = models.CharField(max_length=10, choices=Kind.choices,
+                            default=Kind.NUMBERED)
+    enabled = models.BooleanField(default=True)
+    sort_order = models.PositiveSmallIntegerField(default=100,
+        help_text="Lower numbers are tried first.")
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                   on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+
+    def __str__(self):
+        return self.label
+
+    def clean(self):
+        import re
+        from django.core.exceptions import ValidationError
+        try:
+            rx = re.compile(self.pattern)
+        except re.error as exc:
+            raise ValidationError({"pattern": f"Invalid regular expression: {exc}"})
+        if self.kind == self.Kind.NUMBERED and rx.groups < 1:
+            raise ValidationError({"pattern": "A numbered pattern needs a capturing "
+                "group '(\\d+)' for the group number."})
 
 
 class TransactionQuerySet(models.QuerySet):

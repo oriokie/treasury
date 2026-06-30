@@ -1,0 +1,34 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Print {{ c.get_method_display }} {{ c.instrument_number }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Print payment</h1><div class="sub">{{ c.get_method_display }} {{ c.instrument_number }}</div></div>
+<button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div>
+
+<div class="cheque-doc">
+  <div class="cheque-row"><div class="cheque-lbl">Date</div><div class="cheque-val mono">{{ c.date_issued|date:"d / m / Y"|default:"____ / ____ / ________" }}</div></div>
+  <div class="cheque-row"><div class="cheque-lbl">Pay</div><div class="cheque-val">{{ c.payee|default:"________________________________" }}</div></div>
+  <div class="cheque-row"><div class="cheque-lbl">The sum of</div><div class="cheque-val">{{ amount_words }}</div></div>
+  <div class="cheque-amount mono">KES {{ c.amount|floatformat:2|intcomma }}</div>
+  {% if c.note %}<div class="cheque-row"><div class="cheque-lbl">Being</div><div class="cheque-val">{{ c.note }}</div></div>{% endif %}
+  <div class="cheque-sigs">
+    <div class="sig"><div class="sig-line">{{ c.signatory_1 }}</div><div class="sig-cap">Signatory 1</div></div>
+    <div class="sig"><div class="sig-line">{{ c.signatory_2 }}</div><div class="sig-cap">Signatory 2</div></div>
+  </div>
+  <div class="cheque-meta no-print">Source: {{ c.source_label }} · Status: {{ c.get_status_display }}</div>
+</div>
+
+<style>
+.cheque-doc{max-width:640px;margin:1rem auto;padding:1.6rem 1.8rem;border:2px solid var(--ink);
+  border-radius:10px;background:#fffdf7;font-size:1.02rem}
+.cheque-row{display:flex;gap:1rem;margin-bottom:.9rem;align-items:baseline}
+.cheque-lbl{width:90px;color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.04em}
+.cheque-val{flex:1;border-bottom:1px dotted #999;padding-bottom:.2rem}
+.cheque-amount{text-align:right;font-size:1.3rem;font-weight:700;border:1.5px solid var(--ink);
+  display:inline-block;float:right;padding:.3rem .8rem;border-radius:6px;margin:.4rem 0 1.2rem}
+.cheque-sigs{display:flex;gap:2rem;margin-top:2.4rem;clear:both}
+.sig{flex:1;text-align:center}.sig-line{min-height:1.6rem;border-bottom:1px solid var(--ink)}
+.sig-cap{font-size:.78rem;color:var(--muted);margin-top:.3rem}
+.cheque-meta{margin-top:1.4rem;font-size:.8rem;color:var(--muted)}
+@media print{.no-print{display:none}.cheque-doc{border-color:#000}}
+</style>
+{% endblock %}

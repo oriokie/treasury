@@ -18,10 +18,64 @@ from giving.models import AllocationRule
 _MIN = _dt.date.min
 _MAX = _dt.date.max
 
-# Matches the many dev-group spellings. Looks for a dev/grp marker then a number.
+# Fallback spellings, used only if no patterns are configured in the database.
 DEV_NUM_RE = re.compile(r"(?:dev(?:e?l?o?p?)?(?:gr(?:ou)?p?|gp|g)?|gr(?:ou)?p|gp)0*(\d+)")
-# A reference that mentions development at all (even without a number).
 DEV_WORD_RE = re.compile(r"(?:dev(?:elop)?|grp|group|gp)")
+
+# Compiled dev-group patterns, cached in-process and invalidated by a signal when
+# a DevGroupPattern is saved/deleted (see giving/signals.py).
+_PATTERN_CACHE = {"loaded": False, "numbered": [], "word": []}
+
+
+def clear_pattern_cache():
+    _PATTERN_CACHE["loaded"] = False
+    _PATTERN_CACHE["numbered"] = []
+    _PATTERN_CACHE["word"] = []
+
+
+def _dev_patterns():
+    """Return ([compiled numbered], [compiled word]) from the configured
+    DevGroupPattern rows, falling back to the built-in spellings if none exist."""
+    if _PATTERN_CACHE["loaded"]:
+        return _PATTERN_CACHE["numbered"], _PATTERN_CACHE["word"]
+    numbered, word = [], []
+    try:
+        from giving.models import DevGroupPattern
+        rows = list(DevGroupPattern.objects.filter(enabled=True)
+                    .order_by("sort_order", "id"))
+    except Exception:
+        rows = []
+    for r in rows:
+        try:
+            rx = re.compile(r.pattern)
+        except re.error:
+            continue
+        (numbered if r.kind == "NUMBERED" else word).append(rx)
+    if not numbered and not word:
+        numbered, word = [DEV_NUM_RE], [DEV_WORD_RE]  # safe fallback
+    _PATTERN_CACHE["numbered"] = numbered
+    _PATTERN_CACHE["word"] = word
+    _PATTERN_CACHE["loaded"] = True
+    return numbered, word
+
+
+def detect_dev_group(s):
+    """Given a normalised reference, return ('NUMBER', n), ('WORD', None) or None
+    using the configured patterns. Shared by allocate() and the live tester."""
+    numbered, word = _dev_patterns()
+    for rx in numbered:
+        m = rx.search(s)
+        if m and m.groups():
+            try:
+                n = int(m.group(1))
+            except (TypeError, ValueError):
+                continue
+            if 1 <= n <= 99:
+                return ("NUMBER", n)
+    for rx in word:
+        if rx.search(s):
+            return ("WORD", None)
+    return None
 
 
 def normalize_reference(reference):
@@ -70,9 +124,9 @@ def allocate(reference, date=None):
     if not s:
         return "UNALLOCATED", "REVIEW"
 
-    m = DEV_NUM_RE.search(s)
-    if m and 1 <= int(m.group(1)) <= 99:
-        return f"DEV_GROUP_{int(m.group(1))}", "AUTO"
+    hit = detect_dev_group(s)
+    if hit and hit[0] == "NUMBER":
+        return f"DEV_GROUP_{hit[1]}", "AUTO"
 
     # church-configured numbered fund families, e.g. EXPENSE<n> -> fund "CAMP_<n>".
     # One config line covers every group; resolves only when that fund exists.
@@ -92,14 +146,14 @@ def allocate(reference, date=None):
         if m2 and 1 <= int(m2.group(1)) <= 99:
             return f"DEV_GROUP_{int(m2.group(1))}", "AUTO"
 
-    exact = list(AllocationRule.objects.filter(reference=s).select_related(
+    exact = list(AllocationRule.objects.filter(reference=s, archived=False).select_related(
         "department", "split_fund"))
     rule = _pick(exact, date)
     if rule:
         return _result(rule)
 
     # pattern rules (starts-with / ends-with / contains): most specific first
-    patterns = list(AllocationRule.objects.exclude(
+    patterns = list(AllocationRule.objects.filter(archived=False).exclude(
         match_type=AllocationRule.MatchType.EXACT).select_related(
         "department", "split_fund"))
     order = {AllocationRule.MatchType.STARTS: 0, AllocationRule.MatchType.ENDS: 1,
@@ -131,7 +185,7 @@ def allocate(reference, date=None):
         return _result(perm_hits[0])
 
     # development without a usable number -> still clearly a dev-group gift
-    if DEV_WORD_RE.search(s):
+    if hit and hit[0] == "WORD":
         return "DEV_GROUP_NA", "AUTO"
 
     return "UNALLOCATED", "REVIEW"
