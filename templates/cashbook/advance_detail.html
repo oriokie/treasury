@@ -21,7 +21,7 @@
 <div class="card u-mb"><div class="hd">Statement — how the advance is flowing</div><div class="bd">
 <table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to staff</th><th class="num">Accounted</th><th class="num">Still to account</th></tr></thead>
 <tbody>{% for r in statement %}<tr>
-  <td>{{ r.date|date:"d M y" }}</td><td>{{ r.label }}</td>
+  <td>{{ r.date|date:"d M y" }}</td><td>{{ r.label }}{% if r.topup_id and is_treasurer %} <form method="post" action="{% url 'advance_topup_reverse' adv.id r.topup_id %}" class="inline-form" onsubmit="return confirm('Reverse this top-up? The advance total will drop and the source is restored.')" style="display:inline">{% csrf_token %}<button class="link u-xs" style="border:none;background:none;color:var(--red,#b3261e);cursor:pointer">reverse</button></form>{% endif %}</td>
   <td class="num mono">{% if r.out != None %}{{ r.out|floatformat:2|intcomma }}{% endif %}</td>
   <td class="num mono">{% if r.back != None %}{{ r.back|floatformat:2|intcomma }}{% endif %}</td>
   <td class="num mono">{{ r.running|floatformat:2|intcomma }}</td></tr>{% endfor %}

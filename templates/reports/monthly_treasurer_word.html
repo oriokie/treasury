@@ -60,10 +60,19 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 <tr class="grand"><td>Net assets / funds</td><td class="num">{{ sofp.net_assets|floatformat:2|intcomma }}</td></tr>
 </table>
 
+{% if net_asset_changes %}
+<h2>5. Statement of changes in net assets</h2>
+<table>
+<tr><td>Net assets at start of period</td><td class="num">{{ net_asset_changes.opening|floatformat:0|intcomma }}</td></tr>
+<tr><td>Surplus / (deficit) for the period</td><td class="num">{{ net_asset_changes.surplus|floatformat:0|intcomma }}</td></tr>
+<tr class="grand"><td>Net assets at end of period</td><td class="num">{{ net_asset_changes.closing|floatformat:0|intcomma }}</td></tr>
+</table>
+{% endif %}
+
 {% if camp_goals %}
-<h2>5. Camp Meeting goals</h2>
-<table><tr><th>Goal</th><th>Type</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% Complete</th></tr>
-{% for g in camp_goals %}<tr><td>{{ g.name }}</td><td>{{ g.kind }}</td>
+<h2>6. Camp Meeting goals</h2>
+<table><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% Complete</th></tr>
+{% for g in camp_goals %}<tr><td>{{ g.name }}</td>
 <td class="num">{{ g.goal|floatformat:0|intcomma }}</td><td class="num">{{ g.collected|floatformat:0|intcomma }}</td>
 <td class="num">{{ g.variance|floatformat:0|intcomma }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
 </table>

@@ -39,6 +39,15 @@
     <tr><td class="muted">Claimant</td><td>{{ expense.claimant|default:"—" }}</td></tr>
     <tr><td class="muted">Status</td><td><span class="pill {% if expense.status == 'PAID' %}pill-green{% elif expense.status == 'APPROVED' %}pill-blue{% elif expense.status == 'REJECTED' %}pill-red{% else %}pill-amber{% endif %}">{{ expense.get_status_display }}</span></td></tr>
     {% if expense.voucher_no %}<tr><td class="muted">Voucher</td><td>{{ expense.voucher_no }}</td></tr>{% endif %}
+    {% with pay=expense.payments.first %}
+    {% if pay %}
+    <tr><td class="muted">Payment</td><td>{{ pay.get_method_display }} {{ pay.instrument_number|default:"—" }}
+      <span class="pill {% if pay.status == 'CLEARED' %}pill-green{% elif pay.status == 'VOIDED' or pay.status == 'STOPPED' %}pill-red{% else %}pill-amber{% endif %}">{{ pay.get_status_display }}</span>
+      <a class="link u-xs" href="{% url 'payment_register' %}">open register →</a></td></tr>
+    {% elif is_treasurer and expense.status == 'APPROVED' or is_treasurer and expense.status == 'PAID' %}
+    <tr><td class="muted">Payment</td><td><a class="link" href="{% url 'payment_register' %}?for_kind=EXPENSE&amp;for_id={{ expense.id }}">Issue a payment (cheque / EFT / M-Pesa) →</a></td></tr>
+    {% endif %}
+    {% endwith %}
     {% for ch in expense.charges.all %}<tr><td class="muted">M-Pesa / bank charge</td><td class="num mono">KES {{ ch.amount|floatformat:2|intcomma }} <a class="link" href="{% url 'expense_detail' ch.id %}">view</a></td></tr>{% endfor %}
     {% if expense.charge_for_id %}<tr><td class="muted">Charge for</td><td><a class="link" href="{% url 'expense_detail' expense.charge_for_id %}">{{ expense.charge_for.description }}</a></td></tr>{% endif %}
     {% if expense.refunds_total %}<tr><td class="muted">Refunded</td><td class="num mono">− KES {{ expense.refunds_total|floatformat:2|intcomma }}</td></tr>

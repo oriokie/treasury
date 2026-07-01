@@ -3,19 +3,35 @@
 {% block content %}
 <div class="page-head"><div><h1>Staff advances (imprest)</h1><div class="sub">Cash advanced to staff before expenses, settled against receipts</div></div>
 {% if can_enter_data %}<a class="btn btn-sm" href="{% url 'advance_new' %}">+ New advance</a>{% endif %}</div>
+
+{% if total_outstanding %}
+<div class="card u-mb"><div class="bd" style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+  <div><div class="help u-mt-0">Outstanding (not yet accounted)</div>
+    <div class="mono" style="font-size:1.35rem;font-weight:700;color:var(--forest)">KES {{ total_outstanding|floatformat:2|intcomma }}</div></div>
+  <div style="border-left:1px solid var(--line);padding-left:1.5rem">
+    <div class="help u-mt-0">Bank-funded <span class="muted">— shown in bank reconciliation</span></div>
+    <div class="mono" style="font-weight:600">KES {{ bank_outstanding|floatformat:2|intcomma }}</div></div>
+  <div style="border-left:1px solid var(--line);padding-left:1.5rem">
+    <div class="help u-mt-0">Petty-funded <span class="muted">— reflected in the petty cash float</span></div>
+    <div class="mono" style="font-weight:600">KES {{ petty_outstanding|floatformat:2|intcomma }}</div></div>
+</div></div>
+{% endif %}
+
 <div class="table-wrap"><table class="ledger">
-  <thead><tr><th>Staff</th><th>Purpose</th><th>Fund</th><th class="num">Advanced</th><th class="num">Settled</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Staff</th><th>Purpose</th><th>Fund</th><th>Source</th><th class="num">Advanced</th><th class="num">Settled</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
   <tbody>
   {% for a in advances %}<tr>
     <td>{{ a.staff_name }}</td><td class="muted">{{ a.purpose|truncatechars:40 }}</td>
     <td>{{ a.department.name }}</td>
+    <td>{% if a.from_petty_cash %}<span class="pill pill-amber u-xs">Petty cash</span>{% else %}<span class="pill pill-blue u-xs">Bank</span>{% endif %}</td>
     <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
     <td class="num mono">{{ a.settled_total|floatformat:2|intcomma }}</td>
     <td class="num mono">{{ a.balance|floatformat:2|intcomma }}</td>
     <td><span class="pill {% if a.status == 'SETTLED' or a.status == 'CLOSED' %}pill-green{% elif a.status == 'PARTLY' %}pill-amber{% else %}pill-blue{% endif %}">{{ a.get_status_display }}</span></td>
     <td><a class="link" href="{% url 'advance_detail' a.id %}">Open</a></td>
-  </tr>{% empty %}<tr><td colspan="8" class="empty">No advances recorded yet.</td></tr>{% endfor %}
+  </tr>{% empty %}<tr><td colspan="9" class="empty">No advances recorded yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% include 'partials/pagination.html' %}
+{% if total_outstanding %}<p class="help">Bank-funded advances appear as a reconciling item in the <a class="link" href="{% url 'reconciliation_list' %}">bank reconciliation</a>; petty-funded advances reduce the <a class="link" href="{% url 'petty_cash' %}">petty cash float</a> and show there as an "out" movement. Neither is double-counted.</p>{% endif %}
 {% endblock %}

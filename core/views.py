@@ -110,6 +110,12 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["trust_outstanding"] = sum((r["to_remit"] for r in ctx["trust_rows"]), Decimal(0))
 
         ctx["queue_count"] = Transaction.objects.filter(
+            allocation_status=Transaction.Status.REVIEW).exclude(
+            direction=Transaction.Direction.DEBIT,
+            channel=Transaction.Channel.BANK).count()
+        ctx["debit_count"] = Transaction.objects.filter(
+            direction=Transaction.Direction.DEBIT,
+            channel=Transaction.Channel.BANK,
             allocation_status=Transaction.Status.REVIEW).count()
         ctx["pending_expenses"] = Expense.objects.filter(
             status=Expense.Status.PENDING).count()
@@ -185,9 +191,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         from django.urls import reverse as _rev
         attention = []
         if ctx["queue_count"]:
-            attention.append({"label": "transactions need allocating",
+            attention.append({"label": "giving items need allocating",
                 "count": ctx["queue_count"], "tone": "warn",
                 "url": _rev("queue"), "icon": "◷"})
+        if ctx.get("debit_count"):
+            attention.append({"label": "bank debits need classifying",
+                "count": ctx["debit_count"], "tone": "warn",
+                "url": _rev("debit_queue"), "icon": "◷"})
         if ctx["pending_expenses"]:
             attention.append({"label": "expenses awaiting approval",
                 "count": ctx["pending_expenses"], "tone": "warn",
@@ -312,7 +322,7 @@ class SettingsView(TreasurerRequiredMixin, View):
             to = request.POST.get("test_to", "").strip()
             log = send_sms(to, "Test message from the church treasury system.", cfg)
             messages.info(request, f"Test SMS: {log.get_status_display()} — {log.response[:120]}")
-            return redirect("settings")
+            return redirect(reverse("settings") + "?tab=sms")
         if "test_email" in request.POST:
             from core.services.email import test_email
             form = SiteConfigForm(request.POST, instance=cfg)
@@ -322,7 +332,7 @@ class SettingsView(TreasurerRequiredMixin, View):
             ok, detail = test_email(to, cfg)
             (messages.success if ok else messages.error)(
                 request, f"Email test {'sent' if ok else 'failed'} — {detail}")
-            return redirect("settings")
+            return redirect(reverse("settings") + "?tab=email")
         if "test_llm" in request.POST:
             from core.services.assistant import test_llm
             form = SiteConfigForm(request.POST, instance=cfg)
@@ -338,12 +348,16 @@ class SettingsView(TreasurerRequiredMixin, View):
                                           f"\u201c{detail}\u201d")
             else:
                 messages.error(request, f"Assistant LLM test failed — {detail}")
-            return redirect("settings")
+            return redirect(reverse("settings") + "?tab=assistant")
         form = SiteConfigForm(request.POST, instance=cfg)
         if form.is_valid():
             form.save()
             messages.success(request, "Settings saved.")
-            return redirect("settings")
+            tab = (request.POST.get("active_tab") or "").strip()
+            url = reverse("settings")
+            if tab:
+                url += f"?tab={tab}"
+            return redirect(url)
         return render(request, self.template_name, {
             "form": form, "recent_sms": SmsLog.objects.all()[:10]})
 

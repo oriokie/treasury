@@ -285,18 +285,20 @@ class FundLedgerView(PeriodMixin, TemplateView):
 
         # subgroup breakdown export (sub-accounts beneath this fund)
         if mode in ("subgroups", "subgroups-csv"):
-            header = ["ID", "Subgroup", "Type", "Receipts", "Payments", "Closing balance"]
+            header = ["ID", "Subgroup", "Type", "Opening", "Receipts", "Payments", "Closing balance"]
             rows = []
             for r in ctx["subgroups"]:
                 sub = r["sub"]
                 rows.append([sub.id, sub.name,
                              "Trust" if sub.is_trust else "Local",
-                             float(r["receipts"]), float(r["payments"]), float(r["closing"])])
+                             float(r["opening"]), float(r["receipts"]),
+                             float(r["payments"]), float(r["closing"])])
             for r in ctx.get("dev_rows", []):
                 g = r["group"]
                 rows.append([getattr(g, "id", ""), g.name, "Local",
-                             float(r["receipts"]), "", float(r["receipts"])])
-            rows.append(["", "TOTAL", "", "", "", float(ctx["subgroup_total"])])
+                             "", float(r["receipts"]), "", float(r["receipts"])])
+            rows.append(["", "TOTAL", "", float(ctx["combined_opening"]), "", "",
+                         float(ctx["subgroup_total"])])
             fname = f"fund-{dept.slug or dept.id}-subgroups-{ctx['start']}-{ctx['end']}"
             if mode == "subgroups-csv":
                 return csv_response(fname + ".csv", header, rows)
@@ -375,8 +377,10 @@ class FundLedgerView(PeriodMixin, TemplateView):
         for sub in subs:
             r = sub_rec.get(sub.id, Decimal(0))
             p = sub_pay.get(sub.id, Decimal(0))
-            closing = (sub.opening_balance or Decimal(0)) + r - p
-            subs_rows.append({"sub": sub, "receipts": r, "payments": p, "closing": closing})
+            opening = sub.opening_balance or Decimal(0)
+            closing = opening + r - p
+            subs_rows.append({"sub": sub, "opening": opening, "receipts": r,
+                              "payments": p, "closing": closing})
             sub_total += closing
         subs_rows.sort(key=lambda x: x["receipts"], reverse=True)   # busiest first
         subs = subs_rows
@@ -857,7 +861,7 @@ class ReconciliationView(PeriodMixin, TemplateView):
             ctx["rec_sub_total"] = sum((i.amount for i in subs), Decimal(0))
             ctx["rec_computed_book"] = (rec.bank_balance + ctx["rec_add_total"]
                                         - ctx["rec_sub_total"])
-            ctx["rec_variance"] = ctx["rec_computed_book"] - rec.book_balance
+            ctx["rec_variance"] = ctx["rec_computed_book"] - (rec.book_balance or Decimal(0))
         return ctx
 
 
@@ -1985,7 +1989,7 @@ class BoardReportView(PeriodMixin, TemplateView):
         asset_nbv = Decimal(0)
         try:
             from assets.models import FixedAsset
-            asset_nbv = sum((a.net_book_value(e) for a in FixedAsset.objects.filter(active=True)),
+            asset_nbv = sum((a.net_book_value(e) for a in FixedAsset.objects.filter(disposed=False)),
                             Decimal(0))
         except Exception:
             from core.utils import log_exception as _lx; _lx('reports/views.py')
@@ -2365,8 +2369,8 @@ class FinancialPositionView(ReadAccessMixin, TemplateView):
                 ["Liabilities", "Accruals", accruals],
                 ["Liabilities", "Receipts pending allocation", pending],
                 ["Liabilities", "TOTAL LIABILITIES", total_liabilities],
-                ["Net assets", "Unallocated funds", unallocated],
-                ["Net assets", "Allocated funds (designated)", allocated],
+                ["Net assets", "General net assets", unallocated],
+                ["Net assets", "Designated development funds", allocated],
                 ["Net assets", "Invested in property", nbv],
                 ["Net assets", "Accrual adjustment", accrual_adj],
                 ["Net assets", "TOTAL NET ASSETS", net_assets],
@@ -2456,7 +2460,7 @@ class ChangesInNetAssetsView(PeriodMixin, TemplateView):
         t_close = un["closing"] + al["closing"] + nbv_close
 
         if request.GET.get("export") in ("csv", "xlsx"):
-            header = ["Line", "Unallocated", "Allocated", "Invested in property", "Total"]
+            header = ["Line", "General net assets", "Designated development funds", "Invested in property", "Total"]
             data = [
                 ["Net assets, beginning", un["opening"], al["opening"], nbv_open, t_open],
                 ["Surplus/(deficit) from operations", un["op_surplus"], al["op_surplus"], 0, t_opsurplus],
@@ -2963,10 +2967,17 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         from reports.services import treasurer as T
         ctx = super().get_context_data(**kwargs)
 
-        # month selection (default current month)
-        try:
-            as_of = _dt.date.fromisoformat(self.request.GET.get("as_of", ""))
-        except ValueError:
+        # month selection (default current month). An <input type="month">
+        # submits "YYYY-MM"; a date picker may submit "YYYY-MM-DD" — accept both.
+        raw = (self.request.GET.get("as_of") or "").strip()
+        as_of = None
+        for fmt in ("%Y-%m-%d", "%Y-%m"):
+            try:
+                as_of = _dt.datetime.strptime(raw, fmt).date()
+                break
+            except ValueError:
+                continue
+        if as_of is None:
             as_of = _dt.date.today()
         s, e = T.month_bounds(as_of)
         ctx["as_of"] = as_of; ctx["start"] = s; ctx["end"] = e
@@ -3076,6 +3087,32 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             "accrual_adj": accrual_adj,
             "net_assets": unallocated + allocated + nbv + accrual_adj}
 
+        # Statement of changes in net assets: opening + surplus/(deficit) = closing.
+        try:
+            s_prev = s - _dt.timedelta(days=1)
+            _closing_na = unallocated + allocated + nbv + accrual_adj
+            prev_rows = balances.department_summary(None, s_prev)
+            local_prev = [r for r in prev_rows if not r["is_trust"]]
+            lf_prev = sum((r["closing"] for r in local_prev), Decimal(0))
+            alloc_prev = sum((r["closing"] for r in local_prev
+                              if r["department"].category == "DEVELOPMENT"), Decimal(0))
+            nbv_prev = nbv
+            try:
+                from assets.models import nbv_total as _nbvt
+                nbv_prev = _nbvt(s_prev)
+            except Exception:  # noqa: BLE001
+                pass
+            accr_prev = (unexpired_prepayments_total(s_prev)
+                         - open_payables_total(s_prev) - open_accruals_total(s_prev))
+            opening_na = lf_prev + nbv_prev + accr_prev
+            ctx["net_asset_changes"] = {
+                "opening": opening_na,
+                "surplus": _closing_na - opening_na,
+                "closing": _closing_na}
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx3; _lx3("MT net-asset changes")
+            ctx["net_asset_changes"] = None
+
         # 9 & 10) cash-flow statements (operating / investing / financing) for the month
         local_receipts = sum((r["receipts"] for r in rows if not r["is_trust"]), Decimal(0))
         trust_receipts = sum((r["receipts"] for r in rows if r["is_trust"]), Decimal(0))
@@ -3100,7 +3137,123 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         # short notes per section (AI narrative if available, else concise text)
         ctx["notes"] = self._notes(ctx)
         ctx["ai_summary"] = self._ai_summary(ctx)
+        ctx["insights"] = self._section_insights(ctx)
         return ctx
+
+    def _section_insights(self, ctx):
+        """A line or two of analysis per section — trend direction and a takeaway.
+        Rule-based so it always works; enriched by the LLM when it is enabled."""
+        from decimal import Decimal
+        ins = {}
+
+        def pct_change(now, prev):
+            now = Decimal(str(now or 0)); prev = Decimal(str(prev or 0))
+            if prev == 0:
+                return None
+            return float((now - prev) / prev * 100)
+
+        def phrase(delta):
+            if delta is None:
+                return "no comparable prior period"
+            if delta > 1:
+                return f"up {delta:.0f}% on the prior period"
+            if delta < -1:
+                return f"down {abs(delta):.0f}% on the prior period"
+            return "broadly flat versus the prior period"
+
+        c = ctx.get("collections") or {}
+        yearly = ctx.get("yearly") or []
+        # collections: compare YTD to last year's YTD
+        try:
+            if len(yearly) >= 2:
+                d = pct_change(yearly[-1]["total"], yearly[-2]["total"])
+                ins["collections"] = (
+                    f"Year-to-date collections are {phrase(d)}. Trust makes up "
+                    f"{(c.get('trust',0)/c['total']*100):.0f}% of this month's receipts."
+                    if c.get("total") else f"Collections are {phrase(d)}.")
+        except Exception:
+            pass
+        # trust trend
+        tt = ctx.get("trust_trend") or {}
+        try:
+            rows = tt.get("rows") or []
+            if rows:
+                cols = tt.get("cells_key") or []
+                last_two = [sum(r["cells"][-1] for r in rows if r["cells"]),
+                            sum(r["cells"][-2] for r in rows if len(r.get("cells", [])) > 1)]
+                d = pct_change(last_two[0], last_two[1])
+                ins["trust_trend"] = (f"Receipted trust giving is {phrase(d)} month-on-month. "
+                                      "Only receipted trust is a firm remittance liability.")
+        except Exception:
+            pass
+        # income & expenditure
+        isr = ctx.get("income_stmt") or {}
+        try:
+            surplus = isr.get("surplus", 0) or 0
+            if surplus >= 0:
+                ins["income"] = (f"Operations ran a surplus of {float(surplus):,.0f} this "
+                                 "month — income covered operating costs.")
+            else:
+                ins["income"] = (f"Operations ran a deficit of {abs(float(surplus)):,.0f} — "
+                                 "spending outpaced local income this month; watch reserves.")
+        except Exception:
+            pass
+        # cash-flow
+        cf = ctx.get("cashflow") or {}
+        try:
+            nc = cf.get("net_change", 0) or 0
+            direction = "rose" if nc > 0 else ("fell" if nc < 0 else "held steady")
+            ins["cashflow"] = (f"Cash {direction} by {abs(float(nc)):,.0f} over the month, "
+                               f"ending at {float(cf.get('cash_close', 0)):,.0f}.")
+        except Exception:
+            pass
+        # SoFP / net assets
+        sofp = ctx.get("sofp") or {}
+        try:
+            na = float(sofp.get("net_assets", 0) or 0)
+            tp = float(sofp.get("trust_payable", sofp.get("trust_liab", 0)) or 0)
+            ins["sofp"] = (f"Net assets stand at {na:,.0f}. Trust funds of {tp:,.0f} are a "
+                           "liability owed to the field, not the church's own reserves.")
+        except Exception:
+            pass
+        # camp goals
+        try:
+            goals = ctx.get("camp_goals") or []
+            if goals:
+                best = max(goals, key=lambda g: g["pct"])
+                ins["camp"] = (f"{best['name']} is {best['pct']}% funded. "
+                               + ("On track." if best["pct"] >= 60 else
+                                  "Momentum needed to reach the target."))
+        except Exception:
+            pass
+
+        # optional single LLM enrichment pass (kept cheap; falls back silently)
+        try:
+            from core.services.assistant import _llm_call
+            cfg = SiteConfig.get()
+            if getattr(cfg, "llm_enabled", False):
+                import json as _json
+                facts = {
+                    "month": f"{ctx['end']:%B %Y}",
+                    "collections_total": float(c.get("total", 0) or 0),
+                    "surplus": float(isr.get("surplus", 0) or 0),
+                    "net_assets": float(sofp.get("net_assets", 0) or 0),
+                    "cash_change": float(cf.get("net_change", 0) or 0),
+                }
+                prompt = (
+                    "You are a church treasurer analyst. Given these monthly figures, "
+                    "return ONLY a JSON object with keys collections, income, cashflow, "
+                    "sofp — each a single insightful sentence (max 22 words) about the "
+                    "trend or what to watch. No preamble.\n" + _json.dumps(facts))
+                txt, err = _llm_call(prompt, cfg, context="(section insights)")
+                if txt and not err:
+                    obj = _json.loads(txt[txt.find("{"):txt.rfind("}") + 1])
+                    for k, v in obj.items():
+                        if v:
+                            ins[k] = str(v)
+        except Exception:
+            pass
+        return ins
 
     def _notes(self, ctx):
         """Concise, accurate one-liners describing each section."""
@@ -3260,6 +3413,15 @@ class MonthlyReportExcelView(ReadAccessMixin, View):
                 r = drow(ws4, r, g["name"], g["goal"], g["collected"],
                          g["variance"], f"{g['pct']}%")
 
+        if ctx.get("net_asset_changes"):
+            nac = ctx["net_asset_changes"]
+            ws5 = wb.create_sheet("Changes in Net Assets")
+            r = sheet(ws5, "Statement of Changes in Net Assets")
+            r = hrow(ws5, r, ["Item", "Amount"])
+            r = drow(ws5, r, "Net assets at start of period", nac["opening"])
+            r = drow(ws5, r, "Surplus / (deficit) for the period", nac["surplus"])
+            r = drow(ws5, r, "Net assets at end of period", nac["closing"], bold_row=True)
+
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
         fname = f"treasurer_report_{ctx['end']:%Y_%m}.xlsx"
         resp = HttpResponse(buf.getvalue(),
@@ -3278,5 +3440,108 @@ class MonthlyReportWordView(ReadAccessMixin, View):
         html = render(request, "reports/monthly_treasurer_word.html", ctx).content
         fname = f"treasurer_report_{ctx['end']:%Y_%m}.doc"
         resp = HttpResponse(html, content_type="application/msword")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+
+class MonthlyReportRtfView(ReadAccessMixin, View):
+    """Download the Monthly Treasurer's Report as an RTF document. RTF opens
+    cleanly in Apple Pages, Microsoft Word, LibreOffice and Google Docs, so Mac
+    users get a natively-editable file with no extra server library."""
+
+    def get(self, request):
+        from django.http import HttpResponse
+        ctx = _monthly_report_context(request)
+
+        def esc(s):
+            out = []
+            for ch in str(s):
+                o = ord(ch)
+                if ch in "\\{}":
+                    out.append("\\" + ch)
+                elif o > 127:
+                    out.append(f"\\u{o}?")
+                else:
+                    out.append(ch)
+            return "".join(out)
+
+        def money(v):
+            try:
+                return f"{float(v):,.0f}"
+            except (TypeError, ValueError):
+                return str(v)
+
+        p = [r"{\rtf1\ansi\ansicpg1252\deff0"
+             r"{\fonttbl{\f0\fswiss Calibri;}{\f1\froman Georgia;}}"]
+        p.append(r"\pard\qc\f1\b\fs32 " + esc(ctx.get("church") or "Church Treasury")
+                 + r"\b0\par")
+        p.append(r"\qc\fs26 Monthly Treasurer's Report\par")
+        p.append(r"\qc\fs18 For the month of " + esc(f"{ctx['end']:%B %Y}")
+                 + r" \'b7 prepared " + esc(f"{ctx['today']:%d %b %Y}")
+                 + r"\par\pard\fs20 ")
+        if ctx.get("ai_summary"):
+            p.append(r"\par\i " + esc(ctx["ai_summary"]) + r"\i0\par")
+
+        def heading(n):
+            p.append(r"\par\f1\b\fs24 " + esc(n) + r"\b0\f0\fs20\par")
+
+        tabdef = r"\tqr\tx8000 "
+
+        def row(label, value, bold=False):
+            b = r"\b " if bold else ""
+            b0 = r"\b0 " if bold else ""
+            p.append(b + esc(label) + r"\tab " + money(value) + b0 + r"\par")
+
+        heading("1. Collections summary")
+        p.append(tabdef)
+        for r_ in ctx.get("collections", {}).get("rows", []):
+            if r_.get("receipts"):
+                row(r_["department"].name, r_["receipts"])
+        row("Total collections", ctx.get("collections", {}).get("total", 0), bold=True)
+
+        isr = ctx.get("income_stmt") or {}
+        heading("2. Income and expenditure statement")
+        p.append(tabdef)
+        row("Local income", isr.get("income", 0))
+        row("Operating expenditure", -(isr.get("expense", 0) or 0))
+        row("Surplus / (deficit)", isr.get("surplus", 0), bold=True)
+
+        heading("3. Local fund movements")
+        p.append(tabdef)
+        for r_ in ctx.get("local_statement", {}).get("rows", []):
+            row(r_["department"].name, r_.get("closing", 0))
+        row("Total", ctx.get("local_statement", {}).get("totals", {}).get("closing", 0),
+            bold=True)
+
+        sofp = ctx.get("sofp") or {}
+        heading("4. Statement of financial position")
+        p.append(tabdef)
+        row("Cash and bank", sofp.get("cash_on_hand", sofp.get("cash", 0)))
+        if sofp.get("nbv"):
+            row("Property (net book value)", sofp.get("nbv", 0))
+        row("Trust funds payable", sofp.get("trust_payable", sofp.get("trust_liab", 0)))
+        row("General net assets", sofp.get("unallocated", 0))
+        row("Designated development funds", sofp.get("allocated", 0))
+        row("Total net assets", sofp.get("net_assets", 0), bold=True)
+
+        nac = ctx.get("net_asset_changes")
+        if nac:
+            heading("5. Statement of changes in net assets")
+            p.append(tabdef)
+            row("Net assets at start of period", nac["opening"])
+            row("Surplus / (deficit) for the period", nac["surplus"])
+            row("Net assets at end of period", nac["closing"], bold=True)
+
+        if ctx.get("camp_goals"):
+            heading("6. Camp Meeting goals")
+            p.append(tabdef)
+            for g in ctx["camp_goals"]:
+                row(f"{g['name']} ({g['pct']}%)", g["goal"])
+
+        p.append(r"\par\par\pard Treasurer: ________________"
+                 r"\tab Reviewed by: ________________\par}")
+
+        fname = f"treasurer_report_{ctx['end']:%Y_%m}.rtf"
+        resp = HttpResponse("\n".join(p), content_type="application/rtf")
         resp["Content-Disposition"] = f'attachment; filename="{fname}"'
         return resp

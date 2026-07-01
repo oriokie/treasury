@@ -54,6 +54,7 @@ urlpatterns = [
     path("board/", views.MonthlyTreasurerReportView.as_view(), name="report_board"),
     path("board/export/excel/", views.MonthlyReportExcelView.as_view(), name="report_board_excel"),
     path("board/export/word/", views.MonthlyReportWordView.as_view(), name="report_board_word"),
+    path("board/export/rtf/", views.MonthlyReportRtfView.as_view(), name="report_board_rtf"),
     path("board-classic/", views.BoardReportView.as_view(), name="report_board_classic"),
     path("board-settings/", views.BoardReportSettingsView.as_view(), name="board_settings"),
     path("pastor/", views.PastorReportView.as_view(), name="report_pastor"),

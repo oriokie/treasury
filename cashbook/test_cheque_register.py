@@ -66,13 +66,13 @@ class ChequeRegisterTests(TestCase):
             source_kind="EXPENSE", expense=self.e, recorded_by=self.u)
         rec = BankReconciliation.objects.create(statement_date=dt.date(2026, 6, 30),
             bank_balance=Decimal("0"), created_by=self.u)
-        b = self.c.get(f"/reconciliations/{rec.id}/").content.decode()
-        self.assertIn("000999", b)
-        self.c.post(f"/reconciliations/{rec.id}/", {"action": "add_unpresented_cheques"})
+        # unpresented cheques are auto-populated as a single reconciling item
+        self.c.get(f"/reconciliations/{rec.id}/")
         items = ReconciliationItem.objects.filter(reconciliation=rec, kind="UNPRESENTED")
         self.assertEqual(items.count(), 1)
         self.assertEqual(items.first().amount, Decimal("2500"))
-        # idempotent
-        self.c.post(f"/reconciliations/{rec.id}/", {"action": "add_unpresented_cheques"})
+        self.assertTrue(items.first().auto)
+        # idempotent across repeated views
+        self.c.get(f"/reconciliations/{rec.id}/")
         self.assertEqual(ReconciliationItem.objects.filter(
             reconciliation=rec, kind="UNPRESENTED").count(), 1)

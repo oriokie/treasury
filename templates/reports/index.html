@@ -16,7 +16,7 @@
   <a class="report-card" href="{% url 'report_daily' %}"><div class="rc-ic">☀</div><strong>Daily summary</strong><span>Income and expenses for a single day.</span></a>
   <a class="report-card" href="{% url 'report_weekly' %}"><div class="rc-ic">▤</div><strong>Weekly summary</strong><span>The week to a Sabbath: receipts and payments by fund.</span></a>
   <a class="report-card" href="{% url 'report_board' %}"><div class="rc-ic">★</div><strong>Monthly Treasurer's Report</strong><span>Board-ready: collections, trust &amp; LCB trends, statements, reconciliation.</span></a>
-  <a class="report-card" href="{% url 'report_monthly' %}"><div class="rc-ic">▤</div><strong>Monthly statement</strong><span>Opening, receipts, expenses &amp; closing per fund.</span></a>
+  <a class="report-card" href="{% url 'report_monthly' %}"><div class="rc-ic">▤</div><strong>Fund movement summary</strong><span>Opening, receipts, expenses &amp; closing per fund.</span></a>
   <a class="report-card" href="{% url 'report_offering' %}"><div class="rc-ic">▦</div><strong>Offering summary</strong><span>Each fund across the Sabbaths of the month.</span></a>
   <a class="report-card" href="{% url 'report_envelope_summary' %}"><div class="rc-ic">▦</div><strong>Envelope offering summary</strong><span>Funds across the Sabbaths, trust then local.</span></a>
   <a class="report-card" href="{% url 'report_envelope_sabbath' %}"><div class="rc-ic">✉</div><strong>Sabbath envelope statement</strong><span>Per-contributor split across funds for one Sabbath.</span></a>
@@ -50,7 +50,7 @@
   <a class="report-card" href="{% url 'report_dev_groups' %}"><div class="rc-ic">◈</div><strong>Development groups</strong><span>Progress of each group against target.</span></a>
   <a class="report-card" href="{% url 'report_annual' %}"><div class="rc-ic">▥</div><strong>Annual summary</strong><span>Income, expense &amp; net by year.</span></a>
   {% if is_treasurer %}<a class="report-card" href="{% url 'historical_manage' %}"><div class="rc-ic">▦</div><strong>Historical data</strong><span>Add or import prior-year &amp; monthly figures for trends.</span></a>{% endif %}
-  <a class="report-card" href="{% url 'report_reconciliation' %}"><div class="rc-ic">⇄</div><strong>Bank reconciliation</strong><span>Ledger vs bank, with unreconciled items.</span></a>
+  <a class="report-card" href="{% url 'report_reconciliation' %}"><div class="rc-ic">⇄</div><strong>Reconciliation summary</strong><span>Latest bank reconciliation: ledger vs bank balance.</span></a>
   <a class="report-card" href="{% url 'report_bank_position' %}"><div class="rc-ic">⚖</div><strong>Bank position check</strong><span>System bank balance vs the statement's closing balance — catches un-entered entries.</span></a>
   <a class="report-card" href="{% url 'auto_reconcile' %}"><div class="rc-ic">⟳</div><strong>Auto-reconciliation</strong><span>Confidence-scored matches of debits to expenses.</span></a>
   <a class="report-card" href="{% url 'reconciliation_list' %}"><div class="rc-ic">⇄</div><strong>Reconciliation sheet</strong><span>Unpresented cheques, cash at hand &amp; other items.</span></a>
@@ -59,7 +59,6 @@
 
 <section class="tabpane" data-pane="executive"><div class="report-grid">
   <a class="report-card" href="{% url 'executive' %}"><div class="rc-ic">📊</div><strong>Executive dashboard</strong><span>Live KPIs, charts and anomaly alerts.</span></a>
-  <a class="report-card" href="{% url 'report_board' %}"><div class="rc-ic">▦</div><strong>Board report</strong><span>One-page position, trust, health &amp; signatures.</span></a>
   <a class="report-card" href="{% url 'report_pastor' %}"><div class="rc-ic">✝</div><strong>Pastor's report</strong><span>Tithe, offerings, giving by group &amp; participation.</span></a>
   <a class="report-card" href="{% url 'report_conference' %}"><div class="rc-ic">🏛</div><strong>Conference submission</strong><span>Trust schedule for upward submission.</span></a>
   <a class="report-card" href="{% url 'report_financial_position' %}"><div class="rc-ic">⚖</div><strong>Statement of financial position</strong><span>Year-end balance sheet for the board.</span></a>

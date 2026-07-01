@@ -1,5 +1,101 @@
 # Changelog
 
+## v1.93.0 - fund opening column, payables tabs, settings/sidebar persistence, advance top-up double-entry
+- Fund ledger sub-accounts table now has an Opening column (opening + receipts - payments = closing),
+  with matching totals rows and the subgroups export updated to include Opening.
+- Payables page reorganised into Payables / Accruals / Prepayments tabs; the active tab is kept in the URL
+  hash so it survives a refresh.
+- Settings page: the active tab is carried through the save round-trip via ?tab=, so saving no longer
+  bounces you back to the first tab (also applied to the SMS/email/assistant test buttons). Sidebar scroll
+  position is remembered across page loads via sessionStorage.
+- Advance top-ups now record a true double entry against the source: a petty-funded top-up appears as a
+  dated outflow in the petty-cash register and reduces the float (the base advance line now shows only the
+  base amount so top-ups are not double counted). Added a treasurer-only reverse action
+  (advance_topup_reverse) that removes the top-up, decrements the advance total and restores the source.
+- Tests: cashbook/test_batch_v193 (10). cashbook 174 / reports 190 / core 171 green.
+- No migration; run collectstatic on deploy.
+
+## v1.92.0 - expense ID sort/export, edit-charge fix, net-asset rename, RTF export, debit pill, section insights
+- Expenses list ordered by expense ID (was date); ID shown in the table and added to the Excel/CSV export.
+- Editing an expense now syncs the linked transaction-charge entry: creates it if newly added, updates it
+  in place if present (never duplicates), deletes it if cleared. The charge is prefilled on the edit form.
+  (Previously the charge was ignored entirely on edit.)
+- Renamed net-asset classes across report, exports and financial position: Unallocated -> General net
+  assets; Allocated -> Designated development funds.
+- New RTF export for the Monthly Treasurer's Report (report_board_rtf, "RTF / Pages" button). RTF opens
+  natively in Apple Pages, Word, LibreOffice and Google Docs.
+- Per-section trend insights on the Monthly Treasurer's Report (rule-based, LLM-enriched when enabled):
+  a line or two under collections, trust trend, financial position and cash flow.
+- Dashboard: split the single "to allocate" pill into a giving pill (-> review queue) and a bank-debits
+  pill (-> debit queue). Bank-statement debits now have their own notification linking to the right queue.
+- Tests: reports/test_batch_v192 (11); updated test_board_batch_v191 for renamed labels.
+- No migration; run collectstatic on deploy.
+
+## v1.91.0 - Monthly Treasurer's Report polish + font fixes
+- Fixed the month filter: an <input type="month"> submits "YYYY-MM" but the view parsed only full ISO
+  dates, so it silently fell back to the current month. Now accepts YYYY-MM and YYYY-MM-DD. This also
+  resolves the "SoFP shows no items" impression (the fallback month often had little data).
+- Camp goals table: removed the Type column (report, Excel and Word exports).
+- Added a compact Statement of changes in net assets (opening + surplus/(deficit) = closing) to the
+  report and both exports; a full standalone version already exists at /reports/changes-net-assets/.
+- Narration labels no longer forced uppercase; report uses the selected --font-body/--font-display.
+- Dashboard/report cards: replaced hardcoded "Fraunces" with var(--font-display) on card headers,
+  report-card titles and empty-state text, so the Appearance font preference applies to them (item 4).
+- Clarifying note on net-asset classification: unallocated = general local funds not earmarked for a
+  project; allocated = board-designated Development funds (item 2 reconfirmed and documented in-report).
+- Local funds statement already sorted by closing balance (total) descending; confirmed.
+- Fixed a latent bug in BoardReportView (FixedAsset.objects.filter(active=True) -> disposed=False) that
+  was silently zeroing property NBV there.
+- Tests: reports/test_board_batch_v191 (9). reports 179 / cashbook 164 / core 171 green.
+- No migration; run collectstatic on deploy.
+
+## v1.90.0 - richer backup + assistant, reconciliation clean-up, remittance reminder verified
+- Backup Excel (full_excel_export_response): added Payments, Staff Advances, Remittances, Fund Transfers,
+  Payables, Accruals, Pledges, Fixed Assets and Petty Cash Top-ups sheets (now 19 sheets total). All
+  guarded so a missing model/field never breaks the export.
+- Assistant LLM context (_data_context): enriched with this-month/last-month collections, income by
+  channel, tithe YTD, trust remittance compliance + unreceipted, latest bank reconciliation status,
+  unpresented payments, pledges, active member count, and top expense categories YTD.
+- Bank reconciliation: _sync_managed_recon_items now also runs at reconciliation creation (not only on
+  detail view), and each managed amount is computed defensively so one failure can't block the others.
+  Removed the redundant Petty cash / Staff advances / Unpresented cheques informational panels and the
+  manual "add" button — all three are auto-populated into the reconciliation statement.
+- Verified (no code change needed): trust-remittance to_remit counts only RECEIPTED trust money, so
+  unreceipted trust never raises the reminder, and it clears once remitted (aggregate cache is busted on
+  Expense/RemittanceBatch save). Locked in with regression tests.
+- Tests: core/test_batch_v190 (6); updated cashbook/test_cheque_register recon-wiring for the auto
+  aggregate. 564 green. No migration; run collectstatic on deploy.
+
+## v1.89.0 - nav follow-ups (People/Funds split, remittance in Banking, setup consolidated) + pay-at-entry
+- Split "People & funds" into "People" (Members, Pledges, Campaigns) and "Funds & setup" (Funds &
+  departments, Fund transfers, Budgeting, Fixed assets, Allocation rules, Development-group patterns).
+  dev_patterns was previously unreachable from any nav menu; it now has a home.
+- Moved "Trust remittance" (remittance_dashboard) from Reports into Banking, next to Payment register,
+  since it's an operational workflow rather than a report. Remittance calendar stays in Reports.
+- Updated core/context_processors.py breadcrumb map (_BREADCRUMBS) for all moved items.
+- New: issue a payment instrument directly from expense entry. ExpenseCreate gained an optional "Issue a
+  payment now" section (method/reference/date/bank account); on save it creates a linked, ISSUED
+  PaymentInstrument (posts no journal entries, same as the existing framework) and approves the expense.
+  Available whenever the expense will be approved (auto-approve orgs, or any treasurer, who implicitly
+  self-approves by issuing payment) — hidden with an explanatory note otherwise. Expense detail page now
+  shows the linked payment or a prefilled "Issue a payment" link into the register.
+- Tests: cashbook/test_expense_entry_payment (7), core/test_nav_reorg (5). 558 green.
+- No migration required; run collectstatic on deploy (templates/CSS only, no schema change).
+
+## v1.88.0 - navigation & UX audit
+- Breadcrumbs: new core.context_processors.breadcrumb maps url_name -> (section, page); base.html renders a
+  Home / Section / Page trail on every mapped page, styled in app.css.
+- Renamed for clarity/consistency: Giving "Ledger" -> "Transactions"; "Ask the books" -> "Assistant";
+  Accounting "Ledger check" -> "Ledger integrity"; Reports "Board report" -> "Monthly Treasurer's Report"
+  (matches the page title). Basic report_monthly removed from the sidebar (kept in the reports index as
+  "Fund movement summary"); report index card "Bank reconciliation" -> "Reconciliation summary".
+- Bug fix: report_reconciliation (ReconciliationView) crashed with TypeError when book_balance was None.
+- Duplicate removed: report_board was listed twice in the reports index (executive pane card removed).
+- Current page highlights (active class) verified after renames; parent nav group auto-opens and its
+  summary highlights via :has(a.active). Quick-add "+ New" and Ctrl+K palette retained near the top.
+- Tests: core/test_nav_audit (7). Full nav crawl: 48/48 links OK. 323 green across core/reports.
+- No migration required (nav/template/context-processor/CSS only); run collectstatic on deploy.
+
 ## v1.87.0 - board report exports/goals, budget goals, appearance, reconciliation, filters
 - #1 Monthly Treasurer's Report: added Camp Meeting goal records (expense + offering, fund-level, never
   group), income-vs-expenditure and fund-composition charts, and Excel (openpyxl, multi-sheet) + Word

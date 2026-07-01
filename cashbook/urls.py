@@ -60,6 +60,8 @@ urlpatterns = [
     path("advances/<int:pk>/expense/", views.AdvanceAddExpense.as_view(), name="advance_add_expense"),
     path("advances/<int:pk>/close/", views.AdvanceClose.as_view(), name="advance_close"),
     path("advances/<int:pk>/topup/", views.AdvanceTopUpView.as_view(), name="advance_topup"),
+    path("advances/<int:pk>/topup/<int:topup_id>/reverse/",
+         views.AdvanceTopUpReverseView.as_view(), name="advance_topup_reverse"),
     path("advances/<int:pk>/edit/", views.AdvanceEdit.as_view(), name="advance_edit"),
     path("advances/<int:pk>/delete/", views.AdvanceDelete.as_view(), name="advance_delete"),
 

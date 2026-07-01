@@ -35,7 +35,7 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 
     def get_queryset(self):
         import datetime as dt
-        qs = Expense.objects.select_related("department", "recorded_by").order_by("-date")
+        qs = Expense.objects.select_related("department", "recorded_by").order_by("-id")
         from django.db.models import Count
         qs = qs.annotate(n_attachments=Count("attachments"))
         g = self.request.GET
@@ -65,9 +65,9 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
             qs = self.get_queryset()
-            header = ["Date", "Description", "Fund", "Category", "Type", "Status",
+            header = ["ID", "Date", "Description", "Fund", "Category", "Type", "Status",
                       "Claimant", "Voucher", "Amount"]
-            rows = [[x.date.isoformat(), x.description,
+            rows = [[x.id, x.date.isoformat(), x.description,
                      x.department.name if x.department_id else "",
                      x.get_category_display(), x.get_expenditure_type_display(),
                      x.get_status_display(), x.claimant or "", x.voucher_no or "",
@@ -171,6 +171,18 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
             ctx["settle"] = f"{kind}:{obj.pk}"
             ctx["settle_label"] = (f"Settling {kind}: {getattr(obj, 'vendor', '') or ''} "
                                    f"{obj.description}".strip())
+        from core.models import SiteConfig
+        from core.roles import is_treasurer
+        from statements.models import BankAccount
+        from .models import PaymentInstrument
+        ctx["bank_accounts"] = BankAccount.objects.all()
+        ctx["payment_methods"] = PaymentInstrument.Method.choices
+        # issuing a payment at entry only makes sense once the expense is approved;
+        # when approval is required, this expense will start PENDING, so offer it
+        # to a treasurer only (who can approve immediately after) — otherwise hide it.
+        cfg = SiteConfig.get()
+        ctx["can_issue_payment_now"] = (not cfg.require_expense_approval) or is_treasurer(self.request.user)
+        ctx["require_expense_approval"] = cfg.require_expense_approval
         return ctx
 
     def form_valid(self, form):
@@ -201,8 +213,11 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                     f"{exp.recorded_by if False else self.request.user.username}.")
         exp.recorded_by = self.request.user
         exp.sabbath_week = sabbath_week_of(exp.date)
+        issue_now = bool(self.request.POST.get("issue_payment"))
         auto = not SiteConfig.get().require_expense_approval
-        if auto:
+        # a treasurer issuing a payment at entry is implicitly approving it too —
+        # matches the existing detail-page pattern where "Mark paid" also approves.
+        if auto or (issue_now and is_treasurer(self.request.user)):
             exp.status = Expense.Status.APPROVED
             exp.approved_by = self.request.user
         exp.save()
@@ -218,6 +233,32 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                 voucher_no=exp.voucher_no, paid_from_petty_cash=exp.paid_from_petty_cash,
                 status=exp.status, charge_for=exp,
                 approved_by=self.request.user if auto else None)
+        payment_note = ""
+        if issue_now and exp.status == Expense.Status.APPROVED:
+            from .models import PaymentInstrument
+            method = self.request.POST.get("payment_method") or "CHEQUE"
+            if method not in dict(PaymentInstrument.Method.choices):
+                method = "CHEQUE"
+            ref = (self.request.POST.get("payment_reference") or "").strip()[:40]
+            try:
+                issued = (dt.date.fromisoformat(self.request.POST.get("payment_date"))
+                          if self.request.POST.get("payment_date") else exp.date)
+            except ValueError:
+                issued = exp.date
+            bank_id = self.request.POST.get("payment_bank_account") or ""
+            inst = PaymentInstrument(
+                method=method, instrument_number=ref,
+                payee=(exp.claimant or exp.department.name)[:160],
+                amount=exp.amount, date_issued=issued,
+                status=PaymentInstrument.Status.ISSUED,
+                source_kind=PaymentInstrument.SourceKind.EXPENSE,
+                expense=exp, recorded_by=self.request.user)
+            if bank_id.isdigit():
+                from statements.models import BankAccount
+                inst.bank_account = BankAccount.objects.filter(pk=bank_id).first()
+            inst.save()
+            payment_note = (f" {inst.get_method_display()} "
+                            f"{ref or '(no reference)'} issued to settle it.")
         if exp.status == Expense.Status.PENDING:
             from core.services.notifications import notify
             from django.urls import reverse
@@ -235,7 +276,7 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
             messages.success(self.request,
                 f"{kind.title()} settled and recorded as an expense.")
             return redirect("accruals")
-        messages.success(self.request, "Expense recorded.")
+        messages.success(self.request, f"Expense recorded.{payment_note}")
         return redirect(self.success_url)
 
 
@@ -244,6 +285,13 @@ class ExpenseUpdate(DataEntryRequiredMixin, UpdateView):
     form_class = ExpenseForm
     template_name = "cashbook/form.html"
     success_url = reverse_lazy("expense_list")
+
+    def get_initial(self):
+        initial = super().get_initial()
+        charge = self.object.charges.first() if self.object else None
+        if charge:
+            initial["charge"] = charge.amount
+        return initial
 
     def form_valid(self, form):
         from core.roles import is_treasurer
@@ -274,6 +322,40 @@ class ExpenseUpdate(DataEntryRequiredMixin, UpdateView):
                     "approval and must be re-approved.")
         exp.sabbath_week = sabbath_week_of(exp.date)
         exp.save()
+        # Sync the linked transaction-charge entry (M-Pesa/bank charge). Editing an
+        # expense must create the charge if newly added, update it in place if it
+        # already exists (never duplicate), and remove it if the charge is cleared.
+        charge = form.cleaned_data.get("charge")
+        existing = exp.charges.first()
+        if charge and charge > 0:
+            ref = exp.voucher_no or f"exp #{exp.id}"
+            desc = f"Transaction charge — {exp.description} [for {ref}]"[:200]
+            if existing:
+                existing.date = exp.date
+                existing.sabbath_week = exp.sabbath_week
+                existing.department = exp.department
+                existing.description = desc
+                existing.amount = charge
+                existing.method = exp.method
+                existing.voucher_no = exp.voucher_no
+                existing.paid_from_petty_cash = exp.paid_from_petty_cash
+                existing.status = exp.status
+                existing.save()
+                # remove any accidental extra charge rows to prevent double-counting
+                exp.charges.exclude(pk=existing.pk).delete()
+            else:
+                Expense.objects.create(
+                    date=exp.date, sabbath_week=exp.sabbath_week,
+                    department=exp.department, description=desc, amount=charge,
+                    category=Expense.Category.BANK_CHARGE, method=exp.method,
+                    recorded_by=self.request.user, voucher_no=exp.voucher_no,
+                    paid_from_petty_cash=exp.paid_from_petty_cash,
+                    status=exp.status, charge_for=exp,
+                    approved_by=(exp.approved_by if exp.status != Expense.Status.PENDING
+                                 else None))
+        elif existing:
+            # charge removed on edit — delete the linked charge entry
+            exp.charges.all().delete()
         messages.success(self.request, "Expense updated.")
         return redirect(self.success_url)
 
@@ -576,13 +658,21 @@ class PettyCashView(ReadAccessMixin, TemplateView):
                               "out": x.amount, "fund": x.department.name, "cat": x.get_category_display()})
         # petty-cash-funded staff advances: the float drops when issued and rises
         # again only if unspent cash is returned
-        from .models import StaffAdvance
+        from .models import StaffAdvance, AdvanceTopUp
         for adv in StaffAdvance.objects.filter(from_petty_cash=True,
                 date_issued__gte=start, date_issued__lte=end).select_related("department"):
             movements.append({"date": adv.date_issued,
                 "desc": f"Advance to {adv.staff_name} — {adv.purpose}",
-                "in": None, "out": adv.amount, "fund": adv.department.name,
+                "in": None, "out": adv.base_amount, "fund": adv.department.name,
                 "cat": "Staff advance"})
+        # each top-up onto a petty-funded advance is a further outflow on its own date
+        for tu in AdvanceTopUp.objects.filter(advance__from_petty_cash=True,
+                date__gte=start, date__lte=end).select_related("advance", "advance__department"):
+            movements.append({"date": tu.date,
+                "desc": f"Advance top-up — {tu.advance.staff_name}"
+                        + (f" · {tu.note}" if tu.note else ""),
+                "in": None, "out": tu.amount,
+                "fund": tu.advance.department.name, "cat": "Advance top-up"})
         for adv in StaffAdvance.objects.filter(from_petty_cash=True,
                 returned_to_petty__gt=0, settled_on__gte=start,
                 settled_on__lte=end).select_related("department"):
@@ -977,6 +1067,20 @@ class AdvanceListView(ReadAccessMixin, ListView):
         from .models import StaffAdvance
         return StaffAdvance.objects.select_related("department").all()
 
+    def get_context_data(self, **kwargs):
+        from decimal import Decimal
+        ctx = super().get_context_data(**kwargs)
+        today = dt.date.today()
+        bank_out = outstanding_bank_advances_total(today)
+        all_out = outstanding_advances_total(today)
+        petty_out = max(all_out - bank_out, Decimal(0))
+        ctx.update({
+            "total_outstanding": all_out,
+            "bank_outstanding": bank_out,
+            "petty_outstanding": petty_out,
+        })
+        return ctx
+
 
 class AdvanceCreate(AdvanceAccessMixin, View):
     template_name = "cashbook/advance_form.html"
@@ -1169,7 +1273,7 @@ def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
     for t in adv.topups.all():
         events.append({"date": t.date, "kind": "topup",
                        "label": "Top-up issued" + (f" — {t.note}" if t.note else ""),
-                       "amount": t.amount})
+                       "amount": t.amount, "topup_id": t.id})
     for e in adv.expenses.filter(
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID]).order_by("date", "id"):
         events.append({"date": e.date, "kind": "expense", "label": e.description,
@@ -1185,7 +1289,8 @@ def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
         if ev["kind"] in ("issue", "topup"):
             running += ev["amount"]
             rows.append({"date": ev["date"], "label": ev["label"],
-                         "out": ev["amount"], "back": None, "running": running})
+                         "out": ev["amount"], "back": None, "running": running,
+                         "topup_id": ev.get("topup_id")})
         else:
             running -= ev["amount"]
             e = ev.get("expense")
@@ -1197,11 +1302,13 @@ def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
                          "attachable": bool(leader_mode and e and adv.status != adv.Status.CLOSED),
                          "is_charge": is_charge,
                          "attachments": list(e.attachments.all()) if e else []})
+    from core.roles import is_treasurer as _is_tr
     return {
         "adv": adv, "expenses": adv.expenses.all(), "statement": rows,
         "to_account": running,   # >0 still to account; <0 reimburse staff
         "categories": Expense.Category.choices,
         "today": dt.date.today().isoformat(), "leader_mode": leader_mode,
+        "is_treasurer": bool(user and _is_tr(user)) and not leader_mode,
     }
 
 
@@ -1359,6 +1466,28 @@ class AdvanceTopUpView(AdvanceAccessMixin, View):
         adv.save(update_fields=["amount", "status"])
         messages.success(request, f"Topped up by KSh {amount:,.2f}. New advance total "
             f"KSh {adv.amount:,.2f}.")
+        return redirect("advance_detail", pk=pk)
+
+
+class AdvanceTopUpReverseView(TreasurerRequiredMixin, View):
+    """Reverse a top-up on an advance: remove the top-up, decrement the advance
+    total, and restore the source (the petty-cash float recovers automatically
+    once the top-up no longer counts as outstanding)."""
+    def post(self, request, pk, topup_id):
+        from decimal import Decimal
+        from .models import StaffAdvance, AdvanceTopUp
+        adv = get_object_or_404(StaffAdvance, pk=pk)
+        tu = get_object_or_404(AdvanceTopUp, pk=topup_id, advance=adv)
+        if _block_if_locked(request, tu.date):
+            return redirect("advance_detail", pk=pk)
+        amount = tu.amount
+        adv.amount = max((adv.amount or Decimal(0)) - amount, Decimal(0))
+        adv.save(update_fields=["amount"])
+        tu.delete()
+        messages.success(request, f"Top-up of KSh {amount:,.2f} reversed. "
+            f"New advance total KSh {adv.amount:,.2f}"
+            + (" — the petty-cash float has been restored." if adv.from_petty_cash
+               else "."))
         return redirect("advance_detail", pk=pk)
 
 
@@ -2223,6 +2352,16 @@ class ChequeRegisterView(ReadAccessMixin, View):
             "is_treasurer": is_treasurer(request.user)
                             or getattr(request.user, "is_superuser", False),
         }
+        # deep-link prefill: e.g. from an expense's "Issue a payment" link
+        for_kind = request.GET.get("for_kind", "")
+        for_id = request.GET.get("for_id", "")
+        if for_kind == "EXPENSE" and for_id.isdigit():
+            exp = Expense.objects.filter(pk=for_id).first()
+            if exp:
+                ctx["prefill_kind"] = "EXPENSE"
+                ctx["prefill_id"] = exp.id
+                ctx["prefill_amount"] = exp.amount
+                ctx["prefill_payee"] = exp.claimant or exp.department.name
         return render(request, self.template_name, ctx)
 
     def post(self, request):

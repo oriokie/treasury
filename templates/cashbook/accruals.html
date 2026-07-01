@@ -11,6 +11,13 @@
 </div>
 <div class="info-panel">Fund balances are kept on a cash basis. These items are an accrual overlay shown as memoranda on the Statement of Financial Position. Settling a payable or accrual records the actual payment in its fund; a prepayment records the cash paid now and shows the unexpired portion as a prepaid asset.</div>
 
+<div class="tabbar no-print" role="tablist">
+  <button class="tab-btn active" data-tab="payables" role="tab">Payables</button>
+  <button class="tab-btn" data-tab="accruals" role="tab">Accruals</button>
+  <button class="tab-btn" data-tab="prepayments" role="tab">Prepayments</button>
+</div>
+
+<div class="tab-panel" data-panel="payables">
 <!-- Payables -->
 <div class="card u-mt"><div class="hd">Accounts payable <span class="muted">— purchased on credit</span></div><div class="bd u-pad-cell">
 <table class="ledger compact"><thead><tr><th>Date</th><th>Vendor / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th></th></tr></thead><tbody>
@@ -38,7 +45,9 @@
     <div style="grid-column:span 5;display:flex;align-items:end"><button class="btn">＋ Add payable</button></div>
   </form>
 </div>{% endif %}</div>
+</div>
 
+<div class="tab-panel" data-panel="accruals" hidden>
 <!-- Accruals -->
 <div class="card u-mt"><div class="hd">Accrued expenses <span class="muted">— incurred, not yet invoiced/paid</span></div><div class="bd u-pad-cell">
 <table class="ledger compact"><thead><tr><th>Period</th><th>Description</th><th>Fund</th><th class="num">Amount</th><th></th></tr></thead><tbody>
@@ -61,7 +70,9 @@
     <div style="grid-column:span 5"><button class="btn">＋ Add accrual</button></div>
   </form>
 </div>{% endif %}</div>
+</div>
 
+<div class="tab-panel" data-panel="prepayments" hidden>
 <!-- Prepayments -->
 <div class="card u-mt"><div class="hd">Prepayments <span class="muted">— paid in advance</span></div><div class="bd u-pad-cell">
 <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Fund</th><th class="num">Paid</th><th>Spread</th><th class="num">Unexpired</th><th></th></tr></thead><tbody>
@@ -86,5 +97,29 @@
     <div style="grid-column:span 5;display:flex;align-items:end"><button class="btn">＋ Add prepayment</button></div>
   </form>
 </div>{% endif %}</div>
-<style>.btn-xs{padding:.12rem .5rem;font-size:.78rem}</style>
+</div>
+
+<style>
+.btn-xs{padding:.12rem .5rem;font-size:.78rem}
+.tabbar{display:flex;gap:.25rem;border-bottom:2px solid var(--line);margin:1rem 0 .25rem}
+.tab-btn{background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;
+  padding:.55rem 1rem;font:inherit;font-weight:600;color:var(--muted);cursor:pointer;border-radius:6px 6px 0 0}
+.tab-btn:hover{color:var(--ink);background:var(--paper-2)}
+.tab-btn.active{color:var(--brass,#b07d2c);border-bottom-color:var(--brass,#b07d2c)}
+</style>
+<script>
+(function(){
+  var btns=document.querySelectorAll('.tab-btn'), panels=document.querySelectorAll('.tab-panel');
+  function show(name){
+    btns.forEach(function(b){ b.classList.toggle('active', b.dataset.tab===name); });
+    panels.forEach(function(p){ p.hidden = (p.dataset.panel!==name); });
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){
+    show(b.dataset.tab);
+    try{ history.replaceState(null,'', '#'+b.dataset.tab); }catch(e){}
+  }); });
+  var start=(location.hash||'').replace('#','');
+  if(start && document.querySelector('.tab-panel[data-panel="'+start+'"]')) show(start);
+})();
+</script>
 {% endblock %}

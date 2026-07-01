@@ -70,3 +70,78 @@ def site_context(request):
         from core.services.notifications import unread_count
         ctx["notif_badge"] = unread_count(user)
     return ctx
+
+
+# url_name -> (section label, page label) for a consistent breadcrumb trail.
+_BREADCRUMBS = {
+    # Giving
+    "transaction_list": ("Giving", "Transactions"),
+    "envelope_list": ("Giving", "Envelopes"),
+    "envelope_detail": ("Giving", "Envelopes"),
+    "count_list": ("Giving", "Cash counts"),
+    "queue": ("Giving", "Review queue"),
+    "sabbath_queue": ("Giving", "Sabbath confirmations"),
+    # Banking
+    "statement_list": ("Banking", "Statement imports"),
+    "debit_queue": ("Banking", "Bank debits"),
+    "reconciliation_list": ("Banking", "Bank reconciliation"),
+    "reconciliation_detail": ("Banking", "Bank reconciliation"),
+    "payment_register": ("Banking", "Payment register"),
+    "payment_outstanding": ("Banking", "Outstanding payments"),
+    # Expenses
+    "expense_list": ("Expenses", "Expenses"),
+    "expense_detail": ("Expenses", "Expenses"),
+    "recurring_list": ("Expenses", "Recurring"),
+    "petty_cash": ("Expenses", "Petty cash"),
+    "accruals": ("Expenses", "Payables & accruals"),
+    "advance_list": ("Expenses", "Staff advances"),
+    # People
+    "member_list": ("People", "Members"),
+    "member_detail": ("People", "Members"),
+    "pledge_dashboard": ("People", "Pledges"),
+    "campaign_list": ("People", "Campaigns"),
+    # Funds & setup
+    "department_list": ("Funds & setup", "Funds & departments"),
+    "transfer_list": ("Funds & setup", "Fund transfers"),
+    "budget": ("Funds & setup", "Budgeting"),
+    "fund_budget": ("Funds & setup", "Fund budget"),
+    "asset_list": ("Funds & setup", "Fixed assets"),
+    "rule_list": ("Funds & setup", "Allocation rules"),
+    "dev_patterns": ("Funds & setup", "Development-group patterns"),
+    # Accounting
+    "chart_of_accounts": ("Accounting", "Chart of accounts"),
+    "general_ledger": ("Accounting", "General ledger"),
+    "trial_balance": ("Accounting", "Trial balance"),
+    "journal": ("Accounting", "Journal"),
+    "ledger_reconciliation": ("Accounting", "Ledger integrity"),
+    # Reports
+    "report_index": ("Reports", "All reports"),
+    "report_board": ("Reports", "Monthly Treasurer's Report"),
+    "report_monthly": ("Reports", "Fund movement summary"),
+    "remittance_dashboard": ("Banking", "Trust remittance"),
+    "remittance_calendar": ("Reports", "Remittance calendar"),
+    "report_remittance": ("Reports", "Conference remittance"),
+    "report_envelope_sabbath": ("Reports", "Sabbath statement"),
+    "report_collections_summary": ("Reports", "Collections summary"),
+    "report_dev_groups": ("Reports", "Development groups"),
+    "report_audit": ("Reports", "Audit log"),
+    "report_reconciliation": ("Reports", "Reconciliation summary"),
+    "report_pastor": ("Reports", "Pastor's report"),
+    "report_conference": ("Reports", "Conference submission"),
+    # Administration
+    "user_list": ("Administration", "Users & roles"),
+    "profile_list": ("Administration", "Profiles & rights"),
+    "controls": ("Administration", "Period locks & controls"),
+    "settings": ("Administration", "Settings"),
+    "board_settings": ("Reports", "Board report settings"),
+    "preferences": ("Account", "Preferences"),
+}
+
+
+def breadcrumb(request):
+    """Provide (section, page) breadcrumb labels for the current view."""
+    m = getattr(request, "resolver_match", None)
+    if not m:
+        return {}
+    section, page = _BREADCRUMBS.get(m.url_name, (None, None))
+    return {"crumb_section": section, "crumb_page": page}

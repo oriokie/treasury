@@ -376,6 +376,148 @@ def full_excel_export_response(year=None):
     except Exception:
         pass
 
+    # ---- Payment instruments (cheques / EFT / RTGS / M-Pesa) --------------
+    try:
+        from cashbook.models import PaymentInstrument
+        _sheet("Payments",
+               ["ID", "Method", "Number / ref", "Payee", "Amount", "Bank account",
+                "Date issued", "Date cleared", "Status", "Settles", "Source ID"],
+               [[p.id, p.get_method_display(), p.instrument_number or "",
+                 p.payee or "", float(p.amount),
+                 str(p.bank_account) if p.bank_account_id else "",
+                 p.date_issued.isoformat() if p.date_issued else "",
+                 p.date_cleared.isoformat() if p.date_cleared else "",
+                 p.get_status_display(), p.get_source_kind_display(),
+                 p.expense_id or p.remittance_batch_id or p.refund_id
+                 or p.transfer_id or ""]
+                for p in PaymentInstrument.objects.select_related(
+                    "bank_account").order_by("date_issued", "id")],
+               title="Payment register", money_cols=(5,))
+    except Exception:
+        pass
+
+    # ---- Staff advances ---------------------------------------------------
+    try:
+        from cashbook.models import StaffAdvance
+        _sheet("Staff Advances",
+               ["ID", "Staff", "Fund", "Amount", "Date issued", "Method",
+                "From petty cash", "Purpose", "Status", "Reference", "Issued by"],
+               [[a.id, a.staff_name,
+                 a.department.name if a.department_id else "",
+                 float(a.amount), a.date_issued.isoformat(), a.method,
+                 "Y" if a.from_petty_cash else "", a.purpose or "",
+                 a.get_status_display(), a.reference or "",
+                 a.issued_by.username if a.issued_by_id else ""]
+                for a in StaffAdvance.objects.select_related(
+                    "department", "issued_by").order_by("date_issued", "id")],
+               title="Staff advances", money_cols=(4,))
+    except Exception:
+        pass
+
+    # ---- Remittance batches ----------------------------------------------
+    try:
+        from cashbook.models import RemittanceBatch
+        _sheet("Remittances",
+               ["Batch", "Date", "Period start", "Period end", "Amount",
+                "Status", "Settlement", "Created by"],
+               [[b.batch_number, b.date.isoformat() if b.date else "",
+                 b.period_start.isoformat() if b.period_start else "",
+                 b.period_end.isoformat() if b.period_end else "",
+                 float(b.total_amount), b.get_status_display(),
+                 b.settlement_label or "",
+                 b.created_by.username if b.created_by_id else ""]
+                for b in RemittanceBatch.objects.select_related(
+                    "created_by", "payment").order_by("-created_at")],
+               title="Conference remittance batches", money_cols=(5,))
+    except Exception:
+        pass
+
+    # ---- Fund transfers ---------------------------------------------------
+    try:
+        from cashbook.models import FundTransfer
+        _sheet("Fund Transfers",
+               ["ID", "Date", "From fund", "To fund", "Amount", "Reason",
+                "Reversed", "Recorded by"],
+               [[t3.id, t3.date.isoformat(),
+                 t3.source.name if t3.source_id else "",
+                 t3.destination.name if t3.destination_id else "",
+                 float(t3.amount), t3.reason or "",
+                 "Y" if t3.is_reversed else "",
+                 t3.recorded_by.username if t3.recorded_by_id else ""]
+                for t3 in FundTransfer.objects.select_related(
+                    "source", "destination", "recorded_by").order_by("date")],
+               title="Inter-fund transfers", money_cols=(5,))
+    except Exception:
+        pass
+
+    # ---- Payables & accruals ---------------------------------------------
+    try:
+        from cashbook.models import Payable, Accrual
+        _sheet("Payables",
+               ["ID", "Vendor", "Fund", "Description", "Amount", "Due date",
+                "Settled"],
+               [[p.id, getattr(p, "vendor", "") or "",
+                 p.department.name if p.department_id else "", p.description or "",
+                 float(p.amount), p.due_date.isoformat() if p.due_date else "",
+                 "Y" if p.settled else ""]
+                for p in Payable.objects.select_related("department").order_by("due_date")],
+               title="Payables (money owed)", money_cols=(5,))
+        _sheet("Accruals",
+               ["ID", "Fund", "Description", "Amount", "Period", "Settled"],
+               [[a.id, a.department.name if a.department_id else "",
+                 a.description or "", float(a.amount),
+                 a.period.isoformat() if getattr(a, "period", None) else "",
+                 "Y" if a.settled else ""]
+                for a in Accrual.objects.select_related("department").order_by("id")],
+               title="Accruals", money_cols=(4,))
+    except Exception:
+        pass
+
+    # ---- Pledges ----------------------------------------------------------
+    try:
+        from pledges.models import Pledge
+        _sheet("Pledges",
+               ["ID", "Member / pledger", "Campaign", "Amount pledged",
+                "Fulfilled", "Balance", "Status"],
+               [[pl.id, pl.member.name if pl.member_id else (pl.pledger_name or ""),
+                 pl.campaign.name if getattr(pl, "campaign_id", None) else "",
+                 float(pl.amount), float(getattr(pl, "fulfilled_amount", 0) or 0),
+                 float(pl.amount - (getattr(pl, "fulfilled_amount", 0) or 0)),
+                 getattr(pl, "status", "")]
+                for pl in Pledge.objects.select_related("member").order_by("id")],
+               title="Pledges", money_cols=(4, 5, 6))
+    except Exception:
+        pass
+
+    # ---- Fixed assets -----------------------------------------------------
+    try:
+        from assets.models import FixedAsset
+        _sheet("Fixed Assets",
+               ["ID", "Name", "Category", "Acquired", "Cost",
+                "Net book value", "Disposed"],
+               [[a.id, a.name, getattr(a, "category", "") or "",
+                 a.acquired_date.isoformat() if getattr(a, "acquired_date", None) else "",
+                 float(getattr(a, "cost", 0) or 0),
+                 float(a.net_book_value(today)), "Y" if a.disposed else ""]
+                for a in FixedAsset.objects.order_by("name")],
+               title="Fixed assets register", money_cols=(5, 6))
+    except Exception:
+        pass
+
+    # ---- Petty cash top-ups ----------------------------------------------
+    try:
+        from cashbook.models import PettyCashTopUp
+        _sheet("Petty Cash Top-ups",
+               ["ID", "Date", "Amount", "Note", "Recorded by"],
+               [[t4.id, t4.date.isoformat(), float(t4.amount),
+                 getattr(t4, "note", "") or "",
+                 t4.recorded_by.username if t4.recorded_by_id else ""]
+                for t4 in PettyCashTopUp.objects.select_related(
+                    "recorded_by").order_by("date")],
+               title="Petty cash top-ups", money_cols=(3,))
+    except Exception:
+        pass
+
     stamp = today.strftime("%Y%m%d")
     resp = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

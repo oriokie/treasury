@@ -41,6 +41,32 @@
       {% endif %}{% endfor %}
     </div>
     {% if overspend_warning %}<label class="check-row text-amber"><input type="checkbox" name="override_balance" value="1"> Override — record this expense even though it exceeds the fund's available balance</label>{% endif %}
+
+    {% if not object %}
+    <div class="card u-mt" style="box-shadow:none;border:1px solid var(--line,rgba(0,0,0,.1))"><div class="bd">
+      {% if can_issue_payment_now %}
+      <label class="check-row"><input type="checkbox" name="issue_payment" id="issuePayment" value="1" onchange="document.getElementById('paymentFields').style.display=this.checked?'grid':'none'">
+        <strong>Issue a payment now</strong> <span class="muted u-xs">(cheque, EFT, RTGS, M-Pesa…)</span></label>
+      <div class="help u-mt-0">Record how this expense is being paid at the same time — the payment becomes the settlement record and the expense is approved.</div>
+      <div id="paymentFields" class="form-grid u-mt-sm" style="display:none">
+        <div class="form-row"><label>Method</label>
+          <select name="payment_method" class="field--select">
+            {% for val, lbl in payment_methods %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+          </select></div>
+        <div class="form-row"><label>Reference / cheque no.</label>
+          <input type="text" name="payment_reference" class="field" placeholder="e.g. 000123"></div>
+        <div class="form-row"><label>Date</label>
+          <input type="date" name="payment_date" id="paymentDate" class="field"></div>
+        {% if bank_accounts %}<div class="form-row"><label>Bank account</label>
+          <select name="payment_bank_account" class="field--select"><option value="">—</option>
+          {% for a in bank_accounts %}<option value="{{ a.id }}">{{ a }}</option>{% endfor %}</select></div>{% endif %}
+      </div>
+      {% else %}
+      <div class="help u-mt-0">This system requires approval before payment, so a payment instrument can't be issued at entry. Once a treasurer approves this expense, issue its cheque/EFT/M-Pesa from the expense page or the <a class="link" href="{% url 'payment_register' %}">payment register</a>.</div>
+      {% endif %}
+    </div></div>
+    {% endif %}
+
     <div class="btn-row"><button class="btn">Save expense</button><a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a></div>
   </form>
 </div></div>
@@ -144,6 +170,8 @@ function toggleCharge(){ if(!method||!chargeInput) return;
   const row=chargeInput.closest(".form-row"); const show=["MPESA","BANK"].includes(method.value);
   if(row) row.style.display=show?"":"none"; if(!show) chargeInput.value=""; }
 if(method){ method.addEventListener("change",toggleCharge); toggleCharge(); }
+const payDate=document.getElementById("paymentDate");
+if(payDate && !payDate.value){ payDate.value = new Date().toISOString().slice(0,10); }
 </script>
 <style>
 .help#balBox{margin-top:.4rem;padding:.5rem .7rem;border-radius:8px;border:1px solid var(--line);background:var(--card-head)}

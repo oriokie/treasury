@@ -57,16 +57,17 @@
 
 {% if can_enter_data %}
 <div class="card u-mt"><div class="hd">Record a payment</div><div class="bd">
+  {% if prefill_id %}<p class="help u-mt-0">Prefilled to settle expense #{{ prefill_id }} — check the details below before saving.</p>{% endif %}
   <form method="post" class="form-grid">{% csrf_token %}
     <input type="hidden" name="action" value="add">
     <div class="form-row"><label>Method</label><select name="method" class="field field--select">
       {% for v,l in methods %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
     <div class="form-row"><label>Instrument number</label><input type="text" name="instrument_number" class="field mono" placeholder="Cheque no. / EFT ref"></div>
     <div class="form-row"><label>Source obligation</label><select name="source_kind" class="field field--select">
-      {% for v,l in source_kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
-    <div class="form-row"><label>Source ID</label><input type="number" name="source_id" class="field" placeholder="e.g. expense / batch id"></div>
-    <div class="form-row"><label>Payee</label><input type="text" name="payee" class="field"></div>
-    <div class="form-row"><label>Amount</label><input type="number" step="0.01" min="0.01" name="amount" class="field" required></div>
+      {% for v,l in source_kinds %}<option value="{{ v }}" {% if prefill_kind == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="form-row"><label>Source ID</label><input type="number" name="source_id" class="field" placeholder="e.g. expense / batch id" value="{{ prefill_id|default:'' }}"></div>
+    <div class="form-row"><label>Payee</label><input type="text" name="payee" class="field" value="{{ prefill_payee|default:'' }}"></div>
+    <div class="form-row"><label>Amount</label><input type="number" step="0.01" min="0.01" name="amount" class="field" required value="{{ prefill_amount|default:'' }}"></div>
     <div class="form-row"><label>Date issued</label><input type="date" name="date_issued" class="field"></div>
     <div class="form-row"><label>Signatory 1</label><input type="text" name="signatory_1" class="field"></div>
     <div class="form-row"><label>Signatory 2</label><input type="text" name="signatory_2" class="field"></div>

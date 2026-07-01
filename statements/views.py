@@ -157,6 +157,7 @@ class ReconciliationCreateView(DataEntryRequiredMixin, View):
             if rec.book_balance is None:
                 rec.book_balance = _ledger_bank_balance(rec.statement_date)
             rec.save()
+            _sync_managed_recon_items(rec)   # auto-add petty/advances/cheques now
             messages.success(request, "Reconciliation started — add your items below.")
             return redirect("reconciliation_detail", pk=rec.pk)
         return render(request, self.template_name, {"form": form})
@@ -189,15 +190,24 @@ def _sync_managed_recon_items(rec):
                                 unpresented_cheques_total)
     ADD = ReconciliationItem.Effect.ADD
     SUB = ReconciliationItem.Effect.SUBTRACT
+
+    def _safe(fn):
+        try:
+            return fn(rec.statement_date) or Decimal(0)
+        except Exception:  # noqa: BLE001 — one bad computation must not block the rest
+            from core.utils import log_exception as _lx
+            _lx("recon managed sync")
+            return Decimal(0)
+
     managed = [
         ("Petty cash float (cash on hand)",
-         _petty_balance_asof(rec.statement_date),
+         _safe(_petty_balance_asof),
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),
         ("Staff advances issued (not yet accounted)",
-         outstanding_bank_advances_total(rec.statement_date),
+         _safe(outstanding_bank_advances_total),
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),
         ("Unpresented cheques (not yet cleared)",
-         unpresented_cheques_total(rec.statement_date),
+         _safe(unpresented_cheques_total),
          ReconciliationItem.Kind.UNPRESENTED, SUB),
     ]
     for desc, amount, kind, effect in managed:

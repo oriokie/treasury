@@ -57,11 +57,12 @@
 {% if is_treasurer %}<form id="bulkform" method="post" action="{% url 'expense_bulk' %}">{% csrf_token %}{% endif %}
 <div class="ws-table sticky">
   <table class="ledger compact">
-  <thead><tr>{% if is_treasurer %}<th style="width:28px"><input type="checkbox" id="checkall" title="Select all"></th>{% endif %}<th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
+  <thead><tr>{% if is_treasurer %}<th style="width:28px"><input type="checkbox" id="checkall" title="Select all"></th>{% endif %}<th class="num">ID</th><th>Date</th><th>Description</th><th>Fund</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for e in expenses %}
     <tr>
       {% if is_treasurer %}<td><input type="checkbox" name="ids" value="{{ e.id }}" class="rowchk" data-status="{{ e.status }}"></td>{% endif %}
+      <td class="num mono muted">#{{ e.id }}</td>
       <td class="mono">{{ e.date|date:"d/m/y" }}</td>
       <td><a class="link" href="{% url 'expense_detail' e.id %}">{{ e.description }}</a>{% if e.claimant %} <span class="muted u-xs">· {{ e.claimant }}</span>{% endif %}{% if e.n_attachments %} <span class="pill pill-green" title="Receipt attached">📎</span>{% else %} <span class="pill pill-grey" title="No receipt yet">no receipt</span>{% endif %}</td>
       <td>{{ e.department.name }}</td>
@@ -71,7 +72,7 @@
       <td class="num mono row-debit">({{ e.amount|floatformat:2|intcomma }})</td>
       {% if can_enter_data %}<td class="actions"><a class="link" href="{% url 'expense_edit' e.id %}">Edit</a></td>{% endif %}
     </tr>
-  {% empty %}<tr><td colspan="10"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="11"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% if is_treasurer %}</form>

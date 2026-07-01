@@ -186,6 +186,97 @@ def _data_context():
                      "(confirmed, no reversed or double-counted envelope-twin rows).")
     except Exception:
         pass
+    # --- richer context for more intelligent answers ---------------------
+    import calendar as _cal
+    m_start = _dt.date(today.year, today.month, 1)
+    m_end = _dt.date(today.year, today.month, _cal.monthrange(today.year, today.month)[1])
+    pm_y, pm_m = (today.year, today.month - 1) if today.month > 1 else (today.year - 1, 12)
+    pm_start = _dt.date(pm_y, pm_m, 1)
+    pm_end = _dt.date(pm_y, pm_m, _cal.monthrange(pm_y, pm_m)[1])
+    try:
+        this_m = (Transaction.objects.filter(_credit_filter(m_start, m_end))
+                  .aggregate(t=Sum("amount"))["t"] or 0)
+        last_m = (Transaction.objects.filter(_credit_filter(pm_start, pm_end))
+                  .aggregate(t=Sum("amount"))["t"] or 0)
+        lines.append(f"Collections this month ({today:%B}): {this_m}. "
+                     f"Last month ({pm_start:%B}): {last_m}.")
+    except Exception:
+        pass
+    # income by channel (YTD)
+    try:
+        for c in balances.income_by_channel(y0, today):
+            lines.append(f"Channel {c['channel']}: {c['total'] or 0} "
+                         f"across {c['count']} receipt(s) YTD.")
+    except Exception:
+        pass
+    # tithe YTD (a key conference figure)
+    try:
+        tithe = (Transaction.objects.filter(_credit_filter(y0, today),
+                 department__name__icontains="tithe").aggregate(t=Sum("amount"))["t"] or 0)
+        lines.append(f"Tithe received YTD: {tithe}.")
+    except Exception:
+        pass
+    # trust remittance compliance
+    try:
+        tr_rows = balances.trust_summary(None, None)
+        col = sum((r["collected"] for r in tr_rows), _D(0))
+        rem = sum((r["remitted"] for r in tr_rows), _D(0))
+        unrec = sum((r["unreceipted"] for r in tr_rows), _D(0))
+        pct = (rem / col * 100) if col else _D(100)
+        lines.append(f"Trust remittance compliance: {rem} of {col} remitted "
+                     f"({pct:.0f}%). Unreceipted trust (not yet a firm liability, "
+                     f"excluded from 'to remit'): {unrec}.")
+    except Exception:
+        pass
+    # latest bank reconciliation status
+    try:
+        from statements.models import BankReconciliation
+        r = BankReconciliation.objects.order_by("-statement_date").first()
+        if r:
+            state = "reconciled" if r.is_reconciled else "NOT yet reconciled"
+            lines.append(f"Latest bank reconciliation: statement dated "
+                         f"{r.statement_date}, {state}"
+                         + (f", difference {r.difference}." if r.difference is not None else "."))
+    except Exception:
+        pass
+    # outstanding payments (issued but not cleared)
+    try:
+        from cashbook.views import unpresented_cheques_total
+        unp = unpresented_cheques_total(today)
+        if unp:
+            lines.append(f"Unpresented cheques/payments (issued, not yet cleared): {unp}.")
+    except Exception:
+        pass
+    # pledges & campaigns
+    try:
+        from pledges.models import Pledge
+        pl = Pledge.objects.aggregate(p=Sum("amount"))["p"] or 0
+        if pl:
+            lines.append(f"Total pledged: {pl}.")
+    except Exception:
+        pass
+    # membership
+    try:
+        from members.models import Member
+        active = Member.objects.filter(active=True).count()
+        lines.append(f"Active members on file: {active} "
+                     "(individual names withheld for privacy).")
+    except Exception:
+        pass
+    # top expense categories YTD
+    try:
+        cats = (Expense.objects.filter(
+                    status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
+                    date__gte=y0, date__lte=today)
+                .exclude(category=Expense.Category.REMITTANCE)
+                .values("category").annotate(t=Sum("amount")).order_by("-t")[:5])
+        if cats:
+            label = dict(Expense.Category.choices)
+            top = "; ".join(f"{label.get(c['category'], c['category'])} {c['t']}"
+                            for c in cats)
+            lines.append(f"Top expense categories YTD: {top}.")
+    except Exception:
+        pass
     return "\n".join(lines)
 
 

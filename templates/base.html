@@ -34,12 +34,12 @@
       {% else %}
       <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
-      <a href="{% url 'assistant' %}" class="{% if request.resolver_match.url_name == 'assistant' %}active{% endif %}"><span class="ic">💬</span> Ask the books</a>
+      <a href="{% url 'assistant' %}" class="{% if request.resolver_match.url_name == 'assistant' %}active{% endif %}"><span class="ic">💬</span> Assistant</a>
 
       <details class="navgrp" data-grp="giving">
         <summary><span class="ic">♥</span> Giving <span class="chev">▾</span></summary>
         <div class="grp-links">
-          <a href="{% url 'transaction_list' %}" class="{% if request.resolver_match.url_name == 'transaction_list' %}active{% endif %}">Ledger</a>
+          <a href="{% url 'transaction_list' %}" class="{% if request.resolver_match.url_name == 'transaction_list' %}active{% endif %}">Transactions</a>
           <a href="{% url 'envelope_list' %}" class="{% if request.resolver_match.url_name == 'envelope_list' or request.resolver_match.url_name == 'envelope_detail' %}active{% endif %}">Envelopes</a>
           <a href="{% url 'count_list' %}" class="{% if 'count' in request.resolver_match.url_name %}active{% endif %}">Cash counts</a>
           <a href="{% url 'queue' %}" class="{% if request.resolver_match.url_name == 'queue' %}active{% endif %}">Review queue{% if queue_badge %}<span class="badge">{{ queue_badge }}</span>{% endif %}</a>
@@ -54,6 +54,7 @@
           <a href="{% url 'debit_queue' %}" class="{% if request.resolver_match.url_name == 'debit_queue' %}active{% endif %}">Bank debits</a>
           <a href="{% url 'reconciliation_list' %}" class="{% if 'reconciliation' in request.resolver_match.url_name %}active{% endif %}">Bank reconciliation</a>
           <a href="{% url 'payment_register' %}" class="{% if 'payment' in request.resolver_match.url_name %}active{% endif %}">Payment register</a>
+          <a href="{% url 'remittance_dashboard' %}" class="{% if request.resolver_match.url_name == 'remittance_dashboard' %}active{% endif %}">Trust remittance</a>
         </div>
       </details>
 
@@ -69,16 +70,23 @@
       </details>
 
       <details class="navgrp" data-grp="people">
-        <summary><span class="ic">◉</span> People &amp; funds <span class="chev">▾</span></summary>
+        <summary><span class="ic">◉</span> People <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">Members</a>
           <a href="{% url 'pledge_dashboard' %}" class="{% if 'pledge' in request.resolver_match.url_name %}active{% endif %}">Pledges</a>
+          <a href="{% url 'campaign_list' %}" class="{% if 'campaign' in request.resolver_match.url_name %}active{% endif %}">Campaigns</a>
+        </div>
+      </details>
+
+      <details class="navgrp" data-grp="funds">
+        <summary><span class="ic">🏦</span> Funds &amp; setup <span class="chev">▾</span></summary>
+        <div class="grp-links">
           <a href="{% url 'department_list' %}" class="{% if 'department' in request.resolver_match.url_name %}active{% endif %}">Funds &amp; departments</a>
           <a href="{% url 'transfer_list' %}" class="{% if 'transfer' in request.resolver_match.url_name %}active{% endif %}">Fund transfers</a>
           <a href="{% url 'budget' %}" class="{% if request.resolver_match.url_name == 'budget' %}active{% endif %}">Budgeting</a>
           <a href="{% url 'asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">Fixed assets</a>
           <a href="{% url 'rule_list' %}" class="{% if 'rule' in request.resolver_match.url_name %}active{% endif %}">Allocation rules</a>
-          <a href="{% url 'campaign_list' %}" class="{% if 'campaign' in request.resolver_match.url_name %}active{% endif %}">Campaigns</a>
+          <a href="{% url 'dev_patterns' %}" class="{% if request.resolver_match.url_name == 'dev_patterns' %}active{% endif %}">Development-group patterns</a>
         </div>
       </details>
 
@@ -89,7 +97,7 @@
           <a href="{% url 'general_ledger' %}" class="{% if request.resolver_match.url_name == 'general_ledger' %}active{% endif %}">General ledger</a>
           <a href="{% url 'trial_balance' %}" class="{% if request.resolver_match.url_name == 'trial_balance' %}active{% endif %}">Trial balance</a>
           <a href="{% url 'journal' %}" class="{% if request.resolver_match.url_name == 'journal' %}active{% endif %}">Journal</a>
-          <a href="{% url 'ledger_reconciliation' %}" class="{% if request.resolver_match.url_name == 'ledger_reconciliation' %}active{% endif %}">Ledger check</a>
+          <a href="{% url 'ledger_reconciliation' %}" class="{% if request.resolver_match.url_name == 'ledger_reconciliation' %}active{% endif %}">Ledger integrity</a>
         </div>
       </details>
 
@@ -97,9 +105,7 @@
         <summary><span class="ic">▤</span> Reports <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'report_index' %}" class="{% if request.resolver_match.url_name == 'report_index' %}active{% endif %}">All reports</a>
-          <a href="{% url 'report_board' %}" class="{% if request.resolver_match.url_name == 'report_board' %}active{% endif %}">Board report</a>
-          <a href="{% url 'report_monthly' %}" class="{% if request.resolver_match.url_name == 'report_monthly' %}active{% endif %}">Monthly treasurer's report</a>
-          <a href="{% url 'remittance_dashboard' %}" class="{% if request.resolver_match.url_name == 'remittance_dashboard' %}active{% endif %}">Trust remittance</a>
+          <a href="{% url 'report_board' %}" class="{% if request.resolver_match.url_name == 'report_board' %}active{% endif %}">Monthly Treasurer's Report</a>
           <a href="{% url 'remittance_calendar' %}" class="{% if request.resolver_match.url_name == 'remittance_calendar' %}active{% endif %}">Remittance calendar</a>
           <a href="{% url 'report_envelope_sabbath' %}" class="{% if request.resolver_match.url_name == 'report_envelope_sabbath' %}active{% endif %}">Sabbath statement</a>
           <a href="{% url 'report_collections_summary' %}" class="{% if request.resolver_match.url_name == 'report_collections_summary' %}active{% endif %}">Collections summary</a>
@@ -178,6 +184,15 @@
       </div>
     </header>
     <main class="content" id="main" tabindex="-1">
+      {% if crumb_section and crumb_page %}
+      <nav class="breadcrumb no-print" aria-label="Breadcrumb">
+        <a href="{% url 'dashboard' %}">Home</a>
+        <span class="bc-sep" aria-hidden="true">›</span>
+        <span class="bc-section">{{ crumb_section }}</span>
+        <span class="bc-sep" aria-hidden="true">›</span>
+        <span class="bc-current" aria-current="page">{{ crumb_page }}</span>
+      </nav>
+      {% endif %}
       {% if update_available %}<div class="flash" style="background:#e8f3ee;border:1px solid var(--forest);display:flex;align-items:center;gap:.6rem">
         <strong>Update available:</strong> version {{ update_available }} is ready. <a href="{% url 'update_run' %}" style="font-weight:600">Install it →</a></div>{% endif %}
       {% if messages %}
@@ -199,6 +214,18 @@
 
 <script>
 (function(){
+  // --- remember sidebar scroll position across page loads ---
+  var sb=document.getElementById("sidebar"), SKEY="sidebar-scroll";
+  if(sb){
+    try{ var y=sessionStorage.getItem(SKEY); if(y!==null) sb.scrollTop=parseInt(y,10)||0; }catch(e){}
+    var saveT;
+    sb.addEventListener("scroll",function(){
+      clearTimeout(saveT);
+      saveT=setTimeout(function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} },120);
+    });
+    window.addEventListener("beforeunload",function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} });
+  }
+
   // --- collapsible nav groups: open the active group, remember the rest ---
   var KEY="nav-open";
   var open={};

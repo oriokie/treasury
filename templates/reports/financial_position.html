@@ -36,8 +36,8 @@
 
   <div class="stmt-section">NET ASSETS</div>
   <table class="ledger compact"><tbody>
-    <tr><td>Unallocated funds (general)</td><td class="num mono">{{ unallocated|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Allocated funds (Board-designated)</td><td class="num mono">{{ allocated|floatformat:2|intcomma }}</td></tr>
+    <tr><td>General net assets</td><td class="num mono">{{ unallocated|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Designated development funds</td><td class="num mono">{{ allocated|floatformat:2|intcomma }}</td></tr>
     <tr><td>Invested in property</td><td class="num mono">{{ nbv|floatformat:2|intcomma }}</td></tr>
     {% if accrual_adj %}<tr><td>Accrual adjustments (prepaid less payables &amp; accruals)</td><td class="num mono">{{ accrual_adj|floatformat:2|intcomma }}</td></tr>{% endif %}
     <tr class="subtotal"><td><strong>Total net assets</strong></td><td class="num mono"><strong>{{ net_assets|floatformat:2|intcomma }}</strong></td></tr>
@@ -58,7 +58,7 @@
       <tr class="subtotal"><td><strong>Opening funds carried forward</strong></td><td class="num mono"><strong>{{ opening_total|floatformat:2|intcomma }}</strong></td></tr>
     </tbody></table>
     <p class="help">The opening balances brought forward reconcile to bank plus cash-in-hand less trust funds not yet remitted, rather than implying all funds were held in the bank.</p></div>{% endif %}
-  <p class="help">Prepared on a fund-accounting basis following the SDA financial reporting framework. The equity section is presented as <strong>Net Assets</strong> (not “fund balance”), classified into unallocated and Board-allocated funds plus amounts invested in property. Tithe is treated as a pass-through liability (held on behalf of {{ FIELD_NAME }}) and is not recognised as the church’s revenue or net assets.</p>
+  <p class="help">Prepared on a fund-accounting basis following the SDA financial reporting framework. The equity section is presented as <strong>Net Assets</strong> (not “fund balance”), classified into general net assets and designated development funds plus amounts invested in property. Tithe is treated as a pass-through liability (held on behalf of {{ FIELD_NAME }}) and is not recognised as the church’s revenue or net assets.</p>
 </div>
 {% include 'reports/_report_styles.html' %}
 <style>

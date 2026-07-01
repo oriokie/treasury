@@ -70,10 +70,11 @@
 </div></div>
 {% endif %}
 
-{% if queue_count or pending_expenses or dup_count %}
+{% if queue_count or debit_count or pending_expenses or dup_count %}
 <div class="alert alert-brass">
   <span class="alert-title">Needs attention:</span>
-  {% if queue_count %}<a class="pill pill-amber" href="{% url 'queue' %}">⚑ {{ queue_count }} item(s) to allocate</a>{% endif %}
+  {% if queue_count %}<a class="pill pill-amber" href="{% url 'queue' %}">⚑ {{ queue_count }} giving item(s) to allocate</a>{% endif %}
+  {% if debit_count %}<a class="pill pill-amber" href="{% url 'debit_queue' %}">⚑ {{ debit_count }} bank debit(s) to classify</a>{% endif %}
   {% if pending_expenses %}<a class="pill pill-brass" href="{% url 'expense_list' %}?status=PENDING">⊟ {{ pending_expenses }} expense(s) to approve</a>{% endif %}
   {% if dup_count %}<a class="pill pill-red" href="{% url 'member_duplicates' %}">☺ {{ dup_count }} possible duplicate(s)</a>{% endif %}
 </div>

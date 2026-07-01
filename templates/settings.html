@@ -27,6 +27,7 @@
 </div>
 
 <form method="post">{% csrf_token %}
+  <input type="hidden" name="active_tab" id="activeTab" value="{{ request.GET.tab|default:'branding' }}">
   <section class="tabpane active" data-pane="branding">
     <div class="card"><div class="bd"><div class="form-grid">
       {% for f in form %}{% if f.name in 'church_name field_name receipt_message' %}
@@ -400,14 +401,28 @@
 </div></div>
 
 <script>
-document.querySelectorAll("#tabs .tab").forEach(b=>b.addEventListener("click",()=>{
+function activateSettingsTab(name){
+  var btn=document.querySelector('#tabs .tab[data-tab="'+name+'"]');
+  if(!btn) return false;
   document.querySelectorAll("#tabs .tab").forEach(x=>x.classList.remove("active"));
   document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("active"));
-  b.classList.add("active");
-  document.querySelectorAll('.tabpane[data-pane="'+b.dataset.tab+'"]').forEach(x=>x.classList.add("active"));
+  btn.classList.add("active");
+  document.querySelectorAll('.tabpane[data-pane="'+name+'"]').forEach(x=>x.classList.add("active"));
+  var hidden=document.getElementById("activeTab"); if(hidden) hidden.value=name;
   var test=document.getElementById("smsTestCard");
-  if(test) test.style.display = (b.dataset.tab==="sms") ? "" : "none";
+  if(test) test.style.display = (name==="sms") ? "" : "none";
+  return true;
+}
+document.querySelectorAll("#tabs .tab").forEach(b=>b.addEventListener("click",()=>{
+  activateSettingsTab(b.dataset.tab);
+  try{ history.replaceState(null,'', '?tab='+b.dataset.tab); }catch(e){}
 }));
+// restore the tab after a save/refresh (?tab=...) or default to branding
+(function(){
+  var params=new URLSearchParams(location.search);
+  var want=params.get("tab");
+  if(want) activateSettingsTab(want);
+})();
 </script>
 <style>
 .settings-tabs{display:flex;align-items:center;gap:.15rem;flex-wrap:wrap;padding:.4rem .5rem;margin-bottom:1.3rem;
