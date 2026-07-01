@@ -61,6 +61,8 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 
     def get(self, request, *args, **kwargs):
         export = request.GET.get("export")
+        if export == "support-pdf":
+            return self._supporting_docs_pdf(request)
         if export in ("csv", "xlsx"):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
@@ -77,6 +79,28 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                                      church=SiteConfig.get().church_name)
             return csv_response("expenses.csv", header, rows)
         return super().get(request, *args, **kwargs)
+
+    def _supporting_docs_pdf(self, request):
+        from django.http import HttpResponse
+        from core.models import SiteConfig
+        from .services.supporting_pdf import (build_supporting_docs_pdf,
+                                              HAVE_PDF_LIBS)
+        if not HAVE_PDF_LIBS:
+            messages.error(request, "PDF generation isn't available on the server yet. "
+                "Ask the administrator to install the reportlab and pypdf packages.")
+            return redirect("expense_list")
+        qs = self.get_queryset().prefetch_related("attachments")
+        if not qs.exists():
+            messages.info(request, "No expenses match the current filters.")
+            params = request.GET.copy()
+            params.pop("export", None)
+            suffix = f"?{params.urlencode()}" if params else ""
+            return redirect(f"{request.path}{suffix}")
+        data, stats = build_supporting_docs_pdf(
+            qs, church=SiteConfig.get().church_name or "")
+        resp = HttpResponse(data, content_type="application/pdf")
+        resp["Content-Disposition"] = 'attachment; filename="supporting_documents.pdf"'
+        return resp
 
     def get_context_data(self, **kwargs):
         from django.db.models import Sum, Count
@@ -1352,6 +1376,195 @@ def _sync_advance_charge(adv, user):
         exp.delete()
 
 
+def _advance_import_sample():
+    """A sample .xlsx for importing expenses against a staff advance."""
+    import io, openpyxl
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.worksheet.datavalidation import DataValidation
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Advance expenses"
+    head = ["Date", "Description", "Category", "Amount", "Charge"]
+    ws.append(head)
+    for c in range(1, len(head) + 1):
+        ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
+        ws.cell(1, c).fill = PatternFill("solid", fgColor="1F5F4F")
+    ws.append(["2026-06-06", "Bus fare to venue", "Transport", 800, 0])
+    ws.append(["2026-06-06", "Refreshments", "Refreshments / catering", 1500, 30])
+    ws.column_dimensions["B"].width = 34
+    ws.column_dimensions["C"].width = 24
+    ref = wb.create_sheet("Lists")
+    ref["A1"] = "Category"; ref["A1"].font = Font(bold=True)
+    cats = [c.label for c in Expense.Category]
+    for i, c in enumerate(cats, start=2):
+        ref.cell(i, 1, c)
+    dv = DataValidation(type="list", formula1=f"=Lists!$A$2:$A${len(cats)+1}",
+                        allow_blank=True)
+    ws.add_data_validation(dv); dv.add("C2:C500")
+    info = wb.create_sheet("How to fill this in")
+    for i, line in enumerate([
+        "Import expenses onto a staff advance",
+        "",
+        "One row per expense the advance holder spent.",
+        "  - Date  — YYYY-MM-DD (required).",
+        "  - Description — what it was for (required).",
+        "  - Category — pick from the list (optional; defaults to Other).",
+        "  - Amount — the amount spent (required).",
+        "  - Charge — any M-Pesa/bank fee paid on that payment (optional).",
+        "",
+        "The total of Amount + Charge across all rows cannot exceed the",
+        "advance's remaining balance. If it does, nothing is imported.",
+    ], start=1):
+        info.cell(i, 1, line)
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return buf
+
+
+class AdvanceExpenseImportView(View):
+    """Import a spreadsheet of expenses onto one staff advance. Available to the
+    treasurer/assistant and to the department leader who owns the advance. The
+    combined total (amount + charge) may not exceed the advance's remaining
+    balance — an over-budget file is rejected in full."""
+    template_name = "cashbook/advance_import.html"
+
+    def _get_advance(self, request, pk):
+        from .models import StaffAdvance
+        from core import roles
+        adv = get_object_or_404(StaffAdvance, pk=pk)
+        user = request.user
+        if roles.can_enter_data(user):
+            return adv, False
+        # a leader may import onto advances in their departments
+        if roles.is_leader(user):
+            from leaders.permissions import assert_department_allowed
+            if assert_department_allowed(user, adv.department_id):
+                return adv, True
+        return None, False
+
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        if request.GET.get("download"):
+            buf = _advance_import_sample()
+            resp = HttpResponse(buf.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            resp["Content-Disposition"] = 'attachment; filename="advance_expenses_template.xlsx"'
+            return resp
+        adv, is_leader = self._get_advance(request, pk)
+        if not adv:
+            return redirect("leader_dashboard" if request.user else "dashboard")
+        return render(request, self.template_name,
+                      {"adv": adv, "is_leader_view": is_leader})
+
+    def post(self, request, pk):
+        import openpyxl, datetime as _dt
+        from decimal import Decimal, InvalidOperation
+        from core.utils import block_if_locked
+        adv, is_leader = self._get_advance(request, pk)
+        if not adv:
+            return redirect("dashboard")
+        back = ("leader_advance_detail" if is_leader else "advance_detail")
+        if adv.status == adv.Status.CLOSED:
+            messages.error(request, "This advance is closed.")
+            return redirect(back, pk=pk)
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a spreadsheet to upload.")
+            return redirect("advance_import", pk=pk)
+        try:
+            wb = openpyxl.load_workbook(f, data_only=True)
+        except Exception:  # noqa: BLE001
+            messages.error(request, "Could not read that file — please upload a .xlsx.")
+            return redirect("advance_import", pk=pk)
+        ws = (wb["Advance expenses"] if "Advance expenses" in wb.sheetnames
+              else wb.active)
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            messages.error(request, "The sheet is empty.")
+            return redirect("advance_import", pk=pk)
+        header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+
+        def col(*names):
+            for n in names:
+                if n in header:
+                    return header.index(n)
+            return None
+        c_date, c_desc = col("date"), col("description", "details", "expense")
+        c_amt, c_cat = col("amount", "value"), col("category")
+        c_charge = col("charge", "m-pesa charge", "transaction charge")
+        if c_date is None or c_desc is None or c_amt is None:
+            messages.error(request, "Need at least Date, Description and Amount columns "
+                                    "— please use the template.")
+            return redirect("advance_import", pk=pk)
+
+        cat_labels = {c.label.upper(): c.value for c in Expense.Category}
+        cat_labels.update({c.value: c.value for c in Expense.Category})
+
+        def pdate(v):
+            if isinstance(v, _dt.datetime):
+                return v.date()
+            if isinstance(v, _dt.date):
+                return v
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"):
+                try:
+                    return _dt.datetime.strptime(str(v).strip(), fmt).date()
+                except (ValueError, TypeError):
+                    continue
+            return None
+
+        def num(v):
+            try:
+                return Decimal(str(v)) if v not in (None, "") else Decimal(0)
+            except (InvalidOperation, TypeError):
+                return Decimal(0)
+
+        plan, errors, total = [], [], Decimal(0)
+        for i, r in enumerate(rows[1:], start=2):
+            desc = (str(r[c_desc]).strip() if c_desc < len(r) and r[c_desc] else "")
+            d = pdate(r[c_date]) if c_date < len(r) else None
+            amt = num(r[c_amt]) if c_amt < len(r) else Decimal(0)
+            charge = num(r[c_charge]) if c_charge is not None and c_charge < len(r) else Decimal(0)
+            if not desc and not d and amt <= 0:
+                continue
+            if not (desc and d and amt > 0):
+                errors.append(f"Row {i}: needs a date, description and positive amount.")
+                continue
+            cat_raw = (str(r[c_cat]).strip().upper() if c_cat is not None
+                       and c_cat < len(r) and r[c_cat] else "")
+            category = cat_labels.get(cat_raw, Expense.Category.OTHER)
+            plan.append({"date": d, "desc": desc, "amount": amt,
+                         "charge": charge, "category": category})
+            total += amt + charge
+
+        if not plan:
+            messages.error(request, "No valid rows found. " + " ".join(errors[:3]))
+            return redirect("advance_import", pk=pk)
+
+        # the whole-batch balance cap: reject the import entirely if it exceeds
+        if total > adv.balance:
+            messages.error(request,
+                f"This file accounts for KSh {total:,.2f}, but only "
+                f"KSh {adv.balance:,.2f} is left on the advance. Nothing was "
+                "imported — reduce the entries and try again.")
+            return redirect("advance_import", pk=pk)
+
+        claimant = adv.staff_name
+        if is_leader:
+            claimant = request.user.get_full_name() or request.user.username
+        created = 0
+        for p in plan:
+            if block_if_locked(request, p["date"]):
+                continue
+            exp, err = _record_advance_expense(
+                adv, date=p["date"], desc=p["desc"], amount=p["amount"],
+                category=p["category"], user=request.user, claimant=claimant,
+                charge=p["charge"])
+            if exp:
+                created += 1
+        msg = f"{created} expense(s) imported onto the advance."
+        if errors:
+            msg += f" {len(errors)} row(s) skipped."
+        messages.success(request, msg)
+        return redirect(back, pk=pk)
+
+
 def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant=None,
                             charge=None):
     """Create an APPROVED+PAID expense that accounts for part of a staff advance,
@@ -1706,6 +1919,10 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
     category, method, claimant, voucher. Honours the approval setting (auto-approve
     when approval isn't required, otherwise lands as pending)."""
     template_name = "cashbook/import.html"
+
+    def _scoped_departments(self, user):
+        from departments.models import Department
+        return Department.objects.all()
 
     CATEGORY_LABELS = {c.label.upper(): c.value for c in Expense.Category}
     CATEGORY_LABELS.update({c.value: c.value for c in Expense.Category})

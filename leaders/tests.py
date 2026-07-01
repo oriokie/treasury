@@ -205,7 +205,7 @@ class LeaderDashboardRevampTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Closing balance")
         self.assertContains(r, "Collections")
-        self.assertContains(r, "Top contributors")
+        self.assertNotContains(r, "Top contributors")
         self.assertContains(r, "Explore")
         # dedicated-page links are present
         self.assertContains(r, f"/leader/department/{self.dept.id}/collections/")

@@ -35,6 +35,7 @@ def site_context(request):
     # for a leader who leads exactly one department, expose it so the nav can
     # label and link straight to that department
     ctx["leader_single_dept"] = None
+    ctx["leader_primary_dept"] = None
     try:
         from core import roles as _roles
         if user and getattr(user, "is_authenticated", False) and _roles.is_leader(user):
@@ -42,6 +43,11 @@ def site_context(request):
             led = list(departments_led_by(user))
             if len(led) == 1:
                 ctx["leader_single_dept"] = led[0]
+            # primary = a root of the led set (parent not also led), else first
+            if led:
+                led_ids = {d.id for d in led}
+                roots = [d for d in led if d.parent_id not in led_ids]
+                ctx["leader_primary_dept"] = roots[0] if roots else led[0]
     except Exception:  # noqa: BLE001
         pass
     ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))

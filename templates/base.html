@@ -1,6 +1,6 @@
 {% load static humanize %}
 <!doctype html>
-<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-sidebarstyle="{{ prefs.sidebar_style|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% endif %}>
+<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-sidebarstyle="{{ prefs.sidebar_style|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% else %} data-theme="light" data-fontfamily="system"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -28,7 +28,11 @@
     </div>
     <nav class="nav" id="mainnav">
       {% if is_leader %}
-      <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name and 'advance' not in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> {% if leader_single_dept %}My department{% else %}My departments{% endif %}</a>
+      <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name and 'advance' not in request.resolver_match.url_name and 'collection' not in request.resolver_match.url_name and 'expense' not in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> {% if leader_single_dept %}My department{% else %}My departments{% endif %}</a>
+      {% if leader_primary_dept %}
+      <a href="{% url 'leader_collections' leader_primary_dept.id %}" class="{% if 'collection' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">📥</span> Collections</a>
+      <a href="{% url 'leader_expenses' leader_primary_dept.id %}" class="{% if 'expense' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">🧾</span> Expenses</a>
+      {% endif %}
       <a href="{% url 'leader_advances' %}" class="{% if 'advance' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">💵</span> Staff advances</a>
       {% if can.allocate_dev_offering %}<a href="{% url 'dev_unassigned' %}" class="{% if request.resolver_match.url_name == 'dev_unassigned' %}active{% endif %}"><span class="ic">🎯</span> Allocate dev offering</a>{% endif %}
       {% else %}

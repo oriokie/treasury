@@ -8,6 +8,7 @@
     <a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
     <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">
     <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search…" class="field u-w-auto">
     <button class="btn btn-sm">Apply</button>
   </form>
 </div>
@@ -32,4 +33,5 @@
     {% if rows %}<tfoot><tr><th colspan="6" class="num">Total</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>{% endif %}
   </table>
 </div></div>
+{% include 'partials/pagination.html' %}
 {% endblock %}

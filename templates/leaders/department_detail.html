@@ -53,19 +53,8 @@
 
 <!-- Insight charts removed: leaders asked for a simpler, image-friendly view -->
 
-<!-- Insights row: top givers + budget -->
+<!-- Budget / pledge insight -->
 <div class="ld-charts">
-  <div class="card"><div class="hd">Top contributors</div><div class="bd bd-flush">
-    <table class="ledger compact">
-      <tbody>
-      {% for g in top_givers %}<tr>
-        <td>{{ g.who }} <span class="muted u-xs">· {{ g.n }} contribution{{ g.n|pluralize }}</span></td>
-        <td class="num mono">{{ g.total|floatformat:0|intcomma }}</td>
-      </tr>{% empty %}<tr><td class="muted">No giving in this period.</td></tr>{% endfor %}
-      </tbody>
-    </table>
-  </div></div>
-
   {% if budget %}
   <div class="card"><div class="hd">Budget vs actual</div><div class="bd">
     <div class="kv u-mb-xs"><span>Spent</span><span class="mono">{{ budget.spent|floatformat:0|intcomma }}</span></div>
@@ -106,60 +95,23 @@
 </div></div>
 {% endif %}
 
-<!-- Recent activity previews -->
-<div class="ld-charts">
-  <div class="card"><div class="hd u-between">Recent collections <a class="link u-xs" href="{% url 'leader_collections' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd bd-flush">
-    <table class="ledger compact">
-      <tbody>
-      {% for c in collections %}<tr>
-        <td class="mono u-nowrap">{{ c.date|date:"d M" }}</td>
-        <td>{{ c.who }}</td>
-        <td class="num mono">{{ c.amount|floatformat:0|intcomma }}</td>
-      </tr>{% empty %}<tr><td colspan="3" class="muted">No collections yet.</td></tr>{% endfor %}
-      </tbody>
-    </table>
-  </div></div>
-  {% if expenses_eligible %}
-  <div class="card"><div class="hd u-between">Recent expenses <a class="link u-xs" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">View all →</a></div><div class="bd bd-flush">
-    <table class="ledger compact">
-      <tbody>
-      {% for e in expenses %}<tr>
-        <td class="mono u-nowrap">{{ e.date|date:"d M" }}</td>
-        <td>{{ e.description }}</td>
-        <td class="num mono">{{ e.amount|floatformat:0|intcomma }}</td>
-      </tr>{% empty %}<tr><td colspan="3" class="muted">No expenses yet.</td></tr>{% endfor %}
-      </tbody>
-    </table>
-  </div></div>
-  {% endif %}
-</div>
-
 <!-- Sub-accounts -->
 {% if subrows %}
 <div class="section-title u-between"><span>Sub-accounts</span>
   <button type="button" class="btn btn-ghost btn-sm no-print" onclick="tableToJpeg('ldSubgroups', {title:'{{ dept.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'{{ dept.slug|default:dept.id }}-subgroups', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download as a JPEG image">⤓ JPEG</button></div>
 <div class="card u-mb-lg"><div class="bd bd-flush">
   <table class="ledger compact" id="ldSubgroups">
-    {% if any_sub_expenses %}
-    <thead><tr><th>Fund</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th><th></th></tr></thead>
+    <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th><th></th></tr></thead>
     <tbody>
     {% for r in subrows %}<tr>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">{{ r.department.name }}</a></td>
+      <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">drill in →</a></td>
     </tr>{% endfor %}
     </tbody>
-    {% else %}
-    <thead><tr><th>Subgroup</th><th class="num">Total contribution</th></tr></thead>
-    <tbody>
-    {% for r in subrows %}<tr>
-      <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">{{ r.department.name }}</a></td>
-      <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
-    </tr>{% endfor %}
-    </tbody>
-    {% endif %}
   </table>
 </div></div>
 {% endif %}

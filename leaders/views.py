@@ -13,6 +13,15 @@ from core.rights import display_phone, display_giver
 from .permissions import LeaderRequiredMixin, allowed_departments, assert_department_allowed
 
 
+def _parse_date(raw):
+    if not raw:
+        return None
+    try:
+        return dt.date.fromisoformat(raw.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
 def _scoped_rows(user, start, end):
     """Per-department balance rows (un-consolidated) limited to the leader's
     departments. Filtering happens here, server-side, on the id set."""
@@ -320,14 +329,24 @@ class LeaderCollectionsView(LeaderRequiredMixin, TemplateView):
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
+        from django.core.paginator import Paginator
         ctx = super().get_context_data(**kwargs)
         start, end = parse_period(self.request)
         ctx["dept"] = self.dept
         ctx["start"], ctx["end"] = start, end
         rows = _collection_rows(self.dept, start, end, self.request.user)
-        ctx["rows"] = rows
+        q = (self.request.GET.get("q") or "").strip().lower()
+        if q:
+            rows = [r for r in rows if q in (r.get("who") or "").lower()
+                    or q in (r.get("reference") or "").lower()
+                    or q in (r.get("phone") or "").lower()]
+        ctx["q"] = self.request.GET.get("q", "")
         ctx["total"] = sum((r["amount"] for r in rows), Decimal(0))
         ctx["count"] = len(rows)
+        page = Paginator(rows, 50).get_page(self.request.GET.get("page"))
+        ctx["page_obj"] = page
+        ctx["is_paginated"] = page.has_other_pages()
+        ctx["rows"] = page.object_list
         return ctx
 
 
@@ -362,16 +381,30 @@ class LeaderExpensesView(LeaderRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         from cashbook.models import Expense
-        from django.db.models import Sum
+        from django.db.models import Sum, Q
+        from django.core.paginator import Paginator
         ctx = super().get_context_data(**kwargs)
         start, end = parse_period(self.request)
         ctx["dept"] = self.dept
         ctx["start"], ctx["end"] = start, end
+        q = (self.request.GET.get("q") or "").strip()
+        status = (self.request.GET.get("status") or "").strip()
         exps = (Expense.objects.filter(department=self.dept,
                     date__gte=start, date__lte=end).order_by("-date", "-id"))
-        ctx["expenses"] = exps
+        if q:
+            exps = exps.filter(Q(description__icontains=q) | Q(claimant__icontains=q)
+                               | Q(voucher_no__icontains=q))
+        if status:
+            exps = exps.filter(status=status)
+        ctx["q"] = q
+        ctx["status"] = status
+        ctx["status_choices"] = Expense.Status.choices
         ctx["total"] = exps.aggregate(s=Sum("amount"))["s"] or Decimal(0)
         ctx["count"] = exps.count()
+        page = Paginator(exps, 50).get_page(self.request.GET.get("page"))
+        ctx["page_obj"] = page
+        ctx["is_paginated"] = page.has_other_pages()
+        ctx["expenses"] = page.object_list
         return ctx
 
 
@@ -520,12 +553,35 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
         return adv
 
     def get(self, request, pk):
+        import datetime as _dt
+        from django.core.paginator import Paginator
         from cashbook.views import _advance_detail_ctx
         adv = self._get_advance(request, pk)
         if not adv:
             return redirect("leader_advances")
-        return render(request, self.template_name,
-                      _advance_detail_ctx(adv, leader_mode=True, user=request.user))
+        ctx = _advance_detail_ctx(adv, leader_mode=True, user=request.user)
+        # optional date-range + search filters over the statement timeline; the
+        # running balance on each row is already computed, so filtering only hides
+        # rows without distorting the figures.
+        rows = ctx.get("statement", [])
+        q = (request.GET.get("q") or "").strip().lower()
+        start = _parse_date(request.GET.get("start"))
+        end = _parse_date(request.GET.get("end"))
+        if start:
+            rows = [r for r in rows if r["date"] >= start]
+        if end:
+            rows = [r for r in rows if r["date"] <= end]
+        if q:
+            rows = [r for r in rows if q in (r.get("label") or "").lower()]
+        ctx["q"] = request.GET.get("q", "")
+        ctx["f_start"] = request.GET.get("start", "")
+        ctx["f_end"] = request.GET.get("end", "")
+        ctx["filtered"] = bool(q or start or end)
+        page = Paginator(rows, 25).get_page(request.GET.get("page"))
+        ctx["page_obj"] = page
+        ctx["is_paginated"] = page.has_other_pages()
+        ctx["statement"] = page.object_list
+        return render(request, self.template_name, ctx)
 
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
@@ -593,6 +649,30 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
             exp.description = (request.POST.get("description") or exp.description)[:200]
             exp.save(update_fields=["date", "amount", "description"])
             messages.success(request, "Expense updated.")
+            return redirect("leader_advance_detail", pk=pk)
+
+        # --- delete one of the leader's own expense lines (period open, advance
+        #     still pending — not settled or closed) ---
+        if action == "delete_expense":
+            exp = Expense.objects.filter(pk=request.POST.get("expense_id"),
+                                         advance=adv).first()
+            if not exp or exp.recorded_by_id != request.user.id:
+                messages.error(request, "You can only delete expenses you entered.")
+                return redirect("leader_advance_detail", pk=pk)
+            if exp.category == Expense.Category.BANK_CHARGE:
+                messages.error(request, "Transaction-charge lines can't be deleted directly; "
+                    "delete the expense they belong to instead.")
+                return redirect("leader_advance_detail", pk=pk)
+            if adv.status in (StaffAdvance.Status.SETTLED, StaffAdvance.Status.CLOSED):
+                messages.error(request, "This advance is settled or closed; ask the "
+                    "treasurer to make changes.")
+                return redirect("leader_advance_detail", pk=pk)
+            if block_if_locked(request, exp.date):
+                return redirect("leader_advance_detail", pk=pk)
+            # remove any linked transaction-charge line alongside it
+            exp.charges.all().delete()
+            exp.delete()
+            messages.success(request, "Expense deleted.")
             return redirect("leader_advance_detail", pk=pk)
 
         # --- default: record a new expense (with optional transaction charge) ---

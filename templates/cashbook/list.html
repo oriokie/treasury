@@ -44,6 +44,7 @@
     {% if filters.q or filters.status or filters.category or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
+    <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=support-pdf" title="One PDF: a voucher summary and the attached documents for every expense matching the current filters">🖨 Supporting documents</a>
     {% if is_treasurer %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_recategorize' %}" title="Download, edit categories, and re-import">⇄ Re-categorise</a>
     <span class="ws-divider"></span>
     <span class="muted u-xs"><span id="bulkcount">0</span> selected</span>

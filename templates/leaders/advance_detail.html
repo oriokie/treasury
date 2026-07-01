@@ -16,7 +16,16 @@
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance came from the petty-cash float.</p>{% endif %}
 {% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> KSh {{ adv.bank_charge|floatformat:2|intcomma }} — the charge the church paid to send this advance (borne by the fund, not deducted from your balance).</p>{% endif %}
 
-<div class="card u-mb"><div class="hd">Statement</div><div class="bd">
+<div class="card u-mb"><div class="hd u-between">Statement
+  <form method="get" class="adv-filter no-print">
+    <input type="date" name="start" value="{{ f_start }}" class="field field-sm" aria-label="From date">
+    <input type="date" name="end" value="{{ f_end }}" class="field field-sm" aria-label="To date">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search detail…" class="field field-sm">
+    <button class="btn btn-sm">Filter</button>
+    {% if filtered %}<a class="btn btn-sm btn-ghost" href="{% url 'leader_advance_detail' adv.id %}">Clear</a>{% endif %}
+  </form>
+</div><div class="bd">
+{% if filtered %}<p class="help u-mt-0">Showing filtered rows. The running balance reflects each row's position in the full statement.</p>{% endif %}
 <table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to you</th><th class="num">Accounted</th><th class="num">Still to account</th><th class="no-print"></th></tr></thead>
 <tbody>{% for r in statement %}<tr>
   <td>{{ r.date|date:"d M y" }}</td>
@@ -28,6 +37,11 @@
   <td class="no-print u-nowrap">
     {% if r.editable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('edit-{{ r.expense.id }}').style.display='block'">✎</button>{% endif %}
     {% if r.attachable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('att-{{ r.expense.id }}').style.display='block'">📎</button>{% endif %}
+    {% if r.editable and adv.status != 'SETTLED' and adv.status != 'CLOSED' %}
+    <form method="post" style="display:inline" onsubmit="return confirm('Delete this expense? This cannot be undone.')">{% csrf_token %}
+      <input type="hidden" name="action" value="delete_expense"><input type="hidden" name="expense_id" value="{{ r.expense.id }}">
+      <button class="btn btn-xs btn-ghost" style="color:var(--red,#b3261e)" title="Delete">🗑</button>
+    </form>{% endif %}
   </td></tr>
   {% if r.editable %}<tr id="edit-{{ r.expense.id }}" style="display:none"><td colspan="6" class="no-print" style="background:var(--wash,#f7f9f8)">
     <form method="post" class="form-inline" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end;padding:.4rem 0">{% csrf_token %}
@@ -46,21 +60,38 @@
       <button class="btn btn-sm">Attach</button>
     </form></td></tr>{% endif %}
 {% endfor %}</tbody></table>
+{% include 'partials/pagination.html' %}
 </div></div>
 
 {% if adv.status != 'CLOSED' %}
-<div class="card"><div class="hd">Record an expense against this advance</div><div class="bd">
+<div class="card"><div class="hd u-between">Record an expense against this advance
+  <a class="btn btn-xs btn-ghost no-print" href="{% url 'advance_import' adv.id %}">⬆ Import from Excel</a></div><div class="bd">
 <p class="help u-mt-0">Each expense is filed as approved and paid, with you (<strong>{{ user.get_full_name|default:user.username }}</strong>) as the claimant, and reduces what you still owe to account for. Add the M-Pesa/bank charge you paid on that payment if any — it's met out of the advance too. You can't account for more than is left on the advance.</p>
-<form method="post">{% csrf_token %}
-  <div class="form-grid" style="display:grid;grid-template-columns:110px 1.5fr 1fr .8fr .8fr auto;gap:.6rem;align-items:end">
+<form method="post" class="adv-entry">{% csrf_token %}
+  <div class="adv-entry-grid">
     <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
-    <div class="form-row u-m-0"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, materials" required></div>
+    <div class="form-row u-m-0 adv-desc"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, materials" required></div>
     <div class="form-row u-m-0"><label>Category</label><select name="category" class="field--select">{% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
-    <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right" required></div>
-    <div class="form-row u-m-0"><label>Charge</label><input name="charge" class="field mono u-right" placeholder="0.00"></div>
-    <button class="btn">Add</button>
+    <div class="form-row u-m-0"><label>Amount</label><input name="amount" inputmode="decimal" class="field mono u-right" required></div>
+    <div class="form-row u-m-0"><label>Charge</label><input name="charge" inputmode="decimal" class="field mono u-right" placeholder="0.00"></div>
+    <button class="btn adv-add">Add</button>
   </div>
 </form>
 </div></div>
 {% else %}<p class="help">This advance is closed. Speak to the treasurer if something needs adjusting.</p>{% endif %}
+
+<style>
+.adv-filter{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.adv-filter .field-sm{padding:.3rem .5rem;font-size:.85rem;width:auto;max-width:150px}
+.adv-entry-grid{display:grid;grid-template-columns:120px 1.6fr 1fr .8fr .8fr auto;gap:.6rem;align-items:end}
+.adv-entry-grid label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:.15rem}
+@media(max-width:760px){
+  .adv-entry-grid{grid-template-columns:1fr 1fr;gap:.7rem}
+  .adv-entry-grid .adv-desc{grid-column:1 / -1}
+  .adv-entry-grid .adv-add{grid-column:1 / -1;width:100%;padding:.7rem;font-size:1rem}
+  .adv-filter{width:100%}
+  .adv-filter .field-sm{flex:1;max-width:none}
+  .ld-hero h1{font-size:1.35rem}
+}
+</style>
 {% endblock %}

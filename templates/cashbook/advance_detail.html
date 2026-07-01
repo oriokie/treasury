@@ -40,7 +40,8 @@
 
 {% if can_enter_data and adv.status != 'CLOSED' %}
 <form method="post" action="{% url 'advance_add_expense' adv.id %}" class="u-mt">{% csrf_token %}
-  <div class="section-title">Record a settling expense</div>
+  <div class="section-title u-between">Record a settling expense
+    <a class="btn btn-xs btn-ghost no-print" href="{% url 'advance_import' adv.id %}">⬆ Import from Excel</a></div>
   <div class="form-grid" style="display:grid;grid-template-columns:110px 1.5fr 1fr .8fr .8fr auto;gap:.6rem;align-items:end">
     <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
     <div class="form-row u-m-0"><label>Description</label><input name="description" class="field" placeholder="e.g. Bus fare, hotel"></div>

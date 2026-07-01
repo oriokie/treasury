@@ -33,3 +33,8 @@ gunicorn==23.0.0
 
 # Dev/test only
 coverage==7.14.1
+
+# Supporting-documents PDF (Expense Register "Supporting documents" export).
+# Pure-Python wheels; safe to install on cPanel/AlmaLinux without build tools.
+reportlab==4.2.5
+pypdf==5.1.0

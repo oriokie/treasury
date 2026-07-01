@@ -1,0 +1,25 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Import expenses · {{ adv.staff_name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Import expenses onto this advance</h1>
+  <div class="sub">{{ adv.staff_name }} · {{ adv.department.name }} · balance to account for
+    <strong class="mono">KSh {{ adv.balance|floatformat:2|intcomma }}</strong></div></div>
+<a class="btn btn-ghost btn-sm" href="{% if is_leader_view %}{% url 'leader_advance_detail' adv.id %}{% else %}{% url 'advance_detail' adv.id %}{% endif %}">← Back</a></div>
+
+<div class="card u-mb"><div class="bd">
+  <ol class="help u-mt-0" style="line-height:1.9">
+    <li>Download the template and fill one row per expense (Date, Description, Category, Amount, Charge).</li>
+    <li>The total of Amount + Charge across all rows cannot exceed the balance shown above
+      (<strong class="mono">KSh {{ adv.balance|floatformat:2|intcomma }}</strong>). An over-budget file is rejected in full.</li>
+    <li>Upload the completed sheet. Each row is filed as an approved, paid expense against this advance.</li>
+  </ol>
+  <div class="btn-row u-mb">
+    <a class="btn btn-sm btn-ghost" href="{% url 'advance_import' adv.id %}?download=1">⬇ Download template</a>
+  </div>
+  <form method="post" enctype="multipart/form-data" class="btn-row u-items-end">{% csrf_token %}
+    <div class="f grow"><label>Completed spreadsheet (.xlsx)</label>
+      <input type="file" name="file" accept=".xlsx" class="field" required></div>
+    <button class="btn">Import</button>
+  </form>
+</div></div>
+{% endblock %}

@@ -31,6 +31,6 @@ class LeaderSimplifiedTests(TestCase):
         b = self.c.get(f"/leader/department/{self.parent.id}/").content.decode()
         self.assertNotIn("ldMonthly", b)
         self.assertNotIn("chart.umd", b)
-        self.assertIn("Total contribution", b)
+        self.assertIn(">Opening</th>", b)
         self.assertNotIn("Recent expenses", b)
         self.assertIn("tableToJpeg('ldSubgroups'", b)

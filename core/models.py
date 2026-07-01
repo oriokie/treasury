@@ -702,7 +702,7 @@ class UserPreference(models.Model):
                                 related_name="preference")
 
     # --- Appearance ---
-    theme = models.CharField(max_length=8, choices=Theme.choices, default=Theme.SYSTEM)
+    theme = models.CharField(max_length=8, choices=Theme.choices, default=Theme.LIGHT)
     accent = models.CharField(max_length=16, default="forest",
         help_text="Preset key (e.g. 'forest') or 'custom'.")
     accent_custom = models.CharField(max_length=7, blank=True, default="",
@@ -716,7 +716,7 @@ class UserPreference(models.Model):
     font_size = models.CharField(max_length=6, choices=FontSize.choices,
                                  default=FontSize.MEDIUM)
     font_family = models.CharField(max_length=8, choices=FontFamily.choices,
-                                   default=FontFamily.DEFAULT,
+                                   default=FontFamily.SYSTEM,
         help_text="The typeface used across the app's body text.")
     layout_width = models.CharField(max_length=5, choices=Width.choices,
                                     default=Width.BOXED)

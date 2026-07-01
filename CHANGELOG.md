@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.94.0 - leader area overhaul, supporting-docs PDF, light+system defaults, advance Excel import
+- Leader dashboard: removed the Top contributors card and the Recent collections/expenses preview cards.
+  Sub-accounts table now shows Opening / Receipts / Expenses / Closing for every account.
+- Leaders: Collections and Expenses are now dedicated sidebar menus (leader_primary_dept); both pages gain
+  a search box and pagination. A date filter + status filter were added to expenses.
+- Leader staff-advance page: date filter, search over the statement, paginated statement (25/page),
+  mobile-friendly stacked entry form, and a delete button for the leader's own expense lines while the
+  period is open and the advance is still pending (not settled/closed).
+- Advance Excel import (advance_import): a sample .xlsx download with the key fields, available to the
+  treasurer/assistant and the owning department leader. The combined total (amount + charge) may not exceed
+  the advance's remaining balance - an over-budget file is rejected in full.
+- Expense Register: new "Supporting documents" export (export=support-pdf) building a single PDF with a
+  voucher summary page per expense followed by its attachments (PDFs merged, images drawn, unsupported/
+  missing handled gracefully). Requires reportlab + pypdf on the server; degrades with a message if absent.
+- Appearance: UserPreference theme default LIGHT and font_family default SYSTEM (migration core 0041). The
+  anonymous/login page now explicitly renders light + system font.
+- Info: petty-cash top-ups and staff-advance top-ups do NOT post journal entries; they are reflected in the
+  derived cash/float balances, not the general ledger.
+- Tests: leaders/test_batch_v194 (13), cashbook/test_supporting_pdf (6). leaders 39 / cashbook 180 /
+  core 171 / reports 190 green.
+- Deploy: pip install -r requirements.txt (adds reportlab, pypdf), then migrate (core 0041), collectstatic.
+
 ## v1.93.0 - fund opening column, payables tabs, settings/sidebar persistence, advance top-up double-entry
 - Fund ledger sub-accounts table now has an Opening column (opening + receipts - payments = closing),
   with matching totals rows and the subgroups export updated to include Opening.

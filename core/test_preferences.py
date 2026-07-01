@@ -12,7 +12,7 @@ class PreferenceModelTests(TestCase):
 
     def test_get_for_creates_with_defaults(self):
         pref = UserPreference.get_for(self.u)
-        self.assertEqual(pref.theme, "SYSTEM")
+        self.assertEqual(pref.theme, "LIGHT")
         self.assertEqual(pref.accent, "forest")
         self.assertTrue(pref.dashboard_widgets)   # seeded
         self.assertEqual(pref.rows_per_page, 25)
@@ -43,7 +43,7 @@ class PreferenceModelTests(TestCase):
         pref.theme = "DARK"; pref.accent = "rust"; pref.high_contrast = True
         pref.rows_per_page = 100; pref.save()
         pref.reset_to_defaults()
-        self.assertEqual(pref.theme, "SYSTEM")
+        self.assertEqual(pref.theme, "LIGHT")
         self.assertEqual(pref.accent, "forest")
         self.assertFalse(pref.high_contrast)
         self.assertEqual(pref.rows_per_page, 25)
@@ -97,7 +97,7 @@ class PreferenceViewTests(TestCase):
     def test_reset_button(self):
         pref = UserPreference.get_for(self.u); pref.theme = "DARK"; pref.save()
         self.c.post("/preferences/", {"reset": "1"})
-        self.assertEqual(UserPreference.get_for(self.u).theme, "SYSTEM")
+        self.assertEqual(UserPreference.get_for(self.u).theme, "LIGHT")
 
     def test_landing_redirect(self):
         pref = UserPreference.get_for(self.u)

@@ -38,6 +38,17 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.94.0": "A big update for department leaders plus a few improvements for everyone. The leader area is "
+              "reorganised: Collections and Expenses are now their own sidebar menus with search and paging, "
+              "the dashboard drops the top-contributor and recent-activity cards for a cleaner view, and "
+              "sub-account tables show each account's opening, receipts and closing balance. The staff-advance "
+              "page is friendlier on a phone, with a date filter, search, a paged statement, a delete button "
+              "for entries you made while the advance is still open, and an Excel import for quick entry that "
+              "refuses any file totalling more than the advance balance. The Expense Register gains a Print "
+              "Supporting Documents button that builds one PDF with a voucher summary and the attachments for "
+              "every expense matching your filters. The light theme and system font are now the default, "
+              "including on the login page. Note: petty-cash and advance top-ups do not post journal entries "
+              "- they are tracked through the cash balances, not the general ledger.",
     "1.93.0": "Four improvements. Fund sub-account pages now show each sub-account's opening balance next to "
               "its receipts, payments and closing balance, so the opening-plus-receipts-less-payments maths "
               "is visible (and included in the export). The payables page is now organised into Payables, "
