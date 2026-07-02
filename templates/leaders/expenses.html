@@ -1,32 +1,25 @@
 {% extends 'base.html' %}{% load humanize %}
-{% block title %}{{ dept.name }} expenses · {{ SITE_NAME }}
-<style>
-.att-row td{background:var(--paper-2);padding:.7rem .9rem !important}
-.att-form{display:flex;gap:.8rem;align-items:end;flex-wrap:wrap}
-.att-field{display:flex;flex-direction:column;gap:.2rem}
-.att-field label{font-size:.72rem;color:var(--muted);font-weight:600}
-.att-field .field-sm{padding:.35rem .5rem;font-size:.85rem}
-.att-or{color:var(--muted);font-size:.8rem;padding-bottom:.5rem}
-.att-list{margin-top:.6rem;display:flex;gap:.4rem;flex-wrap:wrap}
-.att-chip{background:var(--forest-soft);border-radius:8px;padding:.15rem .55rem;font-size:.8rem}
-</style>
-{% endblock %}
+{% block title %}{{ dept.name }} expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head">
-  <div class="ws-titles"><h1>{{ dept.name }} — expenses</h1>
-    <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · {{ count }} item{{ count|pluralize }} · read-only</div></div>
-  <form method="get" class="btn-row u-items-end">
-    <a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
-    <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">
-    <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto">
-    <input type="search" name="q" value="{{ q }}" placeholder="Search…" class="field u-w-auto">
-    <button class="btn btn-sm">Apply</button>
-  </form>
+<div class="ld-hero">
+  <div class="ld-hero-main">
+    <div class="ld-eyebrow">{{ dept.name }}</div>
+    <h1>Expenses</h1>
+    <div class="ld-period">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · {{ count }} item{{ count|pluralize }}</div>
+  </div>
+  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
 </div>
-<div class="btn-row no-print u-mb">
-  <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">⬇ CSV</a>
-  <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">⬇ Excel</a>
-</div>
+
+<form method="get" class="ld-filter no-print">
+  <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field" aria-label="From">
+  <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" aria-label="To">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search…" class="field">
+  <button class="btn btn-sm">Apply</button>
+  <span class="ld-hero-actions">
+    <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">⬇ CSV</a>
+    <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">⬇ Excel</a>
+  </span>
+</form>
 <div class="card"><div class="bd bd-flush">
   <table class="ledger compact">
     <thead><tr><th>Date</th><th>Description</th><th>Claimant</th><th class="num">Amount</th><th class="no-print"></th></tr></thead>
@@ -54,4 +47,14 @@
   </table>
 </div></div>
 {% include 'partials/pagination.html' %}
+<style>
+.att-row td{background:var(--paper-2);padding:.7rem .9rem !important}
+.att-form{display:flex;gap:.8rem;align-items:end;flex-wrap:wrap}
+.att-field{display:flex;flex-direction:column;gap:.2rem}
+.att-field label{font-size:.72rem;color:var(--muted);font-weight:600}
+.att-field .field-sm{padding:.35rem .5rem;font-size:.85rem}
+.att-or{color:var(--muted);font-size:.8rem;padding-bottom:.5rem}
+.att-list{margin-top:.6rem;display:flex;gap:.4rem;flex-wrap:wrap}
+.att-chip{background:var(--forest-soft);border-radius:8px;padding:.15rem .55rem;font-size:.8rem}
+</style>
 {% endblock %}

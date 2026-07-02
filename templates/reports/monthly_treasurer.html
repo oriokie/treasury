@@ -2,40 +2,92 @@
 {% block title %}Monthly Treasurer's Report · {{ end|date:"M Y" }}{% endblock %}
 {% block content %}
 <style>
-.mtr{max-width:920px;margin:0 auto;font-family:var(--font-body)}
-.mtr .masthead .church,.mtr .sec>.sh .n{font-family:var(--font-display)}
-.mtr .masthead{text-align:center;border-bottom:2.5px solid var(--forest);padding-bottom:.7rem;margin-bottom:.3rem}
-.mtr .masthead .church{font-size:1.35rem;font-weight:800;color:var(--forest);letter-spacing:.01em}
-.mtr .masthead .rt{font-size:1.02rem;font-weight:600;margin-top:.15rem}
+.mtr{max-width:960px;margin:0 auto;font-family:var(--font-body)}
+.mtr .church,.mtr .sec>.sh .n,.mtr h1{font-family:var(--font-display)}
+.mtr .masthead{text-align:center;border-bottom:2.5px solid var(--forest);padding-bottom:.7rem;margin-bottom:.9rem}
+.mtr .masthead .church{font-size:1.4rem;font-weight:800;color:var(--forest);letter-spacing:.01em}
+.mtr .masthead .rt{font-size:1.05rem;font-weight:600;margin-top:.15rem}
 .mtr .masthead .pd{font-size:.8rem;color:var(--muted,#667);margin-top:.1rem}
 .mtr h1{margin-bottom:.1rem}
-.mtr .sec{margin-top:1.15rem;break-inside:avoid}
-.mtr .sec>.sh{border-bottom:1.5px solid var(--forest);padding:.1rem 0 .25rem;margin-bottom:.5rem}
+
+/* Executive summary page */
+.mtr .exec{margin-bottom:1.6rem}
+.mtr .exec-title{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.7rem}
+.mtr .exec-title .n{font-weight:800;color:var(--forest);font-size:1.15rem}
+.mtr .exec-title .s{font-size:.8rem;color:var(--muted,#667)}
+.mtr .kpis8{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-bottom:1rem}
+.mtr .kpi{background:var(--surface-2,rgba(31,95,79,.05));border-radius:10px;padding:.7rem .8rem;
+  border:1px solid rgba(0,0,0,.04)}
+.mtr .kpi .l{font-size:.7rem;color:var(--muted,#667);letter-spacing:.01em;text-transform:none}
+.mtr .kpi .v{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--forest);margin-top:.1rem}
+.mtr .kpi.warn .v{color:#a05046}
+.mtr .kpi.brass .v{color:var(--brass,#b07d2c)}
+.mtr .kpi .f{font-size:.68rem;color:var(--muted,#667);margin-top:.15rem}
+
+.mtr .panel{background:var(--paper,#fff);border:1px solid rgba(0,0,0,.06);border-radius:12px;
+  padding:.9rem 1.05rem;margin-bottom:.9rem}
+.mtr .panel .ph{font-weight:700;font-size:.92rem;margin-bottom:.55rem;display:flex;align-items:center;gap:.4rem}
+.mtr .hl-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.45rem}
+.mtr .hl-list li{padding-left:1.3rem;position:relative;font-size:.87rem;line-height:1.45}
+.mtr .hl-list li::before{content:"▸";position:absolute;left:0;color:var(--brass,#b07d2c);font-weight:700}
+
+.mtr .attn-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.5rem}
+.mtr .attn{border-radius:9px;padding:.55rem .75rem;font-size:.85rem;line-height:1.45}
+.mtr .attn.high{background:rgba(179,38,30,.07);border-left:3px solid #b3261e}
+.mtr .attn.medium{background:rgba(176,125,44,.08);border-left:3px solid var(--brass,#b07d2c)}
+.mtr .attn .t{font-weight:700;display:block;margin-bottom:.1rem}
+.mtr .attn.high .t{color:#8f2018}
+.mtr .attn.medium .t{color:#8a611f}
+.mtr .all-clear{background:rgba(31,95,79,.06);border-left:3px solid var(--forest);border-radius:9px;
+  padding:.6rem .75rem;font-size:.86rem;color:var(--forest)}
+
+/* Management report */
+.mtr .mgmt-title{border-bottom:2.5px solid var(--forest);padding-bottom:.4rem;margin:1.6rem 0 1rem;
+  font-weight:800;color:var(--forest);font-size:1.15rem}
+.mtr .sec{margin-top:1.3rem;break-inside:avoid}
+.mtr .sec>.sh{border-bottom:1.5px solid var(--forest);padding:.1rem 0 .3rem;margin-bottom:.5rem}
 .mtr .sec>.sh .n{font-weight:700;color:var(--forest);font-size:1rem}
-.mtr .sec>.sh .d{font-size:.76rem;color:var(--muted,#667);font-style:italic;margin-top:.1rem}
+.mtr .sec>.sh .d{font-size:.78rem;color:var(--muted,#667);margin-top:.15rem;line-height:1.4}
 .mtr .sec>.bd{padding:.1rem 0}
+.mtr .narrative{font-size:.86rem;line-height:1.5;margin-bottom:.6rem;color:var(--ink,#333)}
+.mtr .narrative b{color:var(--forest)}
+
 .mtr table{width:100%;border-collapse:collapse;font-size:.82rem;margin-bottom:.2rem}
-.mtr th,.mtr td{padding:.3rem .5rem;border-bottom:1px solid var(--line-soft,rgba(0,0,0,.06))}
-.mtr th{text-align:left;font-weight:600;color:var(--muted,#667);font-size:.74rem;letter-spacing:.01em}
+.mtr th,.mtr td{padding:.32rem .5rem;border-bottom:1px solid var(--line-soft,rgba(0,0,0,.06))}
+.mtr th{text-align:left;font-weight:600;color:var(--muted,#667);font-size:.73rem;letter-spacing:.01em;text-transform:none}
 .mtr td.num,.mtr th.num{text-align:right;font-variant-numeric:tabular-nums}
+.mtr .pct{color:var(--muted,#667);font-size:.76rem}
 .mtr .tot td{border-top:1.5px solid var(--line);font-weight:700}
 .mtr .grand td{border-top:2px solid var(--forest);border-bottom:2px double var(--forest);font-weight:800}
-.mtr .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.5rem}
-.mtr .kpi{background:var(--surface-2,rgba(31,95,79,.05));border-radius:8px;padding:.6rem .75rem;text-align:center}
-.mtr .kpi .l{font-size:.72rem;color:var(--muted,#667);letter-spacing:.01em}
-.mtr .kpi .v{font-size:1.25rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--forest)}
+.mtr tr.neg td{color:#b3261e;font-weight:600}
+.mtr tr.over td{background:rgba(179,38,30,.05)}
+.mtr .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem;margin-bottom:.6rem}
 .mtr .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.1rem}
-.mtr .ai{background:rgba(176,125,44,.07);border-left:3px solid var(--brass,#b07d2c);border-radius:6px;padding:.55rem .75rem;font-size:.86rem;margin:.5rem 0}
+.mtr .ai{background:rgba(176,125,44,.07);border-left:3px solid var(--brass,#b07d2c);border-radius:6px;padding:.55rem .75rem;font-size:.85rem;margin:.5rem 0}
 .mtr .muted{color:var(--muted,#667)}
-.mtr .signoff{margin-top:1.6rem;display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;font-size:.82rem}
+.mtr .appendix-link{font-size:.78rem;margin-top:.4rem}
+.mtr details.appendix{margin-top:.5rem;font-size:.82rem}
+.mtr details.appendix summary{cursor:pointer;color:var(--forest);font-weight:600;font-size:.82rem;padding:.3rem 0}
+.mtr .badge-count{background:var(--forest);color:#fff;border-radius:99px;font-size:.68rem;padding:.05rem .4rem;margin-left:.3rem}
+
+.mtr .decision-list{list-style:none;padding:0;margin:0;counter-reset:dec;display:flex;flex-direction:column;gap:.6rem}
+.mtr .decision-list li{counter-increment:dec;padding-left:1.9rem;position:relative;font-size:.87rem;line-height:1.45}
+.mtr .decision-list li::before{content:counter(dec);position:absolute;left:0;top:0;
+  width:1.35rem;height:1.35rem;border-radius:50%;background:var(--forest);color:#fff;
+  font-size:.72rem;font-weight:700;display:grid;place-items:center}
+.mtr .decision-list .t{font-weight:700;display:block}
+
+.mtr .signoff{margin-top:1.8rem;display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;font-size:.82rem}
 .mtr .signoff .sig{border-top:1px solid var(--ink,#333);padding-top:.25rem;margin-top:2.2rem}
-@media(max-width:720px){.mtr .grid2{grid-template-columns:1fr}.mtr .kpis{grid-template-columns:1fr}.mtr .signoff{grid-template-columns:1fr}}
-@media print{.no-print{display:none}.mtr .sec{break-inside:avoid}.mtr{max-width:none}}
+@media(max-width:820px){.mtr .grid2{grid-template-columns:1fr}.mtr .kpis{grid-template-columns:1fr}
+  .mtr .kpis8{grid-template-columns:repeat(2,1fr)}.mtr .signoff{grid-template-columns:1fr}}
+@media print{.no-print{display:none}.mtr .sec{break-inside:avoid}.mtr{max-width:none}
+  .mtr .page-break{page-break-before:always}}
 </style>
 
 <div class="mtr">
 <div class="page-head no-print"><div><h1>Monthly Treasurer's Report</h1>
-  <div class="sub">{{ church }} · {{ start|date:"d M" }} – {{ end|date:"d M Y" }}</div></div>
+  <div class="sub">{{ church }} · {{ start|date:"d M" }} – {{ end|date:"d M Y" }} · board-ready edition</div></div>
   <form method="get" class="u-inline" style="margin-left:auto">
     <input type="month" name="as_of" value="{{ end|date:'Y-m' }}" class="field" onchange="this.form.submit()">
     <button class="btn btn-ghost btn-sm" onclick="window.print();return false;">🖨 Print</button>
@@ -48,88 +100,176 @@
 <div class="masthead">
   <div class="church">{{ church|default:"Church Treasury" }}</div>
   <div class="rt">Monthly Treasurer's Report</div>
-  <div class="pd">For the month of {{ end|date:"F Y" }} &nbsp;·&nbsp; prepared {{ today|date:"d M Y" }}</div>
+  <div class="pd">For the month of {{ end|date:"F Y" }} &nbsp;·&nbsp; prepared {{ today|date:"d M Y" }} &nbsp;·&nbsp; for presentation to the Church Board</div>
 </div>
 
 {% if ai_summary %}<div class="ai">✦ {{ ai_summary }}</div>{% endif %}
 
-<!-- 1. Collections summary -->
-<div class="sec"><div class="sh"><div class="n">1 · Collections summary</div><div class="d">{{ notes.collections }}</div></div>
-{% if insights.collections %}<div class="ai">📈 {{ insights.collections }}</div>{% endif %}
-<div class="bd"><div class="kpis">
+<!-- ================= EXECUTIVE SUMMARY (page 1) ================= -->
+<div class="exec">
+<div class="exec-title"><span class="n">Executive summary</span><span class="s">— the month at a glance</span></div>
+
+<div class="kpis8">
+  <div class="kpi"><div class="l">Total collections</div><div class="v">{{ collections.total|floatformat:0|intcomma }}</div>
+    <div class="f">Trust + local, {{ end|date:"F" }}</div></div>
+  <div class="kpi"><div class="l">Local fund receipts</div><div class="v">{{ collections.local|floatformat:0|intcomma }}</div>
+    <div class="f">Kept by the church</div></div>
+  <div class="kpi"><div class="l">Trust fund receipts</div><div class="v">{{ collections.trust|floatformat:0|intcomma }}</div>
+    <div class="f">Owed onward to the field</div></div>
+  <div class="kpi"><div class="l">Total expenses</div><div class="v">{{ income_stmt.expense|floatformat:0|intcomma }}</div>
+    <div class="f">Approved &amp; paid, operating</div></div>
+  <div class="kpi {% if income_stmt.surplus < 0 %}warn{% endif %}"><div class="l">Monthly surplus / (deficit)</div>
+    <div class="v">{{ income_stmt.surplus|floatformat:0|intcomma }}</div>
+    <div class="f">Local income less operating expenses</div></div>
+  <div class="kpi"><div class="l">Cash &amp; bank balance</div><div class="v">{{ sofp.cash|floatformat:0|intcomma }}</div>
+    <div class="f">All funds, at {{ end|date:"d M Y" }}</div></div>
+  <div class="kpi"><div class="l">Net assets</div><div class="v">{{ sofp.net_assets|floatformat:0|intcomma }}</div>
+    <div class="f">The church's own accumulated funds</div></div>
+  <div class="kpi brass"><div class="l">Trust funds outstanding</div><div class="v">{{ sofp.trust_payable|floatformat:0|intcomma }}</div>
+    <div class="f">Still to remit to the field</div></div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <div class="ph">✦ Key highlights</div>
+    <ul class="hl-list">
+      {% for h in highlights %}<li>{{ h }}</li>{% empty %}<li>No notable movements this month.</li>{% endfor %}
+    </ul>
+  </div>
+  <div class="panel">
+    <div class="ph">⚑ Items requiring Board attention</div>
+    {% if attention %}<ul class="attn-list">
+      {% for a in attention %}<li class="attn {{ a.severity }}"><span class="t">{{ a.title }}</span>{{ a.detail }}</li>{% endfor %}
+    </ul>{% else %}<div class="all-clear">✓ No outstanding issues flagged this month — reconciliation is current, no fund balances are negative, and spending is within budget.</div>{% endif %}
+  </div>
+</div>
+</div>
+
+<!-- ================= MANAGEMENT REPORT ================= -->
+<div class="page-break"></div>
+<div class="mgmt-title">Management report</div>
+
+<!-- Collections summary -->
+<div class="sec"><div class="sh"><div class="n">Collections summary</div><div class="d">{{ notes.collections }}</div></div>
+<div class="bd">
+<p class="narrative">The church received <b>{{ collections.total|floatformat:0|intcomma }}</b> in {{ end|date:"F Y" }},
+  of which <b>{{ collections.trust|floatformat:0|intcomma }}</b> ({% widthratio collections.trust collections.total 100 %}%)
+  is trust funds owed to the field and <b>{{ collections.local|floatformat:0|intcomma }}</b>
+  ({% widthratio collections.local collections.total 100 %}%) is local funds the church keeps.
+  {{ insights.collections }}</p>
+<div class="kpis">
   <div class="kpi"><div class="l">Total collections</div><div class="v">{{ collections.total|floatformat:0|intcomma }}</div></div>
   <div class="kpi"><div class="l">Trust funds</div><div class="v">{{ collections.trust|floatformat:0|intcomma }}</div></div>
   <div class="kpi"><div class="l">Local funds</div><div class="v">{{ collections.local|floatformat:0|intcomma }}</div></div>
 </div>
-<table><tbody>
-  {% if collection_detail.trust %}<tr><th colspan="2">Trust funds</th></tr>
-  {% for r in collection_detail.trust %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}{% endif %}
-  {% if collection_detail.local %}<tr><th colspan="2">Local funds</th></tr>
-  {% for r in collection_detail.local %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}{% endif %}
-  <tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:0|intcomma }}</td></tr>
+<table><thead><tr><th>Fund</th><th class="num">Amount</th><th class="num">% of total</th></tr></thead><tbody>
+  {% if collection_detail.trust %}<tr><th colspan="3">Trust funds — top {% if collection_detail_more.trust %}10 of {{ collection_detail.trust|length }}{% else %}funds{% endif %}</th></tr>
+  {% for r in collection_detail.trust|slice:":10" %}<tr><td>{{ r.department.name }}</td>
+    <td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
+    <td class="num pct">{% widthratio r.receipts collections.total 100 %}%</td></tr>{% endfor %}{% endif %}
+  {% if collection_detail.local %}<tr><th colspan="3">Local funds — top {% if collection_detail_more.local %}10 of {{ collection_detail.local|length }}{% else %}funds{% endif %}</th></tr>
+  {% for r in collection_detail.local|slice:":10" %}<tr><td>{{ r.department.name }}</td>
+    <td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
+    <td class="num pct">{% widthratio r.receipts collections.total 100 %}%</td></tr>{% endfor %}{% endif %}
+  <tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:0|intcomma }}</td><td class="num">100%</td></tr>
 </tbody></table>
+{% if collection_detail_more.trust or collection_detail_more.local %}
+<details class="appendix"><summary>Appendix — full collections listing
+  <span class="badge-count">{{ collection_detail_more.trust|add:collection_detail_more.local|add:20 }} funds</span></summary>
+  <table><thead><tr><th>Fund</th><th>Type</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for r in collection_detail.trust %}<tr><td>{{ r.department.name }}</td><td>Trust</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  {% for r in collection_detail.local %}<tr><td>{{ r.department.name }}</td><td>Local</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+</details>{% endif %}
 </div></div>
 
-<div class="grid2">
-<!-- 2. Trust receipted trend -->
-<div class="sec"><div class="sh"><div class="n">2 · Trust funds (receipted) — 3-month trend</div><div class="d">{{ notes.trust_trend }}</div></div>
+<!-- Trust fund performance -->
+<div class="sec"><div class="sh"><div class="n">Trust fund performance</div><div class="d">{{ notes.trust_trend }}</div></div>
 {% if insights.trust_trend %}<div class="ai">📈 {{ insights.trust_trend }}</div>{% endif %}
-<div class="bd"><table><thead><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr></thead>
+<div class="bd">
+<p class="narrative">Only <b>receipted</b> trust giving is a firm liability to remit onward — bank credits not yet
+  receipted are shown separately in the Financial Position, not here.</p>
+<div style="height:200px" class="u-mb"><canvas id="trustTrendChart"></canvas></div>
+<table><thead><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr></thead>
 <tbody>{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>
 {% empty %}<tr><td colspan="5" class="muted">No receipted trust collections.</td></tr>{% endfor %}
 {% if trust_trend.rows %}<tr class="tot"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>{% endif %}
 </tbody></table></div></div>
 
-<!-- 3. LCB sub-account trend -->
-<div class="sec"><div class="sh"><div class="n">3 · LCB accounts — 3-month trend</div><div class="d">{{ notes.lcb_trend }}</div></div>
-<div class="bd"><table><thead><tr><th>Account</th>{% for c in lcb_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr></thead>
-<tbody>{% for r in lcb_trend.rows %}<tr><td>{% if r.is_parent %}<strong>{{ r.dept.name }}</strong>{% else %}<span class="muted">↳</span> {{ r.dept.name }}{% endif %}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>
-{% empty %}<tr><td colspan="5" class="muted">No LCB activity.</td></tr>{% endfor %}
-{% if lcb_trend.rows %}<tr class="tot"><td>Total</td>{% for v in lcb_trend.col_totals %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>{% endif %}
-</tbody></table></div></div>
-</div>
-
-<!-- 4. Five-year trend (CHART) -->
-<div class="sec"><div class="sh"><div class="n">4 · Five-year trend (year-to-date)</div><div class="d">{{ notes.yearly }}</div></div>
+<!-- Local fund performance -->
+<div class="sec"><div class="sh"><div class="n">Local fund performance</div><div class="d">{{ notes.local_statement }}</div></div>
 <div class="bd">
-  <div style="height:240px"><canvas id="yearlyChart"></canvas></div>
-  <div class="grid-2 u-mt" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-    <div style="height:220px"><canvas id="incomeExpChart"></canvas></div>
-    <div style="height:220px"><canvas id="fundMixChart"></canvas></div>
-  </div>
-  <table class="u-mt-sm"><thead><tr><th>Year (to {{ end|date:"M" }})</th><th class="num">Collections</th><th class="num">Trust</th><th class="num">Local</th><th class="num">Expenses</th></tr></thead>
-  <tbody>{% for y in yearly %}<tr><td>{{ y.year }}{% if y.source == 'history' %} <span class="muted" style="font-size:.7rem">(history)</span>{% endif %}</td>
-  <td class="num">{{ y.collection|floatformat:0|intcomma }}</td><td class="num">{{ y.trust|floatformat:0|intcomma }}</td>
-  <td class="num">{{ y.local|floatformat:0|intcomma }}</td><td class="num">{{ y.expense|floatformat:0|intcomma }}</td></tr>{% endfor %}</tbody></table>
-</div></div>
-
-<!-- 5. LCB expenditure statement -->
-<div class="sec"><div class="sh"><div class="n">5 · LCB expenditure statement</div><div class="d">{{ notes.lcb_expenditure }}</div></div>
-<div class="bd"><table><tbody>{% for c in lcb_expenditure.rows %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|floatformat:0|intcomma }}</td></tr>
-{% empty %}<tr><td class="muted">No LCB expenditure this month.</td><td></td></tr>{% endfor %}
-{% if lcb_expenditure.rows %}<tr class="grand"><td>Total LCB expenditure</td><td class="num">{{ lcb_expenditure.total|floatformat:0|intcomma }}</td></tr>{% endif %}
-</tbody></table></div></div>
-
-<!-- 6. Local funds movement statement -->
-<div class="sec"><div class="sh"><div class="n">6 · Local funds statement</div><div class="d">{{ notes.local_statement }}</div></div>
-<div class="bd"><table><thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
-<tbody>{% for r in local_statement.rows %}<tr><td>{{ r.department.name }}</td>
+<p class="narrative">Each local fund's movement for the month — {{ notes.lcb_trend }}</p>
+<div style="height:200px" class="u-mb"><canvas id="lcbTrendChart"></canvas></div>
+<table><thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
+<tbody>{% for r in local_statement.rows|slice:":10" %}<tr{% if r.closing < 0 %} class="neg"{% endif %}><td>{{ r.department.name }}{% if r.closing < 0 %} ⚑{% endif %}</td>
   <td class="num">{{ r.opening|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.expenses|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.closing|floatformat:0|intcomma }}</td></tr>
 {% empty %}<tr><td colspan="5" class="muted">No local-fund activity.</td></tr>{% endfor %}
-{% if local_statement.rows %}<tr class="grand"><td>Total</td>
+{% if local_statement.rows %}<tr class="grand"><td>Total{% if local_statement_more %} (top 10 of {{ local_statement.rows|length }}, see appendix){% endif %}</td>
   <td class="num">{{ local_statement.totals.opening|floatformat:0|intcomma }}</td>
   <td class="num">{{ local_statement.totals.receipts|floatformat:0|intcomma }}</td>
   <td class="num">{{ local_statement.totals.expenses|floatformat:0|intcomma }}</td>
   <td class="num">{{ local_statement.totals.closing|floatformat:0|intcomma }}</td></tr>{% endif %}
-</tbody></table></div></div>
+</tbody></table>
+{% if local_statement_more %}<details class="appendix"><summary>Appendix — full local funds listing
+  <span class="badge-count">{{ local_statement.rows|length }} funds</span></summary>
+  <table><thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
+  <tbody>{% for r in local_statement.rows %}<tr{% if r.closing < 0 %} class="neg"{% endif %}><td>{{ r.department.name }}</td>
+    <td class="num">{{ r.opening|floatformat:0|intcomma }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
+    <td class="num">{{ r.expenses|floatformat:0|intcomma }}</td><td class="num">{{ r.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+</details>{% endif %}
+</div></div>
 
-<!-- 7. Statement of financial position (full) -->
-<div class="sec"><div class="sh"><div class="n">7 · Statement of financial position</div><div class="d">{{ notes.sofp }}</div></div>
+<!-- Expenditure summary -->
+<div class="sec"><div class="sh"><div class="n">Expenditure summary</div><div class="d">{{ notes.lcb_expenditure }}</div></div>
+<div class="bd">
+<div class="grid2">
+  <div style="height:220px"><canvas id="incomeExpChart"></canvas></div>
+  <table><tbody>{% for c in lcb_expenditure.rows %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|floatformat:0|intcomma }}</td></tr>
+  {% empty %}<tr><td class="muted">No LCB expenditure this month.</td><td></td></tr>{% endfor %}
+  {% if lcb_expenditure.rows %}<tr class="grand"><td>Total LCB expenditure</td><td class="num">{{ lcb_expenditure.total|floatformat:0|intcomma }}</td></tr>{% endif %}
+  </tbody></table>
+</div>
+<p class="narrative u-mt">{{ insights.income }}</p>
+</div></div>
+
+<!-- Budget & goal tracking -->
+<div class="sec"><div class="sh"><div class="n">Budget &amp; goal tracking</div><div class="d">This month's spend against each fund's prorated annual budget, plus fundraising/goal progress.</div></div>
+<div class="bd">
+{% if budget_summary.rows %}
+<table><thead><tr><th>Fund</th><th class="num">Budget (month)</th><th class="num">Actual</th><th class="num">Variance</th><th class="num">%</th></tr></thead>
+<tbody>{% for r in budget_summary.rows|slice:":10" %}<tr{% if r.over %} class="over neg"{% endif %}>
+  <td>{{ r.department.name }}{% if r.over %} ⚑ over budget{% endif %}</td>
+  <td class="num">{{ r.budget|floatformat:0|intcomma }}</td>
+  <td class="num">{{ r.actual|floatformat:0|intcomma }}</td>
+  <td class="num">{{ r.variance|floatformat:0|intcomma }}</td>
+  <td class="num pct">{% if r.variance_pct != None %}{{ r.variance_pct|floatformat:0 }}%{% else %}—{% endif %}</td></tr>{% endfor %}
+  <tr class="grand"><td>Total</td><td class="num">{{ budget_summary.totals.budget|floatformat:0|intcomma }}</td>
+    <td class="num">{{ budget_summary.totals.actual|floatformat:0|intcomma }}</td>
+    <td class="num">{{ budget_summary.totals.variance|floatformat:0|intcomma }}</td>
+    <td class="num pct">{% if budget_summary.totals.variance_pct != None %}{{ budget_summary.totals.variance_pct|floatformat:0 }}%{% else %}—{% endif %}</td></tr>
+</tbody></table>
+{% else %}<div class="muted">No budgets set for {{ as_of|date:"Y" }} yet.</div>{% endif %}
+
+{% if camp_goals %}<p class="narrative u-mt"><b>Camp Meeting goals</b> — {{ insights.camp }}</p>
+<table><thead><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% complete</th></tr></thead>
+<tbody>{% for g in camp_goals %}<tr>
+  <td>{{ g.name }}</td><td class="num">{{ g.goal|floatformat:0|intcomma }}</td>
+  <td class="num">{{ g.collected|floatformat:0|intcomma }}</td><td class="num">{{ g.variance|floatformat:0|intcomma }}</td>
+  <td class="num"><strong>{{ g.pct }}%</strong></td></tr>{% endfor %}
+</tbody></table>{% endif %}
+</div></div>
+
+<!-- Statement of financial position -->
+<div class="sec"><div class="sh"><div class="n">Statement of financial position</div><div class="d">{{ notes.sofp }}</div></div>
 {% if insights.sofp %}<div class="ai">📈 {{ insights.sofp }}</div>{% endif %}
-<div class="bd"><table><tbody>
+<div class="bd">
+<div class="grid2">
+<table><tbody>
   <tr><th colspan="2">Assets</th></tr>
   <tr><td>Cash &amp; bank</td><td class="num">{{ sofp.cash_on_hand|floatformat:0|intcomma }}</td></tr>
   {% if sofp.advances %}<tr><td>Staff advances (receivable)</td><td class="num">{{ sofp.advances|floatformat:0|intcomma }}</td></tr>{% endif %}
@@ -151,36 +291,33 @@
   {% if sofp.accrual_adj %}<tr><td>Accrual adjustments</td><td class="num">{{ sofp.accrual_adj|floatformat:0|intcomma }}</td></tr>{% endif %}
   <tr class="grand"><td>Total net assets</td><td class="num">{{ sofp.net_assets|floatformat:0|intcomma }}</td></tr>
 </tbody></table>
-<p class="d" style="font-size:.74rem;margin-top:.35rem"><strong>General net assets</strong> are the closing balances of general local funds (ministry, offering and holding accounts) that the board has not earmarked for a specific project. <strong>Designated development funds</strong> are the board-designated Development-project balances.</p>
-<a class="link no-print" href="{% url 'report_financial_position' %}?as_of={{ end|date:'Y-m-d' }}">Full statement of financial position →</a></div></div>
-
+<div style="height:260px"><canvas id="fundMixChart"></canvas></div>
+</div>
+<p class="narrative" style="font-size:.78rem;margin-top:.5rem"><b>General net assets</b> are the closing balances of general local funds (ministry, offering and holding accounts) the board has not earmarked for a specific project. <b>Designated development funds</b> are board-designated development-project balances.</p>
+<a class="link no-print appendix-link" href="{% url 'report_financial_position' %}?as_of={{ end|date:'Y-m-d' }}">Full statement of financial position →</a>
 {% if net_asset_changes %}
-<div class="sec"><div class="sh"><div class="n">Statement of changes in net assets</div><div class="d">How the church's accumulated funds moved over the period</div></div>
-<div class="bd"><table><tbody>
+<table class="u-mt"><tbody>
+  <tr><th colspan="2">Changes in net assets</th></tr>
   <tr><td>Net assets at start of period</td><td class="num">{{ net_asset_changes.opening|floatformat:0|intcomma }}</td></tr>
   <tr><td>Surplus / (deficit) for the period</td><td class="num">{{ net_asset_changes.surplus|floatformat:0|intcomma }}</td></tr>
   <tr class="grand"><td>Net assets at end of period</td><td class="num">{{ net_asset_changes.closing|floatformat:0|intcomma }}</td></tr>
-</tbody></table></div></div>
-{% endif %}
-
-{% if camp_goals %}
-<div class="sec"><div class="sh"><div class="n">Camp Meeting goals</div><div class="d">Fund-level expense and offering goals for {{ end|date:"Y" }} (group contribution goals are tracked separately on each fund's budget page)</div></div>
-<div class="bd">
-  <table><thead><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% Complete</th></tr></thead>
-  <tbody>
-  {% for g in camp_goals %}<tr>
-    <td>{{ g.name }}</td>
-    <td class="num">{{ g.goal|floatformat:0|intcomma }}</td>
-    <td class="num">{{ g.collected|floatformat:0|intcomma }}</td>
-    <td class="num">{{ g.variance|floatformat:0|intcomma }}</td>
-    <td class="num"><strong>{{ g.pct }}%</strong></td></tr>{% endfor %}
-  </tbody></table>
-  <p class="d" style="font-size:.74rem;margin-top:.3rem">Expense (local fund) and offering (trust fund) goals are tracked independently and never merged.</p>
+</tbody></table>{% endif %}
 </div></div>
-{% endif %}
 
-<!-- 8. Cash-flow statement -->
-<div class="sec"><div class="sh"><div class="n">8 · Cash-flow statement</div><div class="d">{{ notes.cashflow }}</div></div>
+<!-- Five-year trend -->
+<div class="sec"><div class="sh"><div class="n">Five-year trend (year-to-date)</div><div class="d">{{ notes.yearly }}</div></div>
+<div class="bd">
+  <div style="height:230px"><canvas id="yearlyChart"></canvas></div>
+  <details class="appendix u-mt"><summary>Appendix — five-year table</summary>
+  <table><thead><tr><th>Year (to {{ end|date:"M" }})</th><th class="num">Collections</th><th class="num">Trust</th><th class="num">Local</th><th class="num">Expenses</th></tr></thead>
+  <tbody>{% for y in yearly %}<tr><td>{{ y.year }}{% if y.source == 'history' %} <span class="muted" style="font-size:.7rem">(history)</span>{% endif %}</td>
+  <td class="num">{{ y.collection|floatformat:0|intcomma }}</td><td class="num">{{ y.trust|floatformat:0|intcomma }}</td>
+  <td class="num">{{ y.local|floatformat:0|intcomma }}</td><td class="num">{{ y.expense|floatformat:0|intcomma }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+</div></div>
+
+<!-- Cash flow -->
+<div class="sec"><div class="sh"><div class="n">Cash flow</div><div class="d">{{ notes.cashflow }}</div></div>
 {% if insights.cashflow %}<div class="ai">📈 {{ insights.cashflow }}</div>{% endif %}
 <div class="bd"><table><tbody>
   <tr><th colspan="2">Operating activities</th></tr>
@@ -194,10 +331,10 @@
   <tr class="grand"><td>Net change in cash</td><td class="num">{{ cashflow.net_change|floatformat:0|intcomma }}</td></tr>
   <tr><td class="muted">Cash at start → end</td><td class="num muted">{{ cashflow.cash_open|floatformat:0|intcomma }} → {{ cashflow.cash_close|floatformat:0|intcomma }}</td></tr>
 </tbody></table>
-<a class="link no-print" href="{% url 'report_cash_flow' %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">Full cash-flow statement →</a></div></div>
+<a class="link no-print appendix-link" href="{% url 'report_cash_flow' %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">Full cash-flow statement →</a></div></div>
 
-<!-- 9. Latest bank reconciliation (full) -->
-<div class="sec"><div class="sh"><div class="n">9 · Latest bank reconciliation</div><div class="d">{{ notes.recon }}</div></div>
+<!-- Bank reconciliation -->
+<div class="sec"><div class="sh"><div class="n">Bank reconciliation</div><div class="d">{{ notes.recon }}</div></div>
 <div class="bd">{% if recon %}<table><tbody>
   <tr><td>Statement date</td><td class="num">{{ recon.statement_date|date:"d M Y" }}</td></tr>
   <tr><td>Balance per bank statement</td><td class="num">{{ recon.bank_balance|floatformat:0|intcomma }}</td></tr>
@@ -207,8 +344,17 @@
   {% if recon.is_reconciled %}<tr><td colspan="2"><span class="pill pill-green">✓ Reconciled</span></td></tr>
   {% else %}<tr><td colspan="2"><span class="pill pill-amber">Not yet balanced</span></td></tr>{% endif %}
 </tbody></table>
-<a class="link no-print" href="{% url 'reconciliation_detail' recon.id %}">Open reconciliation →</a>
+<a class="link no-print appendix-link" href="{% url 'reconciliation_detail' recon.id %}">Open reconciliation →</a>
 {% else %}<div class="muted">No bank reconciliation recorded yet for this period.</div>{% endif %}</div></div>
+
+<!-- ================= BOARD DECISIONS REQUIRED ================= -->
+<div class="page-break"></div>
+<div class="mgmt-title">Board decisions required</div>
+<div class="panel">
+<ol class="decision-list">
+  {% for d in decisions %}<li><span class="t">{{ d.title }}</span>{{ d.detail }}</li>{% endfor %}
+</ol>
+</div>
 
 <div class="signoff">
   <div><div class="sig">Prepared by — Treasurer</div></div>
@@ -218,23 +364,24 @@
 <script src="{% static 'vendor/chart.umd.js' %}"></script>
 <script>
 (function(){
+  var yc = function(v){ return v.toLocaleString(); };
+
   var data = {{ yearly_json|safe }};
   var el = document.getElementById('yearlyChart');
-  if (!el || !window.Chart || !data.length) return;
-  var labels = data.map(function(d){ return d.year; });
-  new Chart(el.getContext('2d'), {
-    type: 'bar',
-    data: { labels: labels, datasets: [
-      { label: 'Collections', data: data.map(function(d){return d.collection;}), backgroundColor: 'rgba(31,95,79,.85)' },
-      { label: 'Trust', data: data.map(function(d){return d.trust;}), backgroundColor: 'rgba(176,125,44,.85)' },
-      { label: 'Expenses', data: data.map(function(d){return d.expense;}), backgroundColor: 'rgba(160,80,70,.7)' }
-    ]},
-    options: { responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom', labels:{ boxWidth:12, font:{size:11} } } },
-      scales: { y: { ticks: { callback: function(v){ return v.toLocaleString(); } } } } }
-  });
+  if (el && window.Chart && data.length) {
+    new Chart(el.getContext('2d'), {
+      type: 'bar',
+      data: { labels: data.map(function(d){ return d.year; }), datasets: [
+        { label: 'Collections', data: data.map(function(d){return d.collection;}), backgroundColor: 'rgba(31,95,79,.85)' },
+        { label: 'Trust', data: data.map(function(d){return d.trust;}), backgroundColor: 'rgba(176,125,44,.85)' },
+        { label: 'Expenses', data: data.map(function(d){return d.expense;}), backgroundColor: 'rgba(160,80,70,.7)' }
+      ]},
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom', labels:{ boxWidth:12, font:{size:11} } } },
+        scales: { y: { ticks: { callback: yc } } } }
+    });
+  }
 
-  // Income vs expenditure (this period)
   var ie = document.getElementById('incomeExpChart');
   if (ie && window.Chart) {
     new Chart(ie.getContext('2d'), {
@@ -244,10 +391,10 @@
           backgroundColor: ['rgba(31,95,79,.85)','rgba(160,80,70,.8)','rgba(176,125,44,.85)'] }] },
       options: { responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{ display:false }, title:{ display:true, text:'Income vs expenditure', font:{size:12} } },
-        scales:{ y:{ ticks:{ callback:function(v){ return v.toLocaleString(); } } } } }
+        scales:{ y:{ ticks:{ callback: yc } } } }
     });
   }
-  // Fund composition (net assets split)
+
   var fm = document.getElementById('fundMixChart');
   if (fm && window.Chart) {
     new Chart(fm.getContext('2d'), {
@@ -258,6 +405,32 @@
       options: { responsive:true, maintainAspectRatio:false,
         plugins:{ legend:{ position:'bottom', labels:{ boxWidth:11, font:{size:10} } },
           title:{ display:true, text:'Fund composition', font:{size:12} } } }
+    });
+  }
+
+  var tt = {{ trust_trend_json|safe }};
+  var ttEl = document.getElementById('trustTrendChart');
+  if (ttEl && window.Chart && tt.labels && tt.labels.length) {
+    new Chart(ttEl.getContext('2d'), {
+      type: 'line',
+      data: { labels: tt.labels, datasets: [{ label: 'Receipted trust', data: tt.totals,
+        borderColor: 'rgba(176,125,44,.9)', backgroundColor: 'rgba(176,125,44,.15)', fill: true, tension: .25 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, title:{ display:true, text:'Receipted trust — 3-month trend', font:{size:12} } },
+        scales:{ y:{ ticks:{ callback: yc } } } }
+    });
+  }
+
+  var lt = {{ lcb_trend_json|safe }};
+  var ltEl = document.getElementById('lcbTrendChart');
+  if (ltEl && window.Chart && lt.labels && lt.labels.length) {
+    new Chart(ltEl.getContext('2d'), {
+      type: 'bar',
+      data: { labels: lt.labels, datasets: [{ label: 'This month', data: lt.amounts,
+        backgroundColor: 'rgba(31,95,79,.8)' }] },
+      options: { indexAxis: 'y', responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, title:{ display:true, text:'Top local funds this month', font:{size:12} } },
+        scales:{ x:{ ticks:{ callback: yc } } } }
     });
   }
 })();

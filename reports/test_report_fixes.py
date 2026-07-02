@@ -104,4 +104,4 @@ class BoardReportDetailTests(TestCase):
         self.assertIn("Prepared by", b)
         self.assertIn("Reviewed by", b)
         # detailed report-form structure
-        self.assertIn("Local funds statement", b)
+        self.assertIn("Local fund performance", b)

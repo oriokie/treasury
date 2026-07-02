@@ -1136,3 +1136,31 @@ html[data-motion="reduced"] .toast{animation:none}
 /* Parent nav group shows it contains the current page */
 .navgrp:has(a.active) > summary{color:var(--sidebar-brand-fg,#e8d9b8)}
 .navgrp:has(a.active) > summary .ic{opacity:1}
+
+/* Attachment popover (clickable paperclip) */
+.clip-wrap{position:relative;display:inline-block}
+.clip-btn{border:none;background:none;cursor:pointer;font-size:.95rem;padding:0 .1rem;line-height:1}
+.clip-pop{position:absolute;z-index:40;top:1.4rem;left:0;min-width:220px;max-width:340px;
+  background:var(--paper,#fff);border:1px solid var(--line,#ddd);border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.18);padding:.5rem;display:flex;flex-direction:column;gap:.4rem}
+.clip-item{display:block;font-size:.82rem;padding:.35rem .5rem;border-radius:7px;
+  background:var(--paper-2,#f6f3ec);text-decoration:none;color:var(--ink,#222)}
+.clip-item.clip-text{white-space:pre-wrap;font-family:var(--font-mono,monospace);line-height:1.4}
+a.clip-item:hover{background:var(--forest-soft,#e7f0eb)}
+
+/* ---- Leader area shared layout (hero header, KPI cards, tables) ---- */
+.ld-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;
+  padding:1.3rem 1.5rem;margin-bottom:1.2rem;border-radius:16px;
+  background:linear-gradient(135deg,var(--forest) 0%,var(--forest-deep,#16463a) 100%);
+  color:#fff;box-shadow:var(--shadow-md,0 8px 24px rgba(0,0,0,.12))}
+.ld-hero h1{margin:.1rem 0 .15rem;color:#fff;font-size:1.7rem;line-height:1.1}
+.ld-hero .ld-eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.8;font-weight:600}
+.ld-hero .ld-period{font-size:.82rem;opacity:.85;max-width:560px}
+.ld-hero-back{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.45);color:#fff}
+.ld-hero-back:hover{background:rgba(255,255,255,.28);color:#fff}
+.ld-hero-actions{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.ld-filter{display:flex;gap:.45rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem}
+.ld-filter .field{padding:.4rem .55rem;font-size:.88rem;width:auto}
+.ld-kpis-1{display:grid;grid-template-columns:minmax(260px,340px);gap:.8rem;margin-bottom:1.2rem}
+.ld-kpis-1 .stat .value{font-size:1.4rem}
+.ld-kpis-1 .stat .value .ksh{font-size:.66em;margin-right:.12rem;opacity:.7}

@@ -31,6 +31,21 @@ def _narration(debit):
                                    debit.reference, debit.payer_name])).lower()
 
 
+# cheque numbers in bank narrations: "CHQ No.000411", "CHEQUE 000411", "chq412"
+_CHQ_RE = re.compile(r"(?:chq|cheque|chk)\s*(?:no\.?)?\s*0*(\d{3,})", re.I)
+
+
+def _cheque_numbers(text):
+    """Cheque numbers found in a narration, normalised (leading zeros stripped)."""
+    return {m.group(1).lstrip("0") or "0" for m in _CHQ_RE.finditer(text or "")}
+
+
+def _voucher_number(expense):
+    """The expense's cheque/voucher number as bare digits (leading zeros stripped)."""
+    v = "".join(ch for ch in (expense.voucher_no or "") if ch.isdigit())
+    return (v.lstrip("0") or "0") if v else ""
+
+
 def score(debit, expense):
     """Return (confidence, reason). Amount must match exactly or score is 0."""
     if abs(debit.amount - expense.amount) > Decimal("0.01"):
@@ -41,10 +56,17 @@ def score(debit, expense):
         pts += 25; reasons.append("same date")
     elif days <= 3:
         pts += 15; reasons.append(f"within {days}d")
-    elif days <= 10:
+    elif days <= 14:
         pts += 8; reasons.append(f"within {days}d")
     narr = _narration(debit)
-    if expense.voucher_no and expense.voucher_no.lower() in narr:
+    # A cheque number is a near-unique handle: when the statement's cheque number
+    # matches the expense's voucher/cheque number and the amount ties out, this is
+    # a definitive clearing — score it strongly so the cheque auto-reconciles even
+    # though it clears a few days after it was written.
+    vno = _voucher_number(expense)
+    if vno and vno in _cheque_numbers(narr):
+        pts += 45; reasons.append(f"cheque no. {expense.voucher_no}")
+    elif expense.voucher_no and expense.voucher_no.lower() in narr:
         pts += 20; reasons.append(f"cheque/voucher {expense.voucher_no}")
     tokens = [w for w in re.split(r"\W+", f"{expense.claimant} {expense.description}".lower())
               if len(w) > 3]

@@ -38,6 +38,35 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.98.0": "The Monthly Treasurer's Report has been redesigned for the Church Board. Page one is now a "
+              "one-screen executive dashboard: 8 KPI cards (collections, local/trust receipts, expenses, "
+              "surplus/deficit, cash & bank balance, net assets, trust funds outstanding), a Key Highlights "
+              "panel, and an Items Requiring Board Attention panel that automatically flags an unbalanced bank "
+              "reconciliation, negative fund balances, budget overruns and trust funds collected but not yet "
+              "receipted. The management report below is reorganised into Collections, Trust Fund Performance, "
+              "Local Fund Performance, Expenditure, Budget & Goal Tracking, Financial Position, Cash Flow and "
+              "Bank Reconciliation, each with a short narrative and two new trend charts; long listings are "
+              "trimmed to the top 10 with a full appendix underneath. The report closes with a Board Decisions "
+              "Required section. Every figure and calculation is unchanged from before - only the presentation. "
+              "The Excel, Word and RTF downloads are unaffected.",
+    "1.97.1": "Fixed two bugs on the Fund Ledger (reports/fund/&lt;id&gt;/). Opening balances were showing zero "
+              "whenever a fund's founding opening-balance field was zero, even if it had real activity before "
+              "the report period began; the ledger now shows the true brought-forward balance (founding balance "
+              "plus all prior-period net movement), matching the dashboard. The same fix applies to each "
+              "sub-account's opening balance. Also, the sub-accounts table's Payments column now correctly "
+              "hides when the fund and its sub-accounts are collection-only accounts, showing just opening, "
+              "receipts and closing, consistent with the dashboards.",
+    "1.97.0": "Receipts and bank-statement improvements. Department leaders now have their own Receipts page "
+              "and an Awaiting-receipts queue, both scoped to the funds they lead; every receipt shows its "
+              "expense id (for example hash 543) for easy matching. A new Awaiting-receipts queue lists expenses "
+              "with no supporting document for leaders and treasurers, with a count-and-value card on each "
+              "dashboard; an expense drops off the moment a document is attached. Clicking the paperclip on an "
+              "expense now reveals the attached M-Pesa message or opens the document, and the Supporting "
+              "Documents PDF now includes only expenses that actually have an attachment. The leader development-"
+              "groups section keeps its download-all Excel button, and the leader collections, expenses and "
+              "unassigned-offerings pages share one consistent layout. Bank-statement import is fixed so cheque "
+              "and other debit payments no longer collapse into a single row, and cheque payments can now auto-"
+              "reconcile: a matching cheque number clears the register cheque and links it to its expense.",
     "1.96.0": "A wide round of leader-area and dashboard improvements, plus new customization. Development "
               "groups on the leader dashboard drop the target/progress columns and sub-accounts sort by closing "
               "balance (largest first); collection-only funds now show just opening, receipts and closing on both "

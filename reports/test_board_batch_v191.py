@@ -35,7 +35,7 @@ class BoardBatchTests(TestCase):
 
     def test_changes_in_net_assets_section(self):
         b = self.c.get("/reports/board/?as_of=2026-06").content.decode()
-        self.assertIn("changes in net assets", b)
+        self.assertIn("Changes in net assets", b)
         self.assertIn("Net assets at start of period", b)
         self.assertIn("Net assets at end of period", b)
 

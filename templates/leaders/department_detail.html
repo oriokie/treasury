@@ -45,6 +45,11 @@
   <a class="ld-link" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
     <span class="ic">🧾</span><span class="t">Expenses</span>
     <span class="s">KSh {{ kpi.spend|floatformat:0|intcomma }} · full list &amp; download</span></a>
+  {% if not dept_collection_only %}
+  <a class="ld-link" href="{% url 'missing_receipts' %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
+    <span class="ic">📌</span><span class="t">Awaiting receipts{% if missing_receipts_count %} <span class="pill pill-amber">{{ missing_receipts_count }}</span>{% endif %}</span>
+    <span class="s">{% if missing_receipts_count %}KSh {{ missing_receipts_value|floatformat:0|intcomma }} without a document{% else %}All expenses documented ✓{% endif %}</span></a>
+  {% endif %}
   {% if pledge_summary %}
   <a class="ld-link" href="{% url 'leader_pledges' dept.id %}">
     <span class="ic">🤝</span><span class="t">Pledges</span>

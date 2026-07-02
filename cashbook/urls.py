@@ -7,6 +7,7 @@ urlpatterns = [
     path("expenses/budget-items/", views.BudgetItemsJSONView.as_view(), name="budget_items_json"),
     path("expenses/", views.ExpenseListView.as_view(), name="expense_list"),
     path("expenses/receipts/", views.ReceiptArchiveView.as_view(), name="receipt_archive"),
+    path("expenses/missing-receipts/", views.MissingReceiptsView.as_view(), name="missing_receipts"),
     path("expenses/import/", views.ExpenseImportView.as_view(), name="expense_import"),
     path("expenses/recategorize/", views.ExpenseRecategorizeView.as_view(), name="expense_recategorize"),
     path("expenses/new/", views.ExpenseCreate.as_view(), name="expense_create"),

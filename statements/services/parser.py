@@ -108,15 +108,24 @@ def parse_narration(narration):
                     break
         return out
 
-    # Shape C: bank transfer, space-separated, no '~'
+    # Shape C: bank transfer / cheque, space-separated, no '~'
     tokens = text.split()
     out["shape"] = "transfer"
+    # Only treat a token as a bank receipt when it's a genuine M-Pesa-style
+    # receipt (10-char alphanumeric with a letter and a digit). A cheque
+    # narration ("CHQ No.000411", "HENRY CHQ No.000412") has NO such receipt —
+    # using its first word ("CHQ", "HENRY") as bank_receipt would make every
+    # later cheque collide as a false duplicate. Leaving it empty lets dedup
+    # fall back to the unique Core Ref, which every such row carries.
+    rc = MPESA_RCPT.search(text.upper())
+    out["receipt"] = rc.group(1) if rc else ""
     if tokens:
-        out["receipt"] = tokens[0]
         # trailing token is a candidate reference (e.g. Grp12dev)
         if len(tokens) >= 2:
             out["reference"] = tokens[-1]
-            out["name"] = " ".join(tokens[1:-1]) if len(tokens) > 2 else ""
+            out["name"] = " ".join(tokens[1:-1]) if len(tokens) > 2 else tokens[0]
+        else:
+            out["name"] = tokens[0]
     return out
 
 
@@ -273,7 +282,10 @@ def read_rows(path_or_bytes, filename):
         # otherwise merge distinct receipts, or fold case unpredictably).
         cref = (cref or "").upper().strip() or None
         mref = (mref or "").upper().strip() or None
-        rcpt = (narr["receipt"] or "").upper().strip()
+        # The narration's M-Pesa receipt is the canonical dedup key. When there
+        # isn't one (bank charges, cheques), fall back to a genuine receipt column
+        # if the statement has one, else to the (unique) Core Ref.
+        rcpt = (narr["receipt"] or _real(cell("receipt")) or "").upper().strip()
         parsed.append({
             "date": date,
             "balance": _to_decimal(cell("balance")),   # running balance after this row

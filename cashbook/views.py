@@ -8,6 +8,7 @@ from django.urls import reverse_lazy
 from django.views.generic import ListView, CreateView, UpdateView, View
 
 from django.views import View
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 
 from core.utils import block_if_locked as _block_if_locked, PrefPaginationMixin
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin, AdvanceAccessMixin
@@ -35,7 +36,8 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 
     def get_queryset(self):
         import datetime as dt
-        qs = Expense.objects.select_related("department", "recorded_by").order_by("-id")
+        qs = (Expense.objects.select_related("department", "recorded_by")
+              .prefetch_related("attachments").order_by("-id"))
         from django.db.models import Count
         qs = qs.annotate(n_attachments=Count("attachments"))
         g = self.request.GET
@@ -89,9 +91,12 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             messages.error(request, "PDF generation isn't available on the server yet. "
                 "Ask the administrator to install the reportlab and pypdf packages.")
             return redirect("expense_list")
-        qs = self.get_queryset().prefetch_related("attachments")
+        # only expenses that actually have a supporting document (item 5)
+        qs = (self.get_queryset().filter(attachments__isnull=False).distinct()
+              .prefetch_related("attachments"))
         if not qs.exists():
-            messages.info(request, "No expenses match the current filters.")
+            messages.info(request, "None of the expenses matching the current "
+                          "filters have a supporting document attached.")
             params = request.GET.copy()
             params.pop("export", None)
             suffix = f"?{params.urlencode()}" if params else ""
@@ -850,32 +855,53 @@ class ExpenseRefundDelete(TreasurerRequiredMixin, View):
         return redirect("expense_detail", pk=pk)
 
 
-class ExpenseAttachmentUpload(DataEntryRequiredMixin, View):
+class ExpenseAttachmentUpload(LoginRequiredMixin, View):
+    """Attach a supporting document to an expense. Staff may attach to any fund;
+    a department leader only to funds they lead. Accepts a file (pdf/image), a
+    pasted text receipt (also read from `mpesa_ref`), or a link."""
     ALLOWED_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
     MAX_BYTES = 10 * 1024 * 1024
 
+    def _may_attach(self, user, exp):
+        from core import roles
+        if roles.is_staff_role(user):
+            return True
+        if roles.is_leader(user):
+            from departments.models import departments_led_by
+            return exp.department_id in {d.id for d in departments_led_by(user)}
+        return False
+
+    def _back(self, request, pk):
+        nxt = request.POST.get("next") or request.GET.get("next")
+        return redirect(nxt) if nxt else redirect("expense_detail", pk=pk)
+
     def post(self, request, pk):
         exp = get_object_or_404(Expense, pk=pk)
+        if not self._may_attach(request.user, exp):
+            messages.error(request, "You can't attach to that expense.")
+            return redirect("dashboard")
         f = request.FILES.get("file")
-        text = (request.POST.get("text") or "").strip()
+        text = (request.POST.get("text") or request.POST.get("mpesa_ref") or "").strip()
         link = (request.POST.get("link") or "").strip()
         if f:
             if not f.name.lower().endswith(self.ALLOWED_EXT):
                 messages.error(request, "Receipts must be a PDF or image file "
                                         "(.pdf, .jpg, .png, .heic, .webp).")
-                return redirect("expense_detail", pk=pk)
+                return self._back(request, pk)
             if f.size > self.MAX_BYTES:
                 messages.error(request, "That file is too large — receipts must be "
                                         "10 MB or smaller.")
-                return redirect("expense_detail", pk=pk)
+                return self._back(request, pk)
         if f or text or link:
             ExpenseAttachment.objects.create(expense=exp, file=f or None,
-                text=text, link=link, label=request.POST.get("label", "")[:120],
+                text=text, link=link,
+                label=(request.POST.get("label", "")[:120]
+                       or ("M-Pesa message" if text and not f else "")),
                 uploaded_by=request.user)
-            messages.success(request, "Receipt added.")
+            messages.success(request, f"Supporting document added to expense #{exp.id}.")
         else:
             messages.error(request, "Add a file, paste a text receipt, or enter a link.")
-        return redirect("expense_detail", pk=pk)
+        return self._back(request, pk)
 
 
 class ExpenseAttachmentDelete(DataEntryRequiredMixin, View):
@@ -2711,11 +2737,23 @@ class ChequeRegisterView(ReadAccessMixin, View):
 
 
 
-class ReceiptArchiveView(ReadAccessMixin, TemplateView):
+class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     """Print-friendly archive of expense receipts for a period, grouped by month,
     plus a one-click ZIP download — so a year's supporting documents can be
-    printed or filed together for audit."""
+    printed or filed together for audit. Staff see every department; a department
+    leader sees only the funds they lead (the data is scoped per user)."""
     template_name = "cashbook/receipt_archive.html"
+
+    def test_func(self):
+        from core import roles
+        u = self.request.user
+        return roles.is_staff_role(u) or roles.is_leader(u)
+
+    def handle_no_permission(self):
+        if self.request.user.is_authenticated:
+            messages.error(self.request, "You don't have permission to view that.")
+            return redirect("dashboard")
+        return super().handle_no_permission()
 
     def get(self, request, *args, **kwargs):
         if request.GET.get("download") == "zip":
@@ -2730,7 +2768,21 @@ class ReceiptArchiveView(ReadAccessMixin, TemplateView):
                   expense__date__gte=start, expense__date__lte=end)
               .select_related("expense", "expense__department")
               .order_by("expense__date"))
+        depts = self._scoped_department_ids(request)
+        if depts is not None:
+            qs = qs.filter(expense__department_id__in=depts)
         return start, end, qs
+
+    def _scoped_department_ids(self, request):
+        """None for treasurers/auditors (all departments); a list for leaders."""
+        from core import roles
+        u = request.user
+        if roles.is_treasurer(u) or roles.can_enter_data(u) or roles.is_auditor(u):
+            return None
+        if roles.is_leader(u):
+            from departments.models import departments_led_by
+            return [d.id for d in departments_led_by(u)]
+        return []
 
     def get_context_data(self, **kwargs):
         from collections import OrderedDict
@@ -2782,6 +2834,61 @@ class ReceiptArchiveView(ReadAccessMixin, TemplateView):
         resp["Content-Disposition"] = (
             f'attachment; filename="receipts_{start}_{end}.zip"')
         return resp
+
+
+def missing_receipts_queryset(start, end, department_ids=None):
+    """Expenses in the period that have no supporting document (no attachment
+    file, text or link). Charge lines are excluded — they ride on their parent.
+    Once any attachment is added, the expense leaves this queue."""
+    from .models import Expense
+    qs = (Expense.objects.filter(date__gte=start, date__lte=end,
+                                 attachments__isnull=True)
+          .exclude(category=Expense.Category.BANK_CHARGE)
+          .select_related("department", "recorded_by")
+          .order_by("-date", "-id"))
+    if department_ids is not None:
+        qs = qs.filter(department_id__in=department_ids)
+    return qs
+
+
+class MissingReceiptsView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
+    """Queue of expenses still awaiting a receipt / supporting document. Staff see
+    all funds; a leader sees only funds they lead. An expense drops off the queue
+    as soon as any document is attached to it."""
+    template_name = "cashbook/missing_receipts.html"
+
+    def test_func(self):
+        from core import roles
+        u = self.request.user
+        return roles.is_staff_role(u) or roles.is_leader(u)
+
+    def handle_no_permission(self):
+        if self.request.user.is_authenticated:
+            messages.error(self.request, "You don't have permission to view that.")
+            return redirect("dashboard")
+        return super().handle_no_permission()
+
+    def _dept_ids(self):
+        from core import roles
+        u = self.request.user
+        if roles.is_staff_role(u):
+            return None
+        from departments.models import departments_led_by
+        return [d.id for d in departments_led_by(u)]
+
+    def get_context_data(self, **kwargs):
+        from core.utils import parse_period
+        from django.db.models import Sum
+        ctx = super().get_context_data(**kwargs)
+        start, end = parse_period(self.request)
+        qs = missing_receipts_queryset(start, end, self._dept_ids())
+        ctx.update({
+            "start": start, "end": end, "expenses": qs,
+            "count": qs.count(),
+            "total": qs.aggregate(s=Sum("amount"))["s"] or 0,
+            "is_leader_view": self._dept_ids() is not None,
+        })
+        return ctx
 
 
 def _amount_in_words(amount):

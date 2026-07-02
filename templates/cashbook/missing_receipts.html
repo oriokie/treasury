@@ -1,0 +1,49 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Expenses awaiting receipts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Awaiting supporting documents</h1>
+  <div class="sub">Expenses for {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} with no receipt attached yet. An expense leaves this queue as soon as a document is added.</div></div>
+</div>
+{% include "ui/period_selector.html" %}
+
+<div class="kpi-grid u-mb">
+  {% include "ui/stat.html" with label="Expenses awaiting receipts" value=count accent="warn" foot="In this period" %}
+  {% include "ui/stat.html" with label="Value awaiting documentation" prefix=CURRENCY|default:"KSh" value=total|floatformat:2|intcomma accent="brass" %}
+</div>
+
+<div class="card"><div class="bd bd-flush">
+<table class="ledger compact">
+  <thead><tr><th>ID</th><th>Date</th><th>Fund</th><th>Description</th><th>Claimant</th><th class="num">Amount</th><th class="no-print"></th></tr></thead>
+  <tbody>
+  {% for e in expenses %}<tr>
+    <td class="mono muted">#{{ e.id }}</td>
+    <td class="mono">{{ e.date|date:"d M y" }}</td>
+    <td>{{ e.department.name }}</td>
+    <td>{{ e.description }}</td>
+    <td>{{ e.claimant|default:"—" }}</td>
+    <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    <td class="no-print u-right"><button type="button" class="btn btn-xs btn-ghost" onclick="var f=document.getElementById('mr-{{ e.id }}');f.style.display=f.style.display==='table-row'?'none':'table-row'">📎 Attach</button></td>
+  </tr>
+  <tr id="mr-{{ e.id }}" style="display:none" class="att-row"><td colspan="7">
+    <form method="post" enctype="multipart/form-data" action="{% url 'expense_attachment_upload' e.id %}" class="att-form">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <span class="att-field"><label>Supporting file</label><input type="file" name="file" class="field field-sm" accept="image/*,.pdf"></span>
+      <span class="att-or">or</span>
+      <span class="att-field"><label>M-Pesa message / note</label><input type="text" name="mpesa_ref" class="field field-sm" placeholder="Paste the M-Pesa SMS or a note"></span>
+      <button class="btn btn-sm">Save</button>
+    </form>
+  </td></tr>
+  {% empty %}<tr><td colspan="7" class="empty">🎉 Every expense in this period has a supporting document.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div></div>
+
+<style>
+.att-row td{background:var(--paper-2);padding:.7rem .9rem !important}
+.att-form{display:flex;gap:.8rem;align-items:end;flex-wrap:wrap}
+.att-field{display:flex;flex-direction:column;gap:.2rem}
+.att-field label{font-size:.72rem;color:var(--muted);font-weight:600}
+.att-field .field-sm{padding:.35rem .5rem;font-size:.85rem}
+.att-or{color:var(--muted);font-size:.8rem;padding-bottom:.5rem}
+</style>
+{% endblock %}

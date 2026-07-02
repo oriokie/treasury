@@ -1,5 +1,63 @@
 # Changelog
 
+## v1.98.0 - Monthly Treasurer's Report redesigned for the Church Board
+- Executive summary (page 1): 8 KPI cards (Total collections, Local fund receipts, Trust fund receipts,
+  Total expenses, Monthly surplus/(deficit), Cash & bank balance, Net assets, Trust funds outstanding), a
+  Key Highlights panel (4-6 rule-based/AI-enriched lines), and an Items Requiring Board Attention panel.
+- New _board_focus() computation (reports/views.py): rule-based detection of an unbalanced/missing bank
+  reconciliation, negative local-fund balances, trust funds collected but not yet receipted, and budget
+  overruns for the month (via reports.services.budget.budget_vs_actual). Feeds both the attention panel and
+  a new Board Decisions Required closing section (always includes financial-statement approval and, when
+  applicable, trust-remittance approval and a resolve-item per high-severity issue).
+- Management report reorganised and renamed in sentence case: Collections summary, Trust fund performance,
+  Local fund performance, Expenditure summary, Budget & goal tracking, Statement of financial position,
+  Five-year trend, Cash flow, Bank reconciliation.
+- Two new trend charts: receipted-trust 3-month line chart and a top-local-funds bar chart, alongside the
+  existing 5-year, income/expenditure and fund-composition charts.
+- Long tables (collections detail, local funds statement) show the top 10 with a collapsible Appendix for
+  the full listing; collections detail gains a % of total column; negative fund balances and budget-overrun
+  rows are visually flagged.
+- All existing calculations, figures and the Excel/Word/RTF exports are unchanged — this is a presentation
+  and organisation redesign only, built on the same context data.
+- Tests: reports/test_board_report_redesign (12); updated 6 pre-existing tests whose assertions named the
+  old section titles. Full regression green (reports 210, core 171, cashbook 191).
+- No migration; collectstatic not required (no static asset changes, only template/view Python).
+
+## v1.97.1 - fund ledger: brought-forward opening balance, collection-only payments column
+- Fix: FundLedgerView used each fund's raw `opening_balance` field directly, so a fund with real activity
+  before the report period (but a zero founding balance) showed an opening of 0.00 instead of its true
+  brought-forward balance. Added `balances.brought_forward()` / `brought_forward_map()` (founding balance +
+  all net movement strictly before the period start) and wired it into both the main fund and every
+  sub-account on the Fund Ledger, matching what the dashboard already computed correctly.
+- Fix: the sub-accounts table's Payments column was always shown, even when every fund displayed was
+  collection-only (which never takes expenses). It now hides — showing Opening / Receipts / Closing only —
+  when this fund and all its sub-accounts are collection-only, and the Excel/CSV export matches.
+- Tests: reports/test_fund_ledger_bf (8). Full regression green (reports 198, core 171, cashbook 191).
+- No migration; deploy is a straight code update + collectstatic not required (no static changes).
+
+## v1.97.0 - leader receipts + awaiting-receipts queue, statement debit fix, cheque auto-reconcile
+- Debit-import fix: cheque/transfer rows previously used the narration's first word ("CHQ", a payee name) as
+  the bank-receipt dedup key, so after the first cheque every later "CHQ No..." row was flagged a duplicate.
+  Shape-C parsing now only uses a genuine M-Pesa-style receipt; cheques dedup on their unique Core Ref. A real
+  receipt column ("Receipt No") is used as a fallback dedup key when the narration has none.
+- Cheque auto-reconcile: the reconciler now extracts cheque numbers from the statement narration
+  ("CHQ No.000411") and matches them to the expense voucher/cheque number (leading zeros ignored). An exact
+  amount plus a cheque-number match auto-links the bank debit to the expense and marks it paid/cleared, even
+  when the cheque clears a few days after it was written.
+- Leaders: new Receipts page and Awaiting-receipts queue in the sidebar, scoped to the funds they lead.
+- Receipts archive shows each expense id (e.g. #543) for matching a receipt to its expense.
+- Awaiting-receipts queue (leaders + treasurers): expenses with no supporting document; attaching a file or an
+  M-Pesa message removes the expense from the queue. Dashboard cards on both roles track the count and value.
+- Clicking the paperclip on the expense list reveals the attached M-Pesa message (text) or opens the document.
+- Supporting Documents PDF now includes only expenses that have an attachment.
+- Leader development-groups section: download-all Excel button; leader collections / expenses / unassigned-
+  offerings pages share the same hero + filter layout.
+- Fixed a URL collision (expenses/<pk>/attach/) that had shadowed the existing receipt-upload endpoint; the
+  upload view now also lets a department leader attach to their own funds and honours a next redirect.
+- Tests: cashbook/test_batch_v197 (11), statements/test_cheque_debits (6). Full regression green
+  (statements 69, leaders 58, cashbook 191, core 171, giving 100, reports 190).
+- Deploy: collectstatic (CSS/template changes). No new migrations.
+
 ## v1.96.0 - leader/dashboard polish, allocation rights, collection-only columns, sign-out page, church settings
 - Fix: campaign list member/transaction counts used two Counts in one annotate, multiplying into a cartesian
   product (e.g. 800 -> ~16000). Now Count(..., distinct=True).

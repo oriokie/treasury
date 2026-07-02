@@ -158,6 +158,13 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         ctx["sub_show_expenses"] = not all(
             getattr(d, "collection_only", False) for d in _cols) if _cols else True
         ctx["dept_collection_only"] = bool(getattr(dept, "collection_only", False))
+        # expenses on this fund (and its subs) still awaiting a receipt (item 3)
+        from cashbook.views import missing_receipts_queryset
+        from django.db.models import Sum as _Sum
+        _ids = [dept.id] + [r["department"].id for r in ctx["subrows"]]
+        _mr = missing_receipts_queryset(start, end, _ids)
+        ctx["missing_receipts_count"] = _mr.count()
+        ctx["missing_receipts_value"] = _mr.aggregate(s=_Sum("amount"))["s"] or 0
         # the whole area this leader manages here: the department + visible subs
         dept_ids = {dept.id} | {r["department"].id for r in ctx["subrows"]}
 

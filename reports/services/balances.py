@@ -100,6 +100,41 @@ def transfers_out_by_department(start=None, end=None):
     return {r["source"]: (r["total"] or Decimal(0)) for r in qs}
 
 
+def brought_forward_map(dept_ids, start):
+    """Opening (brought-forward) balance for a set of departments as of `start`:
+    each fund's founding opening_balance plus all net movement (receipts −
+    expenses + transfers in − out) strictly before `start`. With start=None this
+    is just the founding opening_balance. Used anywhere a fund's balance is shown
+    for a specific period (e.g. the Fund Ledger) so a fund with real prior-period
+    activity doesn't wrongly show a zero opening just because its founding
+    opening_balance field is zero."""
+    from decimal import Decimal
+    import datetime as _dt
+    dept_ids = list(dept_ids)
+    depts = {d.id: d for d in Department.objects.filter(id__in=dept_ids)}
+    if start:
+        before = start - _dt.timedelta(days=1)
+        p_rcv = receipts_by_department(None, before)
+        p_exp = expenses_by_department(None, before)
+        p_tin = transfers_in_by_department(None, before)
+        p_tout = transfers_out_by_department(None, before)
+    else:
+        p_rcv = p_exp = p_tin = p_tout = {}
+    out = {}
+    for did in dept_ids:
+        d = depts.get(did)
+        founding = (d.opening_balance or Decimal(0)) if d else Decimal(0)
+        out[did] = (founding + p_rcv.get(did, Decimal(0)) - p_exp.get(did, Decimal(0))
+                    + p_tin.get(did, Decimal(0)) - p_tout.get(did, Decimal(0)))
+    return out
+
+
+def brought_forward(dept, start):
+    """Opening (brought-forward) balance for a single department as of `start`."""
+    return brought_forward_map([dept.id], start).get(
+        dept.id, dept.opening_balance or __import__("decimal").Decimal(0))
+
+
 def _department_summary_impl(start=None, end=None, consolidated=True):
     """Per-fund: opening, receipts, expenses, closing. The master report.
 

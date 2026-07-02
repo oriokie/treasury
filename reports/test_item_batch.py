@@ -69,11 +69,11 @@ class MonthlyTreasurerReportTests(TestCase):
 
     def test_all_sections_render(self):
         b = self.c.get("/reports/board/?as_of=2026-06-15").content.decode()
-        for s in ["1 · Collections summary", "2 · Trust funds",
-                  "3 · LCB accounts", "4 · Five-year trend",
-                  "5 · LCB expenditure statement", "6 · Local funds statement",
-                  "7 · Statement of financial position", "8 · Cash-flow statement",
-                  "9 · Latest bank reconciliation"]:
+        for s in ["Executive summary", "Key highlights", "Board attention",
+                  "Collections summary", "Trust fund performance",
+                  "Local fund performance", "Expenditure summary",
+                  "Budget & goal tracking", "Statement of financial position",
+                  "Cash flow", "Bank reconciliation", "Board decisions required"]:
             self.assertIn(s, b)
 
     def test_has_ai_or_fallback_summary(self):

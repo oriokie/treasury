@@ -34,24 +34,24 @@
 <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups-csv">CSV</a>
 <button type="button" class="btn btn-ghost btn-sm" onclick="tableToJpeg('subAccountsTable', {title:'{{ department.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'fund-{{ department.slug|default:department.id }}-subaccounts', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download the sub-accounts as a JPEG image">⤓ JPEG</button></div></div>
 <div class="table-wrap"><table class="ledger" id="subAccountsTable">
-  <thead><tr><th>Sub-account</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
+  <thead><tr><th>Sub-account</th><th class="num">Opening</th><th class="num">Receipts</th>{% if sub_show_payments %}<th class="num">Payments</th>{% endif %}<th class="num">Closing</th></tr></thead>
   <tbody>
   {% for r in subgroups %}
     <tr><td><a class="link" href="{% url 'report_fund' r.sub.id %}">{{ r.sub.name }}</a></td>
       <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
-      <td class="num mono row-debit">{{ r.payments|floatformat:2|intcomma }}</td>
+      {% if sub_show_payments %}<td class="num mono row-debit">{{ r.payments|floatformat:2|intcomma }}</td>{% endif %}
       <td class="num mono">{{ r.closing|floatformat:2|intcomma }}</td></tr>
   {% endfor %}
   {% for r in dev_rows %}
     <tr><td class="muted">↳ {{ r.group.label }} <span class="pill pill-grey pill-xs">dev group</span></td>
       <td class="num mono">—</td>
       <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
-      <td class="num mono">—</td>
+      {% if sub_show_payments %}<td class="num mono">—</td>{% endif %}
       <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td></tr>
   {% endfor %}
-    <tr class="total-row"><td><strong>{{ department.name }} (this fund only)</strong></td><td class="num mono">{{ opening|floatformat:2|intcomma }}</td><td></td><td></td><td class="num mono">{{ closing|floatformat:2|intcomma }}</td></tr>
-    <tr class="total-row"><td><strong>Combined ({{ department.name }} + sub-accounts)</strong></td><td class="num mono">{{ combined_opening|floatformat:2|intcomma }}</td><td></td><td></td><td class="num mono"><strong>{{ combined_closing|floatformat:2|intcomma }}</strong></td></tr>
+    <tr class="total-row"><td><strong>{{ department.name }} (this fund only)</strong></td><td class="num mono">{{ opening|floatformat:2|intcomma }}</td><td></td>{% if sub_show_payments %}<td></td>{% endif %}<td class="num mono">{{ closing|floatformat:2|intcomma }}</td></tr>
+    <tr class="total-row"><td><strong>Combined ({{ department.name }} + sub-accounts)</strong></td><td class="num mono">{{ combined_opening|floatformat:2|intcomma }}</td><td></td>{% if sub_show_payments %}<td></td>{% endif %}<td class="num mono"><strong>{{ combined_closing|floatformat:2|intcomma }}</strong></td></tr>
   </tbody>
 </table></div>
 <style>.total-row td{border-top:2px solid var(--line)}</style>

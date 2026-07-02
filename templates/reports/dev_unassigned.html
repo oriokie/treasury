@@ -5,9 +5,9 @@
   <div class="sub">Development giving recorded on the parent fund but not yet tagged to a specific group</div></div>
   <a class="btn btn-ghost" href="{% url 'report_dev_groups' %}">← Back to dev groups</a></div>
 
-<div class="grid-3 u-my">
-  <div class="stat"><div class="lbl">Offerings not assigned</div><div class="val mono">{{ count }}</div></div>
-  <div class="stat"><div class="lbl">Total value</div><div class="val mono">{{ total|floatformat:2|intcomma }}</div></div>
+<div class="kpi-grid u-my">
+  {% include "ui/stat.html" with label="Offerings not assigned" value=count accent="warn" %}
+  {% include "ui/stat.html" with label="Total value" prefix=CURRENCY|default:"KSh" value=total|floatformat:2|intcomma accent="brass" %}
 </div>
 
 {% if items %}

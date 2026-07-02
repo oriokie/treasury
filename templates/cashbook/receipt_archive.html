@@ -33,9 +33,9 @@
     {% elif a.text %}<div class="txt">{{ a.text }}</div>
     {% elif a.link %}<a class="link" href="{{ a.link }}" target="_blank">🔗 e-receipt</a>{% endif %}
     <div class="meta">
-      <div>{{ a.expense.date|date:"d M Y" }} · {{ a.expense.department.name }}</div>
+      <div><span class="pill pill-grey" style="font-size:.72rem">#{{ a.expense.id }}</span> {{ a.expense.date|date:"d M Y" }} · {{ a.expense.department.name }}</div>
       <div>{{ a.expense.description }}</div>
-      <div class="amt">KSh {{ a.expense.amount|floatformat:2|intcomma }}</div>
+      <div class="amt">{{ CURRENCY|default:"KSh" }} {{ a.expense.amount|floatformat:2|intcomma }}</div>
       {% if a.label %}<div>{{ a.label }}</div>{% endif %}
     </div>
   </div>

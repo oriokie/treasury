@@ -43,6 +43,12 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["local_show_expenses"] = not all(
             getattr(r["department"], "collection_only", False)
             for r in ctx["local_rows"]) if ctx["local_rows"] else True
+        # expenses still awaiting a supporting document (item 3)
+        from cashbook.views import missing_receipts_queryset
+        from django.db.models import Sum as _Sum
+        _mr = missing_receipts_queryset(start, end)
+        ctx["missing_receipts_count"] = _mr.count()
+        ctx["missing_receipts_value"] = _mr.aggregate(s=_Sum("amount"))["s"] or 0
         from core.models import SiteConfig
         ctx["field_name"] = SiteConfig.get().field_name or "conference"
         ctx["by_group"] = balances.giving_by_group(start, end)

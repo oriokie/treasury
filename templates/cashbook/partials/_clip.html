@@ -1,0 +1,14 @@
+{% comment %}Reusable attachment popover. Pass `exp` (an Expense). Shows a clickable
+paperclip that reveals attached M-Pesa messages (text) or a document link.{% endcomment %}
+{% with atts=exp.attachments.all %}{% if atts %}
+<span class="clip-wrap no-print">
+  <button type="button" class="clip-btn" title="View supporting document" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">📎</button>
+  <span class="clip-pop" hidden>
+    {% for a in atts %}
+      {% if a.text %}<span class="clip-item clip-text">💬 {{ a.text }}</span>
+      {% elif a.file %}<a class="clip-item" href="{{ a.file.url }}" target="_blank">📄 Document attached</a>
+      {% elif a.link %}<a class="clip-item" href="{{ a.link }}" target="_blank">🔗 e-receipt</a>{% endif %}
+    {% endfor %}
+  </span>
+</span>
+{% endif %}{% endwith %}

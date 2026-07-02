@@ -65,8 +65,8 @@ class TreasurerReportTests(TestCase):
             created_by=User.objects.get(username="tr"))
         b = self.c.get("/reports/board/?as_of=2026-06-15").content.decode()
         self.assertIn("yearlyChart", b)                      # e: chart
-        self.assertIn("LCB expenditure statement", b)        # f
-        self.assertIn("Local funds statement", b)            # h
+        self.assertIn("Expenditure summary", b)        # f
+        self.assertIn("Local fund performance", b)            # h
         self.assertIn("Trust payable — receipted", b)        # i: full SoFP
         self.assertIn("Operating activities", b)             # i: full cashflow
         self.assertIn("Balance per cash book", b)            # i: full recon

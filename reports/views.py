@@ -285,20 +285,31 @@ class FundLedgerView(PeriodMixin, TemplateView):
 
         # subgroup breakdown export (sub-accounts beneath this fund)
         if mode in ("subgroups", "subgroups-csv"):
-            header = ["ID", "Subgroup", "Type", "Opening", "Receipts", "Payments", "Closing balance"]
+            show_pay = ctx.get("sub_show_payments", True)
+            header = (["ID", "Subgroup", "Type", "Opening", "Receipts", "Payments", "Closing balance"]
+                      if show_pay else
+                      ["ID", "Subgroup", "Type", "Opening", "Receipts", "Closing balance"])
             rows = []
             for r in ctx["subgroups"]:
                 sub = r["sub"]
-                rows.append([sub.id, sub.name,
-                             "Trust" if sub.is_trust else "Local",
-                             float(r["opening"]), float(r["receipts"]),
-                             float(r["payments"]), float(r["closing"])])
+                row = [sub.id, sub.name, "Trust" if sub.is_trust else "Local",
+                       float(r["opening"]), float(r["receipts"])]
+                if show_pay:
+                    row.append(float(r["payments"]))
+                row.append(float(r["closing"]))
+                rows.append(row)
             for r in ctx.get("dev_rows", []):
                 g = r["group"]
-                rows.append([getattr(g, "id", ""), g.name, "Local",
-                             "", float(r["receipts"]), "", float(r["receipts"])])
-            rows.append(["", "TOTAL", "", float(ctx["combined_opening"]), "", "",
-                         float(ctx["subgroup_total"])])
+                row = [getattr(g, "id", ""), g.name, "Local", "", float(r["receipts"])]
+                if show_pay:
+                    row.append("")
+                row.append(float(r["receipts"]))
+                rows.append(row)
+            total_row = ["", "TOTAL", "", float(ctx["combined_opening"]), ""]
+            if show_pay:
+                total_row.append("")
+            total_row.append(float(ctx["subgroup_total"]))
+            rows.append(total_row)
             fname = f"fund-{dept.slug or dept.id}-subgroups-{ctx['start']}-{ctx['end']}"
             if mode == "subgroups-csv":
                 return csv_response(fname + ".csv", header, rows)
@@ -349,13 +360,18 @@ class FundLedgerView(PeriodMixin, TemplateView):
                             + (f" — {tr.reason}" if tr.reason else ""),
                             "credit": None, "debit": tr.amount, "src": "Transfer", "ref_id": tr.id})
         entries.sort(key=lambda r: r["date"])
-        running = dept.opening_balance or Decimal(0)
+        # opening = founding opening_balance + all net movement before `s` (not
+        # just the raw founding field), so a fund with real prior-period activity
+        # shows its true brought-forward balance rather than zero.
+        from reports.services.balances import brought_forward, brought_forward_map
+        opening_bf = brought_forward(dept, s)
+        running = opening_bf
         for en in entries:
             running += (en["credit"] or 0) - (en["debit"] or 0)
             en["balance"] = running
         ctx["department"] = dept
         ctx["entries"] = entries
-        ctx["opening"] = dept.opening_balance or Decimal(0)
+        ctx["opening"] = opening_bf
         ctx["closing"] = running
 
         # roll up any sub-accounts beneath this fund (two grouped queries, not 2/sub)
@@ -374,10 +390,11 @@ class FundLedgerView(PeriodMixin, TemplateView):
                    .values("department").annotate(t=Sum("amount"))}
         subs_rows = []
         sub_total = Decimal(0)
+        sub_bf = brought_forward_map(sub_ids, s) if sub_ids else {}
         for sub in subs:
             r = sub_rec.get(sub.id, Decimal(0))
             p = sub_pay.get(sub.id, Decimal(0))
-            opening = sub.opening_balance or Decimal(0)
+            opening = sub_bf.get(sub.id, Decimal(0))
             closing = opening + r - p
             subs_rows.append({"sub": sub, "opening": opening, "receipts": r,
                               "payments": p, "closing": closing})
@@ -412,12 +429,18 @@ class FundLedgerView(PeriodMixin, TemplateView):
         sub_receipts_total = sum(sub_rec.values(), Decimal(0)) + sum(
             (r["receipts"] for r in dev_rows), Decimal(0))
         sub_payments_total = sum(sub_pay.values(), Decimal(0))
-        sub_opening_total = sum((r["sub"].opening_balance or Decimal(0)) for r in subs_rows)
+        sub_opening_total = sum((r["opening"] for r in subs_rows), Decimal(0))
         ctx["has_subaccounts"] = bool(subs_rows or dev_rows)
-        ctx["combined_opening"] = (dept.opening_balance or Decimal(0)) + sub_opening_total
+        ctx["combined_opening"] = opening_bf + sub_opening_total
         ctx["combined_receipts"] = parent_receipts + sub_receipts_total
         ctx["combined_payments"] = parent_payments + sub_payments_total
         ctx["parent"] = dept.parent
+        # collection-only funds never take expenses/payments; hide that column in
+        # the sub-accounts table when this fund and every sub-account shown are
+        # collection-only, so the summary reads opening/receipts/closing only.
+        _cols = [dept] + [r["sub"] for r in subs_rows]
+        ctx["sub_show_payments"] = not all(
+            getattr(d, "collection_only", False) for d in _cols) if _cols else True
         return ctx
 
 
@@ -2965,6 +2988,7 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         from decimal import Decimal
         from django.db.models import Sum
         from reports.services import treasurer as T
+        from reports.services import budget as T_budget
         ctx = super().get_context_data(**kwargs)
 
         # month selection (default current month). An <input type="month">
@@ -2990,9 +3014,22 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         ctx["collections"] = csum
 
         # 2) trust receipted trend (current + previous 2 months)
-        ctx["trust_trend"] = T.trust_receipted_trend(as_of, months=3)
+        trust_trend = T.trust_receipted_trend(as_of, months=3)
+        ctx["trust_trend"] = trust_trend
+        ctx["trust_trend_json"] = safe_json({
+            "labels": [c["label"] for c in trust_trend.get("columns", [])],
+            "totals": [float(v or 0) for v in trust_trend.get("col_totals", [])],
+        })
         # 3) LCB sub-account trend (all LCB accounts, current + previous 2 months)
-        ctx["lcb_trend"] = T.lcb_subaccount_trend(as_of, months=3)
+        lcb_trend = T.lcb_subaccount_trend(as_of, months=3)
+        ctx["lcb_trend"] = lcb_trend
+        _lcb_latest = sorted(
+            [r for r in lcb_trend.get("rows", []) if r.get("cells")],
+            key=lambda r: r["cells"][-1], reverse=True)[:6]
+        ctx["lcb_trend_json"] = safe_json({
+            "labels": [r["dept"].name for r in _lcb_latest],
+            "amounts": [float(r["cells"][-1] or 0) for r in _lcb_latest],
+        })
         # 4) 5-year YTD trend (+ JSON for a chart)
         yearly = T.yearly_trend(as_of, years=5)
         ctx["yearly"] = yearly
@@ -3004,6 +3041,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         ctx["lcb_expenditure"] = T.lcb_expenditure(s, e)
         # 6) local funds movement statement: opening, receipts, expenses, closing
         ctx["local_statement"] = T.local_funds_statement(s, e)
+        ctx["local_statement_more"] = max(
+            0, len(ctx["local_statement"].get("rows", [])) - 10)
 
         # 7) income statement (recurrent basis)
         paid = T.PAID
@@ -3041,6 +3080,9 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                             key=lambda r: r["receipts"], reverse=True),
             "local": sorted([r for r in rows if not r["is_trust"] and r["receipts"]],
                             key=lambda r: r["receipts"], reverse=True)}
+        ctx["collection_detail_more"] = {
+            "trust": max(0, len(ctx["collection_detail"]["trust"]) - 10),
+            "local": max(0, len(ctx["collection_detail"]["local"]) - 10)}
 
         # 8) statement of financial position (summary, period end)
         sofp_rows = balances.department_summary(None, e)
@@ -3138,6 +3180,15 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         ctx["notes"] = self._notes(ctx)
         ctx["ai_summary"] = self._ai_summary(ctx)
         ctx["insights"] = self._section_insights(ctx)
+        # Board-ready executive summary: budget tracking, highlights, items
+        # needing attention, and decisions the Board is asked to make.
+        try:
+            ctx["budget_summary"] = T_budget.budget_vs_actual(
+                as_of.year, period="MONTH", month=as_of.month)
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx4; _lx4("MT budget summary")
+            ctx["budget_summary"] = None
+        self._board_focus(ctx)
         return ctx
 
     def _section_insights(self, ctx):
@@ -3254,6 +3305,108 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         except Exception:
             pass
         return ins
+
+    def _board_focus(self, ctx):
+        """Populate ctx['highlights'], ctx['attention'] and ctx['decisions'] — the
+        board-oriented executive summary. Rule-based and defensive: any single
+        computation failing never breaks the report, it's just omitted."""
+        from decimal import Decimal
+        highlights, attention, decisions = [], [], []
+        ins = ctx.get("insights") or {}
+        c = ctx.get("collections") or {}
+        sofp = ctx.get("sofp") or {}
+        cf = ctx.get("cashflow") or {}
+
+        # --- Highlights (4-6 short, factual lines) ---
+        try:
+            trust_local = (ctx.get("collection_detail") or {})
+            top_fund = None
+            pool = (trust_local.get("trust") or []) + (trust_local.get("local") or [])
+            if pool:
+                top_fund = max(pool, key=lambda r: r["receipts"])
+            if top_fund:
+                highlights.append(
+                    f"Largest receiving fund this month: {top_fund['department'].name} "
+                    f"({float(top_fund['receipts']):,.0f}).")
+        except Exception:  # noqa: BLE001
+            pass
+        for key in ("collections", "trust_trend", "income", "cashflow", "camp", "sofp"):
+            if ins.get(key) and len(highlights) < 6:
+                highlights.append(ins[key])
+        ctx["highlights"] = highlights[:6]
+
+        # --- Items requiring Board attention ---
+        recon = ctx.get("recon")
+        if not recon:
+            attention.append({"severity": "medium", "title": "No bank reconciliation on file",
+                              "detail": "No reconciliation has been recorded for this period. "
+                                       "The bank and cash-book balances have not been checked "
+                                       "against each other this month."})
+        elif not recon.is_reconciled:
+            diff = recon.difference
+            attention.append({"severity": "high", "title": "Bank reconciliation not balanced",
+                              "detail": f"The latest reconciliation ({recon.statement_date:%d %b %Y}) "
+                                       f"leaves a difference of {float(diff or 0):,.0f} between "
+                                       "the bank statement and the cash book."})
+
+        try:
+            neg = [r for r in (ctx.get("local_statement") or {}).get("rows", [])
+                   if (r.get("closing") or 0) < 0]
+            if neg:
+                names = ", ".join(f"{r['department'].name} ({float(r['closing']):,.0f})"
+                                  for r in neg[:5])
+                attention.append({"severity": "high", "title": "Negative fund balance(s)",
+                                  "detail": f"{len(neg)} local fund(s) are overdrawn: {names}"
+                                           + ("…" if len(neg) > 5 else "")})
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            trust_unrec = sofp.get("trust_unreceipted") or Decimal(0)
+            if trust_unrec > 0:
+                attention.append({"severity": "medium",
+                                  "title": "Trust funds collected but not yet receipted",
+                                  "detail": f"{float(trust_unrec):,.0f} in trust-fund bank "
+                                           "credits have not yet been formally receipted, so "
+                                           "they aren't yet reflected as a firm remittance "
+                                           "liability."})
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            bs = ctx.get("budget_summary")
+            over_rows = [r for r in (bs or {}).get("rows", []) if r["over"]] if bs else []
+            if over_rows:
+                names = ", ".join(f"{r['department'].name} (over by "
+                                  f"{abs(float(r['variance'])):,.0f})" for r in over_rows[:5])
+                attention.append({"severity": "medium", "title": "Budget overrun this month",
+                                  "detail": f"{len(over_rows)} fund(s) exceeded their prorated "
+                                           f"monthly budget: {names}"
+                                           + ("…" if len(over_rows) > 5 else "")})
+        except Exception:  # noqa: BLE001
+            pass
+        ctx["attention"] = attention
+
+        # --- Board decisions required ---
+        m = ctx["end"].strftime("%B %Y")
+        decisions.append({"title": "Approve the financial statements",
+                          "detail": f"Adopt the Monthly Treasurer's Report for {m} as "
+                                   "presented, including the Statement of Financial "
+                                   "Position and Income & Expenditure Statement."})
+        try:
+            outstanding = sofp.get("trust_payable") or Decimal(0)
+            field = SiteConfig.get().field_name or "the field"
+            if outstanding > 0:
+                decisions.append({"title": "Approve trust-fund remittance",
+                                  "detail": f"Authorise remittance of {float(outstanding):,.0f} "
+                                           f"in outstanding trust funds to {field}."})
+        except Exception:  # noqa: BLE001
+            pass
+        for item in attention:
+            if item["severity"] == "high":
+                decisions.append({"title": f"Resolve: {item['title']}",
+                                  "detail": item["detail"]})
+        ctx["decisions"] = decisions
 
     def _notes(self, ctx):
         """Concise, accurate one-liners describing each section."""
