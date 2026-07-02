@@ -38,6 +38,14 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.95.0": "Refinements across the leader area, a nicer sign-in, and a fix to the advances receivable. The "
+              "staff-advances list now explains how to account for an advance and gives each row an Open button. "
+              "A leader can download any advance's full statement to Excel, and can now delete a transaction "
+              "charge as well as an expense (deleting an expense or advance also removes its linked charge). The "
+              "leader dashboard shows opening, receipts and closing for each development group. The sign-in page "
+              "has been redesigned with a modern split layout and a show-password toggle. Finally, the Staff "
+              "advances (receivable) figure on the financial position now excludes top-ups dated after the "
+              "reporting date, so the as-of balance is correct.",
     "1.94.0": "A big update for department leaders plus a few improvements for everyone. The leader area is "
               "reorganised: Collections and Expenses are now their own sidebar menus with search and paging, "
               "the dashboard drops the top-contributor and recent-activity cards for a cleaner view, and "

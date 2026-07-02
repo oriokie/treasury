@@ -82,11 +82,13 @@
 </div>
 <div class="card u-mb-lg"><div class="bd bd-flush">
   <table class="ledger compact">
-    <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th style="width:160px">Progress</th></tr></thead>
+    <thead><tr><th>Group</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Closing</th><th class="num">Target</th><th style="width:140px">Progress</th></tr></thead>
     <tbody>
     {% for g in dev_groups %}<tr>
       <td><a class="link" href="{% url 'leader_group_detail' g.group.id %}">{{ g.group }}</a></td>
+      <td class="num mono">{{ g.opening|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ g.closing|floatformat:0|intcomma }}</td>
       <td class="num mono">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
       <td>{% if g.pct is not None %}<div class="progress"><span style="width:{{ g.pct }}%"></span></div><span class="muted u-xs">{{ g.pct }}%</span>{% else %}—{% endif %}</td>
     </tr>{% endfor %}

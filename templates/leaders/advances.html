@@ -9,8 +9,12 @@
   {% include "ui/stat.html" with label="Outstanding to account for" prefix="KSh" value=outstanding|floatformat:2|intcomma accent="brass" foot="Across your open advances" %}
 </div>
 
+<div class="info-panel u-mb">
+  <strong>How to account for an advance:</strong> click <em>Open →</em> on any advance below (or the staff member's name) to reach its entry page, where you record each expense the money was spent on. You can add entries one at a time or import them from Excel, and delete an entry you made while the advance is still open.
+</div>
+
 <div class="card"><div class="hd">Advances</div><div class="bd">
-<table class="ledger"><thead><tr><th>Issued</th><th>Staff</th><th>Fund</th><th>Purpose</th><th class="num">Amount</th><th class="num">Accounted</th><th class="num">Balance</th><th>Status</th></tr></thead>
+<table class="ledger"><thead><tr><th>Issued</th><th>Staff</th><th>Fund</th><th>Purpose</th><th class="num">Amount</th><th class="num">Accounted</th><th class="num">Balance</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for a in advances %}<tr>
   <td>{{ a.date_issued|date:"d M y" }}</td>
   <td><a href="{% url 'leader_advance_detail' a.id %}">{{ a.staff_name }}</a>{% if a.from_petty_cash %} <span class="pill pill-brass" title="From petty cash">PC</span>{% endif %}</td>
@@ -20,7 +24,8 @@
   <td class="num mono">{{ a.accounted_total|floatformat:2|intcomma }}</td>
   <td class="num mono">{{ a.balance|floatformat:2|intcomma }}</td>
   <td><span class="pill {% if a.status == 'SETTLED' or a.status == 'CLOSED' %}pill-green{% elif a.status == 'PARTLY' %}pill-amber{% else %}pill-grey{% endif %}">{{ a.get_status_display }}</span></td>
-</tr>{% empty %}<tr><td colspan="8" class="empty">No advances on your funds.</td></tr>{% endfor %}</tbody>
+  <td class="u-right"><a class="btn btn-xs btn-brass" href="{% url 'leader_advance_detail' a.id %}">Open →</a></td>
+</tr>{% empty %}<tr><td colspan="9" class="empty">No advances on your funds.</td></tr>{% endfor %}</tbody>
 </table>
 </div></div>
 {% endblock %}

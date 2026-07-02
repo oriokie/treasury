@@ -11,7 +11,7 @@ class RenderTests(TestCase):
     def test_login_renders(self):
         r = self.client.get("/accounts/login/", secure=True)
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "auth-card")
+        self.assertContains(r, "signin-form")
 
     def test_404_renders_premium(self):
         r = self.client.get("/no-such-page-xyz/", secure=True)

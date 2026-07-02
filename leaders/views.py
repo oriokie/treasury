@@ -91,20 +91,26 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         from decimal import Decimal
         from django.db.models import Sum
         from giving.models import Transaction
-        # one grouped query for all groups, not an aggregate per group
+        base = Transaction.objects.filter(
+            direction=Transaction.Direction.CREDIT, confirmed=True,
+            is_reversal=False, is_reversed=False, dev_group__isnull=False)
+        # collected within the period (receipts) and before it (opening)
         collected_map = {r["dev_group"]: (r["s"] or Decimal(0)) for r in
-            Transaction.objects.filter(
-                direction=Transaction.Direction.CREDIT, confirmed=True,
-                is_reversal=False, is_reversed=False, dev_group__isnull=False,
-                date__gte=start, date__lte=end)
+            base.filter(date__gte=start, date__lte=end)
+            .values("dev_group").annotate(s=Sum("amount"))}
+        opening_map = {r["dev_group"]: (r["s"] or Decimal(0)) for r in
+            base.filter(date__lt=start)
             .values("dev_group").annotate(s=Sum("amount"))}
         rows = []
         for g in DevelopmentGroup.objects.filter(active=True):
             collected = collected_map.get(g.id, Decimal(0))
+            opening = opening_map.get(g.id, Decimal(0))
+            closing = opening + collected
             tgt = g.target or Decimal(0)
-            pct = int(min(collected / tgt * 100, 100)) if tgt else None
-            rows.append({"group": g, "collected": collected, "target": tgt, "pct": pct})
-        rows.sort(key=lambda r: r["collected"], reverse=True)
+            pct = int(min(closing / tgt * 100, 100)) if tgt else None
+            rows.append({"group": g, "opening": opening, "collected": collected,
+                         "closing": closing, "target": tgt, "pct": pct})
+        rows.sort(key=lambda r: r["closing"], reverse=True)
         return rows
 
     def _export_groups(self, request, export):
@@ -112,8 +118,9 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         from core.models import SiteConfig
         start, end = parse_period(request)
         rows = self._dev_group_rows(start, end)
-        header = ["Group", "Collected", "Target", "% of target"]
-        data = [[str(r["group"]), float(r["collected"]), float(r["target"]),
+        header = ["Group", "Opening", "Receipts", "Closing", "Target", "% of target"]
+        data = [[str(r["group"]), float(r["opening"]), float(r["collected"]),
+                 float(r["closing"]), float(r["target"]),
                  (r["pct"] if r["pct"] is not None else "")] for r in rows]
         title = (f"{self.dept.name} — development groups, "
                  f"{start:%d %b %Y} to {end:%d %b %Y}")
@@ -560,6 +567,9 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
         if not adv:
             return redirect("leader_advances")
         ctx = _advance_detail_ctx(adv, leader_mode=True, user=request.user)
+        # Excel download of the full statement
+        if request.GET.get("export") == "xlsx":
+            return self._export_xlsx(adv, ctx.get("statement", []))
         # optional date-range + search filters over the statement timeline; the
         # running balance on each row is already computed, so filtering only hides
         # rows without distorting the figures.
@@ -582,6 +592,47 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
         ctx["is_paginated"] = page.has_other_pages()
         ctx["statement"] = page.object_list
         return render(request, self.template_name, ctx)
+
+    def _export_xlsx(self, adv, statement):
+        import io, openpyxl
+        from openpyxl.styles import Font, PatternFill
+        from django.http import HttpResponse
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Advance statement"
+        ws.append(["Staff advance statement"])
+        ws["A1"].font = Font(bold=True, size=14)
+        ws.append(["Staff", adv.staff_name])
+        ws.append(["Fund", adv.department.name])
+        ws.append(["Purpose", adv.purpose])
+        ws.append(["Issued", adv.date_issued.isoformat() if adv.date_issued else ""])
+        ws.append(["Total advanced", float(adv.amount or 0)])
+        ws.append(["Balance to account for", float(getattr(adv, "balance", 0) or 0)])
+        ws.append(["Status", adv.get_status_display()])
+        ws.append([])
+        hdr_row = ws.max_row + 1
+        head = ["Date", "Detail", "Out to holder", "Accounted", "Still to account"]
+        ws.append(head)
+        for c in range(1, len(head) + 1):
+            cell = ws.cell(hdr_row, c)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1F5F4F")
+        for r in statement:
+            ws.append([
+                r["date"].isoformat() if r.get("date") else "",
+                r.get("label", ""),
+                float(r["out"]) if r.get("out") is not None else "",
+                float(r["back"]) if r.get("back") is not None else "",
+                float(r["running"]) if r.get("running") is not None else "",
+            ])
+        ws.column_dimensions["A"].width = 13
+        ws.column_dimensions["B"].width = 46
+        for col in ("C", "D", "E"):
+            ws.column_dimensions[col].width = 16
+        buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+        fname = f"advance_{adv.id}_{adv.staff_name}".replace(" ", "_")[:60] + ".xlsx"
+        resp = HttpResponse(buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
 
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
@@ -651,17 +702,13 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
             messages.success(request, "Expense updated.")
             return redirect("leader_advance_detail", pk=pk)
 
-        # --- delete one of the leader's own expense lines (period open, advance
-        #     still pending — not settled or closed) ---
+        # --- delete one of the leader's own lines (an expense or a transaction
+        #     charge) while the period is open and the advance is still pending ---
         if action == "delete_expense":
             exp = Expense.objects.filter(pk=request.POST.get("expense_id"),
                                          advance=adv).first()
             if not exp or exp.recorded_by_id != request.user.id:
-                messages.error(request, "You can only delete expenses you entered.")
-                return redirect("leader_advance_detail", pk=pk)
-            if exp.category == Expense.Category.BANK_CHARGE:
-                messages.error(request, "Transaction-charge lines can't be deleted directly; "
-                    "delete the expense they belong to instead.")
+                messages.error(request, "You can only delete lines you entered.")
                 return redirect("leader_advance_detail", pk=pk)
             if adv.status in (StaffAdvance.Status.SETTLED, StaffAdvance.Status.CLOSED):
                 messages.error(request, "This advance is settled or closed; ask the "
@@ -669,10 +716,12 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
                 return redirect("leader_advance_detail", pk=pk)
             if block_if_locked(request, exp.date):
                 return redirect("leader_advance_detail", pk=pk)
-            # remove any linked transaction-charge line alongside it
+            is_charge = exp.category == Expense.Category.BANK_CHARGE
+            # deleting an expense also removes any transaction charge attached to it
             exp.charges.all().delete()
             exp.delete()
-            messages.success(request, "Expense deleted.")
+            messages.success(request,
+                "Charge deleted." if is_charge else "Expense deleted.")
             return redirect("leader_advance_detail", pk=pk)
 
         # --- default: record a new expense (with optional transaction charge) ---

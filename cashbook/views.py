@@ -953,9 +953,12 @@ def outstanding_bank_advances_total(as_of=None):
 
 def outstanding_advances_total(as_of=None):
     """Money advanced to staff that has not yet been accounted for by receipts —
-    i.e. a receivable. Computed as (amount issued − expenses settled up to the
-    date) for advances issued on/before `as_of` that are not yet closed. Only
-    positive balances count (a shortfall is owed to staff, not a receivable)."""
+    i.e. a receivable. Computed as (amount advanced as of the date − expenses
+    settled up to the date) for advances issued on/before `as_of` that are not
+    yet closed. The amount advanced excludes top-ups dated after `as_of` (they
+    had not been advanced yet), keeping both sides of the subtraction as of the
+    same date. Only positive balances count (a shortfall is owed to staff, not a
+    receivable)."""
     from decimal import Decimal
     import datetime as _dt
     from django.db.models import Sum
@@ -964,10 +967,15 @@ def outstanding_advances_total(as_of=None):
     total = Decimal(0)
     for adv in StaffAdvance.objects.filter(date_issued__lte=as_of).exclude(
             status=StaffAdvance.Status.CLOSED):
+        # amount advanced as of the date: current total less any top-ups that
+        # were only added after the reporting date
+        topups_after = (adv.topups.filter(date__gt=as_of)
+                        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        advanced = (adv.amount or Decimal(0)) - topups_after
         settled = (adv.expenses.filter(
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
             date__lte=as_of).aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        bal = adv.amount - settled
+        bal = advanced - settled
         if bal > 0:
             total += bal
     return total
@@ -1323,6 +1331,7 @@ def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
             rows.append({"date": ev["date"], "label": ev["label"], "out": None,
                          "back": ev["amount"], "running": running, "expense": e,
                          "editable": can_edit_line and mine and not is_charge,
+                         "deletable": can_edit_line and mine,
                          "attachable": bool(leader_mode and e and adv.status != adv.Status.CLOSED),
                          "is_charge": is_charge,
                          "attachments": list(e.attachments.all()) if e else []})
@@ -1598,7 +1607,7 @@ def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant
             category=Expense.Category.BANK_CHARGE,
             claimant=(claimant or adv.staff_name), method=adv.method,
             status=Expense.Status.PAID, paid_date=date, paid_from_petty_cash=False,
-            recorded_by=user, advance=adv, approved_by=user)
+            recorded_by=user, advance=adv, charge_for=exp, approved_by=user)
     bal = adv.balance
     if bal == 0:
         adv.status = StaffAdvance.Status.SETTLED

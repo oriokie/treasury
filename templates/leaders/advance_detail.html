@@ -23,6 +23,7 @@
     <input type="search" name="q" value="{{ q }}" placeholder="Search detail…" class="field field-sm">
     <button class="btn btn-sm">Filter</button>
     {% if filtered %}<a class="btn btn-sm btn-ghost" href="{% url 'leader_advance_detail' adv.id %}">Clear</a>{% endif %}
+    <a class="btn btn-sm btn-ghost" href="{% url 'leader_advance_detail' adv.id %}?export=xlsx" title="Download the full statement as Excel">⬇ Excel</a>
   </form>
 </div><div class="bd">
 {% if filtered %}<p class="help u-mt-0">Showing filtered rows. The running balance reflects each row's position in the full statement.</p>{% endif %}
@@ -37,8 +38,8 @@
   <td class="no-print u-nowrap">
     {% if r.editable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('edit-{{ r.expense.id }}').style.display='block'">✎</button>{% endif %}
     {% if r.attachable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('att-{{ r.expense.id }}').style.display='block'">📎</button>{% endif %}
-    {% if r.editable and adv.status != 'SETTLED' and adv.status != 'CLOSED' %}
-    <form method="post" style="display:inline" onsubmit="return confirm('Delete this expense? This cannot be undone.')">{% csrf_token %}
+    {% if r.deletable and adv.status != 'SETTLED' and adv.status != 'CLOSED' %}
+    <form method="post" style="display:inline" onsubmit="return confirm('Delete this {% if r.is_charge %}charge{% else %}expense{% endif %}? This cannot be undone.')">{% csrf_token %}
       <input type="hidden" name="action" value="delete_expense"><input type="hidden" name="expense_id" value="{{ r.expense.id }}">
       <button class="btn btn-xs btn-ghost" style="color:var(--red,#b3261e)" title="Delete">🗑</button>
     </form>{% endif %}

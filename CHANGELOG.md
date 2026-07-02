@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.95.0 - leader advances polish, dev-group balances, receivable fix, modern sign-in
+- Leader advances list: added a "how to account for an advance" help panel and an explicit Open button per row.
+- Leader advance detail: Excel download of the full statement (?export=xlsx).
+- Leaders can now delete a transaction charge line directly (not only whole expenses). Deleting an expense
+  removes its linked charge; advance settling charges are now linked via charge_for so the cascade is reliable;
+  deleting an advance still removes its issuance charge (AdvanceDelete) and settling charges (advance cascade).
+- Leader dashboard development groups now show Opening / Receipts / Closing (and Target / Progress); export
+  updated to match.
+- Fix: outstanding_advances_total (Staff advances receivable on the Statement of Financial Position) now
+  excludes top-ups dated after the as-of date, keeping both sides of amount-less-settled as of the same date.
+- Sign-in page redesigned: modern split brand/form layout, password show/hide toggle, light theme + system font.
+- Tests: leaders/test_batch_v195 (9). leaders 48 / cashbook 180 / reports 190 / core 171 green.
+- No migration; run collectstatic on deploy.
+
 ## v1.94.0 - leader area overhaul, supporting-docs PDF, light+system defaults, advance Excel import
 - Leader dashboard: removed the Top contributors card and the Recent collections/expenses preview cards.
   Sub-accounts table now shows Opening / Receipts / Expenses / Closing for every account.
