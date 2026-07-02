@@ -1,12 +1,19 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Advances · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Staff advances</h1>
-  <div class="sub">Advances issued on your funds. Record the expenses that account for them.</div></div>
-<a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a></div>
+<div class="ld-hero">
+  <div class="ld-hero-main">
+    <div class="ld-eyebrow">My staff advances</div>
+    <h1>Staff advances</h1>
+    <div class="ld-period">Advances issued on your funds — record the expenses that account for them</div>
+  </div>
+  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_dashboard' %}">← My departments</a>
+</div>
 
-<div class="kpi-grid u-mb">
-  {% include "ui/stat.html" with label="Outstanding to account for" prefix="KSh" value=outstanding|floatformat:2|intcomma accent="brass" foot="Across your open advances" %}
+<div class="ld-kpis ld-kpis-1 u-mb">
+  <div class="stat brass"><div class="label">Outstanding to account for</div>
+    <div class="value"><span class="ksh">{{ CURRENCY|default:'KSh' }}</span>{{ outstanding|floatformat:0|intcomma }}</div>
+    <div class="foot">Across your open advances</div></div>
 </div>
 
 <div class="info-panel u-mb">
@@ -28,4 +35,19 @@
 </tr>{% empty %}<tr><td colspan="9" class="empty">No advances on your funds.</td></tr>{% endfor %}</tbody>
 </table>
 </div></div>
+
+<style>
+.ld-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;
+  padding:1.3rem 1.5rem;margin-bottom:1.2rem;border-radius:16px;
+  background:linear-gradient(135deg,var(--forest) 0%,var(--forest-deep,#16463a) 100%);
+  color:#fff;box-shadow:var(--shadow-md)}
+.ld-hero h1{margin:.1rem 0 .15rem;color:#fff;font-size:1.7rem;line-height:1.1}
+.ld-hero .ld-eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.8;font-weight:600}
+.ld-hero .ld-period{font-size:.82rem;opacity:.85;max-width:520px}
+.ld-hero-back{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.45);color:#fff}
+.ld-hero-back:hover{background:rgba(255,255,255,.28)}
+.ld-kpis-1{display:grid;grid-template-columns:minmax(260px,340px);gap:.8rem}
+.ld-kpis-1 .stat .value{font-size:1.4rem}
+.ld-kpis-1 .stat .value .ksh{font-size:.66em;margin-right:.12rem;opacity:.7}
+</style>
 {% endblock %}

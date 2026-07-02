@@ -150,6 +150,14 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         ctx["subrows"] = [r for r in rows
                           if r["department"].parent_id == dept.id
                           and r["department"].id in allowed_ids]
+        # item 5: largest closing first
+        ctx["subrows"].sort(key=lambda r: r["closing"] or Decimal(0), reverse=True)
+        # item 6: when every sub-account (and this fund) is collection-only, the
+        # expenses/payments column is meaningless — show opening/receipts/closing
+        _cols = [dept] + [r["department"] for r in ctx["subrows"]]
+        ctx["sub_show_expenses"] = not all(
+            getattr(d, "collection_only", False) for d in _cols) if _cols else True
+        ctx["dept_collection_only"] = bool(getattr(dept, "collection_only", False))
         # the whole area this leader manages here: the department + visible subs
         dept_ids = {dept.id} | {r["department"].id for r in ctx["subrows"]}
 
@@ -360,6 +368,29 @@ class LeaderCollectionsView(LeaderRequiredMixin, TemplateView):
 class LeaderExpensesView(LeaderRequiredMixin, TemplateView):
     """Full, downloadable expense list for one of the leader's departments."""
     template_name = "leaders/expenses.html"
+
+    def post(self, request, *args, **kwargs):
+        from cashbook.models import Expense, ExpenseAttachment
+        dept = assert_department_allowed(request.user, kwargs["pk"])
+        if not dept:
+            return redirect("leader_dashboard")
+        if request.POST.get("action") == "add_attachment":
+            exp = Expense.objects.filter(pk=request.POST.get("expense_id"),
+                                         department=dept).first()
+            f = request.FILES.get("file")
+            ref = (request.POST.get("mpesa_ref") or "").strip()
+            if not exp:
+                messages.error(request, "That expense is not on your department.")
+            elif not f and not ref:
+                messages.error(request, "Add a file or an M-Pesa reference.")
+            else:
+                ExpenseAttachment.objects.create(
+                    expense=exp, file=f or None, text=ref,
+                    label=("M-Pesa ref" if ref and not f else ""),
+                    uploaded_by=request.user)
+                messages.success(request, "Supporting document added.")
+        qs = request.GET.urlencode()
+        return redirect(request.path + (f"?{qs}" if qs else ""))
 
     def get(self, request, *args, **kwargs):
         self.dept = assert_department_allowed(request.user, kwargs["pk"])

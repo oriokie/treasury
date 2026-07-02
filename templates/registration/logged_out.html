@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Signed out · {{ SITE_NAME }}{% endblock %}
+{% block auth %}
+<div class="signout">
+  <div class="so-card">
+    <div class="so-mark">₳</div>
+    <h1>You're signed out</h1>
+    <p class="so-sub">Thank you for your faithful stewardship, {{ CHURCH_NAME }}.</p>
+
+    <figure class="so-verse">
+      <blockquote>“{{ verse }}”</blockquote>
+      <figcaption>— {{ verse_ref }}</figcaption>
+    </figure>
+
+    <a class="so-btn" href="{% url 'login' %}">Sign in again</a>
+    <p class="so-legal">Your session has ended securely.</p>
+  </div>
+</div>
+
+<style>
+.signout{min-height:100vh;display:grid;place-items:center;padding:1.5rem;
+  background:linear-gradient(155deg,var(--forest-2) 0%,var(--forest) 45%,var(--forest-deep) 100%);position:relative;overflow:hidden}
+.signout::before{content:"";position:absolute;inset:0;opacity:.5;pointer-events:none;
+  background:radial-gradient(1000px 500px at 80% -10%,rgba(176,125,44,.30),transparent 60%),
+             radial-gradient(700px 400px at -10% 110%,rgba(255,255,255,.10),transparent 55%)}
+.so-card{position:relative;background:var(--paper);border-radius:22px;padding:2.8rem 2.4rem;max-width:460px;width:100%;
+  text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.28)}
+.so-mark{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;margin:0 auto 1.2rem;
+  font-size:1.7rem;font-weight:700;color:#fff;background:linear-gradient(160deg,var(--forest-2),var(--forest-deep));
+  box-shadow:0 8px 22px rgba(31,95,79,.35)}
+.so-card h1{font-size:1.6rem;margin:0 0 .3rem;letter-spacing:-.01em}
+.so-sub{color:var(--muted);margin:0 0 1.6rem;font-size:.95rem}
+.so-verse{margin:0 0 1.8rem;padding:1.3rem 1.4rem;border-radius:14px;
+  background:var(--forest-soft);border-left:4px solid var(--brass,#b07d2c)}
+.so-verse blockquote{margin:0 0 .5rem;font-family:var(--font-display,Fraunces,Georgia,serif);
+  font-size:1.12rem;line-height:1.5;color:var(--forest-deep,#143a31);font-style:italic}
+.so-verse figcaption{font-size:.85rem;font-weight:600;color:var(--brass,#b07d2c);letter-spacing:.02em}
+.so-btn{display:inline-block;padding:.75rem 2rem;border-radius:12px;text-decoration:none;font-weight:600;color:#fff;
+  background:linear-gradient(160deg,var(--forest-2),var(--forest));box-shadow:0 6px 18px rgba(31,95,79,.28);
+  transition:filter .12s,box-shadow .12s}
+.so-btn:hover{filter:brightness(1.06);box-shadow:0 8px 22px rgba(31,95,79,.36)}
+.so-legal{margin:1.3rem 0 0;font-size:.78rem;color:var(--muted);opacity:.75}
+</style>
+{% endblock %}

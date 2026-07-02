@@ -97,14 +97,14 @@
 </div>
 <div class="table-wrap u-mb-lg">
   <table class="ledger" id="localFundsTable" data-period="{{ start|date:'j M Y' }} – {{ end|date:'j M Y' }}" data-church="{{ CHURCH_NAME|default:SITE_NAME }}">
-    <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
+    <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th>{% if local_show_expenses %}<th class="num">Expenses</th>{% endif %}<th class="num">Closing</th></tr></thead>
     <tbody>
     {% for r in local_rows %}
       <tr>
         <td><a href="{% url 'report_fund' r.department.id %}">{{ r.department.name }}</a></td>
         <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
         <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
-        <td class="num mono">{{ r.expenses|floatformat:2|intcomma }}</td>
+        {% if local_show_expenses %}<td class="num mono">{{ r.expenses|floatformat:2|intcomma }}</td>{% endif %}
         <td class="num mono"><strong>{{ r.closing|floatformat:2|intcomma }}</strong></td>
       </tr>
     {% empty %}<tr><td colspan="5" class="muted">No local funds yet.</td></tr>{% endfor %}
@@ -113,7 +113,7 @@
       <td>Total local</td>
       <td class="num mono">{{ local_totals.opening|floatformat:2|intcomma }}</td>
       <td class="num mono">{{ local_totals.receipts|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ local_totals.expenses|floatformat:2|intcomma }}</td>
+      {% if local_show_expenses %}<td class="num mono">{{ local_totals.expenses|floatformat:2|intcomma }}</td>{% endif %}
       <td class="num mono">{{ local_totals.closing|floatformat:2|intcomma }}</td>
     </tr></tfoot>
   </table>

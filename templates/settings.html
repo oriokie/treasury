@@ -30,7 +30,7 @@
   <input type="hidden" name="active_tab" id="activeTab" value="{{ request.GET.tab|default:'branding' }}">
   <section class="tabpane active" data-pane="branding">
     <div class="card"><div class="bd"><div class="form-grid">
-      {% for f in form %}{% if f.name in 'church_name field_name receipt_message' %}
+      {% for f in form %}{% if f.name in 'church_name field_name church_address church_contact currency_symbol report_footer_note receipt_message' %}
         <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
     </div></div></div>

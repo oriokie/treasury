@@ -34,8 +34,15 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["totals"] = balances.totals(rows)
         ctx["trust_rows"] = balances.trust_summary(start, end)
         ctx["trust_to_remit"] = sum((r["to_remit"] for r in ctx["trust_rows"]), 0)
-        ctx["local_rows"] = [r for r in rows if not r["is_trust"]]
+        ctx["local_rows"] = sorted(
+            [r for r in rows if not r["is_trust"]],
+            key=lambda r: r["closing"] or 0, reverse=True)
         ctx["local_totals"] = balances.totals(ctx["local_rows"])
+        # item 6: hide the expenses column on the dashboard when every local fund
+        # shown is a collection-only account (opening + receipts = closing)
+        ctx["local_show_expenses"] = not all(
+            getattr(r["department"], "collection_only", False)
+            for r in ctx["local_rows"]) if ctx["local_rows"] else True
         from core.models import SiteConfig
         ctx["field_name"] = SiteConfig.get().field_name or "conference"
         ctx["by_group"] = balances.giving_by_group(start, end)

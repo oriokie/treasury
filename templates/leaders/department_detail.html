@@ -15,19 +15,25 @@
 </div>
 
 <!-- Headline KPIs -->
-<div class="ld-kpis">
+<div class="ld-kpis{% if dept_collection_only %} ld-kpis-3{% endif %}">
   <div class="stat accent"><div class="label">Closing balance</div>
     <div class="value"><span class="ksh">KSh</span>{{ kpi.closing|floatformat:0|intcomma }}</div>
-    <div class="foot">Opening + receipts − expenses</div></div>
-  <div class="stat"><div class="label">Collections</div>
+    <div class="foot">{% if dept_collection_only %}Opening + receipts{% else %}Opening + receipts − expenses{% endif %}</div></div>
+  <div class="stat"><div class="label">{% if dept_collection_only %}Receipts{% else %}Collections{% endif %}</div>
     <div class="value"><span class="ksh">KSh</span>{{ kpi.receipts|floatformat:0|intcomma }}</div>
     <div class="foot">{{ kpi.gifts }} contribution{{ kpi.gifts|pluralize }} this period</div></div>
+  {% if not dept_collection_only %}
   <div class="stat warn"><div class="label">Expenses</div>
     <div class="value"><span class="ksh">KSh</span>{{ kpi.spend|floatformat:0|intcomma }}</div>
     <div class="foot">Approved &amp; paid</div></div>
   <div class="stat {% if kpi.net >= 0 %}brass{% endif %}"><div class="label">Net this period</div>
     <div class="value"><span class="ksh">KSh</span>{{ kpi.net|floatformat:0|intcomma }}</div>
     <div class="foot">Collections − expenses</div></div>
+  {% else %}
+  <div class="stat brass"><div class="label">Opening balance</div>
+    <div class="value"><span class="ksh">KSh</span>{{ row.opening|floatformat:0|intcomma }}</div>
+    <div class="foot">Brought forward</div></div>
+  {% endif %}
 </div>
 
 <!-- Explore: dedicated pages -->
@@ -82,15 +88,13 @@
 </div>
 <div class="card u-mb-lg"><div class="bd bd-flush">
   <table class="ledger compact">
-    <thead><tr><th>Group</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Closing</th><th class="num">Target</th><th style="width:140px">Progress</th></tr></thead>
+    <thead><tr><th>Group</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Closing</th></tr></thead>
     <tbody>
     {% for g in dev_groups %}<tr>
       <td><a class="link" href="{% url 'leader_group_detail' g.group.id %}">{{ g.group }}</a></td>
       <td class="num mono">{{ g.opening|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ g.closing|floatformat:0|intcomma }}</td>
-      <td class="num mono">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
-      <td>{% if g.pct is not None %}<div class="progress"><span style="width:{{ g.pct }}%"></span></div><span class="muted u-xs">{{ g.pct }}%</span>{% else %}—{% endif %}</td>
     </tr>{% endfor %}
     </tbody>
   </table>
@@ -103,13 +107,13 @@
   <button type="button" class="btn btn-ghost btn-sm no-print" onclick="tableToJpeg('ldSubgroups', {title:'{{ dept.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'{{ dept.slug|default:dept.id }}-subgroups', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download as a JPEG image">⤓ JPEG</button></div>
 <div class="card u-mb-lg"><div class="bd bd-flush">
   <table class="ledger compact" id="ldSubgroups">
-    <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th><th></th></tr></thead>
+    <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th>{% if sub_show_expenses %}<th class="num">Expenses</th>{% endif %}<th class="num">Closing</th><th></th></tr></thead>
     <tbody>
     {% for r in subrows %}<tr>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">{{ r.department.name }}</a></td>
       <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
+      {% if sub_show_expenses %}<td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>{% endif %}
       <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">drill in →</a></td>
     </tr>{% endfor %}
@@ -131,6 +135,7 @@
 .ld-hero-tools .btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.5);color:#fff}
 .ld-hero-tools .btn:hover{background:rgba(255,255,255,.28)}
 .ld-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin-bottom:1.4rem}
+.ld-kpis-3{grid-template-columns:repeat(3,1fr)}
 .ld-kpis .stat{border-radius:14px}
 .ld-kpis .stat .value{font-size:clamp(1.05rem,2.1vw,1.45rem);white-space:nowrap;letter-spacing:-.015em}
 .ld-kpis .stat .value .ksh{font-size:.66em;margin-right:.12rem;opacity:.7}

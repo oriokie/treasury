@@ -17,6 +17,17 @@ class SiteConfig(models.Model):
     field_name = models.CharField(
         max_length=120, default="East Nairobi Field",
         help_text="Where trust funds are remitted.")
+    church_address = models.TextField(
+        blank=True, help_text="Postal / physical address shown on report letterheads.")
+    church_contact = models.CharField(
+        max_length=200, blank=True,
+        help_text="Phone and/or email shown on report letterheads.")
+    currency_symbol = models.CharField(
+        max_length=8, default="KSh",
+        help_text="Currency symbol shown before amounts (e.g. KSh, USD, GHS).")
+    report_footer_note = models.CharField(
+        max_length=200, blank=True,
+        help_text="Optional note printed at the foot of reports (e.g. a motto or verse).")
 
     # --- Feature toggles ---
     require_expense_approval = models.BooleanField(

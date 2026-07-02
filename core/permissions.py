@@ -43,6 +43,20 @@ class AdvanceAccessMixin(RoleRequiredMixin):
     permission_message = "You don't have the staff-advances right."
 
 
+class AllocateRequiredMixin(RoleRequiredMixin):
+    """Allocate/resolve the giving review queue: treasurers/assistants, or any
+    user granted the 'allocate transactions' right."""
+    allow_check = staticmethod(roles.can_allocate)
+    permission_message = "You don't have the allocation right."
+
+
+class DebitClassifyRequiredMixin(RoleRequiredMixin):
+    """Classify bank-statement debits: treasurers/assistants, or any user granted
+    the 'classify debits' right."""
+    allow_check = staticmethod(roles.can_classify_debits)
+    permission_message = "You don't have the debit-classification right."
+
+
 class ReadAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
     """Staff read access: Treasurer / Assistant / Auditor / admin.
 

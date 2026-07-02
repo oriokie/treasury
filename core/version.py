@@ -38,6 +38,15 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.96.0": "A wide round of leader-area and dashboard improvements, plus new customization. Development "
+              "groups on the leader dashboard drop the target/progress columns and sub-accounts sort by closing "
+              "balance (largest first); collection-only funds now show just opening, receipts and closing on both "
+              "the leader and treasurer dashboards. The leader expenses page hides method, status and category "
+              "(still in the Excel) and lets leaders attach a file or an M-Pesa reference to any expense. The "
+              "treasurer dashboard sorts local funds by closing balance. Profiles gain granular allocation and "
+              "debit-classification rights. There is a new sign-out page with a rotating verse, a redesigned "
+              "sign-in, and new church settings: address, contact, currency symbol and a report footer note. "
+              "Also fixed a campaign members/allocated count that could balloon far above the true figure.",
     "1.95.0": "Refinements across the leader area, a nicer sign-in, and a fix to the advances receivable. The "
               "staff-advances list now explains how to account for an advance and gives each row an Open button. "
               "A leader can download any advance's full statement to Excel, and can now delete a transaction "

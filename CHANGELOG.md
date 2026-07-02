@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.96.0 - leader/dashboard polish, allocation rights, collection-only columns, sign-out page, church settings
+- Fix: campaign list member/transaction counts used two Counts in one annotate, multiplying into a cartesian
+  product (e.g. 800 -> ~16000). Now Count(..., distinct=True).
+- Rights: added allocate_transactions and classify_debits granular rights + AllocateRequiredMixin /
+  DebitClassifyRequiredMixin; review-queue and debit-queue views honour them, so a profile can grant
+  allocation without the full data-entry role. (Item 7 answer: yes, allocation rights were missing.)
+- Leader dashboard: development groups drop Target/Progress (show Opening/Receipts/Closing); sub-accounts sorted
+  by closing balance desc; collection-only funds hide the Expenses column (opening/receipts/closing only) and
+  their KPI cards omit expenses/net.
+- Treasurer dashboard: local funds sorted by closing balance desc; collection-only funds hide the Expenses
+  column.
+- Leader expenses page: Method/Status/Category removed from the display (retained in the Excel export); leaders
+  can attach a supporting file or an M-Pesa reference to any expense on their department.
+- New sign-out page (SignOutView) with a rotating public-domain KJV verse; redesigned sign-in already shipped.
+- New church-customization settings: church_address, church_contact, currency_symbol, report_footer_note
+  (exposed as CURRENCY / CHURCH_ADDRESS / CHURCH_CONTACT / REPORT_FOOTER_NOTE in templates). Migrations
+  core 0041 (currency/footer) and 0042.
+- Tests: leaders/test_batch_v196 (10). leaders+accounts 95 / giving 100 / core 171 / cashbook 180 / reports 190.
+- Deploy: migrate (core 0041, 0042), collectstatic.
+
 ## v1.95.0 - leader advances polish, dev-group balances, receivable fix, modern sign-in
 - Leader advances list: added a "how to account for an advance" help panel and an explicit Open button per row.
 - Leader advance detail: Excel download of the full statement (?export=xlsx).

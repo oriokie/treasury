@@ -24,6 +24,8 @@ RIGHTS = [
     ("record_giving",        "Record giving / cash",               "Data entry"),
     ("count_envelopes",      "Count envelopes",                    "Data entry"),
     ("import_statements",    "Import bank statements",             "Data entry"),
+    ("allocate_transactions","Allocate / resolve the review queue", "Data entry"),
+    ("classify_debits",      "Classify bank-statement debits",      "Data entry"),
     ("record_expenses",      "Record expenses / claims",           "Data entry"),
     ("manage_members",       "Add / edit members",                 "Data entry"),
     ("manage_campaigns",     "Manage campaigns",                   "Data entry"),
@@ -75,6 +77,7 @@ def grouped_rights():
 # behaviour (full phone numbers, visible identities) is unchanged.
 _ALL = set(RIGHT_KEYS)
 _DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
+               "allocate_transactions", "classify_debits",
                "record_expenses", "manage_members", "manage_campaigns",
                "manage_rules", "allocate_dev_offering", "manage_advances"}
 _SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}

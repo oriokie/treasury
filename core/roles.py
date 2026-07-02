@@ -101,6 +101,22 @@ def can_build_dev_groups(user):
     return is_treasurer(user) or has_right(user, "build_dev_groups")
 
 
+def can_allocate(user):
+    """Resolve/allocate items in the giving review queue. Treasurers and
+    assistants by default; also anyone granted the allocate_transactions right."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "allocate_transactions"))
+
+
+def can_classify_debits(user):
+    """Classify bank-statement debits. Treasurers and assistants by default;
+    also anyone granted the classify_debits right."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "classify_debits"))
+
+
 def role_label(user):
     """Human label for a user's primary role."""
     if user.is_superuser:

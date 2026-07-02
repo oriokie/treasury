@@ -7,7 +7,8 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = SiteConfig
         fields = [
-            "church_name", "field_name",
+            "church_name", "field_name", "church_address", "church_contact",
+            "currency_symbol", "report_footer_note",
             "require_expense_approval", "show_mpesa_ref", "enable_dev_groups",
             "auto_create_members", "envelope_auto_receipt", "receipt_bank_scope",
             "receipt_message",

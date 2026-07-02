@@ -139,3 +139,41 @@ class ProfileDeleteView(RightRequiredMixin, View):
         profile.delete()
         messages.success(request, f"Deleted profile “{name}”. Affected users fall back to their role.")
         return redirect("profile_list")
+
+
+
+# --- Sign-out page with a rotating, public-domain (KJV) verse -----------------
+from django.contrib.auth import logout as _django_logout
+from django.views.generic import TemplateView as _TemplateView
+
+SIGNOUT_VERSES = [
+    ("Whatsoever ye do, do it heartily, as to the Lord, and not unto men.", "Colossians 3:23"),
+    ("Every man according as he purposeth in his heart, so let him give; "
+     "for God loveth a cheerful giver.", "2 Corinthians 9:7"),
+    ("Moreover it is required in stewards, that a man be found faithful.", "1 Corinthians 4:2"),
+    ("She hath done what she could.", "Mark 14:8"),
+    ("Well done, thou good and faithful servant.", "Matthew 25:21"),
+    ("Bring ye all the tithes into the storehouse, that there may be meat in mine house.", "Malachi 3:10"),
+    ("The Lord bless thee, and keep thee.", "Numbers 6:24"),
+    ("Commit thy works unto the Lord, and thy thoughts shall be established.", "Proverbs 16:3"),
+    ("Let all things be done decently and in order.", "1 Corinthians 14:40"),
+    ("Honour the Lord with thy substance, and with the firstfruits of all thine increase.", "Proverbs 3:9"),
+]
+
+
+class SignOutView(_TemplateView):
+    template_name = "registration/logged_out.html"
+
+    def post(self, request, *args, **kwargs):
+        return self._out(request)
+
+    def get(self, request, *args, **kwargs):
+        return self._out(request)
+
+    def _out(self, request):
+        import datetime as _dt
+        idx = _dt.date.today().toordinal() % len(SIGNOUT_VERSES)
+        verse, ref = SIGNOUT_VERSES[idx]
+        if request.user.is_authenticated:
+            _django_logout(request)
+        return render(request, self.template_name, {"verse": verse, "verse_ref": ref})

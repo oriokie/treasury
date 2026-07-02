@@ -36,7 +36,8 @@ from django.utils import timezone
 from django.views.generic import ListView, CreateView, View, DeleteView
 from django import forms
 
-from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
+from core.permissions import (DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin,
+                              AllocateRequiredMixin, DebitClassifyRequiredMixin)
 from core.utils import sabbath_week_of
 from departments.models import Department
 from .models import Transaction, AllocationRule
@@ -191,7 +192,7 @@ class ReviewQueueView(ReadAccessMixin, ListView):
         return ctx
 
 
-class RunRulesOnQueueView(DataEntryRequiredMixin, View):
+class RunRulesOnQueueView(AllocateRequiredMixin, View):
     """Re-run allocation rules over the items still in the review queue, so rules
     added after an import can clear matching items without re-importing the file."""
 
@@ -220,7 +221,7 @@ class RunRulesOnQueueView(DataEntryRequiredMixin, View):
         return redirect("queue")
 
 
-class BulkAllocateView(DataEntryRequiredMixin, View):
+class BulkAllocateView(AllocateRequiredMixin, View):
     """Item 1: allocate several review-queue contributions to one fund in a single action,
     for faster clearing of the queue. Optionally sets a development group when the
     chosen fund is a development fund."""
@@ -290,7 +291,7 @@ class BulkAllocateView(DataEntryRequiredMixin, View):
         return redirect("queue")
 
 
-class FetchUnallocatedView(DataEntryRequiredMixin, View):
+class FetchUnallocatedView(AllocateRequiredMixin, View):
     """Item 5: pull credits that still need a fund — sitting in the ledger without
     a department but not currently in the review queue — into the queue so they
     can be allocated. A contribution can fall out of REVIEW (e.g. imported already
@@ -315,7 +316,7 @@ class FetchUnallocatedView(DataEntryRequiredMixin, View):
         return redirect("queue")
 
 
-class ClaimResolveView(DataEntryRequiredMixin, View):
+class ClaimResolveView(AllocateRequiredMixin, View):
     """Claim + resolve a review item; optionally remember the rule."""
 
     def post(self, request, pk):
@@ -623,7 +624,7 @@ def _float_fund():
     return fund
 
 
-class DebitQueueView(DataEntryRequiredMixin, ListView):
+class DebitQueueView(DebitClassifyRequiredMixin, ListView):
     """Bank-statement debits awaiting classification."""
     template_name = "giving/debit_queue.html"
     context_object_name = "debits"
@@ -646,7 +647,7 @@ class DebitQueueView(DataEntryRequiredMixin, ListView):
         return ctx
 
 
-class DebitResolveView(DataEntryRequiredMixin, View):
+class DebitResolveView(DebitClassifyRequiredMixin, View):
     """Classify one debit as a bank charge, a general expense, a float
     withdrawal, or a match to an existing expense."""
 
@@ -1465,7 +1466,8 @@ class CampaignListView(ReadAccessMixin, View):
         from departments.models import Department
         from django.db.models import Count
         camps = (Campaign.objects.select_related("department")
-                 .annotate(n_members=Count("members"), n_txns=Count("transactions"))
+                 .annotate(n_members=Count("members", distinct=True),
+                           n_txns=Count("transactions", distinct=True))
                  .order_by("-active", "name"))
         return render(request, self.template_name, {
             "campaigns": camps,
