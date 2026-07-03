@@ -55,10 +55,11 @@
 {% if can_enter_data and adv.status != 'CLOSED' %}
 <form method="post" action="{% url 'advance_topup' adv.id %}" class="u-mt">{% csrf_token %}
   <div class="section-title">Top up this advance</div>
-  <p class="help u-mt-0">Issue more cash onto this advance — useful when a small balance is left and the holder needs more for further payments.</p>
-  <div class="form-grid" style="display:grid;grid-template-columns:120px 1fr 1.6fr auto;gap:.6rem;align-items:end">
+  <p class="help u-mt-0">Issue more cash onto this advance — useful when a small balance is left and the holder needs more for further payments. If sending the top-up incurs a bank/M-Pesa charge, add it separately below — it's booked as the church's own cost and doesn't add to what the holder must account for.</p>
+  <div class="form-grid" style="display:grid;grid-template-columns:120px 1fr 1fr 1.4fr auto;gap:.6rem;align-items:end">
     <div class="form-row u-m-0"><label>Date</label><input type="date" name="date" value="{{ today }}" class="field"></div>
     <div class="form-row u-m-0"><label>Amount</label><input name="amount" class="field mono u-right"></div>
+    <div class="form-row u-m-0"><label>Charge</label><input name="charge" class="field mono u-right" placeholder="0.00" title="Bank/M-Pesa charge for sending this top-up (optional)"></div>
     <div class="form-row u-m-0"><label>Note</label><input name="note" class="field" placeholder="e.g. further travel"></div>
     <button class="btn btn-ghost">Top up</button>
   </div>

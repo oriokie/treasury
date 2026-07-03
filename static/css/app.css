@@ -1143,6 +1143,7 @@ html[data-motion="reduced"] .toast{animation:none}
 .clip-pop{position:absolute;z-index:40;top:1.4rem;left:0;min-width:220px;max-width:340px;
   background:var(--paper,#fff);border:1px solid var(--line,#ddd);border-radius:10px;
   box-shadow:0 10px 30px rgba(0,0,0,.18);padding:.5rem;display:flex;flex-direction:column;gap:.4rem}
+.clip-pop[hidden]{display:none}
 .clip-item{display:block;font-size:.82rem;padding:.35rem .5rem;border-radius:7px;
   background:var(--paper-2,#f6f3ec);text-decoration:none;color:var(--ink,#222)}
 .clip-item.clip-text{white-space:pre-wrap;font-family:var(--font-mono,monospace);line-height:1.4}

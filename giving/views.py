@@ -624,6 +624,16 @@ def _float_fund():
     return fund
 
 
+def _dept_from_post(request, field="department"):
+    """Look up a Department from a POST field, tolerating a blank/missing value
+    (an empty '— fund —' option, or a hidden field the JS never revealed) rather
+    than letting Department.objects.filter(pk='') raise a ValueError."""
+    raw = (request.POST.get(field) or "").strip()
+    if not raw:
+        return None
+    return Department.objects.filter(pk=raw).first()
+
+
 class DebitQueueView(DebitClassifyRequiredMixin, ListView):
     """Bank-statement debits awaiting classification."""
     template_name = "giving/debit_queue.html"
@@ -661,8 +671,7 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
         kind = request.POST.get("kind")
 
         if kind == "bank_charge":
-            dept = Department.objects.filter(pk=request.POST.get("department")).first() \
-                   or _float_fund()
+            dept = _dept_from_post(request) or _float_fund()
             Expense.objects.create(
                 date=txn.date, sabbath_week=sabbath_week_of(txn.date), department=dept,
                 description=(txn.raw_narration or "Bank charge")[:200], amount=txn.amount,
@@ -675,7 +684,7 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
             messages.success(request, "Recorded as a bank charge.")
 
         elif kind == "expense":
-            dept = Department.objects.filter(pk=request.POST.get("department")).first()
+            dept = _dept_from_post(request)
             if not dept:
                 messages.error(request, "Choose a fund for the expense.")
                 return redirect("debit_queue")
@@ -692,21 +701,34 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
             messages.success(request, "Recorded as an expense.")
 
         elif kind == "remittance":
-            dept = Department.objects.filter(pk=request.POST.get("department")).first()
+            dept = _dept_from_post(request)
             if not dept:
                 messages.error(request, "Choose the trust fund being remitted.")
                 return redirect("debit_queue")
-            Expense.objects.create(
+            # if there's a recent DRAFT/APPROVED remittance batch that hasn't been
+            # sent yet, link this expense to it — this is very likely the payment
+            # that settles it, and keeps the batch's status accurate.
+            from cashbook.models import RemittanceBatch
+            recent_batch = (RemittanceBatch.objects
+                            .filter(status__in=[RemittanceBatch.Status.DRAFT,
+                                                RemittanceBatch.Status.APPROVED])
+                            .order_by("-created_at").first())
+            exp = Expense.objects.create(
                 date=txn.date, sabbath_week=sabbath_week_of(txn.date), department=dept,
                 description=(request.POST.get("description") or "Remittance to field")[:200],
                 amount=txn.amount, category=Expense.Category.REMITTANCE,
                 method=Expense.Method.BANK, status=Expense.Status.PAID,
                 paid_date=txn.date, recorded_by=request.user, approved_by=request.user,
-                bank_transaction=txn)
+                bank_transaction=txn, remittance_batch=recent_batch)
             txn.department = dept
             txn.allocation_status = Transaction.Status.MANUAL
             txn.save(update_fields=["department", "allocation_status"])
-            messages.success(request, f"Recorded as a trust remittance for {dept.name}.")
+            if recent_batch:
+                messages.success(request, f"Recorded as a trust remittance for {dept.name} "
+                    f"and linked to remittance batch {recent_batch.batch_number}.")
+            else:
+                messages.success(request, f"Recorded as a trust remittance for {dept.name}. "
+                    "No open remittance batch was found to link it to.")
 
         elif kind == "match":
             ids = request.POST.getlist("expense")
@@ -768,6 +790,21 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
             messages.success(
                 request, f"Allocated to petty cash — the float has been topped up by "
                          f"{txn.amount:,.2f}.")
+        elif kind == "already_accounted":
+            # the treasurer confirms this payment was already recorded elsewhere
+            # (e.g. entered manually, a duplicate, or out of scope) — resolve the
+            # queue item without creating an expense or touching any fund balance.
+            reason = (request.POST.get("description") or "").strip()
+            if not reason:
+                messages.error(request, "Add a short note on why this is already accounted for.")
+                return redirect("debit_queue")
+            txn.allocation_status = Transaction.Status.MANUAL
+            txn.raw_narration = (txn.raw_narration or "") + \
+                f"\n[Marked already accounted for — {reason} — by {request.user.get_username()}]"
+            txn.save(update_fields=["allocation_status", "raw_narration"])
+            messages.success(request, "Marked as already accounted for. It won't "
+                             "affect any fund balance.")
+
         else:
             messages.error(request, "Choose how to treat this debit.")
         return redirect("debit_queue")

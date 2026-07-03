@@ -382,6 +382,12 @@
     setTimeout(function(){ f.dataset.submitting=""; if(btn){btn.removeAttribute("aria-busy");btn.classList.remove("is-busy");} }, 8000);
   });
 })();
+
+// Close any open attachment popover (paperclip) when clicking elsewhere on the page
+document.addEventListener("click", function(e){
+  if(e.target.closest && e.target.closest(".clip-wrap")) return;
+  document.querySelectorAll(".clip-pop").forEach(function(el){ el.hidden = true; });
+});
 </script>
 {% else %}
   {% block auth %}{% endblock %}

@@ -10,7 +10,9 @@
   <em>match to expense</em> links it to one you already entered (no double count);
   <em>record as expense</em> creates a new expense from the debit; a <em>float
   withdrawal</em> is cash drawn to pay expenses later — book those expenses as
-  they're spent.
+  they're spent; <em>already accounted for</em> resolves the item without
+  creating any expense or touching a fund balance — use it when the payment was
+  already recorded another way (or shouldn't hit the books at all).
 </div>
 
 {% for t in debits %}
@@ -29,6 +31,7 @@
           <option value="remittance">Trust fund remittance</option>
           <option value="float">Float withdrawal (cash on hand)</option>
           <option value="petty_cash">Allocate to petty cash (top up the float)</option>
+          <option value="already_accounted">Already accounted for (don't affect the cashbook)</option>
         </select>
         <select name="department" class="field--select fld-dept">
           <option value="">— fund —</option>
@@ -41,7 +44,7 @@
         <select name="expense" class="field--select fld-exp" multiple size="3" style="min-width:280px">
           {% for e in pending_expenses %}<option value="{{ e.id }}">{{ e.date|date:"d M" }} · {{ e.description|truncatechars:28 }} · {{ e.amount|floatformat:0 }}</option>{% endfor %}
         </select>
-        <input name="description" class="field fld-desc" placeholder="Description (optional)">
+        <input name="description" class="field fld-desc" placeholder="Description / reason (required for 'already accounted for')">
         <button class="btn btn-sm">Apply</button>
       </div>
     </form>
@@ -56,10 +59,10 @@
 function syncRow(sel){
   const form=sel.closest("form");
   const k=sel.value;
-  form.querySelector(".fld-dept").style.display=(k==="bank_charge"||k==="expense")?"":"none";
+  form.querySelector(".fld-dept").style.display=(k==="bank_charge"||k==="expense"||k==="remittance")?"":"none";
   form.querySelector(".fld-cat").style.display=(k==="expense")?"":"none";
   form.querySelector(".fld-exp").style.display=(k==="match")?"":"none";
-  form.querySelector(".fld-desc").style.display=(k==="expense")?"":"none";
+  form.querySelector(".fld-desc").style.display=(k==="expense"||k==="already_accounted")?"":"none";
 }
 document.querySelectorAll(".kind-sel").forEach(s=>{ s.addEventListener("change",()=>syncRow(s)); syncRow(s); });
 </script>

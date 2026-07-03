@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.99.1 - fix attachment popovers opening by default on the expense list
+- Fix: `.clip-pop{display:flex}` was an unconditional CSS rule, so it overrode the browser's default
+  `[hidden]{display:none}` styling on every popover (author styles beat user-agent styles at equal
+  specificity). Every receipt/M-Pesa-text popover on the Expense Register rendered open immediately instead
+  of staying hidden until its paperclip was clicked. Added `.clip-pop[hidden]{display:none}`.
+- Improvement: opening a popover now closes any other one that's open, so only one shows at a time; clicking
+  anywhere else on the page also closes it.
+- Tests: cashbook/test_clip_popover (4). Full cashbook suite green (199 tests).
+- No migration; deploy needs collectstatic (CSS/JS changed).
+
+## v1.99.0 - advance top-up charges, debit "already accounted for", remittance crash fix
+- Staff advance top-ups gain an optional Charge field (advance detail page): the bank/M-Pesa cost of sending
+  the top-up, booked as a BANK_CHARGE expense against the fund (church's own cost) but NOT added to what the
+  holder must account for. Reversing a top-up now also removes its linked charge expense. Migration
+  cashbook 0030 (AdvanceTopUp.charge, charge_expense).
+- Bank debits queue (/debits/): new "Already accounted for" resolution — for a payment already recorded
+  another way (or that shouldn't hit the books at all). Resolves the queue item with a required reason, and
+  creates no expense and touches no fund balance.
+- Fix: resolving a debit as a Trust fund remittance crashed with "Field 'id' expected a number but got ''"
+  when the fund dropdown was left blank — its display toggle had been left out of the kind-switch JS, so a
+  hidden select posted an empty string straight into a raw Department.objects.filter(pk=...) query. Added a
+  _dept_from_post() helper used across all department lookups in the debit-resolve flow, and fixed the JS to
+  reveal the fund selector for the remittance option.
+- Enhancement: resolving a debit as a remittance now links the new expense to the most recent open (DRAFT or
+  APPROVED) RemittanceBatch, if one exists, and reports which batch it was linked to.
+- Tests: cashbook/test_topup_charge (4), giving/test_debit_queue_fixes (9). cashbook 195 / giving 109 green.
+- Deploy: migrate (cashbook 0030), collectstatic not required.
+
 ## v1.98.0 - Monthly Treasurer's Report redesigned for the Church Board
 - Executive summary (page 1): 8 KPI cards (Total collections, Local fund receipts, Trust fund receipts,
   Total expenses, Monthly surplus/(deficit), Cash & bank balance, Net assets, Trust funds outstanding), a

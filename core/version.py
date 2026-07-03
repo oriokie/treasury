@@ -38,6 +38,16 @@ def version_string():
 
 
 WHATS_NEW = {
+    "1.99.1": "Fixed a bug where every receipt popover on the Expense Register was showing open by default, "
+              "flooding the page with M-Pesa text as soon as it loaded. An attachment now stays hidden until "
+              "its paperclip is clicked, only one popover is open at a time, and clicking anywhere else on "
+              "the page closes it.",
+    "1.99.0": "Staff advance top-ups can now record a bank/M-Pesa sending charge (the church's own cost, "
+              "booked as an expense but not added to what the advance holder must account for). The bank "
+              "debits queue gains an \"Already accounted for\" option for payments that were recorded another "
+              "way and shouldn't touch the cashbook. Fixed a crash on the Trust fund remittance option (an "
+              "empty fund selection caused a database error); resolving a debit as a remittance now also "
+              "links it to a recent open remittance batch when one exists.",
     "1.98.0": "The Monthly Treasurer's Report has been redesigned for the Church Board. Page one is now a "
               "one-screen executive dashboard: 8 KPI cards (collections, local/trust receipts, expenses, "
               "surplus/deficit, cash & bank balance, net assets, trust funds outstanding), a Key Highlights "

@@ -633,6 +633,12 @@ class AdvanceTopUp(models.Model):
                                 related_name="topups")
     date = models.DateField()
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    charge = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+        help_text="Bank/M-Pesa charge for sending this top-up — the church's "
+                  "own cost, booked as an expense but not added to what the "
+                  "advance holder must account for.")
+    charge_expense = models.OneToOneField("cashbook.Expense", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="topup_charge_for")
     note = models.CharField(max_length=200, blank=True)
     issued_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)

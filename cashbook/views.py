@@ -1330,7 +1330,8 @@ def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
                "label": f"Advance issued — {adv.purpose}", "amount": adv.base_amount}]
     for t in adv.topups.all():
         events.append({"date": t.date, "kind": "topup",
-                       "label": "Top-up issued" + (f" — {t.note}" if t.note else ""),
+                       "label": "Top-up issued" + (f" — {t.note}" if t.note else "")
+                                + (f" (KSh {t.charge:,.2f} sending charge)" if t.charge else ""),
                        "amount": t.amount, "topup_id": t.id})
     for e in adv.expenses.filter(
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID]).order_by("date", "id"):
@@ -1679,7 +1680,10 @@ class AdvanceAddExpense(AdvanceAccessMixin, View):
 
 class AdvanceTopUpView(AdvanceAccessMixin, View):
     """Issue more cash onto an open advance (carry a small leftover forward into a
-    larger working advance instead of retiring and re-issuing)."""
+    larger working advance instead of retiring and re-issuing). An optional
+    bank/M-Pesa charge for sending the top-up is the church's own cost — booked
+    as an expense against the fund but not added to what the holder must
+    account for (mirrors how the charge on the original issue is handled)."""
     def post(self, request, pk):
         from decimal import Decimal, InvalidOperation
         from .models import StaffAdvance, AdvanceTopUp
@@ -1691,6 +1695,10 @@ class AdvanceTopUpView(AdvanceAccessMixin, View):
             amount = Decimal(request.POST.get("amount") or "0")
         except InvalidOperation:
             amount = Decimal(0)
+        try:
+            charge = Decimal(request.POST.get("charge") or "0")
+        except InvalidOperation:
+            charge = Decimal(0)
         if amount <= 0:
             messages.error(request, "Enter a positive top-up amount.")
             return redirect("advance_detail", pk=pk)
@@ -1702,19 +1710,41 @@ class AdvanceTopUpView(AdvanceAccessMixin, View):
             return redirect("advance_detail", pk=pk)
         if adv.from_petty_cash:
             avail = _petty_balance_asof(d)
-            if amount > avail:
+            if amount + charge > avail:
                 messages.error(request, f"The petty-cash float is only KSh {avail:,.2f} "
                     f"on {d:%d %b %Y}; top it up before issuing more.")
                 return redirect("advance_detail", pk=pk)
-        AdvanceTopUp.objects.create(advance=adv, date=d, amount=amount,
-            note=(request.POST.get("note") or "")[:200], issued_by=request.user)
+        tu = AdvanceTopUp.objects.create(advance=adv, date=d, amount=amount,
+            charge=charge, note=(request.POST.get("note") or "")[:200],
+            issued_by=request.user)
         adv.amount = (adv.amount or Decimal(0)) + amount
         if adv.status == StaffAdvance.Status.SETTLED:
             adv.status = StaffAdvance.Status.PARTLY   # reopened by fresh cash
         adv.save(update_fields=["amount", "status"])
-        messages.success(request, f"Topped up by KSh {amount:,.2f}. New advance total "
-            f"KSh {adv.amount:,.2f}.")
+        if charge > 0:
+            _sync_topup_charge(tu, adv, request.user)
+        msg = f"Topped up by KSh {amount:,.2f}. New advance total KSh {adv.amount:,.2f}."
+        if charge > 0:
+            msg += f" A KSh {charge:,.2f} sending charge was booked against the fund."
+        messages.success(request, msg)
         return redirect("advance_detail", pk=pk)
+
+
+def _sync_topup_charge(tu, adv, user):
+    """Create the BANK_CHARGE expense for the charge incurred sending a top-up —
+    the church's cost, booked against the fund but not linked via `advance` (so
+    it never reduces what the holder must account for)."""
+    from .models import Expense
+    exp = Expense.objects.create(
+        date=tu.date, sabbath_week=sabbath_week_of(tu.date), department=adv.department,
+        description=f"Bank/M-Pesa charge — topping up advance for {adv.staff_name}",
+        amount=tu.charge, category=Expense.Category.BANK_CHARGE,
+        claimant=adv.staff_name, method=adv.method,
+        paid_from_petty_cash=adv.from_petty_cash,
+        status=Expense.Status.PAID, paid_date=tu.date,
+        recorded_by=user, approved_by=user)
+    tu.charge_expense = exp
+    tu.save(update_fields=["charge_expense"])
 
 
 class AdvanceTopUpReverseView(TreasurerRequiredMixin, View):
@@ -1731,11 +1761,15 @@ class AdvanceTopUpReverseView(TreasurerRequiredMixin, View):
         amount = tu.amount
         adv.amount = max((adv.amount or Decimal(0)) - amount, Decimal(0))
         adv.save(update_fields=["amount"])
+        charge_note = ""
+        if tu.charge_expense_id:
+            tu.charge_expense.delete()
+            charge_note = " Its sending charge was removed too."
         tu.delete()
         messages.success(request, f"Top-up of KSh {amount:,.2f} reversed. "
             f"New advance total KSh {adv.amount:,.2f}"
             + (" — the petty-cash float has been restored." if adv.from_petty_cash
-               else "."))
+               else ".") + charge_note)
         return redirect("advance_detail", pk=pk)
 
 

@@ -1,8 +1,9 @@
 {% comment %}Reusable attachment popover. Pass `exp` (an Expense). Shows a clickable
-paperclip that reveals attached M-Pesa messages (text) or a document link.{% endcomment %}
+paperclip that reveals attached M-Pesa messages (text) or a document link, one
+popover at a time — opening one closes any other that's open.{% endcomment %}
 {% with atts=exp.attachments.all %}{% if atts %}
 <span class="clip-wrap no-print">
-  <button type="button" class="clip-btn" title="View supporting document" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">📎</button>
+  <button type="button" class="clip-btn" title="View supporting document" onclick="event.stopPropagation();var p=this.nextElementSibling;var open=p.hasAttribute('hidden');document.querySelectorAll('.clip-pop').forEach(function(el){el.hidden=true;});if(open){p.hidden=false;}">📎</button>
   <span class="clip-pop" hidden>
     {% for a in atts %}
       {% if a.text %}<span class="clip-item clip-text">💬 {{ a.text }}</span>
