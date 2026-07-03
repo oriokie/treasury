@@ -7,6 +7,7 @@ urlpatterns = [
     path("members/new/", views.MemberCreateView.as_view(), name="member_create"),
     path("members/duplicates/", views.DuplicateReviewView.as_view(), name="member_duplicates"),
     path("members/bulk/", views.MemberBulkView.as_view(), name="member_bulk"),
+    path("members/sms/", views.MemberSmsView.as_view(), name="member_sms"),
     path("members/export/", views.MemberExportView.as_view(), name="member_export"),
     path("members/import/", views.MemberImportView.as_view(), name="member_import"),
 

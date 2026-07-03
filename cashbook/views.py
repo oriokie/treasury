@@ -2472,8 +2472,13 @@ class FundBudgetView(TreasurerRequiredMixin, View):
         from .models import BudgetLine
         dept = get_object_or_404(Department, pk=pk)
         year = int(request.POST.get("year") or dt.date.today().year)
-        # update the fund's goals
-        if "save_goals" in request.POST:
+        # update the fund's goals — two independent forms/buttons on the page
+        # (expense goal, and per-group contribution goals) must not clobber
+        # each other: submitting one used to blank the other's fields because
+        # both posted to the same "save_goals" flag and the shared handler
+        # unconditionally rewrote every field regardless of which form was
+        # actually submitted.
+        if "save_expense_goal" in request.POST:
             def _dec(name):
                 try:
                     v = request.POST.get(name, "").strip()
@@ -2490,13 +2495,23 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             dept.offering_fund = None
             dept.save(update_fields=["year_goal", "offering_goal",
                                      "offering_fund", "goal_type"])
-            # each development group has its own contribution goal
+            messages.success(request, "Goals updated.")
+            return redirect(f"{request.path}?year={year}")
+        if "save_group_goals" in request.POST:
+            def _dec(name):
+                try:
+                    v = request.POST.get(name, "").strip()
+                    return Decimal(v) if v else None
+                except InvalidOperation:
+                    return None
+            # each development group has its own contribution goal — this form
+            # only ever touches subgroup rows, never the fund's own year_goal
             for sub in dept.subgroups.all():
                 val = _dec(f"group_goal_{sub.id}")
                 if sub.contribution_goal != val:
                     sub.contribution_goal = val
                     sub.save(update_fields=["contribution_goal"])
-            messages.success(request, "Goals updated.")
+            messages.success(request, "Group goals updated.")
             return redirect(f"{request.path}?year={year}")
         # add / update a named budget item
         name = (request.POST.get("name") or "").strip()

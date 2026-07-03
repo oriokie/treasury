@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.1.0 - expense categories, member SMS, remittance-batch fix, camp goal bug fix, dynamic receipt stripping
+- New expense categories: Salaries/Wages, Lease Payment (Stationery/Printing already existed).
+- Bank/transaction charges (category BANK_CHARGE) no longer show a "no receipt" pill on the expense list, and
+  the expense detail page shows "No receipt — none needed" instead of implying one is missing (the missing-
+  receipts queue already excluded them; this closes the remaining inline UI gaps).
+- New Members page SMS button (`/members/sms/`): send a message to members matching a criterion — not yet
+  contributed to a given campaign (e.g. Camp Meeting), have an outstanding pledge, haven't given in the last
+  N days, belong to a demographic group, or a plain broadcast to everyone with a phone. Recipients preview
+  live before sending; message supports {name}/{church}/{campaign}/{amount} placeholders.
+- Fix: the "settle a batch (multi-fund)" remittance option on the debits queue never populated any batches —
+  its query ordered by `-created_at`, a field RemittanceBatch doesn't have. Django templates swallow that
+  FieldError silently when iterating, so the dropdown just rendered empty with no visible error. Now orders
+  by the model's actual `date`/`id` fields.
+- Fix: the fund budget page (`/reports/fund/<id>/budget/`) has two independent forms — the fund's own
+  expense goal, and per-group contribution goals — that both posted to the same `save_goals` flag; the
+  shared handler unconditionally rewrote every field regardless of which form was submitted, so saving a
+  per-group goal silently reset the fund's overall expense goal (and goal_type) to blank. Split into
+  `save_expense_goal` / `save_group_goals`, each touching only its own fields.
+- The Monthly Treasurer's Report (`/reports/board/`) already aggregates the Camp Meeting Expense Goal across
+  the fund and all its sub-groups (never a per-group breakdown) — confirmed working now that the goal no
+  longer gets wiped by the bug above.
+- Receipt strip-strings (Settings → Branding) now support a `*` wildcard for parts that vary every message —
+  an M-Pesa balance, a transaction cost, a promo link — so one configured line strips the whole sentence
+  regardless of the actual figures.
+- Tests: ~30 new tests across cashbook, members, reports; 4 pre-existing tests updated for the split budget
+  forms. Full regression green (cashbook 212, giving 114, reports 225, members 36, core 178).
+- Deploy: migrate (cashbook 0031, core 0046 — category/help-text changes only), collectstatic not required.
+
 ## v2.0.0 - reconciliation fix, board report rework, remittance batch matching, camp goal settings, and more
 - **Bank reconciliation fix**: petty-cash-funded outstanding staff advances were never added to the
   reconciliation worksheet — the petty float already subtracted them (cash had left the box), but nothing

@@ -6,6 +6,7 @@
 <div class="btn-row">
   {% if dup_count %}<a class="btn btn-ghost" href="{% url 'member_duplicates' %}">⚑ Duplicates <span class="badge">{{ dup_count }}</span></a>{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'member_export' %}">⬇ Export CSV</a>
+  {% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'member_sms' %}">✉ SMS members</a>{% endif %}
   {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'member_import' %}">⬆ Import</a>
   <a class="btn" href="{% url 'member_create' %}">＋ New member</a>{% endif %}
 </div></div>

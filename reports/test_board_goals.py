@@ -41,7 +41,7 @@ class CampMeetingGoalTests(TestCase):
         cfg.camp_offering_fund = self.off
         cfg.camp_offering_goal = Decimal("5000")
         cfg.save()
-        self.c.post(f"/reports/fund/{self.exp.id}/budget/", {"save_goals": "1",
+        self.c.post(f"/reports/fund/{self.exp.id}/budget/", {"save_expense_goal": "1",
             "year": str(self.yr), "expense_goal": "10000",
             "contribution_goal": "8000", "goal_type": "CAMP_EXPENSE"})
         body = self.c.get(f"/reports/fund/{self.exp.id}/budget/?year={self.yr}").content.decode()

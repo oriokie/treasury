@@ -661,7 +661,7 @@ class DebitQueueView(DebitClassifyRequiredMixin, ListView):
         ctx["open_batches"] = (RemittanceBatch.objects
             .filter(status__in=[RemittanceBatch.Status.DRAFT,
                                 RemittanceBatch.Status.APPROVED])
-            .order_by("-created_at")[:20])
+            .order_by("-date", "-id")[:20])
         return ctx
 
 

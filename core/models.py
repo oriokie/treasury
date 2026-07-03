@@ -32,7 +32,10 @@ class SiteConfig(models.Model):
         blank=True,
         help_text="One phrase per line. These are removed from bank/M-Pesa receipt "
                   "messages when they are saved (e.g. the 'never share your PIN' "
-                  "boilerplate), keeping stored receipts short and readable.")
+                  "boilerplate), keeping stored receipts short and readable. Use * "
+                  "as a wildcard for parts that change each time, e.g. an amount: "
+                  "'New M-PESA balance is Ksh*.' strips that whole sentence "
+                  "whatever the figure is.")
 
     # --- Church-wide goals (Camp Meeting) ---
     # --- Camp Meeting Offering goal (church-wide, Trust fund) ---

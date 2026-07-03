@@ -81,8 +81,11 @@ class FundBudgetTests(TestCase):
 
     def test_save_goals(self):
         self.c.post(f"/reports/fund/{self.camp.id}/budget/",
-            {"year": str(self.yr), "save_goals": "1", "goal_type": "CAMP_EXPENSE",
-             f"group_goal_{self.group.id}": "250000", "expense_goal": "600000"})
+            {"year": str(self.yr), "save_expense_goal": "1", "goal_type": "CAMP_EXPENSE",
+             "expense_goal": "600000"})
+        self.c.post(f"/reports/fund/{self.camp.id}/budget/",
+            {"year": str(self.yr), "save_group_goals": "1",
+             f"group_goal_{self.group.id}": "250000"})
         self.camp.refresh_from_db(); self.group.refresh_from_db()
         self.assertEqual(self.group.contribution_goal, Decimal("250000"))
         self.assertEqual(self.camp.year_goal, Decimal("600000"))

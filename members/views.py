@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, View
 
-from core.permissions import DataEntryRequiredMixin, ReadAccessMixin
+from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
 from giving.models import Transaction
 from .forms import MemberForm
 from .models import Member, PossibleDuplicate
@@ -255,3 +255,154 @@ class MemberImportView(DataEntryRequiredMixin, View):
                 created += 1
         messages.success(request, f"Import complete — {updated} updated, {created} created.")
         return redirect("member_list")
+
+
+class MemberSmsView(TreasurerRequiredMixin, View):
+    """Send a criteria-based SMS to members — e.g. everyone who hasn't yet
+    contributed to a given campaign (Camp Meeting), members with an
+    outstanding pledge, members who haven't given recently, or a demographic
+    group. Preview the recipient list before sending; the message supports
+    {name}, {church} and (for the campaign criterion) {campaign} placeholders."""
+    template_name = "members/member_sms.html"
+    DEFAULT_TEMPLATES = {
+        "not_contributed_campaign": (
+            "Dear {name}, greetings from {church}. We haven't yet received your "
+            "contribution towards {campaign}. Kindly consider giving as led."),
+        "outstanding_pledge": (
+            "Dear {name}, greetings from {church}. This is a friendly reminder "
+            "of your pledge — a balance of {amount} remains outstanding."),
+        "no_recent_giving": (
+            "Dear {name}, we've missed you at {church}. We hope all is well "
+            "and look forward to seeing you soon."),
+        "by_group": "Dear {name}, greetings from {church}. ",
+        "all_with_phone": "Dear {name}, greetings from {church}. ",
+    }
+
+    def _criteria_choices(self):
+        from giving.models import Campaign
+        return {
+            "not_contributed_campaign": "Have not contributed to a campaign",
+            "outstanding_pledge": "Have an outstanding pledge",
+            "no_recent_giving": "Have not given in the last N days",
+            "by_group": "Belong to a demographic group",
+            "all_with_phone": "All active members (broadcast)",
+        }, Campaign.objects.filter(active=True).order_by("name")
+
+    def _recipients(self, request_data):
+        """Return (queryset_of_members, extra_ctx) for the chosen criterion.
+        `request_data` is request.GET or request.POST — same param names either way."""
+        from members.models import Member
+        from django.db.models import Q
+        g = request_data
+        crit = g.get("criteria") or ""
+        base = Member.objects.filter(active=True).exclude(
+            Q(phone__isnull=True) | Q(phone=""))
+        extra = {}
+
+        if crit == "not_contributed_campaign":
+            from giving.models import Campaign, Transaction
+            camp = Campaign.objects.filter(pk=g.get("campaign") or None).first()
+            extra["campaign"] = camp
+            if not camp:
+                return base.none(), extra
+            fund_ids = self._fund_tree_ids(camp.department)
+            givers = (Transaction.objects.confirmed_credits()
+                     .filter(department_id__in=fund_ids, member__isnull=False)
+                     .values_list("member_id", flat=True))
+            return base.exclude(id__in=givers), extra
+
+        if crit == "outstanding_pledge":
+            from pledges.models import Pledge
+            ids = [p.member_id for p in
+                   Pledge.objects.filter(status=Pledge.Status.ACTIVE,
+                                         member__isnull=False)
+                   if p.outstanding > 0]
+            return base.filter(id__in=ids), extra
+
+        if crit == "no_recent_giving":
+            import datetime as dt
+            from giving.models import Transaction
+            try:
+                days = int(g.get("days") or 90)
+            except (TypeError, ValueError):
+                days = 90
+            since = dt.date.today() - dt.timedelta(days=days)
+            extra["days"] = days
+            recent_givers = (Transaction.objects.confirmed_credits()
+                             .filter(date__gte=since, member__isnull=False)
+                             .values_list("member_id", flat=True))
+            return base.exclude(id__in=recent_givers), extra
+
+        if crit == "by_group":
+            grp = g.get("group") or ""
+            extra["group"] = grp
+            if not grp:
+                return base.none(), extra
+            return base.filter(group=grp), extra
+
+        if crit == "all_with_phone":
+            return base, extra
+
+        return base.none(), extra
+
+    @staticmethod
+    def _fund_tree_ids(dept):
+        ids = [dept.id]
+        for sub in dept.subgroups.all():
+            ids.extend(MemberSmsView._fund_tree_ids(sub))
+        return ids
+
+    def get(self, request):
+        from core.models import SiteConfig
+        from members.models import Member
+        criteria_choices, campaigns = self._criteria_choices()
+        recips, extra = self._recipients(request.GET)
+        cfg = SiteConfig.get()
+        crit = request.GET.get("criteria") or ""
+        return render(request, self.template_name, {
+            "criteria_choices": criteria_choices,
+            "campaigns": campaigns,
+            "group_choices": Member.Group.choices,
+            "criteria": crit,
+            "selected_campaign": extra.get("campaign"),
+            "selected_group": extra.get("group", ""),
+            "days": extra.get("days", 90),
+            "recipients": list(recips[:500]),
+            "recipient_count": recips.count(),
+            "template": self.DEFAULT_TEMPLATES.get(crit, "Dear {name}, greetings from {church}. "),
+            "church": cfg.church_name or "",
+            "sms_enabled": cfg.sms_enabled,
+        })
+
+    def post(self, request):
+        from core.models import SiteConfig
+        from core.services.sms import send_sms, _format
+        recips, extra = self._recipients(request.POST)
+        template = request.POST.get("template") or "Dear {name}, greetings from {church}. "
+        church = SiteConfig.get().church_name or ""
+        campaign_name = extra.get("campaign").name if extra.get("campaign") else ""
+        sent = failed = 0
+        for m in recips:
+            amount = ""
+            if request.POST.get("criteria") == "outstanding_pledge":
+                from pledges.models import Pledge
+                p = (Pledge.objects.filter(member=m, status=Pledge.Status.ACTIVE)
+                     .first())
+                amount = f"{p.outstanding:,.0f}" if p else ""
+            msg = _format(template,
+                          name=(m.name.split()[0] if m.name else "member"),
+                          church=church, campaign=campaign_name, amount=amount)
+            log = send_sms(m.phone, msg)
+            if getattr(log, "status", "") == "SENT":
+                sent += 1
+            else:
+                failed += 1
+        if sent:
+            messages.success(request, f"SMS sent to {sent} member(s)"
+                             + (f"; {failed} failed." if failed else "."))
+        else:
+            messages.error(request, "No messages were sent. "
+                           + ("Check SMS settings." if failed else
+                              "No members match this criterion."))
+        qs = request.POST.urlencode()
+        return redirect(f"{request.path}?{qs}" if qs else request.path)

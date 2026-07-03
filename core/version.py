@@ -38,6 +38,16 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.1.0": "New expense categories (Salaries/Wages, Lease Payment). Bank/transaction charges no longer show "
+             "as needing a receipt on the expense list or its detail page. New Members page SMS button for "
+             "criteria-based messaging - not yet contributed to a campaign, outstanding pledge, no recent "
+             "giving, a demographic group, or a plain broadcast - with a live recipient preview before "
+             "sending. Fixed the Trust remittance batch dropdown on the debits queue, which was silently "
+             "empty due to a bad field reference. Fixed a bug where saving per-group Camp Meeting goals reset "
+             "the fund's own overall expense goal; both are now tracked independently and the overall Camp "
+             "Meeting Expense Goal (aggregated across all groups) shows correctly on the Monthly Treasurer's "
+             "Report. The receipt-message strip list now supports a * wildcard for parts that change every "
+             "time, such as a balance or transaction cost.",
     "2.0.0": "A large batch of fixes and improvements. Bank reconciliation now correctly auto-adds "
              "petty-cash-funded staff advances (previously only bank-funded advances were listed, so cash "
              "issued from the petty float silently disappeared from the worksheet). The Monthly Treasurer's "

@@ -97,7 +97,7 @@
       {% if can_enter_data %}<td class="u-right"><form method="post" action="{% url 'expense_attachment_delete' expense.id a.id %}" class="u-inline" onsubmit="return confirm('Remove this receipt?');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
     </tr>{% endfor %}
   </tbody></table>
-  {% else %}{% include "ui/empty.html" with mark="⎘" title="No receipt yet" hint="Attach a photo/PDF, an e-receipt link, or a pasted text/SMS receipt below." %}{% endif %}
+  {% else %}{% if expense.category == "BANK_CHARGE" %}{% include "ui/empty.html" with mark="⎘" title="No receipt — none needed" hint="Bank/M-Pesa transaction charges don't require a supporting document. You can still attach one if you'd like." %}{% else %}{% include "ui/empty.html" with mark="⎘" title="No receipt yet" hint="Attach a photo/PDF, an e-receipt link, or a pasted text/SMS receipt below." %}{% endif %}{% endif %}
   {% if can_enter_data %}
   <form method="post" action="{% url 'expense_attachment_upload' expense.id %}" enctype="multipart/form-data" class="u-mt-sm">
     {% csrf_token %}

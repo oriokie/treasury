@@ -29,8 +29,10 @@ class BudgetGoalsV2Tests(TestCase):
             allocation_status="MANUAL")
 
     def test_per_group_goals_saved(self):
-        self.c.post(f"/reports/fund/{self.camp.id}/budget/", {"save_goals": "1",
-            "year": str(self.yr), "goal_type": "CAMP_EXPENSE", "expense_goal": "20000",
+        self.c.post(f"/reports/fund/{self.camp.id}/budget/", {"save_expense_goal": "1",
+            "year": str(self.yr), "goal_type": "CAMP_EXPENSE", "expense_goal": "20000"})
+        self.c.post(f"/reports/fund/{self.camp.id}/budget/", {"save_group_goals": "1",
+            "year": str(self.yr),
             f"group_goal_{self.g1.id}": "5000", f"group_goal_{self.g2.id}": "4000"})
         self.g1.refresh_from_db(); self.g2.refresh_from_db()
         self.assertEqual(self.g1.contribution_goal, Decimal("5000"))
@@ -55,7 +57,7 @@ class BudgetGoalsV2Tests(TestCase):
         off = Department.objects.create(name="Off", fund_type="TRUST", category="OFFERING")
         plain = Department.objects.create(name="Plain2", fund_type="LOCAL",
             category="MINISTRY", show_in_expenses=True, goal_type="NONE")
-        self.c.post(f"/reports/fund/{plain.id}/budget/", {"save_goals": "1",
+        self.c.post(f"/reports/fund/{plain.id}/budget/", {"save_expense_goal": "1",
             "year": str(self.yr), "goal_type": "NONE", "expense_goal": "1000",
             "offering_goal": "9999", "offering_fund": str(off.id)})
         plain.refresh_from_db()

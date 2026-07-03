@@ -1,0 +1,74 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}SMS members · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>SMS members</h1>
+  <div class="sub">Send a message to members who meet a certain criteria</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'member_list' %}">← Members</a>
+</div>
+
+{% if not sms_enabled %}<div class="info-panel">SMS is currently disabled. Enable it under Settings → SMS to send. You can still preview recipients below.</div>{% endif %}
+
+<form method="get" class="card u-mt">
+  <div class="hd">Criteria</div><div class="bd">
+  <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem">
+    <div class="form-row"><label>Who should receive this?</label>
+      <select name="criteria" class="field--select" onchange="this.form.submit()">
+        <option value="">— choose a criterion —</option>
+        {% for key, label in criteria_choices.items %}
+          <option value="{{ key }}" {% if criteria == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select></div>
+
+    {% if criteria == "not_contributed_campaign" %}
+    <div class="form-row"><label>Campaign</label>
+      <select name="campaign" class="field--select" onchange="this.form.submit()">
+        <option value="">— choose a campaign —</option>
+        {% for c in campaigns %}<option value="{{ c.id }}" {% if selected_campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="criteria" value="not_contributed_campaign"></div>
+    {% endif %}
+
+    {% if criteria == "by_group" %}
+    <div class="form-row"><label>Demographic group</label>
+      <select name="group" class="field--select" onchange="this.form.submit()">
+        <option value="">— choose a group —</option>
+        {% for val, label in group_choices %}<option value="{{ val }}" {% if selected_group == val %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="criteria" value="by_group"></div>
+    {% endif %}
+
+    {% if criteria == "no_recent_giving" %}
+    <div class="form-row"><label>Days since last gift</label>
+      <input type="number" name="days" class="field" value="{{ days }}" onchange="this.form.submit()">
+      <input type="hidden" name="criteria" value="no_recent_giving"></div>
+    {% endif %}
+  </div>
+  </div>
+</form>
+
+{% if criteria %}
+<form method="post" action="{% url 'member_sms' %}?{{ request.GET.urlencode }}"
+      onsubmit="return confirm('Send this SMS to {{ recipient_count }} member(s)?');">{% csrf_token %}
+  <input type="hidden" name="criteria" value="{{ criteria }}">
+  {% if selected_campaign %}<input type="hidden" name="campaign" value="{{ selected_campaign.id }}">{% endif %}
+  {% if selected_group %}<input type="hidden" name="group" value="{{ selected_group }}">{% endif %}
+  {% if criteria == "no_recent_giving" %}<input type="hidden" name="days" value="{{ days }}">{% endif %}
+  <div class="card u-mt"><div class="hd">Message</div><div class="bd">
+    <p class="help u-mt-0">Placeholders: <span class="mono">{name}</span>, <span class="mono">{church}</span>{% if criteria == "not_contributed_campaign" %}, <span class="mono">{campaign}</span>{% endif %}{% if criteria == "outstanding_pledge" %}, <span class="mono">{amount}</span>{% endif %} — filled per member.</p>
+    <textarea name="template" rows="3" class="field" style="width:100%">{{ template }}</textarea>
+    {% if sms_enabled %}<div class="btn-row u-mt-sm"><button class="btn btn-brass">✉ Send to {{ recipient_count }} member{{ recipient_count|pluralize }}</button></div>
+    {% else %}<div class="help u-mt-sm">Enable SMS to send.</div>{% endif %}
+  </div></div>
+</form>
+
+<div class="card u-mt"><div class="hd u-between">Recipients <span class="muted">{{ recipient_count }}</span></div><div class="bd bd-flush">
+  <table class="ledger compact"><thead><tr><th>Member</th><th>Group</th><th>Phone</th></tr></thead><tbody>
+  {% for m in recipients %}<tr><td><a class="link" href="{% url 'member_detail' m.id %}">{{ m.name }}</a></td><td class="muted">{{ m.get_group_display|default:"—" }}</td><td class="mono">{{ m.phone }}</td></tr>
+  {% empty %}<tr><td colspan="3" class="empty">No active members with a phone match this criterion.</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+<div class="help u-mt-0">Members without a phone on file, or who are inactive, are never included.</div>
+{% else %}
+<div class="empty u-mt">Choose a criterion above to see and message matching members.</div>
+{% endif %}
+{% endblock %}

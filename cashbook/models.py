@@ -11,6 +11,8 @@ class Expense(models.Model):
         REFRESHMENTS = "REFRESHMENTS", "Refreshments / catering"
         MATERIALS = "MATERIALS", "Materials / supplies"
         STATIONERY = "STATIONERY", "Stationery / printing"
+        SALARIES = "SALARIES", "Salaries / wages"
+        LEASE = "LEASE", "Lease payment"
         UTILITIES = "UTILITIES", "Utilities (power, water)"
         MAINTENANCE = "MAINTENANCE", "Maintenance / repairs"
         CONSTRUCTION = "CONSTRUCTION", "Construction / development"
@@ -415,7 +417,14 @@ def expense_receipt_path(instance, filename):
 def clean_receipt_text(text):
     """Strip configured boilerplate phrases (Settings → 'strings to remove from
     receipt messages') from a pasted bank/M-Pesa message — e.g. the 'never share
-    your PIN' warning banks append to every SMS — then tidy leftover whitespace."""
+    your PIN' warning banks append to every SMS — then tidy leftover whitespace.
+
+    A phrase is normally matched literally. Use `*` as a wildcard for parts that
+    change every time (an amount, a balance, a link code): it matches any run of
+    characters. For example
+        New M-PESA balance is Ksh*. Transaction cost, Ksh*.
+    strips that whole sentence regardless of what the actual figures are.
+    """
     import re
     if not text:
         return text
@@ -425,7 +434,16 @@ def clean_receipt_text(text):
     except Exception:  # noqa: BLE001 — settings must never block a save
         return text
     for phrase in (p.strip() for p in raw.splitlines()):
-        if phrase:
+        if not phrase:
+            continue
+        if "*" in phrase:
+            # wildcard phrase -> build a regex: literal segments escaped,
+            # "*" becomes a non-greedy "match anything" gap so the varying
+            # part (an amount, a code, a balance) is skipped over.
+            segments = phrase.split("*")
+            pattern = r".*?".join(re.escape(seg) for seg in segments)
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+        else:
             text = re.sub(re.escape(phrase), "", text, flags=re.IGNORECASE)
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)

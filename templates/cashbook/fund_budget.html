@@ -67,7 +67,7 @@
     <span id="campFields" style="display:{% if is_camp_expense %}contents{% else %}none{% endif %}">
       <div class="help u-xs" style="align-self:end">The Camp Meeting Offering goal (a Trust fund) is a single church-wide figure — set it once in <a href="{% url 'settings' %}?tab=goals">Settings → Goals</a>, not per fund.</div>
     </span>
-    <button name="save_goals" value="1" class="btn btn-primary btn-sm">Save goals</button>
+    <button name="save_expense_goal" value="1" class="btn btn-primary btn-sm">Save goals</button>
   </form>
   {% if group_rows %}
   <form method="post" class="u-mt"><input type="hidden" name="year" value="{{ year }}">{% csrf_token %}
@@ -76,7 +76,7 @@
     {% for g in group_rows %}<div><label class="lbl u-xs">{{ g.name }}</label>
       <input type="number" step="0.01" name="group_goal_{{ g.id }}" class="field" style="width:130px" value="{{ g.goal|floatformat:'0' }}"></div>{% endfor %}
     </div>
-    <button name="save_goals" value="1" class="btn btn-primary btn-sm u-mt-sm">Save group goals</button>
+    <button name="save_group_goals" value="1" class="btn btn-primary btn-sm u-mt-sm">Save group goals</button>
   </form>
   {% endif %}
   <p class="help u-mt-sm">The <strong>Expense</strong> goal (Local fund) and the <strong>Offering</strong> goal (Trust fund, Camp only) are tracked independently — their totals are never merged. Each group's contribution goal is its own target.</p>
