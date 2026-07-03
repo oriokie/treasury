@@ -386,10 +386,14 @@ class LeaderExpensesView(LeaderRequiredMixin, TemplateView):
                                          department=dept).first()
             f = request.FILES.get("file")
             ref = (request.POST.get("mpesa_ref") or "").strip()
+            from cashbook.views import validate_receipt_upload
+            _err = validate_receipt_upload(f)
             if not exp:
                 messages.error(request, "That expense is not on your department.")
             elif not f and not ref:
                 messages.error(request, "Add a file or an M-Pesa reference.")
+            elif _err:
+                messages.error(request, _err)
             else:
                 ExpenseAttachment.objects.create(
                     expense=exp, file=f or None, text=ref,
@@ -695,9 +699,10 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
             f = request.FILES.get("file")
             text = (request.POST.get("text") or "").strip()
             link = (request.POST.get("link") or "").strip()
-            ALLOWED = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
-            if f and (not f.name.lower().endswith(ALLOWED) or f.size > 10 * 1024 * 1024):
-                messages.error(request, "Receipts must be a PDF or image up to 10 MB.")
+            from cashbook.views import validate_receipt_upload
+            _err = validate_receipt_upload(f)
+            if _err:
+                messages.error(request, _err)
                 return redirect("leader_advance_detail", pk=pk)
             if f or text or link:
                 ExpenseAttachment.objects.create(expense=exp, file=f or None,

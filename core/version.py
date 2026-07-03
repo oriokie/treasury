@@ -38,6 +38,20 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.0.0": "A large batch of fixes and improvements. Bank reconciliation now correctly auto-adds "
+             "petty-cash-funded staff advances (previously only bank-funded advances were listed, so cash "
+             "issued from the petty float silently disappeared from the worksheet). The Monthly Treasurer's "
+             "Report gets full Excel workbooks with every fund listed and native charts, a Word export that "
+             "mirrors the on-screen report with a per-section analysis paragraph, and the RTF export has been "
+             "removed. Trust fund remittance can now settle a whole remittance batch in one go, correctly "
+             "charging each trust fund its own share instead of forcing the payment onto a single fund. Fund "
+             "Ledger sub-accounts sort by closing balance. The Camp Meeting Offering goal moved to Settings "
+             "as a single church-wide figure, no longer set per fund. A new Settings option strips boilerplate "
+             "(e.g. bank PIN warnings) from saved receipt messages, with a button to clean up messages already "
+             "imported. Receipt uploads are capped at 1MB. The Supporting Documents PDF only includes expenses "
+             "with an actual file attached. On the treasurer dashboard, the Latest Sabbath date now follows "
+             "your font setting, the receipts-vs-expenses chart moved to the Executive overview showing the "
+             "full year, and its old spot is now a local-vs-trust pie chart for the selected month.",
     "1.99.1": "Fixed a bug where every receipt popover on the Expense Register was showing open by default, "
               "flooding the page with M-Pesa text as soon as it loaded. An attachment now stays hidden until "
               "its paperclip is clicked, only one popover is open at a time, and clicking anywhere else on "

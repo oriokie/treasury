@@ -4,6 +4,7 @@ import datetime as dt
 from decimal import Decimal
 
 from django.db.models import Sum, Count, Q
+from django.db.models.functions import ExtractMonth
 from django.db.models.functions import TruncMonth
 
 from giving.models import Transaction
@@ -152,6 +153,21 @@ def charts():
            .exclude(category=Expense.Category.REMITTANCE))
     exp_labels, exp_values = _monthly_series(eff, months=12)
 
+    # Receipts vs expenses, side by side, for the FULL current year (moved here
+    # from the treasurer dashboard, which only showed the currently-selected
+    # period — usually just the current month).
+    MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    year_start = dt.date(year, 1, 1)
+    mrec = {r["m"]: _f(r["t"]) for r in
+            _credits(date__gte=year_start, date__lte=today)
+            .annotate(m=ExtractMonth("date")).values("m").annotate(t=Sum("amount"))}
+    mexp = {r["m"]: _f(r["t"]) for r in
+            eff.filter(date__gte=year_start, date__lte=today)
+            .annotate(m=ExtractMonth("date")).values("m").annotate(t=Sum("amount"))}
+    rve_labels = [MN[m - 1] for m in range(1, today.month + 1)]
+    rve_receipts = [mrec.get(m, 0) for m in range(1, today.month + 1)]
+    rve_expenses = [mexp.get(m, 0) for m in range(1, today.month + 1)]
+
     # department spending (top-level, current year, top 8)
     parent_of = {d.id: (d.parent_id or d.id) for d in Department.objects.all()}
     name_of = {d.id: d.name for d in Department.objects.all()}
@@ -174,6 +190,8 @@ def charts():
         "giving_trend": {"labels": g_labels, "values": g_values},
         "monthly_income": {"labels": inc_labels, "values": inc_values},
         "monthly_expenses": {"labels": exp_labels, "values": exp_values},
+        "receipts_vs_expenses_year": {"labels": rve_labels, "receipts": rve_receipts,
+                                      "expenses": rve_expenses},
         "department_spending": {"labels": dep_labels, "values": dep_values},
         "trust_balances": {"labels": tr_labels, "values": tr_values},
     }

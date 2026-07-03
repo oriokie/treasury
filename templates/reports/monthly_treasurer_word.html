@@ -5,15 +5,24 @@
 body { font-family: "Calibri", "Segoe UI", sans-serif; font-size: 11pt; color: #1b2420; }
 h1 { font-size: 18pt; color: #1f5f4f; margin: 0; text-align: center; }
 .rt { font-size: 13pt; font-weight: bold; text-align: center; margin: 2pt 0; }
-.pd { font-size: 10pt; color: #666; text-align: center; margin-bottom: 14pt; }
-h2 { font-size: 12.5pt; color: #1f5f4f; border-bottom: 1.5pt solid #1f5f4f; padding-bottom: 2pt; margin: 16pt 0 6pt; }
+.pd { font-size: 10pt; color: #666; text-align: center; margin-bottom: 10pt; }
+h2 { font-size: 14pt; color: #1f5f4f; border-bottom: 2pt solid #1f5f4f; padding-bottom: 3pt; margin: 20pt 0 8pt; }
+h3 { font-size: 12pt; color: #1f5f4f; border-bottom: 1pt solid #1f5f4f; padding-bottom: 2pt; margin: 14pt 0 6pt; }
 table { width: 100%; border-collapse: collapse; font-size: 10.5pt; margin-bottom: 8pt; }
 th, td { padding: 4pt 6pt; border-bottom: 0.5pt solid #ccc; text-align: left; }
 th { background: #e8f0ed; font-weight: bold; }
 td.num, th.num { text-align: right; }
 tr.total td { border-top: 1pt solid #1f5f4f; font-weight: bold; }
 tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f0f5f3; }
-.note { font-size: 9.5pt; color: #555; font-style: italic; margin: 2pt 0 8pt; }
+.note { font-size: 10pt; color: #555; font-style: italic; margin: 3pt 0 8pt; }
+.narrative { font-size: 10.5pt; margin: 4pt 0 8pt; line-height: 1.4; }
+.kpitable td { border: none; padding: 6pt 10pt; vertical-align: top; }
+.kpicard { background: #f4f7f5; border: 0.75pt solid #d8e2de; border-radius: 4pt; padding: 6pt 10pt; }
+.kpicard .l { font-size: 8.5pt; color: #667; text-transform: none; }
+.kpicard .v { font-size: 13pt; font-weight: bold; color: #1f5f4f; }
+.hl, .attn, .dec { font-size: 10.5pt; margin: 3pt 0; padding-left: 12pt; }
+.attn.high { color: #8f2018; }
+.attn.medium { color: #8a611f; }
 .sig { margin-top: 30pt; }
 .sig td { border: none; padding-top: 24pt; }
 .sigline { border-top: 0.5pt solid #333; width: 70%; }
@@ -21,66 +30,138 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 <body>
 <h1>{{ church|default:"Church Treasury" }}</h1>
 <div class="rt">Monthly Treasurer's Report</div>
-<div class="pd">For the period {{ start|date:"d F Y" }} to {{ end|date:"d F Y" }}</div>
+<div class="pd">For the month of {{ end|date:"F Y" }} &middot; prepared {{ today|date:"d M Y" }} &middot; for presentation to the Church Board</div>
 
 {% if ai_summary %}<p class="note">{{ ai_summary }}</p>{% endif %}
 
-<h2>1. Collections summary</h2>
-<table><tr><th>Fund</th><th class="num">Receipts</th></tr>
-{% for r in collections.rows %}{% if r.receipts %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endif %}{% endfor %}
-<tr class="total"><td>Total collections</td><td class="num">{{ collections.total|floatformat:2|intcomma }}</td></tr>
+<h2>Executive summary</h2>
+<table class="kpitable"><tr>
+  <td class="kpicard"><div class="l">Total collections</div><div class="v">{{ collections.total|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Local fund receipts</div><div class="v">{{ collections.local|floatformat:0|intcomma }}</div></td>
+</tr><tr>
+  <td class="kpicard"><div class="l">Trust fund receipts</div><div class="v">{{ collections.trust|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Total expenses</div><div class="v">{{ income_stmt.expense|floatformat:0|intcomma }}</div></td>
+</tr><tr>
+  <td class="kpicard"><div class="l">Monthly surplus / (deficit)</div><div class="v">{{ income_stmt.surplus|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Cash &amp; bank balance</div><div class="v">{{ sofp.cash|floatformat:0|intcomma }}</div></td>
+</tr><tr>
+  <td class="kpicard"><div class="l">Net assets</div><div class="v">{{ sofp.net_assets|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Trust funds outstanding</div><div class="v">{{ sofp.trust_payable|floatformat:0|intcomma }}</div></td>
+</tr></table>
+
+<h3>Key highlights</h3>
+{% for h in highlights %}<div class="hl">&#9656; {{ h }}</div>{% empty %}<div class="note">No notable movements this month.</div>{% endfor %}
+
+<h3>Items requiring Board attention</h3>
+{% if attention %}{% for a in attention %}<div class="attn {{ a.severity }}"><b>{{ a.title }}.</b> {{ a.detail }}</div>{% endfor %}
+{% else %}<div class="note">No outstanding issues flagged this month.</div>{% endif %}
+
+<h2>Management report</h2>
+
+<h3>Collections summary</h3>
+<p class="narrative">{{ narratives.collections }}</p>
+<table><tr><th>Fund</th><th class="num">Amount</th></tr>
+{% for r in collection_detail.trust %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
+{% for r in collection_detail.local %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
+<tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:2|intcomma }}</td></tr>
 </table>
 
-<h2>2. Income and expenditure statement</h2>
-<table>
-<tr><td>Local income</td><td class="num">{{ income_stmt.income|floatformat:2|intcomma }}</td></tr>
-<tr><td>Operating expenditure</td><td class="num">({{ income_stmt.expense|floatformat:2|intcomma }})</td></tr>
-<tr class="total"><td>Surplus / (deficit)</td><td class="num">{{ income_stmt.surplus|floatformat:2|intcomma }}</td></tr>
-{% if income_stmt.capital %}<tr><td>Capital additions (memo)</td><td class="num">{{ income_stmt.capital|floatformat:2|intcomma }}</td></tr>{% endif %}
+<h3>Trust fund performance</h3>
+<p class="narrative">{{ narratives.trust_trend }}</p>
+<table><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr>
+{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endfor %}
+{% if trust_trend.rows %}<tr class="total"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endif %}
 </table>
 
-<h2>3. Local fund movements</h2>
-<table><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr>
-{% for r in local_statement.rows %}<tr><td>{{ r.department.name }}</td>
-<td class="num">{{ r.opening|floatformat:0|intcomma }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
-<td class="num">{{ r.expenses|floatformat:0|intcomma }}</td><td class="num">{{ r.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
-<tr class="total"><td>Total</td><td class="num">{{ local_statement.totals.opening|floatformat:0|intcomma }}</td>
-<td class="num">{{ local_statement.totals.receipts|floatformat:0|intcomma }}</td><td class="num">{{ local_statement.totals.expenses|floatformat:0|intcomma }}</td>
-<td class="num">{{ local_statement.totals.closing|floatformat:0|intcomma }}</td></tr>
+<h3>Local fund performance</h3>
+<p class="narrative">{{ narratives.local_statement }}</p>
+<table><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr>
+{% for r in local_statement.rows %}<tr><td>{{ r.department.name }}{% if r.closing < 0 %} (overdrawn){% endif %}</td>
+  <td class="num">{{ r.opening|floatformat:2|intcomma }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td>
+  <td class="num">{{ r.expenses|floatformat:2|intcomma }}</td><td class="num">{{ r.closing|floatformat:2|intcomma }}</td></tr>{% endfor %}
+{% if local_statement.rows %}<tr class="grand"><td>Total</td>
+  <td class="num">{{ local_statement.totals.opening|floatformat:2|intcomma }}</td>
+  <td class="num">{{ local_statement.totals.receipts|floatformat:2|intcomma }}</td>
+  <td class="num">{{ local_statement.totals.expenses|floatformat:2|intcomma }}</td>
+  <td class="num">{{ local_statement.totals.closing|floatformat:2|intcomma }}</td></tr>{% endif %}
 </table>
 
-<h2>4. Statement of financial position</h2>
+<h3>Expenditure summary</h3>
+<p class="narrative">{{ narratives.lcb_expenditure }}</p>
+<table><tr><th>Category</th><th class="num">Amount</th></tr>
+{% for c in lcb_expenditure.rows %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|floatformat:2|intcomma }}</td></tr>{% endfor %}
+{% if lcb_expenditure.rows %}<tr class="grand"><td>Total LCB expenditure</td><td class="num">{{ lcb_expenditure.total|floatformat:2|intcomma }}</td></tr>{% endif %}
+</table>
+
+<h3>Budget &amp; goal tracking</h3>
+{% if budget_summary.rows %}<table><tr><th>Fund</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th></tr>
+{% for r in budget_summary.rows %}<tr><td>{{ r.department.name }}{% if r.over %} (over){% endif %}</td>
+  <td class="num">{{ r.budget|floatformat:2|intcomma }}</td><td class="num">{{ r.actual|floatformat:2|intcomma }}</td>
+  <td class="num">{{ r.variance|floatformat:2|intcomma }}</td></tr>{% endfor %}
+<tr class="grand"><td>Total</td><td class="num">{{ budget_summary.totals.budget|floatformat:2|intcomma }}</td>
+  <td class="num">{{ budget_summary.totals.actual|floatformat:2|intcomma }}</td>
+  <td class="num">{{ budget_summary.totals.variance|floatformat:2|intcomma }}</td></tr>
+</table>{% endif %}
+{% if camp_goals %}<table><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">% complete</th></tr>
+{% for g in camp_goals %}<tr><td>{{ g.name }}</td><td class="num">{{ g.goal|floatformat:2|intcomma }}</td>
+  <td class="num">{{ g.collected|floatformat:2|intcomma }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
+</table>{% endif %}
+
+<h3>Statement of financial position</h3>
+<p class="narrative">{{ narratives.sofp }}</p>
 <table>
 <tr><th colspan="2">Assets</th></tr>
-<tr><td>Cash and bank</td><td class="num">{{ sofp.cash|floatformat:2|intcomma }}</td></tr>
-{% if sofp.nbv %}<tr><td>Fixed assets (net book value)</td><td class="num">{{ sofp.nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
-{% if sofp.advances %}<tr><td>Staff advances (receivable)</td><td class="num">{{ sofp.advances|floatformat:2|intcomma }}</td></tr>{% endif %}
+<tr><td>Cash &amp; bank</td><td class="num">{{ sofp.cash_on_hand|floatformat:2|intcomma }}</td></tr>
+<tr><td>Property (net book value)</td><td class="num">{{ sofp.nbv|floatformat:2|intcomma }}</td></tr>
+<tr class="total"><td>Total assets</td><td class="num">{{ sofp.total_assets|floatformat:2|intcomma }}</td></tr>
 <tr><th colspan="2">Liabilities</th></tr>
-<tr><td>Trust funds to remit</td><td class="num">{{ sofp.trust_payable|floatformat:2|intcomma }}</td></tr>
-<tr class="grand"><td>Net assets / funds</td><td class="num">{{ sofp.net_assets|floatformat:2|intcomma }}</td></tr>
+<tr><td>Trust payable — receipted</td><td class="num">{{ sofp.trust_receipted|floatformat:2|intcomma }}</td></tr>
+<tr><td>Trust payable — not yet receipted</td><td class="num">{{ sofp.trust_unreceipted|floatformat:2|intcomma }}</td></tr>
+<tr class="total"><td>Total liabilities</td><td class="num">{{ sofp.total_liabilities|floatformat:2|intcomma }}</td></tr>
+<tr><th colspan="2">Net assets</th></tr>
+<tr><td>General net assets</td><td class="num">{{ sofp.unallocated|floatformat:2|intcomma }}</td></tr>
+<tr><td>Designated development funds</td><td class="num">{{ sofp.allocated|floatformat:2|intcomma }}</td></tr>
+<tr><td>Invested in property</td><td class="num">{{ sofp.nbv|floatformat:2|intcomma }}</td></tr>
+<tr class="grand"><td>Total net assets</td><td class="num">{{ sofp.net_assets|floatformat:2|intcomma }}</td></tr>
 </table>
 
-{% if net_asset_changes %}
-<h2>5. Statement of changes in net assets</h2>
+{% if net_asset_changes %}<h3>Statement of changes in net assets</h3>
 <table>
-<tr><td>Net assets at start of period</td><td class="num">{{ net_asset_changes.opening|floatformat:0|intcomma }}</td></tr>
-<tr><td>Surplus / (deficit) for the period</td><td class="num">{{ net_asset_changes.surplus|floatformat:0|intcomma }}</td></tr>
-<tr class="grand"><td>Net assets at end of period</td><td class="num">{{ net_asset_changes.closing|floatformat:0|intcomma }}</td></tr>
-</table>
-{% endif %}
+<tr><td>Net assets at start of period</td><td class="num">{{ net_asset_changes.opening|floatformat:2|intcomma }}</td></tr>
+<tr><td>Surplus / (deficit) for the period</td><td class="num">{{ net_asset_changes.surplus|floatformat:2|intcomma }}</td></tr>
+<tr class="grand"><td>Net assets at end of period</td><td class="num">{{ net_asset_changes.closing|floatformat:2|intcomma }}</td></tr>
+</table>{% endif %}
 
-{% if camp_goals %}
-<h2>6. Camp Meeting goals</h2>
-<table><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">Variance</th><th class="num">% Complete</th></tr>
-{% for g in camp_goals %}<tr><td>{{ g.name }}</td>
-<td class="num">{{ g.goal|floatformat:0|intcomma }}</td><td class="num">{{ g.collected|floatformat:0|intcomma }}</td>
-<td class="num">{{ g.variance|floatformat:0|intcomma }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
+<h3>Cash flow</h3>
+<p class="narrative">{{ narratives.cashflow }}</p>
+<table>
+<tr><th colspan="2">Operating activities</th></tr>
+<tr><td>Local receipts</td><td class="num">{{ cashflow.local_receipts|floatformat:2|intcomma }}</td></tr>
+<tr><td>Trust receipts</td><td class="num">{{ cashflow.trust_receipts|floatformat:2|intcomma }}</td></tr>
+<tr><td>Operating expenses paid</td><td class="num">({{ cashflow.operating_exp|floatformat:2|intcomma }})</td></tr>
+<tr><td>Remittances to field</td><td class="num">({{ cashflow.remittances|floatformat:2|intcomma }})</td></tr>
+<tr class="total"><td>Net operating cash</td><td class="num">{{ cashflow.net_operating|floatformat:2|intcomma }}</td></tr>
+<tr><th colspan="2">Investing activities</th></tr>
+<tr><td>Capital expenditure</td><td class="num">({{ cashflow.capital|floatformat:2|intcomma }})</td></tr>
+<tr class="grand"><td>Net change in cash</td><td class="num">{{ cashflow.net_change|floatformat:2|intcomma }}</td></tr>
 </table>
-<p class="note">Expense (local fund) and offering (trust fund) goals are tracked independently and never merged.</p>
-{% endif %}
+
+<h3>Bank reconciliation</h3>
+<p class="narrative">{{ narratives.recon }}</p>
+{% if recon %}<table>
+<tr><td>Statement date</td><td class="num">{{ recon.statement_date|date:"d M Y" }}</td></tr>
+<tr><td>Balance per bank statement</td><td class="num">{{ recon.bank_balance|floatformat:2|intcomma }}</td></tr>
+<tr><td>Adjusted bank balance</td><td class="num">{{ recon.adjusted_balance|floatformat:2|intcomma }}</td></tr>
+<tr><td>Balance per cash book</td><td class="num">{{ recon.book_balance|floatformat:2|intcomma }}</td></tr>
+<tr class="total"><td>Difference</td><td class="num">{% if recon.difference != None %}{{ recon.difference|floatformat:2|intcomma }}{% else %}—{% endif %}</td></tr>
+<tr><td colspan="2">{% if recon.is_reconciled %}Reconciled{% else %}Not yet balanced{% endif %}</td></tr>
+</table>{% else %}<div class="note">No bank reconciliation recorded yet for this period.</div>{% endif %}
+
+<h2>Board decisions required</h2>
+{% for d in decisions %}<div class="dec"><b>{{ forloop.counter }}. {{ d.title }}.</b> {{ d.detail }}</div>{% endfor %}
 
 <table class="sig"><tr>
-<td><div class="sigline">Treasurer</div></td>
-<td><div class="sigline">Reviewed by</div></td>
+  <td><div class="sigline"></div>Prepared by — Treasurer</td>
+  <td><div class="sigline"></div>Reviewed by — Pastor / Board Chair</td>
 </tr></table>
 </body></html>

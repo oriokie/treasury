@@ -34,10 +34,16 @@ class CampMeetingGoalTests(TestCase):
                 confirmed=True, channel="BANK", allocation_status="MANUAL")
 
     def test_expense_goal_aggregates_subgroups_offering_separate(self):
+        # the Camp Meeting Offering goal is now configured in Settings → Goals,
+        # a single church-wide figure — not posted from the fund's own page
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.camp_offering_fund = self.off
+        cfg.camp_offering_goal = Decimal("5000")
+        cfg.save()
         self.c.post(f"/reports/fund/{self.exp.id}/budget/", {"save_goals": "1",
             "year": str(self.yr), "expense_goal": "10000",
-            "contribution_goal": "8000", "offering_goal": "5000",
-            "goal_type": "CAMP_EXPENSE", "offering_fund": str(self.off.id)})
+            "contribution_goal": "8000", "goal_type": "CAMP_EXPENSE"})
         body = self.c.get(f"/reports/fund/{self.exp.id}/budget/?year={self.yr}").content.decode()
         self.assertIn("Camp Meeting Expense Goal", body)
         self.assertIn("6,000", body)               # 1000+3000+2000 aggregated
@@ -45,17 +51,21 @@ class CampMeetingGoalTests(TestCase):
         self.assertIn("4,500", body)               # offering separate
         self.assertNotIn("10,500", body)           # never merged
         self.exp.refresh_from_db()
-        self.assertEqual(self.exp.offering_fund_id, self.off.id)
+        # this page no longer persists offering pairing on the fund itself
+        self.assertIsNone(self.exp.offering_fund_id)
         self.assertEqual(self.exp.year_goal, Decimal("10000"))
-        self.assertEqual(self.exp.offering_goal, Decimal("5000"))
+        self.assertIsNone(self.exp.offering_goal)
 
     def test_board_goals_section(self):
         self.exp.goal_type = "CAMP_EXPENSE"
         self.exp.year_goal = Decimal("10000")
-        self.exp.offering_goal = Decimal("5000")
-        self.exp.offering_fund = self.off
         self.exp.contribution_goal = Decimal("8000")
         self.exp.save()
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.camp_offering_fund = self.off
+        cfg.camp_offering_goal = Decimal("5000")
+        cfg.save()
         body = self.c.get("/reports/board-classic/").content.decode()
         self.assertIn("Goals and targets", body)
         self.assertIn("Camp Meeting Expense Goal", body)

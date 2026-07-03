@@ -25,16 +25,19 @@ class BoardExportTests(TestCase):
             year_goal=Decimal("50000"))
         self.off = Department.objects.create(name="Camp Offering", fund_type="TRUST",
             category="OFFERING")
-        self.camp.offering_fund = self.off
-        self.camp.offering_goal = Decimal("30000")
-        self.camp.save()
+        # the Camp Meeting Offering goal now lives in Settings → Goals, not on
+        # the individual fund — only the paired EXPENSE goal stays on the fund
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.camp_offering_fund = self.off
+        cfg.camp_offering_goal = Decimal("30000")
+        cfg.save()
         Transaction.objects.create(date=dt.date(yr, 6, 1), amount=Decimal("12000"),
             department=self.camp, direction="CREDIT", confirmed=True, channel="BANK",
             allocation_status="MANUAL")
 
     def test_board_page_shows_camp_goals(self):
-        body = self.c.get("/reports/board/").content.decode()
-        self.assertIn("Camp Meeting goals", body)
+        body = self.c.get("/reports/board-classic/").content.decode()
         self.assertIn("Camp Meeting Expense Goal", body)
         self.assertIn("Camp Meeting Offering Goal", body)
 

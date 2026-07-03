@@ -8,7 +8,8 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         model = SiteConfig
         fields = [
             "church_name", "field_name", "church_address", "church_contact",
-            "currency_symbol", "report_footer_note",
+            "currency_symbol", "report_footer_note", "receipt_strip_strings",
+            "camp_offering_fund", "camp_offering_goal",
             "require_expense_approval", "show_mpesa_ref", "enable_dev_groups",
             "auto_create_members", "envelope_auto_receipt", "receipt_bank_scope",
             "receipt_message",

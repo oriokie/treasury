@@ -187,6 +187,7 @@ def _sync_managed_recon_items(rec):
     treasurer never has to add them by hand."""
     from decimal import Decimal
     from cashbook.views import (_petty_balance_asof, outstanding_bank_advances_total,
+                                outstanding_petty_advances_total,
                                 unpresented_cheques_total)
     ADD = ReconciliationItem.Effect.ADD
     SUB = ReconciliationItem.Effect.SUBTRACT
@@ -205,6 +206,9 @@ def _sync_managed_recon_items(rec):
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),
         ("Staff advances issued (not yet accounted)",
          _safe(outstanding_bank_advances_total),
+         ReconciliationItem.Kind.CASH_AT_HAND, ADD),
+        ("Staff advances from petty cash (not yet accounted)",
+         _safe(outstanding_petty_advances_total),
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),
         ("Unpresented cheques (not yet cleared)",
          _safe(unpresented_cheques_total),

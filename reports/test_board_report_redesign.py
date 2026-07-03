@@ -141,9 +141,12 @@ class ExportsStillWorkTests(TestCase):
         r = self.c.get("/reports/board/export/word/?as_of=2026-06-01")
         self.assertEqual(r.status_code, 200)
 
-    def test_rtf_export(self):
-        r = self.c.get("/reports/board/export/rtf/?as_of=2026-06-01")
+    def test_word_export_has_ai_narratives(self):
+        r = self.c.get("/reports/board/export/word/?as_of=2026-06-01")
         self.assertEqual(r.status_code, 200)
+        b = r.content.decode()
+        self.assertIn("Board decisions required", b)
+        self.assertIn('class="narrative"', b)
 
 
 class TopTenAppendixTests(TestCase):

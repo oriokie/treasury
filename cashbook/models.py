@@ -412,6 +412,26 @@ def expense_receipt_path(instance, filename):
     return f"receipts/expenses/unknown/{filename}"
 
 
+def clean_receipt_text(text):
+    """Strip configured boilerplate phrases (Settings → 'strings to remove from
+    receipt messages') from a pasted bank/M-Pesa message — e.g. the 'never share
+    your PIN' warning banks append to every SMS — then tidy leftover whitespace."""
+    import re
+    if not text:
+        return text
+    from core.models import SiteConfig
+    try:
+        raw = SiteConfig.get().receipt_strip_strings or ""
+    except Exception:  # noqa: BLE001 — settings must never block a save
+        return text
+    for phrase in (p.strip() for p in raw.splitlines()):
+        if phrase:
+            text = re.sub(re.escape(phrase), "", text, flags=re.IGNORECASE)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 class ExpenseAttachment(models.Model):
     """A receipt or supporting document attached to an expense (e.g. a claimant's
     receipt brought back after an advance)."""
@@ -426,6 +446,13 @@ class ExpenseAttachment(models.Model):
 
     class Meta:
         ordering = ["-uploaded_at"]
+
+    def save(self, *args, **kwargs):
+        # scrub configured boilerplate from pasted messages on every save, so
+        # every entry path (treasurer, leader, queue, advance) is covered
+        if self.text:
+            self.text = clean_receipt_text(self.text)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.label or self.file.name

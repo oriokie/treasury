@@ -84,9 +84,9 @@
 {% if "charts" in widget_visible %}<div class="grid cols-3 u-mb-lg" data-w="charts" style="order:{{ widget_order.charts }}">
   <div class="card"><div class="hd">Income by channel</div><div class="bd chart-center">
     <canvas id="channelChart" height="200"></canvas></div></div>
-  <div class="card"><div class="hd">Receipts vs expenses by month</div><div class="bd">
-    {% if has_monthly %}<canvas id="monthlyChart" height="200"></canvas>
-    {% else %}<div class="chart-empty">Not enough months in range</div>{% endif %}</div></div>
+  <div class="card"><div class="hd">Local vs trust ({{ start|date:"M Y" }})</div><div class="bd">
+    {% if has_local_trust %}<canvas id="localTrustChart" height="200"></canvas>
+    {% else %}<div class="chart-empty">No receipts in this period</div>{% endif %}</div></div>
   <div class="card"><div class="hd">Top funds by receipts</div><div class="bd">
     {% if has_topfunds %}<canvas id="topFundsChart" height="200"></canvas>
     {% else %}<div class="chart-empty">No fund receipts in range</div>{% endif %}</div></div>
@@ -271,15 +271,13 @@ function downloadLocalFundsJpeg(){
     });
   }
 
-  {% if has_monthly %}
-  var mo = {{ monthly_json|safe }};
-  new Chart(document.getElementById('monthlyChart'), {
-    type: 'bar',
-    data: { labels: mo.labels, datasets: [
-      { label: 'Receipts', data: mo.receipts, backgroundColor: forest },
-      { label: 'Expenses', data: mo.expenses, backgroundColor: danger } ]},
-    options: { plugins: { legend: { position: 'bottom' } },
-      scales: { y: { ticks: { callback: money } } } }
+  {% if has_local_trust %}
+  var lt = {{ local_trust_json|safe }};
+  new Chart(document.getElementById('localTrustChart'), {
+    type: 'doughnut',
+    data: { labels: ['Local funds', 'Trust funds'], datasets: [
+      { data: [lt.local, lt.trust], backgroundColor: [forest, brass] } ]},
+    options: { plugins: { legend: { position: 'bottom' } } }
   });
   {% endif %}
 

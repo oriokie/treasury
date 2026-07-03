@@ -654,6 +654,14 @@ class DebitQueueView(DebitClassifyRequiredMixin, ListView):
         ctx["pending_expenses"] = Expense.objects.filter(
             status__in=[Expense.Status.PENDING, Expense.Status.APPROVED],
             bank_transaction__isnull=True).order_by("-date")[:200]
+        # open remittance batches — a trust remittance debit usually settles a
+        # whole batch (one payment covering several trust funds), so it should
+        # be matched to the batch's per-fund lines rather than one fund
+        from cashbook.models import RemittanceBatch
+        ctx["open_batches"] = (RemittanceBatch.objects
+            .filter(status__in=[RemittanceBatch.Status.DRAFT,
+                                RemittanceBatch.Status.APPROVED])
+            .order_by("-created_at")[:20])
         return ctx
 
 
@@ -699,6 +707,43 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
             txn.allocation_status = Transaction.Status.MANUAL
             txn.save(update_fields=["department", "allocation_status"])
             messages.success(request, "Recorded as an expense.")
+
+        elif kind == "remittance_batch":
+            # a trust remittance usually settles a whole batch — one bank payment
+            # covering several trust funds. Match the debit to the batch: every
+            # per-fund expense line in it becomes PAID (each fund is charged its
+            # own share), so the payment is never forced onto a single fund.
+            from cashbook.models import RemittanceBatch
+            raw = (request.POST.get("batch") or "").strip()
+            batch = (RemittanceBatch.objects.filter(pk=raw).first()
+                     if raw.isdigit() else None)
+            if not batch:
+                messages.error(request, "Choose the remittance batch this payment settles.")
+                return redirect("debit_queue")
+            if batch.status == RemittanceBatch.Status.REMITTED:
+                messages.error(request, f"Batch {batch.batch_number} is already marked sent.")
+                return redirect("debit_queue")
+            if abs((batch.total_amount or Decimal(0)) - txn.amount) > Decimal("0.01"):
+                messages.error(request,
+                    f"This debit is {txn.amount:,.2f} but batch {batch.batch_number} "
+                    f"totals {batch.total_amount:,.2f}. Match it to the right batch, "
+                    "or adjust the batch first.")
+                return redirect("debit_queue")
+            from django.utils import timezone as _tz
+            from reports.views import _repost_to_ledger
+            batch.status = RemittanceBatch.Status.REMITTED
+            batch.remitted_at = _tz.now()
+            batch.save(update_fields=["status", "remitted_at"])
+            batch.expenses.update(status=Expense.Status.PAID, paid_date=txn.date)
+            _repost_to_ledger(batch.expenses.all())
+            txn.allocation_status = Transaction.Status.MANUAL
+            txn.raw_narration = (txn.raw_narration or "") + \
+                f"\n[Settles remittance batch {batch.batch_number} — " \
+                f"{batch.expenses.count()} trust fund(s)]"
+            txn.save(update_fields=["allocation_status", "raw_narration"])
+            messages.success(request,
+                f"Matched to batch {batch.batch_number}: {batch.expenses.count()} "
+                "trust fund line(s) marked paid — each fund charged its own share.")
 
         elif kind == "remittance":
             dept = _dept_from_post(request)

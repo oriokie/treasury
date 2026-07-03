@@ -91,12 +91,24 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             messages.error(request, "PDF generation isn't available on the server yet. "
                 "Ask the administrator to install the reportlab and pypdf packages.")
             return redirect("expense_list")
-        # only expenses that actually have a supporting document (item 5)
-        qs = (self.get_queryset().filter(attachments__isnull=False).distinct()
-              .prefetch_related("attachments"))
+        # only expenses with an actual FILE attachment (a scanned receipt or
+        # photo). Text (M-Pesa message) and link-only attachments are excluded —
+        # the Receipts view already presents those, and a summary page with no
+        # document adds nothing to a printed supporting-documents bundle.
+        # NOTE: .exclude(attachments__file="") on a to-many relation excludes
+        # the PARENT if it has *any* related row matching — so an expense with
+        # one real file attachment AND one text-only attachment (file="") gets
+        # wrongly excluded entirely (a well-known Django ORM gotcha with
+        # exclude() across multi-valued relations). Both conditions must be in
+        # the SAME .filter() call so they're required of the SAME related row.
+        file_ids = (Expense.objects
+                    .filter(attachments__file__isnull=False, attachments__file__gt="")
+                    .values("id"))
+        qs = (self.get_queryset().filter(id__in=file_ids)
+              .distinct().prefetch_related("attachments"))
         if not qs.exists():
             messages.info(request, "None of the expenses matching the current "
-                          "filters have a supporting document attached.")
+                          "filters have a supporting document (file) attached.")
             params = request.GET.copy()
             params.pop("export", None)
             suffix = f"?{params.urlencode()}" if params else ""
@@ -855,12 +867,32 @@ class ExpenseRefundDelete(TreasurerRequiredMixin, View):
         return redirect("expense_detail", pk=pk)
 
 
+RECEIPT_ALLOWED_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
+RECEIPT_MAX_BYTES = 1 * 1024 * 1024   # 1 MB — receipts are photos/scans, not archives
+
+
+def validate_receipt_upload(f):
+    """Return an error string if a receipt file is not acceptable, else None.
+    Shared by every place a supporting document can be attached (treasurer
+    expense page, leader expense page, advance detail, missing-receipts queue)."""
+    if not f:
+        return None
+    if not f.name.lower().endswith(RECEIPT_ALLOWED_EXT):
+        return ("Receipts must be a PDF or image file "
+                "(.pdf, .jpg, .png, .heic, .webp).")
+    if f.size > RECEIPT_MAX_BYTES:
+        return ("That file is too large — receipts must be 1 MB or smaller. "
+                "Tip: a phone photo at normal quality, or a compressed PDF, "
+                "fits easily.")
+    return None
+
+
 class ExpenseAttachmentUpload(LoginRequiredMixin, View):
     """Attach a supporting document to an expense. Staff may attach to any fund;
     a department leader only to funds they lead. Accepts a file (pdf/image), a
     pasted text receipt (also read from `mpesa_ref`), or a link."""
-    ALLOWED_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
-    MAX_BYTES = 10 * 1024 * 1024
+    ALLOWED_EXT = RECEIPT_ALLOWED_EXT
+    MAX_BYTES = RECEIPT_MAX_BYTES
 
     def _may_attach(self, user, exp):
         from core import roles
@@ -883,15 +915,10 @@ class ExpenseAttachmentUpload(LoginRequiredMixin, View):
         f = request.FILES.get("file")
         text = (request.POST.get("text") or request.POST.get("mpesa_ref") or "").strip()
         link = (request.POST.get("link") or "").strip()
-        if f:
-            if not f.name.lower().endswith(self.ALLOWED_EXT):
-                messages.error(request, "Receipts must be a PDF or image file "
-                                        "(.pdf, .jpg, .png, .heic, .webp).")
-                return self._back(request, pk)
-            if f.size > self.MAX_BYTES:
-                messages.error(request, "That file is too large — receipts must be "
-                                        "10 MB or smaller.")
-                return self._back(request, pk)
+        err = validate_receipt_upload(f)
+        if err:
+            messages.error(request, err)
+            return self._back(request, pk)
         if f or text or link:
             ExpenseAttachment.objects.create(expense=exp, file=f or None,
                 text=text, link=link,
@@ -959,7 +986,8 @@ def outstanding_bank_advances_total(as_of=None):
     """Outstanding advances issued from the BANK (not petty cash). These reduce
     the bank statement balance at issuance but are not yet an expense in the cash
     book, so until accounted for they are a reconciling item between bank and book.
-    Petty-funded advances are excluded — those sit in the petty-cash float."""
+    Petty-funded advances are excluded — those sit in the petty-cash float.
+    Top-ups dated after `as_of` are excluded (they hadn't left the bank yet)."""
     from decimal import Decimal
     import datetime as _dt
     from django.db.models import Sum
@@ -968,12 +996,35 @@ def outstanding_bank_advances_total(as_of=None):
     total = Decimal(0)
     for adv in StaffAdvance.objects.filter(date_issued__lte=as_of, from_petty_cash=False
             ).exclude(status=StaffAdvance.Status.CLOSED):
+        topups_after = (adv.topups.filter(date__gt=as_of)
+                        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         settled = (adv.expenses.filter(
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
             date__lte=as_of).aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        bal = adv.amount - settled - (adv.returned_to_petty or Decimal(0))
+        bal = ((adv.amount or Decimal(0)) - topups_after - settled
+               - (adv.returned_to_petty or Decimal(0)))
         if bal > 0:
             total += bal
+    return total
+
+
+def outstanding_petty_advances_total(as_of=None):
+    """Outstanding advances issued from the PETTY-CASH box. The petty float
+    (`_petty_balance_asof`) already subtracts these — the cash has left the box
+    and is with the advance holder — so on a bank reconciliation they must be
+    listed as their own cash-at-hand item, or that money silently disappears
+    from the worksheet."""
+    from decimal import Decimal
+    import datetime as _dt
+    from cashbook.models import StaffAdvance
+    as_of = as_of or _dt.date.today()
+    total = Decimal(0)
+    for adv in StaffAdvance.objects.filter(from_petty_cash=True,
+                                           date_issued__lte=as_of):
+        try:
+            total += adv.petty_outstanding_asof(as_of)
+        except Exception:  # noqa: BLE001
+            continue
     return total
 
 
@@ -2383,8 +2434,12 @@ class FundBudgetView(TreasurerRequiredMixin, View):
         contribution_collected = sum((r["collected"] for r in group_rows), Decimal(0))
         contribution_target = sum((r["goal"] for r in group_rows), Decimal(0))
 
-        # Camp Meeting OFFERING goal: a SEPARATE trust fund, never merged here
-        offering = dept.offering_fund
+        # Camp Meeting OFFERING goal: a church-wide Trust-fund target, now
+        # configured in Settings → Goals rather than on this fund — shown here
+        # read-only for context, never editable/saved from this page.
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        offering = cfg.camp_offering_fund if dept.goal_type == "CAMP_EXPENSE" else None
         offering_collected = _collected(offering, year)
 
         return {
@@ -2396,7 +2451,8 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             "contribution_goal": _goal(contribution_target, contribution_collected),
             "group_rows": group_rows,
             "offering": offering,
-            "offering_goal": _goal(dept.offering_goal, offering_collected),
+            "offering_goal": _goal(cfg.camp_offering_goal if dept.goal_type == "CAMP_EXPENSE"
+                                   else None, offering_collected),
             "categories": Expense.Category.choices,
             "is_camp_expense": dept.goal_type == "CAMP_EXPENSE",
             "goal_type": dept.goal_type,
@@ -2427,15 +2483,11 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             dept.year_goal = _dec("expense_goal")          # Camp Meeting Expense goal
             gt = request.POST.get("goal_type") or "NONE"
             dept.goal_type = gt if gt in ("NONE", "CAMP_EXPENSE") else "NONE"
-            # the offering goal applies only to a Camp Meeting Expense fund
-            if dept.goal_type == "CAMP_EXPENSE":
-                dept.offering_goal = _dec("offering_goal")
-                of_id = request.POST.get("offering_fund") or ""
-                dept.offering_fund = (Department.objects.filter(pk=of_id).first()
-                                      if of_id.isdigit() else None)
-            else:
-                dept.offering_goal = None
-                dept.offering_fund = None
+            # The Camp Meeting OFFERING goal (a church-wide Trust-fund target) is
+            # configured in Settings → Goals, not here — this page only tracks
+            # this fund's own expense goal and its subgroups' contribution goals.
+            dept.offering_goal = None
+            dept.offering_fund = None
             dept.save(update_fields=["year_goal", "offering_goal",
                                      "offering_fund", "goal_type"])
             # each development group has its own contribution goal

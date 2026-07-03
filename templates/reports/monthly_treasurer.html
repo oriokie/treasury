@@ -93,7 +93,6 @@
     <button class="btn btn-ghost btn-sm" onclick="window.print();return false;">🖨 Print</button>
     <a class="btn btn-ghost btn-sm" href="{% url 'report_board_excel' %}?as_of={{ end|date:'Y-m-d' }}">⬇ Excel</a>
     <a class="btn btn-ghost btn-sm" href="{% url 'report_board_word' %}?as_of={{ end|date:'Y-m-d' }}">⬇ Word</a>
-    <a class="btn btn-ghost btn-sm" href="{% url 'report_board_rtf' %}?as_of={{ end|date:'Y-m-d' }}">⬇ RTF / Pages</a>
   </form>
 </div>
 

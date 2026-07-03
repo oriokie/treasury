@@ -28,10 +28,15 @@
           <option value="bank_charge">Bank charge</option>
           <option value="match">Match to existing expense</option>
           <option value="expense">Record as expense</option>
-          <option value="remittance">Trust fund remittance</option>
+          <option value="remittance_batch">Trust remittance — settle a batch (multi-fund)</option>
+          <option value="remittance">Trust remittance — single fund</option>
           <option value="float">Float withdrawal (cash on hand)</option>
           <option value="petty_cash">Allocate to petty cash (top up the float)</option>
           <option value="already_accounted">Already accounted for (don't affect the cashbook)</option>
+        </select>
+        <select name="batch" class="field--select fld-batch">
+          <option value="">— remittance batch —</option>
+          {% for b in open_batches %}<option value="{{ b.id }}">{{ b.batch_number }} · {{ b.get_status_display }} · {{ b.total_amount|floatformat:2|intcomma }}</option>{% endfor %}
         </select>
         <select name="department" class="field--select fld-dept">
           <option value="">— fund —</option>
@@ -60,6 +65,7 @@ function syncRow(sel){
   const form=sel.closest("form");
   const k=sel.value;
   form.querySelector(".fld-dept").style.display=(k==="bank_charge"||k==="expense"||k==="remittance")?"":"none";
+  form.querySelector(".fld-batch").style.display=(k==="remittance_batch")?"":"none";
   form.querySelector(".fld-cat").style.display=(k==="expense")?"":"none";
   form.querySelector(".fld-exp").style.display=(k==="match")?"":"none";
   form.querySelector(".fld-desc").style.display=(k==="expense"||k==="already_accounted")?"":"none";

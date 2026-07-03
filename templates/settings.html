@@ -11,6 +11,7 @@
     <button type="button" class="tab" data-tab="features">Features</button>
     <button type="button" class="tab" data-tab="approvals">Approvals</button>
     <button type="button" class="tab" data-tab="pledges">Pledges</button>
+    <button type="button" class="tab" data-tab="goals">Goals</button>
     <button type="button" class="tab" data-tab="sign">Signatories</button>
     <button type="button" class="tab" data-tab="assets">Assets</button>
   </div>
@@ -30,8 +31,15 @@
   <input type="hidden" name="active_tab" id="activeTab" value="{{ request.GET.tab|default:'branding' }}">
   <section class="tabpane active" data-pane="branding">
     <div class="card"><div class="bd"><div class="form-grid">
-      {% for f in form %}{% if f.name in 'church_name field_name church_address church_contact currency_symbol report_footer_note receipt_message' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% for f in form %}{% if f.name in 'church_name field_name church_address church_contact currency_symbol report_footer_note receipt_strip_strings receipt_message' %}
+        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+        {% if f.name == 'receipt_strip_strings' %}
+        <div class="u-mt-sm"><button type="submit" class="btn btn-sm btn-ghost"
+            formaction="{% url 'clean_receipt_messages' %}" formmethod="post"
+            onclick="return confirm('Re-clean every saved receipt message with the list above? Save the settings first if you just edited the list.')">
+            🧹 Clean up already-saved messages</button>
+          <span class="help u-inline">Removes the phrases above from receipt messages that were imported before the list was set.</span></div>
+        {% endif %}</div>
       {% endif %}{% endfor %}
     </div></div></div>
   </section>
@@ -97,6 +105,19 @@
       </div>
       {% endif %}
       <div class="help u-mt-sm lh-loose"><strong>How it's kept safe:</strong> the link only lets a member <em>submit</em> a pledge — it never shows any member data, balances, or other pledges. Every submission is held as an <strong>unverified draft</strong> a treasurer must review and approve before it counts anywhere, and a draft can never touch a fund balance. Submissions are protected by a spam honeypot, a submit-rate limit, and a manual approval step.</div>
+    </div></div>
+  </section>
+  <section class="tabpane" data-pane="goals">
+    <div class="card"><div class="hd">Camp Meeting Offering goal</div><div class="bd">
+      <div class="help u-mb-sm">A single church-wide target for the Camp Meeting offering (a Trust fund), tracked here rather than on any individual fund page. The Camp Meeting <em>expense</em> goal, and every other fund's or development group's own goal, stay on that fund's own page.</div>
+      <div class="form-grid">
+        {% for f in form %}{% if f.name in 'camp_offering_fund camp_offering_goal' %}
+          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+      </div>
+      {% if camp_offering_progress %}<div class="help u-mt-sm">Collected so far this year: <strong>{{ CURRENCY }} {{ camp_offering_progress.collected|floatformat:0 }}</strong> of {{ CURRENCY }} {{ camp_offering_progress.goal|floatformat:0 }} ({{ camp_offering_progress.pct }}%).</div>{% endif %}
+      <a class="link u-mt-sm u-inline" href="{% url 'report_board_classic' %}">See full budget &amp; goal tracking →</a>
     </div></div>
   </section>
   <section class="tabpane" data-pane="sms">

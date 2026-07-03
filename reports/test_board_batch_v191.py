@@ -50,14 +50,19 @@ class BoardBatchTests(TestCase):
         self.assertIn("Total net assets", b)
 
     def test_excel_export_has_changes_sheet(self):
+        # Changes in net assets is now consolidated into the Financial
+        # Position sheet (fewer, more complete sheets) rather than its own
         xl = self.c.get("/reports/board/export/excel/?as_of=2026-06")
         wb = load_workbook(io.BytesIO(xl.content))
-        self.assertIn("Changes in Net Assets", wb.sheetnames)
+        self.assertIn("Financial Position", wb.sheetnames)
+        ws = wb["Financial Position"]
+        values = [c.value for row in ws.iter_rows() for c in row if c.value]
+        self.assertTrue(any("net assets" in str(v).lower() for v in values))
 
     def test_word_export_no_type_has_changes(self):
         wd = self.c.get("/reports/board/export/word/?as_of=2026-06").content.decode()
         self.assertNotIn("<th>Type</th>", wd)
-        self.assertIn("changes in net assets", wd)
+        self.assertIn("changes in net assets", wd.lower())
 
     def test_dashboard_card_font_uses_variable(self):
         css = open("static/css/app.css").read()

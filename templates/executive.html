@@ -162,6 +162,7 @@ function loadInsights(){
 
 <div class="chart-grid">
   <div class="card"><div class="hd">Giving trend (12 months)</div><div class="bd"><div class="chart-box"><canvas id="givingTrend"></canvas></div></div></div>
+  <div class="card"><div class="hd">Receipts vs expenses by month (this year)</div><div class="bd"><div class="chart-box"><canvas id="receiptsVsExpensesYear"></canvas></div></div></div>
   <div class="card"><div class="hd">Department spending (this year)</div><div class="bd"><div class="chart-box"><canvas id="deptSpend"></canvas></div></div></div>
   <div class="card"><div class="hd">Monthly income</div><div class="bd"><div class="chart-box"><canvas id="monthlyIncome"></canvas></div></div></div>
   <div class="card"><div class="hd">Monthly expenses</div><div class="bd"><div class="chart-box"><canvas id="monthlyExpense"></canvas></div></div></div>
@@ -195,6 +196,19 @@ function loadInsights(){
   mk("givingTrend","giving_trend",function(d){return {type:"line",
     data:{labels:d.labels,datasets:[{data:d.values,borderColor:FOREST,backgroundColor:SOFT,
       fill:true,tension:.3,pointRadius:2}]},options:noLegend};});
+  (function(){
+    var id="receiptsVsExpensesYear", key="receipts_vs_expenses_year";
+    try{
+      var el=document.getElementById(id);
+      var d=D[key];
+      if(!el || !d || !d.labels || !d.labels.length){ if(el){ el.closest(".card").style.display="none"; } return; }
+      new Chart(el, {type:"bar",
+        data:{labels:d.labels,datasets:[
+          {label:"Receipts",data:d.receipts,backgroundColor:FOREST},
+          {label:"Expenses",data:d.expenses,backgroundColor:"#c0532b"}]},
+        options:{maintainAspectRatio:false,plugins:{legend:{position:"bottom"}}}});
+    }catch(e){ /* never let one chart break the page */ }
+  })();
   mk("deptSpend","department_spending",function(d){return {type:"bar",
     data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:BRASS}]},
     options:Object.assign({indexAxis:"y"},noLegend)};});

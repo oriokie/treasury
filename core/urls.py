@@ -12,6 +12,7 @@ urlpatterns = [
     path("backup/data-export/", views.DataExportView.as_view(), name="data_export"),
     path("api/telegram/webhook/<str:token>/", TelegramWebhookView.as_view(), name="telegram_webhook"),
     path("settings/", views.SettingsView.as_view(), name="settings"),
+    path("settings/clean-receipts/", views.CleanReceiptMessagesView.as_view(), name="clean_receipt_messages"),
     path("preferences/", views.PreferencesView.as_view(), name="preferences"),
     path("preferences/update/", views.PreferenceUpdateView.as_view(), name="preference_update"),
     path("after-login/", views.PostLoginRedirectView.as_view(), name="after_login"),

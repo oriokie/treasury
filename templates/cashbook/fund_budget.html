@@ -28,7 +28,7 @@
     <div class="progress u-mt-0"><span style="width:{{ offering_goal.pct }}%;background:var(--brass)"></span></div>
     <div class="help u-mt-0">{{ offering_goal.pct }}% collected for <strong>{{ offering.name }}</strong>{% if offering_goal.short %} · {{ offering_goal.short|floatformat:0|intcomma }} to go{% endif %}</div>
     {% else %}
-    <p class="muted u-mt-0">No offering fund linked yet. Link the Trust offering fund (e.g. Camp Meeting Offering) under <em>Edit goals</em> to track it separately.</p>
+    <p class="muted u-mt-0">No Camp Meeting Offering goal is set up yet. Configure it under <a href="{% url 'settings' %}?tab=goals">Settings → Goals</a> — it's a single church-wide figure, not set per fund.</p>
     {% endif %}
   </div></div>
 {% endif %}
@@ -65,11 +65,7 @@
     <div><label class="lbl u-xs">{% if is_camp_expense %}Camp Meeting Expense Goal{% else %}Annual expense goal{% endif %} (year)</label>
       <input type="number" step="0.01" name="expense_goal" class="field" value="{{ expense_goal.goal|floatformat:'0' }}"></div>
     <span id="campFields" style="display:{% if is_camp_expense %}contents{% else %}none{% endif %}">
-      <div><label class="lbl u-xs">Camp Meeting Offering Goal (year)</label>
-        <input type="number" step="0.01" name="offering_goal" class="field" value="{{ offering_goal.goal|floatformat:'0' }}"></div>
-      <div><label class="lbl u-xs">Offering fund (Trust)</label>
-        <select name="offering_fund" class="field field--select"><option value="">— none —</option>
-        {% for f in all_funds %}<option value="{{ f.id }}" {% if offering and offering.id == f.id %}selected{% endif %}>{{ f.name }}</option>{% endfor %}</select></div>
+      <div class="help u-xs" style="align-self:end">The Camp Meeting Offering goal (a Trust fund) is a single church-wide figure — set it once in <a href="{% url 'settings' %}?tab=goals">Settings → Goals</a>, not per fund.</div>
     </span>
     <button name="save_goals" value="1" class="btn btn-primary btn-sm">Save goals</button>
   </form>

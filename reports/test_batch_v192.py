@@ -108,21 +108,6 @@ class NetAssetRenameTests(TestCase):
         self.assertNotIn("Unallocated funds (general)", b)
 
 
-class RtfExportTests(TestCase):
-    def setUp(self):
-        ensure_chart()
-        self.c = Client(); self.c.force_login(_tr())
-
-    def test_rtf_export(self):
-        r = self.c.get("/reports/board/export/rtf/?as_of=2026-06")
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(r["Content-Type"], "application/rtf")
-        body = r.content.decode()
-        self.assertTrue(body.startswith(r"{\rtf1"))
-        self.assertTrue(body.rstrip().endswith("}"))
-        self.assertIn("General net assets", body)
-
-
 class DashboardDebitPillTests(TestCase):
     def setUp(self):
         ensure_chart()

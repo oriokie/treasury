@@ -96,23 +96,17 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             {"label": "Envelope", "value": _chan.get("ENVELOPE", 0)},
             {"label": "Cash", "value": _chan.get("CASH", 0)},
         ])
-        # monthly receipts vs expenses within the selected period (bars)
-        MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        mrec = {r["m"]: float(r["t"] or 0) for r in
-                Transaction.objects.confirmed_credits().filter(
-                    date__gte=start, date__lte=end, excluded_from_income=False)
-                .annotate(m=_ExM("date")).values("m").annotate(t=_Sum("amount"))}
-        mexp = {r["m"]: float(r["t"] or 0) for r in
-                Expense.objects.filter(status__in=[Expense.Status.APPROVED,
-                    Expense.Status.PAID], date__gte=start, date__lte=end)
-                .exclude(category=Expense.Category.REMITTANCE)
-                .annotate(m=_ExM("date")).values("m").annotate(t=_Sum("amount"))}
-        active_m = sorted(set(mrec) | set(mexp))
-        ctx["monthly_json"] = safe_json({
-            "labels": [MN[m - 1] for m in active_m],
-            "receipts": [mrec.get(m, 0) for m in active_m],
-            "expenses": [mexp.get(m, 0) for m in active_m]})
-        ctx["has_monthly"] = len(active_m) >= 2
+        # local vs trust receipts for the selected period (doughnut) — moved
+        # here in place of the receipts-vs-expenses-by-month chart, which now
+        # lives on the Executive overview showing the full year instead of
+        # just the currently-selected (usually one-month) period.
+        _lt = (Transaction.objects.confirmed_credits()
+               .filter(date__gte=start, date__lte=end, excluded_from_income=False)
+               .values("department__fund_type").annotate(t=_Sum("amount")))
+        _lt_map = {r["department__fund_type"]: float(r["t"] or 0) for r in _lt}
+        ctx["local_trust_json"] = safe_json({
+            "local": _lt_map.get("LOCAL", 0), "trust": _lt_map.get("TRUST", 0)})
+        ctx["has_local_trust"] = bool(_lt_map.get("LOCAL") or _lt_map.get("TRUST"))
         # top funds by receipts (horizontal bars)
         _top = sorted(ctx["local_rows"], key=lambda r: r["receipts"], reverse=True)[:8]
         ctx["topfunds_json"] = safe_json({
@@ -320,12 +314,19 @@ class SettingsView(TreasurerRequiredMixin, View):
             tg_users.append({"name": u.get_full_name() or u.username,
                              "role": role_label(u),
                              "has_pin": bool(prof and prof.pin)})
+        camp_progress = None
+        if cfg.camp_offering_goal and cfg.camp_offering_fund_id:
+            from reports.views import _camp_goal_records
+            import datetime as _dt
+            rows = _camp_goal_records(_dt.date.today().year)
+            camp_progress = next((r for r in rows if r["kind"] == "Offering (trust)"), None)
         return render(request, self.template_name, {
             "form": SiteConfigForm(instance=cfg),
             "recent_sms": SmsLog.objects.all()[:10],
             "cbs_webhook_url": request.build_absolute_uri(reverse("cbs_webhook")),
             "my_telegram_pin": mine.pin if mine else "",
             "telegram_users": tg_users,
+            "camp_offering_progress": camp_progress,
         })
 
     def post(self, request):
@@ -1354,3 +1355,23 @@ class PostLoginRedirectView(LoginRequiredMixin, View):
             return redirect(reverse(target))
         except NoReverseMatch:
             return redirect("dashboard")
+
+
+class CleanReceiptMessagesView(TreasurerRequiredMixin, View):
+    """Re-run the configured strip-strings over every already-saved receipt
+    message (Settings → branding). Lets the treasurer add a new boilerplate
+    phrase and clean up messages imported before it was configured."""
+
+    def post(self, request):
+        from cashbook.models import ExpenseAttachment, clean_receipt_text
+        changed = 0
+        qs = ExpenseAttachment.objects.exclude(text="")
+        for att in qs.iterator():
+            cleaned = clean_receipt_text(att.text)
+            if cleaned != att.text:
+                # go through the queryset update to avoid re-triggering save()
+                ExpenseAttachment.objects.filter(pk=att.pk).update(text=cleaned)
+                changed += 1
+        messages.success(request, f"Cleaned {changed} saved receipt message(s) "
+                         f"out of {qs.count()} checked.")
+        return redirect("/settings/?tab=branding")

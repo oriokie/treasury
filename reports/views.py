@@ -399,7 +399,7 @@ class FundLedgerView(PeriodMixin, TemplateView):
             subs_rows.append({"sub": sub, "opening": opening, "receipts": r,
                               "payments": p, "closing": closing})
             sub_total += closing
-        subs_rows.sort(key=lambda x: x["receipts"], reverse=True)   # busiest first
+        subs_rows.sort(key=lambda x: x["closing"], reverse=True)   # largest balance first
         subs = subs_rows
 
         # development groups are sub-accounts of the Development fund (one query)
@@ -2106,19 +2106,18 @@ class BoardReportView(PeriodMixin, TemplateView):
                     "short": max(goal - collected, Decimal(0))}
 
         goals = []
+        # church-wide Camp Meeting goals come from Settings → Goals, not from
+        # any individual fund, so fund rows below stay purely per-fund
+        goals.extend(_camp_goal_records(gyear))
         for d in _Dept.objects.filter(active=True).prefetch_related("subgroups"):
-            is_camp = (d.goal_type == "CAMP_EXPENSE")
+            if d.goal_type == "CAMP_EXPENSE":
+                continue  # migrated to SiteConfig; avoid double rows
             if d.year_goal:
-                label = ("Camp Meeting Expense Goal" if is_camp
-                         else f"{d.name} — annual goal")
-                goals.append(_goal_row(label, "Expense (local)", d.year_goal,
-                                       _collected(d)))
+                goals.append(_goal_row(f"{d.name} — annual goal", "Expense (local)",
+                                       d.year_goal, _collected(d)))
             if d.offering_goal and d.offering_fund:
-                # the offering relationship is configured (offering_fund FK); its
-                # label follows the paired expense fund's goal_type, not any name
-                off_label = ("Camp Meeting Offering Goal" if is_camp
-                             else f"{d.offering_fund.name} — offering goal")
-                goals.append(_goal_row(off_label, "Offering (trust)",
+                goals.append(_goal_row(f"{d.offering_fund.name} — offering goal",
+                                       "Offering (trust)",
                                        d.offering_goal, _collected(d.offering_fund)))
             if d.contribution_goal:
                 grp_total = sum((_collected(s) for s in d.subgroups.all()), Decimal(0))
@@ -2938,8 +2937,9 @@ class FundThankSmsView(ReadAccessMixin, TemplateView):
 
 def _camp_goal_records(year):
     """Camp Meeting expense goal (Local fund flagged CAMP_EXPENSE, aggregated over
-    its sub-accounts) and the paired offering goal (its configured Trust fund).
-    Group contribution goals are deliberately excluded — this is fund-level only."""
+    its sub-accounts, unchanged) paired with the Camp Meeting Offering goal — a
+    single church-wide Trust-fund target now configured in Settings → Goals
+    rather than on any individual fund."""
     from decimal import Decimal
     from django.db.models import Sum
     from departments.models import Department as _D
@@ -2966,13 +2966,15 @@ def _camp_goal_records(year):
                 "short": max(goal - col, Decimal(0))}
 
     rows = []
-    for d in _D.objects.filter(active=True, goal_type="CAMP_EXPENSE").prefetch_related("subgroups"):
-        if d.year_goal:
-            rows.append(_row("Camp Meeting Expense Goal", "Expense (local)",
-                             d.year_goal, d))
-        if d.offering_goal and d.offering_fund:
-            rows.append(_row("Camp Meeting Offering Goal", "Offering (trust)",
-                             d.offering_goal, d.offering_fund))
+    camp = _D.objects.filter(active=True, goal_type="CAMP_EXPENSE").prefetch_related(
+        "subgroups").first()
+    if camp and camp.year_goal:
+        rows.append(_row("Camp Meeting Expense Goal", "Expense (local)",
+                         camp.year_goal, camp))
+    cfg = SiteConfig.get()
+    if cfg.camp_offering_goal and cfg.camp_offering_fund_id:
+        rows.append(_row("Camp Meeting Offering Goal", "Offering (trust)",
+                         cfg.camp_offering_goal, cfg.camp_offering_fund))
     return rows
 
 
@@ -3455,6 +3457,53 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                 f"({c['trust']:,.0f} trust, {c['local']:,.0f} local) and recorded "
                 f"{verdict} of {abs(isr['surplus']):,.0f} on operations.")
 
+    def _ai_narratives(self, ctx):
+        """One short analysis paragraph per section, for the Word export (and
+        anywhere else that wants more than the one-line `insights`). Runs
+        server-side for three reasons: (1) the LLM key and prompt logic never
+        reach the browser, (2) one server call can cover every section at once
+        instead of the client firing several, and (3) the same figures Django
+        already computed are passed straight into the prompt with no risk of
+        a client-side mismatch. Every section always has rule-based text —
+        `ctx['notes']` / `ctx['insights']`, already computed above — so the
+        report never depends on the LLM being configured; when it is, this
+        rewrites each into a fuller paragraph in one batched call."""
+        notes = ctx.get("notes") or {}
+        insights = ctx.get("insights") or {}
+        # rule-based baseline: always available, always correct
+        base = {k: " ".join(filter(None, [notes.get(k), insights.get(k)]))
+                for k in notes}
+        try:
+            from core.services.assistant import _llm_call
+            cfg = SiteConfig.get()
+            if not getattr(cfg, "llm_enabled", False):
+                raise RuntimeError("assistant off")
+            c = ctx["collections"]; isr = ctx["income_stmt"]; sof = ctx["sofp"]
+            facts = (
+                f"Month {ctx['end']:%B %Y}. Collections {c['total']:,.0f} "
+                f"(trust {c['trust']:,.0f}, local {c['local']:,.0f}). "
+                f"Surplus/(deficit) {isr['surplus']:,.0f}. Cash & bank "
+                f"{sof.get('cash', 0):,.0f}. Net assets {sof.get('net_assets', 0):,.0f}. "
+                f"Trust outstanding {sof.get('trust_payable', 0):,.0f}.")
+            sections = ", ".join(base.keys())
+            prompt = (
+                "You are writing analysis paragraphs for a church board's monthly "
+                "treasury report. For EACH of these sections, write exactly one "
+                f"factual, board-appropriate paragraph (25-45 words): {sections}. "
+                f"Church figures this month: {facts}\n"
+                "Respond ONLY as JSON: {\"section_key\": \"paragraph\", ...} using "
+                "the exact section keys given, no other text.")
+            txt, err = _llm_call(prompt, cfg, context="(monthly treasurer narratives)")
+            if txt and not err:
+                import json, re
+                cleaned = re.sub(r"^```(json)?|```$", "", txt.strip(), flags=re.MULTILINE).strip()
+                data = json.loads(cleaned)
+                if isinstance(data, dict):
+                    return {k: (data.get(k) or base.get(k, "")) for k in base}
+        except Exception:  # noqa: BLE001 — narration is a nice-to-have, never blocking
+            from core.utils import log_exception as _lx; _lx("monthly treasurer narratives")
+        return base
+
 
 # ===================== Monthly Treasurer's Report exports ===================
 def _monthly_report_context(request):
@@ -3467,28 +3516,33 @@ def _monthly_report_context(request):
 
 
 class MonthlyReportExcelView(ReadAccessMixin, View):
-    """Download the Monthly Treasurer's Report as a multi-sheet Excel workbook."""
+    """Download the Monthly Treasurer's Report as a multi-sheet Excel workbook —
+    full detail tables (not the on-screen top-10), a KPI summary sheet styled as
+    cards, and native Excel charts for the figures that are charted on screen."""
     def get(self, request):
         import io
         from decimal import Decimal
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from openpyxl.chart import BarChart, PieChart, LineChart, Reference
         from django.http import HttpResponse
 
         ctx = _monthly_report_context(request)
         wb = Workbook()
-        forest = "1F5F4F"; brass = "B07D2C"
+        forest = "1F5F4F"; brass = "B07D2C"; red = "B3261E"
         head_fill = PatternFill("solid", fgColor=forest)
-        sub_fill = PatternFill("solid", fgColor="E8F0ED")
+        card_fill = PatternFill("solid", fgColor="EAF1EE")
+        warn_fill = PatternFill("solid", fgColor="FBEDEA")
         white = Font(color="FFFFFF", bold=True, size=12)
         bold = Font(bold=True)
+        big = Font(bold=True, size=14, color=forest)
         thin = Side(style="thin", color="CCCCCC")
         border = Border(bottom=thin)
         money = '#,##0.00'
 
         def sheet(ws, title, subtitle=None):
-            ws.column_dimensions["A"].width = 42
-            for col in "BCDE":
+            ws.column_dimensions["A"].width = 40
+            for col in "BCDEF":
                 ws.column_dimensions[col].width = 16
             ws["A1"] = ctx.get("church") or "Church Treasury"
             ws["A1"].font = Font(bold=True, size=14, color=forest)
@@ -3505,75 +3559,238 @@ class MonthlyReportExcelView(ReadAccessMixin, View):
                 cell.alignment = Alignment(horizontal="left" if i == 0 else "right")
             return r + 1
 
-        def drow(ws, r, label, *vals, bold_row=False):
+        def drow(ws, r, label, *vals, bold_row=False, flag=False):
             cell = ws.cell(row=r, column=1, value=label)
             if bold_row:
                 cell.font = bold
+            if flag:
+                cell.font = Font(bold=True, color=red)
             for i, v in enumerate(vals):
                 vc = ws.cell(row=r, column=2 + i, value=float(v) if isinstance(v, Decimal) else v)
                 vc.number_format = money if isinstance(v, Decimal) else "General"
                 vc.alignment = Alignment(horizontal="right")
                 if bold_row:
                     vc.font = bold
+                if flag:
+                    vc.font = Font(bold=True, color=red)
             return r + 1
 
-        # --- Income & Expenditure ---
-        ws = wb.active; ws.title = "Income & Expenditure"
-        r = sheet(ws, "Income and Expenditure Statement")
-        isr = ctx["income_stmt"]
-        r = hrow(ws, r, ["Item", "Amount"])
-        r = drow(ws, r, "Local income", isr["income"])
-        r = drow(ws, r, "Operating expenditure", -isr["expense"])
-        r = drow(ws, r, "Surplus / (deficit)", isr["surplus"], bold_row=True)
-        if isr.get("capital"):
-            r = drow(ws, r, "Capital additions (memo)", isr["capital"])
+        # ---------------- Executive Summary (KPI "cards" + highlights + attention) ----------------
+        ws0 = wb.active; ws0.title = "Executive Summary"
+        r = sheet(ws0, "Executive Summary", f"For the month of {ctx['end']:%B %Y}")
+        isr = ctx["income_stmt"]; sof = ctx["sofp"]; c = ctx["collections"]
+        kpis = [
+            ("Total collections", c.get("total", 0)), ("Local fund receipts", c.get("local", 0)),
+            ("Trust fund receipts", c.get("trust", 0)), ("Total expenses", isr.get("expense", 0)),
+            ("Monthly surplus / (deficit)", isr.get("surplus", 0)),
+            ("Cash & bank balance", sof.get("cash", 0)), ("Net assets", sof.get("net_assets", 0)),
+            ("Trust funds outstanding", sof.get("trust_payable", 0)),
+        ]
+        card_row = r
+        for i, (label, val) in enumerate(kpis):
+            col = 1 + (i % 2) * 2
+            row = card_row + (i // 2) * 3
+            lc = ws0.cell(row=row, column=col, value=label)
+            lc.font = Font(size=9, color="666677"); lc.fill = card_fill
+            vc = ws0.cell(row=row + 1, column=col, value=float(val))
+            vc.font = big; vc.number_format = money; vc.fill = card_fill
+            ws0.cell(row=row, column=col + 1).fill = card_fill
+            ws0.cell(row=row + 1, column=col + 1).fill = card_fill
+        r = card_row + ((len(kpis) + 1) // 2) * 3 + 1
 
-        # --- Statement of Financial Position ---
-        ws2 = wb.create_sheet("Financial Position")
-        r = sheet(ws2, "Statement of Financial Position")
-        sof = ctx["sofp"]
-        r = hrow(ws2, r, ["Item", "Amount"])
-        r = drow(ws2, r, "Cash and bank", sof.get("cash", Decimal(0)))
-        if sof.get("nbv"):
-            r = drow(ws2, r, "Fixed assets (NBV)", sof["nbv"])
-        if sof.get("advances"):
-            r = drow(ws2, r, "Staff advances (receivable)", sof["advances"])
-        r = drow(ws2, r, "Trust funds to remit", sof.get("trust_payable", Decimal(0)))
-        r = drow(ws2, r, "Net assets / funds",
-                 sof.get("net_assets", sof.get("cash", Decimal(0))), bold_row=True)
+        if ctx.get("highlights"):
+            ws0.cell(row=r, column=1, value="Key highlights").font = Font(bold=True, size=12, color=forest)
+            r += 1
+            for h in ctx["highlights"]:
+                ws0.cell(row=r, column=1, value=f"\u2022 {h}")
+                r += 1
+            r += 1
+        if ctx.get("attention"):
+            ws0.cell(row=r, column=1, value="Items requiring Board attention").font = Font(bold=True, size=12, color=red)
+            r += 1
+            for a in ctx["attention"]:
+                cell = ws0.cell(row=r, column=1, value=f"{a['title']} — {a['detail']}")
+                cell.fill = warn_fill; cell.font = Font(color=red)
+                r += 1
 
-        # --- Fund movements ---
-        ws3 = wb.create_sheet("Fund Balances")
-        r = sheet(ws3, "Local Fund Movements")
-        r = hrow(ws3, r, ["Fund", "Opening", "Receipts", "Payments", "Closing"])
+        # ---------------- Collections (FULL listing, both trust and local) ----------------
+        ws1 = wb.create_sheet("Collections")
+        r = sheet(ws1, "Collections Summary — full listing")
+        r = hrow(ws1, r, ["Fund", "Type", "Amount", "% of total"])
+        tot = c.get("total") or Decimal(1)
+        cd = ctx.get("collection_detail") or {}
+        first_data_row = r
+        for kind, rows in (("Trust", cd.get("trust", [])), ("Local", cd.get("local", []))):
+            for row in rows:
+                pct = float(row["receipts"] / tot * 100) if tot else 0
+                r = drow(ws1, r, row["department"].name, kind, row["receipts"], f"{pct:.1f}%")
+        last_data_row = r - 1
+        r = drow(ws1, r, "Total collections", "", c.get("total", 0), "100%", bold_row=True)
+        if last_data_row >= first_data_row:
+            pie = PieChart(); pie.title = "Collections by fund"
+            data = Reference(ws1, min_col=3, min_row=first_data_row - 1, max_row=min(last_data_row, first_data_row + 14))
+            cats = Reference(ws1, min_col=1, min_row=first_data_row, max_row=min(last_data_row, first_data_row + 14))
+            pie.add_data(data, titles_from_data=True); pie.set_categories(cats)
+            pie.height = 9; pie.width = 14
+            ws1.add_chart(pie, f"F{first_data_row}")
+
+        # ---------------- Trust Fund Performance ----------------
+        ws2 = wb.create_sheet("Trust Fund Performance")
+        r = sheet(ws2, "Trust Fund Performance — 3-month trend")
+        tt = ctx.get("trust_trend") or {}
+        cols = tt.get("columns", [])
+        r = hrow(ws2, r, ["Trust fund"] + [col["label"] for col in cols])
+        first_data_row = r
+        for row in tt.get("rows", []):
+            r = drow(ws2, r, row["dept"].name, *row["cells"])
+        last_data_row = r - 1
+        if tt.get("rows"):
+            r = drow(ws2, r, "Total", *tt.get("col_totals", []), bold_row=True)
+            line = LineChart(); line.title = "Receipted trust — 3-month trend"
+            data = Reference(ws2, min_col=2, max_col=1 + len(cols), min_row=first_data_row - 1, max_row=last_data_row)
+            cats = Reference(ws2, min_col=1, min_row=first_data_row, max_row=last_data_row)
+            line.add_data(data, titles_from_data=True); line.set_categories(cats)
+            line.height = 8; line.width = 16
+            ws2.add_chart(line, f"A{r + 2}")
+
+        # ---------------- Local Fund Performance (FULL listing) ----------------
+        ws3 = wb.create_sheet("Local Fund Performance")
+        r = sheet(ws3, "Local Fund Performance — full listing")
+        r = hrow(ws3, r, ["Fund", "Opening", "Receipts", "Expenses", "Closing"])
+        first_data_row = r
         for row in ctx.get("local_statement", {}).get("rows", []):
             nm = getattr(row.get("department"), "name", "") or row.get("name", "")
-            r = drow(ws3, r, nm, row.get("opening", Decimal(0)),
-                     row.get("receipts", Decimal(0)), row.get("expenses", Decimal(0)),
-                     row.get("closing", Decimal(0)))
-        tot = ctx.get("local_statement", {}).get("totals", {})
-        if tot:
-            r = drow(ws3, r, "Total", tot.get("opening", Decimal(0)),
-                     tot.get("receipts", Decimal(0)), tot.get("expenses", Decimal(0)),
-                     tot.get("closing", Decimal(0)), bold_row=True)
+            r = drow(ws3, r, nm, row.get("opening", Decimal(0)), row.get("receipts", Decimal(0)),
+                     row.get("expenses", Decimal(0)), row.get("closing", Decimal(0)),
+                     flag=(row.get("closing", 0) or 0) < 0)
+        last_data_row = r - 1
+        totloc = ctx.get("local_statement", {}).get("totals", {})
+        if totloc:
+            r = drow(ws3, r, "Total", totloc.get("opening", Decimal(0)), totloc.get("receipts", Decimal(0)),
+                     totloc.get("expenses", Decimal(0)), totloc.get("closing", Decimal(0)), bold_row=True)
+        if last_data_row >= first_data_row:
+            bar = BarChart(); bar.title = "Local fund closing balances"; bar.type = "col"
+            data = Reference(ws3, min_col=5, min_row=first_data_row - 1, max_row=min(last_data_row, first_data_row + 19))
+            cats = Reference(ws3, min_col=1, min_row=first_data_row, max_row=min(last_data_row, first_data_row + 19))
+            bar.add_data(data, titles_from_data=True); bar.set_categories(cats)
+            bar.height = 9; bar.width = 18
+            ws3.add_chart(bar, f"A{r + 2}")
 
-        # --- Camp goals ---
+        # ---------------- Expenditure Summary ----------------
+        ws4 = wb.create_sheet("Expenditure")
+        r = sheet(ws4, "Expenditure Summary — by category")
+        r = hrow(ws4, r, ["Category", "Amount"])
+        first_data_row = r
+        for row in ctx.get("lcb_expenditure", {}).get("rows", []):
+            r = drow(ws4, r, row["label"], row["total"])
+        last_data_row = r - 1
+        if ctx.get("lcb_expenditure", {}).get("rows"):
+            r = drow(ws4, r, "Total LCB expenditure", ctx["lcb_expenditure"]["total"], bold_row=True)
+            pie2 = PieChart(); pie2.title = "Expenditure by category"
+            data = Reference(ws4, min_col=2, min_row=first_data_row - 1, max_row=last_data_row)
+            cats = Reference(ws4, min_col=1, min_row=first_data_row, max_row=last_data_row)
+            pie2.add_data(data, titles_from_data=True); pie2.set_categories(cats)
+            pie2.height = 9; pie2.width = 14
+            ws4.add_chart(pie2, f"D{first_data_row}")
+
+        # ---------------- Budget & Goal Tracking ----------------
+        ws5 = wb.create_sheet("Budget & Goals")
+        r = sheet(ws5, "Budget & Goal Tracking")
+        bs = ctx.get("budget_summary")
+        if bs and bs.get("rows"):
+            r = hrow(ws5, r, ["Fund", "Budget", "Actual", "Variance", "Variance %"])
+            for row in bs["rows"]:
+                pct = row.get("variance_pct")
+                r = drow(ws5, r, row["department"].name, row["budget"], row["actual"],
+                         row["variance"], f"{float(pct):.1f}%" if pct is not None else "",
+                         flag=row.get("over"))
+            t = bs["totals"]
+            r = drow(ws5, r, "Total", t["budget"], t["actual"], t["variance"],
+                     f"{float(t['variance_pct']):.1f}%" if t.get("variance_pct") is not None else "",
+                     bold_row=True)
+            r += 2
         if ctx.get("camp_goals"):
-            ws4 = wb.create_sheet("Camp Goals")
-            r = sheet(ws4, "Camp Meeting Goals")
-            r = hrow(ws4, r, ["Goal", "Target", "Collected", "Variance", "% Complete"])
+            r = hrow(ws5, r, ["Goal", "Target", "Collected", "Variance", "% Complete"])
             for g in ctx["camp_goals"]:
-                r = drow(ws4, r, g["name"], g["goal"], g["collected"],
-                         g["variance"], f"{g['pct']}%")
+                r = drow(ws5, r, g["name"], g["goal"], g["collected"], g["variance"], f"{g['pct']}%")
+
+        # ---------------- Statement of Financial Position ----------------
+        ws6 = wb.create_sheet("Financial Position")
+        r = sheet(ws6, "Statement of Financial Position")
+        r = hrow(ws6, r, ["Item", "Amount"])
+        r = drow(ws6, r, "Cash & bank", sof.get("cash_on_hand", Decimal(0)))
+        r = drow(ws6, r, "Property (net book value)", sof.get("nbv", Decimal(0)))
+        r = drow(ws6, r, "Total assets", sof.get("total_assets", Decimal(0)), bold_row=True)
+        r = drow(ws6, r, "Trust payable — receipted", sof.get("trust_receipted", Decimal(0)))
+        r = drow(ws6, r, "Trust payable — not yet receipted", sof.get("trust_unreceipted", Decimal(0)))
+        r = drow(ws6, r, "Total liabilities", sof.get("total_liabilities", Decimal(0)), bold_row=True)
+        r = drow(ws6, r, "General net assets", sof.get("unallocated", Decimal(0)))
+        r = drow(ws6, r, "Designated development funds", sof.get("allocated", Decimal(0)))
+        r = drow(ws6, r, "Invested in property", sof.get("nbv", Decimal(0)))
+        fund_mix_row = r
+        r = drow(ws6, r, "Total net assets", sof.get("net_assets", Decimal(0)), bold_row=True)
+        pie3 = PieChart(); pie3.title = "Fund composition"
+        ws6.cell(row=r + 2, column=1, value="General")
+        ws6.cell(row=r + 2, column=2, value=float(sof.get("unallocated", 0) or 0))
+        ws6.cell(row=r + 3, column=1, value="Designated dev")
+        ws6.cell(row=r + 3, column=2, value=float(sof.get("allocated", 0) or 0))
+        ws6.cell(row=r + 4, column=1, value="Property")
+        ws6.cell(row=r + 4, column=2, value=float(sof.get("nbv", 0) or 0))
+        ws6.cell(row=r + 5, column=1, value="Trust to remit")
+        ws6.cell(row=r + 5, column=2, value=float(sof.get("trust_payable", 0) or 0))
+        data = Reference(ws6, min_col=2, min_row=r + 2, max_row=r + 5)
+        cats = Reference(ws6, min_col=1, min_row=r + 2, max_row=r + 5)
+        pie3.add_data(data); pie3.set_categories(cats)
+        pie3.height = 9; pie3.width = 14
+        ws6.add_chart(pie3, f"D{fund_mix_row}")
 
         if ctx.get("net_asset_changes"):
             nac = ctx["net_asset_changes"]
-            ws5 = wb.create_sheet("Changes in Net Assets")
-            r = sheet(ws5, "Statement of Changes in Net Assets")
-            r = hrow(ws5, r, ["Item", "Amount"])
-            r = drow(ws5, r, "Net assets at start of period", nac["opening"])
-            r = drow(ws5, r, "Surplus / (deficit) for the period", nac["surplus"])
-            r = drow(ws5, r, "Net assets at end of period", nac["closing"], bold_row=True)
+            r += 8
+            r = hrow(ws6, r, ["Changes in net assets", "Amount"])
+            r = drow(ws6, r, "Net assets at start of period", nac["opening"])
+            r = drow(ws6, r, "Surplus / (deficit) for the period", nac["surplus"])
+            r = drow(ws6, r, "Net assets at end of period", nac["closing"], bold_row=True)
+
+        # ---------------- Cash Flow ----------------
+        ws7 = wb.create_sheet("Cash Flow")
+        r = sheet(ws7, "Cash Flow Statement")
+        cf = ctx.get("cashflow") or {}
+        r = hrow(ws7, r, ["Item", "Amount"])
+        r = drow(ws7, r, "Local receipts", cf.get("local_receipts", Decimal(0)))
+        r = drow(ws7, r, "Trust receipts", cf.get("trust_receipts", Decimal(0)))
+        r = drow(ws7, r, "Operating expenses paid", -(cf.get("operating_exp", Decimal(0))))
+        r = drow(ws7, r, "Remittances to field", -(cf.get("remittances", Decimal(0))))
+        r = drow(ws7, r, "Net operating cash", cf.get("net_operating", Decimal(0)), bold_row=True)
+        r = drow(ws7, r, "Capital expenditure", -(cf.get("capital", Decimal(0))))
+        r = drow(ws7, r, "Net change in cash", cf.get("net_change", Decimal(0)), bold_row=True)
+        r = drow(ws7, r, "Cash at start of period", cf.get("cash_open", Decimal(0)))
+        r = drow(ws7, r, "Cash at end of period", cf.get("cash_close", Decimal(0)))
+
+        # ---------------- Bank Reconciliation ----------------
+        ws8 = wb.create_sheet("Bank Reconciliation")
+        r = sheet(ws8, "Bank Reconciliation")
+        rec = ctx.get("recon")
+        if rec:
+            r = hrow(ws8, r, ["Item", "Amount"])
+            r = drow(ws8, r, "Statement date", str(rec.statement_date))
+            r = drow(ws8, r, "Balance per bank statement", rec.bank_balance)
+            r = drow(ws8, r, "Adjusted bank balance", rec.adjusted_balance)
+            r = drow(ws8, r, "Balance per cash book", rec.book_balance or Decimal(0))
+            r = drow(ws8, r, "Difference", rec.difference or Decimal(0), bold_row=True,
+                     flag=not rec.is_reconciled)
+            r = drow(ws8, r, "Status", "Reconciled" if rec.is_reconciled else "Not yet balanced")
+        else:
+            ws8.cell(row=r, column=1, value="No bank reconciliation recorded yet for this period.")
+
+        # ---------------- Board Decisions Required ----------------
+        ws9 = wb.create_sheet("Board Decisions")
+        r = sheet(ws9, "Board Decisions Required")
+        for i, d in enumerate(ctx.get("decisions", []), 1):
+            ws9.cell(row=r, column=1, value=f"{i}. {d['title']}").font = bold
+            r += 1
+            ws9.cell(row=r, column=1, value=d["detail"])
+            r += 2
 
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
         fname = f"treasurer_report_{ctx['end']:%Y_%m}.xlsx"
@@ -3586,10 +3803,18 @@ class MonthlyReportExcelView(ReadAccessMixin, View):
 class MonthlyReportWordView(ReadAccessMixin, View):
     """Download the Monthly Treasurer's Report as a Word document. Rendered as a
     Word-compatible HTML document (opens natively in Microsoft Word) so it needs
-    no extra library on the server."""
+    no extra library on the server. Mirrors the on-screen report's structure —
+    executive summary, then each management section with its own narrative —
+    and adds a fuller per-section analysis paragraph (server-side, LLM-enriched
+    with a rule-based fallback; see MonthlyTreasurerReportView._ai_narratives)."""
     def get(self, request):
         from django.http import HttpResponse
-        ctx = _monthly_report_context(request)
+        view = MonthlyTreasurerReportView()
+        view.request = request
+        view.kwargs = {}
+        view.args = ()
+        ctx = view.get_context_data()
+        ctx["narratives"] = view._ai_narratives(ctx)
         html = render(request, "reports/monthly_treasurer_word.html", ctx).content
         fname = f"treasurer_report_{ctx['end']:%Y_%m}.doc"
         resp = HttpResponse(html, content_type="application/msword")
@@ -3597,104 +3822,3 @@ class MonthlyReportWordView(ReadAccessMixin, View):
         return resp
 
 
-class MonthlyReportRtfView(ReadAccessMixin, View):
-    """Download the Monthly Treasurer's Report as an RTF document. RTF opens
-    cleanly in Apple Pages, Microsoft Word, LibreOffice and Google Docs, so Mac
-    users get a natively-editable file with no extra server library."""
-
-    def get(self, request):
-        from django.http import HttpResponse
-        ctx = _monthly_report_context(request)
-
-        def esc(s):
-            out = []
-            for ch in str(s):
-                o = ord(ch)
-                if ch in "\\{}":
-                    out.append("\\" + ch)
-                elif o > 127:
-                    out.append(f"\\u{o}?")
-                else:
-                    out.append(ch)
-            return "".join(out)
-
-        def money(v):
-            try:
-                return f"{float(v):,.0f}"
-            except (TypeError, ValueError):
-                return str(v)
-
-        p = [r"{\rtf1\ansi\ansicpg1252\deff0"
-             r"{\fonttbl{\f0\fswiss Calibri;}{\f1\froman Georgia;}}"]
-        p.append(r"\pard\qc\f1\b\fs32 " + esc(ctx.get("church") or "Church Treasury")
-                 + r"\b0\par")
-        p.append(r"\qc\fs26 Monthly Treasurer's Report\par")
-        p.append(r"\qc\fs18 For the month of " + esc(f"{ctx['end']:%B %Y}")
-                 + r" \'b7 prepared " + esc(f"{ctx['today']:%d %b %Y}")
-                 + r"\par\pard\fs20 ")
-        if ctx.get("ai_summary"):
-            p.append(r"\par\i " + esc(ctx["ai_summary"]) + r"\i0\par")
-
-        def heading(n):
-            p.append(r"\par\f1\b\fs24 " + esc(n) + r"\b0\f0\fs20\par")
-
-        tabdef = r"\tqr\tx8000 "
-
-        def row(label, value, bold=False):
-            b = r"\b " if bold else ""
-            b0 = r"\b0 " if bold else ""
-            p.append(b + esc(label) + r"\tab " + money(value) + b0 + r"\par")
-
-        heading("1. Collections summary")
-        p.append(tabdef)
-        for r_ in ctx.get("collections", {}).get("rows", []):
-            if r_.get("receipts"):
-                row(r_["department"].name, r_["receipts"])
-        row("Total collections", ctx.get("collections", {}).get("total", 0), bold=True)
-
-        isr = ctx.get("income_stmt") or {}
-        heading("2. Income and expenditure statement")
-        p.append(tabdef)
-        row("Local income", isr.get("income", 0))
-        row("Operating expenditure", -(isr.get("expense", 0) or 0))
-        row("Surplus / (deficit)", isr.get("surplus", 0), bold=True)
-
-        heading("3. Local fund movements")
-        p.append(tabdef)
-        for r_ in ctx.get("local_statement", {}).get("rows", []):
-            row(r_["department"].name, r_.get("closing", 0))
-        row("Total", ctx.get("local_statement", {}).get("totals", {}).get("closing", 0),
-            bold=True)
-
-        sofp = ctx.get("sofp") or {}
-        heading("4. Statement of financial position")
-        p.append(tabdef)
-        row("Cash and bank", sofp.get("cash_on_hand", sofp.get("cash", 0)))
-        if sofp.get("nbv"):
-            row("Property (net book value)", sofp.get("nbv", 0))
-        row("Trust funds payable", sofp.get("trust_payable", sofp.get("trust_liab", 0)))
-        row("General net assets", sofp.get("unallocated", 0))
-        row("Designated development funds", sofp.get("allocated", 0))
-        row("Total net assets", sofp.get("net_assets", 0), bold=True)
-
-        nac = ctx.get("net_asset_changes")
-        if nac:
-            heading("5. Statement of changes in net assets")
-            p.append(tabdef)
-            row("Net assets at start of period", nac["opening"])
-            row("Surplus / (deficit) for the period", nac["surplus"])
-            row("Net assets at end of period", nac["closing"], bold=True)
-
-        if ctx.get("camp_goals"):
-            heading("6. Camp Meeting goals")
-            p.append(tabdef)
-            for g in ctx["camp_goals"]:
-                row(f"{g['name']} ({g['pct']}%)", g["goal"])
-
-        p.append(r"\par\par\pard Treasurer: ________________"
-                 r"\tab Reviewed by: ________________\par}")
-
-        fname = f"treasurer_report_{ctx['end']:%Y_%m}.rtf"
-        resp = HttpResponse("\n".join(p), content_type="application/rtf")
-        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
-        return resp

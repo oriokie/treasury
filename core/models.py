@@ -28,6 +28,25 @@ class SiteConfig(models.Model):
     report_footer_note = models.CharField(
         max_length=200, blank=True,
         help_text="Optional note printed at the foot of reports (e.g. a motto or verse).")
+    receipt_strip_strings = models.TextField(
+        blank=True,
+        help_text="One phrase per line. These are removed from bank/M-Pesa receipt "
+                  "messages when they are saved (e.g. the 'never share your PIN' "
+                  "boilerplate), keeping stored receipts short and readable.")
+
+    # --- Church-wide goals (Camp Meeting) ---
+    # --- Camp Meeting Offering goal (church-wide, Trust fund) ---
+    # This is a single church-wide trust-fund target, so it's configured here
+    # rather than on any individual fund. The Camp Meeting EXPENSE goal (a
+    # Local fund) and every dev-group/sub-account goal stay on the fund itself
+    # — only this one trust-fund figure moves to settings.
+    camp_offering_fund = models.ForeignKey(
+        "departments.Department", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+", limit_choices_to={"fund_type": "TRUST"},
+        help_text="The Trust fund collecting the Camp Meeting offering.")
+    camp_offering_goal = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="This year's Camp Meeting Offering goal.")
 
     # --- Feature toggles ---
     require_expense_approval = models.BooleanField(

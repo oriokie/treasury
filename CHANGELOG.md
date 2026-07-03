@@ -1,5 +1,42 @@
 # Changelog
 
+## v2.0.0 - reconciliation fix, board report rework, remittance batch matching, camp goal settings, and more
+- **Bank reconciliation fix**: petty-cash-funded outstanding staff advances were never added to the
+  reconciliation worksheet — the petty float already subtracted them (cash had left the box), but nothing
+  added them back as their own item, so that money silently vanished from the reconciliation. New
+  `outstanding_petty_advances_total()` adds a "Staff advances from petty cash (not yet accounted)" managed
+  item; `outstanding_bank_advances_total()` also now respects top-up dates properly.
+- **Monthly Treasurer's Report — RTF removed**, Excel rebuilt with full detail (every fund listed, not the
+  on-screen top-10), native charts (pie/bar/line) on Collections, Trust Trend, Local Funds, Expenditure and
+  Financial Position, and a KPI-card Executive Summary sheet. Word export rewritten to mirror the on-screen
+  report's structure (Executive Summary, each management section, Board Decisions Required) and now carries a
+  per-section analysis paragraph — computed server-side (`_ai_narratives`), LLM-enriched in one batched call
+  when the assistant is enabled, always falling back to the same rule-based text already used on screen.
+- **Trust remittance — batch matching**: a new "settle a batch (multi-fund)" option on the debits queue
+  matches a bank payment to an open remittance batch, marking every trust fund's line PAID and charging each
+  fund its own share, instead of forcing the whole payment onto one fund. Amount mismatches are rejected with
+  a clear message.
+- Fund Ledger sub-accounts now sort by closing balance (largest first) instead of receipts.
+- **Camp Meeting Offering goal moved to Settings** (new Goals tab): a single church-wide Trust-fund figure,
+  no longer set per fund. The Camp Meeting *Expense* goal and every fund's own budget/goals stay on that
+  fund's own page. Data migration moves any existing configuration across; migrations core 0043-0045.
+- New Settings field: strings to strip from saved bank/M-Pesa receipt messages (e.g. "never share your PIN"
+  boilerplate), applied on every save, plus a "clean up already-saved messages" button to re-run it over
+  everything already imported.
+- Receipt/supporting-document uploads capped at 1MB (was 10MB) across every upload point.
+- Supporting Documents PDF now only includes expenses with an actual file attachment (text/link-only
+  attachments are covered by the Receipts view instead). Fixed a Django ORM gotcha along the way:
+  `.exclude()` on a to-many relation excludes the *parent* if it has *any* matching related row, so an
+  expense with one real file and one text-only attachment was being wrongly dropped entirely.
+- Treasurer dashboard: the Latest Sabbath date now follows your font setting instead of a hardcoded font; the
+  combined receipts-vs-expenses-by-month chart moved to the Executive overview showing the full year (was
+  just the dashboard's selected period); its old spot is now a local-vs-trust pie chart for the selected
+  month.
+- Tests: ~55 new tests across statements, giving, reports, cashbook and core; 5 pre-existing tests updated
+  for the redesign. Full regression green (statements 73, giving 114, cashbook 198, reports 225, core 178,
+  leaders+members 85).
+- Deploy: migrate (core 0043-0045), collectstatic (CSS/template changes).
+
 ## v1.99.1 - fix attachment popovers opening by default on the expense list
 - Fix: `.clip-pop{display:flex}` was an unconditional CSS rule, so it overrode the browser's default
   `[hidden]{display:none}` styling on every popover (author styles beat user-agent styles at equal
