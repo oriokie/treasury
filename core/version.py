@@ -38,6 +38,15 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.2.0": "Fixed the receipt strip-strings wildcard, which was matching almost nothing: a phrase with "
+             "slightly different spacing than the real message would silently fail entirely, and a wildcard "
+             "over an amount like 499,900.00 stopped at the decimal point instead of the full number - both "
+             "fixed. New server-side JPEG chart for a fund's Group Contribution Goals. The Members SMS page "
+             "gained a minimum-contributions filter, to exclude one-time givers who may not be church members. "
+             "Fixed the Camp Meeting Expense Goal silently vanishing from reports when more than one fund was "
+             "flagged as the camp fund. The Monthly Treasurer's Report and its Word export now show fund names "
+             "in Sentence case instead of ALL CAPS, and the Word export gained chart images with an AI-analysis "
+             "caption under each one.",
     "2.1.0": "New expense categories (Salaries/Wages, Lease Payment). Bank/transaction charges no longer show "
              "as needing a receipt on the expense list or its detail page. New Members page SMS button for "
              "criteria-based messaging - not yet contributed to a campaign, outstanding pledge, no recent "

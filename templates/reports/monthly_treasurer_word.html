@@ -1,4 +1,4 @@
-{% load humanize %}<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+{% load humanize treasury_extras %}<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
 <head><meta charset="utf-8">
 <style>
 @page { size: A4; margin: 2cm; }
@@ -60,23 +60,25 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 
 <h3>Collections summary</h3>
 <p class="narrative">{{ narratives.collections }}</p>
+{% if chart_collections_mix %}<img src="{{ chart_collections_mix }}" style="width:100%;max-width:560px" alt="Collections local vs trust chart">
+<p class="note">✦ AI analysis: {{ insights.collections|default:narratives.collections }}</p>{% endif %}
 <table><tr><th>Fund</th><th class="num">Amount</th></tr>
-{% for r in collection_detail.trust %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
-{% for r in collection_detail.local %}<tr><td>{{ r.department.name }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
+{% for r in collection_detail.trust %}<tr><td>{{ r.department.name|sentence_fund }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
+{% for r in collection_detail.local %}<tr><td>{{ r.department.name|sentence_fund }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
 <tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:2|intcomma }}</td></tr>
 </table>
 
 <h3>Trust fund performance</h3>
 <p class="narrative">{{ narratives.trust_trend }}</p>
 <table><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr>
-{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endfor %}
+{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name|sentence_fund }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endfor %}
 {% if trust_trend.rows %}<tr class="total"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endif %}
 </table>
 
 <h3>Local fund performance</h3>
 <p class="narrative">{{ narratives.local_statement }}</p>
 <table><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr>
-{% for r in local_statement.rows %}<tr><td>{{ r.department.name }}{% if r.closing < 0 %} (overdrawn){% endif %}</td>
+{% for r in local_statement.rows %}<tr><td>{{ r.department.name|sentence_fund }}{% if r.closing < 0 %} (overdrawn){% endif %}</td>
   <td class="num">{{ r.opening|floatformat:2|intcomma }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td>
   <td class="num">{{ r.expenses|floatformat:2|intcomma }}</td><td class="num">{{ r.closing|floatformat:2|intcomma }}</td></tr>{% endfor %}
 {% if local_statement.rows %}<tr class="grand"><td>Total</td>
@@ -88,6 +90,8 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 
 <h3>Expenditure summary</h3>
 <p class="narrative">{{ narratives.lcb_expenditure }}</p>
+{% if chart_income_exp %}<img src="{{ chart_income_exp }}" style="width:100%;max-width:700px" alt="Income vs expenditure chart">
+<p class="note">✦ AI analysis: {{ insights.income }}</p>{% endif %}
 <table><tr><th>Category</th><th class="num">Amount</th></tr>
 {% for c in lcb_expenditure.rows %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|floatformat:2|intcomma }}</td></tr>{% endfor %}
 {% if lcb_expenditure.rows %}<tr class="grand"><td>Total LCB expenditure</td><td class="num">{{ lcb_expenditure.total|floatformat:2|intcomma }}</td></tr>{% endif %}
@@ -95,7 +99,7 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 
 <h3>Budget &amp; goal tracking</h3>
 {% if budget_summary.rows %}<table><tr><th>Fund</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th></tr>
-{% for r in budget_summary.rows %}<tr><td>{{ r.department.name }}{% if r.over %} (over){% endif %}</td>
+{% for r in budget_summary.rows %}<tr><td>{{ r.department.name|sentence_fund }}{% if r.over %} (over){% endif %}</td>
   <td class="num">{{ r.budget|floatformat:2|intcomma }}</td><td class="num">{{ r.actual|floatformat:2|intcomma }}</td>
   <td class="num">{{ r.variance|floatformat:2|intcomma }}</td></tr>{% endfor %}
 <tr class="grand"><td>Total</td><td class="num">{{ budget_summary.totals.budget|floatformat:2|intcomma }}</td>
@@ -105,7 +109,10 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 {% if camp_goals %}<table><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">% complete</th></tr>
 {% for g in camp_goals %}<tr><td>{{ g.name }}</td><td class="num">{{ g.goal|floatformat:2|intcomma }}</td>
   <td class="num">{{ g.collected|floatformat:2|intcomma }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
-</table>{% endif %}
+</table>
+{% if chart_camp_goal %}<img src="{{ chart_camp_goal }}" style="width:100%;max-width:700px;margin-top:8pt" alt="Camp Meeting Expense Goal progress chart">
+<p class="note">✦ AI analysis: {{ insights.camp }}</p>{% endif %}
+{% endif %}
 
 <h3>Statement of financial position</h3>
 <p class="narrative">{{ narratives.sofp }}</p>

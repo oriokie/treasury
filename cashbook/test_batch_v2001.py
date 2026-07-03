@@ -186,3 +186,45 @@ class DynamicReceiptStripTests(TestCase):
         self.cfg.save()
         cleaned = clean_receipt_text("Paid ok. Please NEVER share your PIN with anyone.")
         self.assertNotIn("NEVER share", cleaned)
+
+
+class ReceiptStripWhitespaceAndAmountFixTests(TestCase):
+    """Regression: (a) a configured pattern with slightly different spacing
+    than the actual message (single vs double space) must still match, and
+    (b) a wildcard covering an amount with an internal decimal point (e.g.
+    499,900.00) must consume the whole number, not stop at the first period."""
+    def setUp(self):
+        self.cfg = SiteConfig.get()
+
+    def test_exact_user_reported_case(self):
+        self.cfg.receipt_strip_strings = (
+            "New M-PESA balance is Ksh*. Transaction cost, Ksh*.  "
+            "Amount you can transact within the day is *.")
+        self.cfg.save()
+        msg = ("New M-PESA balance is Ksh5,954.00. Transaction cost, Ksh0.00. "
+               "Amount you can transact within the day is 499,900.00.")
+        self.assertEqual(clean_receipt_text(msg), "")
+
+    def test_whitespace_mismatch_still_matches(self):
+        # double space in the configured pattern, single space in the message
+        self.cfg.receipt_strip_strings = "Please  NEVER share your PIN"
+        self.cfg.save()
+        cleaned = clean_receipt_text("Paid ok. Please NEVER share your PIN with anyone.")
+        self.assertNotIn("NEVER share", cleaned)
+
+    def test_amount_with_internal_period_fully_consumed(self):
+        self.cfg.receipt_strip_strings = "balance is Ksh*."
+        self.cfg.save()
+        cleaned = clean_receipt_text("Info. balance is Ksh499,900.00.")
+        self.assertEqual(cleaned, "Info.")
+
+    def test_boilerplate_stripped_leaves_real_receipt_intact(self):
+        self.cfg.receipt_strip_strings = (
+            "New M-PESA balance is Ksh*. Transaction cost, Ksh*.  "
+            "Amount you can transact within the day is *.")
+        self.cfg.save()
+        msg = ("QGH7X8 Confirmed. You have paid Ksh500.00 to Jane Doe. "
+               "New M-PESA balance is Ksh5,954.00. Transaction cost, Ksh0.00. "
+               "Amount you can transact within the day is 499,900.00.")
+        cleaned = clean_receipt_text(msg)
+        self.assertEqual(cleaned, "QGH7X8 Confirmed. You have paid Ksh500.00 to Jane Doe.")

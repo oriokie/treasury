@@ -34,7 +34,9 @@
 {% endif %}
 </div>
 
-<div class="card u-mt"><div class="hd">Group Contribution Goals {{ year }}</div><div class="bd">
+<div class="card u-mt"><div class="hd u-between">Group Contribution Goals {{ year }}
+  {% if group_rows %}<a class="btn btn-sm btn-ghost no-print" href="{% url 'group_goals_jpeg' dept.id %}?year={{ year }}" title="Download as a JPEG image">⤓ JPEG</a>{% endif %}
+</div><div class="bd">
   <p class="help u-mt-0">Each development group has its own contribution goal. Progress is each group's own collection toward its target.</p>
   {% if group_rows %}
   <table class="ledger compact u-mt"><thead><tr><th>Group</th><th class="num">Goal</th><th class="num">Collected {{ year }}</th><th class="num">To go</th><th style="width:120px">Progress</th></tr></thead><tbody>

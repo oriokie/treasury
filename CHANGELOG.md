@@ -1,5 +1,33 @@
 # Changelog
 
+## v2.2.0 - receipt-strip wildcard fix, JPEG goal chart, member giving-count filter, board report case + charts
+- Fix: the receipt strip-strings `*` wildcard was matching almost nothing. Two separate bugs: (1) whitespace
+  in the configured phrase had to match the message exactly character-for-character, so a pattern typed with
+  a double space against a message with a single space (a very easy copy-paste slip) silently failed to
+  match at all; (2) the wildcard was non-greedy, so over an amount containing its own decimal point (e.g.
+  "499,900.00") it stopped at the *first* period it found instead of the sentence's real full stop, leaving
+  a fragment like "00." behind. Whitespace in a configured phrase now matches any run of whitespace in the
+  message, and the wildcard is greedy so it correctly consumes the whole varying value.
+- New server-side JPEG chart for a fund's Group Contribution Goals (`/reports/fund/<id>/budget/group-goals.jpg`):
+  a proper per-group progress bar chart rendered with Pillow, not a table screenshot — same everywhere it's
+  downloaded from, no client-side rendering needed.
+- Members SMS page (`/members/sms/`) gained a "minimum contributions on record" filter, layered on top of
+  any criterion (including the plain broadcast), to exclude one-time givers who may not be church members.
+- Fix: `_camp_goal_records()` picked whichever CAMP_EXPENSE-flagged fund an unordered `.first()` happened to
+  return, which is not guaranteed stable — if more than one fund was (mis)flagged, or the one returned had no
+  `year_goal` set, the Camp Meeting Expense Goal would silently disappear from every report. Now deterministic:
+  prefers the fund that actually has a goal set.
+- Monthly Treasurer's Report (HTML and Word) and the classic board report now display fund/member names in
+  Sentence case via a new `sentence_fund` filter, instead of the ALL CAPS many were originally entered in
+  (short acronyms like AMM/LCB/PF are kept as-is).
+- Word export gained three chart images (income vs expenditure, collections local/trust split, Camp Meeting
+  Expense Goal progress when applicable), rendered server-side with Pillow and embedded as base64 — Word
+  can't run the on-screen report's JS charts — each with a short AI-analysis caption (server-side, LLM-
+  enriched with a rule-based fallback, same pattern as the per-section narratives).
+- Tests: ~35 new tests across cashbook, reports, members. Full regression green (cashbook 220, reports 238,
+  members 40, giving 114, core 178).
+- Deploy: no migration; collectstatic not required.
+
 ## v2.1.0 - expense categories, member SMS, remittance-batch fix, camp goal bug fix, dynamic receipt stripping
 - New expense categories: Salaries/Wages, Lease Payment (Stationery/Printing already existed).
 - Bank/transaction charges (category BANK_CHARGE) no longer show a "no receipt" pill on the expense list, and

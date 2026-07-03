@@ -2145,7 +2145,7 @@ class BoardReportView(PeriodMixin, TemplateView):
             f"Net assets: {f(ctx['sofp']['net_assets'])}",
             f"Trust outstanding to remit: {f(ctx['trust_outstanding'])}",
             "Top funds by receipts: " + "; ".join(
-                f"{r['department'].name} {f(r['receipts'])}" for r in top if r["receipts"]),
+                f"{_sfund(r['department'].name)} {f(r['receipts'])}" for r in top if r["receipts"]),
         ]
         if len(ctx["trend"]) > 1:
             lines.append("Year trend (income): " + "; ".join(
@@ -2153,7 +2153,7 @@ class BoardReportView(PeriodMixin, TemplateView):
         deficits = [r for r in ctx["local_rows"] if r["closing"] < 0]
         if deficits:
             lines.append("Funds in deficit: " + "; ".join(
-                f"{r['department'].name} {f(r['closing'])}" for r in deficits[:6]))
+                f"{_sfund(r['department'].name)} {f(r['closing'])}" for r in deficits[:6]))
         return "\n".join(lines)
 
     def _fallback(self, ctx, label, income, expenditure):
@@ -2170,7 +2170,7 @@ class BoardReportView(PeriodMixin, TemplateView):
              "\nKey insights:"]
         if top:
             p.append("- Largest funds: " + ", ".join(
-                f"{r['department'].name} ({f(r['receipts'])})" for r in top) + ".")
+                f"{_sfund(r['department'].name)} ({f(r['receipts'])})" for r in top) + ".")
         p.append(f"- Trust outstanding to remit: {f(ctx['trust_outstanding'])}.")
         if deficits:
             p.append("- Funds in deficit: " + ", ".join(
@@ -2935,6 +2935,14 @@ class FundThankSmsView(ReadAccessMixin, TemplateView):
         return redirect(f"{reverse('report_fund', kwargs={'pk': dept.id})}?start={start}&end={end}")
 
 
+def _sfund(name):
+    """Sentence-case a fund/department name for narrative text (many are
+    stored in ALL CAPS). Same rule as the `sentence_fund` template filter —
+    kept in sync so Python-built narrative strings match table cells."""
+    from core.templatetags.treasury_extras import sentence_fund
+    return sentence_fund(name)
+
+
 def _camp_goal_records(year):
     """Camp Meeting expense goal (Local fund flagged CAMP_EXPENSE, aggregated over
     its sub-accounts, unchanged) paired with the Camp Meeting Offering goal — a
@@ -2966,8 +2974,15 @@ def _camp_goal_records(year):
                 "short": max(goal - col, Decimal(0))}
 
     rows = []
-    camp = _D.objects.filter(active=True, goal_type="CAMP_EXPENSE").prefetch_related(
-        "subgroups").first()
+    # deterministic + defensive: if more than one fund is (mis)flagged
+    # CAMP_EXPENSE, prefer the one that actually has a goal set rather than
+    # an arbitrary DB-order pick (an unordered .first() is not guaranteed
+    # stable across databases, and picking one with no year_goal would make
+    # the goal silently vanish from every report even though it's really set
+    # on a different fund).
+    camp = (_D.objects.filter(active=True, goal_type="CAMP_EXPENSE")
+            .prefetch_related("subgroups")
+            .order_by("-year_goal", "id").first())
     if camp and camp.year_goal:
         rows.append(_row("Camp Meeting Expense Goal", "Expense (local)",
                          camp.year_goal, camp))
@@ -3328,7 +3343,7 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                 top_fund = max(pool, key=lambda r: r["receipts"])
             if top_fund:
                 highlights.append(
-                    f"Largest receiving fund this month: {top_fund['department'].name} "
+                    f"Largest receiving fund this month: {_sfund(top_fund['department'].name)} "
                     f"({float(top_fund['receipts']):,.0f}).")
         except Exception:  # noqa: BLE001
             pass
@@ -3355,7 +3370,7 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             neg = [r for r in (ctx.get("local_statement") or {}).get("rows", [])
                    if (r.get("closing") or 0) < 0]
             if neg:
-                names = ", ".join(f"{r['department'].name} ({float(r['closing']):,.0f})"
+                names = ", ".join(f"{_sfund(r['department'].name)} ({float(r['closing']):,.0f})"
                                   for r in neg[:5])
                 attention.append({"severity": "high", "title": "Negative fund balance(s)",
                                   "detail": f"{len(neg)} local fund(s) are overdrawn: {names}"
@@ -3379,7 +3394,7 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             bs = ctx.get("budget_summary")
             over_rows = [r for r in (bs or {}).get("rows", []) if r["over"]] if bs else []
             if over_rows:
-                names = ", ".join(f"{r['department'].name} (over by "
+                names = ", ".join(f"{_sfund(r['department'].name)} (over by "
                                   f"{abs(float(r['variance'])):,.0f})" for r in over_rows[:5])
                 attention.append({"severity": "medium", "title": "Budget overrun this month",
                                   "detail": f"{len(over_rows)} fund(s) exceeded their prorated "
@@ -3806,15 +3821,49 @@ class MonthlyReportWordView(ReadAccessMixin, View):
     no extra library on the server. Mirrors the on-screen report's structure —
     executive summary, then each management section with its own narrative —
     and adds a fuller per-section analysis paragraph (server-side, LLM-enriched
-    with a rule-based fallback; see MonthlyTreasurerReportView._ai_narratives)."""
+    with a rule-based fallback; see MonthlyTreasurerReportView._ai_narratives)
+    plus a few chart images — Word can't run the on-screen report's JS charts,
+    so these are rendered server-side with Pillow and embedded as base64."""
     def get(self, request):
         from django.http import HttpResponse
+        from decimal import Decimal
+        from reports.services.chart_image import bar_chart, donut_or_split
         view = MonthlyTreasurerReportView()
         view.request = request
         view.kwargs = {}
         view.args = ()
         ctx = view.get_context_data()
         ctx["narratives"] = view._ai_narratives(ctx)
+
+        isr = ctx["income_stmt"]; c = ctx["collections"]
+        try:
+            ctx["chart_income_exp"] = bar_chart(
+                "Income vs expenditure",
+                [("Income", isr.get("income", 0), (31, 95, 79)),
+                 ("Expenditure", isr.get("expense", 0), (179, 38, 30)),
+                 ("Surplus / (deficit)", isr.get("surplus", 0), (176, 125, 44))])
+        except Exception:  # noqa: BLE001 — a chart failing must never break the export
+            ctx["chart_income_exp"] = None
+        try:
+            ctx["chart_collections_mix"] = donut_or_split(
+                "Collections — local vs trust",
+                [("Local", c.get("local", 0) or Decimal(0), (31, 95, 79)),
+                 ("Trust", c.get("trust", 0) or Decimal(0), (176, 125, 44))])
+        except Exception:  # noqa: BLE001
+            ctx["chart_collections_mix"] = None
+        try:
+            camp = next((g for g in (ctx.get("camp_goals") or [])
+                        if "Expense" in g["name"]), None)
+            if camp and camp["goal"]:
+                ctx["chart_camp_goal"] = bar_chart(
+                    "Camp Meeting Expense Goal — progress",
+                    [("Collected", camp["collected"], (31, 95, 79)),
+                     ("Target", camp["goal"], (176, 125, 44))])
+            else:
+                ctx["chart_camp_goal"] = None
+        except Exception:  # noqa: BLE001
+            ctx["chart_camp_goal"] = None
+
         html = render(request, "reports/monthly_treasurer_word.html", ctx).content
         fname = f"treasurer_report_{ctx['end']:%Y_%m}.doc"
         resp = HttpResponse(html, content_type="application/msword")

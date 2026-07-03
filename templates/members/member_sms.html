@@ -42,6 +42,13 @@
       <input type="number" name="days" class="field" value="{{ days }}" onchange="this.form.submit()">
       <input type="hidden" name="criteria" value="no_recent_giving"></div>
     {% endif %}
+
+    {% if criteria %}
+    <div class="form-row"><label>Minimum contributions on record</label>
+      <input type="number" name="min_gifts" class="field" value="{{ min_gifts }}" min="0" onchange="this.form.submit()">
+      <div class="help u-xs">Optional — excludes members with fewer gifts than this on record (any fund, all time), so one-time givers who may not be church members aren't messaged.</div>
+      <input type="hidden" name="criteria" value="{{ criteria }}"></div>
+    {% endif %}
   </div>
   </div>
 </form>
@@ -53,6 +60,7 @@
   {% if selected_campaign %}<input type="hidden" name="campaign" value="{{ selected_campaign.id }}">{% endif %}
   {% if selected_group %}<input type="hidden" name="group" value="{{ selected_group }}">{% endif %}
   {% if criteria == "no_recent_giving" %}<input type="hidden" name="days" value="{{ days }}">{% endif %}
+  {% if min_gifts %}<input type="hidden" name="min_gifts" value="{{ min_gifts }}">{% endif %}
   <div class="card u-mt"><div class="hd">Message</div><div class="bd">
     <p class="help u-mt-0">Placeholders: <span class="mono">{name}</span>, <span class="mono">{church}</span>{% if criteria == "not_contributed_campaign" %}, <span class="mono">{campaign}</span>{% endif %}{% if criteria == "outstanding_pledge" %}, <span class="mono">{amount}</span>{% endif %} — filled per member.</p>
     <textarea name="template" rows="3" class="field" style="width:100%">{{ template }}</textarea>

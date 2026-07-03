@@ -419,11 +419,19 @@ def clean_receipt_text(text):
     receipt messages') from a pasted bank/M-Pesa message — e.g. the 'never share
     your PIN' warning banks append to every SMS — then tidy leftover whitespace.
 
-    A phrase is normally matched literally. Use `*` as a wildcard for parts that
-    change every time (an amount, a balance, a link code): it matches any run of
-    characters. For example
+    A phrase is normally matched literally, EXCEPT that any run of whitespace in
+    the configured phrase matches any run of whitespace in the message (a single
+    space matches a double space and vice versa) — receipts are often re-typed
+    or copy-pasted with slightly different spacing, and a phrase that looks
+    identical to the eye but differs by one space would otherwise silently fail
+    to match at all.
+
+    Use `*` as a wildcard for parts that change every time (an amount, a
+    balance, a link code): it greedily matches any run of characters up to
+    the next fixed part of the phrase. For example
         New M-PESA balance is Ksh*. Transaction cost, Ksh*.
-    strips that whole sentence regardless of what the actual figures are.
+    strips that whole sentence regardless of what the actual figures are —
+    including when an amount itself contains a period, like "8,376.00".
     """
     import re
     if not text:
@@ -436,15 +444,23 @@ def clean_receipt_text(text):
     for phrase in (p.strip() for p in raw.splitlines()):
         if not phrase:
             continue
-        if "*" in phrase:
-            # wildcard phrase -> build a regex: literal segments escaped,
-            # "*" becomes a non-greedy "match anything" gap so the varying
-            # part (an amount, a code, a balance) is skipped over.
-            segments = phrase.split("*")
-            pattern = r".*?".join(re.escape(seg) for seg in segments)
+        # tokenize on "*" (wildcard) and runs of whitespace (space-tolerant),
+        # escaping every other literal chunk, then rebuild as a single regex.
+        # The wildcard is GREEDY (not "*?"): a non-greedy match stops at the
+        # *first* occurrence of the next literal character, which breaks on
+        # an amount like "499,900.00" followed by a literal "." — it would
+        # stop at the internal decimal point instead of the sentence's own
+        # full stop. Greedy correctly consumes the whole number.
+        tokens = re.split(r"(\*|\s+)", phrase)
+        pattern = "".join(
+            r".*" if tok == "*" else
+            r"\s+" if tok and tok.isspace() else
+            re.escape(tok)
+            for tok in tokens if tok)
+        try:
             text = re.sub(pattern, "", text, flags=re.IGNORECASE)
-        else:
-            text = re.sub(re.escape(phrase), "", text, flags=re.IGNORECASE)
+        except re.error:
+            continue   # a malformed phrase must never break the save
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

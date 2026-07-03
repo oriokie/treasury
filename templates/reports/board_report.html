@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Board report · {{ SITE_NAME }}{% if bvis.signatures %}{% include "ui/print_signatures.html" %}{% endif %}
 {% endblock %}
 {% block content %}
@@ -58,7 +58,7 @@
 <div class="table-wrap"><table class="ledger compact">
   <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
   <tbody>
-  {% for r in local_rows %}<tr><td>{{ r.department.name }}</td>
+  {% for r in local_rows %}<tr><td>{{ r.department.name|sentence_fund }}</td>
     <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
     <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
     <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
@@ -76,7 +76,7 @@
 <div class="table-wrap"><table class="ledger compact">
   <thead><tr><th>Trust fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Remitted</th><th class="num">To remit</th></tr></thead>
   <tbody>
-  {% for r in trust_summary %}<tr><td>{{ r.department.name }}</td>
+  {% for r in trust_summary %}<tr><td>{{ r.department.name|sentence_fund }}</td>
     <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
     <td class="num mono">{{ r.collected|floatformat:0|intcomma }}</td>
     <td class="num mono">{{ r.remitted|floatformat:0|intcomma }}</td>

@@ -289,6 +289,31 @@ class MemberSmsView(TreasurerRequiredMixin, View):
         }, Campaign.objects.filter(active=True).order_by("name")
 
     def _recipients(self, request_data):
+        """Return (queryset_of_members, extra_ctx) for the chosen criterion,
+        further narrowed by the optional 'minimum contributions' filter (to
+        exclude one-time givers who may not actually be church members —
+        applies on top of whichever criterion is selected, including the
+        plain broadcast)."""
+        qs, extra = self._recipients_for_criterion(request_data)
+        g = request_data
+        try:
+            min_gifts = int(g.get("min_gifts") or 0)
+        except (TypeError, ValueError):
+            min_gifts = 0
+        extra["min_gifts"] = min_gifts
+        if min_gifts > 0:
+            from django.db.models import Count
+            from giving.models import Transaction
+            qualifying = (Transaction.objects.confirmed_credits()
+                         .filter(member__isnull=False)
+                         .values("member_id")
+                         .annotate(n=Count("id"))
+                         .filter(n__gte=min_gifts)
+                         .values_list("member_id", flat=True))
+            qs = qs.filter(id__in=qualifying)
+        return qs, extra
+
+    def _recipients_for_criterion(self, request_data):
         """Return (queryset_of_members, extra_ctx) for the chosen criterion.
         `request_data` is request.GET or request.POST — same param names either way."""
         from members.models import Member
@@ -367,6 +392,7 @@ class MemberSmsView(TreasurerRequiredMixin, View):
             "selected_campaign": extra.get("campaign"),
             "selected_group": extra.get("group", ""),
             "days": extra.get("days", 90),
+            "min_gifts": extra.get("min_gifts", 0),
             "recipients": list(recips[:500]),
             "recipient_count": recips.count(),
             "template": self.DEFAULT_TEMPLATES.get(crit, "Dear {name}, greetings from {church}. "),

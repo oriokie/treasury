@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Monthly Treasurer's Report · {{ end|date:"M Y" }}{% endblock %}
 {% block content %}
 <style>
@@ -163,11 +163,11 @@
 </div>
 <table><thead><tr><th>Fund</th><th class="num">Amount</th><th class="num">% of total</th></tr></thead><tbody>
   {% if collection_detail.trust %}<tr><th colspan="3">Trust funds — top {% if collection_detail_more.trust %}10 of {{ collection_detail.trust|length }}{% else %}funds{% endif %}</th></tr>
-  {% for r in collection_detail.trust|slice:":10" %}<tr><td>{{ r.department.name }}</td>
+  {% for r in collection_detail.trust|slice:":10" %}<tr><td>{{ r.department.name|sentence_fund }}</td>
     <td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
     <td class="num pct">{% widthratio r.receipts collections.total 100 %}%</td></tr>{% endfor %}{% endif %}
   {% if collection_detail.local %}<tr><th colspan="3">Local funds — top {% if collection_detail_more.local %}10 of {{ collection_detail.local|length }}{% else %}funds{% endif %}</th></tr>
-  {% for r in collection_detail.local|slice:":10" %}<tr><td>{{ r.department.name }}</td>
+  {% for r in collection_detail.local|slice:":10" %}<tr><td>{{ r.department.name|sentence_fund }}</td>
     <td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
     <td class="num pct">{% widthratio r.receipts collections.total 100 %}%</td></tr>{% endfor %}{% endif %}
   <tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:0|intcomma }}</td><td class="num">100%</td></tr>
@@ -176,8 +176,8 @@
 <details class="appendix"><summary>Appendix — full collections listing
   <span class="badge-count">{{ collection_detail_more.trust|add:collection_detail_more.local|add:20 }} funds</span></summary>
   <table><thead><tr><th>Fund</th><th>Type</th><th class="num">Amount</th></tr></thead><tbody>
-  {% for r in collection_detail.trust %}<tr><td>{{ r.department.name }}</td><td>Trust</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}
-  {% for r in collection_detail.local %}<tr><td>{{ r.department.name }}</td><td>Local</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  {% for r in collection_detail.trust %}<tr><td>{{ r.department.name|sentence_fund }}</td><td>Trust</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}
+  {% for r in collection_detail.local %}<tr><td>{{ r.department.name|sentence_fund }}</td><td>Local</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td></tr>{% endfor %}
   </tbody></table>
 </details>{% endif %}
 </div></div>
@@ -190,7 +190,7 @@
   receipted are shown separately in the Financial Position, not here.</p>
 <div style="height:200px" class="u-mb"><canvas id="trustTrendChart"></canvas></div>
 <table><thead><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr></thead>
-<tbody>{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>
+<tbody>{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name|sentence_fund }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>
 {% empty %}<tr><td colspan="5" class="muted">No receipted trust collections.</td></tr>{% endfor %}
 {% if trust_trend.rows %}<tr class="tot"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|floatformat:0|intcomma }}</td>{% endfor %}</tr>{% endif %}
 </tbody></table></div></div>
@@ -201,7 +201,7 @@
 <p class="narrative">Each local fund's movement for the month — {{ notes.lcb_trend }}</p>
 <div style="height:200px" class="u-mb"><canvas id="lcbTrendChart"></canvas></div>
 <table><thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
-<tbody>{% for r in local_statement.rows|slice:":10" %}<tr{% if r.closing < 0 %} class="neg"{% endif %}><td>{{ r.department.name }}{% if r.closing < 0 %} ⚑{% endif %}</td>
+<tbody>{% for r in local_statement.rows|slice:":10" %}<tr{% if r.closing < 0 %} class="neg"{% endif %}><td>{{ r.department.name|sentence_fund }}{% if r.closing < 0 %} ⚑{% endif %}</td>
   <td class="num">{{ r.opening|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.expenses|floatformat:0|intcomma }}</td>
@@ -216,7 +216,7 @@
 {% if local_statement_more %}<details class="appendix"><summary>Appendix — full local funds listing
   <span class="badge-count">{{ local_statement.rows|length }} funds</span></summary>
   <table><thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
-  <tbody>{% for r in local_statement.rows %}<tr{% if r.closing < 0 %} class="neg"{% endif %}><td>{{ r.department.name }}</td>
+  <tbody>{% for r in local_statement.rows %}<tr{% if r.closing < 0 %} class="neg"{% endif %}><td>{{ r.department.name|sentence_fund }}</td>
     <td class="num">{{ r.opening|floatformat:0|intcomma }}</td><td class="num">{{ r.receipts|floatformat:0|intcomma }}</td>
     <td class="num">{{ r.expenses|floatformat:0|intcomma }}</td><td class="num">{{ r.closing|floatformat:0|intcomma }}</td></tr>{% endfor %}
   </tbody></table>
@@ -242,7 +242,7 @@
 {% if budget_summary.rows %}
 <table><thead><tr><th>Fund</th><th class="num">Budget (month)</th><th class="num">Actual</th><th class="num">Variance</th><th class="num">%</th></tr></thead>
 <tbody>{% for r in budget_summary.rows|slice:":10" %}<tr{% if r.over %} class="over neg"{% endif %}>
-  <td>{{ r.department.name }}{% if r.over %} ⚑ over budget{% endif %}</td>
+  <td>{{ r.department.name|sentence_fund }}{% if r.over %} ⚑ over budget{% endif %}</td>
   <td class="num">{{ r.budget|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.actual|floatformat:0|intcomma }}</td>
   <td class="num">{{ r.variance|floatformat:0|intcomma }}</td>

@@ -2528,6 +2528,27 @@ class FundBudgetView(TreasurerRequiredMixin, View):
         return redirect(f"{request.path}?year={year}")
 
 
+class GroupGoalsJpegView(TreasurerRequiredMixin, View):
+    """Server-rendered JPEG of a fund's Group Contribution Goals — a proper
+    per-group progress bar chart, generated with Pillow so it looks identical
+    everywhere and needs no client-side rendering (canvas/screenshot)."""
+    def get(self, request, pk):
+        from departments.models import Department
+        from core.models import SiteConfig
+        from django.http import HttpResponse
+        from .services.goal_chart import build_group_goals_jpeg
+        dept = get_object_or_404(Department, pk=pk)
+        ctx = FundBudgetView()._ctx(request, dept)
+        data = build_group_goals_jpeg(
+            dept_name=dept.name, year=ctx["year"], group_rows=ctx["group_rows"],
+            contribution_goal=ctx["contribution_goal"],
+            church_name=SiteConfig.get().church_name or "")
+        resp = HttpResponse(data, content_type="image/jpeg")
+        fname = f"group-contribution-goals-{dept.slug or dept.id}-{ctx['year']}.jpg"
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+
 class BudgetItemsJSONView(DataEntryRequiredMixin, View):
     """Budget items for a fund + year, for the expense form's 'Budget item'
     picker. Returns [] for funds that have no budget set."""

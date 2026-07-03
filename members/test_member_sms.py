@@ -93,3 +93,43 @@ class MemberSmsCriteriaTests(TestCase):
         b = self.c.get("/members/sms/").content.decode()
         self.assertIn("Choose a criterion", b)
         self.assertNotIn("GIVER PERSON", b)
+
+
+class MinGiftsFilterTests(TestCase):
+    """Filter out one-time givers (who may not be church members) by requiring
+    a minimum number of contributions, layered on top of any criterion."""
+    def setUp(self):
+        self.tr = _tr()
+        self.d = Department.objects.create(name="MinGiftsFund", fund_type="LOCAL",
+            category="MINISTRY")
+        self.one_timer = Member.objects.create(name="Solo Giver", phone="254733000001",
+            active=True)
+        self.regular = Member.objects.create(name="Repeat Giver", phone="254733000002",
+            active=True)
+        Transaction.objects.create(date=dt.date(2026, 1, 1), amount=Decimal("100"),
+            direction="CREDIT", confirmed=True, channel="CASH",
+            allocation_status="MANUAL", department=self.d, member=self.one_timer)
+        for i in range(4):
+            Transaction.objects.create(date=dt.date(2026, i + 1, 1), amount=Decimal("100"),
+                direction="CREDIT", confirmed=True, channel="CASH",
+                allocation_status="MANUAL", department=self.d, member=self.regular)
+        self.c = Client(); self.c.force_login(self.tr)
+
+    def test_excludes_one_time_givers(self):
+        b = self.c.get("/members/sms/?criteria=all_with_phone&min_gifts=3").content.decode()
+        self.assertIn("REPEAT GIVER", b)
+        self.assertNotIn("SOLO GIVER", b)
+
+    def test_no_filter_includes_one_time_givers(self):
+        b = self.c.get("/members/sms/?criteria=all_with_phone").content.decode()
+        self.assertIn("SOLO GIVER", b)
+
+    def test_combines_with_another_criterion(self):
+        Member.objects.create(name="Group Solo", phone="254733000003",
+            active=True, group="YOUTH")
+        b = self.c.get("/members/sms/?criteria=by_group&group=YOUTH&min_gifts=2").content.decode()
+        self.assertNotIn("GROUP SOLO", b)   # only 0 gifts, filtered out
+
+    def test_zero_min_gifts_means_no_filter(self):
+        b = self.c.get("/members/sms/?criteria=all_with_phone&min_gifts=0").content.decode()
+        self.assertIn("SOLO GIVER", b)
