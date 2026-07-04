@@ -38,7 +38,7 @@ def build_group_goals_jpeg(*, dept_name, year, group_rows, contribution_goal,
     """group_rows: list of {"name", "goal", "collected", "pct", "short"}.
     contribution_goal: {"goal", "collected", "short"} totals across all groups.
     Returns JPEG bytes."""
-    W = 1000
+    W = 1180
     row_h = 62
     header_h = 132
     footer_h = 90
@@ -74,16 +74,18 @@ def build_group_goals_jpeg(*, dept_name, year, group_rows, contribution_goal,
     bar_w = bar_x1 - bar_x0
 
     top = header_h
-    max_goal = max([float(g["goal"] or 0) for g in group_rows] + [1])
     for i, g in enumerate(group_rows):
         ry = top + i * row_h
         goal = float(g["goal"] or 0)
         collected = float(g["collected"] or 0)
+        short = float(g["short"] or 0)
         pct = min(int(g["pct"] or 0), 100)
         over = collected > goal and goal > 0
 
         d.text((bar_x0, ry), g["name"], font=f_name, fill=INK)
-        label = f"{_money(collected)} / {_money(goal)}  ({g['pct']}%)"
+        to_go_label = "met" if short <= 0 and goal > 0 else _money(short)
+        label = (f"Target {_money(goal)}   Contributed {_money(collected)}   "
+                f"To go {to_go_label}   ({pct}%)")
         lw = d.textlength(label, font=f_val)
         d.text((bar_x1 - lw, ry), label, font=f_val, fill=MUTED)
 
@@ -99,16 +101,16 @@ def build_group_goals_jpeg(*, dept_name, year, group_rows, contribution_goal,
             color = GREEN if over else FOREST
             d.rounded_rectangle([bar_x0, track_y0, bar_x0 + max(fill_w, 16), track_y1],
                                 radius=8, fill=color)
-        if not over and goal > 0 and fill_w < bar_w:
-            pass  # remaining track already shown as FOREST_SOFT
 
     # footer: all-groups total
     fy = top + n * row_h + 20
     d.line([(pad, fy), (W - pad, fy)], fill=LINE, width=1)
     fy += 16
     d.text((pad, fy), "All groups", font=f_foot, fill=FOREST)
-    total_label = (f"{_money(contribution_goal.get('collected', 0))} / "
-                  f"{_money(contribution_goal.get('goal', 0))}")
+    total_short = float(contribution_goal.get("short", 0) or 0)
+    total_label = (f"Target {_money(contribution_goal.get('goal', 0))}   "
+                   f"Contributed {_money(contribution_goal.get('collected', 0))}   "
+                   f"To go {_money(total_short)}")
     lw = d.textlength(total_label, font=f_foot)
     d.text((W - pad - lw, fy), total_label, font=f_foot, fill=BRASS)
 

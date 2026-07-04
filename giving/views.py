@@ -606,6 +606,10 @@ class TransactionUpdateView(DataEntryRequiredMixin, UpdateView):
                     "Manual-receipt mark removed — this contribution can be receipted again.")
         else:
             messages.success(self.request, "Entry updated.")
+        from core.models import reconciled_period_warning
+        warn = reconciled_period_warning(self.object.date)
+        if warn:
+            messages.warning(self.request, warn)
         return response
 
 

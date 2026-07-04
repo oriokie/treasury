@@ -50,6 +50,21 @@ class Department(models.Model):
                  ("CAMP_EXPENSE", "Camp Meeting Expense goal")],
         help_text="Classifies what this fund's annual goal represents, so reports "
                   "label and pair it correctly regardless of the fund's name.")
+    income_account = models.CharField(max_length=20, blank=True,
+        choices=[("", "Guess from the fund's name (default)"),
+                 ("INC_TITHE", "Tithe"),
+                 ("INC_OFFERINGS", "Offerings & general income"),
+                 ("INC_DEVELOPMENT", "Development & projects"),
+                 ("INC_INTEREST", "Interest & investment income"),
+                 ("INC_FUNDRAISING", "Fundraising & camp meeting"),
+                 ("INC_DONATIONS", "Donations & gifts in kind"),
+                 ("INC_OTHER", "Other income")],
+        help_text="Which income account a local (unrestricted) fund's receipts post "
+                  "to in the general ledger. Leave blank to classify automatically "
+                  "from the fund's name (matches most funds); set this explicitly "
+                  "for a fund whose name doesn't clearly say what it is, or after "
+                  "renaming a fund, so its income keeps reporting under the same "
+                  "account as before.")
     offering_fund = models.ForeignKey("self", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="expense_counterpart",
         help_text="For an expense fund (e.g. Camp Meeting Expense, a Local fund): "

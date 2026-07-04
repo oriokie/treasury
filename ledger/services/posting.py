@@ -18,7 +18,7 @@ from decimal import Decimal
 
 from django.db import transaction as db_tx
 
-from ledger.models import Account, JournalEntry, JournalLine
+from ledger.models import Account, JournalEntry, JournalLine, JournalEntryArchive
 
 
 # ---- Chart of accounts ----------------------------------------------------
@@ -77,7 +77,11 @@ def chart_ready():
 
 
 def _income_key_for(dept):
-    """Map a local fund to an income account by its name."""
+    """Map a local fund to an income account. An explicit override
+    (Department.income_account) always wins; otherwise fall back to guessing
+    from the fund's name."""
+    if getattr(dept, "income_account", ""):
+        return dept.income_account
     n = (dept.name or "").lower()
     if "tithe" in n:
         return "INC_TITHE"
@@ -88,8 +92,60 @@ def _income_key_for(dept):
     return "INC_OFFERINGS"
 
 
+class UnbalancedEntryError(Exception):
+    """Raised if a journal entry's debits and credits don't sum to the same
+    total, or a line carries both a debit and a credit. This should never
+    trigger from any current posting path — every one of them builds balanced
+    entries by construction — but nothing enforced that at the schema level,
+    so this is a defence-in-depth safeguard against a future posting path (or
+    a mistake in one) silently corrupting the general ledger."""
+
+
+def _replace_entries(source_type, source_id=None, *, filter_kwargs=None):
+    """Delete the existing journal entry/entries for a source document so a
+    fresh one can be posted — first archiving their current detail (if
+    SiteConfig.archive_replaced_ledger_entries is on) so a correction never
+    silently erases what the ledger said before it, even though the live
+    ledger always reflects only the current, correct posting."""
+    qs = (JournalEntry.objects.filter(**filter_kwargs) if filter_kwargs is not None
+          else JournalEntry.objects.filter(source_type=source_type, source_id=source_id))
+    try:
+        from core.models import SiteConfig
+        archive_on = SiteConfig.get().archive_replaced_ledger_entries
+    except Exception:  # noqa: BLE001 — archiving must never block a repost
+        archive_on = False
+    if archive_on:
+        for je in qs.prefetch_related("lines__account", "lines__department"):
+            try:
+                JournalEntryArchive.objects.create(
+                    date=je.date, memo=je.memo, source_type=je.source_type,
+                    source_id=je.source_id, original_entry_id=je.id,
+                    original_created_at=je.created_at,
+                    lines=[{"account_code": ln.account.code, "account_name": ln.account.name,
+                            "department_id": ln.department_id,
+                            "department_name": ln.department.name if ln.department_id else None,
+                            "debit": str(ln.debit), "credit": str(ln.credit)}
+                           for ln in je.lines.all()])
+            except Exception:  # noqa: BLE001 — one bad snapshot must not block the repost
+                from core.utils import log_exception as _lx; _lx("ledger archive")
+    qs.delete()
+
+
 def _entry(date, memo, source_type, source_id, lines):
-    """lines: list of (account, debit, credit[, department]). Balanced JournalEntry."""
+    """lines: list of (account, debit, credit[, department]). Balanced JournalEntry.
+    Validates debits == credits before anything is written — see
+    UnbalancedEntryError."""
+    total_debit = sum((ln[1] for ln in lines), Decimal(0))
+    total_credit = sum((ln[2] for ln in lines), Decimal(0))
+    if total_debit != total_credit:
+        raise UnbalancedEntryError(
+            f"Refusing to post an unbalanced entry ({source_type} #{source_id}): "
+            f"debits {total_debit} != credits {total_credit}. memo={memo!r}")
+    for ln in lines:
+        if ln[1] and ln[2]:
+            raise UnbalancedEntryError(
+                f"Refusing to post a line with both a debit and a credit "
+                f"({source_type} #{source_id}): {ln!r}")
     je = JournalEntry.objects.create(date=date, memo=memo[:200],
                                      source_type=source_type, source_id=source_id)
     JournalLine.objects.bulk_create([
@@ -126,7 +182,7 @@ def _is_trust(dept):
 def post_transaction(txn):
     """Income receipt. Skips bank-debit-direction rows (represented by expenses)."""
     from giving.models import Transaction
-    JournalEntry.objects.filter(source_type="transaction", source_id=txn.pk).delete()
+    _replace_entries("transaction", txn.pk)
     if (txn.direction != Transaction.Direction.CREDIT or not txn.confirmed
             or txn.is_reversed or txn.is_reversal):
         return
@@ -143,7 +199,7 @@ def post_transaction(txn):
 @db_tx.atomic
 def post_expense(exp):
     from cashbook.models import Expense
-    JournalEntry.objects.filter(source_type="expense", source_id=exp.pk).delete()
+    _replace_entries("expense", exp.pk)
     if exp.status not in (Expense.Status.APPROVED, Expense.Status.PAID):
         return
     cash = _acct("CASH")
@@ -162,7 +218,7 @@ def post_refund(ref):
     """An expense refund: cash returned to a fund, reversing part of the original
     expense. Mirrors post_expense with the sides flipped (DR Cash, CR Expense)."""
     from cashbook.models import Expense
-    JournalEntry.objects.filter(source_type="refund", source_id=ref.pk).delete()
+    _replace_entries("refund", ref.pk)
     exp = ref.expense
     if exp.status not in (Expense.Status.APPROVED, Expense.Status.PAID):
         return
@@ -184,7 +240,7 @@ def post_transfer(tr):
     for the whole church, but moves the fund-balance claim from source to
     destination (tagged by fund so the ledger reconciles to the fund reports)."""
     from cashbook.models import FundTransfer  # noqa
-    JournalEntry.objects.filter(source_type="transfer", source_id=tr.pk).delete()
+    _replace_entries("transfer", tr.pk)
     accum = _acct("ACCUM_FUNDS")
     if not accum or tr.amount == 0:
         return
@@ -199,7 +255,7 @@ def post_opening():
     """A single dated entry establishing brought-forward balances, with one
     cash line and one equity/liability line per fund (fund-tagged)."""
     from departments.models import Department
-    JournalEntry.objects.filter(source_type="opening").delete()
+    _replace_entries(None, filter_kwargs={"source_type": "opening"})
     cash = _acct("CASH"); accum = _acct("ACCUM_FUNDS"); trust = _acct("TRUST_PAYABLE")
     lines = []
     for d in Department.objects.all():

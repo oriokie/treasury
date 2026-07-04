@@ -759,10 +759,42 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
                 return redirect("leader_advance_detail", pk=pk)
             if block_if_locked(request, exp.date):
                 return redirect("leader_advance_detail", pk=pk)
+            # this line is already posted to the ledger (advance-accounting lines
+            # are created APPROVED+PAID up front) — a self-service delete window
+            # limits how long a leader can remove it unsupervised; past that,
+            # only a treasurer can. A blank setting means no time limit.
+            from core.models import SiteConfig
+            window = SiteConfig.get().leader_delete_window_days
+            if window is not None:
+                import datetime as _dt
+                age_days = (_dt.date.today() - exp.created_at.date()).days
+                if age_days > window:
+                    messages.error(request,
+                        f"This line was entered {age_days} day(s) ago — beyond the "
+                        f"{window}-day self-service window. Ask the treasurer to "
+                        "remove or correct it.")
+                    return redirect("leader_advance_detail", pk=pk)
+            reason = (request.POST.get("delete_reason") or "").strip()
+            if not reason:
+                messages.error(request, "Add a short reason for deleting this line.")
+                return redirect("leader_advance_detail", pk=pk)
             is_charge = exp.category == Expense.Category.BANK_CHARGE
+            amount, desc = exp.amount, exp.description
             # deleting an expense also removes any transaction charge attached to it
-            exp.charges.all().delete()
+            for ch in exp.charges.all():
+                ch._change_reason = f"Deleted with parent line: {reason}"
+                ch.delete()
+            exp._change_reason = reason   # captured on the historical record
             exp.delete()
+            try:
+                from core.services.notifications import notify
+                notify("advance_line_deleted",
+                       f"{request.user.get_full_name() or request.user.get_username()} "
+                       f"deleted their own posted advance line \"{desc}\" "
+                       f"(KSh {amount:,.2f}) on {adv.staff_name}'s advance. Reason: {reason}",
+                       link=f"/advances/{adv.id}/")
+            except Exception:  # noqa: BLE001 — the deletion itself must still succeed
+                from core.utils import log_exception as _lx; _lx("advance line delete notify")
             messages.success(request,
                 "Charge deleted." if is_charge else "Expense deleted.")
             return redirect("leader_advance_detail", pk=pk)

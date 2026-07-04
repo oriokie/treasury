@@ -38,6 +38,28 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.4.0": "Implements the customizable recommendations from the accounting-integrity review, each as an "
+             "opt-in setting under Settings -> Approvals & financial controls so nothing changes for existing "
+             "deployments unless a treasurer turns it on. New: require a different approver than the recorder; "
+             "auto-lock the month when a bank reconciliation balances (a non-blocking warning now always shows "
+             "when editing an entry in an already-reconciled period, regardless of this setting); a self-"
+             "service time window (or none) for a leader deleting their own posted advance line, which now "
+             "always requires a reason and notifies the treasurer; and a snapshot of a ledger entry's detail "
+             "whenever a correction replaces it, viewable on a new Journal Archive page. Also added: a safety "
+             "check that refuses to post an unbalanced journal entry (should never trigger, but now can't "
+             "happen even by future mistake), and an optional per-fund override for which income account a "
+             "local fund's receipts post to.",
+    "2.3.0": "Fixes from a full accounting-integrity and internal-controls review against GAAP, IFRS for SMEs "
+             "and non-profit fund-accounting principles. Correcting an envelope's Sabbath date now keeps its "
+             "general-ledger entry in step (previously the ledger could silently keep the old date). A posted "
+             "(approved or paid) expense can no longer be permanently deleted - it must be reversed via a "
+             "refund instead, preserving the audit trail; only a not-yet-approved expense can still be deleted "
+             "outright. A full written review is available covering the ledger architecture, fund accounting, "
+             "reconciliation, and segregation of duties, including further recommendations for the treasurer "
+             "to consider.",
+    "2.2.1": "Small edit to the Group Contribution Goals JPEG chart: each group now shows its target, "
+             "amount contributed, amount still to go, and percent progress, matching the page it's downloaded "
+             "from.",
     "2.2.0": "Fixed the receipt strip-strings wildcard, which was matching almost nothing: a phrase with "
              "slightly different spacing than the real message would silently fail entirely, and a wildcard "
              "over an amount like 499,900.00 stopped at the decimal point instead of the full number - both "

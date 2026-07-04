@@ -327,7 +327,29 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             messages.success(request,
                 f"Cash-book balance recomputed from the ledger: "
                 f"KSh {rec.book_balance:,.2f}.")
+        _maybe_auto_lock_on_reconciled(rec, request)
         return redirect("reconciliation_detail", pk=rec.pk)
+
+
+def _maybe_auto_lock_on_reconciled(rec, request):
+    """When SiteConfig.auto_lock_on_reconciliation is on and this worksheet now
+    balances, lock its accounting month so a later edit can't silently
+    invalidate the completed reconciliation. Never blocks the reconciliation
+    action itself if locking fails for any reason."""
+    try:
+        from core.models import SiteConfig, PeriodLock
+        if not rec.is_reconciled or not SiteConfig.get().auto_lock_on_reconciliation:
+            return
+        d = rec.statement_date
+        if not PeriodLock.objects.filter(year=d.year, month=d.month).exists():
+            PeriodLock.objects.create(year=d.year, month=d.month, locked_by=request.user,
+                note=f"Auto-locked: bank reconciliation {rec.statement_date} balanced.")
+            messages.info(request,
+                f"{d:%B %Y} has been automatically locked because this reconciliation "
+                "now balances (Settings → auto-lock on reconciliation).")
+    except Exception:  # noqa: BLE001 — must never block the reconciliation itself
+        from core.utils import log_exception as _lx; _lx("auto-lock on reconciliation")
+
 from django.shortcuts import render, get_object_or_404
 from django.views import View
 from core.permissions import TreasurerRequiredMixin

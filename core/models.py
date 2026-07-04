@@ -220,6 +220,31 @@ class SiteConfig(models.Model):
         default=False,
         help_text="Hold auto-allocated statement imports for review; they only affect "
                   "balances once a treasurer confirms them.")
+    require_different_approver = models.BooleanField(
+        default=False,
+        help_text="Block a treasurer from approving an expense they recorded themselves, "
+                  "for every expense (not just those above the dual-approval threshold). "
+                  "Leave off if there is only one active treasurer.")
+    auto_lock_on_reconciliation = models.BooleanField(
+        default=False,
+        help_text="Automatically lock the accounting month once a bank reconciliation for "
+                  "it is marked reconciled, so a later edit can't silently invalidate a "
+                  "completed reconciliation. Off by default since it also blocks routine "
+                  "corrections in that month once locked; a warning is always shown when "
+                  "editing an entry in an already-reconciled period regardless of this "
+                  "setting.")
+    leader_delete_window_days = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="A department leader may only delete their own already-posted advance "
+                  "expense line within this many days of entering it (afterwards only a "
+                  "treasurer can remove it). Leave blank for no time limit.")
+    archive_replaced_ledger_entries = models.BooleanField(
+        default=True,
+        help_text="Keep a snapshot of a general-ledger entry's prior detail whenever a "
+                  "correction causes it to be replaced (e.g. editing an expense's amount "
+                  "after it was posted), so what the ledger said before the correction "
+                  "can still be reviewed. Recommended on; adds one small archive row per "
+                  "correction.")
 
     # --- Notifications (in-app always on; email optional) ---
     notify_email_enabled = models.BooleanField(default=False,
@@ -510,6 +535,24 @@ def entry_blocked(d):
     if sabbath_is_closed(d):
         return (f"Sabbath {d:%d %b %Y} is closed — reopen it from the Envelopes "
                 "page before adding, editing or deleting its entries.")
+    return None
+
+
+def reconciled_period_warning(d):
+    """Non-blocking warning when d falls within a bank reconciliation that
+    already balances: editing/adding an entry here won't be stopped (unless
+    the period is also locked — see entry_blocked), but it may silently
+    invalidate a reconciliation that was already signed off as correct.
+    Returns a warning string, or None if there's nothing to flag."""
+    if not d:
+        return None
+    from statements.models import BankReconciliation
+    rec = (BankReconciliation.objects.filter(
+               statement_date__year=d.year, statement_date__month=d.month)
+           .order_by("-statement_date").first())
+    if rec and rec.is_reconciled:
+        return (f"Note: {rec.statement_date:%B %Y} already has a bank reconciliation "
+                "that balances. This change may need it to be re-checked.")
     return None
 
 

@@ -1,5 +1,77 @@
 # Changelog
 
+## v2.4.0 - accounting-integrity review: customizable controls for every open recommendation
+Implements the four Medium and two Low findings left open in the previous accounting-integrity review
+(v2.3.0), each as a configurable setting where the recommendation involved a genuine trade-off, so every
+existing deployment keeps its current behaviour until a treasurer deliberately opts in.
+
+**New settings (Settings -> Approvals & financial controls):**
+- **Require a different approver** (off by default) — blocks a treasurer from approving an expense they
+  recorded themselves, for every expense, not just those above the dual-approval threshold. Applies to both
+  the single-expense approval action and bulk approve.
+- **Auto-lock on reconciliation** (off by default) — automatically locks the accounting month once a bank
+  reconciliation for it balances. Independently of this setting, editing or adding an entry dated within an
+  already-reconciled period now always shows a non-blocking warning.
+- **Leader self-service delete window** (blank = unlimited, matching prior behaviour) — a department leader
+  may only delete their own already-posted advance expense line within this many days of entering it;
+  afterwards only a treasurer can remove it. Deleting now always requires a short reason (captured on the
+  audit trail) and notifies all treasurers in-app.
+- **Archive replaced ledger entries** (on by default) — snapshots a journal entry's detail whenever a
+  correction (e.g. editing an expense's amount after posting) causes it to be replaced, so what the ledger
+  said before the correction is never lost even though the live ledger only ever shows the current, correct
+  posting. New Journal Archive page (`/ledger/journal/archive/`, linked from the Journal page) to review them.
+
+**Always-on safety net:**
+- Every journal entry is now validated to balance (debits == credits, no line with both a debit and a
+  credit) at the single point all posting paths go through, raising `UnbalancedEntryError` if not. Every
+  current posting path already balances by construction — this is defence-in-depth against a future mistake,
+  not a behaviour change; full regression confirms it never triggers on any existing code path.
+
+**Per-fund enhancement:**
+- New optional `income_account` field on a fund: overrides the previous name-matching guess for which income
+  account a local fund's receipts post to, for a fund whose name doesn't clearly say what it is (or after a
+  rename). Blank (default) keeps the existing automatic guess.
+
+Tests: 19 new regression tests (cashbook.test_audit_recommendations) covering every new setting in both its
+default (off/unlimited) and opted-in state. 4 pre-existing tests updated to pass the now-required delete
+reason. Full regression green (cashbook 244, giving 114, leaders 58, statements 73, departments 44, core 178,
+reports 238, envelopes 56).
+
+Deploy: migrate (core 0047, ledger 0003, departments 0020). Collectstatic not required.
+
+## v2.3.0 - accounting-integrity & internal-controls review: two fixes, four documented for decision
+A full review of the accounting core (general ledger, fund accounting, reconciliation, segregation of duties,
+audit trail) against GAAP, IFRS for SMEs, and non-profit/church fund-accounting practice. See
+`Treasury_Accounting_Controls_Review.docx` for the complete written findings register; summary below.
+
+**Fixed this release:**
+- General ledger date desync: correcting an envelope's Sabbath date bulk-updated its linked transactions'
+  dates via a bulk `.update()`, which bypasses the signal that reposts entries to the ledger — the journal
+  entry silently kept the old date. Now explicitly re-posted so the ledger follows the correction.
+- Posted expenses were hard-deletable: any treasurer could permanently delete an APPROVED or PAID expense,
+  removing it from the ledger with no trace, bypassing the app's own proper reversal mechanism (ExpenseRefund).
+  Hard-delete is now restricted to PENDING expenses only; a posted expense must be reversed via a refund.
+
+**Documented for review (not auto-fixed — policy or design decisions):**
+- Leaders can hard-delete their own already-posted advance-accounting lines with no reason captured.
+- No database/model-level safeguard that a journal entry's debits equal its credits (currently balanced by
+  construction in every posting path, but nothing would catch a future mistake).
+- The general ledger itself has no change history — only source documents do (a defensible, but
+  under-documented, design choice).
+- Bank reconciliation sign-off isn't linked to period locking, so a signed-off reconciliation can be silently
+  invalidated by a later edit in its period.
+- (Low priority) No system-level prevention of self-approval below the dual-approval threshold; income-account
+  classification relies on fund-name text matching.
+
+Tests: 5 new regression tests for the two fixes (cashbook.test_audit_findings). Full regression green
+(cashbook 225, envelopes 56, giving 114). No migration; collectstatic not required.
+
+## v2.2.1 - group contribution goals JPEG shows target/contributed/to go/progress
+- The Group Contribution Goals JPEG chart (`/reports/fund/<id>/budget/group-goals.jpg`) now labels each
+  group with Target, Contributed, To go, and percent progress — matching what's shown on the budget page —
+  instead of just a collected/goal fraction. The all-groups footer total does the same.
+- No tests changed this release (visual/label-only edit to the existing chart, already covered).
+
 ## v2.2.0 - receipt-strip wildcard fix, JPEG goal chart, member giving-count filter, board report case + charts
 - Fix: the receipt strip-strings `*` wildcard was matching almost nothing. Two separate bugs: (1) whitespace
   in the configured phrase had to match the message exactly character-for-character, so a pattern typed with

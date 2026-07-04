@@ -124,7 +124,7 @@ class LeaderChargeDeletionTests(TestCase):
         exp = Expense.objects.filter(advance=self.adv, category="TRANSPORT").first()
         self.assertIsNotNone(chg)
         self.c.post(f"/leader/advances/{self.adv.id}/",
-            {"action": "delete_expense", "expense_id": chg.id})
+            {"action": "delete_expense", "expense_id": chg.id, "delete_reason": "test correction"})
         self.assertFalse(Expense.objects.filter(id=chg.id).exists())
         self.assertTrue(Expense.objects.filter(id=exp.id).exists())  # parent kept
 
@@ -137,7 +137,7 @@ class LeaderChargeDeletionTests(TestCase):
                                      charge_for=exp).first()
         self.assertIsNotNone(chg)
         self.c.post(f"/leader/advances/{self.adv.id}/",
-            {"action": "delete_expense", "expense_id": exp.id})
+            {"action": "delete_expense", "expense_id": exp.id, "delete_reason": "test correction"})
         self.assertFalse(Expense.objects.filter(id=exp.id).exists())
         self.assertFalse(Expense.objects.filter(id=chg.id).exists())
 

@@ -39,8 +39,9 @@
     {% if r.editable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('edit-{{ r.expense.id }}').style.display='block'">✎</button>{% endif %}
     {% if r.attachable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('att-{{ r.expense.id }}').style.display='block'">📎</button>{% endif %}
     {% if r.deletable and adv.status != 'SETTLED' and adv.status != 'CLOSED' %}
-    <form method="post" style="display:inline" onsubmit="return confirm('Delete this {% if r.is_charge %}charge{% else %}expense{% endif %}? This cannot be undone.')">{% csrf_token %}
+    <form method="post" style="display:inline" class="delete-line-form" onsubmit="var reasonField=this.querySelector('[name=delete_reason]'); var reason=prompt('Reason for deleting this {% if r.is_charge %}charge{% else %}expense{% endif %} (required):'); if(!reason){return false;} reasonField.value=reason; return confirm('Delete this {% if r.is_charge %}charge{% else %}expense{% endif %}? This cannot be undone.');">{% csrf_token %}
       <input type="hidden" name="action" value="delete_expense"><input type="hidden" name="expense_id" value="{{ r.expense.id }}">
+      <input type="hidden" name="delete_reason" value="">
       <button class="btn btn-xs btn-ghost" style="color:var(--red,#b3261e)" title="Delete">🗑</button>
     </form>{% endif %}
   </td></tr>

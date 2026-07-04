@@ -21,6 +21,8 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             "trust_remit_due_day", "petty_cash_float",
             "dual_approval_threshold", "enforce_fund_balance",
             "enforce_petty_float", "require_dual_yearend", "require_import_confirmation",
+            "require_different_approver", "auto_lock_on_reconciliation",
+            "leader_delete_window_days", "archive_replaced_ledger_entries",
             "notify_email_enabled", "dev_group_extra_prefixes",
             "dev_group_builder_apply",
             "numbered_fund_families",

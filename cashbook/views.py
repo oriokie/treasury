@@ -363,6 +363,10 @@ class ExpenseUpdate(DataEntryRequiredMixin, UpdateView):
                     "approval and must be re-approved.")
         exp.sabbath_week = sabbath_week_of(exp.date)
         exp.save()
+        from core.models import reconciled_period_warning
+        warn = reconciled_period_warning(exp.date)
+        if warn:
+            messages.warning(self.request, warn)
         # Sync the linked transaction-charge entry (M-Pesa/bank charge). Editing an
         # expense must create the charge if newly added, update it in place if it
         # already exists (never duplicate), and remove it if the charge is cleared.
@@ -410,6 +414,12 @@ class ExpenseApprove(TreasurerRequiredMixin, View):
         threshold = cfg.dual_approval_threshold or 0
         needs_two = threshold and exp.amount >= threshold
         if action == "approve":
+            if (cfg.require_different_approver
+                    and exp.recorded_by_id == request.user.id):
+                messages.error(request,
+                    "You recorded this expense yourself — a different treasurer "
+                    "must approve it (Settings → require a different approver).")
+                return redirect("expense_list")
             exp.status = Expense.Status.APPROVED
             exp.approved_by = request.user
         elif action == "second_approve":
@@ -457,12 +467,28 @@ class ExpenseApprove(TreasurerRequiredMixin, View):
 
 
 class ExpenseDeleteView(TreasurerRequiredMixin, View):
-    """Delete an expense (treasurer only; kept in the audit log)."""
+    """Delete an expense (treasurer only; kept in the audit log).
+
+    Only a PENDING expense may be hard-deleted — it has no ledger effect yet
+    (post_expense() only posts APPROVED/PAID), so removing it is a genuine
+    correction with nothing to reverse. Once an expense is APPROVED or PAID it
+    is a posted transaction: deleting it would silently erase it from the
+    general ledger and every report that has already been generated from it,
+    with no trace of what happened (a hard delete rewrites history, unlike a
+    reversal which preserves it). Use the Refund/reversal workflow instead,
+    which posts an offsetting entry and keeps both sides of the story."""
     def post(self, request, pk):
         from django.shortcuts import get_object_or_404, redirect, render
         exp = get_object_or_404(Expense, pk=pk)
         if _block_if_locked(request, exp.date):
             return redirect("expense_list")
+        if exp.status != Expense.Status.PENDING:
+            messages.error(request,
+                f"This expense is {exp.get_status_display().lower()} — it has "
+                "already been posted to the ledger. Record a refund/reversal "
+                "instead of deleting it, so the audit trail shows what "
+                "happened rather than making it disappear.")
+            return redirect(request.META.get("HTTP_REFERER") or "expense_list")
         exp.delete()
         messages.success(request, "Expense deleted.")
         return redirect(request.META.get("HTTP_REFERER") or "expense_list")
@@ -2319,6 +2345,7 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
             messages.info(request, "No expenses were selected.")
             return redirect("expense_list")
         threshold = SiteConfig.get().dual_approval_threshold or 0
+        require_diff = SiteConfig.get().require_different_approver
         from core.models import period_locked
         done = skipped = 0
         S = Expense.Status
@@ -2327,6 +2354,9 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
                 skipped += 1
                 continue
             if action == "approve" and exp.status == S.PENDING:
+                if require_diff and exp.recorded_by_id == request.user.id:
+                    skipped += 1
+                    continue
                 exp.status = S.APPROVED
                 exp.approved_by = request.user
                 exp.save()

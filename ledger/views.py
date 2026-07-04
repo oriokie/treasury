@@ -89,6 +89,24 @@ class JournalView(ReadAccessMixin, View):
                       {"entries": entries[:200], "start": start, "end": end})
 
 
+class JournalArchiveView(ReadAccessMixin, View):
+    """Snapshots of journal entries taken just before they were replaced by a
+    correction — see SiteConfig.archive_replaced_ledger_entries. The live
+    ledger only ever shows the current, correct posting; this page is where
+    'what did this entry say before it was corrected' can still be found."""
+    template_name = "ledger/journal_archive.html"
+
+    def get(self, request):
+        from ledger.models import JournalEntryArchive
+        from core.models import SiteConfig
+        start, end = parse_period(request)
+        archives = (JournalEntryArchive.objects.filter(date__gte=start, date__lte=end)
+                    .order_by("-replaced_at")[:500])
+        return render(request, self.template_name, {
+            "archives": archives, "start": start, "end": end,
+            "archiving_on": SiteConfig.get().archive_replaced_ledger_entries})
+
+
 class RebuildLedgerView(TreasurerRequiredMixin, View):
     def post(self, request):
         n = posting.rebuild()

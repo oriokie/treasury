@@ -71,3 +71,34 @@ class JournalLine(models.Model):
 
     class Meta:
         ordering = ["id"]
+
+
+class JournalEntryArchive(models.Model):
+    """A snapshot of a journal entry's detail taken just before it was deleted
+    to be re-posted (e.g. a source document was edited after posting). The
+    live ledger only ever holds the current, correct posting — deleting and
+    recreating an entry is how every correction is applied — but that means a
+    plain read of JournalEntry/JournalLine can never show what the ledger said
+    *before* a correction. This table exists purely so that history is still
+    available on request, without weakening the guarantee that the current
+    ledger always reflects the current source documents.
+
+    Controlled by SiteConfig.archive_replaced_ledger_entries — when off,
+    entries are still replaced exactly as before, just without a snapshot."""
+    date = models.DateField()
+    memo = models.CharField(max_length=200, blank=True)
+    source_type = models.CharField(max_length=20, db_index=True)
+    source_id = models.IntegerField(null=True, blank=True, db_index=True)
+    original_entry_id = models.IntegerField(db_index=True)
+    original_created_at = models.DateTimeField()
+    lines = models.JSONField(
+        help_text="[{account_code, account_name, department_id, debit, credit}, ...]")
+    replaced_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-replaced_at"]
+        indexes = [models.Index(fields=["source_type", "source_id"])]
+
+    def __str__(self):
+        return f"Replaced {self.date} {self.memo} (was entry #{self.original_entry_id})"
+

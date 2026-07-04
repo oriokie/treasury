@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>Journal</h1>
   <div class="ws-sub">Balanced postings, most recent first</div></div>
-  <div class="toolbar"><a class="btn btn-sm btn-ghost" href="?export=xlsx{% if start %}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}{% endif %}">⬇ Excel</a>{% if is_treasurer %} <a class="btn btn-sm" href="{% url 'manual_journal' %}">+ Manual entry</a>{% endif %}</div></div>
+  <div class="toolbar"><a class="btn btn-sm btn-ghost" href="?export=xlsx{% if start %}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}{% endif %}">⬇ Excel</a> <a class="btn btn-sm btn-ghost" href="{% url 'journal_archive' %}">🗄 Archive</a>{% if is_treasurer %} <a class="btn btn-sm" href="{% url 'manual_journal' %}">+ Manual entry</a>{% endif %}</div></div>
 {% include 'ledger/_period.html' %}
 <div class="table-wrap sticky"><table class="ledger">
   <thead><tr><th>Date</th><th>Memo</th><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>

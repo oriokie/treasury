@@ -105,8 +105,21 @@ class EnvelopeReassignView(DataEntryRequiredMixin, View):
         env.sabbath_week = sabbath_week_of(new_date)
         env.save(update_fields=["date", "sabbath_week"])
         # keep any linked cash transactions in step
-        Transaction.objects.filter(envelope_lines__envelope=env).update(
+        linked = list(Transaction.objects.filter(envelope_lines__envelope=env))
+        Transaction.objects.filter(pk__in=[t.pk for t in linked]).update(
             date=new_date, sabbath_week=env.sabbath_week)
+        # bulk .update() bypasses the post_save signal that posts to the general
+        # ledger, so without this the ledger would keep showing these receipts
+        # under the old date after the correction — re-post each one so its
+        # journal entry moves to the corrected date too.
+        try:
+            from ledger.services import posting
+            if posting.chart_ready():
+                for t in linked:
+                    t.date = new_date
+                    posting.post_transaction(t)
+        except Exception:  # noqa: BLE001 — the envelope move itself must still succeed
+            from core.utils import log_exception as _lx; _lx("envelope date move: ledger repost")
         messages.success(request, f"Moved receipt {env.receipt_no} to {new_date:%d %b %Y}.")
         return redirect(f"{reverse('envelope_list')}?month={new_date.year}-{new_date.month:02d}")
 

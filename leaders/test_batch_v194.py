@@ -100,7 +100,7 @@ class LeaderAdvanceDetailTests(TestCase):
         exp = Expense.objects.filter(advance=self.adv, recorded_by=self.u).first()
         self.assertIsNotNone(exp)
         self.c.post(f"/leader/advances/{self.adv.id}/",
-            {"action": "delete_expense", "expense_id": exp.id})
+            {"action": "delete_expense", "expense_id": exp.id, "delete_reason": "test correction"})
         self.assertFalse(Expense.objects.filter(id=exp.id).exists())
 
     def test_delete_blocked_when_settled(self):
@@ -109,7 +109,7 @@ class LeaderAdvanceDetailTests(TestCase):
             recorded_by=self.u, date=dt.date(2026, 6, 6))
         self.adv.status = "SETTLED"; self.adv.save()
         self.c.post(f"/leader/advances/{self.adv.id}/",
-            {"action": "delete_expense", "expense_id": exp.id})
+            {"action": "delete_expense", "expense_id": exp.id, "delete_reason": "test correction"})
         self.assertTrue(Expense.objects.filter(id=exp.id).exists())
 
 
