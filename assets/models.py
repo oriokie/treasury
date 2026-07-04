@@ -6,6 +6,7 @@ feeds the Statement of Financial Position.
 """
 import datetime as dt
 from decimal import Decimal
+from django.core.validators import MinValueValidator
 
 from django.db import models
 from simple_history.models import HistoricalRecords
@@ -49,8 +50,10 @@ class FixedAsset(models.Model):
     name = models.CharField(max_length=120)
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
     acquired_on = models.DateField()
-    cost = models.DecimalField(max_digits=12, decimal_places=2)
-    salvage_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    cost = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
+    salvage_value = models.DecimalField(max_digits=12, decimal_places=2, default=0,
+        validators=[MinValueValidator(Decimal("0"))])
     # optional per-asset overrides; blank => use the category rule / settings default
     method = models.CharField(max_length=10, choices=DepreciationRule.Method.choices, blank=True)
     rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)

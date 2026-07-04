@@ -5,7 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.views.generic import TemplateView
 
 from core.permissions import RoleRequiredMixin  # noqa (kept for symmetry)
-from core.utils import parse_period
+from core.utils import parse_period, safe_json
 from reports.services import balances
 from departments.models import Department, DevelopmentGroup
 from members.models import mask_phone
@@ -210,7 +210,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         ch_labels = {"BANK": "Bank / M-Pesa", "CASH": "Cash", "ENVELOPE": "Envelopes"}
         ch = (Transaction.objects.filter(date__gte=start, date__lte=end, **credit_q)
               .values("channel").annotate(t=Sum("amount")).order_by("-t"))
-        ctx["channel_json"] = json.dumps([
+        ctx["channel_json"] = safe_json([
             {"label": ch_labels.get(c["channel"], c["channel"] or "Other"),
              "value": float(c["t"] or 0)} for c in ch if c["t"]])
         ctx["has_channel"] = bool(ch)

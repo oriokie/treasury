@@ -33,7 +33,7 @@ from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.utils import timezone
-from django.views.generic import ListView, CreateView, View, DeleteView
+from django.views.generic import ListView, CreateView, View
 from django import forms
 
 from core.permissions import (DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin,
@@ -53,6 +53,8 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 
     def get(self, request, *args, **kwargs):
         export = request.GET.get("export")
+        if export == "trust-pending-receipt":
+            return self._trust_pending_receipt_export(request)
         if export in ("csv", "xlsx"):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
@@ -91,6 +93,71 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                                      title="Transactions", church=SiteConfig.get().church_name)
             return csv_response("transactions.csv", header, rows)
         return super().get(request, *args, **kwargs)
+
+    def _trust_pending_receipt_export(self, request):
+        """Trust fund credits not yet formally receipted — Date, Phone, Member,
+        Amount, Fund, Reference. A split contribution (one lump sum divided
+        across several funds, e.g. Combined Offering) is posted as several
+        ledger rows sharing a payment reference; here they're recombined into
+        one row (summed amount, the split fund's name) rather than shown as
+        separate partial lines, since to the giver and the board it's one gift."""
+        from reports.exports import xlsx_response
+        from reports.services.balances import _receipted_q
+        from departments.models import Department
+        from core.models import SiteConfig
+
+        qs = (Transaction.objects.confirmed_credits()
+              .filter(department__fund_type=Department.FundType.TRUST)
+              .exclude(_receipted_q())
+              .select_related("department", "member")
+              .order_by("date", "id"))
+
+        def _group_key(t):
+            if t.core_ref:
+                return ("core", t.core_ref.split("-S")[0])
+            if t.mpesa_ref:
+                return ("mpesa", t.mpesa_ref)
+            return ("ref", (t.reference or "").strip().lower(), t.date)
+
+        groups = {}
+        order = []
+        for t in qs:
+            key = _group_key(t)
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            groups[key].append(t)
+
+        def _fund_label(members):
+            dept_ids = {t.department_id for t in members if t.department_id}
+            if len(dept_ids) <= 1:
+                return members[0].department.name if members[0].department_id else ""
+            # look up the split fund that caused this — the reference that
+            # allocated the FIRST row in the group normally maps to it
+            ref = (members[0].reference or "").strip().lower()
+            if ref:
+                rule = (AllocationRule.objects.filter(reference=ref,
+                            split_fund__isnull=False).select_related("split_fund").first())
+                if rule:
+                    return rule.split_fund.name
+            names = sorted({t.department.name for t in members if t.department_id})
+            return " + ".join(names)
+
+        header = ["Date", "Phone", "Member", "Amount", "Fund", "Reference"]
+        rows = []
+        for key in order:
+            members = groups[key]
+            first = members[0]
+            phone = first.payer_phone or (first.member.receipt_phone if first.member_id else "") or ""
+            member_name = first.member.name if first.member_id else (first.payer_name or "")
+            total = sum((t.amount for t in members), Decimal(0))
+            rows.append([first.date.isoformat(), phone, member_name, float(total),
+                        _fund_label(members),
+                        first.reference or first.mpesa_ref or first.core_ref or ""])
+
+        return xlsx_response("trust_fund_pending_receipt.xlsx", header, rows,
+                             title="Trust fund items pending receipt",
+                             church=SiteConfig.get().church_name)
 
     def get_queryset(self):
         qs = (Transaction.objects.select_related("department", "member", "dev_group")
@@ -614,10 +681,7 @@ class TransactionUpdateView(DataEntryRequiredMixin, UpdateView):
 
 
 # ---- Bank-statement debit handling ----
-from django.shortcuts import render, get_object_or_404
 from cashbook.models import Expense
-from departments.models import Department
-from core.utils import sabbath_week_of
 
 
 def _float_fund():
@@ -1133,7 +1197,7 @@ class TransactionReverseView(TreasurerRequiredMixin, View):
     def _delete_linked_envelope(txn, user):
         """If `txn` belongs to an envelope, reverse the envelope's other ledger
         entries and delete the envelope (and its lines). Returns True if done."""
-        from envelopes.models import Envelope, EnvelopeLine
+        from envelopes.models import Envelope
         env = (Envelope.objects.filter(lines__transaction=txn).first()
                or Envelope.objects.filter(bank_transaction=txn).first())
         if env is None:
@@ -1235,7 +1299,6 @@ class SabbathConfirmQueueView(DataEntryRequiredMixin, View):
 
     def get(self, request):
         from itertools import groupby
-        from django.db.models import Sum as _S
         qs = list(self._qs())
         groups = []
         for sab, items in groupby(qs, key=lambda t: t.service_sabbath):

@@ -9,6 +9,8 @@ from .models import TwoFactor
 # session keys
 PENDING_USER = "2fa_pending_user_id"     # set after password ok, before TOTP
 VERIFIED = "2fa_verified"                 # set true once TOTP passed this session
+ATTEMPTS = "2fa_attempts"                 # failed-code counter for this pending login
+MAX_ATTEMPTS = 5
 
 
 def _qr_data_uri(uri):
@@ -193,8 +195,22 @@ class TwoFactorVerifyView(View):
             login(request, user)
             request.session[VERIFIED] = True
             request.session.pop(PENDING_USER, None)
+            request.session.pop(ATTEMPTS, None)
             nxt = request.session.pop("2fa_next", None)
             return redirect(nxt or "/")
+        # Rate-limit code guesses: the password step is protected by django-axes,
+        # but without this, a 6-digit TOTP (only 1,000,000 possibilities, often
+        # accepted across a ±1 window) could otherwise be brute-forced with
+        # unlimited attempts once someone reaches this screen. After a handful
+        # of wrong codes, drop the pending login entirely and require the
+        # password to be re-entered — which axes does rate-limit.
+        attempts = request.session.get(ATTEMPTS, 0) + 1
+        request.session[ATTEMPTS] = attempts
+        if attempts >= MAX_ATTEMPTS:
+            request.session.pop(PENDING_USER, None)
+            request.session.pop(ATTEMPTS, None)
+            messages.error(request, "Too many incorrect codes. Please sign in again.")
+            return redirect("login")
         secret_lost = bool(tf and tf.method == TwoFactor.Method.TOTP
                            and not tf.secret_readable)
         messages.error(request, "Invalid code. You can use a recovery code if you "

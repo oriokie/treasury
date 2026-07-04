@@ -85,10 +85,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             ctx["live_balance"] = None
 
         # --- extra dashboard insight data (item 6) ---
-        import json as _json
         from decimal import Decimal
         from django.db.models import Sum as _Sum
-        from django.db.models.functions import ExtractMonth as _ExM
         # income by channel (doughnut)
         _chan = {c["channel"]: float(c["total"] or 0) for c in ctx["by_channel"]}
         ctx["channel_json"] = safe_json([
@@ -135,7 +133,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         # compared to the one before, with a short fund breakdown. Uses the same
         # income basis as the rest of the app (recognised credits, excluding the
         # envelope-twin rows) so it can never double-count. All grouped queries.
-        from core.utils import sabbath_of  # noqa
         import datetime as dt
         today = dt.date.today()
         last_sab = today - dt.timedelta(days=(today.weekday() - 5) % 7)  # most recent Sat
@@ -602,10 +599,14 @@ class ControlsView(TreasurerRequiredMixin, View):
         from decimal import Decimal
         from .models import PeriodLock, YearEndClose
         from reports.services import balances
+        from core.services.period_close import period_close_checklist, checklist_all_clear
         year = int(request.GET.get("year") or dt.date.today().year)
         locks = {l.month: l for l in PeriodLock.objects.filter(year=year)}
         months = [{"num": m, "name": calendar.month_name[m], "lock": locks.get(m)}
                   for m in range(1, 13)]
+        # period-close checklist for whichever month is about to be locked/viewed
+        checklist_month = int(request.GET.get("checklist_month") or dt.date.today().month)
+        checklist = period_close_checklist(year, checklist_month) if not locks.get(checklist_month) else None
         # year-end close: preview the balances that would carry forward
         close_year = int(request.GET.get("close_year") or (dt.date.today().year - 1))
         cf_rows = balances.department_summary(dt.date(close_year, 1, 1),
@@ -621,6 +622,10 @@ class ControlsView(TreasurerRequiredMixin, View):
                 YearEndClose.objects.filter(year=close_year).first()),
             "pending_close": (lambda c: c if (c and not c.is_effective) else None)(
                 YearEndClose.objects.filter(year=close_year).first()),
+            "checklist_month": checklist_month,
+            "checklist_month_name": calendar.month_name[checklist_month],
+            "checklist": checklist,
+            "checklist_all_clear": checklist_all_clear(checklist) if checklist else True,
         })
 
     def post(self, request):
@@ -1167,7 +1172,6 @@ class UpdateRunView(TreasurerRequiredMixin, View):
 
     def post(self, request):
         from core.services.updates import start_update
-        from django.http import JsonResponse
         result = start_update()
         if result is None:
             messages.error(request, "This instance isn't a git checkout, so it "

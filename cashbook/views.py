@@ -1,6 +1,5 @@
 import datetime as dt
 
-from django.conf import settings
 from django.contrib import messages
 from django.db import transaction as db_tx
 from django.shortcuts import get_object_or_404, redirect, render
@@ -162,7 +161,6 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         # split the filtered total into operating vs trust-remittance, so the
         # page can show a true operating-expense figure (remittances are a
         # liability settlement, not expenditure)
-        from django.db.models import Q as _Q
         qs = self.get_queryset()
         remit_total = (qs.filter(category=Expense.Category.REMITTANCE)
                        .aggregate(t=Sum("amount"))["t"] or 0)
@@ -478,7 +476,6 @@ class ExpenseDeleteView(TreasurerRequiredMixin, View):
     reversal which preserves it). Use the Refund/reversal workflow instead,
     which posts an offsetting entry and keeps both sides of the story."""
     def post(self, request, pk):
-        from django.shortcuts import get_object_or_404, redirect, render
         exp = get_object_or_404(Expense, pk=pk)
         if _block_if_locked(request, exp.date):
             return redirect("expense_list")
@@ -2273,7 +2270,6 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
     def _apply(self, request):
         from departments.models import Department
         from core.models import SiteConfig
-        from core.utils import sabbath_of
         plan = request.session.get("expense_import_plan")
         if not plan:
             messages.error(request, "Your import session expired — please upload again.")
@@ -2387,6 +2383,17 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
             msg += f" {skipped} skipped (locked period or not eligible)."
         (messages.success if done else messages.info)(request, msg)
         return redirect("expense_list")
+
+
+def _post_decimal(request, name):
+    """A POST field as a Decimal, or None if blank/invalid. Shared by both of
+    FundBudgetView's independent goal-editing forms."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        v = request.POST.get(name, "").strip()
+        return Decimal(v) if v else None
+    except InvalidOperation:
+        return None
 
 
 class FundBudgetView(TreasurerRequiredMixin, View):
@@ -2509,13 +2516,7 @@ class FundBudgetView(TreasurerRequiredMixin, View):
         # unconditionally rewrote every field regardless of which form was
         # actually submitted.
         if "save_expense_goal" in request.POST:
-            def _dec(name):
-                try:
-                    v = request.POST.get(name, "").strip()
-                    return Decimal(v) if v else None
-                except InvalidOperation:
-                    return None
-            dept.year_goal = _dec("expense_goal")          # Camp Meeting Expense goal
+            dept.year_goal = _post_decimal(request, "expense_goal")          # Camp Meeting Expense goal
             gt = request.POST.get("goal_type") or "NONE"
             dept.goal_type = gt if gt in ("NONE", "CAMP_EXPENSE") else "NONE"
             # The Camp Meeting OFFERING goal (a church-wide Trust-fund target) is
@@ -2528,16 +2529,10 @@ class FundBudgetView(TreasurerRequiredMixin, View):
             messages.success(request, "Goals updated.")
             return redirect(f"{request.path}?year={year}")
         if "save_group_goals" in request.POST:
-            def _dec(name):
-                try:
-                    v = request.POST.get(name, "").strip()
-                    return Decimal(v) if v else None
-                except InvalidOperation:
-                    return None
             # each development group has its own contribution goal — this form
             # only ever touches subgroup rows, never the fund's own year_goal
             for sub in dept.subgroups.all():
-                val = _dec(f"group_goal_{sub.id}")
+                val = _post_decimal(request, f"group_goal_{sub.id}")
                 if sub.contribution_goal != val:
                     sub.contribution_goal = val
                     sub.save(update_fields=["contribution_goal"])

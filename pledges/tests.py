@@ -51,7 +51,8 @@ class PledgeAccountingBoundaryTests(TestCase):
     def test_only_real_contribution_moves_fund(self):
         before = self._fund_closing()
         p = Pledge.objects.create(campaign=self.camp, member=self.member,
-                                  amount=Decimal("50000"), status="ACTIVE")
+                                  amount=Decimal("50000"), status="ACTIVE",
+                                  start_date=dt.date(2026, 1, 1))
         Transaction.objects.create(date=dt.date(2026, 6, 20), channel="CASH",
             direction="CREDIT", amount=Decimal("20000"), department=self.dept,
             member=self.member, allocation_status="MANUAL", confirmed=True)
@@ -182,7 +183,8 @@ class InlineMatchingHookTests(TestCase):
         self.camp = PledgeCampaign.objects.create(name="Hook Drive",
             target_department=self.dept, status="ACTIVE")
         self.p = Pledge.objects.create(campaign=self.camp, member=self.member,
-            amount=Decimal("30000"), status="ACTIVE", end_date=dt.date(2026, 12, 31))
+            amount=Decimal("30000"), status="ACTIVE", start_date=dt.date(2026, 1, 1),
+            end_date=dt.date(2026, 12, 31))
 
     def _contrib(self, amount, ref):
         return Transaction.objects.create(date=dt.date(2026, 6, 20), channel="CASH",

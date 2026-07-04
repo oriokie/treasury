@@ -11,13 +11,13 @@
 </form>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">General Ledger — {{ account.code }} {{ account.name }}</div></div>
 <div class="table-wrap"><table class="ledger">
-  <thead><tr><th>Date</th><th>Detail</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
+  <thead><tr><th>JV #</th><th>Date</th><th>Detail</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
   <tbody>
-  {% for r in rows %}<tr><td class="mono">{{ r.date|date:"d/m/y" }}</td><td>{{ r.memo }}</td>
+  {% for r in rows %}<tr><td class="mono u-xs">{{ r.number|default:"—" }}</td><td class="mono">{{ r.date|date:"d/m/y" }}</td><td>{{ r.memo }}</td>
     <td class="num mono">{% if r.debit %}{{ r.debit|floatformat:2|intcomma }}{% endif %}</td>
     <td class="num mono">{% if r.credit %}{{ r.credit|floatformat:2|intcomma }}{% endif %}</td>
     <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td></tr>
-  {% empty %}<tr><td colspan="5" class="empty">No postings for this account in the period.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="6" class="empty">No postings for this account in the period.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% endblock %}

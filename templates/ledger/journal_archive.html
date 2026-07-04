@@ -16,7 +16,7 @@
     <tr>
       <td class="mono u-xs">{{ a.replaced_at|date:"d M Y H:i" }}</td>
       <td class="mono">{{ a.date|date:"d/m/y" }}</td>
-      <td class="muted u-xs">{{ a.source_type }}{% if a.source_id %} #{{ a.source_id }}{% endif %} (was entry #{{ a.original_entry_id }})</td>
+      <td class="muted u-xs">{{ a.source_type }}{% if a.source_id %} #{{ a.source_id }}{% endif %} (was <span class="mono">{{ a.original_number|default:a.original_entry_id }}</span>)</td>
       <td>{{ a.memo }}</td>
       <td>
         <table class="ledger compact" style="margin:0">

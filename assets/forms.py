@@ -14,7 +14,7 @@ class FixedAssetForm(StyledFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["department"].queryset = Department.objects.filter(active=True)
+        self.fields["department"].queryset = Department.objects.filter(active=True).select_related("parent")
         self.fields["department"].required = False
         self.fields["method"].required = False
         self.fields["rate"].required = False

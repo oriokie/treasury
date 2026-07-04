@@ -106,6 +106,7 @@
           <a href="{% url 'trial_balance' %}" class="{% if request.resolver_match.url_name == 'trial_balance' %}active{% endif %}">Trial balance</a>
           <a href="{% url 'journal' %}" class="{% if request.resolver_match.url_name == 'journal' %}active{% endif %}">Journal</a>
           <a href="{% url 'ledger_reconciliation' %}" class="{% if request.resolver_match.url_name == 'ledger_reconciliation' %}active{% endif %}">Ledger integrity</a>
+          <a href="{% url 'ledger_health' %}" class="{% if request.resolver_match.url_name == 'ledger_health' %}active{% endif %}">Health check</a>
         </div>
       </details>
 

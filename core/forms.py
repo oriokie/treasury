@@ -66,7 +66,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             render_value=True, attrs={"class": "field"})
         from departments.models import Department
         self.fields["telegram_envelope_funds"].queryset = (
-            Department.objects.filter(active=True).order_by("name"))
+            Department.objects.filter(active=True).select_related("parent").order_by("name"))
         self.fields["telegram_envelope_funds"].required = False
         # LCB department picker — local funds only
         self.fields["lcb_departments"].queryset = (

@@ -15,12 +15,27 @@
           <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.num }}"><button name="action" value="unlock" class="btn btn-xs btn-ghost">Unlock</button></form>
         {% else %}
           <div class="lock-state muted">Open</div>
-          <form method="post">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.num }}"><button name="action" value="lock" class="btn btn-xs">Lock</button></form>
+          <a href="?year={{ year }}&checklist_month={{ m.num }}#checklist" class="btn btn-xs btn-ghost">Checklist</a>
+          <form method="post" onsubmit="{% if checklist_month == m.num and not checklist_all_clear %}return confirm('Some close-checklist items for {{ m.name }} are not clear yet — lock this month anyway?');{% endif %}">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.num }}"><button name="action" value="lock" class="btn btn-xs">Lock</button></form>
         {% endif %}
       </div>
     {% endfor %}
   </div>
 </div></div>
+
+{% if checklist %}
+<div class="card u-mt-lg" id="checklist"><div class="hd u-between">Period-close checklist — {{ checklist_month_name }} {{ year }}
+  {% if checklist_all_clear %}<span class="pill pill-green">✓ All clear</span>{% else %}<span class="pill pill-amber">Needs review</span>{% endif %}
+</div><div class="bd">
+  <div class="help u-mb-sm">Confirm each item before locking the month. None of these block locking outright — they're here so closing is a deliberate decision.</div>
+  <table class="ledger"><tbody>
+  {% for item in checklist %}<tr class="{% if not item.ok %}row-warn{% endif %}">
+    <td style="width:2rem">{% if item.ok %}✓{% elif item.advisory %}ℹ{% else %}⚑{% endif %}</td>
+    <td><strong>{{ item.label }}</strong><div class="help u-xs">{{ item.detail }}</div></td>
+  </tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
 
 <div class="card u-mt-lg"><div class="hd">Year-end close &amp; carry-forward</div><div class="bd">
   <div class="info-panel">Closing a year records its fund balances as the amounts <strong>carried forward</strong> into the next year, and locks the year's months. Balances carry forward automatically in reports; this gives you a signed, immutable year-end record.</div>

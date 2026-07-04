@@ -38,6 +38,47 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.10.0": "New download button on the Transactions page: Trust fund items pending receipt (Date, Phone, "
+              "Member, Amount, Fund, Reference) - trust-fund credits with no formal receipt yet. A "
+              "contribution split across several trust funds (e.g. a Combined Offering) is shown as one row "
+              "with the combined amount, not several partial lines. Also completed a code-quality pass: "
+              "removed several dead/duplicate imports found during an architecture review; no behaviour "
+              "changed.",
+    "2.9.0": "Performance review, round two. The Audit Log page was loading over 1,500 database queries for "
+             "a church with a substantial history of allocation-rule edits; it now loads about 24 - same "
+             "detail, computed without repeating a lookup for every single change. Every fund-picker dropdown "
+             "across expenses, transfers, payables, accruals, prepayments, and fixed assets is faster too, "
+             "for the same reason. No figures or behaviour changed - these are speed-only improvements.",
+    "2.8.0": "Performance review. The General Ledger Health Check page loaded ~266 database queries; it now "
+             "loads about 35 - the same checks, just computed for every fund at once instead of one at a "
+             "time. The Executive overview and budget-vs-actual reports had the same pattern with budget "
+             "figures; fixed the same way. Added two database indexes for the most common report filters "
+             "(receipts/expenses by date range, expenses by status and date). No figures or behaviour "
+             "changed - these are speed-only improvements.",
+    "2.7.0": "Business logic and functional review. Expense amounts (and every other money-movement record - "
+             "refunds, transfers, advances, top-ups, cheques, envelope shares, pledge payments, fixed-asset "
+             "cost) can no longer be zero or negative; a negative \"expense\" would otherwise have posted as "
+             "an unreviewed credit to cash while still being filed as an expense. Financial entry dates are "
+             "now checked against a simple typo guard - a year mistyped a decade off (2036 for 2026) is "
+             "caught immediately instead of silently misfiling the entry until that date arrives. Fixed four "
+             "pre-existing pledge-matching test failures caused by a hardcoded date drifting out of range "
+             "over time.",
+    "2.6.0": "Security and internal-controls review. Two-factor login codes are now rate-limited (5 wrong "
+             "codes and you must sign in again), closing a brute-force gap the password step already had. "
+             "The system can no longer end up with zero active Treasurers - demoting or deactivating the last "
+             "one is blocked, so the church can never accidentally lock everyone out of approvals, period "
+             "unlocking or user management. Session length is now a configurable 12 hours (was an unlimited "
+             "2 weeks). A couple of chart-data and manual-journal edge cases were hardened as defence in "
+             "depth. Full application test suite re-run and passing.",
+    "2.5.0": "Three new controls for the general ledger. A Health Check dashboard (Accounting menu) shows the "
+             "trial balance, unbalanced journals, orphan journals, missing postings, duplicate postings, and "
+             "funds out of balance in one place, so integrity issues are found proactively rather than during "
+             "an audit. A Period-Close Checklist now appears on the Treasury Controls page before locking a "
+             "month, checking bank reconciliation, petty cash, staff advances, envelope allocations, pending "
+             "entries, the trial balance, fund balances, and the cash book, all in one view. Every journal "
+             "entry now carries a permanent reference number (JV-2026-000001 and so on) that is never reused "
+             "or renumbered, even when a correction replaces the entry - the original number stays on record "
+             "in the journal archive.",
     "2.4.0": "Implements the customizable recommendations from the accounting-integrity review, each as an "
              "opt-in setting under Settings -> Approvals & financial controls so nothing changes for existing "
              "deployments unless a treasurer turns it on. New: require a different approver than the recorder; "

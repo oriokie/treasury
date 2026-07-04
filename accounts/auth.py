@@ -16,8 +16,10 @@ class TwoFactorLoginView(LoginView):
         tf = getattr(user, "two_factor", None)
         if tf and tf.confirmed:
             # hold the login: record pending id, do not call login()
+            from .twofactor import ATTEMPTS
             self.request.session[PENDING_USER] = user.pk
             self.request.session[VERIFIED] = False
+            self.request.session.pop(ATTEMPTS, None)
             nxt = self.get_redirect_url()
             if nxt:
                 self.request.session["2fa_next"] = nxt

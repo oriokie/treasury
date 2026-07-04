@@ -120,6 +120,7 @@ def _replace_entries(source_type, source_id=None, *, filter_kwargs=None):
                 JournalEntryArchive.objects.create(
                     date=je.date, memo=je.memo, source_type=je.source_type,
                     source_id=je.source_id, original_entry_id=je.id,
+                    original_number=je.number,
                     original_created_at=je.created_at,
                     lines=[{"account_code": ln.account.code, "account_name": ln.account.name,
                             "department_id": ln.department_id,
@@ -315,6 +316,48 @@ def fund_balance_from_ledger(dept):
     return cash_net + transfer_net
 
 
+def fund_balances_from_ledger_bulk(dept_ids):
+    """Same computation as fund_balance_from_ledger(), for many departments at
+    once. Used by the Health Check / reconciliation report, which need every
+    fund's ledger balance together — calling the single-department version in
+    a loop turned that into 2 queries per fund (roughly 100+ for a real
+    church's fund list) plus one implicit transaction each; this does the
+    same computation with a small, constant number of grouped-aggregate
+    queries. Returns {department_id: balance}. Never used for posting, only
+    for read-only comparison/reporting, so there is no accounting-integrity
+    risk in the different code path."""
+    from django.db.models import Sum
+    from departments.models import Department
+    dept_ids = list(dept_ids)
+    if not dept_ids:
+        return {}
+    trust_ids = set(Department.objects.filter(
+        id__in=dept_ids, fund_type=Department.FundType.TRUST).values_list("id", flat=True))
+    local_ids = [d for d in dept_ids if d not in trust_ids]
+
+    out = {did: Decimal(0) for did in dept_ids}
+    if trust_ids:
+        rows = (JournalLine.objects.filter(department_id__in=trust_ids,
+                    account__system_key="TRUST_PAYABLE")
+                .values("department_id").annotate(d=Sum("debit"), c=Sum("credit")))
+        for r in rows:
+            out[r["department_id"]] = (r["c"] or Decimal(0)) - (r["d"] or Decimal(0))
+    if local_ids:
+        cash_rows = (JournalLine.objects.filter(department_id__in=local_ids,
+                        account__system_key="CASH")
+                     .values("department_id").annotate(d=Sum("debit"), c=Sum("credit")))
+        cash_map = {r["department_id"]: (r["d"] or Decimal(0)) - (r["c"] or Decimal(0))
+                    for r in cash_rows}
+        tr_rows = (JournalLine.objects.filter(department_id__in=local_ids,
+                        account__system_key="ACCUM_FUNDS", entry__source_type="transfer")
+                   .values("department_id").annotate(d=Sum("debit"), c=Sum("credit")))
+        tr_map = {r["department_id"]: (r["c"] or Decimal(0)) - (r["d"] or Decimal(0))
+                  for r in tr_rows}
+        for did in local_ids:
+            out[did] = cash_map.get(did, Decimal(0)) + tr_map.get(did, Decimal(0))
+    return out
+
+
 def accounting_equation():
     """Entity-level Assets = Liabilities + Equity (+ retained income − expense)."""
     from django.db.models import Sum
@@ -375,6 +418,7 @@ def ledger_for(account, start=None, end=None):
     for ln in lines:
         bal += sign * (ln.debit - ln.credit)
         rows.append({"date": ln.entry.date, "memo": ln.entry.memo,
+                     "number": ln.entry.number,
                      "debit": ln.debit, "credit": ln.credit, "balance": bal})
     return rows
 

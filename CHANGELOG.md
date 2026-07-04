@@ -1,5 +1,228 @@
 # Changelog
 
+## v2.10.0 - trust pending-receipt export + architecture review
+**New:** a "Trust pending receipt" download button on the Transactions page
+(`/transactions/`) — an Excel export of trust-fund credits with no formal receipt yet
+(Date, Phone, Member, Amount, Fund, Reference), independent of whatever filters are
+currently applied to the list. A contribution split across several trust funds (e.g.
+a Combined Offering split across two trust accounts) is recombined into one row —
+summed amount, the split fund's name — rather than shown as separate partial lines,
+since to the giver and the board it's one gift. The split fund's name is resolved via
+the allocation rule that caused the split; falls back to a joined list of fund names
+if no rule is found, so the export never breaks or shows a blank fund.
+
+**Architecture & code-quality review** (Senior Architect / Django Expert lens):
+codebase evaluated for maintainability, DRY compliance, dead code, and Django best
+practices. Findings:
+- Removed several confirmed-dead/fully-redundant imports (`reports/views.py`,
+  `cashbook/views.py`, `giving/views.py`, `core/views.py`) — each verified to have
+  zero usages, or to duplicate an import already present earlier in the same file,
+  before removal. No behaviour changed.
+- Reviewed all ~94 `except Exception` blocks in the codebase for silently-swallowed
+  errors: the large majority are either explicitly marked `# noqa: BLE001` (a
+  deliberate, previously-reviewed choice) or guard genuinely non-critical optional
+  functionality (an update-availability check, an optional model import) where
+  logging every transient failure would spam the log on every page load. No
+  systemic error-handling issue found — a positive finding, not left for cleanup.
+- Recorded two further items in `docs/recommendations.md`: `reports/views.py` (3,889
+  lines) and `cashbook/views.py` (3,116 lines) have grown into "god files" that would
+  benefit from splitting into logical sub-modules (Medium priority — a deliberate,
+  dedicated refactor, not a quick fix); and the department-dropdown queryset pattern
+  is repeated with minor variations across six form classes (Low priority).
+
+Tests: 9 new (giving.test_trust_pending_receipt). Targeted regression (modules
+touched): reports 248, cashbook 271, core 178, giving 123 — all green.
+
+Deploy: no migration. Collectstatic not required.
+
+## v2.9.0 - performance review, round two
+Continued database/performance review. Two more N+1 patterns found and fixed, both more severe than
+anything caught in the first pass; further items added to `docs/recommendations.md`.
+
+**Fixed:**
+- **Audit Log** (`/reports/audit/`) issued **~1,538 queries** for a church with a substantial history of
+  allocation-rule edits (60 create+edit cycles in testing generated ~6,500 historical rows). Root cause:
+  `h.instance` (a historical row reconstructed as a full model instance) carries no `select_related`, and
+  `AllocationRule.__str__()` accesses `self.split_fund or self.department` — so calling `str(h.instance)` for
+  every historical Allocation Rule row triggered a fresh FK lookup each time (1,426 Department queries + 90
+  SplitFund queries observed). Fixed by building the display string directly from the historical row's own
+  FK id columns against two name maps prefetched once, only for this one model (Transaction, Expense and
+  Member history all use `h.instance` as before — their `__str__` methods don't touch relations, confirmed
+  by testing). Verified identical display strings across 300 sampled historical rows. **~1,538 → ~24 queries.**
+- **Every fund-picker dropdown built without `select_related("parent")`.** `Department.__str__()` shows
+  "Parent / Name" for a sub-account — so rendering a `<select>` of departments calls `.parent` on each option,
+  and eight form classes across cashbook, giving, assets, and core built their department queryset without
+  prefetching it. The Payables & Accruals page alone (three such dropdowns) dropped from 44 to 23 queries;
+  the fix applies equally to the expense, cash-entry, transaction, fund-transfer, payable, accrual,
+  prepayment, and fixed-asset forms.
+
+**Recorded in `docs/recommendations.md`:** one further item (`StaffAdvance.balance` computed per-row on the
+advance list — Low priority, marginal at current scale), added to the five recorded in the first round.
+
+Tests: 6 new (reports.test_performance2), asserting both correctness (display strings match the original
+per-instance method) and query-count bounds. Targeted regression (the modules touched this round): reports
+248, cashbook 271, giving 114, assets+core 197 — all green.
+
+Deploy: no migration (queryset/view changes only). Collectstatic not required.
+
+## v2.8.0 - performance & database review
+Reviewed database access patterns, ORM usage, N+1 queries, indexing, and report generation. Two clear,
+high-impact N+1 query patterns found and fixed; further architectural/infrastructure recommendations
+recorded in `docs/recommendations.md` rather than implemented inline, per this review's scope.
+
+**Fixed:**
+- **General Ledger Health Check** (`/ledger/health/`) issued ~266 queries per load: `funds_out_of_balance()`
+  called `fund_balance_from_ledger()` once per department (2 queries plus an implicit transaction each). New
+  `fund_balances_from_ledger_bulk()` computes every fund's ledger balance with a small, constant number of
+  grouped-aggregate queries instead. Verified byte-for-byte identical results against the original
+  per-department function across every fund. Query count: ~266 → ~35.
+- **Executive overview and budget-vs-actual reports** had the same pattern for budget figures:
+  `budget_amount()` was called once per top-level fund (45 identical queries observed on the Executive
+  overview alone). New `budget_amounts_bulk()` in `reports/services/budget.py` fixes both call sites
+  (`ExpenseReportView`'s by-fund breakdown and `budget_vs_actual()`, which also feeds the Monthly Treasurer's
+  Report). Verified identical results across every fund and every budget shape (legacy annual_budget, plain
+  Budget.amount, Budget with breakdown lines, no budget at all). Executive overview: ~162 → ~114 queries;
+  Monthly Treasurer's Report also dropped from ~175 to ~129 as a side effect of sharing the same fix.
+- **New database indexes** for the two most common report-query shapes that weren't already covered:
+  `Transaction(direction, confirmed, date)` — the shape behind `confirmed_credits()` filtered to a period,
+  used by nearly every collections/income report — and `Expense(status, date)` — effective (approved/paid)
+  expenses within a period, the dominant shape across expense reports.
+
+**Caught during this review:** an earlier edit to `Transaction`'s model accidentally added a *second*
+`class Meta` inside the same class body; Python silently keeps only the last one defined, which would have
+discarded the pre-existing `ordering` and three existing indexes entirely. Caught before migrating by
+checking `Transaction._meta.indexes` against the database rather than trusting the migration diff alone;
+fixed by merging the new index into the correct, pre-existing `Meta` block.
+
+**Recorded in `docs/recommendations.md` (not implemented this pass — see file for full detail):**
+1. Monthly Treasurer's Report recomputes the same aggregates separately for several sections instead of once
+   (Medium) — a report-internals refactor, not a quick fix.
+2. `SiteConfig.get()` is uncached, costing 7-11 redundant identical queries per request (Medium) — the safe
+   fix depends on an infrastructure decision (no shared cache backend is configured; the default per-process
+   cache risks stale security/financial-control settings across workers).
+3. No row-level locking on petty-cash-float balance checks — a narrow concurrency race (Low today, revisit
+   if concurrent usage grows).
+4. No systematic N+1/index audit against real production traffic, only synthetic profiling (Low).
+5. Large file imports run synchronously with no background task queue (Low, given current usage patterns).
+
+Tests: 9 new (ledger.test_performance, reports.test_performance), asserting both correctness (bulk functions
+match the original per-item functions exactly) and query-count bounds. Targeted regression run (the four
+modified apps only, per this review's instruction): ledger 49, reports 242, cashbook 271, giving 114 — all
+green. Test suite run time also dropped noticeably (reports: ~150-170s -> ~78s) as a real-world side effect.
+
+Deploy: migrate (cashbook 0033, giving 0022 — index-only, no data changes). Collectstatic not required.
+
+## v2.7.0 - business logic & functional review
+Comprehensive functional review of workflows, validations, calculations, and state transitions across every
+module. Full findings, fixes, and regression results below; see the chat summary for the complete report.
+
+**Fixed:**
+- **Negative/zero amount validation (the main finding).** `Transaction.amount` already rejected non-positive
+  values; `Expense.amount` and every other money-movement model did not — a real gap, not a deliberate
+  design difference. A negative "expense" would post as an unreviewed credit to cash while still being
+  categorised and reported as an expense, bypassing income recognition entirely. Now consistently enforced
+  (`MinValueValidator(0.01)`) on: Expense, ExpenseRefund, FundTransfer, RecurringExpense, PettyCashTopUp,
+  Payable, Accrual, Prepayment, StaffAdvance, AdvanceTopUp, ChequeRegister, PaymentInstrument, PledgePayment,
+  PledgeMatchSuggestion, EnvelopeLine, and FixedAsset.cost (FixedAsset.salvage_value allows zero, the normal
+  case, but not negative).
+- **Future-date typo guard.** No form rejected a wildly future-dated entry — a year typo (2036 for 2026)
+  would silently misfile a transaction with no error, since it just wouldn't appear in any report until that
+  date arrived. Expense, cash entry, transaction-edit, and fund-transfer forms now reject a date more than a
+  day ahead (a day of slack for timezone differences), with a clear message naming the likely mistake.
+- **Pledge inline-matching test time-bomb.** Four tests failed with `paid` staying 0 / no match suggestions
+  created. Root cause: a Pledge defaults `start_date` to *today*, but the tests hardcoded an absolute
+  transaction date that was valid when written and has since drifted outside the matching window as real
+  time passed — a test-fragility bug, not a defect in the matching logic itself (confirmed by testing the
+  same code against the same scenario with an explicit, fixed `start_date`). Fixed by pinning `start_date`
+  in the four affected tests.
+- **Self-introduced regression, caught and fixed the same session:** an edit to `ExpenseForm` initially split
+  `__init__` in two, leaving its accessibility styling call (`_style()`) and several field-setup steps
+  (capitalized-asset queryset, petty-cash checkbox help text) as unreachable code with no visible error.
+  Caught by the full regression run (`core.test_ux_a11y`), root-caused, and corrected; a regression test now
+  guards against this exact class of mistake recurring silently.
+
+**Documented for follow-up (not in scope for auto-fix this pass):**
+- A deeper concurrency/race-condition review (e.g. simultaneous petty-cash top-ups both reading a stale
+  float balance) was not performed in full — low real-world likelihood given typical single/few-treasurer
+  usage, but worth a dedicated look if usage grows.
+- A full N+1 query / performance audit across dashboards and reports was out of scope for this pass.
+
+Tests: 33 new (cashbook.test_amount_validation, cashbook.test_future_date_validation, pledges/envelopes/
+assets.test_amount_validation), 2 pre-existing pledge tests corrected. Full application regression, every
+app: accounts 46, assets 19, cashbook 271, core 178, departments 44, envelopes 58, giving 114, ledger 44,
+leaders 58, members 40, pledges 26, reports 238, statements 73 — 1,209 tests, all green.
+
+Deploy: migrate (cashbook 0032, pledges 0004, envelopes 0004, assets 0004 — validator-only changes, no data
+affected). Collectstatic not required.
+
+## v2.6.0 - security & internal controls review
+Reviewed against the OWASP Top 10, Django security best practices, least privilege, segregation of duties,
+and internal-control principles for financial systems. Overall posture was already strong (Fernet-encrypted
+credentials throughout, django-axes brute-force lockout on login, hardened production settings that fail
+loudly on an insecure config, webhook endpoints authenticated with constant-time comparisons, no raw SQL
+anywhere, every sensitive field explicitly listed rather than mass-assignable). Findings below.
+
+**Fixed:**
+- 2FA brute-force gap: the code-verification step (`/2fa/verify/`) had no rate limiting, unlike the password
+  step (protected by django-axes) — a 6-digit TOTP could be guessed with unlimited attempts. Now locks the
+  pending login out after 5 wrong codes and requires signing in again; the attempt counter is per-login and
+  resets cleanly on a fresh sign-in.
+- Last-active-Treasurer lockout protection: nothing stopped a Treasurer from demoting or deactivating the
+  only active Treasurer account, which could leave the church with no one able to approve expenses, manage
+  users, or unlock accounting periods. Now blocked with a clear message unless another active Treasurer
+  exists; editing any other role is unaffected.
+- Session lifetime: Django's default (2 weeks, no idle timeout) is longer than good practice for a financial
+  system. Now a configurable 12-hour sliding session (renews on activity, so active users are never logged
+  out mid-task) — override via `DJANGO_SESSION_COOKIE_AGE` if a different value is needed.
+- Defence-in-depth: one chart-data JSON blob (leader dashboard) used a plain `json.dumps()` instead of the
+  app's `safe_json()` (which escapes characters that could break out of a `<script>` tag) — switched for
+  consistency, though the specific data involved was already free of user-controlled text. The manual journal
+  entry form now handles a line with both a debit and a credit gracefully instead of raising, matching the
+  new balanced-entry safeguard added in v2.4.0.
+
+**Documented for review (policy decisions, not auto-fixed):**
+- A department leader who leads any one development-fund can view the full contributor list (names, phones,
+  amounts) for every development group church-wide, not just their own — confirmed as consistent, existing
+  design throughout the leader area (not a new bug), but worth a policy decision on whether that shared
+  visibility is acceptable for personally identifiable giving data.
+- The bank-feed webhook's "None" authentication mode is already labelled "test environment only" and is not
+  the default (Basic auth is) — low risk as configured, but worth confirming production never runs on it.
+
+Tests: 11 new (accounts.test_security_audit, ledger.test_security_audit). Full application regression run:
+accounts 46, cashbook 244, giving 114, leaders 58, statements 73, departments 44, members 40, core 178,
+reports 238, envelopes 56, ledger 44, assets 15 — all green. Pledges: 35 of 39 pass; the remaining 4
+(inline pledge-matching) were already failing before this review and are unrelated to it — flagged for
+separate follow-up, not touched here.
+
+Deploy: no migration. Collectstatic not required.
+
+## v2.5.0 - general ledger health check, period-close checklist, permanent journal numbers
+**1. General Ledger Health Check** (`/ledger/health/`, linked from the Accounting menu): a proactive integrity
+dashboard showing trial balance status, unbalanced journals (should always be zero), orphan journals (a
+posted entry whose source document no longer exists), missing postings (a source document that should have
+been posted but wasn't), duplicate postings, shared M-Pesa/bank references worth a human look, and funds out
+of balance between the fund-report engine and the general ledger. Every check is read-only; `ledger.services.health`
+can also be used from a shell/management command for scripted monitoring.
+
+**2. Accounting Period-Close Checklist**: the Treasury Controls page now shows a checklist for any open month
+before it's locked — bank reconciliation complete, petty cash reconciled, advances cleared or explained, no
+pending envelope allocations, no draft/pending journals, trial balance balances, fund balances reconcile, and
+cash book equals bank plus cash on hand. Nothing here blocks locking outright (an advance spanning months is
+often normal) — the lock button asks for confirmation if items are outstanding, so closing stays deliberate.
+
+**3. Immutable journal sequence numbers**: every journal entry now gets a permanent reference (JV-2026-000001,
+incrementing per year, assigned once and never reused). Since a correction to a source document replaces its
+journal entry rather than editing it in place, the *original* entry's number is preserved in the Journal
+Archive (added in v2.4.0) when it's superseded — the replacement gets its own new number. Existing entries
+were backfilled in chronological order via a data migration. Shown on the Journal, General Ledger, Journal
+Archive and Health Check pages, and included in the Journal's Excel/CSV export.
+
+Tests: 16 new (ledger.test_health_and_numbering). Full regression green (cashbook 244, giving 114, core 178,
+reports 238, statements 73, envelopes 56, ledger 42).
+
+Deploy: migrate (ledger 0004-0005 — the 0005 migration backfills journal numbers for existing entries, safe
+to run on a live database). Collectstatic not required.
+
 ## v2.4.0 - accounting-integrity review: customizable controls for every open recommendation
 Implements the four Medium and two Low findings left open in the previous accounting-integrity review
 (v2.3.0), each as a configurable setting where the recommendation involved a genuine trade-off, so every

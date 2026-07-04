@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.db import models
 from django.db.models import Sum
+from django.core.validators import MinValueValidator
 from simple_history.models import HistoricalRecords
 
 
@@ -43,7 +44,12 @@ class Expense(models.Model):
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
                                    related_name="expenses", db_index=True)
     description = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="Always positive; a refund/reversal is its own record (ExpenseRefund), "
+                  "never a negative expense — a negative amount here would post as an "
+                  "unreviewed credit to cash while still being categorised as an expense, "
+                  "bypassing normal income recognition entirely.")
     category = models.CharField(max_length=14, choices=Category.choices,
                                 default=Category.OTHER)
     expenditure_type = models.CharField(
@@ -102,7 +108,11 @@ class Expense(models.Model):
     class Meta:
         ordering = ["-date", "-id"]
         indexes = [models.Index(fields=["date", "department"]),
-                   models.Index(fields=["status"])]
+                   models.Index(fields=["status"]),
+                   # the dominant shape across reports: effective expenses
+                   # (APPROVED/PAID) within a period — status alone doesn't
+                   # help once a date range is added on top
+                   models.Index(fields=["status", "date"])]
 
     def __str__(self):
         return f"{self.date} {self.description} {self.amount}"
@@ -143,7 +153,8 @@ class ExpenseRefund(models.Model):
     expense = models.ForeignKey(Expense, on_delete=models.CASCADE,
                                 related_name="refunds")
     date = models.DateField(db_index=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     method = models.CharField(max_length=8, choices=Expense.Method.choices,
                               default=Expense.Method.CASH)
     to_petty_cash = models.BooleanField(default=False,
@@ -286,7 +297,8 @@ class FundTransfer(models.Model):
                                related_name="transfers_out")
     destination = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
                                     related_name="transfers_in")
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     reason = models.CharField(max_length=200, blank=True)
     reference = models.CharField(max_length=40, blank=True)
     recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
@@ -361,7 +373,8 @@ class RecurringExpense(models.Model):
                                    related_name="recurring_expenses")
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
                                 default=Expense.Category.ALLOWANCE)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     frequency = models.CharField(max_length=10, choices=Frequency.choices,
                                  default=Frequency.MONTHLY)
     day_of_month = models.PositiveSmallIntegerField(
@@ -391,7 +404,8 @@ class PettyCashTopUp(models.Model):
     change any fund's balance — it just records physical cash set aside for petty
     payments. The float = sum of top-ups less petty-cash disbursements."""
     date = models.DateField(db_index=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     note = models.CharField(max_length=200, blank=True)
     recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
                                     related_name="petty_topups")
@@ -498,7 +512,8 @@ class Payable(models.Model):
     date = models.DateField(db_index=True, help_text="Date the liability was incurred.")
     vendor = models.CharField(max_length=120)
     description = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
                                    related_name="payables")
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
@@ -525,7 +540,8 @@ class Accrual(models.Model):
     for utilities consumed). A liability until settled."""
     date = models.DateField(db_index=True, help_text="Period-end the accrual relates to.")
     description = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
                                    related_name="accruals")
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
@@ -551,7 +567,8 @@ class Prepayment(models.Model):
     insurance premium). The unexpired portion is a current asset."""
     date = models.DateField(db_index=True, help_text="Date paid.")
     description = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
                                    related_name="prepayments")
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
@@ -606,7 +623,8 @@ class StaffAdvance(models.Model):
     staff_name = models.CharField(max_length=120)
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
                                    related_name="advances")
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     date_issued = models.DateField()
     purpose = models.CharField(max_length=200)
     method = models.CharField(max_length=8, choices=Method.choices, default=Method.CASH)
@@ -693,7 +711,8 @@ class AdvanceTopUp(models.Model):
     advance = models.ForeignKey(StaffAdvance, on_delete=models.CASCADE,
                                 related_name="topups")
     date = models.DateField()
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     charge = models.DecimalField(max_digits=12, decimal_places=2, default=0,
         help_text="Bank/M-Pesa charge for sending this top-up — the church's "
                   "own cost, booked as an expense but not added to what the "
@@ -843,7 +862,8 @@ class ChequeRegister(models.Model):
 
     cheque_number = models.CharField(max_length=40, db_index=True)
     payee = models.CharField(max_length=160, blank=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     date_issued = models.DateField(db_index=True)
     date_cleared = models.DateField(null=True, blank=True,
         help_text="Date the cheque cleared or bounced at the bank.")
@@ -918,7 +938,8 @@ class PaymentInstrument(models.Model):
     instrument_number = models.CharField(max_length=40, blank=True, db_index=True,
         help_text="Cheque number, EFT/RTGS reference, or M-Pesa code.")
     payee = models.CharField(max_length=160, blank=True)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     bank_account = models.ForeignKey("statements.BankAccount", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="payment_instruments")
 

@@ -56,6 +56,12 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
                 "Tick if this was paid out of the petty cash float — it reduces the float.")
         self._style()
 
+    def clean_date(self):
+        from core.utils import reject_far_future_date
+        d = self.cleaned_data["date"]
+        reject_far_future_date(d, field_label="expense date")
+        return d
+
     def clean_expenditure_type(self):
         return self.cleaned_data.get("expenditure_type") or Expense.ExpenditureType.RECURRENT
 
@@ -70,7 +76,7 @@ class FundTransferForm(StyledFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # only local (non-trust) active funds may be transferred between
-        local = Department.objects.filter(active=True, is_trust=False).order_by("name")
+        local = Department.objects.filter(active=True, is_trust=False).select_related("parent").order_by("name")
         self.fields["source"].queryset = local
         self.fields["destination"].queryset = local
         self.fields["reason"].required = False
@@ -80,6 +86,9 @@ class FundTransferForm(StyledFormMixin, forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         from django.core.exceptions import ValidationError
+        from core.utils import reject_far_future_date
+        if cleaned.get("date"):
+            reject_far_future_date(cleaned["date"], field_label="transfer date")
         src, dst = cleaned.get("source"), cleaned.get("destination")
         if src and dst and src == dst:
             raise ValidationError("Source and destination funds must be different.")
@@ -102,7 +111,7 @@ class RecurringExpenseForm(StyledFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         from departments.models import Department
         self.fields["department"].queryset = Department.objects.filter(
-            active=True, is_trust=False).order_by("name")
+            active=True, is_trust=False).select_related("parent").order_by("name")
         self.fields["end_date"].required = False
         self.fields["claimant"].required = False
         for f in ("category", "frequency", "method", "department"):
@@ -149,7 +158,7 @@ class PettyCashDisbursementForm(StyledFormMixin, forms.Form):
         self.fields["method"].choices = Expense.Method.choices
         from departments.models import Department
         self.fields["department"].queryset = Department.objects.filter(
-            active=True, is_trust=False).order_by("name")
+            active=True, is_trust=False).select_related("parent").order_by("name")
         for f in ("category", "department", "method"):
             self.fields[f].widget.attrs.update({"class": "field--select"})
         self.fields["date"].initial = _dt.date.today()
@@ -174,7 +183,7 @@ class PayableForm(StyledFormMixin, forms.Form):
         self.fields["category"].choices = [c for c in Expense.Category.choices
                                             if c[0] != Expense.Category.REMITTANCE]
         self.fields["department"].queryset = Department.objects.filter(
-            active=True, is_trust=False).order_by("name")
+            active=True, is_trust=False).select_related("parent").order_by("name")
         self.fields["date"].initial = _dt.date.today()
         for f in ("category", "department"):
             self.fields[f].widget.attrs.update({"class": "field--select"})
@@ -197,7 +206,7 @@ class AccrualForm(StyledFormMixin, forms.Form):
         self.fields["category"].choices = [c for c in Expense.Category.choices
                                             if c[0] != Expense.Category.REMITTANCE]
         self.fields["department"].queryset = Department.objects.filter(
-            active=True, is_trust=False).order_by("name")
+            active=True, is_trust=False).select_related("parent").order_by("name")
         self.fields["date"].initial = _dt.date.today()
         for f in ("category", "department"):
             self.fields[f].widget.attrs.update({"class": "field--select"})
@@ -224,7 +233,7 @@ class PrepaymentForm(StyledFormMixin, forms.Form):
         self.fields["category"].choices = [c for c in Expense.Category.choices
                                             if c[0] != Expense.Category.REMITTANCE]
         self.fields["department"].queryset = Department.objects.filter(
-            active=True, is_trust=False).order_by("name")
+            active=True, is_trust=False).select_related("parent").order_by("name")
         self.fields["date"].initial = _dt.date.today()
         self.fields["start_date"].initial = _dt.date.today()
         for f in ("category", "department"):

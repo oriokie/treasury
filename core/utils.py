@@ -92,6 +92,23 @@ def money(value) -> str:
     return f"{value:,.2f}"
 
 
+def reject_far_future_date(value, max_days_ahead=1, field_label="date"):
+    """Raise a form ValidationError if `value` is further in the future than a
+    small grace window. Catches the common data-entry slip of a wrong year
+    (e.g. 2036 typed for 2026) or a wrong-clicked future date on a picker —
+    without a check, such an entry silently disappears from every current
+    report until the mistaken date arrives, since nothing else in the system
+    would flag it. A day of slack absorbs timezone differences between the
+    server and a user's browser; genuine forward-dated entries (a post-dated
+    cheque, a planned advance) should use a note instead of the ledger date."""
+    import datetime as dt
+    from django import forms
+    if value and value > dt.date.today() + dt.timedelta(days=max_days_ahead):
+        raise forms.ValidationError(
+            f"That {field_label} is in the future ({value:%d %b %Y}) — check the "
+            "year. If this is deliberate, add a note explaining why.")
+
+
 def safe_json(obj):
     """json.dumps hardened for embedding inside a <script> block via |safe.
 

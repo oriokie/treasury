@@ -430,6 +430,10 @@ class Transaction(models.Model):
             models.Index(fields=["date", "department"]),
             models.Index(fields=["allocation_status"]),
             models.Index(fields=["core_ref"]),
+            # confirmed_credits().filter(date__range=...) — the shape behind
+            # almost every collections/income report and dashboard KPI
+            models.Index(fields=["direction", "confirmed", "date"],
+                        name="giving_txn_dir_conf_date_idx"),
         ]
 
     def split_into(self, parts, user=None):

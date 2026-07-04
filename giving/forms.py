@@ -23,7 +23,7 @@ class CashEntryForm(StyledFormMixin, forms.ModelForm):
             (Transaction.Channel.CASH, "Cash"),
             (Transaction.Channel.ENVELOPE, "Envelope"),
         ]
-        self.fields["department"].queryset = Department.objects.filter(active=True)
+        self.fields["department"].queryset = Department.objects.filter(active=True).select_related("parent")
         self.fields["department"].required = False
         self.fields["department"].widget = forms.HiddenInput()
         self.fields["dev_group"].required = False
@@ -44,6 +44,9 @@ class CashEntryForm(StyledFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        from core.utils import reject_far_future_date
+        if cleaned.get("date"):
+            reject_far_future_date(cleaned["date"], field_label="entry date")
         key = (cleaned.get("fund") or "").strip()
         from giving.models import SplitFund
         if key.startswith("s:"):
@@ -132,10 +135,16 @@ class TransactionEditForm(StyledFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["department"].queryset = Department.objects.filter(active=True)
+        self.fields["department"].queryset = Department.objects.filter(active=True).select_related("parent")
         self.fields["department"].required = False
         self.fields["member"].queryset = Member.objects.filter(active=True)
         for f in ("member", "dev_group", "reference", "payer_name",
                   "payer_phone", "mpesa_ref"):
             self.fields[f].required = False
         self._style()
+
+    def clean_date(self):
+        from core.utils import reject_far_future_date
+        d = self.cleaned_data["date"]
+        reject_far_future_date(d, field_label="entry date")
+        return d

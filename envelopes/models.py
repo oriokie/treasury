@@ -11,6 +11,7 @@ treasurer records the split across funds against a sequential receipt number.
 """
 from django.db import models
 from decimal import Decimal
+from django.core.validators import MinValueValidator
 from simple_history.models import HistoricalRecords
 
 
@@ -77,7 +78,8 @@ class EnvelopeLine(models.Model):
     """One fund's share of an envelope."""
     envelope = models.ForeignKey(Envelope, on_delete=models.CASCADE, related_name="lines")
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT)
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     # optional development group this share belongs to (for Development giving),
     # so a single "Development" column can be split across groups without needing
     # a separate form column per group

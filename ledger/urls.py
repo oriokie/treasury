@@ -9,6 +9,7 @@ urlpatterns = [
     path("ledger/journal/archive/", views.JournalArchiveView.as_view(), name="journal_archive"),
     path("ledger/journal/new/", views.ManualJournalCreate.as_view(), name="manual_journal"),
     path("ledger/reconciliation/", views.ReconciliationReportView.as_view(), name="ledger_reconciliation"),
+    path("ledger/health/", views.LedgerHealthView.as_view(), name="ledger_health"),
     path("ledger/reconciliation/fund/<int:pk>/", views.FundVarianceView.as_view(), name="ledger_fund_variance"),
     path("ledger/rebuild/", views.RebuildLedgerView.as_view(), name="ledger_rebuild"),
     path("ledger/accounts/new/", views.AccountCreate.as_view(), name="account_create"),

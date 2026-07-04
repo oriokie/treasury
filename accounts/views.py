@@ -51,9 +51,25 @@ class UserEditRoleView(TreasurerRequiredMixin, View):
         user = get_object_or_404(User, pk=pk)
         form = EditRoleForm(request.POST)
         if form.is_valid():
-            group, _ = Group.objects.get_or_create(name=form.cleaned_data["role"])
+            from core.roles import TREASURER
+            new_role = form.cleaned_data["role"]
+            new_active = form.cleaned_data["active"]
+            was_treasurer = user.groups.filter(name=TREASURER).exists()
+            losing_treasurer = was_treasurer and (new_role != TREASURER or not new_active)
+            if losing_treasurer:
+                other_active_treasurers = (User.objects.filter(
+                        groups__name=TREASURER, is_active=True)
+                    .exclude(pk=user.pk).exists())
+                if not other_active_treasurers:
+                    messages.error(request,
+                        f"{user.username} is the only active Treasurer. Make "
+                        "someone else a Treasurer first, so the church always "
+                        "has at least one — otherwise no one could manage users, "
+                        "approve expenses, or unlock periods.")
+                    return self._render(request, user, form)
+            group, _ = Group.objects.get_or_create(name=new_role)
             user.groups.set([group])
-            user.is_active = form.cleaned_data["active"]
+            user.is_active = new_active
             user.save()
             form.sync_leaderships(user)
             messages.success(request, f"Updated {user.username}.")

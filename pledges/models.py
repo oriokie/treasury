@@ -11,6 +11,7 @@ full visibility of commitments vs receipts.
 """
 import datetime as dt
 from decimal import Decimal
+from django.core.validators import MinValueValidator
 
 from django.db import models
 from django.db.models import Sum
@@ -249,7 +250,8 @@ class PledgePayment(models.Model):
     transaction = models.ForeignKey("giving.Transaction", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="pledge_payments",
         help_text="The confirmed contribution matched to this pledge.")
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     date = models.DateField(default=dt.date.today)
     source = models.CharField(max_length=6, choices=Source.choices,
                               default=Source.MANUAL)
@@ -318,7 +320,8 @@ class PledgeMatchSuggestion(models.Model):
                                     related_name="pledge_suggestions")
     pledge = models.ForeignKey(Pledge, on_delete=models.CASCADE,
                                related_name="suggestions")
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
     status = models.CharField(max_length=10, choices=Status.choices,
                               default=Status.PENDING, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)

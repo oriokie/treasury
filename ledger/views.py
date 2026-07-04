@@ -71,11 +71,11 @@ class JournalView(ReadAccessMixin, View):
         if request.GET.get("export") in ("csv", "xlsx"):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
-            header = ["Date", "Source", "Account", "Memo", "Debit", "Credit"]
+            header = ["JV #", "Date", "Source", "Account", "Memo", "Debit", "Credit"]
             rows = []
             for en in entries:
                 for ln in en.lines.all():
-                    rows.append([en.date.isoformat(),
+                    rows.append([en.number or "", en.date.isoformat(),
                                  f"{en.source_type}#{en.source_id}" if en.source_id else en.source_type,
                                  ln.account.name if ln.account else "",
                                  en.memo or "", ln.debit or 0, ln.credit or 0])
@@ -113,6 +113,26 @@ class RebuildLedgerView(TreasurerRequiredMixin, View):
         messages.success(request, f"General ledger rebuilt from source documents "
                                   f"({n} journal entries posted).")
         return redirect(request.META.get("HTTP_REFERER") or "trial_balance")
+
+
+class LedgerHealthView(ReadAccessMixin, View):
+    """Proactive integrity monitoring: trial balance, unbalanced journals,
+    orphan journals, missing source documents, duplicate postings/references,
+    and funds out of balance — everything an internal audit would otherwise
+    have to check by hand, run on demand instead of discovered during an
+    audit."""
+    template_name = "ledger/health.html"
+
+    def get(self, request):
+        from ledger.services.health import run_health_check
+        r = run_health_check()
+        all_clear = (r["trial_balance_balanced"] and r["accounting_equation"]["balanced"]
+                     and not r["unbalanced_journals"] and not r["orphan_journals"]
+                     and not r["missing_source_documents"]["transactions"]
+                     and not r["missing_source_documents"]["expenses"]
+                     and not r["duplicate_postings"] and not r["funds_out_of_balance"])
+        r["all_clear"] = all_clear
+        return render(request, self.template_name, r)
 
 
 class ReconciliationReportView(ReadAccessMixin, View):
@@ -279,6 +299,10 @@ class ManualJournalCreate(TreasurerRequiredMixin, View):
             tot_c += c
         if len(lines) < 2:
             messages.error(request, "A journal entry needs at least two lines.")
+            return redirect("manual_journal")
+        if any(d and c for _, d, c, _ in lines):
+            messages.error(request, "A line can't have both a debit and a credit "
+                                    "— split it into two lines.")
             return redirect("manual_journal")
         if tot_d != tot_c:
             messages.error(request, f"Entry is not balanced: debits {tot_d:,.2f} ≠ "

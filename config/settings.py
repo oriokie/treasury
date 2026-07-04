@@ -284,6 +284,16 @@ CHURCH_NAME = os.environ.get("CHURCH_NAME", "SDA Central Church")
 # Whether expenses must be approved before they affect fund balances.
 EXPENSE_REQUIRE_APPROVAL = env_bool("EXPENSE_REQUIRE_APPROVAL", True)
 
+# Session lifetime: Django's default is 2 weeks with no idle timeout, which is
+# longer than good practice for a system handling financial data. A shorter,
+# sliding session (renewed on activity, so an active user is never logged out
+# mid-task) with an idle timeout the browser drops on close is a safer default
+# for a treasury application. Override via env if a church needs something
+# different — this is a policy choice, not a hardcoded rule.
+SESSION_COOKIE_AGE = int(os.environ.get("DJANGO_SESSION_COOKIE_AGE", str(12 * 60 * 60)))  # 12h
+SESSION_SAVE_EVERY_REQUEST = True   # sliding expiry: renews on activity
+SESSION_EXPIRE_AT_BROWSER_CLOSE = env_bool("DJANGO_SESSION_EXPIRE_AT_BROWSER_CLOSE", False)
+
 # Production security (only switch on behind HTTPS)
 if not DEBUG:
     # When TLS is terminated by a reverse proxy (nginx/Caddy/Traefik), trust its

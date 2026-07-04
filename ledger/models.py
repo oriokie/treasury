@@ -6,6 +6,7 @@ Expense) plus a journal of balanced entries derived from the source documents
 balance and a general ledger for audit, without changing how users record data.
 """
 from decimal import Decimal
+import datetime as _dt
 from django.db import models
 
 
@@ -39,6 +40,26 @@ class Account(models.Model):
         return self.type in self.DEBIT_NORMAL
 
 
+class JournalSequence(models.Model):
+    """One row per year; tracks the last journal number issued that year. The
+    counter only ever increases — a number is never reused, even if the entry
+    it was assigned to is later deleted and replaced by a correction (the
+    replacement gets its own new number; the original stays on record in
+    JournalEntryArchive). This is what makes JV-2026-000001 a permanent
+    reference an auditor can cite, not just a display convenience."""
+    year = models.PositiveSmallIntegerField(unique=True)
+    last_number = models.PositiveIntegerField(default=0)
+
+    @classmethod
+    def next_number(cls, year):
+        from django.db import transaction
+        with transaction.atomic():
+            seq, _ = cls.objects.select_for_update().get_or_create(year=year)
+            seq.last_number += 1
+            seq.save(update_fields=["last_number"])
+            return f"JV-{year}-{seq.last_number:06d}"
+
+
 class JournalEntry(models.Model):
     """A balanced posting (sum of debits == sum of credits) derived from a source
     document. Stored so the ledger is auditable and queryable."""
@@ -46,6 +67,11 @@ class JournalEntry(models.Model):
     memo = models.CharField(max_length=200, blank=True)
     source_type = models.CharField(max_length=20, db_index=True)   # opening|transaction|expense|remittance
     source_id = models.IntegerField(null=True, blank=True, db_index=True)
+    number = models.CharField(max_length=20, unique=True, null=True, blank=True,
+        help_text="Permanent journal voucher reference (e.g. JV-2026-000001), "
+                  "assigned once and never reused or renumbered — including when "
+                  "this entry is later replaced by a correction (see "
+                  "JournalEntryArchive, which preserves the original number).")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -53,7 +79,12 @@ class JournalEntry(models.Model):
         indexes = [models.Index(fields=["source_type", "source_id"])]
 
     def __str__(self):
-        return f"{self.date} {self.memo}"
+        return f"{self.number or ('#' + str(self.id))} {self.date} {self.memo}"
+
+    def save(self, *args, **kwargs):
+        if not self.number:
+            self.number = JournalSequence.next_number((self.date or _dt.date.today()).year)
+        super().save(*args, **kwargs)
 
     @property
     def total_debit(self):
@@ -90,6 +121,10 @@ class JournalEntryArchive(models.Model):
     source_type = models.CharField(max_length=20, db_index=True)
     source_id = models.IntegerField(null=True, blank=True, db_index=True)
     original_entry_id = models.IntegerField(db_index=True)
+    original_number = models.CharField(max_length=20, blank=True, null=True,
+        help_text="The permanent journal reference (e.g. JV-2026-000001) this "
+                  "entry carried before it was replaced — preserved here since "
+                  "that number is never reissued to anything else.")
     original_created_at = models.DateTimeField()
     lines = models.JSONField(
         help_text="[{account_code, account_name, department_id, debit, credit}, ...]")

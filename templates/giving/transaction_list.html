@@ -27,6 +27,8 @@
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=csv">CSV</a>
+    <span class="ws-divider"></span>
+    <a class="btn btn-sm btn-ghost" href="{% url 'transaction_list' %}?export=trust-pending-receipt" title="Trust fund credits with no formal receipt yet — Date, Phone, Member, Amount, Fund, Reference">⤓ Trust pending receipt</a>
     {% if is_treasurer %}<span class="ws-divider"></span>
     <span class="muted u-xs"><span id="txcount">0</span> selected</span>
     <button form="txbulk" name="action" value="reverse" id="txb-reverse" class="btn btn-sm btn-danger" disabled onclick="return confirm('Reverse the selected entries? Each gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.');">Reverse selected</button>{% endif %}

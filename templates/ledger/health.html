@@ -1,0 +1,126 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}General ledger health · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head no-print"><div class="ws-titles"><h1>General ledger health check</h1>
+  <div class="ws-sub">Proactive integrity monitoring — everything an audit would check by hand</div></div>
+  <div class="toolbar">
+    <a class="btn btn-sm btn-ghost" href="{% url 'trial_balance' %}">Trial balance</a>
+    <a class="btn btn-sm btn-ghost" href="{% url 'ledger_reconciliation' %}">Fund reconciliation</a>
+    <a class="btn btn-sm btn-ghost" href="{% url 'journal_archive' %}">Journal archive</a>
+    {% if is_treasurer %}<form method="post" action="{% url 'ledger_rebuild' %}" style="display:inline" onsubmit="return confirm('Rebuild the general ledger from current source documents?')">{% csrf_token %}<button class="btn btn-sm">↻ Rebuild ledger</button></form>{% endif %}
+  </div>
+</div>
+
+{% if all_clear %}
+<div class="alert alert-green u-mb"><strong>✓ All clear.</strong> The trial balance balances, the accounting equation holds, every journal entry is balanced, every posted entry has a live source document, every eligible source document has been posted, and every fund ties to the ledger.</div>
+{% else %}
+<div class="alert alert-amber u-mb"><strong>⚑ One or more checks below need attention.</strong> None of these block the application from working — they're flags for a treasurer to review, most commonly cleared by rebuilding the ledger (below) if the cause is a stale posting rather than missing data.</div>
+{% endif %}
+
+<div class="kpi-grid u-mb">
+  <div class="stat {% if trial_balance_balanced %}accent{% else %}warn{% endif %}">
+    <div class="label">Trial balance</div>
+    <div class="value">{% if trial_balance_balanced %}<span class="pill pill-green">✓ Balances</span>{% else %}<span class="pill pill-red">Out of balance</span>{% endif %}</div>
+    <div class="foot mono">Dr {{ trial_balance_totals.debit|floatformat:2|intcomma }} · Cr {{ trial_balance_totals.credit|floatformat:2|intcomma }}</div>
+  </div>
+  <div class="stat {% if accounting_equation.balanced %}accent{% else %}warn{% endif %}">
+    <div class="label">Accounting equation</div>
+    <div class="value">{% if accounting_equation.balanced %}<span class="pill pill-green">✓ A = L + F</span>{% else %}<span class="pill pill-red">Out of balance</span>{% endif %}</div>
+  </div>
+  <div class="stat {% if not unbalanced_journals %}accent{% else %}warn{% endif %}">
+    <div class="label">Unbalanced journals</div>
+    <div class="value">{{ unbalanced_journals|length }}</div>
+    <div class="foot">Should always be zero</div>
+  </div>
+  <div class="stat {% if not orphan_journals %}accent{% else %}warn{% endif %}">
+    <div class="label">Orphan journals</div>
+    <div class="value">{{ orphan_journals|length }}</div>
+    <div class="foot">Posted entry, source document gone</div>
+  </div>
+  <div class="stat {% if not missing_source_documents.transactions and not missing_source_documents.expenses %}accent{% else %}warn{% endif %}">
+    <div class="label">Missing postings</div>
+    <div class="value">{{ missing_source_documents.transactions|length|add:missing_source_documents.expenses|length }}</div>
+    <div class="foot">Should be posted, isn't</div>
+  </div>
+  <div class="stat {% if not duplicate_postings %}accent{% else %}warn{% endif %}">
+    <div class="label">Duplicate postings</div>
+    <div class="value">{{ duplicate_postings|length }}</div>
+  </div>
+  <div class="stat {% if not duplicate_references %}accent{% else %}warn{% endif %}">
+    <div class="label">Shared receipt references</div>
+    <div class="value">{{ duplicate_references|length }}</div>
+    <div class="foot">Often a legitimate split gift</div>
+  </div>
+  <div class="stat {% if not funds_out_of_balance %}accent{% else %}warn{% endif %}">
+    <div class="label">Funds out of balance</div>
+    <div class="value">{{ funds_out_of_balance|length }}</div>
+  </div>
+</div>
+
+{% if unbalanced_journals %}
+<div class="card u-mb"><div class="hd">Unbalanced journals</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Difference</th></tr></thead><tbody>
+  {% for b in unbalanced_journals %}<tr class="row-warn"><td>{{ b.entry.number|default:b.entry_id }} — {{ b.entry.memo }}</td>
+    <td class="num mono">{{ b.debit|floatformat:2|intcomma }}</td><td class="num mono">{{ b.credit|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ b.diff|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+{% if orphan_journals %}
+<div class="card u-mb"><div class="hd">Orphan journals — source document no longer exists</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Date</th><th>Source</th><th>Memo</th><th class="num">Lines</th></tr></thead><tbody>
+  {% for je in orphan_journals %}<tr class="row-warn"><td class="mono">{{ je.date|date:"d/m/y" }}</td>
+    <td>{{ je.source_type }} #{{ je.source_id }}</td><td>{{ je.memo }}</td>
+    <td class="num">{{ je.lines.all|length }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% if is_treasurer %}<p class="help u-mt-sm">Rebuilding the ledger removes these — they refer to a document that's genuinely gone.</p>{% endif %}
+</div></div>
+{% endif %}
+
+{% if missing_source_documents.transactions or missing_source_documents.expenses %}
+<div class="card u-mb"><div class="hd">Missing postings — should be in the ledger, isn't</div><div class="bd">
+  {% if missing_source_documents.transactions %}<div class="section-title">Receipts</div>
+  <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for t in missing_source_documents.transactions %}<tr class="row-warn"><td class="mono">{{ t.date|date:"d/m/y" }}</td>
+    <td>{{ t.department.name|sentence_fund }}</td><td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>{% endif %}
+  {% if missing_source_documents.expenses %}<div class="section-title u-mt">Expenses</div>
+  <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+  {% for e in missing_source_documents.expenses %}<tr class="row-warn"><td class="mono">{{ e.date|date:"d/m/y" }}</td>
+    <td>{{ e.department.name|sentence_fund }}</td><td>{{ e.description }}</td><td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>{% endif %}
+  {% if is_treasurer %}<p class="help u-mt-sm">Rebuilding the ledger posts these.</p>{% endif %}
+</div></div>
+{% endif %}
+
+{% if duplicate_postings %}
+<div class="card u-mb"><div class="hd">Duplicate postings — same source document posted more than once</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Source</th><th class="num">Entries</th></tr></thead><tbody>
+  {% for d in duplicate_postings %}<tr class="row-warn"><td>{{ d.source_type }} #{{ d.source_id }}</td><td class="num">{{ d.count }}</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+{% if duplicate_references %}
+<div class="card u-mb"><div class="hd">Shared M-Pesa/bank receipt references</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Reference</th><th class="num">Rows</th><th>Likely cause</th></tr></thead><tbody>
+  {% for d in duplicate_references %}<tr>
+    <td class="mono">{{ d.mpesa_ref }}</td><td class="num">{{ d.count }}</td>
+    <td>{% if d.likely_split %}<span class="pill pill-grey">Likely a split gift</span>{% else %}<span class="pill pill-amber">Worth checking</span>{% endif %}</td>
+  </tr>{% endfor %}
+  </tbody></table>
+</div></div>
+{% endif %}
+
+{% if funds_out_of_balance %}
+<div class="card u-mb"><div class="hd">Funds out of balance</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Fund</th><th class="num">Per fund report</th><th class="num">Per ledger</th><th class="num">Difference</th></tr></thead><tbody>
+  {% for f in funds_out_of_balance %}<tr class="row-warn"><td>{{ f.fund.name|sentence_fund }}</td>
+    <td class="num mono">{{ f.engine|floatformat:2|intcomma }}</td><td class="num mono">{{ f.ledger|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ f.diff|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  </tbody></table>
+  <a class="link u-mt-sm u-inline" href="{% url 'ledger_reconciliation' %}">Full fund reconciliation →</a>
+</div></div>
+{% endif %}
+{% endblock %}

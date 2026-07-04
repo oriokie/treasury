@@ -191,14 +191,16 @@ class ExpenseReportView(PeriodMixin, TemplateView):
         # consolidate by the top-level fund (sub-account spend rolls into its parent)
         from collections import defaultdict
         from departments.models import Department
-        from .services.budget import budget_amount
+        from .services.budget import budget_amounts_bulk
+        all_depts = list(Department.objects.select_related("parent"))
         parent_of = {}
-        budget_of = {}
-        for d in Department.objects.select_related("parent"):
+        tops = {}
+        for d in all_depts:
             top = d.parent or d
             parent_of[d.id] = top.name
-            if top.name not in budget_of:
-                budget_of[top.name] = budget_amount(e.year, top)
+            tops.setdefault(top.name, top)
+        top_budgets = budget_amounts_bulk(e.year, tops.values())
+        budget_of = {name: top_budgets.get(top.id) for name, top in tops.items()}
         agg = defaultdict(Decimal)
         for r in base.values("department_id").annotate(total=Sum("amount")):
             agg[parent_of.get(r["department_id"], "Unallocated")] += r["total"] or Decimal(0)
@@ -910,7 +912,6 @@ class AnnualSummaryView(ReadAccessMixin, TemplateView):
                         "net": (inc.get(y, 0) or 0) - (exp.get(y, 0) or 0)} for y in years]
         # historical reference years (collection / trust fund / expenditure)
         from core.models import HistoricalYear, HistoricalMonth
-        import json
         ctx["historical"] = list(HistoricalYear.objects.all())
         # seasonality: average collection / trust / expenditure by calendar month
         MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep",
@@ -1146,6 +1147,17 @@ class AuditLogView(ReadAccessMixin, TemplateView):
         start, end = _date("start"), _date("end")
 
         records, users = [], set()
+        # Department/SplitFund names for AllocationRule, prefetched once: its
+        # __str__() touches self.split_fund or self.department, and
+        # h.instance (a full model reconstructed from the historical row) has
+        # no select_related — calling str() on it for every historical
+        # AllocationRule row triggered a fresh FK query each time (up to
+        # ~1500 extra queries for a church with a large rule history).
+        from departments.models import Department
+        from giving.models import SplitFund
+        dept_names = dict(Department.objects.values_list("id", "name"))
+        split_names = dict(SplitFund.objects.values_list("id", "name"))
+
         for name, model in models.items():
             hq = model.history.all().select_related("history_user")
             if start:
@@ -1164,7 +1176,15 @@ class AuditLogView(ReadAccessMixin, TemplateView):
                 continue
             for h in hq.order_by("-history_date")[:cap]:
                 try:
-                    obj = str(h.instance)
+                    if name == "Allocation rule":
+                        # build the display string from the historical row's
+                        # own FK id columns + the prefetched name maps,
+                        # instead of str(h.instance) (see note above)
+                        target = (split_names.get(h.split_fund_id)
+                                  or dept_names.get(h.department_id) or "—")
+                        obj = f"{h.reference} -> {target}"
+                    else:
+                        obj = str(h.instance)
                 except Exception:
                     from core.utils import log_exception as _lx; _lx('reports/views.py')
                     obj = f"{name} #{h.id}"
@@ -1381,7 +1401,6 @@ class CollectionsDetailView(PeriodMixin, TemplateView):
 # ===================== Trust Fund Remittance subsystem =====================
 import datetime as _dt
 from django.utils import timezone as _tz
-from django.shortcuts import render as _render
 from cashbook.models import RemittanceBatch
 from core.models import SiteConfig
 from core.utils import sabbath_week_of
@@ -2031,7 +2050,6 @@ class BoardReportView(PeriodMixin, TemplateView):
         # report period reaches, so a partial current year isn't unfairly shown
         # against full prior years. We cap each year's figures at the month/day
         # the current period ends on.
-        import datetime as _d
         cutoff_month, cutoff_day = e.month, e.day
         ytd_label = f" (Jan–{e:%b})" if (cutoff_month, cutoff_day) != (12, 31) else ""
 
@@ -2083,7 +2101,6 @@ class BoardReportView(PeriodMixin, TemplateView):
         ctx["ai_error"] = err
 
         # ---- Goals & targets (#3): expense, offering, group contribution ----
-        import datetime as _gd
         from departments.models import Department as _Dept
         gyear = e.year
 
@@ -2321,7 +2338,6 @@ class FinancialPositionView(ReadAccessMixin, TemplateView):
     template_name = "reports/financial_position.html"
 
     def get(self, request, *args, **kwargs):
-        from assets.models import FixedAsset
         try:
             as_of = _dt.date.fromisoformat(request.GET.get("as_of", ""))
         except ValueError:
@@ -2434,7 +2450,6 @@ class ChangesInNetAssetsView(PeriodMixin, TemplateView):
     template_name = "reports/changes_in_net_assets.html"
 
     def get(self, request, *args, **kwargs):
-        from assets.models import FixedAsset
         ctx = self.get_context_data(**kwargs)
         s, e = ctx["start"], ctx["end"]
         rows = balances.department_summary(s, e)
@@ -3239,8 +3254,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                     f"Year-to-date collections are {phrase(d)}. Trust makes up "
                     f"{(c.get('trust',0)/c['total']*100):.0f}% of this month's receipts."
                     if c.get("total") else f"Collections are {phrase(d)}.")
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — an optional narrative must never break the report
+            from core.utils import log_exception as _lx; _lx("monthly treasurer insight: collections")
         # trust trend
         tt = ctx.get("trust_trend") or {}
         try:
@@ -3252,8 +3267,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                 d = pct_change(last_two[0], last_two[1])
                 ins["trust_trend"] = (f"Receipted trust giving is {phrase(d)} month-on-month. "
                                       "Only receipted trust is a firm remittance liability.")
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer insight: trust_trend")
         # income & expenditure
         isr = ctx.get("income_stmt") or {}
         try:
@@ -3264,8 +3279,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             else:
                 ins["income"] = (f"Operations ran a deficit of {abs(float(surplus)):,.0f} — "
                                  "spending outpaced local income this month; watch reserves.")
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer insight: income")
         # cash-flow
         cf = ctx.get("cashflow") or {}
         try:
@@ -3273,8 +3288,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             direction = "rose" if nc > 0 else ("fell" if nc < 0 else "held steady")
             ins["cashflow"] = (f"Cash {direction} by {abs(float(nc)):,.0f} over the month, "
                                f"ending at {float(cf.get('cash_close', 0)):,.0f}.")
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer insight: cashflow")
         # SoFP / net assets
         sofp = ctx.get("sofp") or {}
         try:
@@ -3282,8 +3297,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
             tp = float(sofp.get("trust_payable", sofp.get("trust_liab", 0)) or 0)
             ins["sofp"] = (f"Net assets stand at {na:,.0f}. Trust funds of {tp:,.0f} are a "
                            "liability owed to the field, not the church's own reserves.")
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer insight: sofp")
         # camp goals
         try:
             goals = ctx.get("camp_goals") or []
@@ -3292,8 +3307,8 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
                 ins["camp"] = (f"{best['name']} is {best['pct']}% funded. "
                                + ("On track." if best["pct"] >= 60 else
                                   "Momentum needed to reach the target."))
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx; _lx("monthly treasurer insight: camp")
 
         # optional single LLM enrichment pass (kept cheap; falls back silently)
         try:
