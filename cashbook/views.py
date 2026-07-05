@@ -69,11 +69,24 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             from core.models import SiteConfig
             qs = self.get_queryset()
             header = ["ID", "Date", "Description", "Fund", "Category", "Type", "Status",
-                      "Claimant", "Voucher", "Amount"]
+                      "Claimant", "Voucher", "Payment Method", "Amount"]
+
+            def _payment_method(x):
+                # the actual recorded payment source — never inferred: petty
+                # cash is its own recorded flag (paid_from_petty_cash), distinct
+                # from the payment method (which is otherwise always CASH for
+                # a petty-cash disbursement); everything else comes straight
+                # from Expense.method.
+                if x.paid_from_petty_cash:
+                    return "Petty Cash"
+                return {"CASH": "Cash", "BANK": "Bank", "CHEQUE": "Cheque",
+                        "MPESA": "Mobile Money"}.get(x.method) or (x.method or "Other")
+
             rows = [[x.id, x.date.isoformat(), x.description,
                      x.department.name if x.department_id else "",
                      x.get_category_display(), x.get_expenditure_type_display(),
                      x.get_status_display(), x.claimant or "", x.voucher_no or "",
+                     _payment_method(x),
                      float(x.amount)] for x in qs]
             if export == "xlsx":
                 return xlsx_response("expenses.xlsx", header, rows, title="Expenses",

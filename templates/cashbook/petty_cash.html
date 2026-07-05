@@ -16,28 +16,28 @@
 <div class="form-grid no-print" style="display:grid;grid-template-columns:1fr 1.2fr;gap:1rem">
   <div class="card form-card"><div class="hd">Top up the float</div><div class="bd">
     <form method="post" action="{% url 'petty_cash_topup' %}">{% csrf_token %}
-      <div class="form-row"><label>Date</label>{{ topup_form.date }}</div>
-      <div class="form-row"><label>Amount</label>{{ topup_form.amount }}</div>
-      <div class="form-row"><label>Note <span class="muted">(optional)</span></label>{{ topup_form.note }}</div>
+      <div class="form-row"><label for="{{ topup_form.date.id_for_label }}">Date</label>{{ topup_form.date }}</div>
+      <div class="form-row"><label for="{{ topup_form.amount.id_for_label }}">Amount</label>{{ topup_form.amount }}</div>
+      <div class="form-row"><label for="{{ topup_form.note.id_for_label }}">Note <span class="muted">(optional)</span></label>{{ topup_form.note }}</div>
       <div class="btn-row"><button class="btn">Record top-up</button></div>
     </form>
   </div></div>
   <div class="card form-card"><div class="hd">Record a disbursement</div><div class="bd">
     <form method="post" action="{% url 'petty_cash_disburse' %}">{% csrf_token %}
-      <div class="form-row"><label>Date</label>{{ disb_form.date }}</div>
-      <div class="form-row"><label>What was paid for</label>{{ disb_form.description }}</div>
+      <div class="form-row"><label for="{{ disb_form.date.id_for_label }}">Date</label>{{ disb_form.date }}</div>
+      <div class="form-row"><label for="{{ disb_form.description.id_for_label }}">What was paid for</label>{{ disb_form.description }}</div>
       <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-        <div class="form-row"><label>Amount</label>{{ disb_form.amount }}</div>
-        <div class="form-row"><label>Category</label>{{ disb_form.category }}</div>
+        <div class="form-row"><label for="{{ disb_form.amount.id_for_label }}">Amount</label>{{ disb_form.amount }}</div>
+        <div class="form-row"><label for="{{ disb_form.category.id_for_label }}">Category</label>{{ disb_form.category }}</div>
       </div>
-      <div class="form-row"><label>Charge to fund / ministry</label>{{ disb_form.department }}</div>
+      <div class="form-row"><label for="{{ disb_form.department.id_for_label }}">Charge to fund / ministry</label>{{ disb_form.department }}</div>
       <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-        <div class="form-row"><label>Paid by</label>{{ disb_form.method }}</div>
-        <div class="form-row"><label>Voucher no <span class="muted">(optional)</span></label>{{ disb_form.voucher_no }}</div>
+        <div class="form-row"><label for="{{ disb_form.method.id_for_label }}">Paid by</label>{{ disb_form.method }}</div>
+        <div class="form-row"><label for="{{ disb_form.voucher_no.id_for_label }}">Voucher no <span class="muted">(optional)</span></label>{{ disb_form.voucher_no }}</div>
       </div>
-      <div class="form-row"><label>{{ disb_form.charge.label }} <span class="muted">(optional)</span></label>{{ disb_form.charge }}
+      <div class="form-row"><label for="{{ disb_form.charge.id_for_label }}">{{ disb_form.charge.label }} <span class="muted">(optional)</span></label>{{ disb_form.charge }}
         <div class="help">{{ disb_form.charge.help_text }}</div></div>
-      <div class="form-row"><label>Paid to <span class="muted">(optional)</span></label>{{ disb_form.claimant }}</div>
+      <div class="form-row"><label for="{{ disb_form.claimant.id_for_label }}">Paid to <span class="muted">(optional)</span></label>{{ disb_form.claimant }}</div>
       <div class="btn-row"><button class="btn btn-brass">Record disbursement</button></div>
     </form>
   </div></div>

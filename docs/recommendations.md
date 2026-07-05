@@ -221,6 +221,222 @@ hand) would only need to happen in one place.
 
 ---
 
+## 9. Bank Position report can be wrong if "Opening bank balance" was never configured
+
+**Description.** The Bank Position report (`/reports/bank-position/`) compares the
+system's recorded bank movements against the actual bank statement's captured
+closing balance, using `SiteConfig.opening_bank_balance` as its starting point. Unlike
+the three critical fixes made in this review (which affected the *total system-wide*
+cash figure and have a correct, always-available substitute in
+`Department.opening_balance`), this report specifically needs the **bank account's
+own** opening balance — a figure that genuinely isn't derivable from per-fund
+opening balances, since those mix cash-on-hand, petty cash, and bank funds together
+per fund rather than separating them by which physical account holds the money. For
+this church's data, `opening_bank_balance` is still at its default of zero, so this
+report would currently show a spurious gap equal to the true bank-only opening
+balance.
+
+**Reason not fixed this pass.** The field is genuinely configurable (Settings →
+Financial Setup already exposes `opening_bank_balance`), so the immediate action is
+operational, not a code fix: **a treasurer should set this figure once**, and the
+report will be correct from then on. Automatically deriving a sensible default would
+require either a new data field (e.g. tagging each fund's opening balance as
+bank-held vs cash-held) or a one-time reconciliation exercise — a data-model decision,
+not a safe quick fix.
+
+**Expected benefit.** Either a short onboarding prompt ("Bank Position needs your
+opening bank balance — set it here") shown the first time this report is opened while
+the field is still zero, or a data-model change to track opening balances by physical
+location (bank/cash/petty) rather than only by fund, would make this report reliable
+without depending on a treasurer discovering the right settings field on their own.
+
+**Priority: High** — this is a live, real problem for this deployment specifically
+(unlike the three fixed issues, this one needs a decision, not just a code change),
+and a treasurer relying on this report today would see a confusing, wrong gap.
+
+---
+
+## 10. Legacy-import-only opening-balance fields are a duplicate, easily-misused source of truth
+
+**Description.** `SiteConfig.opening_bank_balance`, `opening_cash_on_hand`, and
+`opening_unremitted_trust` exist only to receive a one-time snapshot from the
+legacy-spreadsheet import tool, displayed thereafter as a labelled reference (in the
+Statement of Financial Position and the backup/export Summary sheet). This review
+found that **three separate, unrelated calculations** (Executive overview KPI, Cash
+Flow Forecast, and bank reconciliation book balance) had, over several releases,
+each independently — and incorrectly — reached for these fields as if they were the
+authoritative "today's opening cash position", instead of the actual authoritative
+source (`Department.opening_balance`, summed). All three are now fixed via one shared
+helper (`departments.models.total_opening_cash_position()`), but the underlying
+temptation remains: three same-looking, zero-by-default fields sitting on `SiteConfig`
+that look like they should represent "the opening cash position" but don't, for any
+deployment that didn't go through the legacy-import path.
+
+**Reason not fixed further this pass.** Removing or renaming these fields would
+affect the legacy-import tool and the two legitimate reference displays (SOFP,
+backup Summary) that intentionally show "what was configured at setup" — a
+data-model change with migration and tooling implications beyond this review's safe-fix
+scope.
+
+**Expected benefit.** Renaming the fields to make their limited purpose obvious (e.g.
+`legacy_import_opening_bank_balance`) and/or adding a code comment or docstring
+warning directly on the model fields (pointing future developers to
+`total_opening_cash_position()` instead) would prevent this exact mistake from being
+reintroduced a fourth time.
+
+**Priority: Medium.**
+
+---
+
+## 11. Data tables lack `scope="col"` on header cells
+
+**Description.** No table in the application uses `scope="col"` (or `scope="row"`)
+on its header cells — checked across every table template. Most of this app's tables
+are simple (a single header row, no row-spanning headers), so screen readers can
+usually still infer the association reasonably well without it, but `scope` is a
+WCAG best practice (1.3.1) for reliably associating a data cell with its column
+header, especially valuable on the wider tables (the General Ledger, the Journal,
+several reports) with 6+ columns.
+
+**Reason not fixed this pass.** This app has dozens of table templates; doing this
+properly and consistently (rather than a partial, inconsistent sweep) is a broader,
+mechanical cleanup better done as its own dedicated pass than folded into this
+review's targeted fixes.
+
+**Expected benefit.** More reliable screen-reader navigation of wide, data-dense
+tables (the ledger, journal, and financial reports especially).
+
+**Priority: Low-Medium.** Lower severity than the label-association and colour-contrast
+issues fixed in this review (which affect whether a control's purpose is
+communicated *at all*, versus this one improving navigation of already-labelled data).
+
+---
+
+## 12. No dedicated mobile layout audit performed this pass
+
+**Description.** The application already has solid responsive infrastructure (a
+`table-scroll` auto-wrap script for tables on narrow viewports, a correct viewport
+meta tag, and opt-in "large touch targets"/"reduced motion"/"high contrast" user
+preferences) — but this review did not systematically test every page at common
+mobile breakpoints (e.g. 375px, 390px) for overflow, cramped layouts, or awkward
+wrapping, particularly on the denser reports (Monthly Treasurer's Report, General
+Ledger Health Check) which were designed with desktop use as the primary case.
+
+**Reason not fixed this pass.** A systematic, screen-by-screen mobile audit across
+the whole application is a substantial undertaking better scoped as its own review.
+
+**Expected benefit.** Confidence that the denser reporting pages remain usable for a
+treasurer checking figures on a phone, not just the transactional/data-entry pages
+that were more clearly designed mobile-first.
+
+**Priority: Low.**
+
+---
+
+## 13. Two unrelated models are both named `BudgetLine`
+
+**Description.** `departments.models.BudgetLine` (a line within a `Budget` — the
+department's formal annual budget) and `cashbook.models.BudgetLine` (a named
+budget item for a fund in a year, e.g. "Accommodation 50,000" under a Camp Meeting
+fund, which `Expense.budget_line` tags spend against) are two entirely different
+models that happen to share an identical class name, distinguished only by which
+app they live in. Found while auditing every model's `on_delete` behaviour for this
+review.
+
+**Reason not fixed this pass.** Renaming either model is a genuine migration (Django's
+`RenameModel`), plus updating every import, FK reference, template, and test that
+touches it — a mechanical but invasive change spanning two apps, not a safe drop-in
+fix. It also isn't a live bug (Django distinguishes them correctly via `app_label`
+internally) — it's a maintainability/confusion risk for future developers (and for
+an AI assistant, or a new hire, searching the codebase for "BudgetLine" and finding
+two unrelated results).
+
+**Expected benefit.** Renaming one of them (e.g. `cashbook.BudgetLine` →
+`cashbook.BudgetItem`, since it's the newer, more specific concept) would remove the
+ambiguity permanently.
+
+**Priority: Low.** Confusing, not incorrect; worth doing during a quieter period
+rather than as a targeted fix.
+
+---
+
+## 14. No CI/CD pipeline or code-coverage tooling configured
+
+**Description.** The test suite (135 test files, roughly 1,300+ individual tests
+across the application by this review's count) is comprehensive and has caught real
+bugs throughout this project's history, but it only runs when someone remembers to
+run it manually. There is no `.github/workflows` (or equivalent CI config), no
+`coverage.py`/`.coveragerc`, and no automated gate preventing a change from being
+deployed without the suite passing first.
+
+**Reason not fixed this pass.** Setting up CI is an infrastructure/hosting decision
+(which CI provider, whether the deployment environment allows a webhook, secrets
+management for a database in CI) beyond a safe in-repo code change.
+
+**Expected benefit.** A CI pipeline running the full suite on every push/PR would
+catch a regression before it reaches production, not after — the exact category of
+bug this and prior reviews found and fixed by hand. Coverage reporting would turn
+"I reviewed a sample of tests and they looked reasonable" (this review's method,
+necessarily manual and sampling-based) into a precise, complete picture of what
+is and isn't exercised.
+
+**Priority: Medium-High.** This is arguably the single highest-leverage testing
+investment available: cheap to set up (a GitHub Actions workflow running `manage.py
+test` is a well-trodden path), and it converts every future review's "run the
+targeted tests" step from a manual, easy-to-skip habit into an enforced gate.
+
+---
+
+## 15. Test files are organised by when they were added, not what they cover
+
+**Description.** Several apps — `cashbook` most notably, with 32 test files — mix
+feature-named files (`test_amount_validation.py`, `test_transfer_refund.py`) with
+version/session-named ones (`test_batch_v193.py`, `test_batch_v197.py`,
+`test_batch_v2001.py`). The version-named files each cover a specific historical
+batch of changes, which made sense when they were written, but makes it hard for a
+future developer (or reviewer) to find "all the tests for staff advances" without
+searching file contents rather than reading file names.
+
+**Reason not fixed this pass.** Consolidating test files means moving test methods
+between files — mechanical but with real risk of an accidental omission if rushed,
+and better done as its own deliberate pass with a full regression run at the end,
+per this review's brief.
+
+**Expected benefit.** Faster navigation to relevant coverage when reviewing or
+extending a feature; less risk of accidentally duplicating a test that already
+exists in a version-named file no one thought to check.
+
+**Priority: Low.** A maintainability nicety, not a coverage gap — every test still
+runs and still catches what it's meant to.
+
+---
+
+## 16. No concurrency/load testing
+
+**Description.** This review (and the database review before it) reasoned carefully
+about concurrency risk (e.g. the petty-cash-float TOCTOU gap recorded earlier, and
+the two atomicity fixes made in the database review) but neither could exercise
+*genuine* concurrent access — Django's default test runner and SQLite don't
+straightforwardly support multiple real threads/processes hitting the same test
+database at once the way production traffic would.
+
+**Reason not fixed this pass.** Proper concurrency testing needs either a
+Postgres/MySQL-backed test environment with real multi-connection support and a
+tool like `pytest-django` with `django_db(transaction=True)`, or a dedicated
+load-testing tool (Locust, k6) run against a staging deployment — both are
+infrastructure additions, not safe in-repo test changes.
+
+**Expected benefit.** Direct evidence (not just reasoning from code review) about
+how the application behaves under concurrent writes to the same fund, and how it
+performs under realistic multi-user load — valuable if the application is adopted
+by a larger congregation with more simultaneous users.
+
+**Priority: Low**, given this church's actual current usage pattern (one or two
+treasurers, rarely acting at the exact same second) — the same reasoning already
+applied to the petty-cash TOCTOU finding.
+
+---
+
 ## Summary table
 
 | # | Item | Priority |
@@ -233,3 +449,11 @@ hand) would only need to happen in one place.
 | 6 | `StaffAdvance.balance` computed per-row on the advance list | Low |
 | 7 | `reports/views.py` and `cashbook/views.py` have grown into "god files" | Medium |
 | 8 | Department-dropdown queryset construction repeated (non-identically) across 6 forms | Low |
+| 9 | Bank Position report wrong until "Opening bank balance" is configured (operational + data-model gap) | High |
+| 10 | Legacy-import-only opening-balance fields are a duplicate, easily-misused source of truth | Medium |
+| 11 | Data tables lack `scope="col"` on header cells | Low-Medium |
+| 12 | No dedicated mobile layout audit performed | Low |
+| 13 | Two unrelated models are both named `BudgetLine` (departments vs cashbook) | Low |
+| 14 | No CI/CD pipeline or code-coverage tooling | Medium-High |
+| 15 | Test files organised by when added, not what they cover (cashbook: 32 files) | Low |
+| 16 | No concurrency/load testing (SQLite/default test runner limitation) | Low |

@@ -15,7 +15,7 @@
       change the fund or amount.</div>{% endif %}
     <div class="form-grid">
       <div class="form-row">
-        <label>Fund / department</label>
+        <label for="deptSearch">Fund / department</label>
         <div class="pos-rel">
           <input id="deptSearch" class="field" autocomplete="off" placeholder="Start typing a fund…" data-current="{{ form.instance.department.name|default:'' }}">
           <div class="ac-box" id="deptAc"></div>
@@ -25,7 +25,7 @@
         {% for e in form.department.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       </div>
       <div class="form-row" id="budgetItemRow" style="display:none">
-        <label>Budget item <span class="muted u-xs">(optional)</span></label>
+        <label for="id_budget_line">Budget item <span class="muted u-xs">(optional)</span></label>
         <select name="budget_line" id="id_budget_line" class="field--select">
           <option value="">— not tied to a budget item —</option>
         </select>
@@ -34,7 +34,7 @@
       </div>
       {% for f in form %}{% if f.name != 'department' and f.name != 'budget_line' %}
         <div class="form-row">
-          <label>{{ f.label }}</label>{{ f }}
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
           {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
         </div>
@@ -49,16 +49,16 @@
         <strong>Issue a payment now</strong> <span class="muted u-xs">(cheque, EFT, RTGS, M-Pesa…)</span></label>
       <div class="help u-mt-0">Record how this expense is being paid at the same time — the payment becomes the settlement record and the expense is approved.</div>
       <div id="paymentFields" class="form-grid u-mt-sm" style="display:none">
-        <div class="form-row"><label>Method</label>
-          <select name="payment_method" class="field--select">
+        <div class="form-row"><label for="id_payment_method">Method</label>
+          <select name="payment_method" id="id_payment_method" class="field--select">
             {% for val, lbl in payment_methods %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
           </select></div>
-        <div class="form-row"><label>Reference / cheque no.</label>
-          <input type="text" name="payment_reference" class="field" placeholder="e.g. 000123"></div>
-        <div class="form-row"><label>Date</label>
+        <div class="form-row"><label for="id_payment_reference">Reference / cheque no.</label>
+          <input type="text" name="payment_reference" id="id_payment_reference" class="field" placeholder="e.g. 000123"></div>
+        <div class="form-row"><label for="paymentDate">Date</label>
           <input type="date" name="payment_date" id="paymentDate" class="field"></div>
-        {% if bank_accounts %}<div class="form-row"><label>Bank account</label>
-          <select name="payment_bank_account" class="field--select"><option value="">—</option>
+        {% if bank_accounts %}<div class="form-row"><label for="id_payment_bank_account">Bank account</label>
+          <select name="payment_bank_account" id="id_payment_bank_account" class="field--select"><option value="">—</option>
           {% for a in bank_accounts %}<option value="{{ a.id }}">{{ a }}</option>{% endfor %}</select></div>{% endif %}
       </div>
       {% else %}

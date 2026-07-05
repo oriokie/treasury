@@ -39,8 +39,8 @@
 
   {% if no_campaign %}
   <div class="card" style="max-width:760px;margin-bottom:1rem"><div class="bd">
-    <label>{{ no_campaign }} row(s) have no campaign. Assign them to:</label>
-    <select name="default_campaign" class="field--select" style="max-width:320px;margin-top:.3rem">
+    <label for="id_default_campaign">{{ no_campaign }} row(s) have no campaign. Assign them to:</label>
+    <select name="default_campaign" id="id_default_campaign" class="field--select" style="max-width:320px;margin-top:.3rem">
       <option value="">— skip rows with no campaign —</option>
       {% for c in campaign_candidates %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
     </select>

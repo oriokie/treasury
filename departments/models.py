@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import models
 from django.utils.text import slugify
 from simple_history.models import HistoricalRecords
@@ -142,8 +143,14 @@ class Department(models.Model):
 
 class DepartmentStatusLog(models.Model):
     """An audit trail of account lifecycle changes (active/closed/archived) and
-    consolidations, so every status change is recorded with who and when."""
-    department = models.ForeignKey(Department, on_delete=models.CASCADE,
+    consolidations, so every status change is recorded with who and when.
+
+    PROTECT, not CASCADE: this is an audit trail by its own stated purpose — if
+    a department were ever deleted after its status log accumulated history
+    (only possible once it has no protected financial activity left, since
+    Transaction/Expense already use PROTECT), silently cascading this away
+    would destroy exactly the record an auditor would want kept."""
+    department = models.ForeignKey(Department, on_delete=models.PROTECT,
                                    related_name="status_logs")
     from_status = models.CharField(max_length=8, blank=True)
     to_status = models.CharField(max_length=8)
@@ -189,6 +196,39 @@ def split_component_dept_ids():
     """IDs of departments that are halves of a split offering (collection-only)."""
     from giving.models import SplitComponent
     return set(SplitComponent.objects.values_list("department_id", flat=True))
+
+
+def total_opening_cash_position():
+    """The church's total starting cash position (all funds, trust and local,
+    combined) — the sum of every fund's own opening_balance.
+
+    Deliberately does NOT read SiteConfig.opening_bank_balance /
+    opening_cash_on_hand / opening_unremitted_trust — those three fields are
+    populated only by the legacy-spreadsheet import tool as a labelled
+    reference snapshot of what a summary sheet once said, and are left at
+    zero for every normal deployment. Used as a component figure elsewhere;
+    for "the true cash position as of a date" use current_cash_position()
+    below, which is exact by construction rather than approximated from this
+    plus income and expense totals (a transfer between funds can otherwise
+    throw a hand-built approximation off by a small amount)."""
+    return Department.objects.aggregate(
+        t=models.Sum("opening_balance"))["t"] or Decimal(0)
+
+
+def current_cash_position(as_of=None):
+    """The true, exact total cash & bank position across every fund as of a
+    date — the same figure the Statement of Financial Position shows as
+    "cash", computed the same way (the sum of every fund's own closing
+    balance from reports.services.balances.department_summary), so this can
+    never drift from the SOFP the way a hand-rebuilt "opening + income -
+    expenses" approximation could (a fund transfer, for instance, is exactly
+    accounted for here because department_summary already includes it)."""
+    import datetime as _dt
+    from decimal import Decimal as _Decimal
+    from reports.services import balances
+    as_of = as_of or _dt.date.today()
+    rows = balances.department_summary(None, as_of)
+    return sum((r["closing"] for r in rows), _Decimal(0))
 
 
 def expense_departments():

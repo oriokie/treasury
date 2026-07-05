@@ -67,5 +67,8 @@ class BudgetVsActualQueryCountTests(TestCase):
         c = Client(); c.force_login(self.tr)
         with CaptureQueriesContext(connection) as ctx:
             c.get("/executive/")
-        # well below the ~160+ queries seen before this fix, for 25 funds
-        self.assertLess(len(ctx.captured_queries), 140)
+        # well below the ~160+ queries seen before the budget-amount fix;
+        # +1 vs an earlier version of this test for the correct opening-cash-
+        # position aggregate (a real, necessary query — see
+        # core.test_cash_position_fix — worth far more than one query)
+        self.assertLess(len(ctx.captured_queries), 145)

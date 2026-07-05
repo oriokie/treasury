@@ -33,16 +33,10 @@ def _effective_expenses(**extra):
 
 
 def cash_now():
-    """Current cash & bank position — same basis as the dashboard card."""
-    from core.models import SiteConfig
-    cfg = SiteConfig.get()
-    income = _credits().aggregate(t=Sum("amount"))["t"] or Decimal(0)
-    payments = (Expense.objects.filter(
-        status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    opening = (cfg.opening_bank_balance + cfg.opening_cash_on_hand
-               - cfg.opening_unremitted_trust)
-    return opening + income - payments
+    """Current cash & bank position — the same figure the Statement of
+    Financial Position shows as "cash", computed the same way."""
+    from departments.models import current_cash_position
+    return current_cash_position()
 
 
 def _monthly_equiv(sched):

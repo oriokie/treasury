@@ -77,24 +77,14 @@ from .forms import BankReconciliationForm, ReconciliationItemForm
 
 
 def _ledger_bank_balance(up_to_date):
-    """Cash-book balance per the books, to date: opening cash position + confirmed
-    income (excluding double-counted lines such as bank M-Pesa already receipted as
-    envelopes) − approved/paid expenses (including trust remittances). This is the
-    figure the bank statement reconciles *to* via cash-at-hand, unpresented cheques
-    and unremitted-trust adjustments — NOT the raw bank-credit total."""
-    from core.models import SiteConfig
-    from cashbook.models import Expense
-    cfg = SiteConfig.get()
-    opening = (cfg.opening_bank_balance + cfg.opening_cash_on_hand
-               - cfg.opening_unremitted_trust)
-    income = (Transaction.objects.confirmed_credits()
-              .filter(excluded_from_income=False, date__lte=up_to_date)
-              .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    expenses = (Expense.objects.filter(
-                    status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
-                    date__lte=up_to_date)
-                .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    return opening + income - expenses
+    """Cash-book balance per the books, as of a date — the same figure the
+    Statement of Financial Position shows as "cash" for that date, computed
+    the same way (reports.services.balances.department_summary), so it can
+    never drift from the SOFP. This is the figure the bank statement
+    reconciles *to* via cash-at-hand, unpresented cheques and
+    unremitted-trust adjustments — NOT the raw bank-credit total."""
+    from departments.models import current_cash_position
+    return current_cash_position(up_to_date)
 
 
 def _recon_diagnostic(up_to_date):
@@ -102,11 +92,11 @@ def _recon_diagnostic(up_to_date):
     post-import reconciliation refuse to balance: contributions received into the bank that
     are not (yet) in the book — still in the review queue, awaiting Sabbath
     confirmation, or unconfirmed — and bank money excluded as envelope detail."""
-    from core.models import SiteConfig
+    from departments.models import total_opening_cash_position, current_cash_position
+    from reports.services.balances import (transfers_in_by_department,
+                                           transfers_out_by_department)
     from cashbook.models import Expense
-    cfg = SiteConfig.get()
-    opening = (cfg.opening_bank_balance + cfg.opening_cash_on_hand
-               - cfg.opening_unremitted_trust)
+    opening = total_opening_cash_position()
     base = Transaction.objects.filter(date__lte=up_to_date, is_reversal=False,
                                       is_reversed=False, direction=Transaction.Direction.CREDIT)
     income = (base.filter(confirmed=True, excluded_from_income=False)
@@ -114,6 +104,11 @@ def _recon_diagnostic(up_to_date):
     expenses = (Expense.objects.filter(
         status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
         date__lte=up_to_date).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+    # net fund transfers up to the date — zero-sum between two real funds, but
+    # shown explicitly so opening + income - expenses + transfers ties exactly
+    # to "book" below, the same way department_summary() accounts for them
+    transfers = (sum(transfers_in_by_department(None, up_to_date).values(), Decimal(0))
+                 - sum(transfers_out_by_department(None, up_to_date).values(), Decimal(0)))
     # money at the bank but NOT in the book balance
     unconfirmed = (base.filter(confirmed=False)
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
@@ -127,9 +122,14 @@ def _recon_diagnostic(up_to_date):
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     excluded = (base.filter(excluded_from_income=True)
                 .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    book = opening + income - expenses
+    # the true, exact book balance — see current_cash_position()'s docstring
+    # for why this (not a hand-rebuilt opening+income-expenses+transfers sum)
+    # is the authoritative figure; the components above are shown for
+    # transparency and should already tie to it via +transfers
+    book = current_cash_position(up_to_date)
     return {
-        "opening": opening, "income": income, "expenses": expenses, "book": book,
+        "opening": opening, "income": income, "expenses": expenses,
+        "transfers": transfers, "book": book,
         "unconfirmed": unconfirmed, "in_review": in_review,
         "sab_pending": sab_pending, "excluded": excluded,
         # only genuinely off-book money widens a reconciliation gap

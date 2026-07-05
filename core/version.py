@@ -38,6 +38,40 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.15.0": "Fixed a server error on Rebuild Ledger (a duplicate account-code clash caused by an earlier "
+              "expense-category change) - it now rebuilds correctly on every deployment. Fixed the Sabbath "
+              "Cash Count page's Cash Disbursed figure, which was wrongly including expenses paid from the "
+              "separate petty cash tin. Added an M-Pesa Reference column to the Trust Fund Pending Receipts "
+              "export, and a Payment Method column to the Expenses export. Added quick-filter shortcuts to "
+              "the Transactions page (All / Needs review / Unallocated / Trust pending receipt). Also fixed "
+              "a long-silent bug that meant the Monthly Treasurer's Report's year-over-year collections "
+              "commentary never actually appeared.",
+    "2.14.0": "Testing strategy review - no user-facing changes. Added an automated guardrail that catches a "
+              "specific class of test bug before it can cause a silent failure months later (a date field "
+              "that quietly defaults to today, combined with a test that hardcodes a fixed date for something "
+              "related to it) - the exact bug already found and fixed in an earlier review. Confirmed it's "
+              "the only place in the codebase with that shape, and verified the guardrail actually works by "
+              "testing it against a deliberately reintroduced copy of the bug.",
+    "2.13.0": "Database integrity review. Two multi-step financial operations - splitting a contribution "
+              "across several funds, and settling a trust remittance batch - are now fully atomic, so a "
+              "failure partway through (a database error, a server restart) rolls back completely instead of "
+              "leaving money half-recorded. Two audit-trail records (a fund's status-change history and its "
+              "year-end closing-balance snapshots) are now protected from being silently deleted along with "
+              "their fund, matching how the rest of the system already protects financial history.",
+    "2.12.0": "Accessibility fixes throughout the app. Every form label across the application now correctly "
+              "identifies its field for screen readers and for clicking the label to focus the input - this "
+              "was missing everywhere, in the shared form template and ten custom ones. The amber "
+              "pending/warning colour used on status badges throughout the app now meets accessibility "
+              "contrast guidelines in both light and dark mode - it was too light to read reliably before. "
+              "No visual layout changes and no behaviour changes.",
+    "2.11.0": "Critical fix: three places - the Executive overview's Cash and bank balance card, the Cash "
+              "Flow Forecast, and the bank reconciliation book balance - were computing today's cash position "
+              "from a setup field that is only ever filled in during a legacy spreadsheet import, and stays "
+              "at zero otherwise. For this church, that meant each of the three understated cash by the "
+              "church's entire opening balance, showing a false shortfall and making bank reconciliation "
+              "impossible to balance. All three now use the same correct source the Statement of Financial "
+              "Position already relies on, and all three now tie out exactly. If you use bank reconciliation, "
+              "recompute any existing worksheets from the ledger to pick up the corrected figure.",
     "2.10.0": "New download button on the Transactions page: Trust fund items pending receipt (Date, Phone, "
               "Member, Amount, Fund, Reference) - trust-fund credits with no formal receipt yet. A "
               "contribution split across several trust funds (e.g. a Combined Offering) is shown as one row "

@@ -455,28 +455,30 @@ class Transaction(models.Model):
         if self.is_reversed or self.is_reversal:
             raise ValueError("A reversed entry cannot be split.")
 
-        d0, a0, g0 = clean[0]
-        self.department = d0
-        self.dev_group = g0
-        self.amount = a0
-        self.allocation_status = Transaction.Status.MANUAL
-        self.save()
-        out = [self]
-        for i, (d, a, g) in enumerate(clean[1:], start=1):
-            out.append(Transaction.objects.create(
-                date=self.date, sabbath_week=self.sabbath_week,
-                service_sabbath=self.service_sabbath,
-                sabbath_confirm_pending=self.sabbath_confirm_pending,
-                channel=self.channel, direction=self.direction, amount=a,
-                department=d, dev_group=g, member=self.member,
-                reference=self.reference, payer_name=self.payer_name,
-                payer_phone=self.payer_phone, confirmed=self.confirmed,
-                mpesa_ref=self.mpesa_ref,
-                statement_import=self.statement_import,
-                bank_account_id=getattr(self, "bank_account_id", None),
-                allocation_status=Transaction.Status.MANUAL,
-                core_ref=(f"{self.core_ref}-S{i}" if self.core_ref else None),
-                raw_narration=f"[Split of #{self.pk}] {self.raw_narration}"[:1000]))
+        from django.db import transaction as _db_transaction
+        with _db_transaction.atomic():
+            d0, a0, g0 = clean[0]
+            self.department = d0
+            self.dev_group = g0
+            self.amount = a0
+            self.allocation_status = Transaction.Status.MANUAL
+            self.save()
+            out = [self]
+            for i, (d, a, g) in enumerate(clean[1:], start=1):
+                out.append(Transaction.objects.create(
+                    date=self.date, sabbath_week=self.sabbath_week,
+                    service_sabbath=self.service_sabbath,
+                    sabbath_confirm_pending=self.sabbath_confirm_pending,
+                    channel=self.channel, direction=self.direction, amount=a,
+                    department=d, dev_group=g, member=self.member,
+                    reference=self.reference, payer_name=self.payer_name,
+                    payer_phone=self.payer_phone, confirmed=self.confirmed,
+                    mpesa_ref=self.mpesa_ref,
+                    statement_import=self.statement_import,
+                    bank_account_id=getattr(self, "bank_account_id", None),
+                    allocation_status=Transaction.Status.MANUAL,
+                    core_ref=(f"{self.core_ref}-S{i}" if self.core_ref else None),
+                    raw_narration=f"[Split of #{self.pk}] {self.raw_narration}"[:1000]))
         return out
 
     def __str__(self):

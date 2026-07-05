@@ -625,9 +625,16 @@ class YearEndClose(models.Model):
 
 class FundCarryForward(models.Model):
     """Snapshot of a fund's closing balance at a year-end close (the balance
-    carried forward as the opening balance of the next year)."""
+    carried forward as the opening balance of the next year).
+
+    PROTECT, not CASCADE: this is a permanent audit record of what a fund's
+    balance was at a specific year-end close. Deleting a department should
+    never silently take a historical closing-balance record with it — that
+    would happen, for instance, if a fund's transactions were reassigned
+    elsewhere (transactions/expenses use PROTECT, so they'd no longer block
+    deletion) while this snapshot of its past was left behind."""
     close = models.ForeignKey(YearEndClose, on_delete=models.CASCADE, related_name="lines")
-    department = models.ForeignKey("departments.Department", on_delete=models.CASCADE)
+    department = models.ForeignKey("departments.Department", on_delete=models.PROTECT)
     closing_balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     class Meta:

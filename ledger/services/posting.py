@@ -56,16 +56,35 @@ EXPENSE_BASE = 5100
 
 
 def ensure_chart():
-    """Create the chart of accounts if missing. Idempotent."""
+    """Create the chart of accounts if missing. Idempotent.
+
+    Each Expense.Category gets its own permanent account code the first time
+    it's seen. That code is assigned as "one past the highest account code
+    already on record", never from the category's position in
+    Expense.Category.choices — a real production incident showed why:
+    inserting SALARIES/LEASE in the middle of the choices list shifted every
+    later category's positional index, so UTILITIES (which already had code
+    5105 on disk from before the insertion) collided with the newly-computed
+    code for SALARIES (also 5105, from ITS new position) — a duplicate-key
+    IntegrityError on Account.code that made the ledger un-rebuildable.
+    Assigning by "next free code" is immune to list reordering: an existing
+    category's code, once assigned, never changes and is never reused."""
     from cashbook.models import Expense
     for code, name, typ, key in CHART:
         Account.objects.get_or_create(
             system_key=key, defaults={"code": code, "name": name, "type": typ})
-    # one expense account per category
-    for i, (val, label) in enumerate(Expense.Category.choices):
+    existing_codes = set(Account.objects.values_list("code", flat=True))
+    next_code = EXPENSE_BASE
+    for val, label in Expense.Category.choices:
+        key = f"EXP_{val}"
+        if Account.objects.filter(system_key=key).exists():
+            continue
+        while str(next_code) in existing_codes:
+            next_code += 1
         Account.objects.get_or_create(
-            system_key=f"EXP_{val}",
-            defaults={"code": str(EXPENSE_BASE + i), "name": label, "type": "EXPENSE"})
+            system_key=key, defaults={"code": str(next_code), "name": label, "type": "EXPENSE"})
+        existing_codes.add(str(next_code))
+        next_code += 1
 
 
 def _acct(key):

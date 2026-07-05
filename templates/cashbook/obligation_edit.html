@@ -6,7 +6,7 @@
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-grid">
     {% for f in form %}
-      <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+      <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
         {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
         {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       </div>

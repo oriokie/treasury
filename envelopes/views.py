@@ -1184,6 +1184,14 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
                         method=Expense.Method.CASH,
                         status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
                         date__range=(window_start, sabbath))
+                     # a cash expense can be paid from the separate petty cash
+                     # float (Expense.paid_from_petty_cash) rather than from
+                     # this Sabbath's offering cash box — that money never
+                     # came out of the float being counted here, so including
+                     # it silently understated "expected cash on hand" and
+                     # made the count show a discrepancy that wasn't real.
+                     # Petty cash has its own separate top-up/reconciliation.
+                     .exclude(paid_from_petty_cash=True)
                      .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         return {"cash": cash, "envelope": envelope_cash, "envelope_raw": envelope,
                 "bank_as_cash": bank_as_cash, "disbursed": disbursed,

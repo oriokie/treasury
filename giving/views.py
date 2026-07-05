@@ -143,7 +143,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             names = sorted({t.department.name for t in members if t.department_id})
             return " + ".join(names)
 
-        header = ["Date", "Phone", "Member", "Amount", "Fund", "Reference"]
+        header = ["Date", "Phone", "Member", "Amount", "Fund", "Reference", "M-Pesa Reference"]
         rows = []
         for key in order:
             members = groups[key]
@@ -151,9 +151,13 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             phone = first.payer_phone or (first.member.receipt_phone if first.member_id else "") or ""
             member_name = first.member.name if first.member_id else (first.payer_name or "")
             total = sum((t.amount for t in members), Decimal(0))
+            # a split group's siblings all share the same payment reference, so
+            # the first row's mpesa_ref applies to the whole combined line too
+            mpesa_ref = next((t.mpesa_ref for t in members if t.mpesa_ref), "")
             rows.append([first.date.isoformat(), phone, member_name, float(total),
                         _fund_label(members),
-                        first.reference or first.mpesa_ref or first.core_ref or ""])
+                        first.reference or first.mpesa_ref or first.core_ref or "",
+                        mpesa_ref])
 
         return xlsx_response("trust_fund_pending_receipt.xlsx", header, rows,
                              title="Trust fund items pending receipt",
@@ -798,17 +802,19 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
                     "or adjust the batch first.")
                 return redirect("debit_queue")
             from django.utils import timezone as _tz
+            from django.db import transaction as _db_transaction
             from reports.views import _repost_to_ledger
-            batch.status = RemittanceBatch.Status.REMITTED
-            batch.remitted_at = _tz.now()
-            batch.save(update_fields=["status", "remitted_at"])
-            batch.expenses.update(status=Expense.Status.PAID, paid_date=txn.date)
-            _repost_to_ledger(batch.expenses.all())
-            txn.allocation_status = Transaction.Status.MANUAL
-            txn.raw_narration = (txn.raw_narration or "") + \
-                f"\n[Settles remittance batch {batch.batch_number} — " \
-                f"{batch.expenses.count()} trust fund(s)]"
-            txn.save(update_fields=["allocation_status", "raw_narration"])
+            with _db_transaction.atomic():
+                batch.status = RemittanceBatch.Status.REMITTED
+                batch.remitted_at = _tz.now()
+                batch.save(update_fields=["status", "remitted_at"])
+                batch.expenses.update(status=Expense.Status.PAID, paid_date=txn.date)
+                _repost_to_ledger(batch.expenses.all())
+                txn.allocation_status = Transaction.Status.MANUAL
+                txn.raw_narration = (txn.raw_narration or "") + \
+                    f"\n[Settles remittance batch {batch.batch_number} — " \
+                    f"{batch.expenses.count()} trust fund(s)]"
+                txn.save(update_fields=["allocation_status", "raw_narration"])
             messages.success(request,
                 f"Matched to batch {batch.batch_number}: {batch.expenses.count()} "
                 "trust fund line(s) marked paid — each fund charged its own share.")

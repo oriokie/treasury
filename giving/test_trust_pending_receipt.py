@@ -125,4 +125,4 @@ class TrustPendingReceiptExportTests(TestCase):
         rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
         header_row = next(r for r in rows if r and r[0] == "Date")
         self.assertEqual(list(header_row), ["Date", "Phone", "Member", "Amount",
-                                            "Fund", "Reference"])
+                                            "Fund", "Reference", "M-Pesa Reference"])

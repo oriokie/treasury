@@ -32,7 +32,7 @@
   <section class="tabpane active" data-pane="branding">
     <div class="card"><div class="bd"><div class="form-grid">
       {% for f in form %}{% if f.name in 'church_name field_name church_address church_contact currency_symbol report_footer_note receipt_strip_strings receipt_message' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
         {% if f.name == 'receipt_strip_strings' %}
         <div class="u-mt-sm"><button type="submit" class="btn btn-sm btn-ghost"
             formaction="{% url 'clean_receipt_messages' %}" formmethod="post"
@@ -47,11 +47,11 @@
   <section class="tabpane" data-pane="features">
     <div class="card"><div class="bd"><div class="form-grid">
       {% for f in form %}{% if f.name in 'show_mpesa_ref enable_dev_groups auto_create_members envelope_auto_receipt trust_remit_due_day petty_cash_float' %}
-        <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
+        <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       {% for f in form %}{% if f.name == 'receipt_bank_scope' or f.name == 'sabbath_confirm_scope' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
     </div></div></div>
   </section>
@@ -62,11 +62,11 @@
       system enforces approvals and balances. Tighten them as your church's controls require.</div>
       <div class="form-grid">
         {% for f in form %}{% if f.name in 'require_expense_approval enforce_fund_balance enforce_petty_float require_dual_yearend require_import_confirmation require_different_approver auto_lock_on_reconciliation archive_replaced_ledger_entries' %}
-          <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
         {% for f in form %}{% if f.name in 'dual_approval_threshold leader_delete_window_days' %}
-          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
       </div>
@@ -78,15 +78,15 @@
       <div class="help u-mb-sm">Pledges are commitments, not income — they never affect fund balances. These settings control what happens when a contribution arrives from a member who has an active pledge.</div>
       <div class="form-grid">
         {% for f in form %}{% if f.name == 'pledge_match_mode' %}
-          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
         {% for f in form %}{% if f.name == 'pledge_match_window_days' %}
-          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
         {% for f in form %}{% if f.name == 'pledge_match_same_fund_only' %}
-          <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
       </div>
@@ -95,7 +95,7 @@
     <div class="card u-mt"><div class="hd">Public pledge link</div><div class="bd">
       <div class="form-grid">
         {% for f in form %}{% if f.name == 'pledge_public_form_enabled' %}
-          <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
       </div>
@@ -112,7 +112,7 @@
       <div class="help u-mb-sm">A single church-wide target for the Camp Meeting offering (a Trust fund), tracked here rather than on any individual fund page. The Camp Meeting <em>expense</em> goal, and every other fund's or development group's own goal, stay on that fund's own page.</div>
       <div class="form-grid">
         {% for f in form %}{% if f.name in 'camp_offering_fund camp_offering_goal' %}
-          <div class="form-row"><label>{{ f.label }}</label>{{ f }}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
       </div>
@@ -125,8 +125,8 @@
       <div class="help u-mb-sm">Advanta bulk SMS (see <span class="mono">advantasms.com/bulksms-api</span>).</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'sms_enabled sms_receipt_scope sms_api_url sms_api_key sms_partner_id sms_shortcode sms_receipt_template' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
-          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+          {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
           {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
       {% endif %}{% endfor %}
@@ -139,8 +139,8 @@
       <div class="info-panel">The assistant works offline using the built-in engine. Turn this on only if you have purchased API credentials for a provider — then the assistant will use that model and fall back to the offline engine if the call fails.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'llm_enabled llm_provider llm_model llm_api_key llm_base_url' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
-          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+          {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
@@ -157,8 +157,8 @@
       <div class="info-panel">Lets the treasurer use a Telegram chat to check figures and record expenses remotely. A PIN is required at the start of each chat session; expenses recorded here are saved as <strong>PENDING</strong> and must be approved in the web app.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'telegram_enabled telegram_bot_token telegram_pin telegram_session_minutes telegram_run_in_app site_base_url' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
-          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+          {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
@@ -177,12 +177,12 @@
       <div class="info-panel">Lets an assistant record offering envelopes from Telegram with <span class="mono">/envelope</span> — choose the Sabbath, find the member, key the amount for each fund, confirm. Each envelope is saved exactly like the web ledger, so it flows into reconciliation and reports. Locked periods are respected and every entry is attributed to the signed-in user.</div>
       <div class="form-grid u-mt-sm">
       {% for f in form %}{% if f.name in 'telegram_envelope_enabled telegram_allow_new_member telegram_envelope_confirm telegram_envelope_channel' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>
-          {% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+          {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
-      <div class="form-row u-mt-sm"><label>{{ form.telegram_envelope_funds.label }}</label>
+      <div class="form-row u-mt-sm"><label for="{{ form.telegram_envelope_funds.id_for_label }}">{{ form.telegram_envelope_funds.label }}</label>
         <div class="help u-mb-sm">{{ form.telegram_envelope_funds.help_text }}</div>
         <div class="check-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.2rem">{{ form.telegram_envelope_funds }}</div>
       </div>
@@ -191,8 +191,8 @@
     <div class="card"><div class="hd">Personal PINs (per user)</div><div class="bd">
       <div class="info-panel">Each treasurer/assistant can have their <strong>own</strong> PIN. When someone enters their personal PIN in the bot, anything they record (e.g. an expense) is attributed to them. The shared PIN above still works as a fallback.</div>
       <div class="form-grid u-mt-sm">
-        <div class="form-row"><label>My personal PIN</label>
-          <input type="text" name="pin" form="telegram-pin-form" class="field mono" value="{{ my_telegram_pin }}" placeholder="e.g. 4827" inputmode="numeric">
+        <div class="form-row"><label for="id_my_telegram_pin">My personal PIN</label>
+          <input type="text" name="pin" id="id_my_telegram_pin" form="telegram-pin-form" class="field mono" value="{{ my_telegram_pin }}" placeholder="e.g. 4827" inputmode="numeric">
           <div class="help">Set a 4–8 digit PIN for yourself, or clear it to disable personal sign-in.</div></div>
         <div class="form-row" style="align-self:end"><button class="btn" type="submit" form="telegram-pin-form">Save my PIN</button></div>
       </div>
@@ -208,7 +208,7 @@
       <div class="help u-mb-sm">Names printed in the signature block of reports (e.g. the offering summary).</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'sig_treasurer sig_pastor sig_elder' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}</div>
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>
       {% endif %}{% endfor %}
       </div>
     </div></div>
@@ -219,7 +219,7 @@
       <div class="info-panel">Default depreciation for assets without a category-specific rule. Set per-category rules on the <a class="link" href="{% url 'depreciation_rules' %}">depreciation rules</a> page.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'asset_depr_method asset_depr_rate' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
       <div class="btn-row u-mt-sm"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">Open asset register</a></div>
@@ -231,7 +231,7 @@
       <div class="help u-mb-sm">Used to email reports (e.g. development-group statements to leaders), receipts and notifications. For Gmail use an app password.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'email_enabled email_host email_port email_use_tls email_use_ssl email_host_user email_host_password email_from' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
       <div class="u-mt-sm">
@@ -245,7 +245,7 @@
     <div class="card"><div class="hd">Notifications</div><div class="bd">
       <div class="form-grid">
       {% for f in form %}{% if f.name == 'notify_email_enabled' %}
-        <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
       <p class="help">In-app notifications (the 🔔 bell) are always on. Email also requires your server's mail settings to be configured.</p>
@@ -255,7 +255,7 @@
       <div class="help u-mb-sm">Deliver giving receipts and reminders over WhatsApp Business (Twilio or Africa's Talking). Leave disabled until configured.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'whatsapp_enabled whatsapp_provider whatsapp_api_url whatsapp_api_key whatsapp_sender' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
     </div></div>
@@ -264,7 +264,7 @@
       <div class="help u-mb-sm">Pull Paybill transactions directly from Safaricom Daraja for real-time reconciliation, instead of the weekly CSV upload. Leave disabled until your Daraja app credentials are ready.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'daraja_enabled daraja_shortcode daraja_consumer_key daraja_consumer_secret daraja_env' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
     </div></div>
@@ -273,7 +273,7 @@
       <div class="help u-mb-sm">Receive a notification for <strong>every transaction in real time</strong>. The bank's Core Banking System posts each debit/credit to this app the moment it happens, so donations appear without waiting for a statement upload. Enable this, choose how the bank authenticates, and give the bank the endpoint URL and credentials below.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'bank_feed_enabled bank_feed_auth_mode bank_feed_username bank_feed_password bank_feed_token' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
       <hr class="u-divider">
@@ -292,11 +292,11 @@
     <div class="card u-mt"><div class="hd">Allocation &amp; categories</div><div class="bd">
       <div class="form-grid">
       {% for f in form %}{% if f.name == 'dev_group_extra_prefixes' or f.name == 'numbered_fund_families' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
       {% for f in form %}{% if f.name == 'dev_group_builder_apply' %}
-        <div class="form-row"><div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       <a class="btn btn-ghost btn-sm" href="{% url 'expense_categories' %}" class="u-mt-sm">Manage expense categories</a>
       <a class="btn btn-ghost btn-sm" href="{% url 'dev_patterns' %}">Development-group patterns</a>
@@ -312,7 +312,7 @@
       <p class="help">When you finish counting a Sabbath, close it from its cash-count page. Any donation that arrives afterwards for a closed Sabbath is automatically credited to the next open Sabbath — there's no fixed time of day, and a closed count is never reopened.</p>
       <div class="form-grid">
       {% for f in form %}{% if f.name == 'sabbath_cutoff_enabled' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label class="u-m-0">{{ f.label }}</label></div>{% else %}<label>{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
     </div></div>
@@ -325,7 +325,7 @@
       <div class="help u-mb-sm">Bank balance, cash on hand, and unremitted trust at the start of the financial year. These appear on the Statement of Financial Position so opening funds reconcile correctly. The legacy importer fills these in automatically.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'opening_bank_balance opening_cash_on_hand opening_unremitted_trust' %}
-        <div class="form-row"><label>{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
     </div></div>
@@ -369,11 +369,11 @@
         <div class="hd u-m-0">Off-site backup storage</div>
         <p class="help u-mt-0">Automatically upload each nightly backup to off-site storage over HTTPS — works with Nextcloud/ownCloud (WebDAV) or any endpoint that accepts an authenticated upload. The backup is encrypted with this app's key before it leaves the server.</p>
         <label class="check-row">{{ form.offsite_backup_enabled }} Enable off-site upload</label>
-        <div class="form-row"><label>Destination URL (folder)</label>{{ form.offsite_backup_url }}
+        <div class="form-row"><label for="{{ form.offsite_backup_url.id_for_label }}">Destination URL (folder)</label>{{ form.offsite_backup_url }}
           {% if form.offsite_backup_url.help_text %}<div class="help">{{ form.offsite_backup_url.help_text }}</div>{% endif %}</div>
         <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem">
-          <div class="form-row"><label>Username</label>{{ form.offsite_backup_user }}</div>
-          <div class="form-row"><label>Password / token</label>{{ form.offsite_backup_password }}</div>
+          <div class="form-row"><label for="{{ form.offsite_backup_user.id_for_label }}">Username</label>{{ form.offsite_backup_user }}</div>
+          <div class="form-row"><label for="{{ form.offsite_backup_password.id_for_label }}">Password / token</label>{{ form.offsite_backup_password }}</div>
         </div>
         <div class="btn-row u-mt-sm">
           <button class="btn btn-ghost" formaction="{% url 'backup_offsite_now' %}" formmethod="post">⤴ Send a backup off-site now</button>
@@ -393,10 +393,10 @@
   <div class="hd text-danger">⚠ Restore from backup</div>
   <div class="bd">
     <p class="help u-mt-0">Restoring <strong>replaces all current data</strong> with the contents of a backup file. The app takes a safety copy of the current database first, but use this only to recover from a problem. Treasurer only.</p>
-    <div class="form-row u-my-sm"><label>Backup file</label>
-      <input type="file" name="backup_file" class="field" accept=".sqlite3,.sql" required></div>
-    <div class="form-row u-my-sm"><label>Type <span class="mono">RESTORE</span> to confirm</label>
-      <input type="text" name="confirm" class="field mono" placeholder="RESTORE" autocomplete="off" required></div>
+    <div class="form-row u-my-sm"><label for="id_backup_file">Backup file</label>
+      <input type="file" name="backup_file" id="id_backup_file" class="field" accept=".sqlite3,.sql" required></div>
+    <div class="form-row u-my-sm"><label for="id_restore_confirm">Type <span class="mono">RESTORE</span> to confirm</label>
+      <input type="text" name="confirm" id="id_restore_confirm" class="field mono" placeholder="RESTORE" autocomplete="off" required></div>
     <button class="btn" style="background:var(--danger);border-color:var(--danger)">Restore database</button>
   </div>
 </form>
@@ -406,7 +406,7 @@
 
 <div class="card sms-tab-only" id="smsTestCard" style="margin-top:1.2rem;display:none"><div class="hd">Send a test SMS</div><div class="bd">
   <form method="post" class="filters u-m-0">{% csrf_token %}
-    <div class="f"><label>Phone number</label><input name="test_to" class="field" placeholder="07XXXXXXXX"></div>
+    <div class="f"><label for="id_test_to">Phone number</label><input name="test_to" id="id_test_to" class="field" placeholder="07XXXXXXXX"></div>
     <button class="btn btn-sm" name="send_test" value="1">Send test</button>
   </form>
   <table class="ledger u-mt">

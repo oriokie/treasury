@@ -1,5 +1,204 @@
 # Changelog
 
+## v2.15.0 - ledger rebuild fix, cash count fix, transactions page improvements, export enhancements
+Traced and resolved a batch of reported issues, each verified against a reproduction of the real scenario
+(not assumed), plus one further defect found incidentally while running the regression suite.
+
+**Fixed (Critical):**
+- **`/ledger/rebuild/` server error** — `pymysql.err.IntegrityError: Duplicate entry '5105' for key 'code'`.
+  Root cause: `ensure_chart()` assigned each expense category's account code from its *position* in
+  `Expense.Category.choices` (`EXPENSE_BASE + enumerate index`). An earlier release inserted two new
+  categories (Salaries/Wages, Lease Payment) into the middle of that list, shifting the positional index —
+  and therefore the computed code — of every category listed after them. On any database that already had
+  its chart of accounts built before that release, `UTILITIES` already held code 5105 on disk; the newly-
+  computed code for `SALARIES` was *also* 5105 (its new position), so creating it collided. Reproduced the
+  exact historical database state and confirmed the fix resolves it: codes are now assigned as "one past the
+  highest code already on record", never recomputed from list position — immune to future reordering.
+
+**Fixed:**
+- **Sabbath Cash Count — Cash Disbursed** included expenses paid from the separate petty cash float
+  (`Expense.paid_from_petty_cash`), money that never came out of the Sabbath offering cash box being counted.
+  This silently understated "expected cash on hand" and made counts show discrepancies that weren't real.
+  Now excluded.
+- **Monthly Treasurer's Report — Collections insight** silently never generated (a `KeyError` on a wrong
+  dict key, caught by an intentional "an optional narrative must never break the report" safeguard, so it
+  never surfaced as an error — just a permanently missing paragraph). Found while running an unrelated
+  regression suite. Fixed; the year-over-year collections commentary now appears correctly.
+
+**Added:**
+- **M-Pesa Reference column** on the Trust Fund Pending Receipts export (`/transactions/?export=trust-
+  pending-receipt`).
+- **Payment Method column** on the Expenses export (Cash / Bank / Petty Cash / Cheque / Mobile Money),
+  using the actual recorded payment source (`Expense.method` plus the separate `paid_from_petty_cash` flag)
+  — never inferred.
+- **Quick-filter tabs** on the Transactions page (All / Needs review / Unallocated / Trust pending receipt),
+  layered on top of the existing, already-tested filter mechanism without changing it — a safe, additive
+  usability improvement rather than a full page rewrite, given how intricately the existing permission and
+  status logic on this page is built. Caught and fixed a self-introduced duplicate-button/over-restrictive-
+  permission bug while building this, by testing as an auditor as well as a treasurer before shipping.
+
+**Reviewed, confirmed already correct (no change made):** the Staff Advances figure used during bank
+reconciliation. Traced the full calculation chain (`_sync_managed_recon_items` ->
+`outstanding_bank_advances_total`/`outstanding_petty_advances_total`) and confirmed it already computes
+exactly "amount advanced minus expenses already settled against it, as of the reconciliation's own statement
+date" — the Pending/Not-Accounted-For balance — cross-checked against the Statement of Financial Position
+and dashboard, which use the same underlying concept. No competing or incorrect figure found anywhere.
+
+Tests: 27 new across ledger/envelopes/giving/cashbook/reports/statements, 1 pre-existing test's header
+assertion updated for the new export column. Targeted regression: ledger 55, envelopes 62, giving 136,
+cashbook 278, reports 251, statements 77 — all green.
+
+Deploy: no migration. Collectstatic recommended (new inline CSS for the quick-filter tabs).
+
+## v2.14.0 - testing strategy review
+Reviewed unit/integration test coverage, assertion quality, and long-term test reliability across the
+application (135 test files, ~1,300 individual tests). No functional changes — this pass strengthens the
+test suite itself.
+
+**Added:**
+- **A guardrail against test time-bombs.** An earlier review found and fixed a real bug class: `Pledge.
+  start_date` defaults to `date.today()` (a moving target), and a test hardcoded an absolute contribution
+  date that needed to fall within a window relative to it — the test passed when written and silently broke
+  months later purely because real time had moved on, with no code change at all. This review added an
+  automated scanner (`core.test_testing_review`) that inventories every `DateField`/`DateTimeField` across
+  every app with this exact shape (a callable default, not `auto_now_add`) and fails if a new one appears
+  without deliberate review. Verified it actually works: reintroduced a copy of the bug pattern in a
+  throwaway model, confirmed the guardrail caught it with a clear, actionable failure message, then reverted.
+- Confirmed, via the same scan, that `pledges/models.py` is the *only* file in the codebase with this
+  pattern today, and that the only tests exercising the date-window-sensitive matching logic already pin
+  their dates correctly (from the earlier fix) — no further live instances of the bug found.
+
+**Assessed (no changes needed):** spot-checked the ~163 bare `status_code == 200` assertions across the test
+suite for the "weak assertion" pattern flagged by this kind of review — found them to be legitimate in every
+file sampled: either access-control tests where the status code itself *is* the meaningful assertion (a 200
+vs. a 302 correctly proves who can and can't reach a page), or a "did it render" precondition followed by
+real business-logic assertions on the same response. No systemic weak-assertion problem found.
+
+**Recorded in `docs/recommendations.md`:** no CI/CD pipeline or code-coverage tooling exists (Medium-High —
+arguably the highest-leverage testing investment available, converting every review's "run the tests" step
+into an enforced gate rather than a manual habit); test files in `cashbook` (32 of them) mix feature-named and
+version/session-named files, making coverage harder to locate by feature than necessary (Low); no genuine
+concurrency/load testing exists, only careful code-review reasoning about concurrent-access risk (Low, given
+current usage patterns).
+
+Tests: 2 new (core.test_testing_review). Targeted regression: core 199, pledges+assets 45 — all green.
+
+Deploy: no migration. Collectstatic not required.
+
+## v2.13.0 - database integrity: transaction atomicity and referential protection
+Reviewed schema design, foreign keys, cascade behaviour, and transaction handling across the whole
+application. Two genuine risks found and fixed; further items recorded in `docs/recommendations.md`.
+
+**Fixed:**
+- **Splitting a contribution across several funds** (`Transaction.split_into()`) reduced the original entry's
+  amount and then created the remaining sibling entries in separate, unwrapped database writes. A failure
+  partway through — a constraint violation, a server restart — would leave the original entry permanently
+  reduced with the remainder recorded nowhere, silently losing money from the books. Verified by forcing a
+  real mid-split failure: before this fix, the original entry stayed wrongly reduced; after, it's fully
+  restored to its original amount and fund.
+- **Settling a trust remittance batch** (matching one bank payment to several trust funds' remittance lines)
+  updated the batch, the expense lines, and the settling transaction in three separate, unwrapped writes.
+  Now wrapped in one atomic block, so a failure partway through can't leave a batch marked "sent" with its
+  expenses unpaid, or vice versa.
+- **`DepartmentStatusLog`** (a fund's active/closed/archived history) and **`FundCarryForward`** (a fund's
+  year-end closing-balance snapshot) both used `on_delete=CASCADE` on their department link, despite being
+  audit-trail records by their own stated purpose. Changed to `PROTECT`, matching how `Transaction` and
+  `Expense` already protect a fund from deletion — a department can't be deleted through any application view
+  in the first place, so this only closes the narrow remaining gap (a fund with no financial activity left,
+  but status or year-end history) rather than changing any current, working behaviour.
+
+**Confirmed already correct (no changes needed):** every money-movement model's positivity validators (from
+an earlier review), the dominant report-query indexes (from an earlier review), `DepartmentLeadership`'s
+duplicate-prevention unique constraint, and `ATOMIC_REQUESTS` being intentionally off (checked to confirm no
+other view silently relied on framework-level atomicity that isn't actually configured).
+
+**Recorded in `docs/recommendations.md`:** two unrelated models are both named `BudgetLine` (one in
+`departments`, one in `cashbook`) — confusing but not incorrect, and renaming either is an invasive,
+multi-file migration better done as its own deliberate pass (Low priority).
+
+Tests: 8 new (giving.test_atomicity, departments.test_referential_integrity) — including a test that forces
+a real mid-operation failure and proves the database is left completely untouched, not partially written.
+Targeted regression: departments 48, giving 127, core 197, cashbook 271 — all green.
+
+Deploy: migrate (departments 0021, core 0048 — on_delete changes only, no data affected).
+
+## v2.12.0 - accessibility: form labels and colour contrast
+Reviewed navigation, forms, dashboards, and visual presentation against WCAG. The application already had a
+strong accessibility foundation (skip link, ARIA landmarks, focus-visible styles with a high-contrast mode,
+loading indicators, double-submit guards, `aria-live` flash/toast regions, correct viewport meta) — this
+pass found and fixed two genuine, widespread gaps underneath that foundation.
+
+**Fixed:**
+- **Every form label in the application was missing its `for` attribute** — found first on the expense form,
+  then confirmed across the entire app: the shared `partials/form_fields.html` template (used by most forms)
+  and ten further custom form templates (expenses, obligations, petty cash, assets, members, pledges,
+  campaigns, cash entries, settings, password change, the transactions filter bar, pledge import) all rendered
+  a bare `<label>Field name</label>` with no programmatic link to its input. This meant a screen reader user
+  had no way to know what a field was for beyond its position in the page, and clicking a label didn't focus
+  its field for anyone. Fixed everywhere — including several hand-built (non-Django-field) inputs that needed
+  a matching `id` added before they could be labelled correctly. Verified with zero remaining unassociated
+  labels across every form template checked.
+- **The amber "pending/warning" status colour failed WCAG AA contrast** — 3.99:1 in light mode and 3.28:1 in
+  dark mode (both need 4.5:1), used throughout the app for pending/warning pills, flash messages, and toasts.
+  Fixed to 4.76:1 (light) and 6.92:1 (dark, via a new theme-specific override) — both comfortably pass, and
+  the colour still reads as the same warm amber/gold.
+
+**Recorded in `docs/recommendations.md`:** two further items — data tables lack `scope="col"` on header cells
+(Low-Medium, a broad mechanical cleanup better suited to its own pass than a partial sweep here), and no
+dedicated mobile-breakpoint audit was performed this pass for the denser reporting pages (Low).
+
+Tests: 12 new (core.test_label_accessibility), covering the shared partial directly and eight full-page
+checks across the app finding zero unassociated labels. Targeted regression (every app with a touched
+template): core 197, cashbook 271, giving 123, assets+pledges+accounts 91 — all green.
+
+Deploy: no migration. Collectstatic recommended (CSS changed) but not required for correctness.
+
+## v2.11.0 - critical: cash-position reporting and reconciliation fix
+Reviewed every financial report, dashboard, chart, and export for calculation accuracy and reconciliation
+with the General Ledger. Cross-checked collections, local funds statement, cash flow, and SOFP figures
+against each other and against the ledger's own trial balance and accounting equation — all tied out exactly,
+with one critical exception found and fixed.
+
+**Fixed (Critical):**
+- **Executive overview's "Cash & bank balance" KPI card, the Cash Flow Forecast, and the bank reconciliation
+  book balance** were all computing "today's cash position" from `SiteConfig.opening_bank_balance` /
+  `opening_cash_on_hand` / `opening_unremitted_trust` — fields populated only by the legacy-spreadsheet
+  import tool as a one-time labelled snapshot, and left at zero for every normal deployment (including this
+  one). The actual authoritative opening balance has always been `Department.opening_balance`, summed across
+  every fund — the same source the ledger and the Statement of Financial Position correctly use. For this
+  church's data, the bug understated "today's cash" by the full opening position (a multi-million-shilling
+  discrepancy in testing), meaning: the Executive overview showed a false negative cash balance with no
+  warning styling; the Cash Flow Forecast projected from a wrong starting point; and — most seriously — the
+  bank reconciliation book balance could never tie to the actual bank statement, showing an unexplained gap
+  on every single reconciliation. All three now use a new shared, correct helper
+  (`departments.models.total_opening_cash_position()`) and were verified, after the fix, to tie out exactly
+  to the Statement of Financial Position's own cash figure.
+- The bank-reconciliation diagnostic view's "opening" breakdown (shown alongside its already-correct "book"
+  figure, which came from a separate, unaffected calculation) is now internally consistent with that figure
+  instead of contradicting it.
+
+**Verified correct (no changes needed):** collections totals, local funds statement, trust fund summary,
+cash flow opening/closing reconciliation, chart data vs. table data within the same report, and date-range
+boundary handling (start/end dates correctly inclusive) — all cross-checked across multiple independent
+calculation paths and found consistent.
+
+**Recorded in `docs/recommendations.md`:** the Bank Position report depends on the same
+`opening_bank_balance` field for a genuinely different figure (the bank account's own opening balance, which
+isn't derivable from per-fund balances) and needs a treasurer to configure it explicitly — High priority,
+operational rather than a code fix. Also recorded: the three legacy-import-only opening-balance fields remain
+a duplicate, easily-misused source of truth that produced this exact mistake three times over several
+releases — recommend renaming or documenting them more forcefully to prevent a fourth recurrence (Medium).
+
+**Deploy note:** if bank reconciliation is in use, recompute any existing reconciliation worksheets (there's
+a "recompute from ledger" action on each) so their stored book balance picks up the corrected figure — a
+worksheet saved before this fix keeps its old, wrong stored value until recomputed.
+
+Tests: 7 new (core.test_cash_position_fix), 1 existing performance test's query-count threshold adjusted
+(+1 query — the correct opening-balance aggregate — a trivial cost for a critical correctness fix). Targeted
+regression: core 185, statements 73, departments 44, reports 248, cashbook 271, giving 123 — all green.
+
+Deploy: no migration. Collectstatic not required.
+
 ## v2.10.0 - trust pending-receipt export + architecture review
 **New:** a "Trust pending receipt" download button on the Transactions page
 (`/transactions/`) — an Excel export of trust-fund credits with no formal receipt yet

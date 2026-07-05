@@ -3249,7 +3249,7 @@ class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
         # collections: compare YTD to last year's YTD
         try:
             if len(yearly) >= 2:
-                d = pct_change(yearly[-1]["total"], yearly[-2]["total"])
+                d = pct_change(yearly[-1]["collection"], yearly[-2]["collection"])
                 ins["collections"] = (
                     f"Year-to-date collections are {phrase(d)}. Trust makes up "
                     f"{(c.get('trust',0)/c['total']*100):.0f}% of this month's receipts."

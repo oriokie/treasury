@@ -14,21 +14,36 @@
   {% if sum_review %}<div class="ws-metric is-warn"><span class="wm-l">In review</span><span class="wm-v">{{ sum_review }}</span></div>{% endif %}
 </div>
 
+<nav class="tx-quicktabs no-print" aria-label="Quick filters">
+  <a href="{% url 'transaction_list' %}" class="tx-qtab{% if not filters.status and not filters.department %} active{% endif %}">All</a>
+  <a href="{% url 'transaction_list' %}?status=REVIEW" class="tx-qtab{% if filters.status == 'REVIEW' %} active{% endif %}">Needs review{% if sum_review %} <span class="tx-qtab-badge">{{ sum_review }}</span>{% endif %}</a>
+  <a href="{% url 'transaction_list' %}?department=none" class="tx-qtab{% if filters.department == 'none' %} active{% endif %}">Unallocated{% if unallocated_count %} <span class="tx-qtab-badge">{{ unallocated_count }}</span>{% endif %}</a>
+  {% if not cash_only %}<a href="{% url 'transaction_list' %}?export=trust-pending-receipt" class="tx-qtab" title="Trust fund credits with no formal receipt yet — downloads an Excel file">⤓ Trust pending receipt</a>{% endif %}
+</nav>
+<style>
+.tx-quicktabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:.7rem 0 .9rem;border-bottom:1px solid var(--line);padding-bottom:.6rem}
+.tx-qtab{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .85rem;border-radius:999px;
+  font-size:.83rem;font-weight:600;color:var(--ink-soft);text-decoration:none;border:1px solid transparent;
+  transition:background .12s,color .12s}
+.tx-qtab:hover{background:var(--forest-soft);color:var(--forest-deep)}
+.tx-qtab.active{background:var(--forest);color:#fff}
+.tx-qtab-badge{background:rgba(0,0,0,.15);border-radius:999px;padding:0 .4rem;font-size:.74rem}
+.tx-qtab.active .tx-qtab-badge{background:rgba(255,255,255,.25)}
+</style>
+
 <form method="get" class="ws-toolbar">
-  <div class="f grow"><label>Search</label><input name="q" value="{{ filters.q }}" class="field" placeholder="Name, reference, M-Pesa code, or amount…"></div>
-  <div class="f"><label>Channel</label><select name="channel" class="field--select"><option value="">All</option>{% for v,l in channels %}<option value="{{ v }}" {% if filters.channel == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
-  <div class="f"><label>Status</label><select name="status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
-  <div class="f"><label>Fund</label><select name="department" class="field--select"><option value="">All</option><option value="none" {% if filters.department == "none" %}selected{% endif %}>— No fund{% if noflund_total %} · {{ noflund_total }}{% if unallocated_count %} ({{ unallocated_count }} need allocation){% endif %}{% endif %} —</option>{% for d in departments %}<option value="{{ d.id }}" {% if filters.department == d.id|stringformat:'s' %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
-  <div class="f"><label>From</label><input type="date" name="date_from" value="{{ filters.date_from }}" class="field"></div>
-  <div class="f"><label>To</label><input type="date" name="date_to" value="{{ filters.date_to }}" class="field"></div>
+  <div class="f grow"><label for="id_q">Search</label><input name="q" id="id_q" value="{{ filters.q }}" class="field" placeholder="Name, reference, M-Pesa code, or amount…"></div>
+  <div class="f"><label for="id_channel">Channel</label><select name="channel" id="id_channel" class="field--select"><option value="">All</option>{% for v,l in channels %}<option value="{{ v }}" {% if filters.channel == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label for="id_status">Status</label><select name="status" id="id_status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label for="id_department_filter">Fund</label><select name="department" id="id_department_filter" class="field--select"><option value="">All</option><option value="none" {% if filters.department == "none" %}selected{% endif %}>— No fund{% if noflund_total %} · {{ noflund_total }}{% if unallocated_count %} ({{ unallocated_count }} need allocation){% endif %}{% endif %} —</option>{% for d in departments %}<option value="{{ d.id }}" {% if filters.department == d.id|stringformat:'s' %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label for="id_date_from">From</label><input type="date" name="date_from" id="id_date_from" value="{{ filters.date_from }}" class="field"></div>
+  <div class="f"><label for="id_date_to">To</label><input type="date" name="date_to" id="id_date_to" value="{{ filters.date_to }}" class="field"></div>
   <div class="ws-tb-actions">
     <button class="btn btn-sm">Apply filters</button>
     {% if has_filters %}<a class="btn btn-sm btn-ghost" href="{% url 'transaction_list' %}">Clear</a>{% endif %}
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=csv">CSV</a>
-    <span class="ws-divider"></span>
-    <a class="btn btn-sm btn-ghost" href="{% url 'transaction_list' %}?export=trust-pending-receipt" title="Trust fund credits with no formal receipt yet — Date, Phone, Member, Amount, Fund, Reference">⤓ Trust pending receipt</a>
     {% if is_treasurer %}<span class="ws-divider"></span>
     <span class="muted u-xs"><span id="txcount">0</span> selected</span>
     <button form="txbulk" name="action" value="reverse" id="txb-reverse" class="btn btn-sm btn-danger" disabled onclick="return confirm('Reverse the selected entries? Each gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.');">Reverse selected</button>{% endif %}

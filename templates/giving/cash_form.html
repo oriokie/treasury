@@ -15,7 +15,7 @@
   <form method="post"><div class="form-grid">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist u-col-span">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-row">
-      <label>Member</label>
+      <label for="memberSearch">Member</label>
       <div class="pos-rel">
         <input id="memberSearch" class="field" autocomplete="off" placeholder="Start typing a member's name…">
         <input type="hidden" id="memberHidden">
@@ -25,7 +25,7 @@
       {{ form.member }}
     </div>
     <div class="form-row">
-      <label>Fund</label>
+      <label for="fundSearch">Fund</label>
       <div class="pos-rel">
         <input id="fundSearch" class="field" autocomplete="off" placeholder="Start typing a fund… (split offerings appear as one)">
         <div class="ac-box" id="fundAc"></div>
@@ -35,13 +35,13 @@
       {% for e in form.department.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
     </div>
     <div class="form-row" id="devGroupRow" style="display:none">
-      <label>Development group</label>{{ form.dev_group }}
+      <label for="{{ form.dev_group.id_for_label }}">Development group</label>{{ form.dev_group }}
       <div class="help">Required for development funds — which group does this giving belong to?</div>
       {% for e in form.dev_group.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
     </div>
     {% for f in form %}{% if f.name != 'member' and f.name != 'fund' and f.name != 'department' and f.name != 'dev_group' %}
       <div class="form-row">
-        <label>{{ f.label }}</label>{{ f }}
+        <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
         {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
         {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       </div>

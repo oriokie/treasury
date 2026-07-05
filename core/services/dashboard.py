@@ -9,7 +9,7 @@ from django.db.models.functions import TruncMonth
 
 from giving.models import Transaction
 from cashbook.models import Expense
-from departments.models import Department
+from departments.models import Department, current_cash_position
 from reports.services import balances
 
 
@@ -77,16 +77,10 @@ def cards():
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     coll_year = (_credits(date__year=year).aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
-    # Cash & bank balance = the cash-book balance (ties to the bank reconciliation):
-    # opening cash position + all confirmed income (excluding double-counted lines)
-    # − all approved/paid payments (expenses AND trust remittances reduce cash).
-    income_all = _credits().aggregate(t=Sum("amount"))["t"] or Decimal(0)
-    payments_all = (Expense.objects.filter(
-        status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    opening = (_cfg.opening_bank_balance + _cfg.opening_cash_on_hand
-               - _cfg.opening_unremitted_trust)
-    cash_balance = opening + income_all - payments_all
+    # Cash & bank balance = the true current cash position across every
+    # fund — the same figure the Statement of Financial Position shows,
+    # computed the same way, so it can never drift from it.
+    cash_balance = current_cash_position()
 
     trust_out = sum((r["to_remit"] for r in balances.trust_summary()), Decimal(0))
 

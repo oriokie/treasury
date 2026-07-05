@@ -1,9 +1,9 @@
 {% for field in form %}
   <div class="form-row">
     {% if field.field.widget.input_type == 'checkbox' %}
-      <div class="check-row">{{ field }} <label class="u-m-0">{{ field.label }}</label></div>
+      <div class="check-row">{{ field }} <label for="{{ field.id_for_label }}" class="u-m-0">{{ field.label }}</label></div>
     {% else %}
-      <label>{{ field.label }}</label>{{ field }}
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
     {% endif %}
     {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
     {% for e in field.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
