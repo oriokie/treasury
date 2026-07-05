@@ -73,6 +73,12 @@ def missing_source_documents():
                          .values_list("source_id", flat=True))
     missing["transactions"] = list(
         Transaction.objects.filter(direction=Transaction.Direction.CREDIT, confirmed=True)
+        # post_transaction() itself skips a reversed original or a reversal
+        # contra-entry — by design, neither gets its own journal entry once
+        # reversed — so without this exclusion these were flagged as
+        # "missing" forever, surviving every rebuild, since rebuild()
+        # correctly declines to post them too.
+        .exclude(is_reversed=True).exclude(is_reversal=True)
         .exclude(pk__in=posted_txn_ids).select_related("department")[:200])
     posted_exp_ids = set(JournalEntry.objects.filter(source_type="expense")
                         .values_list("source_id", flat=True))
@@ -108,6 +114,7 @@ def duplicate_references():
     Transaction, which the schema does NOT prevent (a split gift legitimately
     reuses one mpesa_ref across several rows) so these are for a human to
     check, not necessarily errors."""
+    import re
     from giving.models import Transaction
     dupes = (Transaction.objects.exclude(mpesa_ref="").exclude(mpesa_ref__isnull=True)
              .values("mpesa_ref").annotate(n=Count("id")).filter(n__gt=1).order_by("-n"))
@@ -115,12 +122,16 @@ def duplicate_references():
     for d in dupes[:100]:
         rows = list(Transaction.objects.filter(mpesa_ref=d["mpesa_ref"])
                     .select_related("department"))
-        # a legitimate split shows the SAME core_ref on every row; a genuine
-        # duplicate-looking case has more than one distinct core_ref sharing
-        # one mpesa_ref, which is the pattern worth a human's attention
-        distinct_core_refs = {r.core_ref for r in rows if r.core_ref}
+        # Transaction.split_into() gives every sibling of one original
+        # contribution its OWN core_ref — the base reference plus "-S1",
+        # "-S2", etc. — never the same core_ref repeated. So a legitimate
+        # split shows several *distinct* core_refs that all share the same
+        # base (the part before "-S<number>"); only when the base itself
+        # differs across rows is it a genuine, unexplained duplicate worth a
+        # human's attention.
+        bases = {re.sub(r"-S\d+$", "", r.core_ref) for r in rows if r.core_ref}
         out.append({"mpesa_ref": d["mpesa_ref"], "count": d["n"], "rows": rows,
-                    "likely_split": len(distinct_core_refs) <= 1})
+                    "likely_split": len(bases) <= 1})
     return out
 
 

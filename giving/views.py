@@ -45,6 +45,63 @@ from .forms import CashEntryForm, QueueResolveForm, RuleForm
 from .services.allocation import normalize_reference
 
 
+def _group_split_siblings(transactions):
+    """Group a list of Transaction rows so that siblings from the same
+    original split contribution (Transaction.split_into — one lump sum
+    divided across several funds/groups) are combined back into a single
+    logical entry, the way it looked before the split. Returns an ordered
+    list of groups (each a list of 1+ Transaction rows); a row with no
+    siblings among those passed in comes back as its own group of one.
+
+    Grouping happens only among the rows actually passed in — e.g. if an
+    export is filtered to a single fund, only the sibling(s) that fund's
+    filter matches are grouped; a sibling excluded by the filter is not
+    silently pulled back in, so the export always aggregates exactly what's
+    on screen, nothing more."""
+    def _key(t):
+        if t.core_ref:
+            return ("core", t.core_ref.split("-S")[0], t.direction)
+        if t.mpesa_ref:
+            return ("mpesa", t.mpesa_ref, t.date, t.direction)
+        return ("ref", (t.reference or "").strip().lower(), t.date, t.direction)
+
+    groups, order = {}, []
+    for t in transactions:
+        key = _key(t)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(t)
+    # the first (lowest-id) sibling is always the representative row — it's
+    # the original entry split_into() keeps as `self`, regardless of what
+    # order the underlying queryset happens to list rows in (e.g. a "most
+    # recent first" display ordering)
+    return [sorted(groups[k], key=lambda t: t.id) for k in order]
+
+
+def _combined_fund_label(members):
+    """The fund label for a (possibly combined) group: the single department's
+    name if there's only one, otherwise the split fund that caused the
+    original split (found via the allocation rule for the group's shared
+    reference), falling back to a plain join of the distinct fund names."""
+    from .models import AllocationRule
+    dept_ids = {t.department_id for t in members if t.department_id}
+    if len(dept_ids) <= 1:
+        first = members[0]
+        if first.department_id:
+            return first.department.name
+        return ("Excluded (via envelope)" if first.excluded_from_income
+                else "Unallocated")
+    ref = (members[0].reference or "").strip().lower()
+    if ref:
+        rule = (AllocationRule.objects.filter(reference=ref, split_fund__isnull=False)
+                .select_related("split_fund").first())
+        if rule:
+            return rule.split_fund.name
+    names = sorted({t.department.name for t in members if t.department_id})
+    return " + ".join(names)
+
+
 class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     model = Transaction
     template_name = "giving/transaction_list.html"
@@ -73,21 +130,27 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                     return "Memo (reconciled to envelope)"
                 return "Not receipted"
 
-            rows = [[t.date.isoformat(),
-                     t.service_sabbath.isoformat() if t.service_sabbath else "",
-                     t.get_channel_display(), t.get_direction_display(),
-                     t.payer_name or (t.member.name if t.member else ""),
-                     t.member.name if t.member_id else "",
-                     t.payer_phone or (t.member.receipt_phone if t.member_id else "") or "",
-                     t.department.name if t.department else
-                     ("Excluded (via envelope)" if t.excluded_from_income else "Unallocated"),
-                     t.dev_group.label if t.dev_group_id else "",
-                     t.reference or "", t.mpesa_ref or "", t.core_ref or "",
-                     t.bank_receipt or "", _receipt_status(t),
-                     t.get_allocation_status_display(),
-                     "Yes" if t.confirmed else "",
-                     float(t.amount if t.direction == "CREDIT" else -t.amount)]
-                    for t in qs]
+            def _dev_group_label(members):
+                labels = {t.dev_group.label for t in members if t.dev_group_id}
+                return " + ".join(sorted(labels)) if labels else ""
+
+            rows = []
+            for members in _group_split_siblings(list(qs)):
+                first = members[0]
+                total = sum((t.amount for t in members), Decimal(0))
+                rows.append([first.date.isoformat(),
+                     first.service_sabbath.isoformat() if first.service_sabbath else "",
+                     first.get_channel_display(), first.get_direction_display(),
+                     first.payer_name or (first.member.name if first.member else ""),
+                     first.member.name if first.member_id else "",
+                     first.payer_phone or (first.member.receipt_phone if first.member_id else "") or "",
+                     _combined_fund_label(members),
+                     _dev_group_label(members),
+                     first.reference or "", first.mpesa_ref or "", first.core_ref or "",
+                     first.bank_receipt or "", _receipt_status(first),
+                     first.get_allocation_status_display(),
+                     "Yes" if first.confirmed else "",
+                     float(total if first.direction == "CREDIT" else -total)])
             if export == "xlsx":
                 return xlsx_response("transactions.xlsx", header, rows,
                                      title="Transactions", church=SiteConfig.get().church_name)
@@ -112,41 +175,9 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
               .select_related("department", "member")
               .order_by("date", "id"))
 
-        def _group_key(t):
-            if t.core_ref:
-                return ("core", t.core_ref.split("-S")[0])
-            if t.mpesa_ref:
-                return ("mpesa", t.mpesa_ref)
-            return ("ref", (t.reference or "").strip().lower(), t.date)
-
-        groups = {}
-        order = []
-        for t in qs:
-            key = _group_key(t)
-            if key not in groups:
-                groups[key] = []
-                order.append(key)
-            groups[key].append(t)
-
-        def _fund_label(members):
-            dept_ids = {t.department_id for t in members if t.department_id}
-            if len(dept_ids) <= 1:
-                return members[0].department.name if members[0].department_id else ""
-            # look up the split fund that caused this — the reference that
-            # allocated the FIRST row in the group normally maps to it
-            ref = (members[0].reference or "").strip().lower()
-            if ref:
-                rule = (AllocationRule.objects.filter(reference=ref,
-                            split_fund__isnull=False).select_related("split_fund").first())
-                if rule:
-                    return rule.split_fund.name
-            names = sorted({t.department.name for t in members if t.department_id})
-            return " + ".join(names)
-
         header = ["Date", "Phone", "Member", "Amount", "Fund", "Reference", "M-Pesa Reference"]
         rows = []
-        for key in order:
-            members = groups[key]
+        for members in _group_split_siblings(list(qs)):
             first = members[0]
             phone = first.payer_phone or (first.member.receipt_phone if first.member_id else "") or ""
             member_name = first.member.name if first.member_id else (first.payer_name or "")
@@ -155,7 +186,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             # the first row's mpesa_ref applies to the whole combined line too
             mpesa_ref = next((t.mpesa_ref for t in members if t.mpesa_ref), "")
             rows.append([first.date.isoformat(), phone, member_name, float(total),
-                        _fund_label(members),
+                        _combined_fund_label(members),
                         first.reference or first.mpesa_ref or first.core_ref or "",
                         mpesa_ref])
 

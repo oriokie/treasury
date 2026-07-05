@@ -38,6 +38,15 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.16.0": "Follow-up fixes: the bank reconciliation's petty-cash staff advances figure now correctly "
+              "decreases as advances are accounted for (it never did before). Fixed a related issue where "
+              "accounting for a staff advance was double-counted as a fresh cash disbursement in the Sabbath "
+              "cash count. The Transactions Excel/CSV export now combines a split contribution back into one "
+              "row with its full total, matching how it looked before the split. The Ledger Health page no "
+              "longer flags legitimate split-gift receipts as \"worth checking\", and missing-posting items "
+              "no longer reappear after every rebuild if they're a reversed entry (by design, never posted) "
+              "- each remaining genuine item now links straight to its record. Redesigned the Executive "
+              "overview with clear labelled sections for easier scanning, preserving every figure and chart.",
     "2.15.0": "Fixed a server error on Rebuild Ledger (a duplicate account-code clash caused by an earlier "
               "expense-category change) - it now rebuilds correctly on every deployment. Fixed the Sabbath "
               "Cash Count page's Cash Disbursed figure, which was wrongly including expenses paid from the "

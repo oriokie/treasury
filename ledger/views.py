@@ -126,6 +126,15 @@ class LedgerHealthView(ReadAccessMixin, View):
     def get(self, request):
         from ledger.services.health import run_health_check
         r = run_health_check()
+        # a "duplicate reference" that's actually a legitimate split gift
+        # (Transaction.split_into — several rows from one payment, by design
+        # sharing one mpesa_ref) isn't something to warn about; only count
+        # towards the summary card and the overall picture the references
+        # that are genuinely unexplained and worth a human's attention.
+        r["duplicate_references_concerning"] = [
+            d for d in r["duplicate_references"] if not d["likely_split"]]
+        r["duplicate_references_split_count"] = (
+            len(r["duplicate_references"]) - len(r["duplicate_references_concerning"]))
         all_clear = (r["trial_balance_balanced"] and r["accounting_equation"]["balanced"]
                      and not r["unbalanced_journals"] and not r["orphan_journals"]
                      and not r["missing_source_documents"]["transactions"]

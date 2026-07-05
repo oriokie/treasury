@@ -687,10 +687,18 @@ class StaffAdvance(models.Model):
         """The originally issued amount (total advanced less later top-ups)."""
         return (self.amount or Decimal(0)) - self.topups_total
 
-    def petty_outstanding_asof(self, on):
-        """For a petty-cash-funded advance: cash that has left the petty-cash box
-        and not yet been returned. The base issue leaves the box on date_issued and
-        each top-up on its own date; only a return reduces this."""
+    def petty_cash_out_asof(self, on):
+        """For a petty-cash-funded advance: cash that has physically left the
+        petty-cash box and not yet been physically returned to it, as of a
+        date. The base issue leaves the box on date_issued and each top-up on
+        its own date; only an actual return (returned_to_petty) brings cash
+        back into the box. Recording an expense that accounts for how the
+        advance was spent does NOT return any cash to the box — it's a
+        paperwork reclassification, not a cash movement — so it must NOT
+        affect this figure. This is the number the petty cash float's own
+        running balance depends on (see _petty_balance_asof); it is
+        deliberately a different figure from petty_outstanding_asof (below),
+        which answers a different question."""
         if not self.from_petty_cash:
             return Decimal(0)
         out = Decimal(0)
@@ -700,6 +708,27 @@ class StaffAdvance(models.Model):
             if t.date <= on:
                 out += t.amount
         out -= (self.returned_to_petty or Decimal(0))
+        return out if out > 0 else Decimal(0)
+
+    def petty_outstanding_asof(self, on):
+        """For a petty-cash-funded advance: cash that has left the petty-cash
+        box and not yet been accounted for. Starts from the same cash-out
+        figure as petty_cash_out_asof (above), but additionally subtracts any
+        expense recorded against the advance (once approved or paid) — since
+        that accounts for that portion of it, even though no cash physically
+        returned to the box. Without this, the reconciliation's "not yet
+        accounted for" line always showed the full amount ever disbursed,
+        never decreasing as expenses were recorded, even for an advance fully
+        accounted for down to zero. Used for reconciliation/reporting
+        purposes only — never for the petty cash float's own balance, which
+        must not change just because an advance was accounted for on paper."""
+        if not self.from_petty_cash:
+            return Decimal(0)
+        out = self.petty_cash_out_asof(on)
+        settled = (self.expenses.filter(
+            status__in=[Expense.Status.APPROVED, Expense.Status.PAID], date__lte=on)
+            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        out -= settled
         return out if out > 0 else Decimal(0)
 
 

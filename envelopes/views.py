@@ -1192,7 +1192,31 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
                      # made the count show a discrepancy that wasn't real.
                      # Petty cash has its own separate top-up/reconciliation.
                      .exclude(paid_from_petty_cash=True)
+                     # an expense that accounts for a staff advance
+                     # (Expense.advance is set) never represents a fresh cash
+                     # outflow from this float either — the cash (if any) left
+                     # whichever float funded the advance back when it was
+                     # ISSUED, not now; this expense only records what it was
+                     # later spent on. It inherits the advance's own payment
+                     # method, so without this exclusion it was being wrongly
+                     # counted as a brand-new disbursement a second time (or,
+                     # for a bank-funded advance, a first and entirely wrong
+                     # time) whenever staff accounted for an advance in cash.
+                     .exclude(advance__isnull=False)
                      .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        # A staff advance is its own record, never an Expense — so a cash
+        # advance handed out directly from THIS float (not petty cash) was
+        # previously invisible to "Cash Disbursed" entirely: it's not an
+        # Expense row (nothing to match method=CASH against), and excluding
+        # its later settlement (above) correctly stops that settlement from
+        # being double/mis-counted, but leaves the actual, real cash-box
+        # outflow — which happened at issuance — uncounted anywhere. Add it
+        # back at the one point in time it actually happened.
+        from cashbook.models import StaffAdvance
+        disbursed += (StaffAdvance.objects.filter(
+                        method=StaffAdvance.Method.CASH, from_petty_cash=False,
+                        date_issued__range=(window_start, sabbath))
+                      .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         return {"cash": cash, "envelope": envelope_cash, "envelope_raw": envelope,
                 "bank_as_cash": bank_as_cash, "disbursed": disbursed,
                 "net": cash + envelope_cash - disbursed}

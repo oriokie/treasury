@@ -1,5 +1,51 @@
 # Changelog
 
+## v2.16.0 - advance/cash-count follow-up fixes, transactions export, ledger health, executive redesign
+Follow-up to v2.15.0, tracing each report through to its real root cause before fixing.
+
+**Fixed:**
+- **Bank reconciliation "Staff advances from petty cash (not yet accounted)"** never actually decreased as
+  advances were accounted for — `StaffAdvance.petty_outstanding_asof()` only ever subtracted returns to the
+  float, never expenses recorded against the advance, so it permanently showed the full amount ever
+  disbursed. Fixed to also subtract settled expenses, as of the reconciliation's own statement date.
+- **Sabbath cash count double-counted staff advance settlements.** When someone accounts for a cash-tracked
+  advance (an expense linked via `Expense.advance`), the real cash movement happened back when the advance
+  was *issued* — possibly from an entirely different float (petty cash) — not when it's later accounted for.
+  The cash count was counting the settlement as a brand-new disbursement from the Sabbath offering float.
+  Fixed by excluding advance-settlement expenses from "Cash Disbursed" and instead adding back the advance's
+  own issuance (only when cash, only when *not* from petty cash) at the point it actually happened.
+  **Caught and fixed a regression from the first fix**, before shipping: the petty cash float's own running
+  balance (`_petty_balance_asof`) depended on the same method, and would have incorrectly *increased* every
+  time an advance was accounted for (settling an advance doesn't return cash to the float). Split into two
+  clearly-named methods — `petty_cash_out_asof` (pure cash movement, for the float balance) and
+  `petty_outstanding_asof` (accounted-for status, for reconciliation) — with a regression test locking in
+  that settling an advance never changes the float's balance.
+- **Transactions Excel/CSV export** now combines a contribution split across several funds back into one row
+  with its full aggregate total, the way it looked before the split — matching the Trust Pending Receipts
+  export's existing behaviour. Extracted the grouping logic into a shared helper used by both exports.
+- **Ledger Health "Shared M-Pesa/bank receipt references"** flagged every legitimate split gift as "worth
+  checking" — it compared `core_ref` values directly, but a split gives each sibling its *own* distinct
+  core_ref (base + "-S1", "-S2", ...), never a shared one. Fixed to compare the base reference; the health
+  page now separates the count into genuinely-unexplained references and legitimate splits (labelled and no
+  longer counted as a concern).
+- **Missing postings persisted after every rebuild.** A reversed transaction or a reversal's own contra-entry
+  are never posted by design (`post_transaction()` and `rebuild()` both correctly decline), but the health
+  check was flagging them as "missing" regardless — a false positive that no rebuild could ever clear. Fixed
+  by excluding them from the check. Each remaining genuinely-missing item now links directly to its record.
+
+**Redesigned:**
+- **Executive overview** reorganised into clearly labelled sections (Performance this year / Giving
+  breakdown / At a glance / Cash position & forecast / Trends) for easier scanning, with a consistent section
+  heading style. Verified line-by-line against the original: every context variable, URL, chart canvas ID,
+  and literal text label is preserved exactly — this is a presentation reorganisation, not a functional
+  change. AI insights and all six charts work exactly as before.
+
+Tests: 34 new across cashbook/envelopes/giving/ledger/core, covering each fix (including the caught-and-fixed
+regression) with both the buggy and corrected scenarios reproduced directly. Targeted regression: cashbook
+286, envelopes+giving 208, ledger+core+statements 340 — all green.
+
+Deploy: no migration. Collectstatic recommended (executive.html CSS changed) but not required for correctness.
+
 ## v2.15.0 - ledger rebuild fix, cash count fix, transactions page improvements, export enhancements
 Traced and resolved a batch of reported issues, each verified against a reproduction of the real scenario
 (not assumed), plus one further defect found incidentally while running the regression suite.

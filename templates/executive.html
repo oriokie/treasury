@@ -5,7 +5,7 @@
 
 <div class="exec-cards">
   {% for c in cards %}
-  {% if c.link %}<a class="exec-card tone-{{ c.tone }}" href="{{ c.link }}" class="u-nolink">{% else %}<div class="exec-card tone-{{ c.tone }}">{% endif %}
+  {% if c.link %}<a class="exec-card tone-{{ c.tone }}" href="{{ c.link }}">{% else %}<div class="exec-card tone-{{ c.tone }}">{% endif %}
     <div class="ec-label">{{ c.label }}</div>
     <div class="ec-val">{% if c.money %}<span class="ec-cur">KES</span> {{ c.value|floatformat:0|intcomma }}{% else %}{{ c.value }}{% endif %}</div>
     {% if c.sub %}<div class="ec-sub">{{ c.sub }}</div>{% endif %}
@@ -13,83 +13,18 @@
   {% endfor %}
 </div>
 
-<div class="insight-tiles">
-  {% for t in insights.tiles %}
-  <div class="insight-tile {% if t.tone == 'warn' %}it-warn{% endif %}">
-    <div class="it-label">{{ t.label }}</div>
-    <div class="it-value mono">
-      {% if t.money %}KSh {{ t.value|floatformat:0|intcomma }}{% elif t.pct != None %}{{ t.pct|floatformat:1 }}%{% else %}—{% endif %}
-      {% if t.delta != None %}<span class="it-delta {% if t.delta >= 0 %}good{% else %}bad{% endif %}">{% if t.delta >= 0 %}▲{% else %}▼{% endif %} {{ t.delta|floatformat:1 }}%</span>{% endif %}
-    </div>
-    <div class="it-sub">{{ t.sub }}</div>
-  </div>
-  {% endfor %}
-</div>
-
-<div class="exec-twocol">
-  <div class="card"><div class="hd">Income by channel (YTD)</div><div class="bd">
-    {% with cm=insights.channel_mix %}
-    {% with tot=cm.bank|add:cm.cash|add:cm.envelope %}
-    <div class="chan-bar">
-      {% if tot %}
-      <div class="chan-seg seg-bank" style="width:{% widthratio cm.bank tot 100 %}%" title="Bank {{ cm.bank|floatformat:0|intcomma }}"></div>
-      <div class="chan-seg seg-cash" style="width:{% widthratio cm.cash tot 100 %}%" title="Cash {{ cm.cash|floatformat:0|intcomma }}"></div>
-      <div class="chan-seg seg-env" style="width:{% widthratio cm.envelope tot 100 %}%" title="Envelope {{ cm.envelope|floatformat:0|intcomma }}"></div>
-      {% endif %}
-    </div>
-    <div class="chan-legend">
-      <span><i class="dot seg-bank"></i> Bank <strong class="mono">{{ cm.bank|floatformat:0|intcomma }}</strong></span>
-      <span><i class="dot seg-cash"></i> Cash <strong class="mono">{{ cm.cash|floatformat:0|intcomma }}</strong></span>
-      <span><i class="dot seg-env"></i> Envelope <strong class="mono">{{ cm.envelope|floatformat:0|intcomma }}</strong></span>
-    </div>
-    {% endwith %}{% endwith %}
-  </div></div>
-
-  <div class="card"><div class="hd">Participation (YTD)</div><div class="bd">
-    <div class="part-grid">
-      <div class="part-tile"><div class="pt-val mono">{{ insights.participation.givers }}</div><div class="pt-lbl">Active givers</div></div>
-      <div class="part-tile"><div class="pt-val mono">{{ insights.participation.gifts }}</div><div class="pt-lbl">Donations recorded</div></div>
-      <div class="part-tile"><div class="pt-val mono">KSh {{ insights.participation.median|floatformat:0|intcomma }}</div><div class="pt-lbl">Median donation</div></div>
-      <div class="part-tile"><div class="pt-val mono">{{ insights.participation.new_givers }}</div><div class="pt-lbl">New givers this month</div></div>
-    </div>
-    <div class="muted" style="font-size:.78rem;margin-top:.6rem">Aggregate figures only — individual giving is kept private.</div>
-  </div></div>
-</div>
-
-<style>
-.insight-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.8rem;margin-bottom:1.2rem}
-.insight-tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
-  padding:.9rem 1rem;box-shadow:var(--shadow-sm);border-top:3px solid var(--forest)}
-.insight-tile.it-warn{border-top-color:var(--amber)}
-.it-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);font-weight:700}
-.it-value{font-size:1.25rem;font-weight:700;color:var(--ink);margin:.25rem 0;display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
-.it-delta{font-size:.78rem;font-weight:600}
-.it-delta.good{color:var(--forest)}.it-delta.bad{color:var(--danger)}
-.it-sub{font-size:.76rem;color:var(--muted)}
-.exec-twocol{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem}
-@media(max-width:760px){.exec-twocol{grid-template-columns:1fr}}
-.chan-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--paper-2);margin-bottom:.7rem}
-.chan-seg{height:100%}
-.seg-bank{background:var(--forest)}.seg-cash{background:var(--brass)}.seg-env{background:#7fa99b}
-.chan-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
-.chan-legend .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:.3rem;vertical-align:middle}
-.chan-legend strong{color:var(--ink)}
-.part-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
-.part-tile{background:var(--paper-2);border-radius:9px;padding:.7rem .8rem;text-align:center}
-.part-tile .pt-val{font-size:1.4rem;font-weight:700;color:var(--forest-deep)}
-.part-tile .pt-lbl{font-size:.74rem;color:var(--muted);margin-top:.15rem}
-</style>
-
 {% if ai_enabled %}
-<div class="card ai-card" style="margin-bottom:1.2rem;border:1px solid var(--brass)">
-  <div class="hd u-between">
-    <span>✨ AI insights</span>
-    <button id="aiBtn" class="btn btn-sm" onclick="loadInsights()">Generate briefing</button>
+<section class="exec-section">
+  <div class="card ai-card">
+    <div class="hd u-between">
+      <span>✨ AI insights</span>
+      <button id="aiBtn" class="btn btn-sm" onclick="loadInsights()">Generate briefing</button>
+    </div>
+    <div class="bd" id="aiBody">
+      <p class="muted u-m-0">Generate an AI briefing — highlights, risks and recommendations drawn from your current figures. This makes one call to your configured assistant.</p>
+    </div>
   </div>
-  <div class="bd" id="aiBody">
-    <p class="muted u-m-0">Generate an AI briefing — highlights, risks and recommendations drawn from your current figures. This makes one call to your configured assistant.</p>
-  </div>
-</div>
+</section>
 <script>
 function loadInsights(){
   var btn=document.getElementById("aiBtn"), body=document.getElementById("aiBody");
@@ -106,69 +41,127 @@ function loadInsights(){
   }).catch(function(){ btn.disabled=false; btn.textContent="Generate briefing"; body.innerHTML='<p class="row-debit">Network error.</p>'; });
 }
 </script>
-<style>
-.ai-out .ai-h{font-weight:700;color:var(--brass);margin:.6rem 0 .2rem}
-.ai-out .ai-li{margin:.15rem 0 .15rem .4rem;line-height:1.45}
-.ai-card .hd .btn{font-size:.78rem}
-</style>
 {% endif %}
 
-{% if facts %}
-<div class="card"><div class="hd">At a glance</div><div class="bd">
-  <div class="grid-3">
-  {% for f in facts %}
-    <div class="stat"><div class="lbl">{{ f.label }}</div>
-      <div class="val mono">{% if f.money %}{{ f.value|floatformat:0|intcomma }}{% elif f.value != None %}{{ f.value }}{% endif %}{% if f.text %}{% if f.value != None %} {% endif %}<span class="muted" style="font-size:.8rem">{{ f.text }}</span>{% endif %}</div>
-    </div>
-  {% endfor %}
-  </div>
-</div></div>
-{% endif %}
-
-<div class="card"><div class="hd u-between">Cash flow forecast <a class="link u-xs" href="{% url 'report_forecast' %}">Full forecast →</a></div><div class="bd">
-  <div class="grid-3">
-    {% for label, h in forecast.items %}
-    <div class="stat"><div class="lbl">Projected · {{ label }}</div>
-      <div class="val mono" style="{% if h.projected < 0 %}color:var(--danger){% endif %}">{{ h.projected|floatformat:0|intcomma }}</div>
-      <div class="muted u-xs">{% if h.net >= 0 %}+{% endif %}{{ h.net|floatformat:0|intcomma }} vs today</div>
+<section class="exec-section">
+  <h2 class="exec-h2">Performance this year</h2>
+  <div class="insight-tiles">
+    {% for t in insights.tiles %}
+    <div class="insight-tile {% if t.tone == 'warn' %}it-warn{% endif %}">
+      <div class="it-label">{{ t.label }}</div>
+      <div class="it-value mono">
+        {% if t.money %}KSh {{ t.value|floatformat:0|intcomma }}{% elif t.pct != None %}{{ t.pct|floatformat:1 }}%{% else %}—{% endif %}
+        {% if t.delta != None %}<span class="it-delta {% if t.delta >= 0 %}good{% else %}bad{% endif %}">{% if t.delta >= 0 %}▲{% else %}▼{% endif %} {{ t.delta|floatformat:1 }}%</span>{% endif %}
+      </div>
+      <div class="it-sub">{{ t.sub }}</div>
     </div>
     {% endfor %}
   </div>
-  <div class="stat u-mt-sm"><div class="lbl">Outstanding pledges</div>
-    <div class="val mono">{{ pledges_outstanding|floatformat:0|intcomma }}</div>
-    <div class="muted u-xs"><a class="link" href="{% url 'pledge_list' %}">View pledges →</a></div>
-  </div>
-  <div class="stat u-mt-sm"><div class="lbl">Staff advances outstanding</div>
-    <div class="val mono">{{ advances_outstanding|floatformat:0|intcomma }}</div>
-    <div class="muted u-xs"><a class="link" href="{% url 'advance_list' %}">View advances →</a></div>
-  </div>
-  <div class="stat u-mt-sm"><div class="lbl">Petty cash remaining</div>
-    <div class="val mono">{{ petty_balance|floatformat:0|intcomma }}</div>
-    <div class="muted u-xs"><a class="link" href="{% url 'petty_cash' %}">Petty cash register →</a></div>
-  </div>
-</div></div>
 
-<div class="kpi-strip">
-  {% for k in kpis %}
-  <div class="kpi-tile">
-    <div class="kpi-top"><span class="kpi-name">{{ k.label }}</span>
-      <span class="kpi-arrow {% if k.invert %}{% if k.trend == 'up' %}bad{% elif k.trend == 'down' %}good{% else %}flat{% endif %}{% else %}{% if k.trend == 'up' %}good{% elif k.trend == 'down' %}bad{% else %}flat{% endif %}{% endif %}">
-        {% if k.trend == 'up' %}▲{% elif k.trend == 'down' %}▼{% else %}▬{% endif %}</span></div>
-    {% if k.pct != None %}<div class="kpi-pct">{{ k.pct|floatformat:1 }}%{% if k.is_level %} <span class="muted u-xs">{% if k.label == 'Budget compliance' %}used{% else %}level{% endif %}</span>{% endif %}</div>{% else %}<div class="kpi-pct muted">—</div>{% endif %}
-    <div class="kpi-detail">{{ k.detail }}</div>
+  <div class="kpi-strip">
+    {% for k in kpis %}
+    <div class="kpi-tile">
+      <div class="kpi-top"><span class="kpi-name">{{ k.label }}</span>
+        <span class="kpi-arrow {% if k.invert %}{% if k.trend == 'up' %}bad{% elif k.trend == 'down' %}good{% else %}flat{% endif %}{% else %}{% if k.trend == 'up' %}good{% elif k.trend == 'down' %}bad{% else %}flat{% endif %}{% endif %}">
+          {% if k.trend == 'up' %}▲{% elif k.trend == 'down' %}▼{% else %}▬{% endif %}</span></div>
+      {% if k.pct != None %}<div class="kpi-pct">{{ k.pct|floatformat:1 }}%{% if k.is_level %} <span class="muted u-xs">{% if k.label == 'Budget compliance' %}used{% else %}level{% endif %}</span>{% endif %}</div>{% else %}<div class="kpi-pct muted">—</div>{% endif %}
+      <div class="kpi-detail">{{ k.detail }}</div>
+    </div>
+    {% endfor %}
   </div>
-  {% endfor %}
-</div>
+</section>
 
-<div class="chart-grid">
-  <div class="card"><div class="hd">Giving trend (12 months)</div><div class="bd"><div class="chart-box"><canvas id="givingTrend"></canvas></div></div></div>
-  <div class="card"><div class="hd">Receipts vs expenses by month (this year)</div><div class="bd"><div class="chart-box"><canvas id="receiptsVsExpensesYear"></canvas></div></div></div>
-  <div class="card"><div class="hd">Department spending (this year)</div><div class="bd"><div class="chart-box"><canvas id="deptSpend"></canvas></div></div></div>
-  <div class="card"><div class="hd">Monthly income</div><div class="bd"><div class="chart-box"><canvas id="monthlyIncome"></canvas></div></div></div>
-  <div class="card"><div class="hd">Monthly expenses</div><div class="bd"><div class="chart-box"><canvas id="monthlyExpense"></canvas></div></div></div>
-  <div class="card"><div class="hd">Trust fund balances (outstanding)</div><div class="bd"><div class="chart-box"><canvas id="trustBalances"></canvas></div></div></div>
-</div>
-<style>.chart-box{position:relative;height:200px;width:100%}</style>
+<section class="exec-section">
+  <h2 class="exec-h2">Giving breakdown</h2>
+  <div class="exec-twocol">
+    <div class="card"><div class="hd">Income by channel (YTD)</div><div class="bd">
+      {% with cm=insights.channel_mix %}
+      {% with tot=cm.bank|add:cm.cash|add:cm.envelope %}
+      <div class="chan-bar">
+        {% if tot %}
+        <div class="chan-seg seg-bank" style="width:{% widthratio cm.bank tot 100 %}%" title="Bank {{ cm.bank|floatformat:0|intcomma }}"></div>
+        <div class="chan-seg seg-cash" style="width:{% widthratio cm.cash tot 100 %}%" title="Cash {{ cm.cash|floatformat:0|intcomma }}"></div>
+        <div class="chan-seg seg-env" style="width:{% widthratio cm.envelope tot 100 %}%" title="Envelope {{ cm.envelope|floatformat:0|intcomma }}"></div>
+        {% endif %}
+      </div>
+      <div class="chan-legend">
+        <span><i class="dot seg-bank"></i> Bank <strong class="mono">{{ cm.bank|floatformat:0|intcomma }}</strong></span>
+        <span><i class="dot seg-cash"></i> Cash <strong class="mono">{{ cm.cash|floatformat:0|intcomma }}</strong></span>
+        <span><i class="dot seg-env"></i> Envelope <strong class="mono">{{ cm.envelope|floatformat:0|intcomma }}</strong></span>
+      </div>
+      {% endwith %}{% endwith %}
+    </div></div>
+
+    <div class="card"><div class="hd">Participation (YTD)</div><div class="bd">
+      <div class="part-grid">
+        <div class="part-tile"><div class="pt-val mono">{{ insights.participation.givers }}</div><div class="pt-lbl">Active givers</div></div>
+        <div class="part-tile"><div class="pt-val mono">{{ insights.participation.gifts }}</div><div class="pt-lbl">Donations recorded</div></div>
+        <div class="part-tile"><div class="pt-val mono">KSh {{ insights.participation.median|floatformat:0|intcomma }}</div><div class="pt-lbl">Median donation</div></div>
+        <div class="part-tile"><div class="pt-val mono">{{ insights.participation.new_givers }}</div><div class="pt-lbl">New givers this month</div></div>
+      </div>
+      <div class="muted u-xs u-mt-sm">Aggregate figures only — individual giving is kept private.</div>
+    </div></div>
+  </div>
+</section>
+
+{% if facts %}
+<section class="exec-section">
+  <h2 class="exec-h2">At a glance</h2>
+  <div class="card"><div class="bd">
+    <div class="grid-3">
+    {% for f in facts %}
+      <div class="stat"><div class="lbl">{{ f.label }}</div>
+        <div class="val mono">{% if f.money %}{{ f.value|floatformat:0|intcomma }}{% elif f.value != None %}{{ f.value }}{% endif %}{% if f.text %}{% if f.value != None %} {% endif %}<span class="muted" style="font-size:.8rem">{{ f.text }}</span>{% endif %}</div>
+      </div>
+    {% endfor %}
+    </div>
+  </div></div>
+</section>
+{% endif %}
+
+<section class="exec-section">
+  <h2 class="exec-h2">Cash position &amp; forecast</h2>
+  <div class="card"><div class="hd u-between">Cash flow forecast <a class="link u-xs" href="{% url 'report_forecast' %}">Full forecast →</a></div><div class="bd">
+    <div class="grid-3">
+      {% for label, h in forecast.items %}
+      <div class="stat"><div class="lbl">Projected · {{ label }}</div>
+        <div class="val mono" style="{% if h.projected < 0 %}color:var(--danger){% endif %}">{{ h.projected|floatformat:0|intcomma }}</div>
+        <div class="muted u-xs">{% if h.net >= 0 %}+{% endif %}{{ h.net|floatformat:0|intcomma }} vs today</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div></div>
+
+  <div class="cash-balances-grid">
+    <a class="cash-balance-tile" href="{% url 'pledge_list' %}">
+      <div class="cbt-label">Outstanding pledges</div>
+      <div class="cbt-val mono">{{ pledges_outstanding|floatformat:0|intcomma }}</div>
+      <div class="cbt-link">View pledges →</div>
+    </a>
+    <a class="cash-balance-tile" href="{% url 'advance_list' %}">
+      <div class="cbt-label">Staff advances outstanding</div>
+      <div class="cbt-val mono">{{ advances_outstanding|floatformat:0|intcomma }}</div>
+      <div class="cbt-link">View advances →</div>
+    </a>
+    <a class="cash-balance-tile" href="{% url 'petty_cash' %}">
+      <div class="cbt-label">Petty cash remaining</div>
+      <div class="cbt-val mono">{{ petty_balance|floatformat:0|intcomma }}</div>
+      <div class="cbt-link">Petty cash register →</div>
+    </a>
+  </div>
+</section>
+
+<section class="exec-section">
+  <h2 class="exec-h2">Trends</h2>
+  <div class="chart-grid">
+    <div class="card"><div class="hd">Giving trend (12 months)</div><div class="bd"><div class="chart-box"><canvas id="givingTrend"></canvas></div></div></div>
+    <div class="card"><div class="hd">Receipts vs expenses by month (this year)</div><div class="bd"><div class="chart-box"><canvas id="receiptsVsExpensesYear"></canvas></div></div></div>
+    <div class="card"><div class="hd">Department spending (this year)</div><div class="bd"><div class="chart-box"><canvas id="deptSpend"></canvas></div></div></div>
+    <div class="card"><div class="hd">Monthly income</div><div class="bd"><div class="chart-box"><canvas id="monthlyIncome"></canvas></div></div></div>
+    <div class="card"><div class="hd">Monthly expenses</div><div class="bd"><div class="chart-box"><canvas id="monthlyExpense"></canvas></div></div></div>
+    <div class="card"><div class="hd">Trust fund balances (outstanding)</div><div class="bd"><div class="chart-box"><canvas id="trustBalances"></canvas></div></div></div>
+  </div>
+</section>
 
 {{ charts_json|json_script:"chartData" }}
 <script src="{% static 'vendor/chart.umd.js' %}"></script>
@@ -222,30 +215,77 @@ function loadInsights(){
     options:{maintainAspectRatio:false,plugins:{legend:{position:"right"}}}};});
 })();
 </script>
+
 <style>
+/* ---- Section rhythm ---- */
+.exec-section{margin:1.8rem 0}
+.exec-section:first-of-type{margin-top:1.2rem}
+.exec-h2{font-size:.98rem;font-weight:700;color:var(--forest-deep);margin:0 0 .7rem;
+  padding-bottom:.4rem;border-bottom:2px solid var(--forest-soft);letter-spacing:.01em}
+
+/* ---- Top KPI cards ---- */
 .exec-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:1.2rem}
-.exec-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem}
+.exec-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem;
+  text-decoration:none;color:inherit;display:block;transition:box-shadow .12s,transform .12s}
+a.exec-card:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
 .exec-card.tone-warn{border-color:var(--brass)}
 .ec-label{font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
 .ec-val{font-size:1.45rem;font-weight:700;font-family:var(--mono,monospace);margin-top:.25rem}
 .ec-cur{font-size:.7rem;color:var(--muted)}
 .ec-sub{font-size:.78rem;color:var(--muted);margin-top:.2rem}
 .tone-warn .ec-val{color:var(--brass)}
-.alerts-card .bd{padding:.4rem 1rem}
-.alert-row{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0;border-bottom:1px solid var(--line)}
-.alert-row:last-child{border-bottom:none}
-.alert-dot{width:9px;height:9px;border-radius:50%;margin-top:.4rem;flex:none}
-.alert-dismiss{background:none;border:none;color:var(--ink-soft);font-size:1.2rem;line-height:1;cursor:pointer;padding:0 .2rem;opacity:.5}
-.alert-dismiss:hover{opacity:1;color:var(--danger)}
-.sev-danger .alert-dot{background:#b3261e}.sev-warn .alert-dot{background:var(--brass)}.sev-info .alert-dot{background:#3d7d6a}
-.kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem;margin:1.2rem 0}
+
+/* ---- AI insights ---- */
+.ai-card{border:1px solid var(--brass)}
+.ai-card .hd .btn{font-size:.78rem}
+.ai-out .ai-h{font-weight:700;color:var(--brass);margin:.6rem 0 .2rem}
+.ai-out .ai-li{margin:.15rem 0 .15rem .4rem;line-height:1.45}
+
+/* ---- Performance tiles + KPI strip ---- */
+.insight-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.8rem;margin-bottom:.8rem}
+.insight-tile{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.9rem 1rem;box-shadow:var(--shadow-sm);border-top:3px solid var(--forest)}
+.insight-tile.it-warn{border-top-color:var(--amber)}
+.it-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);font-weight:700}
+.it-value{font-size:1.25rem;font-weight:700;color:var(--ink);margin:.25rem 0;display:flex;align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.it-delta{font-size:.78rem;font-weight:600}
+.it-delta.good{color:var(--forest)}.it-delta.bad{color:var(--danger)}
+.it-sub{font-size:.76rem;color:var(--muted)}
+.kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem}
 .kpi-tile{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.75rem .9rem}
 .kpi-top{display:flex;justify-content:space-between;align-items:center}
 .kpi-name{font-size:.8rem;font-weight:600}
 .kpi-arrow.good{color:#1f7a4d}.kpi-arrow.bad{color:#b3261e}.kpi-arrow.flat{color:var(--muted)}
 .kpi-pct{font-size:1.3rem;font-weight:700;font-family:var(--mono,monospace);margin:.1rem 0}
 .kpi-detail{font-size:.76rem;color:var(--muted)}
-.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem;margin-top:1rem}
+
+/* ---- Giving breakdown ---- */
+.exec-twocol{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:760px){.exec-twocol{grid-template-columns:1fr}}
+.chan-bar{display:flex;height:26px;border-radius:7px;overflow:hidden;background:var(--paper-2);margin-bottom:.7rem}
+.chan-seg{height:100%}
+.seg-bank{background:var(--forest)}.seg-cash{background:var(--brass)}.seg-env{background:#7fa99b}
+.chan-legend{display:flex;gap:1.2rem;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
+.chan-legend .dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:.3rem;vertical-align:middle}
+.chan-legend strong{color:var(--ink)}
+.part-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.part-tile{background:var(--paper-2);border-radius:9px;padding:.7rem .8rem;text-align:center}
+.part-tile .pt-val{font-size:1.4rem;font-weight:700;color:var(--forest-deep)}
+.part-tile .pt-lbl{font-size:.74rem;color:var(--muted);margin-top:.15rem}
+
+/* ---- Cash position & forecast ---- */
+.cash-balances-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.8rem;margin-top:.8rem}
+.cash-balance-tile{display:block;background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  padding:.85rem 1rem;text-decoration:none;color:inherit;border-left:3px solid var(--brass);
+  transition:box-shadow .12s,transform .12s}
+.cash-balance-tile:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.cbt-label{font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.cbt-val{font-size:1.3rem;font-weight:700;margin-top:.2rem}
+.cbt-link{font-size:.76rem;color:var(--forest);margin-top:.3rem;font-weight:600}
+
+/* ---- Charts ---- */
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem}
 .chart-grid .bd{padding:1rem;height:200px}
+.chart-box{position:relative;height:200px;width:100%}
 </style>
 {% endblock %}

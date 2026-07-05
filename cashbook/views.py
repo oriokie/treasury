@@ -681,10 +681,13 @@ def _petty_balance_asof(on):
     # cash refunded back into the petty box tops the float up again
     refunds_in = (ExpenseRefund.objects.filter(to_petty_cash=True, date__lte=on)
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    # advances issued out of the petty box, still unaccounted, are also "out"
+    # advances issued out of the petty box, still unreturned, are also "out"
+    # — deliberately petty_cash_out_asof, not petty_outstanding_asof: the
+    # float's own balance must not change just because an advance was later
+    # accounted for on paper (an expense record, not a cash movement)
     adv_out = Decimal(0)
     for adv in StaffAdvance.objects.filter(from_petty_cash=True, date_issued__lte=on):
-        adv_out += adv.petty_outstanding_asof(on)
+        adv_out += adv.petty_cash_out_asof(on)
     return topups - disb + refunds_in - adv_out
 
 
@@ -1056,7 +1059,7 @@ def outstanding_petty_advances_total(as_of=None):
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
     for adv in StaffAdvance.objects.filter(from_petty_cash=True,
-                                           date_issued__lte=as_of):
+            date_issued__lte=as_of).exclude(status=StaffAdvance.Status.CLOSED):
         try:
             total += adv.petty_outstanding_asof(as_of)
         except Exception:  # noqa: BLE001

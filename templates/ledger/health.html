@@ -46,10 +46,10 @@
     <div class="label">Duplicate postings</div>
     <div class="value">{{ duplicate_postings|length }}</div>
   </div>
-  <div class="stat {% if not duplicate_references %}accent{% else %}warn{% endif %}">
+  <div class="stat {% if not duplicate_references_concerning %}accent{% else %}warn{% endif %}">
     <div class="label">Shared receipt references</div>
-    <div class="value">{{ duplicate_references|length }}</div>
-    <div class="foot">Often a legitimate split gift</div>
+    <div class="value">{{ duplicate_references_concerning|length }}</div>
+    <div class="foot">{% if duplicate_references_split_count %}+{{ duplicate_references_split_count }} legitimate split gift{{ duplicate_references_split_count|pluralize }} (shown below, not a concern){% else %}Genuinely unexplained only{% endif %}</div>
   </div>
   <div class="stat {% if not funds_out_of_balance %}accent{% else %}warn{% endif %}">
     <div class="label">Funds out of balance</div>
@@ -81,14 +81,16 @@
 {% if missing_source_documents.transactions or missing_source_documents.expenses %}
 <div class="card u-mb"><div class="hd">Missing postings — should be in the ledger, isn't</div><div class="bd">
   {% if missing_source_documents.transactions %}<div class="section-title">Receipts</div>
-  <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th class="num">Amount</th></tr></thead><tbody>
+  <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th class="num">Amount</th><th></th></tr></thead><tbody>
   {% for t in missing_source_documents.transactions %}<tr class="row-warn"><td class="mono">{{ t.date|date:"d/m/y" }}</td>
-    <td>{{ t.department.name|sentence_fund }}</td><td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    <td>{{ t.department.name|sentence_fund }}</td><td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+    <td>{% if can_enter_data %}<a class="link" href="{% url 'transaction_edit' t.id %}">View / edit →</a>{% endif %}</td></tr>{% endfor %}
   </tbody></table>{% endif %}
   {% if missing_source_documents.expenses %}<div class="section-title u-mt">Expenses</div>
-  <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th>Description</th><th class="num">Amount</th></tr></thead><tbody>
+  <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>
   {% for e in missing_source_documents.expenses %}<tr class="row-warn"><td class="mono">{{ e.date|date:"d/m/y" }}</td>
-    <td>{{ e.department.name|sentence_fund }}</td><td>{{ e.description }}</td><td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    <td>{{ e.department.name|sentence_fund }}</td><td>{{ e.description }}</td><td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    <td><a class="link" href="{% url 'expense_detail' e.id %}">View →</a></td></tr>{% endfor %}
   </tbody></table>{% endif %}
   {% if is_treasurer %}<p class="help u-mt-sm">Rebuilding the ledger posts these.</p>{% endif %}
 </div></div>
