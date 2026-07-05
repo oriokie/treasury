@@ -2412,10 +2412,15 @@ def _post_decimal(request, name):
         return None
 
 
-class FundBudgetView(TreasurerRequiredMixin, View):
+class FundBudgetView(LoginRequiredMixin, View):
     """Budget & goals for a fund (e.g. Camp Meeting): per-category budget vs actual
     spend for a year, plus the contribution goal (Department.target) and the
-    yearly goal (Department.annual_budget) tracked against what's been collected."""
+    yearly goal (Department.annual_budget) tracked against what's been collected.
+
+    Viewing (GET) is available to treasurers/assistants for any fund, and to a
+    leader for a fund they lead once granted the view_fund_budget right — see
+    core.roles.can_view_fund_budget. Editing (POST) always stays
+    treasurer/assistant only, regardless of that right."""
     template_name = "cashbook/fund_budget.html"
 
     def _ctx(self, request, dept):
@@ -2515,15 +2520,31 @@ class FundBudgetView(TreasurerRequiredMixin, View):
 
     def get(self, request, pk):
         from departments.models import Department
+        from core import roles
         dept = get_object_or_404(Department, pk=pk)
+        if not roles.can_view_fund_budget(request.user, dept):
+            if roles.is_leader(request.user):
+                messages.error(request, "You don't lead that fund, or don't "
+                               "have the budget-viewing right for it.")
+                return redirect("leader_dashboard")
+            messages.error(request, "This page is restricted to Treasurers.")
+            return redirect("dashboard")
         return render(request, self.template_name, self._ctx(request, dept))
 
     def post(self, request, pk):
         import datetime as dt
         from decimal import Decimal, InvalidOperation
         from departments.models import Department
+        from core import roles
         from .models import BudgetLine
         dept = get_object_or_404(Department, pk=pk)
+        # editing/saving is always treasurer/assistant only, regardless of the
+        # view_fund_budget right a leader might hold for this fund
+        if not (roles.is_treasurer(request.user) or roles.is_assistant(request.user)):
+            messages.error(request, "This page is restricted to Treasurers.")
+            if roles.is_leader(request.user):
+                return redirect("leader_dashboard")
+            return redirect("dashboard")
         year = int(request.POST.get("year") or dt.date.today().year)
         # update the fund's goals — two independent forms/buttons on the page
         # (expense goal, and per-group contribution goals) must not clobber
@@ -2586,6 +2607,30 @@ class GroupGoalsJpegView(TreasurerRequiredMixin, View):
             church_name=SiteConfig.get().church_name or "")
         resp = HttpResponse(data, content_type="image/jpeg")
         fname = f"group-contribution-goals-{dept.slug or dept.id}-{ctx['year']}.jpg"
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+
+class BudgetItemsJpegView(TreasurerRequiredMixin, View):
+    """Server-rendered JPEG of a fund's 'Budget vs actual by item' table,
+    generated with Pillow — same approach as GroupGoalsJpegView, so it looks
+    identical wherever it's downloaded, matching the on-screen table exactly
+    (Budget item / Budget / Actual / Variance / Used), including the totals
+    row."""
+    def get(self, request, pk):
+        from departments.models import Department
+        from core.models import SiteConfig
+        from django.http import HttpResponse
+        from .services.goal_chart import build_budget_items_jpeg
+        dept = get_object_or_404(Department, pk=pk)
+        ctx = FundBudgetView()._ctx(request, dept)
+        data = build_budget_items_jpeg(
+            dept_name=dept.name, year=ctx["year"], rows=ctx["rows"],
+            tot_budget=ctx["tot_budget"], tot_actual=ctx["tot_actual"],
+            tot_variance=ctx["tot_variance"],
+            church_name=SiteConfig.get().church_name or "")
+        resp = HttpResponse(data, content_type="image/jpeg")
+        fname = f"budget-vs-actual-{dept.slug or dept.id}-{ctx['year']}.jpg"
         resp["Content-Disposition"] = f'attachment; filename="{fname}"'
         return resp
 
@@ -2921,7 +2966,33 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     def get(self, request, *args, **kwargs):
         if request.GET.get("download") == "zip":
             return self._zip(request)
+        if request.GET.get("export") == "pdf":
+            return self._pdf(request)
         return super().get(request, *args, **kwargs)
+
+    def _pdf(self, request):
+        from django.http import HttpResponse
+        from core.models import SiteConfig
+        from .services.supporting_pdf import build_receipt_grid_pdf, HAVE_PDF_LIBS
+        if not HAVE_PDF_LIBS:
+            messages.error(request, "PDF generation isn't available on the server yet. "
+                "Ask the administrator to install the reportlab and pypdf packages.")
+            return redirect("receipt_archive")
+        start, end, qs = self._attachments(request)
+        from collections import OrderedDict
+        groups = OrderedDict()
+        for a in qs:
+            groups.setdefault(a.expense.date.strftime("%B %Y"), []).append(a)
+        if not groups:
+            messages.info(request, "No receipts to print in that period.")
+            return redirect("receipt_archive")
+        cfg = SiteConfig.get()
+        data, stats = build_receipt_grid_pdf(groups, church=cfg.church_name or "",
+                                             currency=cfg.currency_symbol or "KES")
+        resp = HttpResponse(data, content_type="application/pdf")
+        resp["Content-Disposition"] = (
+            f'attachment; filename="receipts_{start}_{end}.pdf"')
+        return resp
 
     def _attachments(self, request):
         from core.utils import parse_period

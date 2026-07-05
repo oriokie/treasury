@@ -291,7 +291,9 @@ from django.shortcuts import redirect, render
 from django.views import View
 
 from core.utils import safe_json
-from core.permissions import TreasurerRequiredMixin, ReadAccessMixin, DataEntryRequiredMixin
+from core.permissions import (TreasurerRequiredMixin, ReadAccessMixin,
+                              DataEntryRequiredMixin, ExecutiveAccessMixin,
+                              ElderRequiredMixin)
 from core.models import SiteConfig, SmsLog
 from core.forms import SiteConfigForm
 
@@ -993,7 +995,29 @@ def _off_cluster(c):
             "by": "name+amount", "channel": c[0].get("channel", "")}
 
 
-class ExecutiveDashboardView(ReadAccessMixin, View):
+class ElderDashboardView(ElderRequiredMixin, TemplateView):
+    """A simple, board-level landing page for church elders: a handful of the
+    same headline KPIs shown on the Executive overview, plus a prominent link
+    there for full detail. Elders get this and the Executive overview by
+    default; broader "reports" access is a separately assignable right a
+    treasurer can grant to a specific elder, not switched on for everyone."""
+    template_name = "elder_dashboard.html"
+
+    def get_context_data(self, **kwargs):
+        from .services import dashboard
+        from .rights import has_right
+        ctx = super().get_context_data(**kwargs)
+        all_cards = dashboard.cards()
+        # a curated subset — the figures a board member actually wants at a
+        # glance, not the full operational KPI strip built for a treasurer
+        wanted = {"Collections this month", "Collections (year to date)",
+                  "Cash & bank balance", "Outstanding trust"}
+        ctx["cards"] = [c for c in all_cards if c["label"] in wanted]
+        ctx["can_view_reports"] = has_right(self.request.user, "view_reports")
+        return ctx
+
+
+class ExecutiveDashboardView(ExecutiveAccessMixin, View):
     """Executive overview: KPI cards, Chart.js trends, and health/anomaly alerts."""
     template_name = "executive.html"
 

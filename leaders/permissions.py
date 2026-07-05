@@ -16,10 +16,15 @@ class LeaderRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
         return roles.is_leader(self.request.user)
 
     def handle_no_permission(self):
-        # office staff who land here go to the main dashboard; everyone else
-        # follows the normal login flow
-        if self.request.user.is_authenticated and roles.is_staff_role(self.request.user):
-            return redirect("dashboard")
+        # office staff who land here go to the main dashboard; an elder goes
+        # to their own dashboard (same friendly-redirect pattern as
+        # core.permissions.ReadAccessMixin); everyone else follows the
+        # normal login flow
+        if self.request.user.is_authenticated:
+            if roles.is_staff_role(self.request.user):
+                return redirect("dashboard")
+            if roles.is_elder(self.request.user):
+                return redirect("elder_dashboard")
         return super().handle_no_permission()
 
 

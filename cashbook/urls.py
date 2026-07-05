@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("reports/fund/<int:pk>/budget/", views.FundBudgetView.as_view(), name="fund_budget"),
     path("reports/fund/<int:pk>/budget/group-goals.jpg", views.GroupGoalsJpegView.as_view(), name="group_goals_jpeg"),
+    path("reports/fund/<int:pk>/budget/items.jpg", views.BudgetItemsJpegView.as_view(), name="budget_items_jpeg"),
     path("expenses/budget-items/", views.BudgetItemsJSONView.as_view(), name="budget_items_json"),
     path("expenses/", views.ExpenseListView.as_view(), name="expense_list"),
     path("expenses/receipts/", views.ReceiptArchiveView.as_view(), name="receipt_archive"),

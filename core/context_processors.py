@@ -24,6 +24,7 @@ def site_context(request):
         "can_enter_data": roles.can_enter_data(user) if user else False,
         "is_auditor": roles.is_auditor(user) if user else False,
         "is_leader": roles.is_leader(user) if user else False,
+        "is_elder": roles.is_elder(user) if user else False,
         "is_staff_role": roles.is_staff_role(user) if user else False,
     }
     from . import rights as _rights

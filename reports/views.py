@@ -7,7 +7,8 @@ from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
-from core.permissions import ReadAccessMixin, TreasurerRequiredMixin, RightRequiredMixin
+from core.permissions import (ReportAccessMixin, TreasurerRequiredMixin,
+                              RightRequiredMixin, ReportAccessMixin)
 from core.utils import parse_period, safe_json
 from cashbook.models import Expense
 from departments.models import Department
@@ -17,7 +18,7 @@ from .services import balances
 from .exports import csv_response
 
 
-class PeriodMixin(ReadAccessMixin):
+class PeriodMixin(ReportAccessMixin):
     def period(self):
         return parse_period(self.request)
 
@@ -28,7 +29,7 @@ class PeriodMixin(ReadAccessMixin):
         return ctx
 
 
-class ReportIndexView(ReadAccessMixin, TemplateView):
+class ReportIndexView(ReportAccessMixin, TemplateView):
     template_name = "reports/index.html"
 
 
@@ -890,7 +891,7 @@ class ReconciliationView(PeriodMixin, TemplateView):
         return ctx
 
 
-class AnnualSummaryView(ReadAccessMixin, TemplateView):
+class AnnualSummaryView(ReportAccessMixin, TemplateView):
     template_name = "reports/annual.html"
 
     def get_context_data(self, **kwargs):
@@ -1120,7 +1121,7 @@ class HistoricalYearManageView(TreasurerRequiredMixin, TemplateView):
         return redirect("historical_manage")
 
 
-class AuditLogView(ReadAccessMixin, TemplateView):
+class AuditLogView(ReportAccessMixin, TemplateView):
     template_name = "reports/audit.html"
 
     def _models(self):
@@ -1239,7 +1240,7 @@ from .services import envelope_reports
 from core.utils import last_saturday as _last_saturday
 
 
-class EnvelopeSabbathView(ReadAccessMixin, TemplateView):
+class EnvelopeSabbathView(ReportAccessMixin, TemplateView):
     template_name = "reports/envelope_sabbath.html"
 
     def _date(self, request):
@@ -1268,7 +1269,7 @@ class EnvelopeSabbathView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class EnvelopeSummaryView(ReadAccessMixin, TemplateView):
+class EnvelopeSummaryView(ReportAccessMixin, TemplateView):
     template_name = "reports/envelope_summary.html"
 
     def get(self, request, *args, **kwargs):
@@ -1308,7 +1309,7 @@ def _year_from(request):
         return dt.date.today().year
 
 
-class MonthlyAccountsView(ReadAccessMixin, TemplateView):
+class MonthlyAccountsView(ReportAccessMixin, TemplateView):
     template_name = "reports/monthly_accounts.html"
 
     def get(self, request, *args, **kwargs):
@@ -1332,7 +1333,7 @@ class MonthlyAccountsView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class TrustMonthlyView(ReadAccessMixin, TemplateView):
+class TrustMonthlyView(ReportAccessMixin, TemplateView):
     template_name = "reports/trust_monthly.html"
 
     def get(self, request, *args, **kwargs):
@@ -1349,7 +1350,7 @@ class TrustMonthlyView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class CollectionsSummaryView(ReadAccessMixin, TemplateView):
+class CollectionsSummaryView(ReportAccessMixin, TemplateView):
     template_name = "reports/collections_summary.html"
 
     def get(self, request, *args, **kwargs):
@@ -1473,7 +1474,7 @@ def _remit_period(request):
     return pd(s), pd(e), None
 
 
-class RemittanceDashboardView(ReadAccessMixin, TemplateView):
+class RemittanceDashboardView(ReportAccessMixin, TemplateView):
     template_name = "reports/remittance_dashboard.html"
 
     def get_context_data(self, **kwargs):
@@ -1562,7 +1563,7 @@ class RemittanceBatchCreateView(TreasurerRequiredMixin, View):
         return redirect("remittance_batch_detail", pk=batch.pk)
 
 
-class RemittanceBatchDetailView(ReadAccessMixin, TemplateView):
+class RemittanceBatchDetailView(ReportAccessMixin, TemplateView):
     template_name = "reports/remittance_batch.html"
 
     def get_context_data(self, **kwargs):
@@ -1658,7 +1659,7 @@ class RemittanceBatchIssuePaymentView(TreasurerRequiredMixin, View):
         return redirect("remittance_batch_detail", pk=pk)
 
 
-class RemittanceBatchListView(ReadAccessMixin, TemplateView):
+class RemittanceBatchListView(ReportAccessMixin, TemplateView):
     template_name = "reports/remittance_batches.html"
 
     def get_context_data(self, **kwargs):
@@ -1667,7 +1668,7 @@ class RemittanceBatchListView(ReadAccessMixin, TemplateView):
         return ctx
 
 
-class RemittanceCalendarView(ReadAccessMixin, TemplateView):
+class RemittanceCalendarView(ReportAccessMixin, TemplateView):
     """Per-year remittance calendar: each period's deadline and the reporting
     Sabbath it maps to (the most recent Saturday on/before the deadline). When a
     deadline doesn't fall on a Sabbath, the previous Sabbath is shown as the
@@ -1790,7 +1791,7 @@ class RemittanceDeadlineUpdateView(TreasurerRequiredMixin, View):
 from .services import budget as budget_svc
 
 
-class BudgetVsActualView(ReadAccessMixin, TemplateView):
+class BudgetVsActualView(ReportAccessMixin, TemplateView):
     template_name = "reports/budget_vs_actual.html"
 
     def get(self, request, *args, **kwargs):
@@ -1852,7 +1853,7 @@ def _day_income_expense(start, end):
     return inc, exp
 
 
-class DailySummaryView(ReadAccessMixin, TemplateView):
+class DailySummaryView(ReportAccessMixin, TemplateView):
     template_name = "reports/daily_summary.html"
 
     def get(self, request, *args, **kwargs):
@@ -1877,7 +1878,7 @@ class DailySummaryView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class WeeklySummaryView(ReadAccessMixin, TemplateView):
+class WeeklySummaryView(ReportAccessMixin, TemplateView):
     template_name = "reports/weekly_summary.html"
 
     def get(self, request, *args, **kwargs):
@@ -1904,7 +1905,7 @@ class WeeklySummaryView(ReadAccessMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class CashFlowView(ReadAccessMixin, TemplateView):
+class CashFlowView(ReportAccessMixin, TemplateView):
     template_name = "reports/cash_flow.html"
 
     def get(self, request, *args, **kwargs):
@@ -2330,7 +2331,7 @@ class IncomeStatementView(PeriodMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class FinancialPositionView(ReadAccessMixin, TemplateView):
+class FinancialPositionView(ReportAccessMixin, TemplateView):
     """Statement of Financial Position (balance sheet) on a fund-accounting basis,
     as at a date. Assets = cash/bank (fund balances) + fixed assets (NBV);
     financed by trust funds payable, accumulated local funds, and a capital fund
@@ -2580,7 +2581,7 @@ class StatementOfCashFlowsView(PeriodMixin, TemplateView):
         return self.render_to_response(ctx)
 
 
-class BudgetBoardReportView(ReadAccessMixin, TemplateView):
+class BudgetBoardReportView(ReportAccessMixin, TemplateView):
     """Board-facing budget summary: per-department budget by source of funds, with
     Local Church Budget exposure (departmental allocations) and prior-year pegging."""
     template_name = "reports/budget_board.html"
@@ -2654,7 +2655,7 @@ class DevGroupMembersView(PeriodMixin, TemplateView):
         return redirect(request.get_full_path())
 
 
-class DevGroupAllExcelView(ReadAccessMixin, View):
+class DevGroupAllExcelView(ReportAccessMixin, View):
     """One workbook for all development groups: a summary sheet plus a per-group
     sheet of member contributions, for detailed offline analysis."""
     def get(self, request):
@@ -2745,7 +2746,7 @@ class DevGroupEmailAllView(TreasurerRequiredMixin, View):
             connection.close()
 
 
-class BankPositionView(ReadAccessMixin, TemplateView):
+class BankPositionView(ReportAccessMixin, TemplateView):
     """Bank reconciliation: does the system's bank balance agree with the bank?
 
     The system's bank position = opening bank balance + every confirmed BANK
@@ -2835,7 +2836,7 @@ class BankPositionView(ReadAccessMixin, TemplateView):
         return ctx
 
 
-class CashFlowForecastView(ReadAccessMixin, TemplateView):
+class CashFlowForecastView(ReportAccessMixin, TemplateView):
     """Forward-looking cash projection over 30 days / quarter / year."""
     template_name = "reports/cashflow_forecast.html"
 
@@ -2855,7 +2856,7 @@ class CashFlowForecastView(ReadAccessMixin, TemplateView):
         return ctx
 
 
-class FundThankSmsView(ReadAccessMixin, TemplateView):
+class FundThankSmsView(ReportAccessMixin, TemplateView):
     """Thank contributors to a fund (and its sub-accounts) for a period by SMS.
 
     Lumps each member's total giving across the fund and its sub-accounts within
@@ -3008,7 +3009,7 @@ def _camp_goal_records(year):
     return rows
 
 
-class MonthlyTreasurerReportView(ReadAccessMixin, TemplateView):
+class MonthlyTreasurerReportView(ReportAccessMixin, TemplateView):
     """Comprehensive monthly Treasurer's Report: collections, trust & LCB trends,
     a multi-year trend, expense and local-fund breakdowns, the income statement,
     statement of financial position, cash-flow statements, and the latest bank
@@ -3545,7 +3546,7 @@ def _monthly_report_context(request):
     return view.get_context_data()
 
 
-class MonthlyReportExcelView(ReadAccessMixin, View):
+class MonthlyReportExcelView(ReportAccessMixin, View):
     """Download the Monthly Treasurer's Report as a multi-sheet Excel workbook —
     full detail tables (not the on-screen top-10), a KPI summary sheet styled as
     cards, and native Excel charts for the figures that are charted on screen."""
@@ -3830,7 +3831,7 @@ class MonthlyReportExcelView(ReadAccessMixin, View):
         return resp
 
 
-class MonthlyReportWordView(ReadAccessMixin, View):
+class MonthlyReportWordView(ReportAccessMixin, View):
     """Download the Monthly Treasurer's Report as a Word document. Rendered as a
     Word-compatible HTML document (opens natively in Microsoft Word) so it needs
     no extra library on the server. Mirrors the on-screen report's structure —

@@ -72,6 +72,46 @@ class ReadAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
         if self.request.user.is_authenticated:
             if roles.is_leader(self.request.user):
                 return redirect("leader_dashboard")
+            if roles.is_elder(self.request.user):
+                return redirect("elder_dashboard")
+            messages.error(self.request, "You don't have permission to view that.")
+            return redirect("dashboard")
+        return super().handle_no_permission()
+
+
+class ExecutiveAccessMixin(ReadAccessMixin):
+    """The executive overview: staff roles (as ReadAccessMixin already allows),
+    plus any user separately granted the view_executive_dashboard right — e.g.
+    a church elder, for whom this is granted by default (see
+    core.rights.GROUP_RIGHTS), without giving them the rest of the staff-only
+    application that ReadAccessMixin alone would unlock."""
+    def test_func(self):
+        from .rights import has_right
+        return super().test_func() or has_right(self.request.user,
+                                                 "view_executive_dashboard")
+
+
+class ReportAccessMixin(ReadAccessMixin):
+    """Any report page: staff roles (as ReadAccessMixin already allows), plus
+    any user separately granted the view_reports right — e.g. a church elder
+    a treasurer has opted into report access. Not granted to elders by
+    default (see core.rights.GROUP_RIGHTS); assignable via a profile."""
+    def test_func(self):
+        from .rights import has_right
+        return super().test_func() or has_right(self.request.user, "view_reports")
+
+
+class ElderRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
+    """The elder's own dashboard: elders (and staff/admins, for setup and
+    troubleshooting) — not leaders, not the general public."""
+    def test_func(self):
+        u = self.request.user
+        return u.is_superuser or roles.is_elder(u) or roles.is_staff_role(u)
+
+    def handle_no_permission(self):
+        if self.request.user.is_authenticated:
+            if roles.is_leader(self.request.user):
+                return redirect("leader_dashboard")
             messages.error(self.request, "You don't have permission to view that.")
             return redirect("dashboard")
         return super().handle_no_permission()

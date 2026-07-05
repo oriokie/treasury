@@ -12,8 +12,13 @@ TREASURER = "Treasurer"
 ASSISTANT = "Assistant"
 AUDITOR = "Auditor"
 LEADER = "Leader"   # departmental leader: read-only, scoped to own department(s)
+ELDER = "Elder"     # church elder: read-only, scoped to a small curated set of
+                    # board-level pages (its own dashboard, the executive
+                    # overview) — deliberately not a staff role; broader access
+                    # such as reports is opt-in via an assignable right, not
+                    # granted to every elder by default.
 
-ALL_ROLES = [TREASURER, ASSISTANT, AUDITOR, LEADER]
+ALL_ROLES = [TREASURER, ASSISTANT, AUDITOR, LEADER, ELDER]
 
 
 def user_roles(user):
@@ -40,6 +45,13 @@ def is_leader(user):
     """A departmental leader (read-only, scoped to their own departments)."""
     return user.is_authenticated and not user.is_superuser \
         and LEADER in user_roles(user)
+
+
+def is_elder(user):
+    """A church elder: read-only, scoped to a small curated set of board-level
+    pages. Deliberately not a staff role (see is_staff_role)."""
+    return user.is_authenticated and not user.is_superuser \
+        and ELDER in user_roles(user)
 
 
 def is_staff_role(user):
@@ -92,6 +104,24 @@ def can_manage_advances(user):
     from .rights import has_right
     return (is_treasurer(user) or is_assistant(user)
             or has_right(user, "manage_advances"))
+
+
+def can_view_fund_budget(user, dept):
+    """View (read-only) a specific fund's budget & goals page. Treasurers and
+    assistants always can, for any fund. A leader can too, but only for a fund
+    they actually lead (or a sub-account of one), and only once granted the
+    view_fund_budget right explicitly via a profile — it is not bundled into
+    the base Leader role by default, so a treasurer opts leaders into it
+    fund by fund rather than it being switched on for everyone at once.
+    Editing/saving a budget is never covered by this — that stays
+    treasurer/assistant only regardless of this right."""
+    from .rights import has_right
+    if is_treasurer(user) or is_assistant(user):
+        return True
+    if is_leader(user) and has_right(user, "view_fund_budget"):
+        from departments.models import departments_led_by
+        return departments_led_by(user).filter(pk=dept.pk).exists()
+    return False
 
 
 def can_build_dev_groups(user):

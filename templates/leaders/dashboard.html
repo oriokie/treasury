@@ -18,7 +18,7 @@
 </div>
 
 <div class="ws-table"><table class="ledger compact">
-  <thead><tr><th>Department</th><th class="num">Opening</th><th class="num">Collections</th><th class="num">Expenses</th><th class="num">Balance</th><th></th></tr></thead>
+  <thead><tr><th>Department</th><th class="num">Opening</th><th class="num">Collections</th><th class="num">Expenses</th><th class="num">Balance</th><th></th>{% if can_view_fund_budget %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
@@ -28,16 +28,19 @@
       <td class="num mono">{{ r.expenses_operating|floatformat:0|intcomma }}</td>
       <td class="num mono"><strong>{{ r.closing|floatformat:0|intcomma }}</strong></td>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">details →</a></td>
+      {% if can_view_fund_budget %}<td>{% if r.department.id in budget_dept_ids %}<a class="link" href="{% url 'fund_budget' r.department.id %}">budget →</a>{% endif %}</td>{% endif %}
     </tr>
     {% for s in r.subrows %}
     <tr class="subrow"><td class="u-indent-2">↳ <a class="link" href="{% url 'leader_department_detail' s.department.id %}">{{ s.department.name }}</a></td>
       <td class="num mono">{{ s.opening|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ s.receipts|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ s.expenses_operating|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ s.closing|floatformat:0|intcomma }}</td><td><a class="link" href="{% url 'leader_department_detail' s.department.id %}">details →</a></td></tr>
+      <td class="num mono">{{ s.closing|floatformat:0|intcomma }}</td><td><a class="link" href="{% url 'leader_department_detail' s.department.id %}">details →</a></td>
+      {% if can_view_fund_budget %}<td>{% if s.department.id in budget_dept_ids %}<a class="link" href="{% url 'fund_budget' s.department.id %}">budget →</a>{% endif %}</td>{% endif %}
+    </tr>
     {% endfor %}
   {% empty %}
-    <tr><td colspan="6"><div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No departments assigned</div><div class="we-hint">Ask the treasurer to link your account to your department.</div></div></td></tr>
+    <tr><td colspan="7"><div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No departments assigned</div><div class="we-hint">Ask the treasurer to link your account to your department.</div></div></td></tr>
   {% endfor %}
   </tbody>
 </table></div>

@@ -29,4 +29,5 @@ urlpatterns = [
     path("controls/check/<str:kind>/", views.ControlsDuplicatesView.as_view(), name="controls_duplicates"),
     path("executive/", views.ExecutiveDashboardView.as_view(), name="executive"),
     path("executive/insights/", views.ExecutiveInsightsView.as_view(), name="executive_insights"),
+    path("elder/", views.ElderDashboardView.as_view(), name="elder_dashboard"),
 ]

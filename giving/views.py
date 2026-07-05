@@ -160,24 +160,46 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     def _trust_pending_receipt_export(self, request):
         """Trust fund credits not yet formally receipted — Date, Phone, Member,
         Amount, Fund, Reference. A split contribution (one lump sum divided
-        across several funds, e.g. Combined Offering) is posted as several
-        ledger rows sharing a payment reference; here they're recombined into
-        one row (summed amount, the split fund's name) rather than shown as
-        separate partial lines, since to the giver and the board it's one gift."""
+        across several funds, e.g. Combined Offering = 50% trust + 50% local)
+        is posted as several ledger rows sharing a payment reference; here
+        they're recombined into one row with the FULL original amount (not
+        just the trust-side share) and the split fund's own name, rather than
+        shown as separate partial lines — a giver who contributed 40 to
+        "Combined Offering" gets one receipt for 40, not one for the 20 that
+        happened to land in a trust account. A group is included whenever ANY
+        of its siblings is a trust-fund credit, even though some siblings may
+        themselves be local funds; a group with no trust component at all
+        (e.g. a purely local split) is not a trust-receipting concern and is
+        excluded, matching the export's purpose."""
         from reports.exports import xlsx_response
-        from reports.services.balances import _receipted_q
         from departments.models import Department
         from core.models import SiteConfig
 
+        # Deliberately not pre-filtered to fund_type=TRUST: a mixed split's
+        # local sibling must still be fetched so its amount can be added back
+        # into the combined total. Scoped to non-capital-receipt confirmed
+        # credits, the same broad scope _receipted_q() already assumes.
         qs = (Transaction.objects.confirmed_credits()
-              .filter(department__fund_type=Department.FundType.TRUST)
-              .exclude(_receipted_q())
+              .filter(excluded_from_income=False)
               .select_related("department", "member")
               .order_by("date", "id"))
+
+        def _is_receipted(t):
+            # mirrors reports.services.balances._receipted_q()'s conditions,
+            # applied per-transaction so a group's receipted status can be
+            # judged member-by-member
+            return (t.channel == Transaction.Channel.ENVELOPE
+                    or t.manual_receipt or t.processed_via_envelope)
 
         header = ["Date", "Phone", "Member", "Amount", "Fund", "Reference", "M-Pesa Reference"]
         rows = []
         for members in _group_split_siblings(list(qs)):
+            has_trust = any(t.department_id and t.department.fund_type == Department.FundType.TRUST
+                            for t in members)
+            if not has_trust:
+                continue
+            if all(_is_receipted(t) for t in members):
+                continue
             first = members[0]
             phone = first.payer_phone or (first.member.receipt_phone if first.member_id else "") or ""
             member_name = first.member.name if first.member_id else (first.payer_name or "")

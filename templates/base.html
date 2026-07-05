@@ -37,6 +37,10 @@
       <a href="{% url 'receipt_archive' %}" class="{% if request.resolver_match.url_name == 'receipt_archive' %}active{% endif %}"><span class="ic">🧾</span> Receipts</a>
       <a href="{% url 'missing_receipts' %}" class="{% if request.resolver_match.url_name == 'missing_receipts' %}active{% endif %}"><span class="ic">📌</span> Awaiting receipts</a>
       {% if can.allocate_dev_offering %}<a href="{% url 'dev_unassigned' %}" class="{% if request.resolver_match.url_name == 'dev_unassigned' %}active{% endif %}"><span class="ic">🎯</span> Allocate dev offering</a>{% endif %}
+      {% elif is_elder %}
+      <a href="{% url 'elder_dashboard' %}" class="{% if request.resolver_match.url_name == 'elder_dashboard' %}active{% endif %}"><span class="ic">▦</span> Elder dashboard</a>
+      <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
+      {% if can.view_reports %}<a href="{% url 'report_index' %}" class="{% if 'report' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▤</span> Reports</a>{% endif %}
       {% else %}
       <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
@@ -175,7 +179,7 @@
             <span class="avatar">{{ user.get_full_name|default:user.username|first|upper }}</span>
             <span class="who-meta">
               <strong>{{ user.get_full_name|default:user.username }}</strong>
-              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% elif is_leader %}Department leader{% else %}Read-only · Auditor / Board{% endif %}</span>
+              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% elif is_leader %}Department leader{% elif is_elder %}Elder{% else %}Read-only · Auditor / Board{% endif %}</span>
             </span>
             <span class="chev">▾</span>
           </summary>

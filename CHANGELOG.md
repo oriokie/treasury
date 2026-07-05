@@ -1,5 +1,53 @@
 # Changelog
 
+## v2.17.0 - split export fix, compact receipt PDF, budget JPEG, leader budget access, Elder role
+Five features/fixes, plus a serious access-control regression caught and fixed during review.
+
+**Fixed:**
+- **Trust Fund Pending Receipts export showed half a split gift's amount.** The export filtered to
+  `fund_type=TRUST` *before* grouping a split contribution's siblings — so a "Combined Offering" gift split
+  50% trust / 50% local only ever showed the trust-side partial amount (a 40 gift showed as 20). Fixed to
+  group first, then include the whole group whenever *any* sibling is a trust credit, showing the full
+  original amount — a giver's receipt should cover their whole gift, not the portion that happened to land
+  in a trust account. A purely local split still correctly shows nothing (no trust concern); a group is only
+  excluded once *every* sibling is already receipted.
+- **Critical: department leaders could view every financial report church-wide.** While wiring up the new
+  Elder role's assignable "view_reports" right, testing surfaced that `Department Leader`'s default rights
+  already (silently, unused until now) included `view_reports` — dormant until the reports views started
+  consulting it, at which point every leader could suddenly reach `/reports/`, `/reports/board/`, and every
+  other report, not just their own department's leader-scoped views. Removed `view_reports` from a leader's
+  default rights; nothing else depended on it.
+- Fixed an inconsistency found alongside it: an Elder visiting `/leader/` got a bare 403 instead of the same
+  friendly redirect every other blocked page gives.
+
+**Added:**
+- **Compact receipt PDF** for `/expenses/receipts/` — several receipt thumbnails per page in a grid (like a
+  contact sheet), generated server-side with reportlab/Pillow rather than relying on the browser's
+  print-to-PDF, whose page count and layout vary unpredictably by browser and OS. Text-only and e-receipt-link
+  attachments get a labelled placeholder cell rather than being silently dropped. Caught and fixed a real
+  pagination bug during development: placing the last item that exactly filled a page's grid eagerly started
+  a new page, leaving a pointless blank trailing page — fixed to only start a new page lazily, right before
+  the next item that actually needs it.
+- **Budget vs Actual JPEG** on a fund's budget page (`/reports/fund/<id>/budget/`) — a downloadable table
+  image (Budget item / Budget / Actual / Variance / Used, plus totals), matching the on-screen table exactly,
+  using the same server-side Pillow table-rendering approach as the existing Group Contribution Goals JPEG
+  (which was itself converted from a bar-chart to a proper table this release, for the same reason).
+- **Leaders can be granted fund-budget access.** A new assignable `view_fund_budget` right lets a treasurer
+  opt a specific leader into read-only access to a fund's budget page — only for a fund they actually lead,
+  never bundled into the base Leader role by default. Editing a budget always stays treasurer/assistant only.
+  The leader dashboard shows a "budget →" link only where this applies.
+- **New Elder role.** A read-only, board-level role distinct from both office staff and departmental leaders.
+  Elders get their own simple dashboard (a handful of headline figures plus a link to the executive overview)
+  and the executive overview itself by default. Full reports access is a separately assignable right a
+  treasurer can grant to a specific elder — not switched on for every elder automatically.
+
+Tests: 43 new across cashbook/giving/core, verifying both the fixes (including the caught access-control
+regression, reproduced and confirmed fixed) and the new features. Full regression run across the entire
+application: core+leaders+accounts 338, reports 251, cashbook 318, giving+statements+envelopes 292,
+assets+departments+members+pledges+ledger 188 — all green.
+
+Deploy: migrate (accounts 0005 — seeds the "Elder (default)" profile). Collectstatic not required.
+
 ## v2.16.0 - advance/cash-count follow-up fixes, transactions export, ledger health, executive redesign
 Follow-up to v2.15.0, tracing each report through to its real root cause before fixing.
 

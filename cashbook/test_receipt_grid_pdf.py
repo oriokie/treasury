@@ -1,0 +1,124 @@
+"""Compact, backend-generated PDF for the receipt archive: a grid layout
+(several receipt thumbnails per page, like a contact sheet) instead of
+relying on browser print-to-PDF, whose page count and layout vary
+unpredictably by browser/OS. Also guards against a real pagination bug found
+during development: eagerly starting a new page right after placing the
+LAST item that exactly fills the grid produced a pointless blank trailing
+page — fixed to only start a new page lazily, right before the next item
+that actually needs it."""
+import datetime as dt
+import io
+from decimal import Decimal
+from collections import OrderedDict
+from django.test import TestCase, Client
+from django.contrib.auth.models import User, Group
+from django.core.files.uploadedfile import SimpleUploadedFile
+from departments.models import Department
+from cashbook.models import Expense, ExpenseAttachment
+
+
+def _tr():
+    u = User.objects.create_user("tr_receiptpdf", password="x", is_superuser=True)
+    u.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
+    return u
+
+
+def _image_attachment(dept, tr, tag, date=None):
+    from PIL import Image
+    exp = Expense.objects.create(date=date or dt.date(2026, 6, 1), department=dept,
+        description=tag, amount=Decimal("100"), category="OTHER",
+        status="PAID", recorded_by=tr, approved_by=tr)
+    img = Image.new("RGB", (400, 600), color=(200, 220, 210))
+    buf = io.BytesIO(); img.save(buf, format="JPEG"); buf.seek(0)
+    f = SimpleUploadedFile(f"{tag}.jpg", buf.read(), content_type="image/jpeg")
+    return ExpenseAttachment.objects.create(expense=exp, file=f)
+
+
+class ReceiptGridPdfLayoutTests(TestCase):
+    """Direct tests of the layout function's pagination math."""
+    def setUp(self):
+        self.tr = _tr()
+        self.d = Department.objects.create(name="GridPdfFund", fund_type="LOCAL",
+            category="MINISTRY")
+
+    def _page_count(self, groups):
+        from cashbook.services.supporting_pdf import build_receipt_grid_pdf
+        from pypdf import PdfReader
+        data, stats = build_receipt_grid_pdf(groups, church="Test", currency="KES")
+        return len(PdfReader(io.BytesIO(data)).pages), stats
+
+    def test_grid_exactly_full_produces_no_blank_trailing_page(self):
+        atts = [_image_attachment(self.d, self.tr, f"exact{i}") for i in range(9)]
+        groups = OrderedDict(); groups["June 2026"] = atts
+        pages, stats = self._page_count(groups)
+        self.assertEqual(pages, 1)
+        self.assertEqual(stats["documents"], 9)
+
+    def test_one_more_than_grid_capacity_overflows_by_exactly_one_page(self):
+        atts = [_image_attachment(self.d, self.tr, f"over{i}") for i in range(10)]
+        groups = OrderedDict(); groups["June 2026"] = atts
+        pages, _ = self._page_count(groups)
+        self.assertEqual(pages, 2)
+
+    def test_under_capacity_fits_one_page(self):
+        atts = [_image_attachment(self.d, self.tr, f"under{i}") for i in range(5)]
+        groups = OrderedDict(); groups["June 2026"] = atts
+        pages, _ = self._page_count(groups)
+        self.assertEqual(pages, 1)
+
+    def test_multiple_months_no_forced_page_break_per_month(self):
+        groups = OrderedDict()
+        groups["May 2026"] = [_image_attachment(self.d, self.tr, f"may{i}") for i in range(2)]
+        groups["June 2026"] = [_image_attachment(self.d, self.tr, f"jun{i}") for i in range(2)]
+        pages, stats = self._page_count(groups)
+        # 4 small documents across two months must not need 2 pages just
+        # because they're in different months
+        self.assertEqual(pages, 1)
+        self.assertEqual(stats["documents"], 4)
+
+    def test_text_only_attachment_gets_a_placeholder_not_dropped(self):
+        exp = Expense.objects.create(date=dt.date(2026, 6, 1), department=self.d,
+            description="text note", amount=Decimal("50"), category="OTHER",
+            status="PAID", recorded_by=self.tr, approved_by=self.tr)
+        att = ExpenseAttachment.objects.create(expense=exp, text="M-Pesa msg")
+        groups = OrderedDict(); groups["June 2026"] = [att]
+        pages, stats = self._page_count(groups)
+        self.assertEqual(pages, 1)
+        self.assertEqual(stats["documents"], 1)
+        self.assertEqual(stats["other"], 1)
+        self.assertEqual(stats["images"], 0)
+
+    def test_empty_groups_still_produces_a_valid_single_page_pdf(self):
+        pages, stats = self._page_count(OrderedDict())
+        self.assertEqual(pages, 1)
+        self.assertEqual(stats["documents"], 0)
+
+
+class ReceiptGridPdfViewTests(TestCase):
+    def setUp(self):
+        self.tr = _tr()
+        self.d = Department.objects.create(name="GridPdfViewFund", fund_type="LOCAL",
+            category="MINISTRY")
+        self.c = Client(); self.c.force_login(self.tr)
+
+    def test_pdf_export_returns_pdf(self):
+        _image_attachment(self.d, self.tr, "viewtest1")
+        r = self.c.get("/expenses/receipts/?export=pdf&start=2026-06-01&end=2026-06-30")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_pdf_export_no_receipts_redirects_with_message(self):
+        r = self.c.get("/expenses/receipts/?export=pdf&start=2020-01-01&end=2020-01-31",
+                       follow=True)
+        self.assertEqual(r.status_code, 200)
+
+    def test_html_page_still_has_pdf_download_button(self):
+        b = self.c.get("/expenses/receipts/").content.decode()
+        self.assertIn("export=pdf", b)
+        self.assertIn("Download PDF", b)
+
+    def test_zip_download_still_works_unaffected(self):
+        _image_attachment(self.d, self.tr, "ziptest1")
+        r = self.c.get("/expenses/receipts/?download=zip&start=2026-06-01&end=2026-06-30")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/zip")

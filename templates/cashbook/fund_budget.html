@@ -86,7 +86,8 @@
 
 
 <!-- Budget vs actual by item -->
-<div class="section-title u-mt-lg">Budget vs actual by item — {{ year }}</div>
+<div class="section-title u-mt-lg u-between"><span>Budget vs actual by item — {{ year }}</span>
+  <a class="btn btn-xs btn-ghost no-print" href="{% url 'budget_items_jpeg' dept.id %}?year={{ year }}" title="Download this table as a JPEG image for printing or sharing">⤓ Download JPEG</a></div>
 <div class="card"><div class="bd bd-flush">
   <table class="ledger" id="campBudget">
     <thead><tr><th>Budget item</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th><th>Used</th></tr></thead>

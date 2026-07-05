@@ -70,6 +70,13 @@ class LeaderDashboardView(LeaderRequiredMixin, TemplateView):
         ctx["total_receipts"] = sum((r["receipts"] for r in rows), Decimal(0))
         ctx["total_expenses"] = sum((r["expenses_operating"] for r in rows), Decimal(0))
         ctx["dept_count"] = len({r["department"].id for r in rows})
+        from core import roles
+        from core.rights import has_right
+        ctx["can_view_fund_budget"] = has_right(self.request.user, "view_fund_budget")
+        if ctx["can_view_fund_budget"]:
+            ctx["budget_dept_ids"] = {
+                r["department"].id for r in rows
+                if roles.can_view_fund_budget(self.request.user, r["department"])}
         return ctx
 
 

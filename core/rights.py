@@ -52,6 +52,8 @@ RIGHTS = [
     ("export_reports",       "Export reports (Excel / PDF)",       "Reports"),
     ("view_audit",           "View the audit log",                 "Reports"),
     ("download_backup",      "Download the full backup",           "Reports"),
+    ("view_fund_budget",     "View a fund's budget & goals page",  "Reports"),
+    ("view_executive_dashboard", "View the executive overview",    "Reports"),
     # Sensitive data
     ("view_member_phone_full", "See member phone numbers in full (otherwise masked)", "Sensitive data"),
     ("view_giver_identity",    "See giver identities (otherwise anonymised)",         "Sensitive data"),
@@ -87,7 +89,18 @@ GROUP_RIGHTS = {
     roles.TREASURER: set(_ALL),                                   # everything
     roles.ASSISTANT: _DATA_ENTRY | _REPORTS | _SENSITIVE,         # entry + sees identities
     roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup"} | _SENSITIVE,
-    roles.LEADER:    {"view_reports", "view_giver_identity"},     # names visible; phones masked unless a profile grants more
+    roles.LEADER:    {"view_giver_identity"},     # names visible; phones masked unless a profile grants more.
+                                                    # Deliberately NOT view_reports: a leader's own
+                                                    # department views don't gate on it, and granting it
+                                                    # would open every general report (via ReportAccessMixin)
+                                                    # to every leader church-wide, not just their own fund.
+    # An elder's own dashboard and the executive overview are granted by
+    # default — that's the point of the role. Full "reports" access
+    # (view_reports/export_reports) is deliberately NOT included here: it's
+    # in the general RIGHTS catalogue so a treasurer can assign it to a
+    # specific elder via a profile if wanted, but no elder gets it just by
+    # being an elder.
+    roles.ELDER:     {"view_executive_dashboard"},
 }
 
 

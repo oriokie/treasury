@@ -38,6 +38,17 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.17.0": "The Trust Fund Pending Receipts export now shows a split contribution's full original amount "
+              "(e.g. a 40 gift split 50/50 between a trust and a local fund used to show as just 20 - now "
+              "shows 40, labelled with the split fund's own name, ready for a single manual receipt). Added "
+              "a compact, server-generated PDF for printing expense receipts - several per page instead of "
+              "relying on the browser's print-to-PDF. Added a downloadable table image for a fund's "
+              "Budget vs Actual figures. Leaders can now be individually granted view access to a fund's "
+              "budget page. Added a new Elder role with its own simple dashboard and the executive overview "
+              "by default; full reports access can be granted to a specific elder but isn't switched on "
+              "automatically. Fixed an access-control issue found while building this: department leaders "
+              "were incorrectly able to view all financial reports church-wide, not just their own "
+              "department's figures.",
     "2.16.0": "Follow-up fixes: the bank reconciliation's petty-cash staff advances figure now correctly "
               "decreases as advances are accounted for (it never did before). Fixed a related issue where "
               "accounting for a staff advance was double-counted as a fresh cash disbursement in the Sabbath "
