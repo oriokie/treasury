@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Clone {{ source.username }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Clone account</h1><div class="sub">Copy the role, led departments, and rights profiles from {{ source.username }} — never credentials</div></div>
+<a class="btn btn-ghost" href="{% url 'user_edit' source.id %}?tab=security">← Back</a></div>
+
+<div class="card u-narrow"><div class="bd">
+  <p class="help u-mt-0">Creates a new account with the same role and rights as <strong>{{ source.username }}</strong>. A random temporary password is generated and shown once; the new user must change it on first login.</p>
+  <form method="post">{% csrf_token %}
+    <div class="form-grid">
+      <div class="form-row"><label for="id_username">Username</label><input type="text" name="username" id="id_username" class="field" required></div>
+      <div class="form-row"><label for="id_first_name">First name</label><input type="text" name="first_name" id="id_first_name" class="field"></div>
+      <div class="form-row"><label for="id_last_name">Last name</label><input type="text" name="last_name" id="id_last_name" class="field"></div>
+      <div class="form-row"><label for="id_email">Email</label><input type="email" name="email" id="id_email" class="field"></div>
+    </div>
+    <div class="btn-row"><button class="btn">Create cloned account</button></div>
+  </form>
+</div></div>
+{% endblock %}

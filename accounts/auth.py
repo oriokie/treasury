@@ -1,8 +1,26 @@
 """Custom login view + middleware that weave TOTP into the auth flow."""
+from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.views import LoginView
+from django.core.exceptions import ValidationError
 from django.shortcuts import redirect
 
 from .twofactor import PENDING_USER, VERIFIED
+
+
+class LockAwareAuthenticationForm(AuthenticationForm):
+    """Rejects a login for an account an administrator has locked
+    (suspended) — a deliberate, short-term block distinct from is_active
+    (which Django's own confirm_login_allowed already checks). Checked here,
+    at the point of login, so a locked account can never authenticate
+    through any path that reaches this form."""
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        profile = getattr(user, "profile", None)
+        if profile and profile.locked:
+            raise ValidationError(
+                "This account has been suspended by an administrator. "
+                "Contact your treasurer for details.",
+                code="account_locked")
 
 
 class TwoFactorLoginView(LoginView):
@@ -10,6 +28,7 @@ class TwoFactorLoginView(LoginView):
     two-factor, we DON'T fully log them in yet — we stash their id and bounce to
     the TOTP gate. Axes still protects the password step."""
     template_name = "registration/login.html"
+    authentication_form = LockAwareAuthenticationForm
 
     def form_valid(self, form):
         user = form.get_user()
@@ -26,6 +45,62 @@ class TwoFactorLoginView(LoginView):
             return redirect("twofactor_verify")
         # no 2FA — normal login
         return super().form_valid(form)
+
+
+class AccountLockMiddleware:
+    """If an administrator locks (suspends) a user who already has an active
+    session, end that session on their very next request rather than waiting
+    for them to log in again — a lock is meant to take effect immediately.
+    Checked before the 2FA gate, so a locked account is stopped at the door
+    regardless of its 2FA state."""
+    EXEMPT_PREFIXES = ("/accounts/login", "/accounts/logout", "/static/",
+                       "/healthz", "/media/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if (user and user.is_authenticated and not user.is_superuser
+                and not self._exempt(request.path)):
+            profile = getattr(user, "profile", None)
+            if profile and profile.locked:
+                from django.contrib.auth import logout
+                logout(request)
+                # messages isn't guaranteed to be set up this early in the
+                # middleware chain, so the login page itself shows the notice
+                # via this query flag rather than the messages framework
+                return redirect("/accounts/login/?locked=1")
+        return self.get_response(request)
+
+    def _exempt(self, path):
+        return any(path.startswith(p) for p in self.EXEMPT_PREFIXES)
+
+
+class ForcePasswordChangeMiddleware:
+    """If an administrator has flagged an account for a forced password
+    change (UserProfile.must_change_password), redirect every request to the
+    password-change form until they've changed it. Mirrors
+    TwoFactorMiddleware's exemption pattern so the change-password page,
+    login/logout, and static/media assets always remain reachable. The flag
+    is cleared automatically by _track_password_change (below) the moment
+    the password actually changes, regardless of which view did it."""
+    EXEMPT_PREFIXES = ("/accounts/login", "/accounts/logout", "/accounts/password_change",
+                       "/2fa/", "/static/", "/healthz", "/media/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and not self._exempt(request.path):
+            profile = getattr(user, "profile", None)
+            if profile and profile.must_change_password:
+                return redirect("password_change")
+        return self.get_response(request)
+
+    def _exempt(self, path):
+        return any(path.startswith(p) for p in self.EXEMPT_PREFIXES)
 
 
 class TwoFactorMiddleware:

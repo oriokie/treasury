@@ -29,10 +29,23 @@ class LastTreasurerProtectionTests(TestCase):
         self.assertTrue(self.tr.is_active)
 
     def test_can_demote_when_another_active_treasurer_exists(self):
+        # self-edit is now blocked unconditionally (a later review's explicit
+        # security requirement: users cannot modify their own permissions) —
+        # a DIFFERENT administrator must make the change, even when demoting
+        # would otherwise be safe because another treasurer exists
         other = _tr("tr_lockout_sec_other")
-        r = self.c.post(f"/users/{self.tr.id}/edit/", {"role": "Assistant", "active": "on"})
+        c_other = Client(); c_other.force_login(other)
+        r = c_other.post(f"/users/{self.tr.id}/edit/",
+            {"form_name": "role_form", "role": "Assistant", "active": "on"})
         self.tr.refresh_from_db()
         self.assertFalse(self.tr.groups.filter(name="Treasurer").exists())
+
+    def test_self_edit_is_blocked_regardless_of_other_treasurers(self):
+        other = _tr("tr_lockout_sec_self_other")
+        r = self.c.post(f"/users/{self.tr.id}/edit/",
+            {"form_name": "role_form", "role": "Assistant", "active": "on"})
+        self.tr.refresh_from_db()
+        self.assertTrue(self.tr.groups.filter(name="Treasurer").exists())
 
     def test_can_freely_edit_non_treasurer_roles(self):
         assistant = User.objects.create_user("asst_lockout_sec", password="x")

@@ -1,10 +1,214 @@
-{% extends 'base.html' %}
-{% block title %}Edit {{ object.username }} · {{ SITE_NAME }}{% endblock %}
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ object.username }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ object.username }}</h1><div class="sub">{{ object.get_full_name|default:"Role &amp; account status" }}</div></div></div>
-<div class="card u-narrow"><div class="bd">
-  <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
-    <div class="btn-row"><button class="btn">Save changes</button><a class="btn btn-ghost" href="{% url 'user_list' %}">Cancel</a></div>
-  </form>
-</div></div>
+<div class="page-head">
+  <div><h1>{{ object.get_full_name|default:object.username }}</h1>
+    <div class="sub mono">@{{ object.username }}
+      {% if object.is_superuser %}<span class="pill pill-green">Superuser</span>
+      {% elif current_role %}<span class="pill pill-grey">{{ current_role }}</span>{% endif %}
+      {% if not object.is_active %}<span class="pill pill-red">Deactivated</span>{% endif %}
+      {% if profile.locked %}<span class="pill pill-red">Suspended</span>{% endif %}
+      {% if is_axes_locked %}<span class="pill pill-amber">Login-locked</span>{% endif %}
+    </div>
+  </div>
+  <a class="btn btn-ghost" href="{% url 'user_list' %}">← All users</a>
+</div>
+
+{% if is_self %}<p class="help">You're viewing your own account. Sensitive actions (role, status, password, 2FA) can only be changed by another administrator.</p>{% endif %}
+
+<nav id="userTabs" class="usertabs u-mb">
+  <button type="button" class="tab {% if active_tab == 'profile' %}active{% endif %}" data-tab="profile">Profile</button>
+  <button type="button" class="tab {% if active_tab == 'security' %}active{% endif %}" data-tab="security">Security</button>
+  <button type="button" class="tab {% if active_tab == 'roles' %}active{% endif %}" data-tab="roles">Roles &amp; Rights</button>
+  <button type="button" class="tab {% if active_tab == 'activity' %}active{% endif %}" data-tab="activity">Activity</button>
+  <button type="button" class="tab {% if active_tab == 'audit' %}active{% endif %}" data-tab="audit">Audit Log</button>
+</nav>
+
+<!-- ============================== PROFILE ============================== -->
+<section class="tabpane {% if active_tab == 'profile' %}active{% endif %}" data-pane="profile">
+  <div class="card u-narrow"><div class="bd">
+    <form method="post">{% csrf_token %}<input type="hidden" name="form_name" value="profile_form">
+      <div class="form-grid">{% include 'partials/form_fields.html' with form=profile_form %}</div>
+      <div class="btn-row"><button class="btn">Save profile</button></div>
+    </form>
+  </div></div>
+  <div class="card u-narrow u-mt"><div class="hd">Account record</div><div class="bd">
+    <div class="grid-3">
+      <div class="stat"><div class="lbl">Created</div><div class="val">{{ object.date_joined|date:"d M Y, H:i" }}</div></div>
+      <div class="stat"><div class="lbl">Created by</div><div class="val">{{ profile.created_by.username|default:"—" }}</div></div>
+      <div class="stat"><div class="lbl">Profile last updated</div><div class="val">{{ profile.updated_at|date:"d M Y, H:i" }}</div></div>
+      <div class="stat"><div class="lbl">User ID</div><div class="val mono">{{ object.id }}</div></div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ============================== SECURITY ============================== -->
+<section class="tabpane {% if active_tab == 'security' %}active{% endif %}" data-pane="security">
+  <div class="card u-narrow"><div class="hd">Account status</div><div class="bd">
+    <div class="grid-3">
+      <div class="stat"><div class="lbl">Status</div><div class="val">
+        {% if not object.is_active %}<span class="pill pill-red">Deactivated</span>
+        {% elif profile.locked %}<span class="pill pill-red">Suspended</span>
+        {% else %}<span class="pill pill-green">Active</span>{% endif %}</div></div>
+      <div class="stat"><div class="lbl">Two-factor authentication</div><div class="val">
+        {% if two_factor and two_factor.confirmed %}<span class="pill pill-green">Enabled ({{ two_factor.get_method_display }})</span>
+        {% else %}<span class="pill pill-grey">Not set up</span>{% endif %}</div></div>
+      <div class="stat"><div class="lbl">Login lockout (failed attempts)</div><div class="val">
+        {% if is_axes_locked %}<span class="pill pill-red">Locked out</span>{% else %}<span class="pill pill-grey">Not locked</span>{% endif %}</div></div>
+      <div class="stat"><div class="lbl">Password last changed</div><div class="val">{{ profile.password_changed_at|date:"d M Y, H:i"|default:"Never (or predates tracking)" }}</div></div>
+      <div class="stat"><div class="lbl">Must change password next login</div><div class="val">{% if profile.must_change_password %}<span class="pill pill-amber">Yes</span>{% else %}—{% endif %}</div></div>
+      <div class="stat"><div class="lbl">Active sessions</div><div class="val">{{ active_session_count }}</div></div>
+      <div class="stat"><div class="lbl">Last successful login</div><div class="val">{{ last_successful_login|date:"d M Y, H:i"|default:"Never" }}</div></div>
+      <div class="stat"><div class="lbl">Last login IP</div><div class="val mono">{{ last_login_ip|default:"—" }}</div></div>
+      <div class="stat"><div class="lbl">Failed login attempts on record</div><div class="val">{{ failed_login_count }}</div></div>
+      <div class="stat"><div class="lbl">Last failed login</div><div class="val">{{ last_failed_login|date:"d M Y, H:i"|default:"—" }}</div></div>
+      <div class="stat"><div class="lbl">Last failed-login IP</div><div class="val mono">{{ last_failed_ip|default:"—" }}</div></div>
+      {% if profile.locked %}<div class="stat"><div class="lbl">Suspended by</div><div class="val">{{ profile.locked_by.username|default:"—" }} on {{ profile.locked_at|date:"d M Y" }}{% if profile.locked_reason %} — “{{ profile.locked_reason }}”{% endif %}</div></div>{% endif %}
+    </div>
+  </div></div>
+
+  {% if not is_self %}
+  <div class="card u-narrow u-mt"><div class="hd">Administrative actions</div><div class="bd">
+    <div class="action-grid">
+      {% if profile.locked %}
+      <form method="post" action="{% url 'user_account_action' object.id 'unlock' %}">{% csrf_token %}
+        <button class="btn btn-sm">Reinstate (unlock)</button>
+        <div class="help u-xs">Restores sign-in access immediately.</div></form>
+      {% else %}
+      <form method="post" action="{% url 'user_account_action' object.id 'lock' %}" class="lock-form">{% csrf_token %}
+        <input type="text" name="reason" class="field" style="max-width:220px;padding:.3rem .5rem;font-size:.82rem" placeholder="Reason (optional)">
+        <button class="btn btn-sm btn-danger">Suspend (lock)</button>
+        <div class="help u-xs">Ends any active sessions immediately and blocks sign-in until reinstated.</div></form>
+      {% endif %}
+
+      <a class="btn btn-sm btn-ghost" href="{% url 'user_password_reset' object.id %}">Reset password…</a>
+
+      {% if two_factor and two_factor.confirmed %}
+      <form method="post" action="{% url 'user_account_action' object.id 'disable_2fa' %}"
+            onsubmit="return confirm('Turn off two-factor authentication for {{ object.username }}? They will need to set it up again.');">
+        {% csrf_token %}<button class="btn btn-sm btn-ghost">Disable two-factor</button>
+        <div class="help u-xs">Use if they've lost their device.</div></form>
+      {% endif %}
+
+      {% if is_axes_locked or failed_login_count %}
+      <form method="post" action="{% url 'user_account_action' object.id 'clear_lockout' %}">{% csrf_token %}
+        <button class="btn btn-sm btn-ghost">Clear failed-login lockout</button>
+        <div class="help u-xs">Lets them try signing in again immediately, without resetting their password.</div></form>
+      {% endif %}
+
+      {% if active_session_count %}
+      <form method="post" action="{% url 'user_account_action' object.id 'terminate_sessions' %}"
+            onsubmit="return confirm('End all active sessions for {{ object.username }}? They will be signed out everywhere.');">
+        {% csrf_token %}<button class="btn btn-sm btn-ghost">Force logout (all devices)</button>
+        <div class="help u-xs">Ends every active session; they'll need to sign in again.</div></form>
+      {% endif %}
+
+      <a class="btn btn-sm btn-ghost" href="{% url 'user_clone' object.id %}">Clone this account…</a>
+    </div>
+  </div></div>
+  {% endif %}
+</section>
+
+<!-- ============================== ROLES & RIGHTS ============================== -->
+<section class="tabpane {% if active_tab == 'roles' %}active{% endif %}" data-pane="roles">
+  <div class="card u-narrow"><div class="bd">
+    {% if is_self %}
+      <p class="help">You can't change your own role or account status — ask another administrator.</p>
+    {% else %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="form_name" value="role_form">
+      <div class="form-grid">{% include 'partials/form_fields.html' with form=role_form %}</div>
+      <div class="btn-row"><button class="btn">Save role</button></div>
+    </form>
+    {% endif %}
+  </div></div>
+
+  <div class="card u-narrow u-mt"><div class="hd">Rights profiles assigned</div><div class="bd">
+    {% if assigned_profiles %}
+      <ul class="plain-list">{% for p in assigned_profiles %}<li>{{ p.name }}{% if p.description %} — <span class="muted u-xs">{{ p.description }}</span>{% endif %}</li>{% endfor %}</ul>
+      <p class="help u-xs">Assigned profiles fully replace the role's default rights below — this user's effective rights are the union of the profiles above only.</p>
+    {% else %}
+      <p class="help">No profile assigned — this user's rights come from their role group, shown below.
+      {% if not is_self %}<a class="link" href="{% url 'profile_list' %}">Manage profiles →</a>{% endif %}</p>
+    {% endif %}
+  </div></div>
+
+  <div class="card u-narrow u-mt"><div class="hd">Effective permissions</div><div class="bd">
+    {% if effective_rights %}
+      <div class="chip-list">{% for r in effective_rights %}<span class="chip">{{ r }}</span>{% endfor %}</div>
+    {% else %}<p class="help">No specific rights — access is limited to what their role allows by default.</p>{% endif %}
+  </div></div>
+</section>
+
+<!-- ============================== ACTIVITY ============================== -->
+<section class="tabpane {% if active_tab == 'activity' %}active{% endif %}" data-pane="activity">
+  <div class="card u-narrow"><div class="hd">Recent security events</div><div class="bd bd-flush">
+    {% if audit_entries %}
+    <div class="table-wrap"><table class="ledger compact"><thead><tr><th>When</th><th>Event</th><th>Detail</th></tr></thead><tbody>
+      {% for e in audit_entries|slice:":20" %}<tr>
+        <td class="mono u-xs">{{ e.created_at|date:"d M Y, H:i" }}</td>
+        <td>{{ e.get_action_display }}</td>
+        <td class="muted u-xs">{{ e.detail|default:"—" }}</td>
+      </tr>{% endfor %}
+    </tbody></table></div>
+    {% else %}<div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No activity recorded yet</div></div>{% endif %}
+  </div></div>
+</section>
+
+<!-- ============================== AUDIT LOG ============================== -->
+<section class="tabpane {% if active_tab == 'audit' %}active{% endif %}" data-pane="audit">
+  <div class="card u-narrow"><div class="hd">Full administrative audit trail</div><div class="bd bd-flush">
+    {% if audit_entries %}
+    <div class="table-wrap"><table class="ledger compact">
+      <thead><tr><th>Date &amp; time</th><th>Action</th><th>By</th><th>Before</th><th>After</th><th>Detail</th><th>IP</th></tr></thead>
+      <tbody>
+      {% for e in audit_entries %}<tr>
+        <td class="mono u-xs">{{ e.created_at|date:"d M Y, H:i:s" }}</td>
+        <td>{{ e.get_action_display }}</td>
+        <td>{{ e.actor.username|default:"System" }}</td>
+        <td class="muted u-xs">{{ e.before|default:"—" }}</td>
+        <td class="muted u-xs">{{ e.after|default:"—" }}</td>
+        <td class="muted u-xs">{{ e.detail|default:"—" }}</td>
+        <td class="mono u-xs">{{ e.ip_address|default:"—" }}</td>
+      </tr>{% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No administrative actions recorded yet</div></div>{% endif %}
+  </div></div>
+</section>
+
+<style>
+.usertabs{display:flex;align-items:center;gap:.15rem;flex-wrap:wrap;padding:.4rem .5rem;margin-bottom:1.3rem;
+  background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-sm)}
+.usertabs .tab{border:1px solid transparent;background:none;text-align:center;padding:.4rem .8rem;font-weight:600;
+  color:var(--ink-soft,#555);cursor:pointer;border-radius:7px;font-size:.84rem;white-space:nowrap;
+  transition:background .12s,color .12s}
+.usertabs .tab:hover{background:var(--accent-soft,#eef5f2);color:var(--forest,#1f5f4f)}
+.usertabs .tab.active{color:#fff;background:linear-gradient(180deg,var(--forest-2,#24705d),var(--forest,#1f5f4f));
+  border-color:var(--forest,#1f5f4f);box-shadow:0 1px 2px rgba(20,33,28,.15)}
+.tabpane{display:none}.tabpane.active{display:block}
+@media(max-width:760px){.usertabs{gap:.1rem;overflow-x:auto;flex-wrap:nowrap;justify-content:flex-start}
+  .usertabs .tab{font-size:.78rem;padding:.35rem .55rem}}
+.action-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.9rem}
+.action-grid form{display:flex;flex-direction:column;gap:.3rem;align-items:flex-start}
+.lock-form{gap:.4rem}
+.chip-list{display:flex;flex-wrap:wrap;gap:.4rem}
+.chip{background:var(--forest-soft);color:var(--forest-deep);border-radius:999px;padding:.2rem .7rem;font-size:.78rem;font-weight:600}
+.plain-list{margin:0;padding-left:1.1rem}
+</style>
+
+<script>
+function activateUserTab(name){
+  var btn=document.querySelector('#userTabs .tab[data-tab="'+name+'"]');
+  if(!btn) return false;
+  document.querySelectorAll("#userTabs .tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll('.tabpane[data-pane="'+name+'"]').forEach(x=>x.classList.add("active"));
+  return true;
+}
+document.querySelectorAll("#userTabs .tab").forEach(b=>b.addEventListener("click",()=>{
+  activateUserTab(b.dataset.tab);
+  try{ history.replaceState(null,'', '?tab='+b.dataset.tab); }catch(e){}
+}));
+</script>
 {% endblock %}

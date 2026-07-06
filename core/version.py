@@ -38,6 +38,20 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.18.1": "Follow-up performance check on the new Users page: the role column was querying the "
+              "database once per user shown, even though the page already had everything it needed loaded "
+              "in bulk. Fixed - the page now loads in a small, fixed number of queries regardless of how "
+              "many users are shown.",
+    "2.18.0": "Comprehensive rework of User Management (/users/). Each user now has a full profile "
+              "(phone, gender, position, department, notes) alongside their role, viewable and editable "
+              "from one tabbed page: Profile, Security, Roles & Rights, Activity, Audit Log. New "
+              "administrative controls: suspend/reinstate an account (blocks sign-in and ends active "
+              "sessions immediately), reset a password directly, force a password change on next login, "
+              "turn off a lost/broken two-factor enrolment, clear a failed-login lockout, force logout "
+              "everywhere, and clone an account's role and rights into a new one. Every one of these "
+              "actions is written to a dedicated audit trail with who did what and when. Administrators can "
+              "no longer change their own role, status, password, or two-factor setup from this screen - "
+              "another administrator must do it. The user list gained search, filtering, and sorting.",
     "2.17.0": "The Trust Fund Pending Receipts export now shows a split contribution's full original amount "
               "(e.g. a 40 gift split 50/50 between a trust and a local fund used to show as just 20 - now "
               "shows 40, labelled with the split fund's own name, ready for a single manual receipt). Added "

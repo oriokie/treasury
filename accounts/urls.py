@@ -11,6 +11,11 @@ urlpatterns = [
 
     path("users/new/", views.UserCreateView.as_view(), name="user_create"),
     path("users/<int:pk>/edit/", views.UserEditRoleView.as_view(), name="user_edit"),
+    path("users/<int:pk>/action/<str:action>/", views.UserAccountActionView.as_view(),
+         name="user_account_action"),
+    path("users/<int:pk>/reset-password/", views.UserPasswordResetView.as_view(),
+         name="user_password_reset"),
+    path("users/<int:pk>/clone/", views.UserCloneView.as_view(), name="user_clone"),
     # two-factor authentication
     path("2fa/setup/", tf.TwoFactorSetupView.as_view(), name="twofactor_setup"),
     path("2fa/verify/", tf.TwoFactorVerifyView.as_view(), name="twofactor_verify"),

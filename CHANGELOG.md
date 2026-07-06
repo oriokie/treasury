@@ -1,5 +1,86 @@
 # Changelog
 
+## v2.18.1 - user list N+1 fix
+Follow-up performance check after v2.18.0's User Management rework, prompted by the pattern of this
+project's earlier performance reviews: verify a new list page doesn't quietly reintroduce a per-row query.
+
+**Fixed:**
+- The user list's role column called `user_roles(u)` per user, which calls `user.groups.values_list(...)` —
+  a call that always issues a fresh query, completely bypassing `prefetch_related("groups")` (already present
+  on the queryset) since `values_list()` returns a new queryset rather than reading the prefetched cache.
+  Confirmed via query-count testing: the page was issuing one additional query per user shown (46 queries for
+  a page of ~30 users), though bounded by pagination rather than growing unbounded. Fixed by building the
+  roles column from the prefetched relation directly in the view, without changing the shared `user_roles()`
+  utility (used throughout the rest of the application) at all. Verified byte-for-byte identical output
+  against the original per-user computation across every account in the database before considering it safe.
+  Query count: ~46 → ~21 for the same page.
+
+Tests: 2 new, asserting both the query-count bound and that the displayed roles are unchanged. Full
+regression: accounts 97 — all green.
+
+Deploy: no migration.
+
+## v2.18.0 - User Management module: profiles, account lifecycle, security dashboard, audit trail
+A comprehensive rework of `/users/`, reviewed as a Treasurer, System Administrator, Security Administrator,
+and Auditor would each use it.
+
+**Added — User Profile Management:**
+- A `UserProfile` extension (phone, gender, position, department/ministry, church assignment, internal
+  notes) alongside Django's own name/email fields, all editable from one Profile tab.
+- Account record: creation date, who created the account, and when the profile was last updated.
+
+**Added — Account Management:**
+- **Suspend / reinstate** (`UserProfile.locked`) — a short-term, easily-reversible block distinct from
+  deactivation: ends any active session immediately (a new `AccountLockMiddleware`) and rejects both fresh
+  and in-progress logins with a clear message, without touching the account's role or settings.
+- **Admin password reset** — sets a new password directly (shown once, since this deployment has no
+  outbound email — documented in `docs/recommendations.md`), optionally forcing the user to set their own
+  password on next login (`ForcePasswordChangeMiddleware`, modelled on the existing 2FA enforcement
+  middleware). Resetting a password also invalidates the user's other active sessions automatically — a
+  free, welcome side effect of Django's own session-security design, not something this release had to build.
+- **Disable two-factor authentication** for a user who's lost their device — a genuine admin-facing version
+  of what previously only existed as a backend management command.
+- **Clear a failed-login lockout** (django-axes) without resetting the password.
+- **Force logout everywhere** — ends every active session for an account by decoding and clearing the
+  matching `django.contrib.sessions` rows.
+- **Clone an account** — role, led departments, and rights profiles copied into a brand new account;
+  credentials are never copied, and the new account is forced to set its own password.
+- Deliberately **not implemented**, with reasoning recorded in `docs/recommendations.md`: security questions
+  (a deprecated pattern), password-reset emails (no email backend configured), and a separate "archive"
+  concept (deactivation already preserves full history, with nothing further to add).
+
+**Added — Roles & Permissions:**
+- The Roles & Rights tab shows the account's role, any assigned rights profiles, and its full effective
+  permission set in one place.
+- **Self-permission-modification is now blocked entirely**: an administrator can no longer change their own
+  role, active/suspended status, password, two-factor enrolment, or sessions from this module — every one of
+  those actions now requires a *different* administrator. (One pre-existing test predated this rule and
+  exercised exactly the scenario it now blocks; updated to reflect the stricter, intentional behaviour.)
+
+**Added — Activity & Security Dashboard, and Audit Trail:**
+- A per-user Security tab: account/lock status, 2FA status and method, password-last-changed, forced-
+  change flag, active session count, last successful login and IP, failed-login count and last failed
+  attempt (from django-axes), and lockout status.
+- A dedicated `UserAdminLogEntry` audit trail — distinct from the generic `django-simple-history` field-change
+  log — purpose-built to answer "who did what to whose account, and when": account creation, profile edits,
+  role changes, activation/deactivation, lock/unlock, password resets, forced-change flags, 2FA disablement,
+  lockout clears, session termination, and cloning. Shown in full on the Audit Log tab and summarised on
+  Activity.
+
+**Added — User Interface:**
+- The user list gained search (username/name/email/phone), filtering (role, status), sorting, and
+  pagination, plus 2FA and status columns at a glance.
+- The user detail page is now a tabbed interface (Profile / Security / Roles & Rights / Activity / Audit
+  Log), each tab's form independent of the others so saving one never touches another.
+
+Tests: 48 new across three files (`test_user_management`, `test_user_admin_actions`, `test_user_list_search`),
+covering profile edits, every account-lifecycle action, every self-permission-modification block, password
+administration, 2FA administration, session termination, cloning, and list search/filter/sort — each
+exercising both the successful path and its audit trail entry. One pre-existing test updated for the new
+self-edit rule. Full regression: accounts 95, core+leaders 292 — all green.
+
+Deploy: migrate (accounts 0006 — adds UserProfile and UserAdminLogEntry, no data affected).
+
 ## v2.17.0 - split export fix, compact receipt PDF, budget JPEG, leader budget access, Elder role
 Five features/fixes, plus a serious access-control regression caught and fixed during review.
 

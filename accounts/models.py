@@ -239,6 +239,162 @@ class TwoFactor(models.Model):
         return ok
 
 
+class UserProfile(models.Model):
+    """Extended profile information for a user account, plus the fields the
+    admin user-management module needs for account lifecycle (lock/suspend,
+    forced password change) — kept separate from Django's own User model so
+    nothing about core authentication changes.
+
+    Created lazily (get_or_create) the first time it's needed, so existing
+    users never need a data migration to "catch up"."""
+    class Gender(models.TextChoices):
+        MALE = "M", "Male"
+        FEMALE = "F", "Female"
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name="profile")
+    phone = models.CharField(max_length=20, blank=True, default="")
+    gender = models.CharField(max_length=1, choices=Gender.choices, blank=True, default="")
+    position = models.CharField(max_length=80, blank=True, default="",
+        help_text="e.g. Head Deacon, Elder, Youth Leader — free text, for reference only.")
+    department = models.ForeignKey("departments.Department", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="assigned_users",
+        help_text="The department/ministry this person is primarily associated with — "
+                  "informational only; a Leader's actual access is governed by "
+                  "DepartmentLeadership, set on the Edit role tab.")
+    church_assignment = models.CharField(max_length=120, blank=True, default="",
+        help_text="For a multi-church or conference deployment; leave blank for a single church.")
+    avatar = models.ImageField(upload_to="avatars/", null=True, blank=True)
+    notes = models.TextField(blank=True, default="",
+        help_text="Internal admin notes about this account — never shown to the user.")
+
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+        help_text="Who created this account. Blank for accounts that predate this field.")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # --- password lifecycle ---
+    password_changed_at = models.DateTimeField(null=True, blank=True)
+    must_change_password = models.BooleanField(default=False,
+        help_text="Force a password change the next time this user logs in.")
+
+    # --- admin-imposed lock (distinct from is_active): a short-term,
+    # easily-reversible "suspend", vs. is_active=False which is the
+    # longer-term "this person has left" deactivation. Both block login.
+    locked = models.BooleanField(default=False)
+    locked_reason = models.CharField(max_length=200, blank=True, default="")
+    locked_at = models.DateTimeField(null=True, blank=True)
+    locked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        verbose_name = "user profile"
+
+    def __str__(self):
+        return f"Profile for {self.user}"
+
+    @classmethod
+    def for_user(cls, user):
+        obj, _ = cls.objects.get_or_create(user=user)
+        return obj
+
+
+class UserAdminLogEntry(models.Model):
+    """A dedicated, purpose-built audit trail for administrative actions taken
+    on a user account — distinct from django-simple-history (which tracks raw
+    field changes on models generically): this reads naturally as a security
+    log ("who did what to whose account, and when"), exactly what an auditor
+    reviewing user management asks for first.
+
+    PROTECT on target_user: an audit record must never silently disappear
+    just because the account it describes is later deleted — consistent with
+    this application's general principle that historical/audit records
+    outlive the thing they describe. In practice a User is never deleted
+    through this application (only deactivated), so this is a backstop, not
+    an expected path."""
+    class Action(models.TextChoices):
+        CREATED = "CREATED", "Account created"
+        PROFILE_UPDATED = "PROFILE_UPDATED", "Profile updated"
+        ROLE_CHANGED = "ROLE_CHANGED", "Role changed"
+        ACTIVATED = "ACTIVATED", "Account activated"
+        DEACTIVATED = "DEACTIVATED", "Account deactivated"
+        LOCKED = "LOCKED", "Account locked (suspended)"
+        UNLOCKED = "UNLOCKED", "Account unlocked (reinstated)"
+        PASSWORD_RESET = "PASSWORD_RESET", "Password reset by administrator"
+        PASSWORD_CHANGED = "PASSWORD_CHANGED", "Password changed"
+        FORCE_PASSWORD_CHANGE_SET = "FORCE_PASSWORD_CHANGE_SET", "Forced password change on next login"
+        TWO_FA_DISABLED = "TWO_FA_DISABLED", "Two-factor authentication disabled by administrator"
+        LOGIN_LOCKOUT_CLEARED = "LOGIN_LOCKOUT_CLEARED", "Failed-login lockout cleared"
+        SESSIONS_TERMINATED = "SESSIONS_TERMINATED", "All sessions terminated"
+        PROFILE_ASSIGNED = "PROFILE_ASSIGNED", "Rights profile assigned"
+        PROFILE_REMOVED = "PROFILE_REMOVED", "Rights profile removed"
+        CLONED = "CLONED", "Account cloned from another user"
+
+    target_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name="admin_log_entries")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+")
+    action = models.CharField(max_length=32, choices=Action.choices)
+    detail = models.CharField(max_length=300, blank=True, default="")
+    before = models.CharField(max_length=200, blank=True, default="")
+    after = models.CharField(max_length=200, blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "user admin log entry"
+        verbose_name_plural = "user admin log entries"
+
+    def __str__(self):
+        return f"{self.get_action_display()} — {self.target_user} ({self.created_at:%Y-%m-%d %H:%M})"
+
+
+def log_user_admin_action(actor, target_user, action, detail="", before="", after="",
+                          request=None):
+    """Record one entry in the user-management audit trail. Never raises —
+    a logging failure must not block the underlying admin action itself."""
+    try:
+        ip = None
+        if request is not None:
+            ip = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip() \
+                or request.META.get("REMOTE_ADDR")
+        UserAdminLogEntry.objects.create(
+            target_user=target_user, actor=actor if actor and actor.is_authenticated else None,
+            action=action, detail=detail[:300], before=str(before)[:200],
+            after=str(after)[:200], ip_address=ip or None)
+    except Exception:   # noqa: BLE001 — audit logging must never break the admin action
+        from core.utils import log_exception
+        log_exception("accounts/models.py:log_user_admin_action")
+
+
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+
+
+@receiver(pre_save, sender=settings.AUTH_USER_MODEL)
+def _track_password_change(sender, instance, **kwargs):
+    """Stamp UserProfile.password_changed_at whenever the password hash
+    actually changes — Django's User model has no such field natively, and
+    the security dashboard ("password last changed") needs it. Compares
+    against the stored value rather than trusting a flag, so it's correct
+    regardless of which code path changed the password (self-service change,
+    an admin's reset, or the createsuperuser command)."""
+    if not instance.pk:
+        return   # new user — handled by the profile's own creation, not here
+    try:
+        old_password = sender.objects.filter(pk=instance.pk).values_list(
+            "password", flat=True).first()
+    except Exception:
+        return
+    if old_password is not None and old_password != instance.password:
+        from django.utils import timezone
+        profile = UserProfile.for_user(instance)
+        profile.password_changed_at = timezone.now()
+        profile.must_change_password = False
+        profile.save(update_fields=["password_changed_at", "must_change_password"])
+
+
 class Profile(models.Model):
     """A named, fully-configurable bundle of rights a treasurer can assign to
     users. Layered on top of the role groups: a user with at least one profile

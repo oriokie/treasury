@@ -437,6 +437,125 @@ applied to the petty-cash TOCTOU finding.
 
 ---
 
+## 17. Password-reset emails are not sent — by design, for now
+
+**Description.** When an administrator resets a user's password, the new password is
+shown once on-screen for the administrator to pass to the user directly, rather than
+being emailed to them.
+
+**Reason.** This application has no outbound email backend configured (no SMTP
+settings, no `EMAIL_BACKEND` beyond Django's console default) — it's built around SMS
+for outbound notifications, not email. Building a "forgot password" email flow without
+a working mail transport would either silently fail or need a parallel SMS-based
+reset flow (a real feature, but a separate one, since it would need a verified phone
+number per user and a one-time-code mechanism much like the existing 2FA SMS delivery
+path).
+
+**Expected benefit.** If/when an SMTP backend is configured, add a genuine self-service
+"forgot password" flow (Django's built-in `PasswordResetView` works out of the box
+once `EMAIL_BACKEND` is set) alongside the admin-driven reset this review added.
+
+**Priority: Low** — the admin-driven reset covers the operational need today.
+
+---
+
+## 18. Security questions were not implemented
+
+**Description.** The review brief asked whether security questions should be
+supported for account recovery.
+
+**Reason.** Security questions are a widely-deprecated pattern (NIST and most current
+security guidance recommend against them — answers are often guessable, publicly
+discoverable, or forgotten, and they add an alternate, usually weaker authentication
+path alongside the real one). This application already has a stronger recovery
+mechanism for its strongest control (2FA recovery codes), and the admin-driven
+password reset covers the "forgotten password" case without needing a second,
+weaker factor.
+
+**Recommendation: do not implement.** If self-service account recovery becomes a
+priority, prefer an SMS-based one-time-code reset (reusing the existing 2FA SMS
+delivery path) over security questions.
+
+---
+
+## 19. Per-session detail (not just count + bulk terminate)
+
+**Description.** This review added an active-session **count** on a user's Security
+tab and a **"force logout everywhere"** bulk action, by decoding
+`django.contrib.sessions.models.Session` rows. It did not build a per-session list
+(device/browser, IP, last-active time, an individual "end this one session" control).
+
+**Reason not built this pass.** Django's session data doesn't store device/user-agent
+information by default — only what a session's own middleware chain records. Building
+a genuinely useful per-session table (recognisable device names, accurate "last seen"
+times) needs a small amount of additional tracking (e.g. stamping user-agent and last-
+seen-at into the session data or a companion model) that's a reasonable follow-up but
+distinct from what this pass covered.
+
+**Expected benefit.** Lets an administrator (or, later, a user managing their own
+sessions) end one suspicious session without logging out every device.
+
+**Priority: Low-Medium.**
+
+---
+
+## 20. Password expiry is tracked but not yet enforced
+
+**Description.** `UserProfile.password_changed_at` is now stamped automatically
+whenever a password changes (self-service or admin-reset), and shown on the Security
+tab — but there is no `SiteConfig`-level "maximum password age" setting, and no
+enforcement (a middleware forcing a change once a password is older than N days), the
+way `require_2fa_for_treasurers` is enforced today.
+
+**Reason not built this pass.** Whether to enforce password expiry at all is a policy
+decision (current security guidance is actually mixed on forced periodic rotation —
+NIST's more recent guidance argues *against* mandatory rotation in favour of length/
+breach-checking), so this was left as a recorded decision point rather than assumed.
+
+**Expected benefit, if wanted.** A `SiteConfig.password_max_age_days` (blank/0 =
+disabled) plus a small middleware extension of the same shape as
+`ForcePasswordChangeMiddleware` this review added, checking `password_changed_at`
+against it.
+
+**Priority: Low**, pending a policy decision on whether periodic rotation is wanted.
+
+---
+
+## 21. "Copy permissions between two existing users" not implemented
+
+**Description.** The review brief asked about copying a user's permissions to another
+*existing* account (distinct from **cloning**, which this review did implement — creating
+a *new* account with the same role/profiles/led-departments as an existing one).
+
+**Reason not built this pass.** Overwriting an existing, possibly-customised user's
+rights from another user's is a more destructive operation than cloning into a new
+account (there's no "undo" beyond checking the audit log and manually reverting), and
+needs its own careful confirmation UX. Cloning covers the far more common real
+scenario ("set up another Assistant like Jane") safely.
+
+**Expected benefit.** A rarely-needed convenience; low priority relative to the risk
+of a rushed implementation encouraging accidental overwrites.
+
+**Priority: Low.**
+
+---
+
+## 22. "Archive" is intentionally the same as deactivate, not a separate feature
+
+**Description.** The review brief asked about archiving a user "while preserving
+history." This application already deactivates (`is_active=False`) rather than
+deletes, and nothing about deactivation removes the account's history — the full
+audit trail (`UserAdminLogEntry`), `django-simple-history` records, and every
+transaction/expense/approval the account ever touched all remain exactly as they
+were. There is deliberately no user-delete feature anywhere in this application (a
+finding from an earlier review), so "archived" and "deactivated" would describe
+exactly the same state.
+
+**Recommendation: no separate "archive" feature needed** — deactivation already *is*
+archiving, in every sense that matters here.
+
+---
+
 ## Summary table
 
 | # | Item | Priority |
@@ -457,3 +576,9 @@ applied to the petty-cash TOCTOU finding.
 | 14 | No CI/CD pipeline or code-coverage tooling | Medium-High |
 | 15 | Test files organised by when added, not what they cover (cashbook: 32 files) | Low |
 | 16 | No concurrency/load testing (SQLite/default test runner limitation) | Low |
+| 17 | Password-reset emails not sent — no email backend configured | Low |
+| 18 | Security questions — deliberately not implemented (deprecated pattern) | N/A (documented) |
+| 19 | Per-session detail (device/IP/last-seen, individual termination) not built | Low-Medium |
+| 20 | Password expiry tracked but not enforced — pending a rotation policy decision | Low |
+| 21 | Copy permissions between two existing users not implemented (cloning covers the common case) | Low |
+| 22 | "Archive" intentionally not a separate feature from deactivate | N/A (documented) |

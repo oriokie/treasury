@@ -23,7 +23,8 @@
       <h1>Welcome back</h1>
       <p class="sf-sub">Sign in to continue to the treasury.</p>
 
-      {% if form.errors %}<div class="sf-alert" role="alert">The username or password you entered is incorrect.</div>{% endif %}
+      {% if form.errors %}{% if "account_locked" in form.non_field_errors.as_data.0.code|default:"" %}<div class="sf-alert" role="alert">{{ form.non_field_errors.0 }}</div>{% else %}<div class="sf-alert" role="alert">The username or password you entered is incorrect.</div>{% endif %}{% endif %}
+      {% if request.GET.locked %}<div class="sf-alert" role="alert">Your account has been suspended by an administrator. Contact your treasurer for details.</div>{% endif %}
 
       <form method="post" id="signinForm" class="sf-fields">
         {% csrf_token %}

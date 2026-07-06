@@ -1,25 +1,60 @@
 {% extends 'base.html' %}{% load treasury_extras %}
 {% block title %}Users &amp; roles · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Users &amp; roles</h1><div class="sub">Who can sign in, and what they may do</div></div>
+<div class="page-head"><div><h1>Users &amp; roles</h1><div class="sub">Who can sign in, and what they may do — {{ total_count }} account{{ total_count|pluralize }}</div></div>
 <a class="btn" href="{% url 'user_create' %}">＋ New user</a></div>
 <div class="role-key">
   <span><b>Treasurer</b> — full access, approvals, user management</span>
   <span><b>Assistant</b> — data entry, imports, no approvals</span>
   <span><b>Auditor</b> — read-only access to everything</span>
 </div>
+
+<form method="get" class="ws-toolbar">
+  <div class="f grow"><label for="id_q">Search</label><input type="text" name="q" id="id_q" value="{{ q }}" class="field" placeholder="Username, name, email, phone…"></div>
+  <div class="f"><label for="id_role">Role</label><select name="role" id="id_role" class="field--select"><option value="">All</option>{% for r in all_roles %}<option value="{{ r }}" {% if role_filter == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
+  <div class="f"><label for="id_status">Status</label><select name="status" id="id_status" class="field--select">
+    <option value="">All</option>
+    <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Deactivated</option>
+    <option value="locked" {% if status_filter == "locked" %}selected{% endif %}>Suspended</option>
+  </select></div>
+  <div class="f"><label for="id_sort">Sort</label><select name="sort" id="id_sort" class="field--select">
+    <option value="username" {% if sort == "username" %}selected{% endif %}>Username (A–Z)</option>
+    <option value="-username" {% if sort == "-username" %}selected{% endif %}>Username (Z–A)</option>
+    <option value="-last_login" {% if sort == "-last_login" %}selected{% endif %}>Last login (newest)</option>
+    <option value="last_login" {% if sort == "last_login" %}selected{% endif %}>Last login (oldest)</option>
+    <option value="-date_joined" {% if sort == "-date_joined" %}selected{% endif %}>Newest accounts</option>
+    <option value="date_joined" {% if sort == "date_joined" %}selected{% endif %}>Oldest accounts</option>
+  </select></div>
+  <button class="btn btn-sm">Apply</button>
+  {% if q or role_filter or status_filter %}<a class="btn btn-sm btn-ghost" href="{% url 'user_list' %}">Clear</a>{% endif %}
+</form>
+
+{% if users %}
 <div class="table-wrap"><table class="ledger">
-  <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th></th></tr></thead>
+  <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Status</th><th>2FA</th><th>Last login</th><th></th></tr></thead>
   <tbody>
   {% for u in users %}
     <tr>
       <td class="mono">{{ u.username }}</td>
       <td>{{ u.get_full_name|default:"—" }}</td>
       <td>{% if u.is_superuser %}<span class="pill pill-green">Superuser</span>{% else %}{{ roles_by_user|get_item:u.id }}{% endif %}</td>
-      <td>{% if u.is_active %}<span class="pill pill-grey">Active</span>{% else %}<span class="pill pill-red">Disabled</span>{% endif %}</td>
-      <td class="num"><a class="link" href="{% url 'user_edit' u.id %}">Edit role</a></td>
+      <td>
+        {% if not u.is_active %}<span class="pill pill-red">Deactivated</span>
+        {% elif u.id in locked_ids %}<span class="pill pill-red">Suspended</span>
+        {% else %}<span class="pill pill-grey">Active</span>{% endif %}
+      </td>
+      <td>{% if u.id in two_fa_ids %}<span class="pill pill-green">On</span>{% else %}<span class="muted u-xs">—</span>{% endif %}</td>
+      <td class="mono u-xs">{{ u.last_login|date:"d M Y"|default:"Never" }}</td>
+      <td class="num"><a class="link" href="{% url 'user_edit' u.id %}">Manage →</a></td>
     </tr>
   {% endfor %}
   </tbody>
 </table></div>
+
+{% include 'partials/pagination.html' %}
+{% else %}
+<div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No users match</div>
+  <div class="we-hint">{% if q or role_filter or status_filter %}Try clearing your search or filters.{% else %}Create the first user account to get started.{% endif %}</div></div>
+{% endif %}
 {% endblock %}
