@@ -239,6 +239,75 @@ class TwoFactor(models.Model):
         return ok
 
 
+class PasswordResetCode(models.Model):
+    """A one-time SMS verification code for self-service password reset.
+    Kept deliberately separate from Django's own token-based reset (used for
+    the email channel, via the standard PasswordResetView/ConfirmView) since
+    an SMS OTP has different lifecycle needs: short-lived, numeric (easy to
+    type from a text message), and single-use, tracked explicitly rather
+    than derived from the password hash the way Django's email token is.
+
+    The code itself is stored hashed (never in plaintext), the same way a
+    password would be — a leaked database row must not hand over a working
+    reset code."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="password_reset_codes")
+    code_hash = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "used_at", "expires_at"])]
+
+    @staticmethod
+    def _hash(raw_code):
+        from django.contrib.auth.hashers import make_password
+        return make_password(raw_code)
+
+    def check_code(self, raw_code):
+        from django.contrib.auth.hashers import check_password
+        return check_password(raw_code, self.code_hash)
+
+    @classmethod
+    def issue(cls, user, request=None, ttl_minutes=10):
+        """Create a fresh 6-digit code for `user`, invalidating any earlier
+        unused codes for them first (only the most recent code ever works)."""
+        import secrets
+        from django.utils import timezone
+        cls.objects.filter(user=user, used_at__isnull=True).update(
+            used_at=timezone.now())   # invalidate any earlier pending codes
+        raw_code = f"{secrets.randbelow(900000) + 100000}"
+        ip = None
+        if request is not None:
+            ip = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip() \
+                or request.META.get("REMOTE_ADDR")
+        obj = cls.objects.create(user=user, code_hash=cls._hash(raw_code),
+            expires_at=timezone.now() + timezone.timedelta(minutes=ttl_minutes),
+            ip_address=ip)
+        return obj, raw_code
+
+    @classmethod
+    def verify(cls, user, raw_code):
+        """Return the matching, still-valid code row, or None. Always checks
+        every recent candidate (not just the latest) so a code isn't rejected
+        just because of ordering, but only ever the most-recently-issued one
+        is actually still valid (issue() invalidates earlier ones)."""
+        from django.utils import timezone
+        now = timezone.now()
+        for candidate in cls.objects.filter(user=user, used_at__isnull=True,
+                                            expires_at__gte=now).order_by("-created_at"):
+            if candidate.check_code(raw_code):
+                return candidate
+        return None
+
+    def mark_used(self):
+        from django.utils import timezone
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])
+
+
 class UserProfile(models.Model):
     """Extended profile information for a user account, plus the fields the
     admin user-management module needs for account lifecycle (lock/suspend,

@@ -159,48 +159,50 @@ class ExistingStaffAccessUnaffectedTests(TestCase):
             self.assertIn(r.status_code, (302, 403))
 
 
-class ElderDashboardNavDiscoverabilityTests(TestCase):
-    """UX fix: ElderRequiredMixin already allowed staff to open /elder/
-    directly ("for setup and troubleshooting"), but nothing in the nav let a
-    treasurer discover or reach it without knowing the URL by heart — a
-    treasurer's own nav correctly shows their own Home, not "Elder
-    dashboard", since they aren't one. Added a clearly-labelled preview link
-    under the treasurer-only Administration nav group, alongside Users &
-    roles and Profiles & rights, without changing what a real elder's own
-    nav shows at all."""
-    def test_treasurer_sees_preview_link(self):
-        tr = User.objects.create_user("tr_navdisco", password="x", is_superuser=True)
+class ElderNavLabelTests(TestCase):
+    """Follow-up simplification: the standalone "Elder dashboard (preview)"
+    link added under the treasurer-only Administration group was removed —
+    not needed, since ElderRequiredMixin already lets staff open /elder/
+    directly for troubleshooting without a dedicated nav entry. A real
+    elder's own primary nav item is now labelled "Home", exactly matching
+    the label every other role sees for their own equivalent landing page
+    (the URL is unchanged — still /elder/, still redirecting correctly)."""
+    def test_treasurer_no_longer_sees_a_preview_link(self):
+        tr = User.objects.create_user("tr_navlabel", password="x", is_superuser=True)
         tr.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
         c = Client(); c.force_login(tr)
         b = c.get("/").content.decode()
-        self.assertIn("Elder dashboard (preview)", b)
-        self.assertIn('href="/elder/"', b)
+        self.assertNotIn("Elder dashboard (preview)", b)
 
-    def test_treasurer_can_actually_open_it(self):
-        tr = User.objects.create_user("tr_navdisco2", password="x", is_superuser=True)
+    def test_staff_can_still_open_elder_page_directly_if_needed(self):
+        # unchanged: ElderRequiredMixin still allows this for troubleshooting,
+        # simply without a dedicated nav entry advertising it
+        tr = User.objects.create_user("tr_navlabel2", password="x", is_superuser=True)
         tr.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
         c = Client(); c.force_login(tr)
         r = c.get("/elder/")
         self.assertEqual(r.status_code, 200)
 
-    def test_real_elder_still_sees_their_own_primary_nav_item_unaffected(self):
-        elder = User.objects.create_user("elder_navdisco", password="x")
+    def test_real_elder_sees_home_label_not_elder_dashboard(self):
+        elder = User.objects.create_user("elder_navlabel", password="x")
         elder.groups.add(Group.objects.get_or_create(name=roles.ELDER)[0])
         c = Client(); c.force_login(elder)
         b = c.get("/elder/").content.decode()
-        self.assertIn("Elder dashboard</a>", b)
-        self.assertNotIn("Elder dashboard (preview)", b)
+        self.assertIn('ic">▦</span> Home</a>', b)
+        self.assertNotIn("Elder dashboard</a>", b)
 
-    def test_non_treasurer_staff_do_not_see_the_admin_only_preview_link(self):
-        au = User.objects.create_user("au_navdisco", password="x")
-        au.groups.add(Group.objects.get_or_create(name="Auditor")[0])
-        c = Client(); c.force_login(au)
-        b = c.get("/").content.decode()
-        self.assertNotIn("Elder dashboard (preview)", b)
+    def test_elder_home_link_points_to_the_elder_dashboard_url(self):
+        elder = User.objects.create_user("elder_navlabel2", password="x")
+        elder.groups.add(Group.objects.get_or_create(name=roles.ELDER)[0])
+        c = Client(); c.force_login(elder)
+        b = c.get("/elder/").content.decode()
+        self.assertIn('href="/elder/"', b)
 
-    def test_leader_does_not_see_it_either(self):
-        ld = User.objects.create_user("ld_navdisco", password="x")
-        ld.groups.add(Group.objects.get_or_create(name="Leader")[0])
-        c = Client(); c.force_login(ld)
-        b = c.get("/leader/").content.decode()
-        self.assertNotIn("Elder dashboard (preview)", b)
+    def test_page_heading_still_distinguishes_it_as_the_elder_view(self):
+        # the nav label is now generic "Home", but the page itself still
+        # clearly identifies what it is once opened
+        elder = User.objects.create_user("elder_navlabel3", password="x")
+        elder.groups.add(Group.objects.get_or_create(name=roles.ELDER)[0])
+        c = Client(); c.force_login(elder)
+        b = c.get("/elder/").content.decode()
+        self.assertIn("Elder dashboard", b)   # e.g. the <h1>, just not the nav

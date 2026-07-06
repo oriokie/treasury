@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+{% block title %}Reset your password · {{ SITE_NAME }}{% endblock %}
+{% block auth %}
+<div class="signin">
+  <aside class="signin-brand">
+    <div class="sb-inner">
+      <div class="sb-mark">₳</div>
+      <div class="sb-name">{{ CHURCH_NAME }}</div>
+      <h2 class="sb-headline">Reset your password.</h2>
+      <p class="sb-tagline">If your account has a phone number or email on file, we'll send you instructions to get back in.</p>
+    </div>
+    <div class="sb-foot">{{ SITE_NAME }}</div>
+  </aside>
+
+  <main class="signin-form">
+    <div class="sf-card">
+      <div class="sf-mark">₳</div>
+      <h1>Forgot your password?</h1>
+      <p class="sf-sub">Enter your username and we'll send a reset code or link to the contact on file.</p>
+
+      {% if messages %}{% for m in messages %}<div class="sf-alert sf-alert-ok" role="status">{{ m }}</div>{% endfor %}{% endif %}
+
+      <form method="post" class="sf-fields">
+        {% csrf_token %}
+        <label class="sf-label">
+          <span>Username</span>
+          <input name="username" class="sf-input" autocomplete="username" autofocus required>
+        </label>
+        <button class="sf-btn" type="submit">Send reset instructions</button>
+      </form>
+
+      <p class="sf-help"><a href="{% url 'login' %}">← Back to sign in</a></p>
+    </div>
+    <div class="sf-legal">Secured access · authorised users only</div>
+  </main>
+</div>
+{% include 'partials/auth_page_style.html' %}
+{% endblock %}

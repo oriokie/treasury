@@ -1,5 +1,46 @@
 # Changelog
 
+## v2.19.0 - self-service password reset, Elder nav simplification, font-inheritance fix
+Three follow-ups from live use.
+
+**Added:**
+- **Self-service password reset.** A "Forgot your password?" link on the sign-in page starts a flow that
+  uses whichever contact channel is on file and actually working: a 6-digit SMS code (if a phone number is
+  on record and SMS sending is configured — reusing the existing Advanta SMS integration) or an emailed
+  reset link (Django's own well-tested token mechanism, if an email is on record and real SMTP is
+  configured — this app's email degrades to a harmless console/no-op backend otherwise, same as its other
+  outbound email). The response is always the same regardless of whether the account exists or which
+  channel it has — no way to tell from outside. SMS codes are single-use, expire in 10 minutes, stored
+  hashed (never in plaintext), and requesting a new one invalidates any earlier pending one. Reset requests
+  are rate-limited per account (max 3 within 15 minutes) to stop one account's phone being SMS-bombed.
+
+**Fixed:**
+- **A real bug found while building the above:** messages set via Django's messages framework before
+  redirecting to the sign-in page were never displayed — the sign-in page's layout doesn't share the
+  authenticated-area template section where messages normally render. Fixed by adding the same message
+  rendering to the sign-in page directly; this fixes any future code that redirects to login with a message,
+  not just this feature.
+- **The Elder role's navigation was over-complicated.** Removed the standalone "Elder dashboard (preview)"
+  link added under the treasurer-only Administration section in an earlier release — not needed. An elder's
+  own primary navigation item is now simply labelled "Home", exactly matching what every other role sees for
+  their own landing page (the underlying URL and its "redirect logic" are unchanged).
+- **The user admin page's tabs (and, found alongside it, the same pattern on the Settings page) rendered in
+  the browser's default UI font** (typically Arial) instead of the application's configured font, and didn't
+  respond to the user's font-size/font-family appearance preference the way the rest of the page does.
+  Root cause: browsers don't inherit font styling into `<button>` elements by default, and the tab buttons'
+  CSS was missing the explicit `font: inherit` declaration every other interactive element in this app
+  already includes. Confirmed with real browser screenshots and computed-style checks before and after —
+  the tab font now matches the surrounding page exactly, in every font/size combination.
+
+Tests: 18 new for the reset flow (`accounts.test_self_password_reset`), 3 for the font fix, plus updated
+coverage for the simplified Elder navigation. Targeted regression, as requested (accounts + core only):
+361 tests, all green.
+
+Deploy: migrate (accounts 0007 — adds PasswordResetCode, no existing data affected). For SMS reset codes to
+actually send, SMS must already be configured in Settings (as it is for receipts); for email reset links to
+actually deliver, set `DJANGO_EMAIL_HOST` (and related `DJANGO_EMAIL_*` variables) in the environment —
+without it, the app safely no-ops rather than erroring, exactly as it already does for its other email.
+
 ## v2.18.2 - user edit page layout fix + Elder dashboard nav discoverability
 Two follow-ups reported directly from live use of v2.18.0/2.17.0.
 

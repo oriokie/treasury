@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Enter your code · {{ SITE_NAME }}{% endblock %}
+{% block auth %}
+<div class="signin">
+  <aside class="signin-brand">
+    <div class="sb-inner">
+      <div class="sb-mark">₳</div>
+      <div class="sb-name">{{ CHURCH_NAME }}</div>
+      <h2 class="sb-headline">Check your phone.</h2>
+      <p class="sb-tagline">We've sent a 6-digit code by SMS. Enter it below along with your new password.</p>
+    </div>
+    <div class="sb-foot">{{ SITE_NAME }}</div>
+  </aside>
+
+  <main class="signin-form">
+    <div class="sf-card">
+      <div class="sf-mark">₳</div>
+      <h1>Enter your code</h1>
+      <p class="sf-sub">The code expires 10 minutes after it was sent.</p>
+
+      {% if messages %}{% for m in messages %}<div class="sf-alert{% if m.tags == 'success' %} sf-alert-ok{% endif %}" role="status">{{ m }}</div>{% endfor %}{% endif %}
+
+      <form method="post" class="sf-fields">
+        {% csrf_token %}
+        <label class="sf-label">
+          <span>6-digit code</span>
+          <input name="code" class="sf-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autofocus required>
+        </label>
+        <label class="sf-label">
+          <span>New password</span>
+          <input name="new_password" type="password" class="sf-input" autocomplete="new-password" required>
+        </label>
+        <label class="sf-label">
+          <span>Confirm new password</span>
+          <input name="confirm_password" type="password" class="sf-input" autocomplete="new-password" required>
+        </label>
+        <button class="sf-btn" type="submit">Reset password</button>
+      </form>
+
+      <p class="sf-help"><a href="{% url 'self_reset_request' %}">Didn't get a code? Request another</a> · <a href="{% url 'login' %}">Back to sign in</a></p>
+    </div>
+    <div class="sf-legal">Secured access · authorised users only</div>
+  </main>
+</div>
+{% include 'partials/auth_page_style.html' %}
+{% endblock %}

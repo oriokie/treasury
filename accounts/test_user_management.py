@@ -239,3 +239,33 @@ class UserEditPageLayoutTests(TestCase):
         b = self.c.get(f"/users/{self.target.id}/edit/").content.decode()
         self.assertIn("grid-3", b)
         self.assertIn("form-grid", b)
+
+
+class UserEditFontConsistencyTests(TestCase):
+    """UX fix: the tab buttons on the user admin page (and, found alongside
+    it, the same pattern on settings.html) didn't set `font: inherit`, so
+    browsers fell back to their native UI control font (typically Arial)
+    instead of the application's configured font — meaning the tabs neither
+    matched the rest of the page nor responded to the user's font-family/
+    font-size appearance preference the way every other piece of text does.
+    Confirmed empirically (computed styles via a real browser) before fixing:
+    the tab font-family was "Arial" while the surrounding page was the
+    user's actual configured font."""
+    def test_tab_css_declares_font_inherit(self):
+        css = open("templates/accounts/user_edit.html").read()
+        self.assertIn(".usertabs .tab{font:inherit", css)
+
+    def test_settings_tabs_also_fixed_for_full_system_consistency(self):
+        css = open("templates/settings.html").read()
+        self.assertIn(".settings-tabs .tab{font:inherit", css)
+
+    def test_font_inherit_does_not_clobber_the_bold_weight(self):
+        # font:inherit is a shorthand — it must come BEFORE the font-weight/
+        # font-size overrides in the same rule, or it silently resets them
+        css = open("templates/accounts/user_edit.html").read()
+        idx = css.index(".usertabs .tab{font:inherit")
+        rule = css[idx:idx + 300]
+        self.assertIn("font-weight:600", rule)
+        self.assertIn("font-size:.84rem", rule)
+        # font:inherit must appear BEFORE font-weight within the same rule
+        self.assertLess(rule.index("font:inherit"), rule.index("font-weight:600"))

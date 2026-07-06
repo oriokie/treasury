@@ -38,6 +38,13 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.19.0": "Added self-service password reset - if your account has a phone number on file, you'll get "
+              "a 6-digit code by SMS; otherwise, if it has an email on file, you'll get a reset link. Look "
+              "for \"Forgot your password?\" on the sign-in page. Simplified the Elder role's menu: removed "
+              "the separate preview link from Administration and the elder's own dashboard now just says "
+              "\"Home\", matching every other role. Fixed the Manage User page's tabs rendering in the "
+              "browser's default font instead of the church's chosen appearance - they, and everything else "
+              "on that page, now correctly follow the font and size set in Appearance settings.",
     "2.18.2": "Fixed the Manage User page (Users & roles) looking visibly cramped - every section had "
               "accidentally been squeezed into a narrow, form-width column, including the wide stat panels "
               "and tables. Wide content now uses the full page width; only the actual edit forms stay "

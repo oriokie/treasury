@@ -451,8 +451,8 @@ document.querySelectorAll("#tabs .tab").forEach(b=>b.addEventListener("click",()
 .st-group{display:flex;align-items:center;gap:.15rem}
 .st-group + .st-group{margin-left:.15rem;padding-left:.4rem;border-left:1px solid var(--line)}
 .st-grouplabel{display:none}
-.settings-tabs .tab{border:1px solid transparent;background:none;text-align:center;padding:.4rem .7rem;font-weight:600;
-  color:var(--ink-soft,#555);cursor:pointer;border-radius:7px;font-size:.82rem;white-space:nowrap;
+.settings-tabs .tab{font:inherit;border:1px solid transparent;background:none;text-align:center;padding:.4rem .7rem;
+  color:var(--ink-soft,#555);cursor:pointer;border-radius:7px;font-weight:600;font-size:.82rem;white-space:nowrap;
   transition:background .12s,color .12s}
 .settings-tabs .tab:hover{background:var(--accent-soft,#eef5f2);color:var(--forest,#1f5f4f)}
 .settings-tabs .tab.active{color:#fff;background:linear-gradient(180deg,var(--forest-2,#24705d),var(--forest,#1f5f4f));

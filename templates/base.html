@@ -38,7 +38,7 @@
       <a href="{% url 'missing_receipts' %}" class="{% if request.resolver_match.url_name == 'missing_receipts' %}active{% endif %}"><span class="ic">📌</span> Awaiting receipts</a>
       {% if can.allocate_dev_offering %}<a href="{% url 'dev_unassigned' %}" class="{% if request.resolver_match.url_name == 'dev_unassigned' %}active{% endif %}"><span class="ic">🎯</span> Allocate dev offering</a>{% endif %}
       {% elif is_elder %}
-      <a href="{% url 'elder_dashboard' %}" class="{% if request.resolver_match.url_name == 'elder_dashboard' %}active{% endif %}"><span class="ic">▦</span> Elder dashboard</a>
+      <a href="{% url 'elder_dashboard' %}" class="{% if request.resolver_match.url_name == 'elder_dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
       {% if can.view_reports %}<a href="{% url 'report_index' %}" class="{% if 'report' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▤</span> Reports</a>{% endif %}
       {% else %}
@@ -133,7 +133,6 @@
         <div class="grp-links">
           <a href="{% url 'user_list' %}" class="{% if 'user' in request.resolver_match.url_name %}active{% endif %}">Users &amp; roles</a>
           <a href="{% url 'profile_list' %}" class="{% if 'profile' in request.resolver_match.url_name %}active{% endif %}">Profiles &amp; rights</a>
-          <a href="{% url 'elder_dashboard' %}" class="{% if request.resolver_match.url_name == 'elder_dashboard' %}active{% endif %}">Elder dashboard (preview)</a>
           <a href="{% url 'controls' %}" class="{% if request.resolver_match.url_name == 'controls' %}active{% endif %}">Period locks &amp; controls</a>
           <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">Settings</a>
           <a href="/admin/">Django admin</a>

@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Set a new password · {{ SITE_NAME }}{% endblock %}
+{% block auth %}
+<div class="signin">
+  <aside class="signin-brand">
+    <div class="sb-inner">
+      <div class="sb-mark">₳</div>
+      <div class="sb-name">{{ CHURCH_NAME }}</div>
+      <h2 class="sb-headline">Almost there.</h2>
+      <p class="sb-tagline">Choose a new password to finish resetting your account.</p>
+    </div>
+    <div class="sb-foot">{{ SITE_NAME }}</div>
+  </aside>
+
+  <main class="signin-form">
+    <div class="sf-card">
+      <div class="sf-mark">₳</div>
+      {% if validlink %}
+      <h1>Set a new password</h1>
+      <p class="sf-sub">Enter your new password twice so we can check it matches.</p>
+      {% if form.errors %}<div class="sf-alert" role="alert">{% for field in form %}{% for error in field.errors %}{{ error }} {% endfor %}{% endfor %}</div>{% endif %}
+      <form method="post" class="sf-fields">
+        {% csrf_token %}
+        <label class="sf-label">
+          <span>New password</span>
+          <input name="new_password1" type="password" class="sf-input" autocomplete="new-password" autofocus required>
+        </label>
+        <label class="sf-label">
+          <span>Confirm new password</span>
+          <input name="new_password2" type="password" class="sf-input" autocomplete="new-password" required>
+        </label>
+        <button class="sf-btn" type="submit">Set new password</button>
+      </form>
+      {% else %}
+      <h1>Link expired</h1>
+      <p class="sf-sub">This reset link is invalid or has already been used — links only work once. Request a new one below.</p>
+      <div class="btn-row"><a class="sf-btn" style="display:inline-block;text-align:center;text-decoration:none" href="{% url 'self_reset_request' %}">Request a new link</a></div>
+      {% endif %}
+
+      <p class="sf-help"><a href="{% url 'login' %}">← Back to sign in</a></p>
+    </div>
+    <div class="sf-legal">Secured access · authorised users only</div>
+  </main>
+</div>
+{% include 'partials/auth_page_style.html' %}
+{% endblock %}
