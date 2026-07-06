@@ -26,13 +26,13 @@
 
 <!-- ============================== PROFILE ============================== -->
 <section class="tabpane {% if active_tab == 'profile' %}active{% endif %}" data-pane="profile">
-  <div class="card u-narrow"><div class="bd">
+  <div class="card"><div class="bd">
     <form method="post">{% csrf_token %}<input type="hidden" name="form_name" value="profile_form">
       <div class="form-grid">{% include 'partials/form_fields.html' with form=profile_form %}</div>
       <div class="btn-row"><button class="btn">Save profile</button></div>
     </form>
   </div></div>
-  <div class="card u-narrow u-mt"><div class="hd">Account record</div><div class="bd">
+  <div class="card u-mt"><div class="hd">Account record</div><div class="bd">
     <div class="grid-3">
       <div class="stat"><div class="lbl">Created</div><div class="val">{{ object.date_joined|date:"d M Y, H:i" }}</div></div>
       <div class="stat"><div class="lbl">Created by</div><div class="val">{{ profile.created_by.username|default:"—" }}</div></div>
@@ -44,7 +44,7 @@
 
 <!-- ============================== SECURITY ============================== -->
 <section class="tabpane {% if active_tab == 'security' %}active{% endif %}" data-pane="security">
-  <div class="card u-narrow"><div class="hd">Account status</div><div class="bd">
+  <div class="card"><div class="hd">Account status</div><div class="bd">
     <div class="grid-3">
       <div class="stat"><div class="lbl">Status</div><div class="val">
         {% if not object.is_active %}<span class="pill pill-red">Deactivated</span>
@@ -68,7 +68,7 @@
   </div></div>
 
   {% if not is_self %}
-  <div class="card u-narrow u-mt"><div class="hd">Administrative actions</div><div class="bd">
+  <div class="card u-mt"><div class="hd">Administrative actions</div><div class="bd">
     <div class="action-grid">
       {% if profile.locked %}
       <form method="post" action="{% url 'user_account_action' object.id 'unlock' %}">{% csrf_token %}
@@ -111,7 +111,7 @@
 
 <!-- ============================== ROLES & RIGHTS ============================== -->
 <section class="tabpane {% if active_tab == 'roles' %}active{% endif %}" data-pane="roles">
-  <div class="card u-narrow"><div class="bd">
+  <div class="card"><div class="bd">
     {% if is_self %}
       <p class="help">You can't change your own role or account status — ask another administrator.</p>
     {% else %}
@@ -122,7 +122,7 @@
     {% endif %}
   </div></div>
 
-  <div class="card u-narrow u-mt"><div class="hd">Rights profiles assigned</div><div class="bd">
+  <div class="card u-mt"><div class="hd">Rights profiles assigned</div><div class="bd">
     {% if assigned_profiles %}
       <ul class="plain-list">{% for p in assigned_profiles %}<li>{{ p.name }}{% if p.description %} — <span class="muted u-xs">{{ p.description }}</span>{% endif %}</li>{% endfor %}</ul>
       <p class="help u-xs">Assigned profiles fully replace the role's default rights below — this user's effective rights are the union of the profiles above only.</p>
@@ -132,7 +132,7 @@
     {% endif %}
   </div></div>
 
-  <div class="card u-narrow u-mt"><div class="hd">Effective permissions</div><div class="bd">
+  <div class="card u-mt"><div class="hd">Effective permissions</div><div class="bd">
     {% if effective_rights %}
       <div class="chip-list">{% for r in effective_rights %}<span class="chip">{{ r }}</span>{% endfor %}</div>
     {% else %}<p class="help">No specific rights — access is limited to what their role allows by default.</p>{% endif %}
@@ -141,7 +141,7 @@
 
 <!-- ============================== ACTIVITY ============================== -->
 <section class="tabpane {% if active_tab == 'activity' %}active{% endif %}" data-pane="activity">
-  <div class="card u-narrow"><div class="hd">Recent security events</div><div class="bd bd-flush">
+  <div class="card"><div class="hd">Recent security events</div><div class="bd bd-flush">
     {% if audit_entries %}
     <div class="table-wrap"><table class="ledger compact"><thead><tr><th>When</th><th>Event</th><th>Detail</th></tr></thead><tbody>
       {% for e in audit_entries|slice:":20" %}<tr>
@@ -156,7 +156,7 @@
 
 <!-- ============================== AUDIT LOG ============================== -->
 <section class="tabpane {% if active_tab == 'audit' %}active{% endif %}" data-pane="audit">
-  <div class="card u-narrow"><div class="hd">Full administrative audit trail</div><div class="bd bd-flush">
+  <div class="card"><div class="hd">Full administrative audit trail</div><div class="bd bd-flush">
     {% if audit_entries %}
     <div class="table-wrap"><table class="ledger compact">
       <thead><tr><th>Date &amp; time</th><th>Action</th><th>By</th><th>Before</th><th>After</th><th>Detail</th><th>IP</th></tr></thead>

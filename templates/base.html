@@ -133,6 +133,7 @@
         <div class="grp-links">
           <a href="{% url 'user_list' %}" class="{% if 'user' in request.resolver_match.url_name %}active{% endif %}">Users &amp; roles</a>
           <a href="{% url 'profile_list' %}" class="{% if 'profile' in request.resolver_match.url_name %}active{% endif %}">Profiles &amp; rights</a>
+          <a href="{% url 'elder_dashboard' %}" class="{% if request.resolver_match.url_name == 'elder_dashboard' %}active{% endif %}">Elder dashboard (preview)</a>
           <a href="{% url 'controls' %}" class="{% if request.resolver_match.url_name == 'controls' %}active{% endif %}">Period locks &amp; controls</a>
           <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">Settings</a>
           <a href="/admin/">Django admin</a>

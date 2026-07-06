@@ -157,3 +157,50 @@ class ExistingStaffAccessUnaffectedTests(TestCase):
         for url in ("/elder/", "/executive/", "/reports/"):
             r = c.get(url)
             self.assertIn(r.status_code, (302, 403))
+
+
+class ElderDashboardNavDiscoverabilityTests(TestCase):
+    """UX fix: ElderRequiredMixin already allowed staff to open /elder/
+    directly ("for setup and troubleshooting"), but nothing in the nav let a
+    treasurer discover or reach it without knowing the URL by heart — a
+    treasurer's own nav correctly shows their own Home, not "Elder
+    dashboard", since they aren't one. Added a clearly-labelled preview link
+    under the treasurer-only Administration nav group, alongside Users &
+    roles and Profiles & rights, without changing what a real elder's own
+    nav shows at all."""
+    def test_treasurer_sees_preview_link(self):
+        tr = User.objects.create_user("tr_navdisco", password="x", is_superuser=True)
+        tr.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
+        c = Client(); c.force_login(tr)
+        b = c.get("/").content.decode()
+        self.assertIn("Elder dashboard (preview)", b)
+        self.assertIn('href="/elder/"', b)
+
+    def test_treasurer_can_actually_open_it(self):
+        tr = User.objects.create_user("tr_navdisco2", password="x", is_superuser=True)
+        tr.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
+        c = Client(); c.force_login(tr)
+        r = c.get("/elder/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_real_elder_still_sees_their_own_primary_nav_item_unaffected(self):
+        elder = User.objects.create_user("elder_navdisco", password="x")
+        elder.groups.add(Group.objects.get_or_create(name=roles.ELDER)[0])
+        c = Client(); c.force_login(elder)
+        b = c.get("/elder/").content.decode()
+        self.assertIn("Elder dashboard</a>", b)
+        self.assertNotIn("Elder dashboard (preview)", b)
+
+    def test_non_treasurer_staff_do_not_see_the_admin_only_preview_link(self):
+        au = User.objects.create_user("au_navdisco", password="x")
+        au.groups.add(Group.objects.get_or_create(name="Auditor")[0])
+        c = Client(); c.force_login(au)
+        b = c.get("/").content.decode()
+        self.assertNotIn("Elder dashboard (preview)", b)
+
+    def test_leader_does_not_see_it_either(self):
+        ld = User.objects.create_user("ld_navdisco", password="x")
+        ld.groups.add(Group.objects.get_or_create(name="Leader")[0])
+        c = Client(); c.force_login(ld)
+        b = c.get("/leader/").content.decode()
+        self.assertNotIn("Elder dashboard (preview)", b)

@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.18.2 - user edit page layout fix + Elder dashboard nav discoverability
+Two follow-ups reported directly from live use of v2.18.0/2.17.0.
+
+**Fixed:**
+- **The user admin page (`/users/<id>/edit/`) looked visibly cramped.** Every section had been given the
+  `u-narrow` CSS class (max-width: 560px) — appropriate for the profile edit form, but wrong for the wide
+  account-status stat grid, the administrative-actions grid, and the audit/activity tables, which all
+  rendered squeezed into a narrow column regardless of the page's actual available width. Confirmed visually
+  with real browser screenshots (Playwright + a live server) before and after — the fix removes `u-narrow`
+  from every section except the two genuine forms (profile details, role & rights), matching the same
+  convention this app's other tabbed page (`settings.html`) already uses: plain, full-width cards for
+  form-grids, not narrow ones.
+- **The Elder dashboard had no discoverable link for staff.** `ElderRequiredMixin` already allowed a
+  treasurer (or any staff role) to open `/elder/` directly, explicitly for setup and troubleshooting — but
+  nothing in the navigation let anyone find it without typing the URL from memory, since a treasurer's own
+  nav correctly shows their own Home, not "Elder dashboard" (they aren't one). Added a clearly-labelled
+  "Elder dashboard (preview)" link under the treasurer-only Administration nav group, alongside Users & roles
+  and Profiles & rights. A real elder's own primary nav item is completely unchanged.
+
+Tests: 9 new (4 in `accounts.test_user_management` for the layout fix, 5 in `core.test_elder_role` for the
+nav fix). Targeted regression (the two affected apps only, per this request): accounts + core — 340 tests,
+all green.
+
+Deploy: no migration. Collectstatic recommended (template/CSS changes only) but not required for correctness.
+
 ## v2.18.1 - user list N+1 fix
 Follow-up performance check after v2.18.0's User Management rework, prompted by the pattern of this
 project's earlier performance reviews: verify a new list page doesn't quietly reintroduce a per-row query.

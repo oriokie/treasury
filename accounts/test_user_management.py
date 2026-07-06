@@ -200,3 +200,42 @@ class SelfPermissionModificationTests(TestCase):
             "form_name": "role_form", "role": "Auditor", "active": "on"})
         other.refresh_from_db()
         self.assertTrue(other.groups.filter(name="Auditor").exists())
+
+
+class UserEditPageLayoutTests(TestCase):
+    """UX fix: every section on the user admin page had been given the
+    `u-narrow` class (max-width: 560px) — appropriate for the profile form,
+    but wrong for the wide stat grids and multi-column audit/activity
+    tables, which rendered visibly cramped. Fixed to only constrain the
+    genuinely form-like sections; wide content (stats, tables, action grids)
+    now uses the full available width, matching this app's other list/report
+    pages (verified against templates/settings.html's own convention)."""
+    def setUp(self):
+        self.tr = _tr("tr_layoutcheck")
+        self.target = _plain("layoutchecktarget")
+        self.c = Client(); self.c.force_login(self.tr)
+
+    def test_page_renders_successfully(self):
+        r = self.c.get(f"/users/{self.target.id}/edit/")
+        self.assertEqual(r.status_code, 200)
+
+    def test_wide_sections_no_longer_narrow(self):
+        b = self.c.get(f"/users/{self.target.id}/edit/").content.decode()
+        # the account-status stats grid and the audit/activity tables must
+        # not be squeezed into the narrow (560px) form-width class
+        self.assertNotIn('class="card u-narrow"><div class="hd">Account status',
+                         b)
+        self.assertNotIn(
+            'class="card u-narrow"><div class="hd">Full administrative audit trail', b)
+        self.assertNotIn(
+            'class="card u-narrow"><div class="hd">Recent security events', b)
+
+    def test_all_five_tabs_present(self):
+        b = self.c.get(f"/users/{self.target.id}/edit/").content.decode()
+        for tab in ["Profile", "Security", "Roles &amp; Rights", "Activity", "Audit Log"]:
+            self.assertIn(tab, b)
+
+    def test_grid_layouts_intact(self):
+        b = self.c.get(f"/users/{self.target.id}/edit/").content.decode()
+        self.assertIn("grid-3", b)
+        self.assertIn("form-grid", b)

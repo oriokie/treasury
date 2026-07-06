@@ -38,6 +38,13 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.18.2": "Fixed the Manage User page (Users & roles) looking visibly cramped - every section had "
+              "accidentally been squeezed into a narrow, form-width column, including the wide stat panels "
+              "and tables. Wide content now uses the full page width; only the actual edit forms stay "
+              "narrower for readability. Added a discoverable link to the Elder dashboard for treasurers "
+              "(under Administration) - the page always worked for staff previewing it, but there was no "
+              "way to find it without knowing the web address by heart. A real elder's own home link is "
+              "unchanged.",
     "2.18.1": "Follow-up performance check on the new Users page: the role column was querying the "
               "database once per user shown, even though the page already had everything it needed loaded "
               "in bulk. Fixed - the page now loads in a small, fixed number of queries regardless of how "
