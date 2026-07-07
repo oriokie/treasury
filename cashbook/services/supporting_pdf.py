@@ -38,19 +38,31 @@ def _wrap_lines(text, max_chars):
 
 
 def build_receipt_grid_pdf(attachments_by_month, church="", currency="KES",
-                           cols=3, rows=3, max_attachments=600):
-    """A compact, print-friendly PDF of receipt images laid out in a grid
-    (several thumbnails per page, like a contact sheet) rather than one
-    document per page — the shape a supporting-documents audit bundle needs,
-    but not what a quick visual archive/filing catalog needs. Groups are
-    separated by a light inline label rather than a forced page break, so a
-    short month doesn't waste a page on its own.
+                           cols=3, max_attachments=600):
+    """A compact, print-friendly PDF of receipt images and notes laid out in
+    a masonry-style column-packed grid (like a Pinterest board), rather than
+    one document per page — the shape a supporting-documents audit bundle
+    needs, but not what a quick visual archive/filing catalog needs.
+
+    Each item's height is computed from its actual content — an image gets
+    a height proportional to its own aspect ratio (capped to sane bounds so
+    one extreme image can't dominate a page); a text/e-receipt note gets a
+    height proportional to how many wrapped lines it actually needs. Each
+    item is then placed into whichever column currently has the most room,
+    so short items pack tightly and tall items get the room they need,
+    instead of every cell being forced to the same fixed size regardless of
+    content (which either wasted a lot of white space around short notes,
+    or cramped image proportions to fit a rigid cell).
+
+    Groups are separated by a light inline label, realigning all columns to
+    the same height first — never a forced page break, so a short month
+    doesn't waste a page on its own.
 
     attachments_by_month: an OrderedDict of {"Month Year": [attachment, ...]}
     (the exact shape ReceiptArchiveView already builds for the HTML page).
     Non-image attachments (text notes, e-receipt links, unrecognised files)
-    get a small placeholder cell with their label, so nothing is silently
-    dropped from the printed archive.
+    get a placeholder cell showing their actual content, so nothing is
+    silently dropped from the printed archive.
 
     Returns (bytes, stats) — stats = {"documents": n, "images": n, "other": n}.
     """
@@ -63,9 +75,14 @@ def build_receipt_grid_pdf(attachments_by_month, church="", currency="KES",
     grid_top = h - margin - header_h
     grid_bottom = margin + footer_h
     cell_w = (w - 2 * margin) / cols
-    cell_h = (grid_top - grid_bottom) / rows
     pad = 3 * mm
+    col_gap = 4 * mm
+    content_w = cell_w - 2 * pad
+    line_step = 3.2 * mm
+    caption_h = 10 * mm
     stats = {"documents": 0, "images": 0, "other": 0}
+    page_no = 1
+    col_y = [grid_top] * cols
 
     def draw_header(period_label):
         c.setFont("Helvetica-Bold", 12)
@@ -86,77 +103,70 @@ def build_receipt_grid_pdf(attachments_by_month, church="", currency="KES",
         c.setFillGray(0)
 
     period_label = ""
-    page_no = 1
-    col = row = 0
     draw_header(period_label)
 
     def new_page():
-        nonlocal col, row, page_no
+        nonlocal page_no
         draw_footer(page_no)
         c.showPage()
         page_no += 1
-        col = row = 0
         draw_header(period_label)
+        for i in range(cols):
+            col_y[i] = grid_top
 
-    def cell_origin():
-        x = margin + col * cell_w
-        y = grid_top - (row + 1) * cell_h
-        return x, y
-
-    def advance_cell():
-        nonlocal col, row
-        col += 1
-        if col >= cols:
-            col = 0
-            row += 1
-            # deliberately lazy: don't start a new page here even if the grid
-            # is now full — only do that right before the NEXT item actually
-            # needs to be drawn (see ensure_room below). Otherwise placing the
-            # very last item that exactly fills the grid triggers a pointless
-            # blank trailing page.
-
-    def ensure_room():
-        if row >= rows:
-            new_page()
+    def shortest_col():
+        """The column with the most room left — keeps columns roughly even,
+        the same principle a masonry/Pinterest-style layout uses."""
+        return col_y.index(max(col_y))
 
     def draw_month_label(label):
-        # a light inline separator, only consuming a fraction of one row's
-        # height — never a forced page break, so a short month doesn't waste
-        # a whole page of its own
-        nonlocal col, row
-        if col != 0:
-            col = 0
-            row += 1
-        ensure_room()
-        x = margin
-        y = grid_top - row * cell_h - 4 * mm
+        # realign every column to the same height first, so the label reads
+        # as a clean full-width divider — never a forced page break, so a
+        # short month doesn't waste a page of its own
+        y = min(col_y)
+        if y - 8 * mm < grid_bottom:
+            new_page()
+            y = grid_top
         c.setFont("Helvetica-Bold", 9)
         c.setFillGray(0.2)
-        c.drawString(x + pad, y, label)
+        c.drawString(margin + pad, y - 5 * mm, label)
         c.setStrokeGray(0.85)
-        c.line(x + pad, y - 1.5 * mm, w - margin - pad, y - 1.5 * mm)
+        c.line(margin + pad, y - 6.5 * mm, w - margin - pad, y - 6.5 * mm)
         c.setFillGray(0)
-        # the label uses a slice of this row; shift down without wasting the
-        # rest of the row for actual thumbnails
-        nonlocal_shift = 7 * mm
-        return nonlocal_shift
+        for i in range(cols):
+            col_y[i] = y - 9 * mm
 
-    label_shift = 0
+    def image_height(iw, ih):
+        if not iw or not ih:
+            return 40 * mm
+        raw_h = content_w * (ih / iw)
+        return max(25 * mm, min(raw_h, 90 * mm))
+
+    def text_wrap_and_height(body):
+        max_chars = max(int(content_w / 3.6), 10)   # ~7pt Helvetica width estimate
+        lines = _wrap_lines(body, max_chars)
+        max_lines = 10
+        truncated = len(lines) > max_lines
+        lines = lines[:max_lines]
+        if truncated and lines:
+            last = lines[-1]
+            lines[-1] = (last[:-3].rstrip() + "...") if len(last) > 3 else "..."
+        n = max(len(lines), 2)
+        needed_h = 4 * mm + line_step + n * line_step + 2 * mm
+        return lines, needed_h
+
     count = 0
     for month, docs in attachments_by_month.items():
-        label_shift = draw_month_label(month)
+        draw_month_label(month)
         for a in docs:
             if count >= max_attachments:
                 break
             count += 1
-            ensure_room()
-            x, y = cell_origin()
-            inner_x, inner_y = x + pad, y + pad
-            inner_w, inner_h = cell_w - 2 * pad, cell_h - 2 * pad - label_shift
-            top_y = y + cell_h - pad - label_shift
-            label_shift = 0   # only the first row after a month label is shifted
 
-            drew_image = False
+            # --- figure out what this item is and how tall it needs to be,
+            # before deciding which column it goes in ---
+            img_reader = None
+            iw = ih = None
             f = getattr(a, "file", None)
             if f:
                 name = (getattr(f, "name", "") or "").lower()
@@ -164,47 +174,51 @@ def build_receipt_grid_pdf(attachments_by_month, church="", currency="KES",
                     try:
                         with f.open("rb") as fh:
                             data = io.BytesIO(fh.read())
-                        img = ImageReader(data)
-                        iw, ih = img.getSize()
-                        if iw and ih:
-                            avail_w, avail_h = inner_w, inner_h - 9 * mm
-                            scale = min(avail_w / iw, avail_h / ih, 1.0) \
-                                if avail_w > 0 and avail_h > 0 else 0
-                            dw, dh = iw * scale, ih * scale
-                            ix = inner_x + (inner_w - dw) / 2
-                            iy = top_y - dh
-                            c.drawImage(img, ix, iy, dw, dh,
-                                       preserveAspectRatio=True, mask="auto")
-                            drew_image = True
-                            stats["images"] += 1
+                        img_reader = ImageReader(data)
+                        iw, ih = img_reader.getSize()
                     except Exception:   # noqa: BLE001 — one bad file never stops the run
-                        drew_image = False
+                        img_reader = None
 
-            if not drew_image:
-                box_h = inner_h - 9 * mm
-                box_top = top_y
-                box_bottom = top_y - box_h
+            note_text = (a.text or "").strip()
+            link_text = (a.link or "").strip()
+            lines = None
+            if img_reader is not None:
+                content_h = image_height(iw, ih)
+            elif note_text or link_text:
+                lines, content_h = text_wrap_and_height(note_text or link_text)
+            else:
+                content_h = 20 * mm
+
+            total_h = content_h + caption_h
+
+            chosen = shortest_col()
+            if col_y[chosen] - total_h < grid_bottom:
+                new_page()
+                chosen = shortest_col()
+
+            x = margin + chosen * cell_w
+            y_top = col_y[chosen]
+            inner_x = x + pad
+            box_top = y_top
+            box_bottom = y_top - content_h
+
+            if img_reader is not None:
+                try:
+                    scale = min(content_w / iw, content_h / ih, 1.0) if iw and ih else 0
+                    dw, dh = iw * scale, ih * scale
+                    ix = inner_x + (content_w - dw) / 2
+                    iy = box_bottom + (content_h - dh) / 2
+                    c.drawImage(img_reader, ix, iy, dw, dh,
+                               preserveAspectRatio=True, mask="auto")
+                    stats["images"] += 1
+                except Exception:   # noqa: BLE001
+                    img_reader = None
+
+            if img_reader is None:
                 c.setStrokeGray(0.85)
-                c.rect(inner_x, box_bottom, inner_w, box_h)
-                note_text = (a.text or "").strip()
-                link_text = (a.link or "").strip()
-                if note_text or link_text:
+                c.rect(inner_x, box_bottom, content_w, content_h)
+                if lines is not None:
                     label = "Text / e-receipt note:" if note_text else "E-receipt link:"
-                    body = note_text or link_text
-                    line_step = 3.2 * mm
-                    max_chars = max(int(inner_w / 3.6), 10)   # ~7pt Helvetica width estimate
-                    # matches the drawing loop exactly: 4mm top offset, one
-                    # line_step consumed by the label, then one line_step per
-                    # body line — so max_lines here can never disagree with
-                    # what the loop below actually has room to draw.
-                    available = box_h - 4 * mm - line_step
-                    max_lines = max(int(available / line_step), 1)
-                    lines = _wrap_lines(body, max_chars)
-                    truncated = len(lines) > max_lines
-                    lines = lines[:max_lines]
-                    if truncated and lines:
-                        last = lines[-1]
-                        lines[-1] = (last[:-3].rstrip() + "...") if len(last) > 3 else "..."
                     ty = box_top - 4 * mm
                     c.setFont("Helvetica-Bold", 6.5)
                     c.setFillGray(0.35)
@@ -220,30 +234,28 @@ def build_receipt_grid_pdf(attachments_by_month, church="", currency="KES",
                 else:
                     c.setFont("Helvetica", 7)
                     c.setFillGray(0.5)
-                    c.drawCentredString(inner_x + inner_w / 2, box_bottom + box_h / 2,
+                    c.drawCentredString(inner_x + content_w / 2, box_bottom + content_h / 2,
                                        "No document attached")
                 c.setFillGray(0)
                 stats["other"] += 1
 
             # caption
             exp = a.expense
-            cap_y = y + pad + 7 * mm
+            cap_y = box_bottom - 3.5 * mm
             c.setFont("Helvetica-Bold", 6.5)
             c.setFillGray(0.15)
-            c.drawString(inner_x, cap_y,
-                        f"#{exp.id} · {exp.date:%d %b %y}"[:40])
+            c.drawString(inner_x, cap_y, f"#{exp.id} · {exp.date:%d %b %y}"[:40])
             c.setFont("Helvetica", 6.5)
             c.setFillGray(0.35)
             dept = exp.department.name if exp.department_id else "-"
             c.drawString(inner_x, cap_y - 3 * mm, dept[:32])
             c.setFont("Helvetica-Bold", 7)
             c.setFillGray(0.05)
-            c.drawString(inner_x, cap_y - 6.2 * mm,
-                        f"{currency} {float(exp.amount):,.2f}")
+            c.drawString(inner_x, cap_y - 6.2 * mm, f"{currency} {float(exp.amount):,.2f}")
             c.setFillGray(0)
             stats["documents"] += 1
 
-            advance_cell()
+            col_y[chosen] = box_bottom - caption_h - col_gap
         if count >= max_attachments:
             break
 

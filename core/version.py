@@ -38,6 +38,20 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.21.1": "Critical fix: signing in with the wrong password too many times could lock out every "
+              "other user at the same location, not just the one account - anyone sharing the same office "
+              "network/Wi-Fi would be blocked from signing in until the lockout cleared, even though their "
+              "own account never had a single failed attempt. Now only the specific account (from that "
+              "specific network) gets locked; everyone else is unaffected. Also fixed the lockout message "
+              "to show on the normal sign-in page instead of a separate, unstyled page.",
+    "2.21.0": "The compact receipt PDF now sizes each box to fit its actual content instead of a fixed "
+              "size for everything - short notes take less room, images keep their real proportions, so "
+              "there is far less wasted white space. Removed an accidentally duplicated date filter on the "
+              "receipts page. Bulk Send to review now only combines entries that share the same M-Pesa "
+              "reference or bank reference - it no longer combines different people's gifts just because "
+              "they used the same everyday reference word, and it works correctly for a single selected "
+              "entry too. Reversal entries on the Transactions page now show their amount in brackets, "
+              "like (500), so it reads clearly as the offsetting side of the entry it cancels out.",
     "2.20.1": "Fixed \"CSRF verification failed\" when sending an item back to review, and moved that "
               "action to the top of the Transactions page as a bulk action - select one or more entries "
               "first, then click Send to review (selecting both halves of a wrongly-split entry now "

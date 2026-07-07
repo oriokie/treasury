@@ -1,5 +1,74 @@
 # Changelog
 
+## v2.21.1 - CRITICAL: a locked-out user was locking out everyone at the same location
+**One account's failed sign-in attempts could lock out every other user sharing the same network** — e.g.
+everyone in the same church office, on the same Wi-Fi/router, all sharing one public IP address.
+
+**Root cause.** `AXES_LOCKOUT_PARAMETERS` was set to `["username", "ip_address"]` — a *flat* list, which
+django-axes treats as two independent conditions: locked out if the username alone crosses the failure
+limit, **or** if the IP address alone does, checked separately. Since many users can share one IP in a
+small-office deployment, one person mistyping their password enough times tripped the *IP-based* check on
+its own — locking out that IP for every username attempting to sign in from it, regardless of whether their
+own account had ever failed at all. The error message shown was django-axes' own literal default text
+("Account locked: too many login attempts...") on its own bare, unstyled response page, confirming this was
+axes' built-in lockout — not anything this application added deliberately.
+
+**Fixed** by changing to the *combination* form, `[["username", "ip_address"]]` — nested, not flat — which
+locks out only the specific (username, IP) pair that actually failed repeatedly. Verified end-to-end with two
+different accounts attempting from the exact same client: after one account is locked out, the other signs in
+normally. The failing account itself remains correctly locked from that network for the cooloff period (15
+minutes), and can still be reached from a different network if needed.
+
+**Also fixed** the lockout response itself: it now redirects back to the application's own sign-in page with
+a clear message ("Too many failed sign-in attempts...") instead of showing django-axes' separate, bare
+default page.
+
+Tests: 5 new, exercising the actual reported scenario directly (two users, one shared IP, one intentionally
+locked out) with django-axes deliberately re-enabled for the test (it's normally disabled during the test
+suite to avoid interfering with other tests' rapid login calls). Regression: accounts + core — 366 tests,
+all green.
+
+Deploy: no migration. This takes effect immediately on restart; no other action needed.
+
+## v2.21.0 - receipt PDF masonry layout, strict split-grouping, reversal display
+Three fixes plus a written architecture recommendation (see below, no code shipped for that item).
+
+**Improved:**
+- **Compact receipt PDF now uses a masonry-style, content-sized layout** instead of a fixed grid — each
+  item's box height is computed from its own content (an image gets a height proportional to its real aspect
+  ratio, capped to sane bounds; a text/e-receipt note gets a height proportional to how many wrapped lines it
+  actually needs), and each item is placed into whichever column currently has the most room. Short notes no
+  longer reserve a large, mostly-empty box; tall images get the room they need without being cramped into a
+  fixed cell. Verified the computed heights are genuinely content-proportional (not just visually) and that
+  every item still fits fully within the page.
+
+**Fixed:**
+- **Removed a duplicated date-range filter** on the Expense Receipts page — the standard period-selector
+  partial had accidentally been included twice.
+- **Bulk Send to review combined unrelated entries that happened to share a reference and date.** A common
+  free-text reference like "tithe" is often used by many different people on the same day — the bulk action
+  was treating any of them as "the same split" and wrongly merging separate people's gifts into one entry.
+  Added `Transaction.strict_split_siblings()`, which only groups by a genuine bank-assigned identifier (the
+  core_ref split-suffix pattern, or an exact M-Pesa reference) — used by Send to review specifically. The
+  existing, looser `split_siblings()` is untouched, since cash-entry deletion genuinely needs its reference-
+  based fallback (a cash entry has no bank identifier to match on at all). Also confirmed — with a real
+  browser test, not just the backend — that selecting a single entry and using the bulk action works
+  correctly.
+- **Reversal (contra) entries now display their amount in parentheses**, like a debit, e.g. `(500.00)`. A
+  reversal keeps the same direction and a positive amount as its original by design (the ledger nets it to
+  zero by not posting either side at all, not by inverting the sign) — but the transaction list showed both
+  sides as identical positive figures, with no visual cue that they cancel out.
+
+**Recommendation (no code — advisory only, as requested):** a dedicated Bank Statement Register with
+line-level reconciliation against imported transactions. See the project notes for the full write-up:
+what exists today, why a register would add real audit value beyond it, and two integration paths (a
+standalone feature alongside the current importer, or extending the importer to feed both).
+
+Tests: 4 new for the masonry layout, 11 new for strict grouping + reversal display. Targeted regression
+(giving, statements, cashbook): 596 tests, all green.
+
+Deploy: no migration.
+
 ## v2.20.1 - CSRF fix + bulk send-to-review, receipt PDF note content, ingest.py allocation fix
 Three fixes to what shipped in v2.20.0.
 

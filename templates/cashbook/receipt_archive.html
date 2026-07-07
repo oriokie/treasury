@@ -15,7 +15,6 @@
 <div class="page-head"><div><h1>Expense receipts</h1><div class="sub">Supporting documents for {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · {{ count }} document{{ count|pluralize }}</div></div>
 <div class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&download=zip">⬇ Download all (ZIP)</a><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=pdf" title="A compact grid PDF — several receipts per page, generated on the server for consistent, predictable page count">⬇ Download PDF (compact)</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
 {% include 'ui/period_selector.html' %}
-{% include "ui/period_selector.html" %}
 <p class="help no-print">Receipts are filed by the month each expense was incurred. Use a wide date range (e.g. a full year) and the ZIP download to assemble everything for audit.</p>
 
 {% for month, docs in groups.items %}

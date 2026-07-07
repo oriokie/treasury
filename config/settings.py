@@ -231,9 +231,21 @@ import sys as _sys
 AXES_ENABLED = "test" not in _sys.argv      # disable lockout during the test suite
 AXES_FAILURE_LIMIT = int(os.environ.get("AXES_FAILURE_LIMIT", "5"))
 AXES_COOLOFF_TIME = 0.25          # hours (15 minutes) before a locked account can retry
-AXES_LOCKOUT_PARAMETERS = ["username", "ip_address"]
+# Combination (nested list), NOT ["username", "ip_address"] (a flat list means
+# "locked out if EITHER the username OR the ip_address alone crosses the
+# failure limit" - independently). With a flat list, several people sharing
+# one office network/IP would all get locked out the moment any ONE of them
+# mistyped their password enough times, since the IP itself trips the limit
+# regardless of which username was being tried. The nested form here locks
+# out only the specific (username, ip) pair that actually failed repeatedly —
+# other accounts, and the same account from a different network, are
+# unaffected.
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
 AXES_LOCKOUT_TEMPLATE = None
+# Route a lockout back through the app's own login page (with a clear,
+# styled message) instead of axes' bare, unstyled default response.
+AXES_LOCKOUT_CALLABLE = "accounts.auth.axes_lockout_response"
 
 # --- I18N / TZ --------------------------------------------------------------
 LANGUAGE_CODE = "en-us"

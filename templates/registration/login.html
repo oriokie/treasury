@@ -25,6 +25,7 @@
 
       {% if form.errors %}{% if "account_locked" in form.non_field_errors.as_data.0.code|default:"" %}<div class="sf-alert" role="alert">{{ form.non_field_errors.0 }}</div>{% else %}<div class="sf-alert" role="alert">The username or password you entered is incorrect.</div>{% endif %}{% endif %}
       {% if request.GET.locked %}<div class="sf-alert" role="alert">Your account has been suspended by an administrator. Contact your treasurer for details.</div>{% endif %}
+      {% if request.GET.axeslocked %}<div class="sf-alert" role="alert">Too many failed sign-in attempts. Please wait about 15 minutes and try again.</div>{% endif %}
       {% if messages %}{% for m in messages %}<div class="sf-alert{% if m.tags == 'success' %} sf-alert-ok{% endif %}" role="status">{{ m }}</div>{% endfor %}{% endif %}
 
       <form method="post" id="signinForm" class="sf-fields">

@@ -1249,7 +1249,7 @@ class TransactionSendToReviewView(TreasurerRequiredMixin, View):
             return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
 
         reason = (request.POST.get("reason") or "").strip()
-        group = [t] + list(t.split_siblings())
+        group = [t] + list(t.strict_split_siblings())
         total = Decimal(0)
         reversed_ids = []
         for member in group:
@@ -1923,7 +1923,7 @@ class TransactionBulkReverseView(TreasurerRequiredMixin, View):
                 skipped += 1
                 seen_ids.add(t.pk)
                 continue
-            group = [t] + list(t.split_siblings())
+            group = [t] + list(t.strict_split_siblings())
             reversible = [m for m in group if not m.is_reversed and not m.is_reversal
                          and not period_locked(m.date)]
             if not reversible:

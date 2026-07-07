@@ -349,6 +349,35 @@ class Transaction(models.Model):
             original=self, contra=contra, reason=reason, created_by=user)
         return contra
 
+    def strict_split_siblings(self):
+        """Like split_siblings(), but deliberately narrower: only matches by
+        a bank-assigned unique identifier (the core_ref base, or an exact
+        M-Pesa reference) — never the loose "same reference text + date"
+        fallback split_siblings() also checks.
+
+        That fallback exists because a CASH entry has no bank identifier at
+        all, so cash-side split cascades (e.g. deleting a cash entry and its
+        siblings) genuinely need it. But a plain reference like "tithe" or
+        "offering" is payer-entered free text, not a unique identifier —
+        two completely unrelated people can easily enter the same one on
+        the same day, and reference-based matching would wrongly treat them
+        as parts of the same split. Used by "send back to review", which
+        must never combine two different people's unrelated gifts into one
+        entry just because they typed the same word."""
+        base = None
+        if self.core_ref:
+            base = self.core_ref.split("-S")[0]
+        q = models.Q(pk__in=[])
+        if base:
+            q |= models.Q(core_ref=base) | models.Q(core_ref__startswith=f"{base}-S")
+        if self.mpesa_ref:
+            q |= models.Q(mpesa_ref__iexact=self.mpesa_ref, date=self.date)
+        if not base and not self.mpesa_ref:
+            return Transaction.objects.none()
+        return Transaction.objects.filter(
+            q, channel=self.channel, direction=self.direction,
+            is_reversal=False, is_reversed=False).exclude(pk=self.pk)
+
     def split_siblings(self):
         """Other ledger rows that are parts of the SAME split contribution as this one.
 

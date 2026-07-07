@@ -149,3 +149,14 @@ class TwoFactorMiddleware:
             return SiteConfig.get().require_2fa_for_treasurers and is_treasurer(user)
         except Exception:
             return False
+
+
+def axes_lockout_response(request, *args, **kwargs):
+    """Called by django-axes instead of its own bare, unstyled lockout page.
+    Redirects back to the app's own login page with a query flag, which
+    renders a clear message in the app's normal styling — the same pattern
+    already used for an administrator-suspended account (?locked=1), kept as
+    a visually distinct flag (?axeslocked=1) since the two situations have
+    different remedies: an admin-suspended account needs a treasurer to
+    reinstate it, while a failed-attempts lockout just needs a short wait."""
+    return redirect("/accounts/login/?axeslocked=1")
