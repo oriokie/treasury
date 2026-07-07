@@ -1,0 +1,37 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Audit history · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Audit history</h1>
+  <div class="sub">Entry #{{ txn.id }} · {{ txn.date|date:"d M Y" }} · {{ txn.payer_name|default:"—" }} · KES {{ txn.amount|floatformat:2|intcomma }}</div></div>
+<a class="btn btn-ghost" href="{% url 'transaction_list' %}">← Back to transactions</a></div>
+
+<div class="card"><div class="bd bd-flush">
+{% if entries %}
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>When</th><th>By</th><th>Change</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td class="mono u-xs">{{ e.record.history_date|date:"d M Y, H:i" }}</td>
+      <td>{{ e.record.history_user.username|default:"System" }}</td>
+      <td>
+        {% if e.record.history_type == "+" %}<span class="pill pill-green">Created</span>
+        {% elif not e.changes %}<span class="muted u-xs">No tracked field changed</span>
+        {% else %}
+          <ul class="plain-list">
+          {% for field, old, new in e.changes %}
+            <li><b>{{ field }}</b>: <span class="muted">{{ old|default:"—" }}</span> → {{ new|default:"—" }}</li>
+          {% endfor %}
+          </ul>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<div class="ws-empty"><div class="we-mark">◷</div><div class="we-title">No history recorded</div></div>
+{% endif %}
+</div></div>
+<style>.plain-list{margin:0;padding-left:1.1rem;font-size:.85rem}</style>
+{% endblock %}

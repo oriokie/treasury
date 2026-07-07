@@ -59,6 +59,12 @@ def _group_split_siblings(transactions):
     silently pulled back in, so the export always aggregates exactly what's
     on screen, nothing more."""
     def _key(t):
+        # a reversal (or a reversed original) is a correction entry, never a
+        # split sibling — it must never be silently combined with anything
+        # else, even if it happens to share a core_ref/mpesa_ref/reference
+        # with some unrelated row, so it always gets its own unique key
+        if t.is_reversed or t.is_reversal:
+            return ("solo", t.pk)
         if t.core_ref:
             return ("core", t.core_ref.split("-S")[0], t.direction)
         if t.mpesa_ref:
@@ -119,7 +125,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             header = ["Date", "Sabbath", "Channel", "Direction", "Payer", "Member",
                       "Phone", "Fund", "Dev group", "Reference", "M-Pesa ref",
                       "Core ref", "Bank receipt", "Receipt status", "Status",
-                      "Confirmed", "Amount"]
+                      "Confirmed", "Entry status", "Amount"]
 
             def _receipt_status(t):
                 if t.processed_via_envelope or t.channel == Transaction.Channel.ENVELOPE:
@@ -134,10 +140,25 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                 labels = {t.dev_group.label for t in members if t.dev_group_id}
                 return " + ".join(sorted(labels)) if labels else ""
 
+            def _entry_status(t):
+                if t.is_reversal:
+                    return "Reversal"
+                if t.is_reversed:
+                    return "Reversed"
+                return ""
+
             rows = []
             for members in _group_split_siblings(list(qs)):
                 first = members[0]
-                total = sum((t.amount for t in members), Decimal(0))
+                # A reversal keeps the SAME direction and a positive amount as
+                # its original by design (the ledger nets it to zero by not
+                # posting either side, not by inverting the stored sign) — so
+                # without this, summing the Amount column double-counted a
+                # reversed transaction (original + reversal both positive)
+                # instead of netting to zero, exactly like the transaction
+                # list's own display already correctly shows in parentheses.
+                total = sum(((-t.amount if t.is_reversal else t.amount) for t in members),
+                           Decimal(0))
                 rows.append([first.date.isoformat(),
                      first.service_sabbath.isoformat() if first.service_sabbath else "",
                      first.get_channel_display(), first.get_direction_display(),
@@ -150,6 +171,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                      first.bank_receipt or "", _receipt_status(first),
                      first.get_allocation_status_display(),
                      "Yes" if first.confirmed else "",
+                     _entry_status(first),
                      float(total if first.direction == "CREDIT" else -total)])
             if export == "xlsx":
                 return xlsx_response("transactions.xlsx", header, rows,
@@ -217,8 +239,10 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                              church=SiteConfig.get().church_name)
 
     def get_queryset(self):
-        qs = (Transaction.objects.select_related("department", "member", "dev_group")
-              .order_by("-date", "-id"))
+        order = ("date", "id") if self.request.GET.get("sort") == "oldest" else ("-date", "-id")
+        qs = (Transaction.objects.select_related("department", "member", "dev_group",
+                                                  "bank_account")
+              .order_by(*order))
         q = self.request.GET.get("q")
         channel = self.request.GET.get("channel")
         status = self.request.GET.get("status")
@@ -257,6 +281,38 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             qs = qs.filter(date__gte=df)
         if dtv:
             qs = qs.filter(date__lte=dtv)
+
+        direction = self.request.GET.get("direction")
+        if direction:
+            qs = qs.filter(direction=direction)
+        amt_min = self.request.GET.get("amount_min")
+        amt_max = self.request.GET.get("amount_max")
+        try:
+            if amt_min not in (None, ""):
+                qs = qs.filter(amount__gte=Decimal(amt_min))
+        except InvalidOperation:
+            pass
+        try:
+            if amt_max not in (None, ""):
+                qs = qs.filter(amount__lte=Decimal(amt_max))
+        except InvalidOperation:
+            pass
+        member_q = self.request.GET.get("member")
+        if member_q:
+            qs = qs.filter(Q(member__name__icontains=member_q) |
+                          Q(payer_name__icontains=member_q))
+        bank_account = self.request.GET.get("bank_account")
+        if bank_account:
+            qs = qs.filter(bank_account_id=bank_account)
+        imported_by = self.request.GET.get("imported_by")
+        if imported_by:
+            qs = qs.filter(statement_import__uploaded_by_id=imported_by)
+        if self.request.GET.get("reversed_only"):
+            qs = qs.filter(Q(is_reversed=True) | Q(is_reversal=True))
+        if self.request.GET.get("receipted_only"):
+            qs = qs.filter(Q(processed_via_envelope=True) | Q(manual_receipt=True))
+        if self.request.GET.get("manual_receipt_only"):
+            qs = qs.filter(manual_receipt=True)
         return qs
 
     def get_context_data(self, **kwargs):
@@ -264,11 +320,17 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         ctx["departments"] = Department.objects.filter(active=True, selectable=True)
         ctx["channels"] = Transaction.Channel.choices
         ctx["statuses"] = Transaction.Status.choices
+        ctx["directions"] = Transaction.Direction.choices
         ctx["filters"] = self.request.GET
         ctx["unallocated_count"] = Transaction.objects.active().filter(
             department__isnull=True, excluded_from_income=False).count()
         ctx["noflund_total"] = Transaction.objects.active().filter(
             department__isnull=True).count()
+        from statements.models import BankAccount
+        from django.contrib.auth.models import User
+        ctx["bank_accounts"] = BankAccount.objects.filter(active=True).order_by("name")
+        ctx["importers"] = (User.objects.filter(statementimport__isnull=False)
+                           .distinct().order_by("username"))
         # summary stats for the filtered set (header cards)
         from django.db.models import Sum, Count, Q as _Q
         qs = self.get_queryset()
@@ -284,8 +346,52 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         ctx["sum_review"] = agg["review"] or 0
         ctx["has_filters"] = any(self.request.GET.get(k) for k in
                                  ("q", "channel", "status", "department",
-                                  "date_from", "date_to"))
+                                  "date_from", "date_to", "direction", "amount_min",
+                                  "amount_max", "member", "bank_account", "imported_by",
+                                  "reversed_only", "receipted_only", "manual_receipt_only"))
+        ctx["sort"] = self.request.GET.get("sort") or "newest"
+        ctx["running_balances"] = self._running_balances(ctx["transactions"], qs)
         return ctx
+
+    def _running_balances(self, page_items, filtered_qs):
+        """Balance after each transaction on the current page, computed
+        chronologically (oldest to newest) and scoped to whatever filters
+        are currently applied — so filtering to one fund shows that fund's
+        own running balance, not the whole church's. A reversal is
+        subtracted (it's an offsetting entry, not new income — see the
+        Excel export fix for the same principle) so the running total
+        matches what actually happened to the balance, not a double-count.
+
+        Only ever queries the current page's rows plus one aggregate for
+        "everything before this page" — never the full, unbounded history —
+        so this stays cheap regardless of how many transactions exist."""
+        from decimal import Decimal
+        from django.db.models import Sum, Case, When, F
+
+        page_list = list(page_items)
+        if not page_list:
+            return {}
+        chrono = sorted(page_list, key=lambda t: (t.date, t.id))
+        earliest = chrono[0]
+
+        def _signed_sum(queryset):
+            agg = queryset.aggregate(total=Sum(Case(
+                When(is_reversal=True, then=-F("amount")),
+                When(direction=Transaction.Direction.DEBIT, then=-F("amount")),
+                default=F("amount"))))
+            return agg["total"] or Decimal(0)
+
+        opening = _signed_sum(filtered_qs.filter(
+            Q(date__lt=earliest.date) | Q(date=earliest.date, id__lt=earliest.id)))
+
+        balances = {}
+        running = opening
+        for t in chrono:
+            signed = (-t.amount if (t.is_reversal or t.direction == Transaction.Direction.DEBIT)
+                     else t.amount)
+            running += signed
+            balances[t.id] = running
+        return balances
 
 
 class ReviewQueueView(ReadAccessMixin, ListView):
@@ -1284,6 +1390,35 @@ class TransactionSendToReviewView(TreasurerRequiredMixin, View):
         return redirect("queue")
 
 
+class TransactionHistoryView(ReadAccessMixin, View):
+    """The audit trail for one ledger entry — who created it and every
+    change since, from django-simple-history's own tracking (already
+    recorded on every save; this view is the first place it's actually
+    surfaced to a user for a single transaction, rather than only in the
+    all-models Audit Log report)."""
+    def get(self, request, pk):
+        from django.shortcuts import render
+        t = get_object_or_404(Transaction, pk=pk)
+        records = list(t.history.all().select_related("history_user").order_by("history_date"))
+        FIELDS = ["amount", "department_id", "dev_group_id", "allocation_status",
+                 "confirmed", "is_reversed", "is_reversal", "manual_receipt",
+                 "processed_via_envelope", "reference", "payer_name", "payer_phone"]
+        entries = []
+        prev = None
+        for rec in records:
+            changes = []
+            if prev is not None:
+                for f in FIELDS:
+                    old, new = getattr(prev, f, None), getattr(rec, f, None)
+                    if old != new:
+                        changes.append((f, old, new))
+            entries.append({"record": rec, "changes": changes})
+            prev = rec
+        entries.reverse()   # most recent first
+        return render(request, "giving/transaction_history.html",
+                     {"txn": t, "entries": entries})
+
+
 class TransactionReverseView(TreasurerRequiredMixin, View):
     """Reverse a ledger entry (treasury never deletes — it posts a contra entry).
     Blocked inside a locked period unless an admin overrides."""
@@ -1338,9 +1473,26 @@ class TransactionSplitView(TreasurerRequiredMixin, View):
     (e.g. a single 2,000 bank deposit meant for two groups)."""
     template_name = "giving/transaction_split.html"
 
+    def _blocked_reason(self, t):
+        """Splitting must never be allowed once a receipt has already been
+        issued for this entry (envelope or manual) — dividing the ledger row
+        afterward would create a mismatch with what the issued receipt says,
+        letting someone alter an already-allocated receipt without realising
+        it. Also blocked for a reversed original or a reversal itself, which
+        are correction entries, not something to further subdivide."""
+        if t.is_reversed or t.is_reversal:
+            return "This entry has been reversed and can't be split."
+        if t.processed_via_envelope or t.manual_receipt:
+            return "This entry has already been receipted and can't be split."
+        return None
+
     def get(self, request, pk):
         from departments.models import Department, DevelopmentGroup
         t = get_object_or_404(Transaction, pk=pk)
+        reason = self._blocked_reason(t)
+        if reason:
+            messages.error(request, reason)
+            return redirect("transaction_list")
         return render(request, self.template_name, {
             "txn": t,
             "departments": Department.objects.filter(active=True, selectable=True).order_by("name"),
@@ -1351,6 +1503,10 @@ class TransactionSplitView(TreasurerRequiredMixin, View):
         from departments.models import Department, DevelopmentGroup
         from core.models import period_locked
         t = get_object_or_404(Transaction, pk=pk)
+        reason = self._blocked_reason(t)
+        if reason:
+            messages.error(request, reason)
+            return redirect("transaction_list")
         lock = period_locked(t.date)
         if lock:
             messages.error(request, f"{lock} is locked. Unlock the period first.")

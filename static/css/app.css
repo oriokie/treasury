@@ -462,14 +462,19 @@ details.dd > summary::-webkit-details-marker{display:none}
   border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-md);
   padding:.45rem;z-index:80;animation:rise .14s ease both}
 .dd-menu.dd-right{left:auto;right:0}
-.dd-menu a,.dd-menu .dd-signout{display:block;width:100%;text-align:left;padding:.5rem .7rem;
+.dd-menu a,.dd-menu .dd-signout,.dd-menu .dd-item-btn{display:block;width:100%;text-align:left;padding:.5rem .7rem;
   border-radius:8px;color:var(--ink);font-size:.88rem;background:none;border:none;font:inherit;
   cursor:pointer;transition:background var(--t)}
-.dd-menu a:hover,.dd-menu .dd-signout:hover{background:var(--forest-tint);color:var(--forest-deep);text-decoration:none}
+.dd-menu a:hover,.dd-menu .dd-signout:hover,.dd-menu .dd-item-btn:hover{background:var(--forest-tint);color:var(--forest-deep);text-decoration:none}
 .dd-menu .dd-sec{font-size:.64rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
   font-weight:700;padding:.5rem .7rem .25rem}
-.dd-menu .dd-signout{color:var(--danger)}
-.dd-menu .dd-signout:hover{background:var(--danger-soft);color:var(--danger)}
+.dd-menu .dd-signout,.dd-menu .dd-item-danger{color:var(--danger)}
+.dd-menu .dd-signout:hover,.dd-menu .dd-item-danger:hover{background:var(--danger-soft);color:var(--danger)}
+.tx-actions-dd{position:relative;display:inline-block}
+.tx-actions-dd>summary{padding:.25rem .5rem;border-radius:6px;font-size:1.05rem;line-height:1;
+  color:var(--ink-soft);border:1px solid transparent}
+.tx-actions-dd>summary:hover{background:var(--forest-tint);color:var(--forest-deep)}
+.tx-actions-dd[open]>summary{background:var(--forest-tint)}
 
 /* user chip in topbar */
 .topbar-right{margin-left:auto;display:flex;align-items:center;gap:.55rem}

@@ -1,5 +1,54 @@
 # Changelog
 
+## v2.22.0 - comprehensive Transactions page review
+A full review of the Transactions page against seven distinct concerns, each traced to a concrete root
+cause and fixed or implemented in full.
+
+**Fixed (critical):**
+- **The Excel/CSV export summed a reversed transaction and its reversal as if both were ordinary income.**
+  A reversal keeps the same direction and a positive amount as its original by design (the ledger nets it to
+  zero by not posting either side, not by inverting the stored sign) - so the export's Amount column
+  double-counted a reversed transaction instead of netting to zero, exactly the reported bug. Fixed to negate
+  a reversal's amount in the export, added an explicit "Entry status" column, and hardened the underlying
+  grouping helper so a reversed/reversal transaction can never be silently combined with anything else (a
+  correction entry, not a split sibling), even a manually-entered cash transaction with no bank identifier
+  that would otherwise fall through to a looser reference-based match.
+- **Split remained available after a contribution had already been receipted**, risking an already-issued
+  receipt being silently invalidated by a later split. Hidden once `manual_receipt` or `processed_via_envelope`
+  is set, with a matching server-side guard on the view itself (GET and POST) - the template hiding a button
+  alone is never sufficient on its own.
+
+**Added:**
+- **A dynamic, informative confirmation before Reverse Selected or Send to Review execute** - the exact
+  count and total amount about to be affected (e.g. "57 transactions, Total: KES 3,540,230"), not a vague
+  "are you sure?". Verified end-to-end with a real browser that the dialog reflects the actual current
+  selection and that dismissing it correctly blocks submission.
+- **Consolidated per-row actions into a single "⋮" dropdown menu** (Edit, Delete, Split, Receipt, Reverse,
+  Send to review, Audit history), decluttering what had grown into up to seven separate inline controls per
+  row. Added two actions that didn't exist as per-row options before: Reverse (previously bulk-only) and
+  Audit History, a new view surfacing django-simple-history data that was already being tracked but never
+  shown to users for a single transaction.
+- **CR/DR accessibility badges** alongside the existing colour-coding on debit/reversal amounts, so the
+  distinction doesn't rely on colour perception alone.
+- **Eight new filters**, added as a collapsible "More filters" section to keep the primary filter bar
+  uncluttered: Transaction Type, Amount Range, Member, Bank Account, Imported By, Reversed Only, Receipted
+  Only, Manual Receipt Only. ("Entered By" was deliberately not implemented - no existing field tracks who
+  recorded a manual cash entry, unlike Imported By; documented as a follow-up needing a new field and
+  migration, not a same-scale addition as the rest of this set.)
+- **A Type column and a running balance.** The running balance is computed chronologically and scoped to
+  whatever filters are currently applied (filtering to one fund shows that fund's own running balance, not
+  the whole church's), correct regardless of the page's own display sort order (a new Newest first / Oldest
+  first toggle) and correct across pagination boundaries - verified directly that the second page's balance
+  correctly continues from the first page's closing balance rather than restarting from zero. Only ever
+  queries the current page's rows plus one aggregate for everything before it, never the full unbounded
+  history, so this stays cheap regardless of total transaction count.
+
+Tests: 49 new across six files, covering every fix and addition individually plus their interactions
+(pagination boundaries, filter combinations, CSRF-safe confirmations). Full regression: giving — 224 tests,
+all green.
+
+Deploy: no migration.
+
 ## v2.21.1 - CRITICAL: a locked-out user was locking out everyone at the same location
 **One account's failed sign-in attempts could lock out every other user sharing the same network** — e.g.
 everyone in the same church office, on the same Wi-Fi/router, all sharing one public IP address.

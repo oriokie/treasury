@@ -38,6 +38,17 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.22.0": "A comprehensive review of the Transactions page. Critical fix: the Excel/CSV download was "
+              "adding a reversed entry and its reversal together as if both were real income, doubling the "
+              "reported total wherever a reversal existed - now correctly nets to zero. Split no longer "
+              "appears once a contribution has already been receipted, preventing an already-issued receipt "
+              "from being silently invalidated. Reverse Selected and Send to Review now show exactly what "
+              "you're about to do - count and total amount - before executing, protecting against a "
+              "mistaken Select All. Consolidated per-row actions into a single menu, added Reverse and a new "
+              "Audit History option to it. Debit and reversal amounts now show a CR/DR badge alongside the "
+              "colour, for accessibility. Added eight new filters (type, amount range, member, bank "
+              "account, imported by, reversed/receipted/manual-receipt only). Added a Type column and a "
+              "running balance, correct even across pages and regardless of sort order.",
     "2.21.1": "Critical fix: signing in with the wrong password too many times could lock out every "
               "other user at the same location, not just the one account - anyone sharing the same office "
               "network/Wi-Fi would be blocked from signing in until the lockout cleared, even though their "
