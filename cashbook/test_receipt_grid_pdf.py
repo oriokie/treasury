@@ -186,3 +186,66 @@ class ReceiptArchiveDefaultPeriodTests(TestCase):
         self.assertIn("start=2026-01-01", b)
         self.assertIn("export=pdf", b)
         self.assertIn("download=zip", b)
+
+
+class ReceiptGridPdfNoteContentTests(TestCase):
+    """Bug fix: the compact receipt PDF's placeholder for a text/e-receipt-
+    link attachment (no image file) only ever showed a generic label ("No
+    file — text/e-receipt note") describing that a note existed, never the
+    note's actual content — making the PDF useless for exactly the
+    attachments it was meant to cover. Now renders the actual text or link
+    content, wrapped and truncated (with a trailing "...", not the unicode
+    ellipsis character, which reportlab's standard Helvetica font doesn't
+    reliably render) to fit the available space. Also fixed a real
+    off-by-one found while testing this: the truncation line-count estimate
+    didn't account for the label's own line height, so the line carrying
+    the "..." marker could be silently discarded by the drawing loop's own
+    real-time space check before ever being drawn."""
+    def setUp(self):
+        self.tr = _tr()
+        self.d = Department.objects.create(name="NoteContentFund", fund_type="LOCAL",
+            category="MINISTRY")
+
+    def _pdf_text(self, atts):
+        from cashbook.services.supporting_pdf import build_receipt_grid_pdf
+        data, stats = build_receipt_grid_pdf(OrderedDict([("June 2026", atts)]),
+            church="Test", currency="KES")
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(data))
+        return "".join(page.extract_text() for page in reader.pages), stats
+
+    def _text_attachment(self, text="", link="", tag="note"):
+        exp = Expense.objects.create(date=dt.date(2026, 6, 1), department=self.d,
+            description=tag, amount=Decimal("100"), category="OTHER",
+            status="PAID", recorded_by=self.tr, approved_by=self.tr)
+        return ExpenseAttachment.objects.create(expense=exp, text=text, link=link)
+
+    def test_text_note_content_actually_rendered(self):
+        att = self._text_attachment(text="M-Pesa confirmation ABC123XYZ from John")
+        full_text, stats = self._pdf_text([att])
+        self.assertIn("ABC123XYZ", full_text)
+        self.assertIn("Text / e-receipt note", full_text)
+
+    def test_link_content_actually_rendered(self):
+        att = self._text_attachment(link="https://example.com/receipt/999")
+        full_text, stats = self._pdf_text([att])
+        self.assertIn("example.com/receipt/999", full_text)
+        self.assertIn("E-receipt link", full_text)
+
+    def test_no_content_at_all_shows_no_document_message(self):
+        att = self._text_attachment()
+        full_text, stats = self._pdf_text([att])
+        self.assertIn("No document attached", full_text)
+
+    def test_very_long_note_is_truncated_with_ascii_ellipsis(self):
+        att = self._text_attachment(text="Word " * 400)
+        full_text, stats = self._pdf_text([att])
+        self.assertIn("...", full_text)
+        # must not silently disappear - some of the beginning must still show
+        self.assertIn("Word", full_text)
+
+    def test_stats_counts_note_only_attachments_as_other(self):
+        att = self._text_attachment(text="short note")
+        full_text, stats = self._pdf_text([att])
+        self.assertEqual(stats["other"], 1)
+        self.assertEqual(stats["images"], 0)

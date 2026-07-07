@@ -60,12 +60,20 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             status = ((Transaction.Status.AUTO if alloc_status == "AUTO"
                        else Transaction.Status.LEARNED)
                       if dept is not None else Transaction.Status.REVIEW)
-            if dept is None:
+            # DEV_GROUP_NA means "clearly development, but which group is
+            # unknown from the reference text alone" — give a configured
+            # campaign's member table a chance to pin down the exact group
+            # from the payer's name/phone, same as when dept was never
+            # resolved at all (and the same fix already applied to the file
+            # importer — this webhook path was the other half of the same
+            # bug, missed the first time round).
+            dev_group_unknown = (resolver == "DEV_GROUP_NA")
+            if dept is None or dev_group_unknown:
                 # rules missed — try the campaign fallback (e.g. camp expenses)
                 from giving.services.allocation import campaign_allocate
                 campaign, campaign_group, cdept, cstatus = campaign_allocate(
                     reference, name, phone)
-                if cdept is not None:
+                if cdept is not None and (dept is None or cstatus == "AUTO"):
                     dept = cdept
                     status = (Transaction.Status.AUTO if cstatus == "AUTO"
                               else Transaction.Status.REVIEW)

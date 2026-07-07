@@ -111,3 +111,53 @@ class DevGroupCampaignFallbackReallocateTests(TestCase):
         t.refresh_from_db()
         self.assertEqual(t.department.name.upper(), "DEVELOPMENT")
         self.assertEqual(t.allocation_status, "AUTO")
+
+
+class DevGroupCampaignFallbackIngestTests(TestCase):
+    """The exact same fix, applied to the live webhook ingestion path
+    (statements/services/ingest.py) — a separate, previously-missed code
+    path handling real-time bank transactions from the CBS webhook, which
+    had the identical DEV_GROUP_NA short-circuit bug, still unfixed after
+    the file-importer and reallocate_pending() were corrected. This was the
+    actual reason the fix "wasn't working" in practice: live transactions go
+    through this path, not the file importer."""
+    def setUp(self):
+        self.dev_dept = _dev_dept()
+        self.camp = Campaign.objects.create(name="IngestDevTest", department=self.dev_dept,
+            triggers="dev,grp,group", active=True)
+        CampaignMember.objects.create(campaign=self.camp, name="SARAH GIVER",
+            phone="254766555444", group="41")
+
+    def test_webhook_ingest_resolves_specific_group_via_campaign(self):
+        from statements.services.ingest import ingest_event
+        txn, outcome = ingest_event(
+            date=dt.date(2026, 6, 20), amount=Decimal("450"), direction="CREDIT",
+            reference="dev contribution", phone="254766555444", name="SARAH GIVER",
+            raw_narration="dev contribution", core_ref="INGESTDEVTEST001")
+        self.assertEqual(outcome, "created")
+        self.assertIsNotNone(txn)
+        self.assertEqual(txn.department.name, "41")
+        self.assertEqual(txn.allocation_status, "AUTO")
+        self.assertEqual(txn.campaign_id, self.camp.id)
+
+    def test_webhook_ingest_unknown_giver_falls_back_to_generic_development(self):
+        from statements.services.ingest import ingest_event
+        txn, outcome = ingest_event(
+            date=dt.date(2026, 6, 21), amount=Decimal("200"), direction="CREDIT",
+            reference="dev contribution", phone="254700000111", name="UNKNOWN PERSON",
+            raw_narration="dev contribution", core_ref="INGESTDEVTEST002")
+        self.assertEqual(outcome, "created")
+        self.assertEqual(txn.department.name.upper(), "DEVELOPMENT")
+        self.assertEqual(txn.allocation_status, "AUTO")
+
+    def test_webhook_ingest_numbered_dev_group_unaffected(self):
+        from statements.services.ingest import ingest_event
+        from departments.models import DevelopmentGroup
+        DevelopmentGroup.objects.get_or_create(number=12, defaults={"name": "IngestGroup12"})
+        txn, outcome = ingest_event(
+            date=dt.date(2026, 6, 22), amount=Decimal("300"), direction="CREDIT",
+            reference="grp12", phone="254766555444", name="SARAH GIVER",
+            raw_narration="grp12", core_ref="INGESTDEVTEST003")
+        self.assertEqual(outcome, "created")
+        self.assertIsNotNone(txn.dev_group)
+        self.assertIsNone(txn.campaign_id)

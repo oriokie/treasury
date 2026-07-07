@@ -38,6 +38,14 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.20.1": "Fixed \"CSRF verification failed\" when sending an item back to review, and moved that "
+              "action to the top of the Transactions page as a bulk action - select one or more entries "
+              "first, then click Send to review (selecting both halves of a wrongly-split entry now "
+              "correctly combines them into one, not two). Fixed the compact receipt PDF's placeholder for "
+              "a text/e-receipt-note attachment to actually show the note itself, not just a label saying "
+              "one exists. Fixed the development-group allocation fallback for real - the previous fix only "
+              "covered file uploads; live bank transactions arrive through a separate path that had the "
+              "same bug, now fixed too.",
     "2.20.0": "Fixed the automatic fallback allocation (the one that already worked for sub-accounts like "
               "Camp Expense) so it now also works for Development Groups when the reference alone can't say "
               "which group - it now checks a configured campaign's member list to pin down the exact group "

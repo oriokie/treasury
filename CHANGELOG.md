@@ -1,5 +1,36 @@
 # Changelog
 
+## v2.20.1 - CSRF fix + bulk send-to-review, receipt PDF note content, ingest.py allocation fix
+Three fixes to what shipped in v2.20.0.
+
+**Fixed:**
+- **"CSRF verification failed" when using Send to review.** The form I added for this action was missing
+  `{% csrf_token %}` entirely — a real bug that Django's test client didn't catch, since it doesn't enforce
+  CSRF by default. Re-verified this fix with `Client(enforce_csrf_checks=True)`, and swept every other POST
+  form added this session to confirm none had the same gap.
+- **Moved Send to review to the top toolbar as a bulk action**, alongside Reverse selected — select one or
+  more entries with the existing checkboxes, then act on all of them at once. Selecting both halves of the
+  same wrongly-split contribution now correctly combines them into exactly one replacement entry, not two
+  (grouped by split family before processing, same underlying logic as the single-entry version this
+  replaces).
+- **The compact receipt PDF's placeholder for a text/e-receipt-note attachment only ever showed a generic
+  label** ("No file — text/e-receipt note") describing that a note existed, never the note's actual content
+  — useless for exactly the attachments it was meant to cover. Now renders the actual text or link, wrapped
+  and truncated to fit. Found and fixed a real off-by-one while building this: the truncation line-count
+  estimate didn't account for the label's own line height, so the line carrying the "..." truncation marker
+  could be silently dropped by the drawing loop's own space check before it was ever drawn — confirmed by
+  extracting actual text back out of a generated PDF, not just checking it rendered without error.
+- **The development-group campaign fallback (v2.20.0) still wasn't taking effect** — because that fix only
+  reached the file-upload importer and `reallocate_pending()`. Live bank transactions (the far more common
+  path in practice) arrive through a separate ingestion module for the real-time bank webhook, which had the
+  exact same bug and was never touched. Applied the identical fix there.
+
+Tests: 3 new for the CSRF/bulk fix (with CSRF enforcement deliberately turned on), 5 new for the PDF note
+content fix, 3 new for the webhook ingestion fix. Targeted regression (giving, statements, cashbook): 581
+tests, all green.
+
+Deploy: no migration.
+
 ## v2.20.0 - development-group fallback fix, send-to-review action, receipt PDF default-period fix
 Three issues traced to their real root cause and fixed.
 

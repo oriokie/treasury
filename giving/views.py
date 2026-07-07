@@ -1869,16 +1869,23 @@ class CampaignDeleteView(TreasurerRequiredMixin, View):
 
 
 class TransactionBulkReverseView(TreasurerRequiredMixin, View):
-    """Reverse several selected ledger entries at once. Treasury never hard-
-    deletes — each becomes a contra posting (and a linked envelope receipt is
-    removed, its siblings reversed). Locked-period rows and ones already reversed
-    (or that are themselves reversals) are skipped and counted."""
+    """Bulk actions on several selected ledger entries at once: reverse them,
+    or send them back to the review queue for re-allocation. Treasury never
+    hard-deletes — each becomes a contra posting (and a linked envelope
+    receipt is removed, its siblings reversed). Locked-period rows and ones
+    already reversed (or that are themselves reversals) are skipped and
+    counted."""
     def post(self, request):
-        from core.models import period_locked
         ids = request.POST.getlist("ids")
         if not ids:
             messages.info(request, "No entries were selected.")
             return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+        if request.POST.get("action") == "send_to_review":
+            return self._send_to_review(request, ids)
+        return self._reverse(request, ids)
+
+    def _reverse(self, request, ids):
+        from core.models import period_locked
         reason = (request.POST.get("reason") or "").strip()
         done = skipped = 0
         for t in Transaction.objects.filter(pk__in=ids):
@@ -1896,6 +1903,62 @@ class TransactionBulkReverseView(TreasurerRequiredMixin, View):
         if skipped:
             msg += f" {skipped} skipped (locked period, or already reversed)."
         (messages.success if done else messages.info)(request, msg)
+        return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+
+    def _send_to_review(self, request, ids):
+        """Groups selected entries by split family so ticking both siblings
+        of the same split contribution still produces exactly one combined
+        replacement, not two — the same underlying logic as
+        TransactionSendToReviewView, applied to a multi-select batch."""
+        from core.models import period_locked
+        reason = (request.POST.get("reason") or "").strip()
+        seen_ids = set()
+        groups_done = entries_done = skipped = 0
+        total_combined = Decimal(0)
+        for t in Transaction.objects.filter(pk__in=ids).order_by("id"):
+            if t.pk in seen_ids:
+                continue
+            if t.is_reversed or t.is_reversal or t.allocation_status == Transaction.Status.REVIEW \
+                    or not t.department_id:
+                skipped += 1
+                seen_ids.add(t.pk)
+                continue
+            group = [t] + list(t.split_siblings())
+            reversible = [m for m in group if not m.is_reversed and not m.is_reversal
+                         and not period_locked(m.date)]
+            if not reversible:
+                skipped += 1
+                seen_ids.update(m.pk for m in group)
+                continue
+            group_total = Decimal(0)
+            for member in reversible:
+                group_total += member.amount
+                member.reverse(request.user,
+                              reason=reason or "Sent back to review for re-allocation")
+                TransactionReverseView._delete_linked_envelope(member, request.user)
+                entries_done += 1
+            Transaction.objects.create(
+                date=t.date, sabbath_week=t.sabbath_week, channel=t.channel,
+                direction=t.direction, amount=group_total, member=t.member,
+                reference=t.reference, payer_name=t.payer_name, payer_phone=t.payer_phone,
+                mpesa_ref=t.mpesa_ref, confirmed=t.confirmed,
+                allocation_status=Transaction.Status.REVIEW,
+                raw_narration=(f"Replaces #{', #'.join(str(m.pk) for m in reversible)} — "
+                              f"sent back to review for correct allocation"
+                              + (f': "{reason}"' if reason else "")))
+            total_combined += group_total
+            groups_done += 1
+            seen_ids.update(m.pk for m in group)
+
+        if groups_done:
+            messages.success(request,
+                f"{entries_done} entr{'y' if entries_done == 1 else 'ies'} reversed and "
+                f"combined into {groups_done} new entr{'y' if groups_done == 1 else 'ies'} "
+                f"(total {total_combined:,.2f}) in the review queue."
+                + (f" {skipped} skipped." if skipped else ""))
+            return redirect("queue")
+        messages.info(request, "Nothing could be sent back to review (already in "
+                              "review, already reversed, or the period is locked).")
         return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
 
 

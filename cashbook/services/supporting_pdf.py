@@ -181,14 +181,47 @@ def build_receipt_grid_pdf(attachments_by_month, church="", currency="KES",
                         drew_image = False
 
             if not drew_image:
+                box_h = inner_h - 9 * mm
+                box_top = top_y
+                box_bottom = top_y - box_h
                 c.setStrokeGray(0.85)
-                c.rect(inner_x, top_y - (inner_h - 9 * mm), inner_w, inner_h - 9 * mm)
-                c.setFont("Helvetica", 7)
-                c.setFillGray(0.5)
-                placeholder = ("No file — text/e-receipt note" if (a.text or a.link)
-                              else "No document attached")
-                c.drawCentredString(inner_x + inner_w / 2,
-                                    top_y - (inner_h - 9 * mm) / 2, placeholder)
+                c.rect(inner_x, box_bottom, inner_w, box_h)
+                note_text = (a.text or "").strip()
+                link_text = (a.link or "").strip()
+                if note_text or link_text:
+                    label = "Text / e-receipt note:" if note_text else "E-receipt link:"
+                    body = note_text or link_text
+                    line_step = 3.2 * mm
+                    max_chars = max(int(inner_w / 3.6), 10)   # ~7pt Helvetica width estimate
+                    # matches the drawing loop exactly: 4mm top offset, one
+                    # line_step consumed by the label, then one line_step per
+                    # body line — so max_lines here can never disagree with
+                    # what the loop below actually has room to draw.
+                    available = box_h - 4 * mm - line_step
+                    max_lines = max(int(available / line_step), 1)
+                    lines = _wrap_lines(body, max_chars)
+                    truncated = len(lines) > max_lines
+                    lines = lines[:max_lines]
+                    if truncated and lines:
+                        last = lines[-1]
+                        lines[-1] = (last[:-3].rstrip() + "...") if len(last) > 3 else "..."
+                    ty = box_top - 4 * mm
+                    c.setFont("Helvetica-Bold", 6.5)
+                    c.setFillGray(0.35)
+                    c.drawString(inner_x + 3, ty, label)
+                    ty -= line_step
+                    c.setFont("Helvetica", 7)
+                    c.setFillGray(0.15)
+                    for line in lines:
+                        if ty < box_bottom + 2:
+                            break
+                        c.drawString(inner_x + 3, ty, line)
+                        ty -= line_step
+                else:
+                    c.setFont("Helvetica", 7)
+                    c.setFillGray(0.5)
+                    c.drawCentredString(inner_x + inner_w / 2, box_bottom + box_h / 2,
+                                       "No document attached")
                 c.setFillGray(0)
                 stats["other"] += 1
 
