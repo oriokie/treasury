@@ -204,11 +204,19 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         status = ((Transaction.Status.AUTO if alloc_status == "AUTO"
                                    else Transaction.Status.LEARNED)
                                   if dept is not None else Transaction.Status.REVIEW)
-                        if dept is None:
+                        # DEV_GROUP_NA means "clearly development, but which
+                        # group is unknown from the reference text alone" —
+                        # a configured campaign's member table (the same
+                        # fallback that already resolves things like Camp
+                        # Expense) may still be able to pin down the exact
+                        # group from the payer's name/phone, so it gets a
+                        # chance here too, instead of only when dept is None.
+                        dev_group_unknown = (resolver == "DEV_GROUP_NA")
+                        if dept is None or dev_group_unknown:
                             from giving.services.allocation import campaign_allocate
                             campaign, campaign_group, cdept, cstatus = campaign_allocate(
                                 row["reference"], row["name"], row["phone"])
-                            if cdept is not None:
+                            if cdept is not None and (dept is None or cstatus == "AUTO"):
                                 dept = cdept
                                 status = (Transaction.Status.AUTO if cstatus == "AUTO"
                                           else Transaction.Status.REVIEW)

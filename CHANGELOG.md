@@ -1,5 +1,37 @@
 # Changelog
 
+## v2.20.0 - development-group fallback fix, send-to-review action, receipt PDF default-period fix
+Three issues traced to their real root cause and fixed.
+
+**Fixed:**
+- **The campaign member->group fallback allocation never got a chance to run for Development Groups.**
+  `allocate()` detects a dev-group *word* (e.g. "dev", "grp") without a specific number and immediately
+  resolves to "Development, group unknown" (status AUTO) — a non-null result. Since the importer and
+  `reallocate_pending()` only tried the campaign fallback (the mechanism that already worked for sub-accounts
+  like Camp Expense) when nothing had resolved at all, a Development-focused campaign's member table never
+  got the chance to identify the *specific* group from the giver's name/phone, even when configured exactly
+  the same way Camp Expense is. Fixed to also try the campaign fallback specifically in this case, only ever
+  preferring its result when it actually recognises the payer — never downgrading an already-resolved "AUTO"
+  outcome to "REVIEW" just because a trigger word matched without a member match.
+- **Expense Receipts downloads (PDF and ZIP) looked broken on a fresh visit.** The page had no date-range
+  picker at all and silently defaulted to "this month" — often empty, since receipts accumulate over time —
+  so clicking either download button just bounced back to the same empty page with no obvious explanation.
+  Now defaults to "this year so far" when no period is specified, and gained the same date-range picker
+  (with This month / This quarter / This year presets) used elsewhere in the app. The download links also
+  now always carry the resolved date range, rather than only when the URL happened to already have one.
+
+**Added:**
+- **"Send to review" on the Transactions page** — the direct answer to "this was wrongly auto-split across
+  funds, how do I put it back as one fund?" Reverses the entry (a contra posting, same as the existing
+  Reverse action) and, if it's part of a split contribution, every sibling too, then creates one new entry
+  for the full combined original amount in the review queue, ready to be correctly allocated as a single
+  fund. Nothing is ever deleted — the original split rows stay on the ledger, reversed, for the audit trail.
+
+Tests: 6 new for the development-group fallback fix, 11 for send-to-review, 8 for the receipt default-period
+fix. Targeted regression (giving, statements, cashbook — the affected apps): 573 tests, all green.
+
+Deploy: no migration.
+
 ## v2.19.0 - self-service password reset, Elder nav simplification, font-inheritance fix
 Three follow-ups from live use.
 

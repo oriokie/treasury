@@ -1222,6 +1222,68 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
         return redirect("transaction_list")
 
 
+class TransactionSendToReviewView(TreasurerRequiredMixin, View):
+    """Undo a wrong allocation and send it back to the review queue for
+    correct re-allocation — the answer to "this was wrongly auto-split
+    across funds/groups, how do I put it back as one fund?"
+
+    Reverses the entry (contra posting, same as TransactionReverseView) and,
+    if it's part of a split contribution, every sibling too — then creates
+    ONE new entry for the full combined original amount, in REVIEW status,
+    ready to be correctly allocated as a single fund via the normal review
+    queue. Nothing is ever deleted: the original split rows stay on the
+    ledger, reversed, with contra postings — the replacement entry is a new,
+    separate row, fully traceable back to what it replaced via its
+    raw_narration."""
+    def post(self, request, pk):
+        from core.models import period_locked
+        t = get_object_or_404(Transaction, pk=pk)
+        lock = period_locked(t.date)
+        if lock:
+            messages.error(request, f"{lock} is locked. An administrator must unlock "
+                                    "the period before this entry can be sent back to review.")
+            return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+        if t.is_reversed or t.is_reversal:
+            messages.error(request, "This entry has already been reversed, or is itself "
+                                    "a reversal, and can't be sent back to review.")
+            return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+
+        reason = (request.POST.get("reason") or "").strip()
+        group = [t] + list(t.split_siblings())
+        total = Decimal(0)
+        reversed_ids = []
+        for member in group:
+            if member.is_reversed or member.is_reversal or period_locked(member.date):
+                continue
+            total += member.amount
+            member.reverse(request.user,
+                          reason=reason or "Sent back to review for re-allocation")
+            reversed_ids.append(member.pk)
+            TransactionReverseView._delete_linked_envelope(member, request.user)
+
+        if not reversed_ids:
+            messages.error(request, "Nothing could be reversed (already reversed, "
+                                    "or the period is locked).")
+            return redirect(request.META.get("HTTP_REFERER") or "transaction_list")
+
+        replacement = Transaction.objects.create(
+            date=t.date, sabbath_week=t.sabbath_week, channel=t.channel,
+            direction=t.direction, amount=total, member=t.member,
+            reference=t.reference, payer_name=t.payer_name, payer_phone=t.payer_phone,
+            mpesa_ref=t.mpesa_ref, confirmed=t.confirmed,
+            allocation_status=Transaction.Status.REVIEW,
+            raw_narration=(f"Replaces #{', #'.join(str(i) for i in reversed_ids)} — "
+                          f"sent back to review for correct allocation"
+                          + (f': "{reason}"' if reason else "")))
+
+        n = len(reversed_ids)
+        messages.success(request,
+            f"{n} entr{'y' if n == 1 else 'ies'} reversed and combined into one new "
+            f"entry of {total:,.2f} in the review queue — allocate it to the right "
+            f"fund from there.")
+        return redirect("queue")
+
+
 class TransactionReverseView(TreasurerRequiredMixin, View):
     """Reverse a ledger entry (treasury never deletes — it posts a contra entry).
     Blocked inside a locked period unless an admin overrides."""

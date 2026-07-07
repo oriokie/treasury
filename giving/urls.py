@@ -5,6 +5,7 @@ urlpatterns = [
     path("queue/sabbath/", views.SabbathConfirmQueueView.as_view(), name="sabbath_queue"),
     path("transactions/", views.TransactionListView.as_view(), name="transaction_list"),
     path("transactions/<int:pk>/reverse/", views.TransactionReverseView.as_view(), name="transaction_reverse"),
+    path("transactions/<int:pk>/send-to-review/", views.TransactionSendToReviewView.as_view(), name="transaction_send_to_review"),
     path("transactions/bulk-reverse/", views.TransactionBulkReverseView.as_view(), name="transaction_bulk_reverse"),
     path("queue/", views.ReviewQueueView.as_view(), name="queue"),
     path("queue/bulk-allocate/", views.BulkAllocateView.as_view(), name="queue_bulk_allocate"),

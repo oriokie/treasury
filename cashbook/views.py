@@ -2997,7 +2997,20 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
     def _attachments(self, request):
         from core.utils import parse_period
         from .models import ExpenseAttachment
-        start, end = parse_period(request)
+        import datetime as dt
+        # this page's own default: "this month" (parse_period's normal
+        # fallback) is often empty, which made the page — and the PDF/ZIP
+        # downloads that depend on the same range — look broken on a fresh
+        # visit. Default to "this year so far" instead, whenever the request
+        # has no period/date params of its own; an explicit choice (preset
+        # or custom dates) always takes precedence.
+        has_explicit_period = any(request.GET.get(k) for k in
+                                  ("period", "start", "end", "year", "month"))
+        if not has_explicit_period:
+            today = dt.date.today()
+            start, end = dt.date(today.year, 1, 1), today
+        else:
+            start, end = parse_period(request)
         qs = (ExpenseAttachment.objects.filter(
                   expense__date__gte=start, expense__date__lte=end)
               .select_related("expense", "expense__department")

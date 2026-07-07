@@ -300,10 +300,15 @@ def reallocate_pending():
         if dept is not None:
             new_status = (Transaction.Status.AUTO if status == "AUTO"
                           else Transaction.Status.LEARNED)
-        else:
+        # DEV_GROUP_NA means "clearly development, but which group is
+        # unknown from the reference text alone" — give a configured
+        # campaign's member table a chance to pin down the exact group from
+        # the payer's name/phone, same as when dept was never resolved at all.
+        dev_group_unknown = (resolver == "DEV_GROUP_NA")
+        if dept is None or dev_group_unknown:
             campaign, campaign_group, cdept, cstatus = campaign_allocate(
                 t.reference, t.payer_name, t.payer_phone)
-            if cdept is not None and cstatus == "AUTO":
+            if cdept is not None and (dept is None or cstatus == "AUTO"):
                 dept, new_status = cdept, Transaction.Status.AUTO
         if dept is None or new_status not in (Transaction.Status.AUTO,
                                               Transaction.Status.LEARNED):

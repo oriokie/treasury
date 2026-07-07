@@ -122,3 +122,67 @@ class ReceiptGridPdfViewTests(TestCase):
         r = self.c.get("/expenses/receipts/?download=zip&start=2026-06-01&end=2026-06-30")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "application/zip")
+
+
+class ReceiptArchiveDefaultPeriodTests(TestCase):
+    """Bug fix: a fresh visit to the receipt archive (no date/period params
+    at all) defaulted to "this month" (parse_period()'s normal fallback),
+    which is very often empty — making the page, and the PDF/ZIP downloads
+    that depend on the same range, look broken. Defaults to "this year so
+    far" instead when nothing explicit is given; an explicit period preset
+    or custom date range always takes precedence. Also added the standard
+    period-selector UI to the page (it previously had none at all — no way
+    to pick a different range without editing the URL by hand)."""
+    def setUp(self):
+        self.tr = _tr()
+        self.d = Department.objects.create(name="DefaultPeriodFund", fund_type="LOCAL",
+            category="MINISTRY")
+        self.c = Client(); self.c.force_login(self.tr)
+
+    def _make_attachment(self, date):
+        return _image_attachment(self.d, self.tr, f"defperiod{date}", date=date)
+
+    def test_fresh_visit_finds_an_earlier_month_in_the_same_year(self):
+        self._make_attachment(dt.date(2026, 3, 10))
+        b = self.c.get("/expenses/receipts/").content.decode()
+        self.assertIn("1 document", b)
+
+    def test_fresh_visit_does_not_find_last_year(self):
+        self._make_attachment(dt.date(2025, 3, 10))
+        b = self.c.get("/expenses/receipts/").content.decode()
+        self.assertIn("0 document", b)
+
+    def test_explicit_period_month_overrides_the_wider_default(self):
+        self._make_attachment(dt.date(2026, 3, 10))
+        b = self.c.get("/expenses/receipts/?period=month").content.decode()
+        self.assertIn("0 document", b)
+
+    def test_explicit_custom_range_overrides_the_wider_default(self):
+        self._make_attachment(dt.date(2026, 3, 10))
+        b = self.c.get("/expenses/receipts/?start=2026-01-01&end=2026-01-31").content.decode()
+        self.assertIn("0 document", b)
+
+    def test_pdf_download_works_with_no_explicit_params(self):
+        self._make_attachment(dt.date(2026, 3, 10))
+        r = self.c.get("/expenses/receipts/?export=pdf")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+
+    def test_zip_download_works_with_no_explicit_params(self):
+        self._make_attachment(dt.date(2026, 3, 10))
+        r = self.c.get("/expenses/receipts/?download=zip")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r["Content-Type"], "application/zip")
+
+    def test_period_selector_ui_present(self):
+        b = self.c.get("/expenses/receipts/").content.decode()
+        self.assertIn("This month", b)
+        self.assertIn("This quarter", b)
+        self.assertIn("This year", b)
+
+    def test_download_links_always_carry_the_resolved_dates(self):
+        self._make_attachment(dt.date(2026, 3, 10))
+        b = self.c.get("/expenses/receipts/").content.decode()
+        self.assertIn("start=2026-01-01", b)
+        self.assertIn("export=pdf", b)
+        self.assertIn("download=zip", b)

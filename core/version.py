@@ -38,6 +38,15 @@ def version_string():
 
 
 WHATS_NEW = {
+    "2.20.0": "Fixed the automatic fallback allocation (the one that already worked for sub-accounts like "
+              "Camp Expense) so it now also works for Development Groups when the reference alone can't say "
+              "which group - it now checks a configured campaign's member list to pin down the exact group "
+              "from the giver's name or phone, the same way Camp Expense already did. Added a \"Send to "
+              "review\" button on the Transactions page: undoes a wrongly-allocated or wrongly-split entry "
+              "and combines it into one new entry in the review queue, ready to allocate correctly as a "
+              "single fund. Fixed the Expense Receipts download (PDF and ZIP) defaulting to an often-empty "
+              "\"this month\" view with no way to change it - it now defaults to this year so far, and has "
+              "a proper date range picker.",
     "2.19.0": "Added self-service password reset - if your account has a phone number on file, you'll get "
               "a 6-digit code by SMS; otherwise, if it has an email on file, you'll get a reset link. Look "
               "for \"Forgot your password?\" on the sign-in page. Simplified the Elder role's menu: removed "
