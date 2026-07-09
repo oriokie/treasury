@@ -326,6 +326,12 @@ class LoanTransaction(models.Model):
     expense = models.OneToOneField(
         "cashbook.Expense", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="loan_transaction")
+    # RECEIPT into petty cash: the top-up recording the cash entering the float
+    # (the loan money physically landed in the petty box). Kept linked so it is
+    # reversed with the receipt and never orphaned.
+    petty_topup = models.OneToOneField(
+        "cashbook.PettyCashTopUp", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="loan_transaction")
     note = models.CharField(max_length=200, blank=True)
     created_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL,
                                    related_name="loan_transactions_created")

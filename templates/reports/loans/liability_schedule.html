@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Loan Liability Schedule · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loan Liability Schedule</h1><div class="sub">As at {{ as_of_date|date:"d M Y" }}</div></div></div>
+{% with show_asof=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Loan</th><th>Lender</th><th>Fund</th><th>Loan date</th><th>Maturity</th>
+<th class="num">Original</th><th class="num">Outstanding</th><th class="num">Interest</th><th class="num">Total</th>
+<th class="num">Rate</th><th>Status</th><th class="num">Days</th></tr></thead>
+<tbody>{% for r in rows %}<tr>
+  <td class="mono">{{ r.number }}</td><td>{{ r.lender }}</td><td class="muted">{{ r.fund }}</td>
+  <td>{{ r.loan_date|date:"d/m/y" }}</td>
+  <td>{% if r.maturity_date %}{{ r.maturity_date|date:"d/m/y" }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ r.original_principal|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.outstanding_principal|floatformat:2|intcomma }}</td>
+  <td class="num mono muted">{{ r.outstanding_interest|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.total_outstanding|floatformat:2|intcomma }}</td>
+  <td class="num muted">{% if r.interest_rate %}{{ r.interest_rate }}%{% else %}—{% endif %}</td>
+  <td><span class="pill u-xs {% if r.status_code == 'ACTIVE' %}pill-blue{% elif r.status_code == 'COMPLETED' %}pill-green{% else %}pill-brass{% endif %}">{{ r.status }}</span></td>
+  <td class="num {% if r.overdue %}mono" style="color:var(--red,#b00){% else %}muted{% endif %}">{% if r.days_to_maturity != None %}{{ r.days_to_maturity }}{% else %}—{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="12" class="empty">No loans match the filters.</td></tr>{% endfor %}</tbody>
+{% if rows %}<tfoot><tr class="total-row"><td colspan="6"><strong>Totals</strong></td>
+  <td class="num mono"><strong>{{ total_outstanding|floatformat:2|intcomma }}</strong></td>
+  <td class="num mono"><strong>{{ total_interest|floatformat:2|intcomma }}</strong></td>
+  <td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td><td colspan="3"></td></tr></tfoot>{% endif %}
+</table></div>
+{% endblock %}

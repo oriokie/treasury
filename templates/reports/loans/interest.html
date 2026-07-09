@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Loan Interest Report · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loan Interest Report</h1><div class="sub">Interest paid in the period — the finance-cost figure for the Income &amp; Expenditure statement</div></div></div>
+{% with show_period=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Date</th><th>Loan</th><th>Lender</th><th>Fund</th><th>Voucher</th><th class="num">Interest paid</th></tr></thead>
+<tbody>{% for t in rows %}<tr><td>{{ t.date|date:"d M y" }}</td><td class="mono">{{ t.loan.number }}</td>
+  <td>{{ t.loan.lender.name }}</td><td class="muted">{{ t.loan.fund.name }}</td>
+  <td class="muted u-xs">{% if t.expense %}{{ t.expense.voucher_no }}{% endif %}</td>
+  <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="6" class="empty">No interest paid in this period.</td></tr>{% endfor %}</tbody>
+{% if rows %}<tfoot><tr class="total-row"><td colspan="5"><strong>Total interest (finance cost)</strong></td>
+  <td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td></tr></tfoot>{% endif %}
+</table></div>
+{% endblock %}

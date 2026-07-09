@@ -114,8 +114,11 @@ class MoneyForm(StyledFormMixin, forms.Form):
 
 
 class ReceiptForm(MoneyForm):
-    channel = forms.ChoiceField(choices=[("BANK", "Bank / M-Pesa"), ("CASH", "Cash")],
-                                initial="BANK", label="Received via")
+    destination = forms.ChoiceField(
+        choices=[("BANK", "Bank / M-Pesa account"), ("PETTY", "Petty cash float")],
+        initial="BANK", required=False, label="Received into",
+        help_text="Where the loan money actually landed. Petty cash raises the "
+                  "petty float; either way the fund's available cash rises.")
     reference = forms.CharField(required=False, max_length=40,
         label="Bank reference (optional)",
         help_text="Core reference / receipt no. if this arrived by bank and was "
@@ -123,6 +126,11 @@ class ReceiptForm(MoneyForm):
 
 
 class RepaymentForm(MoneyForm):
+    paid_from = forms.ChoiceField(
+        choices=[("BANK", "Bank / M-Pesa account"), ("PETTY", "Petty cash float")],
+        initial="BANK", required=False, label="Paid from",
+        help_text="Petty cash reduces the petty float; either way Loans payable "
+                  "and the fund's cash both fall.")
     method = forms.ChoiceField(choices=Expense.Method.choices,
                                initial=Expense.Method.BANK)
     voucher_no = forms.CharField(required=False, max_length=30)

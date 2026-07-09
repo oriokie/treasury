@@ -1,0 +1,31 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ loan.number }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ld-hero">
+  <div class="ld-hero-main">
+    <div class="ld-eyebrow">{{ loan.fund.name }}</div>
+    <h1>{{ loan.number }}</h1>
+    <div class="ld-period">{{ loan.lender.name }} · taken {{ loan.loan_date|date:"d M Y" }}{% if loan.maturity_date %} · matures {{ loan.maturity_date|date:"d M Y" }}{% endif %} · {{ loan.get_status_display }}</div>
+  </div>
+  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_loans' %}">← Loans</a>
+</div>
+
+<div class="grid cols-3 u-mb">
+  <div class="stat"><div class="lbl">Received</div><div class="val mono">KES {{ loan.received_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Principal repaid</div><div class="val mono">KES {{ loan.principal_repaid|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding</div><div class="val mono" style="color:var(--forest)">KES {{ loan.outstanding_principal|floatformat:2|intcomma }}</div></div>
+</div>
+{% if loan.purpose %}<p class="help">{{ loan.purpose }}</p>{% endif %}
+
+<div class="card"><div class="hd">Loan statement</div><div class="bd">
+<table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Detail</th><th class="num">Amount</th><th class="num">Outstanding after</th></tr></thead>
+<tbody>{% for r in rows %}<tr {% if not r.effective %}style="opacity:.55"{% endif %}>
+  <td>{{ r.t.date|date:"d M y" }}</td>
+  <td><span class="pill u-xs {% if r.t.kind == 'RECEIPT' %}pill-blue{% elif r.t.kind == 'PRINCIPAL' %}pill-green{% elif r.t.kind == 'INTEREST' %}pill-amber{% else %}pill-brass{% endif %}">{{ r.t.get_kind_display }}</span></td>
+  <td class="muted">{{ r.t.note|default:"" }}</td>
+  <td class="num mono">{{ r.t.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+</tr>{% empty %}<tr><td colspan="5" class="empty">No transactions.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+<p class="help">Read-only. Contact the treasury office for any changes.</p>
+{% endblock %}

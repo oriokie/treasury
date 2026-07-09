@@ -837,3 +837,78 @@ class LeaderAdvanceDetailView(LeaderRequiredMixin, View):
             messages.success(request, "Expense recorded against the advance."
                 + (f" Transaction charge of KSh {charge:,.2f} added." if charge else ""))
         return redirect("leader_advance_detail", pk=pk)
+
+
+class LeaderLoansView(LeaderRequiredMixin, TemplateView):
+    """Loans linked to the leader's own departments/funds. Read-only: the
+    leader can open loan details/statements but not edit. Scoped by exactly
+    the same allowed-department set as the rest of the leader area, so a leader
+    can never see a loan on a fund they don't lead."""
+    template_name = "leaders/loans.html"
+
+    def get(self, request, *args, **kwargs):
+        from loans.services.loans import loans_for_departments
+        ids = list(allowed_departments(request.user).values_list("id", flat=True))
+        loans = list(loans_for_departments(ids))
+        export = request.GET.get("export")
+        if export in ("csv", "xlsx"):
+            from reports.exports import csv_response, xlsx_response
+            from core.models import SiteConfig
+            header = ["Loan no", "Lender", "Fund", "Original amount",
+                      "Outstanding", "Loan date", "Maturity", "Status"]
+            data = [[l.number, l.lender.name, l.fund.name,
+                     float(l.principal_amount or l.received_total),
+                     float(l.outstanding_principal), l.loan_date.isoformat(),
+                     l.maturity_date.isoformat() if l.maturity_date else "",
+                     l.get_status_display()] for l in loans]
+            if export == "xlsx":
+                return xlsx_response("my_department_loans.xlsx", header, data,
+                                     title="Department loans",
+                                     church=SiteConfig.get().church_name)
+            return csv_response("my_department_loans.csv", header, data)
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        from loans.services.loans import loans_for_departments
+        ctx = super().get_context_data(**kwargs)
+        ids = list(allowed_departments(self.request.user).values_list("id", flat=True))
+        loans = list(loans_for_departments(ids))
+        ctx["loans"] = loans
+        ctx["outstanding_total"] = sum(
+            (l.outstanding_principal for l in loans), Decimal(0))
+        return ctx
+
+
+class LeaderLoanDetailView(LeaderRequiredMixin, TemplateView):
+    """Read-only loan detail + statement for a loan on the leader's own fund.
+    The loan is fetched only if its fund is in the leader's allowed set."""
+    template_name = "leaders/loan_detail.html"
+
+    def get(self, request, *args, **kwargs):
+        from loans.models import Loan, LoanTransaction
+        ids = set(allowed_departments(request.user).values_list("id", flat=True))
+        loan = get_object_or_404(Loan, pk=kwargs["pk"])
+        if loan.fund_id not in ids:
+            return redirect("leader_loans")
+        self.loan = loan
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        from loans.models import LoanTransaction
+        ctx = super().get_context_data(**kwargs)
+        loan = self.loan
+        txns = list(loan.transactions.select_related(
+            "receipt_transaction", "income_transaction", "expense")
+            .order_by("date", "id"))
+        bal = Decimal(0)
+        rows = []
+        for t in txns:
+            if t.effective:
+                if t.kind == LoanTransaction.Kind.RECEIPT:
+                    bal += t.amount
+                elif t.kind != LoanTransaction.Kind.INTEREST:
+                    bal -= t.amount
+            rows.append({"t": t, "effective": t.effective, "balance": bal})
+        ctx["loan"] = loan
+        ctx["rows"] = rows
+        return ctx

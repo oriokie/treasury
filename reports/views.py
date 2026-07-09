@@ -108,7 +108,11 @@ class DevGroupUnassignedView(RightRequiredMixin, TemplateView):
         return (Transaction.objects.active()
                 .filter(direction=Transaction.Direction.CREDIT, confirmed=True,
                         department__category=Department.Category.DEVELOPMENT,
-                        dev_group__isnull=True)
+                        dev_group__isnull=True,
+                        # loan financing on a Development fund is NOT a member
+                        # development contribution — keep it out of the
+                        # unassigned queue and every dev-group figure
+                        excluded_from_income=False)
                 .select_related("department", "member").order_by("-date"))
 
     def get_context_data(self, **kwargs):
@@ -174,7 +178,7 @@ class DevGroupProgressView(PeriodMixin, TemplateView):
         un = (Transaction.objects.active().filter(
                 direction=Transaction.Direction.CREDIT, confirmed=True,
                 department__category=Department.Category.DEVELOPMENT,
-                dev_group__isnull=True))
+                dev_group__isnull=True, excluded_from_income=False))
         ctx["unassigned_count"] = un.count()
         ctx["unassigned_total"] = un.aggregate(t=Sum("amount"))["t"] or Decimal(0)
         return ctx
@@ -2383,10 +2387,26 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
         # cash held in suspense with a matching "pending allocation" liability, so
         # the statement ties to the bank and the money is never invisible.
         pending = balances.pending_receipts_total(as_of)
+        # Loans payable: the outstanding loan principal is a real liability, split
+        # into current (≤12 months / on demand) and long-term. The loan cash is
+        # already inside the `cash` asset figure (a loan receipt raises the fund's
+        # balance), so recognising the matching liability here is exactly what
+        # keeps the statement in balance once loans exist. This total ties to the
+        # LOANS_PAYABLE ledger account by construction.
+        from loans.services import reporting as loan_rep
+        loan_liab = loan_rep.outstanding_liability(as_of)
+        loans_current = loan_liab["current"]
+        loans_long_term = loan_liab["long_term"]
+        loans_payable = loan_liab["total"]
         accrual_adj = prepaid - payables - accruals
-        net_assets = unallocated + allocated + nbv + accrual_adj
+        # Loans payable is a liability the church must settle from its own cash,
+        # so it reduces net assets (unlike trust payable, which sits against
+        # trust cash held on the field's behalf). Deducting it here keeps
+        # Assets = Liabilities + Net assets true.
+        net_assets = unallocated + allocated + nbv + accrual_adj - loans_payable
         total_assets = cash_on_hand + advances + pending + nbv + prepaid
-        total_liabilities = trust_payable + payables + accruals + pending
+        total_liabilities = (trust_payable + payables + accruals + pending
+                             + loans_payable)
         total_liab_and_na = total_liabilities + net_assets
         # committed-but-unpaid vouchers (memorandum)
         unpaid = (Expense.objects.filter(status__in=[Expense.Status.PENDING,
@@ -2407,6 +2427,8 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
                 ["Liabilities", "Payables", payables],
                 ["Liabilities", "Accruals", accruals],
                 ["Liabilities", "Receipts pending allocation", pending],
+                ["Liabilities", "Loans payable — current", loans_current],
+                ["Liabilities", "Loans payable — long-term", loans_long_term],
                 ["Liabilities", "TOTAL LIABILITIES", total_liabilities],
                 ["Net assets", "General net assets", unallocated],
                 ["Net assets", "Designated development funds", allocated],
@@ -2429,6 +2451,8 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
                     "unallocated": unallocated, "allocated": allocated,
                     "net_assets": net_assets, "total_assets": total_assets,
                     "total_liab_and_na": total_liab_and_na,
+                    "loans_payable": loans_payable, "loans_current": loans_current,
+                    "loans_long_term": loans_long_term,
                     "payables": payables, "accruals": accruals, "prepaid": prepaid,
                     "accrual_adj": accrual_adj, "total_liabilities": total_liabilities,
                     "balanced": total_assets == total_liab_and_na,
@@ -2546,21 +2570,45 @@ class StatementOfCashFlowsView(PeriodMixin, TemplateView):
         # statement reconciles even if some rows have no expenditure type set.
         operating_exp = total_nonremit - capital
 
-        net_operating = local_receipts + trust_receipts - operating_exp - remittances
+        # Financing activities: loan receipts (cash in) and principal repayments
+        # (cash out) belong here, never in operating.
+        #  * `local_receipts` (from department_summary/receipts_by_department)
+        #    INCLUDES loan receipts as fund cash, so they must be SUBTRACTED
+        #    out of operating and shown in financing instead (not added twice).
+        #  * principal repayments were excluded from `nonremit`, so they never
+        #    hit operating expenses; they reduce cash only here in financing.
+        #  * interest paid stays inside operating expenses per system policy
+        #    (an ordinary voucher on the fund) — no adjustment needed.
+        from loans.services import reporting as loan_rep
+        fin = loan_rep.financing_activity(s, e)
+        loan_receipts = fin["receipts"]
+        loan_repayments = fin["repayments"]
+        # Loan conversions / write-offs recognise income with NO cash movement
+        # (a liability is reclassified to income). That income leg is a normal,
+        # non-excluded contribution credit, so it is inside `local_receipts` —
+        # remove it here so operating cash receipts reflect only real cash in.
+        # (Its contra LOAN_REPAYMENT leg was already excluded from operating
+        # expenses, so removing this keeps the statement reconciling.)
+        loan_noncash_income = loan_rep.retirement_income(s, e)
+        local_operating_receipts = local_receipts - loan_receipts - loan_noncash_income
+
+        net_operating = local_operating_receipts + trust_receipts - operating_exp - remittances
         net_investing = -capital
-        net_financing = Decimal(0)
+        net_financing = loan_receipts - loan_repayments
         net_change = net_operating + net_investing + net_financing
 
         if request.GET.get("export") in ("csv", "xlsx"):
             header = ["Section", "Line", "Amount"]
             data = [
-                ["Operating", "Local offerings & income received", local_receipts],
+                ["Operating", "Local offerings & income received", local_operating_receipts],
                 ["Operating", "Tithe & trust offerings received (held for the field)", trust_receipts],
                 ["Operating", "Operating (recurrent) expenses paid", -operating_exp],
                 ["Operating", "Remittances to the field paid", -remittances],
                 ["Operating", "Net cash from operating activities", net_operating],
                 ["Investing", "Purchase of property & equipment", -capital],
                 ["Investing", "Net cash used in investing activities", net_investing],
+                ["Financing", "Loan receipts (borrowings)", loan_receipts],
+                ["Financing", "Loan principal repayments", -loan_repayments],
                 ["Financing", "Net cash from financing activities", net_financing],
                 ["Summary", "Net increase/(decrease) in cash", net_change],
                 ["Summary", "Cash & bank at beginning of period", cash_open],
@@ -2570,9 +2618,10 @@ class StatementOfCashFlowsView(PeriodMixin, TemplateView):
                          "Statement of Cash Flows")
             if ex:
                 return ex
-        ctx.update({"local_receipts": local_receipts, "trust_receipts": trust_receipts,
+        ctx.update({"local_receipts": local_operating_receipts, "trust_receipts": trust_receipts,
                     "operating_exp": operating_exp, "remittances": remittances,
                     "capital": capital, "net_operating": net_operating,
+                    "loan_receipts": loan_receipts, "loan_repayments": loan_repayments,
                     "net_investing": net_investing, "net_financing": net_financing,
                     "net_change": net_change, "cash_open": cash_open,
                     "cash_close": cash_close, "cash_end_calc": cash_open + net_change,

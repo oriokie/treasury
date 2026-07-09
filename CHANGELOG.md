@@ -1,5 +1,76 @@
 # Changelog
 
+## v2.24.0 - Loan reporting, financial-statement integration, petty cash & department visibility
+Builds on the v2.23 Loan module. Ten report types, full financial-statement
+integration, petty-cash receipt/repayment, and departmental-leader loan
+visibility - all reusing the existing reporting, accounting, cashbook and
+permission frameworks rather than duplicating them.
+
+**Loan report catalogue** (all under Reports -> Loan reports, with the standard
+date/fund/lender/status/type filters and CSV/Excel/print export, built on the
+shared report mixins and export helper): Loan Liability Schedule, Outstanding
+Loans, Loan Ageing, Maturity Schedule, Loans by Fund, Loans by Lender,
+Repayment History, Interest Report, Converted/Written-off, and Cash Flow from
+Financing Activities. Every figure is computed database-side from the same
+LoanTransaction effectiveness the loan pages use, so the reports can never
+disagree with the ledger. The Loan Liability Schedule total ties to the
+LOANS_PAYABLE ledger account by construction.
+
+**Financial-statement integration.**
+- **Statement of Financial Position:** Loans payable now appears as a
+  liability, split into current (<=12 months / on demand) and long-term
+  (>12 months). Loan cash was already inside the cash asset figure, so
+  recognising the matching liability is exactly what keeps the statement in
+  balance - verified across all scenarios.
+- **Statement of Cash Flows:** loan receipts and principal repayments are
+  reclassified into Financing Activities (never operating); loan receipts are
+  removed from operating cash receipts to avoid double-counting, and non-cash
+  conversion/write-off income is removed too, so the statement reconciles.
+- **Income & Expenditure:** unchanged behaviour confirmed - loan receipts
+  never appear as income, principal repayments never as expenditure, only
+  interest paid appears (as a finance cost).
+- **Trial Balance / General Ledger / Chart of Accounts:** Loans payable (2300)
+  posts and displays correctly; the trial balance and accounting equation
+  balance after every scenario (receipt, partial/full repayment, conversion,
+  write-off) - covered by tests.
+
+**Fund & Development-group reporting.** Loan receipts on a Development-category
+fund are now excluded from the unassigned dev-group queue, dev-group progress
+and every dev-group figure (they carry excluded_from_income and are not member
+contributions). Fund reporting continues to treat loan money as financing, not
+income or contributions.
+
+**Petty cash (sections 5 & 6).** Loan receipts can now be received into the
+**petty cash float** (raises the float via the existing PettyCashTopUp
+mechanism, linked to the loan transaction) as well as the bank; repayments can
+be **paid from petty cash** (reduces the float via the existing
+paid_from_petty_cash expense flag). The ledger posting is unchanged (bank and
+petty share the single CASH account); only the cash-location control total
+differs. Fund balances reconcile in both cases.
+
+**Departmental-leader loan visibility (section 7).** A new read-only
+**Leader -> Loans** area shows only loans on the funds a leader leads, scoped by
+exactly the same allowed-department set as the rest of the leader area
+(departments_led_by), with a read-only loan statement per loan. The Loans menu
+item appears **only** when the leader actually has a loan on one of their funds
+- no empty pages. Loans on other funds are never shown, and detail access is
+guarded server-side.
+
+Tests: 23 new (report catalogue & exports, liability-ledger reconciliation,
+balance-sheet balancing incl. current/long-term split, cash-flow financing
+classification & reconciliation incl. the non-cash conversion case,
+dev-group exclusion, petty-cash receipt/repayment/fund reconciliation, leader
+visibility & conditional menu). Full loans suite: 75 tests, all green.
+Regression: reports 103, ledger+cashbook+leaders 181, statements+giving+nav
+179 - all green. Section-9 end-to-end check (all seven scenarios at once):
+trial balance, accounting equation, balance sheet all balance; cash flow
+reconciles; loan balances tie to Loan Payable; dev-group reports unaffected;
+health check and fund-variance drilldown clean.
+
+Deploy: one migration (loans: petty_topup link on LoanTransaction). No data
+backfill needed.
+
+
 ## v2.23.0 - Loan Management module
 A loan is a liability, never income. The module is deliberately built on the two existing
 source-document types so the general ledger, fund balances, bank reconciliation and every

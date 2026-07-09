@@ -1,0 +1,21 @@
+{# Shared loan-report filter bar + export links. Expects filter_context() vars. #}
+<form method="get" class="filter-bar no-print u-mb" style="flex-wrap:wrap;gap:.6rem">
+  {% if show_asof %}<div class="f"><label class="u-xs">As at</label><input type="date" name="as_of" value="{{ as_of_date|date:'Y-m-d' }}" class="field"></div>{% endif %}
+  {% if show_period %}<div class="f"><label class="u-xs">From</label><input type="date" name="start" value="{{ f.start }}" class="field"></div>
+  <div class="f"><label class="u-xs">To</label><input type="date" name="end" value="{{ f.end }}" class="field"></div>{% endif %}
+  <div class="f"><label class="u-xs">Fund</label><select name="fund" class="field--select"><option value="">All</option>
+    {% for d in funds %}<option value="{{ d.id }}" {% if f.fund == d.id|stringformat:'s' %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label class="u-xs">Lender</label><select name="lender" class="field--select"><option value="">All</option>
+    {% for l in lenders %}<option value="{{ l.id }}" {% if f.lender == l.id|stringformat:'s' %}selected{% endif %}>{{ l.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label class="u-xs">Status</label><select name="status" class="field--select"><option value="">All</option>
+    {% for v,lbl in statuses %}<option value="{{ v }}" {% if f.status == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+  <div class="f"><label class="u-xs">Type</label><select name="loan_type" class="field--select"><option value="">All</option>
+    {% for v,lbl in loan_types %}<option value="{{ v }}" {% if f.loan_type == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+  <button class="btn btn-sm">Filter</button>
+</form>
+<div class="btn-row no-print u-mb">
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=csv">⬇ CSV</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=xlsx">⬇ Excel</a>
+  <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖶 Print</button>
+  <a class="btn btn-ghost btn-sm" href="{% url 'loan_reports' %}">← Loan reports</a>
+</div>

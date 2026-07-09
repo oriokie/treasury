@@ -53,6 +53,13 @@ def site_context(request):
                 led_ids = {d.id for d in led}
                 roots = [d for d in led if d.parent_id not in led_ids]
                 ctx["leader_primary_dept"] = roots[0] if roots else led[0]
+            # conditional Loans menu: only when the leader actually has a loan
+            # on one of their funds (never show an empty loans page)
+            try:
+                from loans.services.loans import user_has_accessible_loans
+                ctx["leader_has_loans"] = user_has_accessible_loans(user)
+            except Exception:  # noqa: BLE001
+                ctx["leader_has_loans"] = False
     except Exception:  # noqa: BLE001
         pass
     ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))

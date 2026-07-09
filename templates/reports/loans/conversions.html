@@ -1,0 +1,19 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Loans Converted to Donations · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loans Converted &amp; Written Off</h1><div class="sub">Loans the lender gifted to the church, or that were forgiven</div></div></div>
+{% with show_period=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
+<div class="grid cols-2 u-mb">
+  <div class="stat"><div class="lbl">Converted to donations</div><div class="val mono">KES {{ converted_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Written off</div><div class="val mono">KES {{ writeoff_total|floatformat:2|intcomma }}</div></div>
+</div>
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Date</th><th>Type</th><th>Loan</th><th>Lender</th><th>Fund</th><th>Member credited</th><th class="num">Amount</th></tr></thead>
+<tbody>{% for t in rows %}<tr><td>{{ t.date|date:"d M y" }}</td>
+  <td><span class="pill u-xs {% if t.kind == 'CONVERSION' %}pill-green{% else %}pill-brass{% endif %}">{{ t.get_kind_display }}</span></td>
+  <td class="mono">{{ t.loan.number }}</td><td>{{ t.loan.lender.name }}</td><td class="muted">{{ t.loan.fund.name }}</td>
+  <td class="muted">{% if t.income_transaction.member %}{{ t.income_transaction.member.name }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="7" class="empty">No conversions or write-offs in this period.</td></tr>{% endfor %}</tbody></table></div>
+<p class="help">A conversion moves the liability into contribution income (attributed to the lender's member where linked); it appears on the Income &amp; Expenditure statement as income, never the loan receipt.</p>
+{% endblock %}

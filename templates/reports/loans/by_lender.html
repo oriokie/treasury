@@ -1,0 +1,15 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Loans by Lender · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loans by Lender</h1><div class="sub">As at {{ as_of_date|date:"d M Y" }}</div></div></div>
+{% with show_asof=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Lender</th><th class="num">Loans</th><th class="num">Received</th><th class="num">Repaid</th><th class="num">Outstanding</th></tr></thead>
+<tbody>{% for r in rows %}<tr><td>{{ r.lender.name }}{% if r.is_member %} <span class="pill pill-green u-xs">Member</span>{% endif %}</td>
+  <td class="num">{{ r.count }}</td><td class="num mono">{{ r.received|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.repaid|floatformat:2|intcomma }}</td><td class="num mono">{{ r.outstanding|floatformat:2|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="5" class="empty">No loans.</td></tr>{% endfor %}</tbody>
+{% if rows %}<tfoot><tr class="total-row"><td colspan="4"><strong>Total outstanding</strong></td>
+  <td class="num mono"><strong>{{ total_outstanding|floatformat:2|intcomma }}</strong></td></tr></tfoot>{% endif %}
+</table></div>
+{% endblock %}

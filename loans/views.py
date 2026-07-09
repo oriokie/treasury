@@ -264,11 +264,13 @@ class LoanReceiptView(_MoneyActionView):
 
     def apply(self, request, loan, cd):
         from giving.models import Transaction
+        into_petty = cd.get("destination") == "PETTY"
         svc.record_receipt(
             loan, date=cd["date"], amount=cd["amount"], user=request.user,
             note=cd.get("note") or "",
-            channel=(Transaction.Channel.CASH if cd.get("channel") == "CASH"
+            channel=(Transaction.Channel.CASH if into_petty
                      else Transaction.Channel.BANK),
+            into_petty_cash=into_petty,
             core_ref=(cd.get("reference") or "").strip().upper() or None)
 
 
@@ -278,10 +280,13 @@ class LoanRepaymentView(_MoneyActionView):
 
     def apply(self, request, loan, cd):
         bank_txn = _bank_debit(cd.get("bank_transaction_id"))
+        from_petty = cd.get("paid_from") == "PETTY"
         svc.record_repayment(
             loan, date=cd["date"], amount=cd["amount"], user=request.user,
-            method=cd.get("method"), voucher_no=cd.get("voucher_no") or "",
-            note=cd.get("note") or "", bank_transaction=bank_txn)
+            method=(cashbook_method("CASH") if from_petty else cd.get("method")),
+            voucher_no=cd.get("voucher_no") or "",
+            note=cd.get("note") or "", bank_transaction=bank_txn,
+            paid_from_petty_cash=from_petty)
 
 
 class LoanInterestView(_MoneyActionView):
@@ -302,6 +307,11 @@ def _bank_debit(txn_id):
     from giving.models import Transaction
     return Transaction.objects.filter(
         pk=txn_id, direction=Transaction.Direction.DEBIT).first()
+
+
+def cashbook_method(name):
+    from cashbook.models import Expense
+    return getattr(Expense.Method, name)
 
 
 class LoanConvertView(LoanConvertMixin, _MoneyActionView):

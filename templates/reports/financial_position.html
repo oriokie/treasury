@@ -30,6 +30,9 @@
     {% if payables %}<tr><td class="indent">Accounts payable (credit purchases)</td><td class="num mono">{{ payables|floatformat:2|intcomma }}</td></tr>{% endif %}
     {% if accruals %}<tr><td class="indent">Accrued expenses</td><td class="num mono">{{ accruals|floatformat:2|intcomma }}</td></tr>{% endif %}
     {% if pending %}<tr><td class="indent">Bank receipts pending allocation (suspense)</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if loans_current %}<tr><td class="indent">Loans payable — current (due within 12 months)</td><td class="num mono">{{ loans_current|floatformat:2|intcomma }}</td></tr>{% endif %}
+    {% if loans_long_term %}<tr class="grp"><td colspan="2">Long-term liabilities</td></tr>
+    <tr><td class="indent">Loans payable — long-term (due after 12 months)</td><td class="num mono">{{ loans_long_term|floatformat:2|intcomma }}</td></tr>{% endif %}
     <tr class="subtotal"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ total_liabilities|floatformat:2|intcomma }}</strong></td></tr>
   </tbody></table>
   <p class="help u-mt-0">Trust funds (e.g. tithe and field offerings) are held on behalf of {{ FIELD_NAME }} and remitted onward. <strong>Receipted</strong> trust has a formal receipt and is firmly due; <strong>not-yet-receipted</strong> is trust money already allocated to a trust fund but awaiting a receipt. Both are owed to the field. <strong>Bank receipts pending allocation</strong> are payments in the bank not yet matched to any fund — held in suspense until identified.</p>

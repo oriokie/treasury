@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import loan_reports as lr
 
 urlpatterns = [
     path("", views.ReportIndexView.as_view(), name="report_index"),
@@ -62,4 +63,16 @@ urlpatterns = [
     path("financial-position/", views.FinancialPositionView.as_view(), name="report_financial_position"),
     path("changes-in-net-assets/", views.ChangesInNetAssetsView.as_view(), name="report_changes_net_assets"),
     path("cash-flows/", views.StatementOfCashFlowsView.as_view(), name="report_cash_flows"),
+    # --- Loan liability & financing reports ---
+    path("loans/", lr.LoanReportIndexView.as_view(), name="loan_reports"),
+    path("loans/liability/", lr.LoanLiabilityScheduleView.as_view(), name="report_loan_liability"),
+    path("loans/outstanding/", lr.OutstandingLoansView.as_view(), name="report_loans_outstanding"),
+    path("loans/ageing/", lr.LoanAgeingView.as_view(), name="report_loan_ageing"),
+    path("loans/maturity/", lr.LoanMaturityView.as_view(), name="report_loan_maturity"),
+    path("loans/by-fund/", lr.LoansByFundView.as_view(), name="report_loans_by_fund"),
+    path("loans/by-lender/", lr.LoansByLenderView.as_view(), name="report_loans_by_lender"),
+    path("loans/repayments/", lr.LoanRepaymentHistoryView.as_view(), name="report_loan_repayments"),
+    path("loans/interest/", lr.LoanInterestReportView.as_view(), name="report_loan_interest"),
+    path("loans/converted/", lr.LoanConversionsView.as_view(), name="report_loans_converted"),
+    path("loans/financing/", lr.FinancingActivitiesView.as_view(), name="report_financing"),
 ]

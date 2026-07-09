@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}Loan reports · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loan reports</h1><div class="sub">Liability, ageing, maturity and financing — export to CSV, Excel or print</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'loan_dashboard' %}">Loans overview</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'report_index' %}">All reports</a></div></div>
+<div class="report-grid">
+  <a class="report-card" href="{% url 'report_loan_liability' %}"><div class="rc-ic">⚖</div><strong>Loan Liability Schedule</strong><span>Full liability per loan: principal, interest, total outstanding, days to maturity.</span></a>
+  <a class="report-card" href="{% url 'report_loans_outstanding' %}"><div class="rc-ic">▤</div><strong>Outstanding Loans</strong><span>Every loan with a balance still owed.</span></a>
+  <a class="report-card" href="{% url 'report_loan_ageing' %}"><div class="rc-ic">⏱</div><strong>Loan Ageing</strong><span>Outstanding grouped by age since drawdown.</span></a>
+  <a class="report-card" href="{% url 'report_loan_maturity' %}"><div class="rc-ic">🗓</div><strong>Maturity Schedule</strong><span>Loans by maturity — overdue, current, long-term.</span></a>
+  <a class="report-card" href="{% url 'report_loans_by_fund' %}"><div class="rc-ic">🏦</div><strong>Loans by Fund</strong><span>Financing received and outstanding per fund.</span></a>
+  <a class="report-card" href="{% url 'report_loans_by_lender' %}"><div class="rc-ic">◉</div><strong>Loans by Lender</strong><span>Exposure per lender.</span></a>
+  <a class="report-card" href="{% url 'report_loan_repayments' %}"><div class="rc-ic">↩</div><strong>Repayment History</strong><span>Principal repayments over a period.</span></a>
+  <a class="report-card" href="{% url 'report_loan_interest' %}"><div class="rc-ic">%</div><strong>Interest Report</strong><span>Interest paid — the finance-cost figure.</span></a>
+  <a class="report-card" href="{% url 'report_loans_converted' %}"><div class="rc-ic">🎁</div><strong>Converted / Written-off</strong><span>Loans gifted to the church or forgiven.</span></a>
+  <a class="report-card" href="{% url 'report_financing' %}"><div class="rc-ic">≋</div><strong>Financing Activities</strong><span>Loan cash flows for the cash flow statement.</span></a>
+</div>
+{% endblock %}

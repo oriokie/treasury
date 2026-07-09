@@ -89,7 +89,7 @@ class LoanViewTests(TestCase):
     def test_receipt_and_interest_through_forms(self):
         self.client.force_login(self.treasurer)
         self.client.post(reverse("loan_receipt", args=[self.loan.pk]),
-                         {"date": "2026-02-01", "amount": "20000", "channel": "CASH"})
+                         {"date": "2026-02-01", "amount": "20000", "destination": "BANK"})
         self.assertEqual(self.loan.received_total, Decimal("120000"))
         self.client.post(reverse("loan_interest", args=[self.loan.pk]),
                          {"date": "2026-02-15", "amount": "800", "method": "MPESA"})

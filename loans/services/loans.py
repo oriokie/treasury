@@ -131,11 +131,19 @@ def record_receipt(loan, *, date, amount, user=None, note="",
                    channel=None, core_ref=None, bank_receipt=None,
                    mpesa_ref="", payer_name="", payer_phone="",
                    raw_narration="", bank_account=None, statement_import=None,
-                   existing_transaction=None):
+                   existing_transaction=None, into_petty_cash=False):
     """Loan money in. Creates (or adopts) the fund credit and indexes it.
     The credit is excluded_from_income: it raises the fund's available cash
     and the bank reconciliation exactly like any bank credit, but never its
-    income, and the ledger books it as a liability."""
+    income, and the ledger books it as a liability.
+
+    into_petty_cash: the loan money physically landed in the petty-cash box
+    rather than the bank. Reuses the existing petty-cash float mechanism — a
+    PettyCashTopUp is created so the float rises by exactly this amount (the
+    same way any other cash entering the box does). The ledger posting is
+    unchanged (petty cash and bank share the single CASH account); only the
+    cash-location control total differs.
+    """
     from giving.models import Transaction
     _require_editable(loan)
     amount = Decimal(amount)
@@ -170,9 +178,24 @@ def record_receipt(loan, *, date, amount, user=None, note="",
             mpesa_ref=(mpesa_ref or "")[:30], raw_narration=raw_narration or "",
             bank_account=bank_account, statement_import=statement_import)
 
+    topup = None
+    if into_petty_cash:
+        # the loan cash entered the petty box: raise the float via the existing
+        # petty-cash top-up mechanism (a cash-location movement, not a fund
+        # movement — fund balances are unaffected, exactly as for other top-ups)
+        from cashbook.models import PettyCashTopUp
+        topup = PettyCashTopUp.objects.create(
+            date=txn.date, amount=amount,
+            note=f"Loan receipt {loan.number} — {loan.lender.name}"[:200],
+            recorded_by=user)
+        if channel is None:
+            txn.channel = Transaction.Channel.CASH
+            txn.save(update_fields=["channel"])
+
     lt = LoanTransaction.objects.create(
         loan=loan, kind=LoanTransaction.Kind.RECEIPT, date=txn.date,
-        amount=txn.amount, receipt_transaction=txn, note=note, created_by=user)
+        amount=txn.amount, receipt_transaction=txn, petty_topup=topup,
+        note=note, created_by=user)
     # the receipt txn may have been saved before the link existed — re-post so
     # the ledger books it against Loans payable, not income
     _repost(txn)
@@ -379,3 +402,34 @@ def intake_bank_receipt(pattern, *, date, amount, reference, phone, name,
         core_ref=core_ref, bank_receipt=bank_receipt, mpesa_ref=mpesa_ref,
         raw_narration=raw_narration or "", bank_account=bank_account,
         statement_import=statement_import)
+
+
+# ---- Departmental visibility (leaders & department-scoped staff) ------------
+
+def loans_for_departments(dept_ids):
+    """Loans linked to any of the given departments/funds. Used to scope a
+    department leader (or a department-scoped user) to only their own funds'
+    loans — reusing the same id set the rest of the leader area is filtered by
+    (departments_led_by / allowed_departments), so security stays consistent."""
+    dept_ids = list(dept_ids)
+    if not dept_ids:
+        return Loan.objects.none()
+    return (Loan.objects.filter(fund_id__in=dept_ids)
+            .exclude(status=Loan.Status.DRAFT)
+            .select_related("lender", "fund")
+            .prefetch_related("transactions__receipt_transaction",
+                              "transactions__income_transaction",
+                              "transactions__expense")
+            .order_by("-loan_date", "-id"))
+
+
+def user_has_accessible_loans(user):
+    """Whether a department leader has at least one loan on a fund they can
+    access — drives conditional menu visibility so an empty Loans page is
+    never shown to a leader with no loans."""
+    from leaders.permissions import allowed_departments
+    ids = list(allowed_departments(user).values_list("id", flat=True))
+    if not ids:
+        return False
+    return Loan.objects.filter(fund_id__in=ids).exclude(
+        status=Loan.Status.DRAFT).exists()

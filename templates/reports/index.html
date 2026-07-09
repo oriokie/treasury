@@ -44,6 +44,7 @@
   <a class="report-card" href="{% url 'report_budget_vs_actual' %}"><div class="rc-ic">▦</div><strong>Budget vs Actual</strong><span>Budget, actual, variance % — monthly, quarterly, annual.</span></a>
   <a class="report-card" href="{% url 'report_budget_board' %}"><div class="rc-ic">▤</div><strong>Board Budget Summary</strong><span>Budget by department &amp; source of funds; Local Church Budget exposure.</span></a>
   <a class="report-card" href="{% url 'report_cash_flow' %}"><div class="rc-ic">≈</div><strong>Cash flow</strong><span>Monthly inflow, outflow, net and running position.</span></a>
+  {% if can.view_loans %}<a class="report-card" href="{% url 'loan_reports' %}"><div class="rc-ic">🤝</div><strong>Loan reports</strong><span>Liability schedule, ageing, maturity, financing — the full loan catalogue.</span></a>{% endif %}
   <a class="report-card" href="{% url 'report_cashbook' %}"><div class="rc-ic">≣</div><strong>Cash book / Fund statement</strong><span>Running balance across receipts &amp; payments.</span></a>
   <a class="report-card" href="{% url 'report_expenses' %}"><div class="rc-ic">⊟</div><strong>Department spending</strong><span>By fund, category and claimant, plus outstanding.</span></a>
   <a class="report-card" href="{% url 'report_by_group' %}"><div class="rc-ic">☺</div><strong>Giving by group</strong><span>Youth, AMM, AWM, Ambassadors &amp; Children.</span></a>

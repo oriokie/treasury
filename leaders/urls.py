@@ -13,6 +13,8 @@ urlpatterns = [
          name="leader_pledges"),
     path("leader/advances/", views.LeaderAdvancesView.as_view(), name="leader_advances"),
     path("leader/advances/<int:pk>/", views.LeaderAdvanceDetailView.as_view(), name="leader_advance_detail"),
+    path("leader/loans/", views.LeaderLoansView.as_view(), name="leader_loans"),
+    path("leader/loans/<int:pk>/", views.LeaderLoanDetailView.as_view(), name="leader_loan_detail"),
     path("leader/group/<int:pk>/", views.LeaderGroupDetailView.as_view(),
          name="leader_group_detail"),
 ]
