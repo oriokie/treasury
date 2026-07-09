@@ -42,6 +42,8 @@ RIGHTS = [
     ("view_loans",           "View loans & lenders",               "Money controls"),
     ("manage_loans",         "Record loans / receipts / repayments", "Money controls"),
     ("convert_loans",        "Convert / write off loans",          "Money controls"),
+    ("view_liabilities",     "View liability transactions",        "Money controls"),
+    ("manage_liabilities",   "Record liability transactions",      "Money controls"),
     ("lock_periods",         "Lock / unlock periods",              "Money controls"),
     # Setup
     ("manage_funds",         "Manage funds & structure",           "Setup"),
@@ -85,14 +87,16 @@ _DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
                "allocate_transactions", "classify_debits",
                "record_expenses", "manage_members", "manage_campaigns",
                "manage_rules", "allocate_dev_offering", "manage_advances",
-               "view_loans", "manage_loans"}
+               "view_loans", "manage_loans",
+               "view_liabilities", "manage_liabilities"}
 _SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}
 _REPORTS = {"view_reports", "export_reports"}
 
 GROUP_RIGHTS = {
     roles.TREASURER: set(_ALL),                                   # everything
     roles.ASSISTANT: _DATA_ENTRY | _REPORTS | _SENSITIVE,         # entry + sees identities
-    roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup", "view_loans"} | _SENSITIVE,
+    roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup", "view_loans",
+                                 "view_liabilities"} | _SENSITIVE,
     roles.LEADER:    {"view_giver_identity"},     # names visible; phones masked unless a profile grants more.
                                                     # Deliberately NOT view_reports: a leader's own
                                                     # department views don't gate on it, and granting it

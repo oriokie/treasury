@@ -61,6 +61,14 @@ class LoanConvertMixin(RoleRequiredMixin):
     permission_message = "Converting or writing off a loan is restricted to Treasurers."
 
 
+class LiabilityViewMixin(RoleRequiredMixin):
+    """Read access to the liability register. Department leaders are also
+    admitted; the view itself scopes them to their own funds."""
+    allow_check = staticmethod(
+        lambda u: roles.can_view_liabilities(u) or roles.is_leader(u))
+    permission_message = "You don't have the liability-transactions right."
+
+
 class AllocateRequiredMixin(RoleRequiredMixin):
     """Allocate/resolve the giving review queue: treasurers/assistants, or any
     user granted the 'allocate transactions' right."""

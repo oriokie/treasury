@@ -7,8 +7,10 @@
 <table class="ledger compact"><thead><tr><th>Code</th><th>Label</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for c in custom %}<tr>
   <td class="mono">{{ c.code }}</td><td>{{ c.label }}</td>
-  <td>{% if c.active %}<span class="pill pill-green">Active</span>{% else %}<span class="muted">Inactive</span>{% endif %}</td>
-  <td><form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><button name="action" value="toggle" class="link">{% if c.active %}Deactivate{% else %}Activate{% endif %}</button></form></td>
+  <td>{% if c.active %}<span class="pill pill-green">Active</span>{% else %}<span class="muted">Inactive</span>{% endif %}
+      {% if c.is_liability %}<span class="pill pill-brass u-xs" title="Vouchers in this category file under the Liability Register, not Expenses">Liability</span>{% endif %}</td>
+  <td><form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><button name="action" value="toggle" class="link">{% if c.active %}Deactivate{% else %}Activate{% endif %}</button></form>
+      · <form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="id" value="{{ c.id }}"><button name="action" value="toggle_liability" class="link" title="Liability categories file under the Liability Register instead of Expenses — existing vouchers are refiled, accounting unchanged">{% if c.is_liability %}Make normal expense{% else %}Make liability{% endif %}</button></form></td>
 </tr>{% empty %}<tr><td colspan="4" class="empty">No custom categories yet.</td></tr>{% endfor %}</tbody>
 </table>
 <form method="post" class="u-mt">{% csrf_token %}

@@ -250,7 +250,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                   excluded_from_income=False).aggregate(t=Sum("amount"))["t"] or Decimal(0))
             ce = (Expense.objects.filter(status__in=[Expense.Status.APPROVED,
                   Expense.Status.PAID], date__gte=ys, date__lte=ye)
-                  .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
+                  .exclude(doc_class=Expense.DocClass.LIABILITY)
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
             return cc, ct, ce
 
@@ -740,7 +740,7 @@ class ControlsView(TreasurerRequiredMixin, View):
                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         exp = (Expense.objects.filter(status__in=[Expense.Status.APPROVED,
                Expense.Status.PAID], date__gte=s, date__lte=e)
-               .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
+               .exclude(doc_class=Expense.DocClass.LIABILITY)
                .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         HistoricalYear.objects.update_or_create(
             year=y, defaults=dict(collection=coll, trust_fund=trust,

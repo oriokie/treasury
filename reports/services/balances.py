@@ -53,10 +53,10 @@ def expenses_by_department(start=None, end=None, only_effective=True,
     if only_effective:
         f &= Q(status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
     if not include_remittance:
-        # liability settlements, not expenditure: trust remittances and loan
-        # principal repayments are kept out of the operating-expense view
-        f &= ~Q(category__in=[Expense.Category.REMITTANCE,
-                              Expense.Category.LOAN_REPAYMENT])
+        # liability settlements, not expenditure: anything classed LIABILITY
+        # (trust remittances, loan repayments, and any future liability
+        # category) is kept out of the operating-expense view
+        f &= ~Q(doc_class=Expense.DocClass.LIABILITY)
     qs = (Expense.objects.filter(f).values("department").annotate(total=Sum("amount")))
     out = {r["department"]: (r["total"] or Decimal(0)) for r in qs}
     # refunds are contra-entries: money returned to the fund reduces the net

@@ -186,7 +186,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
         spend = (Expense.objects.filter(department_id__in=dept_ids,
                     status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
                     date__gte=start, date__lte=end)
-                 .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
+                 .exclude(doc_class=Expense.DocClass.LIABILITY)
                  .aggregate(s=Sum("amount"))["s"] or Decimal(0))
         gift_count = (Transaction.objects.filter(date__gte=start, date__lte=end, **credit_q)
                       .count())
@@ -204,7 +204,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
                 Expense.objects.filter(department_id__in=dept_ids,
                     status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
                     date__gte=start, date__lte=end)
-                .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
+                .exclude(doc_class=Expense.DocClass.LIABILITY)
                 .annotate(m=ExtractMonth("date")).values("m").annotate(t=Sum("amount"))}
         active_m = sorted(set(mrec) | set(mexp))
         ctx["monthly_json"] = json.dumps({

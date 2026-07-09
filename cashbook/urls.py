@@ -1,6 +1,7 @@
 from django.urls import path
 from django.views.generic import RedirectView
 from . import views
+from . import liabilities
 
 urlpatterns = [
     path("reports/fund/<int:pk>/budget/", views.FundBudgetView.as_view(), name="fund_budget"),
@@ -37,6 +38,7 @@ urlpatterns = [
     path("expenses/<int:pk>/attach/<int:att>/delete/", views.ExpenseAttachmentDelete.as_view(), name="expense_attachment_delete"),
     path("payables/", views.AccrualsView.as_view(), name="accruals"),
     # Payment register (cheques, EFT, RTGS, M-Pesa, etc.)
+    path("liabilities/", liabilities.LiabilityRegisterView.as_view(), name="liability_register"),
     path("payments/", views.ChequeRegisterView.as_view(), name="payment_register"),
     path("payments/outstanding/", views.ChequeOutstandingView.as_view(), name="payment_outstanding"),
     path("payments/<int:pk>/print/", views.ChequePrintView.as_view(), name="payment_print"),

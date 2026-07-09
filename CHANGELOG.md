@@ -1,5 +1,66 @@
 # Changelog
 
+## v2.25.0 - Liability transactions separated from the Expense Register
+Operational expenses and balance-sheet liability settlements are now distinct
+document classes with their own registers. Classification only - the posting
+engine, every accounting entry, and all audit history are untouched.
+
+**Document classification.** The voucher (Expense) model gains a high-level
+`doc_class` (Receipt / Expense / Liability / Transfer / Journal / Adjustment -
+the last four reserved for future document types). It is DERIVED from the
+category on every save, so every creation path (forms, services, statement
+imports, remittance batches, loan contras, the bulk recategorise tool) is
+classified consistently with zero call-site changes. Built-in liability
+categories: trust REMITTANCE and LOAN_REPAYMENT. Custom categories gain an
+**is_liability** flag (Funds & setup -> categories, with one-click toggle that
+refiles existing vouchers) - **new liability types (deposit refunds, advance
+settlements, deferred income, supplier deposits...) need no code change.**
+
+**Expense Register = operational only.** Loan repayments, loan conversions,
+trust releases and other liability settlements no longer appear in the expense
+list, its exports, or the pending-approval badge (they get their own badge).
+Historical rows remain fully accessible - and approvable - through the
+Liability Register, which links every row to its source voucher.
+
+**Liability Transactions register** (Expenses -> Liability transactions,
+/liabilities/): a unified, period-filtered register over the existing
+documents - liability-class vouchers (trust releases, custom settlements),
+every loan transaction (receipts remain on the bank/receipts ledger AND are
+traceable here, per the borrowing trail), and trust fund receipts (via the
+type filter, so routine tithe volume doesn't swamp the default view). Columns:
+date, reference, transaction type, liability type, description, fund,
+lender/beneficiary/trust, amount, effect (increase/settle), status, created
+by. Search, filters (type/fund/status/period), pagination, CSV/Excel/print.
+Dashboard header: outstanding loans, outstanding trust funds, advances
+outstanding, this-month movement count and total, pending-approval alert.
+
+**Query refactor.** The 25 scattered
+`exclude(category__in=[REMITTANCE, LOAN_REPAYMENT])` sites across reports,
+dashboards, forecasts and the assistant now filter on `doc_class` - one
+concept instead of category lists, and future liability categories are
+excluded from operating views automatically.
+
+**Permissions & navigation.** New grantable rights `view_liabilities` and
+`manage_liabilities` (Treasurer/Assistant by default; Auditor view-only);
+approval reuses the existing expense-approval flow via the linked voucher.
+Department leaders reaching the register are scoped to exactly their
+allowed-department funds. The nav item appears only with the right.
+
+**Migration.** Existing REMITTANCE and LOAN_REPAYMENT vouchers (and their
+historical snapshots) reclassified via queryset update - no save() side
+effects, no new history rows, no timestamps touched, no accounting change.
+
+Verified end-to-end on live data: trial balance, accounting equation, balance
+sheet, cash flow, fund/loan/trust balances all unchanged and reconciling;
+loan balances tie to the Loans payable account. Tests: 19 new
+(classification incl. custom categories and refiling, accounting invariance,
+register content/filters/exports, permissions, leader scoping, badge split).
+Regression: 623 tests across cashbook, loans, reports, ledger, leaders,
+statements, giving, nav/rights/dashboard - all green.
+
+Deploy: migrations 0035 (schema) + 0036 (reclassify). No manual steps.
+
+
 ## v2.24.0 - Loan reporting, financial-statement integration, petty cash & department visibility
 Builds on the v2.23 Loan module. Ten report types, full financial-statement
 integration, petty-cash receipt/repayment, and departmental-leader loan

@@ -120,6 +120,20 @@ def can_manage_loans(user):
             or has_right(user, "manage_loans"))
 
 
+def can_view_liabilities(user):
+    """Treasurers, assistants and auditors see the liability register by
+    default; grantable to others (department leaders get a scoped view)."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user) or is_auditor(user)
+            or has_right(user, "view_liabilities"))
+
+
+def can_manage_liabilities(user):
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "manage_liabilities"))
+
+
 def can_convert_loans(user):
     """Retiring a loan (conversion / write-off) is a treasurer decision, like
     expense approval; grantable to others via the right."""

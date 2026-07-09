@@ -84,7 +84,12 @@ def site_context(request):
             direction=Transaction.Direction.DEBIT,
             channel=Transaction.Channel.BANK).count()
         ctx["expense_badge"] = Expense.objects.filter(
-            status=Expense.Status.PENDING).count()
+            status=Expense.Status.PENDING,
+            doc_class=Expense.DocClass.EXPENSE).count()
+        # pending liability documents surface on the Liability Register
+        ctx["liability_badge"] = Expense.objects.filter(
+            status=Expense.Status.PENDING,
+            doc_class=Expense.DocClass.LIABILITY).count()
         from core.services.notifications import unread_count
         ctx["notif_badge"] = unread_count(user)
     return ctx

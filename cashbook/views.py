@@ -39,6 +39,11 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
               .prefetch_related("attachments").order_by("-id"))
         from django.db.models import Count
         qs = qs.annotate(n_attachments=Count("attachments"))
+        # The Expense Register is OPERATIONAL expenditure only. Liability
+        # settlements (trust releases, loan repayments, and any category
+        # flagged as liability) live in the Liability Register instead —
+        # historical rows included. The posting engine is unaffected.
+        qs = qs.filter(doc_class=Expense.DocClass.EXPENSE)
         g = self.request.GET
         if g.get("status"):
             qs = qs.filter(status=g["status"])
@@ -1900,8 +1905,10 @@ class ExpenseCategoryList(TreasurerRequiredMixin, View):
         if action == "add":
             label = (request.POST.get("label") or "").strip()
             code = (request.POST.get("code") or "").strip().upper().replace(" ", "_")[:20]
+            is_liab = bool(request.POST.get("is_liability"))
             if label and code:
-                ExpenseCategory.objects.get_or_create(code=code, defaults={"label": label})
+                ExpenseCategory.objects.get_or_create(
+                    code=code, defaults={"label": label, "is_liability": is_liab})
                 messages.success(request, f"Added category “{label}”.")
             else:
                 messages.error(request, "Both a code and a label are required.")
@@ -1911,6 +1918,20 @@ class ExpenseCategoryList(TreasurerRequiredMixin, View):
                 ec.active = not ec.active
                 ec.save(update_fields=["active"])
                 messages.success(request, f"“{ec.label}” is now {'active' if ec.active else 'inactive'}.")
+        elif action == "toggle_liability":
+            ec = ExpenseCategory.objects.filter(pk=request.POST.get("id")).first()
+            if ec:
+                ec.is_liability = not ec.is_liability
+                ec.save(update_fields=["is_liability"])
+                # refile existing vouchers in this category (classification
+                # only — accounting entries and audit history untouched)
+                from .models import Expense as _E
+                new_class = (_E.DocClass.LIABILITY if ec.is_liability
+                             else _E.DocClass.EXPENSE)
+                n = _E.objects.filter(category=ec.code).update(doc_class=new_class)
+                messages.success(request,
+                    f"“{ec.label}” is now a {'liability' if ec.is_liability else 'normal expense'} "
+                    f"category ({n} existing voucher{'s' if n != 1 else ''} refiled).")
         return redirect("expense_categories")
 
 

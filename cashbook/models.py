@@ -50,6 +50,22 @@ class Expense(models.Model):
         REFUND = "REFUND", "Refund"
         OTHER = "OTHER", "Other"
 
+    class DocClass(models.TextChoices):
+        """High-level transaction class — determines WHERE a document appears
+        (Expense Register vs Liability Register vs future registers), never
+        HOW it posts. The posting engine keys off `category` exactly as
+        before; this classification is presentation and reporting only.
+
+        RECEIPT / TRANSFER / JOURNAL / ADJUSTMENT are reserved for future
+        document types; today's vouchers are either an operational EXPENSE or
+        a LIABILITY movement (a balance-sheet settlement, not expenditure)."""
+        RECEIPT = "RECEIPT", "Receipt"
+        EXPENSE = "EXPENSE", "Expense"
+        LIABILITY = "LIABILITY", "Liability"
+        TRANSFER = "TRANSFER", "Transfer"
+        JOURNAL = "JOURNAL", "Journal"
+        ADJUSTMENT = "ADJUSTMENT", "Adjustment"
+
     date = models.DateField(db_index=True)
     sabbath_week = models.PositiveSmallIntegerField(null=True, blank=True)
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
@@ -63,6 +79,12 @@ class Expense(models.Model):
                   "bypassing normal income recognition entirely.")
     category = models.CharField(max_length=14, choices=Category.choices,
                                 default=Category.OTHER)
+    doc_class = models.CharField(max_length=10, choices=DocClass.choices,
+        default=DocClass.EXPENSE, db_index=True, editable=False,
+        help_text="Derived from the category on save: liability categories "
+                  "(trust remittance, loan repayment, custom categories flagged "
+                  "as liability) file under the Liability Register, everything "
+                  "else under Expenses. Never affects ledger posting.")
     funding_source = models.CharField(max_length=12, choices=FundingSource.choices,
         default=FundingSource.CONTRIBUTION, db_index=True,
         help_text="What kind of money paid for this — contributions (the default), "
@@ -129,6 +151,16 @@ class Expense(models.Model):
                    # (APPROVED/PAID) within a period — status alone doesn't
                    # help once a date range is added on top
                    models.Index(fields=["status", "date"])]
+
+    def save(self, *args, **kwargs):
+        # doc_class follows the category (single source of truth): liability
+        # categories file under the Liability Register, the rest are expenses.
+        # Recomputed on every save so a category edit refiles the voucher.
+        self.doc_class = classify_category(self.category)
+        if "update_fields" in kwargs and kwargs["update_fields"] is not None:
+            kwargs["update_fields"] = list(
+                set(kwargs["update_fields"]) | {"doc_class"})
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.date} {self.description} {self.amount}"
@@ -780,12 +812,42 @@ class ExpenseCategory(models.Model):
     label = models.CharField(max_length=80)
     active = models.BooleanField(default=True)
     sort = models.PositiveIntegerField(default=100)
+    is_liability = models.BooleanField(default=False,
+        help_text="Tick for liability-settlement categories (deposit refunds, "
+                  "advance settlements, deferred income, …). Vouchers in this "
+                  "category file under the Liability Register instead of "
+                  "Expenses — no code change needed for new liability types.")
 
     class Meta:
         ordering = ["sort", "label"]
 
     def __str__(self):
         return self.label
+
+
+# Built-in categories that are liability settlements, not operational spend.
+# Custom categories add to this set via ExpenseCategory.is_liability — new
+# liability types (deposit refunds, advance settlements, deferred income, …)
+# therefore need no code change.
+_LIABILITY_BUILTIN = frozenset({"REMITTANCE", "LOAN_REPAYMENT"})
+
+
+def classify_category(code):
+    """The DocClass a category belongs to. Single source of truth for the
+    expense/liability split — Expense.save() derives doc_class from this, so
+    every creation path (forms, services, imports, remittance batches, loan
+    contras) is classified consistently without touching call sites."""
+    if not code:
+        return Expense.DocClass.EXPENSE
+    if code in _LIABILITY_BUILTIN:
+        return Expense.DocClass.LIABILITY
+    try:
+        ec = ExpenseCategory.objects.filter(code=code).only("is_liability").first()
+        if ec and ec.is_liability:
+            return Expense.DocClass.LIABILITY
+    except Exception:  # noqa: BLE001 — table may not exist mid-migration
+        pass
+    return Expense.DocClass.EXPENSE
 
 
 def category_choices():

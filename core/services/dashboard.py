@@ -144,7 +144,7 @@ def charts():
     g_labels, g_values = _monthly_series(_credits(), months=12)
     inc_labels, inc_values = _monthly_series(_credits(date__year=year), months=12)
     eff = (Expense.objects.filter(status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-           .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT]))
+           .exclude(doc_class=Expense.DocClass.LIABILITY))
     exp_labels, exp_values = _monthly_series(eff, months=12)
 
     # Receipts vs expenses, side by side, for the FULL current year (moved here
@@ -226,7 +226,7 @@ def insights():
     ytd = _credits(date__year=y).aggregate(t=Sum("amount"))["t"] or Decimal(0)
     ytd_exp = (Expense.objects.filter(
         status__in=[Expense.Status.APPROVED, Expense.Status.PAID], date__year=y)
-        .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
+        .exclude(doc_class=Expense.DocClass.LIABILITY)
         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     exp_ratio = float(ytd_exp / ytd * 100) if ytd else None
 

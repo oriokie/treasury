@@ -86,6 +86,7 @@
         <summary><span class="ic">⊟</span> Expenses <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'expense_list' %}" class="{% if request.resolver_match.url_name == 'expense_list' %}active{% endif %}">Expenses{% if expense_badge %}<span class="badge">{{ expense_badge }}</span>{% endif %}</a>
+          {% if can.view_liabilities %}<a href="{% url 'liability_register' %}" class="{% if request.resolver_match.url_name == 'liability_register' %}active{% endif %}">Liability transactions{% if liability_badge %}<span class="badge">{{ liability_badge }}</span>{% endif %}</a>{% endif %}
           <a href="{% url 'recurring_list' %}" class="{% if 'recurring' in request.resolver_match.url_name %}active{% endif %}">Recurring</a>
           <a href="{% url 'petty_cash' %}" class="{% if request.resolver_match.url_name == 'petty_cash' %}active{% endif %}">Petty cash</a>
           <a href="{% url 'accruals' %}" class="{% if request.resolver_match.url_name == 'accruals' %}active{% endif %}">Payables &amp; accruals</a>

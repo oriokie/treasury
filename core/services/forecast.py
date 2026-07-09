@@ -29,7 +29,7 @@ def _credits(**extra):
 def _effective_expenses(**extra):
     return (Expense.objects.filter(
         status__in=[Expense.Status.APPROVED, Expense.Status.PAID], **extra)
-        .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT]))
+        .exclude(doc_class=Expense.DocClass.LIABILITY))
 
 
 def cash_now():

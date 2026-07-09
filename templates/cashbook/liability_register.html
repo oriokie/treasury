@@ -1,0 +1,65 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Liability transactions · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Liability transactions</h1>
+<div class="sub">Balance-sheet movements — loans, trust funds and other liabilities. Settling a liability is not expenditure; these never appear in the Expense Register or the Income &amp; Expenditure statement.</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=csv">⬇ CSV</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=xlsx">⬇ Excel</a>
+  <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖶 Print</button>
+</div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Outstanding loans</div><div class="val mono">KES {{ stats.loans_out|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding trust funds</div><div class="val mono">KES {{ stats.trust_out|floatformat:2|intcomma }}</div></div>
+  {% if stats.advances_out != None %}<div class="stat"><div class="lbl">Advances outstanding</div><div class="val mono">KES {{ stats.advances_out|floatformat:2|intcomma }}</div></div>{% endif %}
+  <div class="stat"><div class="lbl">This month</div><div class="val mono">{{ stats.month_count }} <span class="u-xs muted">movements</span></div>
+    <div class="help u-mt-0">KES {{ stats.month_total|floatformat:2|intcomma }}</div></div>
+</div>
+
+{% if liability_badge %}<div class="alert alert-info u-mb">{{ liability_badge }} liability document{{ liability_badge|pluralize }} pending approval — open the voucher from the register below to approve.</div>{% endif %}
+
+<form method="get" class="filter-bar no-print u-mb" style="flex-wrap:wrap;gap:.6rem">
+  <div class="f"><label class="u-xs">From</label><input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field"></div>
+  <div class="f"><label class="u-xs">To</label><input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field"></div>
+  <div class="f"><label class="u-xs">Type</label><select name="type" class="field--select">
+    <option value="">All movements</option>
+    <option value="loan" {% if ltype == 'loan' %}selected{% endif %}>Loans</option>
+    <option value="trust" {% if ltype == 'trust' %}selected{% endif %}>Trust funds (incl. receipts)</option>
+    <option value="trust_receipts" {% if ltype == 'trust_receipts' %}selected{% endif %}>Trust fund receipts only</option>
+    <option value="other" {% if ltype == 'other' %}selected{% endif %}>Other liabilities</option>
+  </select></div>
+  <div class="f"><label class="u-xs">Fund</label><select name="fund" class="field--select"><option value="">All</option>
+    {% for d in funds %}<option value="{{ d.id }}" {% if f.fund == d.id|stringformat:'s' %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label class="u-xs">Status</label><select name="status" class="field--select"><option value="">All</option>
+    {% for v,lbl in statuses %}<option value="{{ v }}" {% if f.status == v %}selected{% endif %}>{{ lbl }}</option>{% endfor %}</select></div>
+  <div class="f"><label class="u-xs">Search</label><input name="q" value="{{ f.q }}" class="field" placeholder="Ref, lender, description…"></div>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Date</th><th>Reference</th><th>Transaction type</th><th>Liability</th><th>Description</th><th>Fund</th><th>Lender / trust</th><th class="num">Amount</th><th>Effect</th><th>Status</th><th>By</th></tr></thead>
+<tbody>{% for r in rows %}<tr>
+  <td>{{ r.date|date:"d M y" }}</td>
+  <td class="mono u-xs"><a class="link" href="{{ r.url }}">{{ r.ref }}</a></td>
+  <td>{{ r.txn_type }}</td>
+  <td><span class="pill u-xs {% if r.liability_type == 'Loan' %}pill-blue{% elif r.liability_type == 'Trust' %}pill-brass{% else %}pill-amber{% endif %}">{{ r.liability_type }}</span></td>
+  <td class="muted u-xs">{{ r.description|truncatechars:60 }}</td>
+  <td class="muted u-xs">{{ r.fund }}</td>
+  <td class="u-xs">{{ r.party }}</td>
+  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+  <td>{% if r.direction > 0 %}<span class="pill pill-blue u-xs">▲ Increase</span>{% elif r.direction < 0 %}<span class="pill pill-green u-xs">▼ Settle</span>{% else %}<span class="muted u-xs">—</span>{% endif %}</td>
+  <td class="u-xs">{{ r.status }}</td>
+  <td class="muted u-xs">{{ r.created_by }}</td>
+</tr>{% empty %}<tr><td colspan="11" class="empty">No liability movements in this period{% if scoped %} on your departments{% endif %}.</td></tr>{% endfor %}</tbody></table></div>
+{% include 'partials/pagination.html' %}
+
+<div class="grid cols-2 u-mt">
+<div class="card"><div class="hd">What belongs here?</div><div class="bd help u-mt-0">
+Loan receipts, repayments, conversions and write-offs; trust fund receipts and releases to the field; and any voucher whose category is flagged as a liability (deposit refunds, advance settlements, deferred income…). New liability categories can be added under Funds &amp; setup → expense categories — no code change needed. Every row links to its source document, where approval and the full audit history live.
+</div></div>
+<div class="card"><div class="hd">Where's the accounting?</div><div class="bd help u-mt-0">
+Unchanged. These rows are the same vouchers and bank credits the ledger already posts (Loans payable, Trust payable) — this register only classifies and displays them. The trial balance, fund balances, and every statement are exactly as before.
+</div></div>
+</div>
+{% endblock %}
