@@ -192,7 +192,31 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                 campaign_group = ""
                 status = Transaction.Status.REVIEW
 
+                loan_hit = None
                 if is_credit:
+                    # Loan narrations are recognised BEFORE ordinary allocation
+                    # ('LOAN DEV' is a liability, never development income) and
+                    # never create a church Member — a lender is its own entity.
+                    from loans.services.narration import detect_loan
+                    lp = detect_loan(row["reference"])
+                    if lp is not None and lp.kind == "RECEIPT":
+                        if lp.fund_id:
+                            from loans.services.loans import intake_bank_receipt
+                            intake_bank_receipt(
+                                lp, date=row["date"], amount=amount,
+                                reference=row["reference"], phone=row["phone"],
+                                name=row["name"], raw_narration=row["raw_narration"],
+                                core_ref=core_ref, bank_receipt=receipt,
+                                mpesa_ref=(row.get("mpesa_ref") or "")[:30],
+                                bank_account=bank_account,
+                                statement_import=import_obj)
+                            imported += 1
+                            continue
+                        # clearly a loan but the fund is unknown: never guess —
+                        # to the review queue, where "Record as loan receipt"
+                        # completes it. Skip member creation for the same reason.
+                        loan_hit = lp
+                if is_credit and loan_hit is None:
                     member, _ = match_or_create_member(row["name"], row["phone"])
                     resolver, alloc_status = allocate(row["reference"], row["date"])
                     if isinstance(resolver, SplitFund):
@@ -325,9 +349,12 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     # (respects SiteConfig.pledge_match_mode; best-effort, never breaks import)
     try:
         from pledges.services.matching import handle_new_contribution
+        # excluded_from_income skips loan receipts — loan money must never be
+        # matched against a member's giving pledge
         for t in Transaction.objects.filter(statement_import=import_obj,
                                              direction=Transaction.Direction.CREDIT,
-                                             confirmed=True):
+                                             confirmed=True,
+                                             excluded_from_income=False):
             handle_new_contribution(t)
     except Exception:
         pass

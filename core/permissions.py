@@ -43,6 +43,24 @@ class AdvanceAccessMixin(RoleRequiredMixin):
     permission_message = "You don't have the staff-advances right."
 
 
+class LoanViewMixin(RoleRequiredMixin):
+    """Read access to loans and lenders."""
+    allow_check = staticmethod(roles.can_view_loans)
+    permission_message = "You don't have the loans right."
+
+
+class LoanManageMixin(RoleRequiredMixin):
+    """Record loans, receipts, repayments; manage lenders and patterns."""
+    allow_check = staticmethod(roles.can_manage_loans)
+    permission_message = "You don't have the loans-management right."
+
+
+class LoanConvertMixin(RoleRequiredMixin):
+    """Convert to donation / write off — a treasurer decision."""
+    allow_check = staticmethod(roles.can_convert_loans)
+    permission_message = "Converting or writing off a loan is restricted to Treasurers."
+
+
 class AllocateRequiredMixin(RoleRequiredMixin):
     """Allocate/resolve the giving review queue: treasurers/assistants, or any
     user granted the 'allocate transactions' right."""

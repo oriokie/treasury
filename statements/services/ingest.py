@@ -48,7 +48,24 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
     campaign_group = ""
     status = Transaction.Status.REVIEW
 
+    loan_hit = None
     if is_credit:
+        # Same loan recognition as the file importer (see importer.py): a loan
+        # narration is a liability, never income, and never creates a Member.
+        from loans.services.narration import detect_loan
+        lp = detect_loan(reference)
+        if lp is not None and lp.kind == "RECEIPT":
+            if lp.fund_id:
+                from loans.services.loans import intake_bank_receipt
+                lt = intake_bank_receipt(
+                    lp, date=date, amount=amount, reference=reference,
+                    phone=phone, name=name, raw_narration=raw_narration,
+                    core_ref=core_ref, bank_receipt=bank_receipt,
+                    mpesa_ref=mpesa_ref or "", bank_account=bank_account)
+                return lt.receipt_transaction, "created"
+            loan_hit = lp   # fund unknown -> review queue, no Member created
+
+    if is_credit and loan_hit is None:
         member, _ = match_or_create_member(name, phone)
         resolver, alloc_status = allocate(reference, date)
         if isinstance(resolver, SplitFund):

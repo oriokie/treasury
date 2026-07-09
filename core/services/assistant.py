@@ -157,7 +157,7 @@ def _data_context():
     inc = sum((r["receipts"] for r in rows if not r["is_trust"]), _D(0))
     rec = (Expense.objects.filter(status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
            expenditure_type=Expense.ExpenditureType.RECURRENT)
-           .exclude(category=Expense.Category.REMITTANCE)
+           .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
            .aggregate(t=Sum("amount"))["t"] or 0)
     lines.append(f"Local income (all time): {inc}. Recurrent expenditure: {rec}. "
                  f"Operating result: {inc - rec}.")
@@ -268,7 +268,7 @@ def _data_context():
         cats = (Expense.objects.filter(
                     status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
                     date__gte=y0, date__lte=today)
-                .exclude(category=Expense.Category.REMITTANCE)
+                .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                 .values("category").annotate(t=Sum("amount")).order_by("-t")[:5])
         if cats:
             label = dict(Expense.Category.choices)
@@ -662,7 +662,7 @@ def _answer_rules(question, user=None):
             ef &= Q(date__gte=start)
         if end:
             ef &= Q(date__lte=end)
-        recurrent = (Expense.objects.filter(ef).exclude(category=Expense.Category.REMITTANCE)
+        recurrent = (Expense.objects.filter(ef).exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                      .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         op = income - recurrent
         word = "surplus" if op >= 0 else "deficit"

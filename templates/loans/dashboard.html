@@ -1,0 +1,66 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Loans · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loans</h1>
+<div class="sub">Money the church has borrowed — a liability until repaid, converted to a donation, or written off. Never income.</div></div>
+<div class="btn-row no-print">
+  {% if can.manage_loans %}<a class="btn btn-sm" href="{% url 'loan_new' %}">+ New loan</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'loan_register' %}">Register</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'lender_list' %}">Lenders</a></div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Active loans</div><div class="val mono">{{ active_count }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding principal</div><div class="val mono">KES {{ outstanding_principal|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Accrued interest unpaid</div><div class="val mono">KES {{ outstanding_interest|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Overdue</div><div class="val mono" {% if overdue %}style="color:var(--red,#b00)"{% endif %}>{{ overdue|length }}</div></div>
+</div>
+
+{% if unlinked_lenders and can.manage_loans %}
+<div class="alert alert-info u-mb">{{ unlinked_lenders }} lender{{ unlinked_lenders|pluralize }} with loans {% if unlinked_lenders == 1 %}is{% else %}are{% endif %} not linked to a member — <a class="link" href="{% url 'lender_matching' %}">review lender matching</a>.</div>
+{% endif %}
+
+{% if overdue %}
+<div class="card u-mb"><div class="hd">Overdue loans</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Loan</th><th>Lender</th><th>Fund</th><th>Matured</th><th class="num">Outstanding</th></tr></thead>
+<tbody>{% for l in overdue %}<tr><td><a class="link" href="{% url 'loan_detail' l.id %}">{{ l.number }}</a></td>
+<td>{{ l.lender.name }}</td><td class="muted">{{ l.fund.name }}</td>
+<td>{{ l.maturity_date|date:"d M Y" }}</td><td class="num mono">{{ l.outstanding_principal|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody></table>
+</div></div>
+{% endif %}
+
+{% if due_soon %}
+<div class="card u-mb"><div class="hd">Maturing in the next 60 days</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Loan</th><th>Lender</th><th>Fund</th><th>Maturity</th><th class="num">Outstanding</th></tr></thead>
+<tbody>{% for l in due_soon %}<tr><td><a class="link" href="{% url 'loan_detail' l.id %}">{{ l.number }}</a></td>
+<td>{{ l.lender.name }}</td><td class="muted">{{ l.fund.name }}</td>
+<td>{{ l.maturity_date|date:"d M Y" }}</td><td class="num mono">{{ l.outstanding_principal|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody></table>
+</div></div>
+{% endif %}
+
+<div class="grid cols-2 u-mb">
+<div class="card"><div class="hd">Loans by fund</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Fund</th><th class="num">Loans</th><th class="num">Financing received</th><th class="num">Outstanding</th></tr></thead>
+<tbody>{% for r in by_fund %}<tr><td>{{ r.fund.name }}</td><td class="num">{{ r.count }}</td>
+<td class="num mono">{{ r.financing|floatformat:2|intcomma }}</td>
+<td class="num mono">{{ r.outstanding|floatformat:2|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="4" class="empty">No active loans.</td></tr>{% endfor %}</tbody></table>
+<p class="help">Loan financing raises a fund's <em>available cash</em> but never its income; the fund's net position is its cash less its outstanding loans.</p>
+</div></div>
+
+<div class="card"><div class="hd">Largest lenders (by outstanding)</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Lender</th><th class="num">Outstanding</th></tr></thead>
+<tbody>{% for lender, amt in largest %}<tr><td>{{ lender.name }}{% if lender.member %} <span class="pill pill-green u-xs">Member</span>{% endif %}</td>
+<td class="num mono">{{ amt|floatformat:2|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="2" class="empty">Nothing outstanding.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+</div>
+
+<div class="card"><div class="hd">Recent loan activity</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Date</th><th>Loan</th><th>Lender</th><th>Type</th><th class="num">Amount</th></tr></thead>
+<tbody>{% for t in recent %}<tr><td>{{ t.date|date:"d M y" }}</td>
+<td><a class="link" href="{% url 'loan_detail' t.loan_id %}">{{ t.loan.number }}</a></td>
+<td>{{ t.loan.lender.name }}</td><td><span class="pill {% if t.kind == 'RECEIPT' %}pill-blue{% elif t.kind == 'PRINCIPAL' %}pill-green{% elif t.kind == 'INTEREST' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ t.get_kind_display }}</span></td>
+<td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+{% empty %}<tr><td colspan="5" class="empty">No loan activity yet.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+{% endblock %}

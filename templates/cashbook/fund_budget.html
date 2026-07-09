@@ -86,6 +86,25 @@
 
 
 <!-- Budget vs actual by item -->
+{% if loan_summary.has_loans %}
+<div class="section-title u-mt-lg"><span>Loan financing</span></div>
+<div class="card u-mb"><div class="bd">
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+    <div><div class="help u-mt-0">Loan financing received</div>
+      <div class="mono" style="font-size:1.2rem;font-weight:700">KES {{ loan_summary.financing|floatformat:2|intcomma }}</div></div>
+    <div style="border-left:1px solid var(--line);padding-left:1.5rem"><div class="help u-mt-0">Outstanding loan balance</div>
+      <div class="mono" style="font-size:1.2rem;font-weight:700;color:var(--red,#b00)">KES {{ loan_summary.outstanding|floatformat:2|intcomma }}</div></div>
+  </div>
+  <table class="ledger compact u-mt"><thead><tr><th>Loan</th><th>Lender</th><th class="num">Received</th><th class="num">Outstanding</th><th>Status</th></tr></thead>
+  <tbody>{% for l in loan_summary.loans %}<tr>
+    <td><a class="link" href="{% url 'loan_detail' l.id %}">{{ l.number }}</a></td><td>{{ l.lender.name }}</td>
+    <td class="num mono">{{ l.received_total|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ l.outstanding_principal|floatformat:2|intcomma }}</td>
+    <td><span class="pill u-xs">{{ l.get_status_display }}</span></td></tr>{% endfor %}</tbody></table>
+  <p class="help">Loan money raises this fund's <em>available cash</em> but never its income or collections above. The fund's net position is its balance less the outstanding loans.</p>
+</div></div>
+{% endif %}
+
 <div class="section-title u-mt-lg u-between"><span>Budget vs actual by item — {{ year }}</span>
   <a class="btn btn-xs btn-ghost no-print" href="{% url 'budget_items_jpeg' dept.id %}?year={{ year }}" title="Download this table as a JPEG image for printing or sharing">⤓ Download JPEG</a></div>
 <div class="card"><div class="bd bd-flush">

@@ -1,0 +1,71 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ loan.number }} · Loans · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ loan.number }} — {{ loan.lender.name }}</h1>
+<div class="sub">{{ loan.fund.name }} · {{ loan.get_loan_type_display }} · taken {{ loan.loan_date|date:"d M Y" }}{% if loan.maturity_date %} · matures {{ loan.maturity_date|date:"d M Y" }}{% endif %} · <span class="pill {% if loan.status == 'ACTIVE' %}pill-blue{% elif loan.status == 'COMPLETED' %}pill-green{% else %}pill-brass{% endif %} u-xs">{{ loan.get_status_display }}</span></div></div>
+<div class="btn-row no-print">
+  {% if can_manage and loan.is_editable %}
+    <a class="btn btn-sm" href="{% url 'loan_receipt' loan.id %}">+ Receipt</a>
+    <a class="btn btn-sm" href="{% url 'loan_repay' loan.id %}">− Repay</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'loan_interest' loan.id %}">Interest</a>
+    {% if can_convert %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'loan_convert' loan.id %}">Convert to donation</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'loan_write_off' loan.id %}">Write off</a>
+    {% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'loan_edit' loan.id %}">✎ Edit</a>
+  {% endif %}
+  <a class="btn btn-ghost btn-sm" href="?export=csv">⬇ CSV</a>
+  <a class="btn btn-ghost btn-sm" href="?export=xlsx">⬇ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'loan_register' %}">← Register</a></div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Received</div><div class="val mono">KES {{ loan.received_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Principal repaid</div><div class="val mono">KES {{ loan.principal_repaid|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding principal</div><div class="val mono" style="color:var(--forest)">KES {{ loan.outstanding_principal|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Interest paid{% if loan.interest_rate %} · {{ loan.interest_rate }}% {{ loan.get_interest_method_display }}{% endif %}</div>
+    <div class="val mono">KES {{ loan.interest_paid|floatformat:2|intcomma }}</div>
+    {% if loan.outstanding_interest %}<div class="help u-mt-0">Accrued unpaid ≈ KES {{ loan.outstanding_interest|floatformat:2|intcomma }}</div>{% endif %}</div>
+</div>
+{% if loan.purpose or loan.project %}<p class="help">{% if loan.project %}Project: {{ loan.project }} · {% endif %}{{ loan.purpose }}</p>{% endif %}
+{% if loan.converted_total %}<p class="help"><span class="pill pill-brass u-xs">Converted</span> KES {{ loan.converted_total|floatformat:2|intcomma }} of this loan was gifted to the church and now appears as contribution income{% if loan.lender.member %} on {{ loan.lender.member.name }}'s statement{% endif %}.</p>{% endif %}
+{% if loan.written_off_total %}<p class="help"><span class="pill pill-brass u-xs">Written off</span> KES {{ loan.written_off_total|floatformat:2|intcomma }} was forgiven.</p>{% endif %}
+
+<div class="card u-mb"><div class="hd">Loan ledger</div><div class="bd">
+<table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Detail</th><th class="num">Amount</th><th class="num">Outstanding after</th><th>Document</th></tr></thead>
+<tbody>{% for r in rows %}<tr {% if not r.effective %}style="opacity:.55"{% endif %}>
+  <td>{{ r.t.date|date:"d M y" }}</td>
+  <td><span class="pill {% if r.t.kind == 'RECEIPT' %}pill-blue{% elif r.t.kind == 'PRINCIPAL' %}pill-green{% elif r.t.kind == 'INTEREST' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ r.t.get_kind_display }}</span>
+    {% if not r.effective %}<span class="pill pill-red u-xs">Not effective</span>{% endif %}</td>
+  <td class="muted">{{ r.t.note|default:"" }}</td>
+  <td class="num mono">{{ r.t.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+  <td class="u-xs">
+    {% if r.t.receipt_transaction_id %}<a class="link" href="/transactions/{{ r.t.receipt_transaction_id }}/edit/">bank credit</a>{% endif %}
+    {% if r.t.income_transaction_id %}<a class="link" href="/transactions/{{ r.t.income_transaction_id }}/edit/">income</a>{% endif %}
+    {% if r.t.expense_id %}<span class="muted">expense #{{ r.t.expense_id }}{% if r.t.expense.voucher_no %} · {{ r.t.expense.voucher_no }}{% endif %}</span>{% endif %}
+  </td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">No transactions on this loan yet.</td></tr>{% endfor %}</tbody></table>
+<p class="help">"Not effective" means the underlying document no longer counts (a reversed bank credit or a rejected voucher) — the outstanding balance already reflects that automatically.</p>
+</div></div>
+
+<div class="grid cols-2">
+<div class="card"><div class="hd">Attachments</div><div class="bd">
+<ul class="u-mb">{% for a in loan.attachments.all %}<li><a class="link" href="{{ a.file.url }}">{{ a }}</a> <span class="muted u-xs">{{ a.uploaded_at|date:"d M y" }}</span></li>
+{% empty %}<li class="muted">No attachments (agreement, board minute, ID copy…).</li>{% endfor %}</ul>
+{% if can_manage %}
+<form method="post" action="{% url 'loan_attach' loan.id %}" enctype="multipart/form-data" class="no-print">{% csrf_token %}
+  <div style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap">{{ attach_form.file }}{{ attach_form.label }}<button class="btn btn-sm">Attach</button></div>
+</form>{% endif %}
+</div></div>
+<div class="card"><div class="hd">Lender</div><div class="bd">
+  <p><strong>{{ loan.lender.name }}</strong>{% if loan.lender.member %} · <span class="pill pill-green u-xs">Member: {{ loan.lender.member.name }}</span>{% else %} · <span class="pill pill-amber u-xs">Not linked to a member</span>{% endif %}</p>
+  <p class="muted u-xs">{{ loan.lender.phone|default:"" }} {{ loan.lender.email|default:"" }}</p>
+  {% if can_manage %}<a class="link u-xs" href="{% url 'lender_edit' loan.lender.id %}">Edit lender</a> · <a class="link u-xs" href="{% url 'lender_matching' %}">Lender matching</a>{% endif %}
+  {% if loan.notes %}<p class="help u-mt">{{ loan.notes }}</p>{% endif %}
+  {% if can_manage and not rows %}
+  <form method="post" action="{% url 'loan_delete' loan.id %}" class="u-mt no-print" onsubmit="return confirm('Delete {{ loan.number }}? Only possible because it has no transactions.')">{% csrf_token %}
+    <button class="btn btn-ghost btn-sm" style="color:var(--red,#b00)">🗑 Delete loan</button></form>
+  {% endif %}
+</div></div>
+</div>
+{% endblock %}

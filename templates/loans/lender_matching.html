@@ -1,0 +1,41 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Lender matching · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Lender matching</h1>
+<div class="sub">Lenders not linked to a member. Linking is always a deliberate action — nothing is matched automatically. Historical loans stay intact; future loans resolve to the member.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'lender_list' %}">← Lenders</a></div></div>
+
+{% for r in rows %}
+<div class="card u-mb"><div class="bd">
+  <div class="u-between" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+    <div><strong>{{ r.lender.name }}</strong> <span class="mono muted u-xs">{{ r.lender.phone|default:"" }}</span>
+      <span class="muted u-xs">· {{ r.lender.loans.count }} loan{{ r.lender.loans.count|pluralize }}</span>
+      {% if r.lender.source == 'AUTO_BANK' %}<span class="pill pill-amber u-xs">From bank statement</span>{% endif %}</div>
+    <div class="btn-row">
+      <a class="btn btn-ghost btn-sm" href="{% url 'lender_edit' r.lender.id %}">✎ Edit</a>
+      <form method="post" class="u-inline" onsubmit="return confirm('Create a NEW member “{{ r.lender.name }}” (pre-filled from this lender) and link it?')">{% csrf_token %}
+        <input type="hidden" name="action" value="create_member"><input type="hidden" name="lender_id" value="{{ r.lender.id }}">
+        <button class="btn btn-ghost btn-sm">+ Create member</button></form>
+    </div>
+  </div>
+  {% if r.candidates %}
+  <div class="u-mt"><span class="help">Possible member matches (by phone / name):</span>
+    {% for m in r.candidates %}
+    <form method="post" class="u-inline">{% csrf_token %}
+      <input type="hidden" name="action" value="link"><input type="hidden" name="lender_id" value="{{ r.lender.id }}">
+      <input type="hidden" name="member_id" value="{{ m.id }}">
+      <button class="btn btn-sm">Link to {{ m.name }}</button></form>
+    {% endfor %}</div>
+  {% endif %}
+  {% if r.dups %}
+  <div class="u-mt"><span class="help" style="color:var(--red,#b00)">Possible duplicate lender{{ r.dups|length|pluralize }}:</span>
+    {% for d in r.dups %}
+    <form method="post" class="u-inline" onsubmit="return confirm('Merge “{{ d.name }}” into “{{ r.lender.name }}”? Its loans move over; this cannot be undone.')">{% csrf_token %}
+      <input type="hidden" name="action" value="merge"><input type="hidden" name="lender_id" value="{{ r.lender.id }}">
+      <input type="hidden" name="absorb_id" value="{{ d.id }}">
+      <button class="btn btn-ghost btn-sm">Merge in {{ d.name }}</button></form>
+    {% endfor %}</div>
+  {% endif %}
+</div></div>
+{% empty %}<div class="card"><div class="bd empty">Every lender is linked to a member — nothing to match.</div></div>{% endfor %}
+{% endblock %}

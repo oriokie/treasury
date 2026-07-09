@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}{% if loan %}Edit {{ loan.number }}{% else %}New loan{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if loan %}Edit {{ loan.number }}{% else %}New loan{% endif %}</h1>
+<div class="sub">A loan is a liability — it raises the fund's available cash but never its income.</div></div></div>
+<div class="card form-card" style="max-width:660px"><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Save loan</button>
+    <a class="btn btn-ghost" href="{% if loan %}{% url 'loan_detail' loan.id %}{% else %}{% url 'loan_register' %}{% endif %}">Cancel</a></div>
+</form>
+</div></div>
+{% if not loan %}<p class="help" style="max-width:660px">Need a lender that isn't listed? <a class="link" href="{% url 'lender_new' %}">Add a lender first</a> — lenders are their own register and are never automatically created as church members.</p>{% endif %}
+{% endblock %}

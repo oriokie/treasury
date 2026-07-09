@@ -87,6 +87,7 @@
     <div class="q-actions">
       <button class="btn btn-sm q-submit" disabled>Allocate</button>
       <button type="button" class="btn btn-sm btn-ghost q-split-toggle">⑂ Split</button>
+      {% if can.manage_loans and t.direction == 'CREDIT' %}<a class="btn btn-sm btn-ghost" href="{% url 'loan_from_transaction' t.id %}" title="This money is a loan, not a contribution — record it as a loan receipt (a liability), keeping the row on the bank ledger">🤝 Loan receipt</a>{% endif %}
     </div>
 
     <div class="q-split-panel" hidden>

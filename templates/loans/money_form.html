@@ -1,0 +1,27 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ title }} · {{ loan.number }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ title }} — {{ loan.number }}</h1>
+<div class="sub">{{ loan.lender.name }} · {{ loan.fund.name }} · outstanding KES {{ loan.outstanding_principal|floatformat:2|intcomma }}</div></div></div>
+<div class="card form-card" style="max-width:560px"><div class="bd">
+<form method="post" action="{{ action }}">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form.visible_fields %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+    {% for f in form.hidden_fields %}{{ f }}{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Record {{ title|lower }}</button>
+    <a class="btn btn-ghost" href="{% url 'loan_detail' loan.id %}">Cancel</a></div>
+</form>
+</div></div>
+<div class="help" style="max-width:560px">
+{% if title == 'Loan receipt' %}The money is recorded on <strong>{{ loan.fund.name }}</strong> as loan financing: it raises the fund's available cash and appears in the bank reconciliation, but never in income. The ledger books it against <em>Loans payable</em>.
+{% elif title == 'Principal repayment' %}Repaying principal reduces the fund's cash and settles the <em>Loans payable</em> liability. It is deliberately kept out of the Income &amp; Expenditure statement — settling a liability is not expenditure (the same treatment trust remittances receive).
+{% elif title == 'Interest payment' %}Interest is a genuine expense (Loan interest) on {{ loan.fund.name }} and appears in the Income &amp; Expenditure statement.
+{% else %}The lender lets the church keep this money: the liability is retired against income with <strong>no cash movement</strong>. It is recorded as a contra pair (an income credit plus a settlement voucher of the same amount) so the fund's cash is unchanged while its income rises{% if title == 'Convert to donation' %}, attributed to the lender's linked member where one exists{% endif %}.{% endif %}
+</div>
+{% endblock %}

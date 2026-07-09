@@ -36,6 +36,7 @@ CHART = [
     ("2000", "Trust funds payable (to field)", "LIABILITY", "TRUST_PAYABLE"),
     ("2100", "Accruals", "LIABILITY", "ACCRUALS"),
     ("2200", "Accounts payable", "LIABILITY", "PAYABLES"),
+    ("2300", "Loans payable (to lenders)", "LIABILITY", "LOANS_PAYABLE"),
     ("2400", "Statutory deductions payable (PAYE/NSSF/NHIF)", "LIABILITY", "STATUTORY_PAYABLE"),
     # --- Equity / fund balances (3xxx) ---
     ("3000", "Accumulated fund balances", "EQUITY", "ACCUM_FUNDS"),
@@ -199,6 +200,19 @@ def _is_trust(dept):
     return dept is not None and dept.fund_type == Department.FundType.TRUST
 
 
+
+def _is_loan_receipt(txn):
+    """True if this credit is indexed as a loan receipt. Loan receipts are
+    always excluded_from_income, so the reverse-relation lookup is only paid
+    on that rare subset — ordinary receipts never trigger a query."""
+    if not getattr(txn, "excluded_from_income", False):
+        return False
+    try:
+        return txn.loan_receipt is not None
+    except Exception:  # noqa: BLE001 — no related LoanTransaction
+        return False
+
+
 def post_transaction(txn):
     """Income receipt. Skips bank-debit-direction rows (represented by expenses)."""
     from giving.models import Transaction
@@ -208,7 +222,10 @@ def post_transaction(txn):
         return
     cash = _acct("CASH")
     dept = txn.department
-    if _is_trust(dept):
+    if _is_loan_receipt(txn):
+        # loan money in: a liability, never income (mirrors the trust shape)
+        credit = _acct("LOANS_PAYABLE") or _acct("PAYABLES")
+    elif _is_trust(dept):
         credit = _acct("TRUST_PAYABLE")
     else:
         credit = _acct(_income_key_for(dept)) if dept else _acct("INC_OTHER")
@@ -225,6 +242,9 @@ def post_expense(exp):
     cash = _acct("CASH")
     if exp.category == Expense.Category.REMITTANCE:
         debit = _acct("TRUST_PAYABLE")
+    elif exp.category == Expense.Category.LOAN_REPAYMENT:
+        # settling loan principal reduces the liability, not an expense
+        debit = _acct("LOANS_PAYABLE") or _acct("PAYABLES")
     elif exp.expenditure_type == Expense.ExpenditureType.CAPITAL:
         debit = _acct("FIXED_ASSETS")
     else:
@@ -245,6 +265,8 @@ def post_refund(ref):
     cash = _acct("CASH")
     if exp.category == Expense.Category.REMITTANCE:
         exp_acct = _acct("TRUST_PAYABLE")
+    elif exp.category == Expense.Category.LOAN_REPAYMENT:
+        exp_acct = _acct("LOANS_PAYABLE") or _acct("PAYABLES")
     elif exp.expenditure_type == Expense.ExpenditureType.CAPITAL:
         exp_acct = _acct("FIXED_ASSETS")
     else:
@@ -485,8 +507,9 @@ def fund_variance_detail(dept):
     for t in Transaction.objects.filter(department=dept,
                                         direction=Transaction.Direction.CREDIT):
         seen.add(t.pk)
+        excluded = t.excluded_from_income and not _is_loan_receipt(t)
         engine_amt = (Decimal(0) if (t.is_reversal or t.is_reversed
-                                     or t.excluded_from_income or not t.confirmed)
+                                     or excluded or not t.confirmed)
                       else t.amount)
         ledger_amt = ledger_txn.get(t.pk, Decimal(0))
         if engine_amt != ledger_amt:

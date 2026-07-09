@@ -106,6 +106,27 @@ def can_manage_advances(user):
             or has_right(user, "manage_advances"))
 
 
+def can_view_loans(user):
+    """Treasurers, assistants and auditors see loans by default; grantable."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user) or is_auditor(user)
+            or has_right(user, "view_loans"))
+
+
+def can_manage_loans(user):
+    """Treasurers and assistants record loan activity by default; grantable."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "manage_loans"))
+
+
+def can_convert_loans(user):
+    """Retiring a loan (conversion / write-off) is a treasurer decision, like
+    expense approval; grantable to others via the right."""
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "convert_loans")
+
+
 def can_view_fund_budget(user, dept):
     """View (read-only) a specific fund's budget & goals page. Treasurers and
     assistants always can, for any fund. A leader can too, but only for a fund

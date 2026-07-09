@@ -2500,8 +2500,15 @@ class FundBudgetView(LoginRequiredMixin, View):
         offering = cfg.camp_offering_fund if dept.goal_type == "CAMP_EXPENSE" else None
         offering_collected = _collected(offering, year)
 
+        # loan financing block (only shown when the fund has loans): loans
+        # raise the fund's available cash but never its income, so they are
+        # presented as their own line alongside contributions and expenses
+        from loans.services.loans import fund_loan_summary
+        loan_summary = fund_loan_summary(dept)
+
         return {
             "dept": dept, "year": year,
+            "loan_summary": loan_summary,
             "years": range(dt.date.today().year + 1, dt.date.today().year - 4, -1),
             "rows": rows, "tot_budget": tot_budget, "tot_actual": tot_actual,
             "tot_variance": tot_budget - tot_actual, "untagged": untagged,

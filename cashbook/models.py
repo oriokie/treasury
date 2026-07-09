@@ -21,6 +21,8 @@ class Expense(models.Model):
         BENEVOLENCE = "BENEVOLENCE", "Benevolence / welfare"
         BANK_CHARGE = "BANK_CHARGE", "Bank charges"
         REMITTANCE = "REMITTANCE", "Remittance to field"
+        LOAN_REPAYMENT = "LOAN_REPAYMENT", "Loan principal repayment"
+        LOAN_INTEREST = "LOAN_INTEREST", "Loan interest"
         OTHER = "OTHER", "Other"
 
     class Method(models.TextChoices):
@@ -39,6 +41,15 @@ class Expense(models.Model):
         PAID = "PAID", "Paid"
         REJECTED = "REJECTED", "Rejected"
 
+    class FundingSource(models.TextChoices):
+        CONTRIBUTION = "CONTRIBUTION", "Contribution"
+        LOAN = "LOAN", "Loan"
+        GRANT = "GRANT", "Grant"
+        ADVANCE = "ADVANCE", "Advance"
+        TRANSFER = "TRANSFER", "Transfer"
+        REFUND = "REFUND", "Refund"
+        OTHER = "OTHER", "Other"
+
     date = models.DateField(db_index=True)
     sabbath_week = models.PositiveSmallIntegerField(null=True, blank=True)
     department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
@@ -52,6 +63,11 @@ class Expense(models.Model):
                   "bypassing normal income recognition entirely.")
     category = models.CharField(max_length=14, choices=Category.choices,
                                 default=Category.OTHER)
+    funding_source = models.CharField(max_length=12, choices=FundingSource.choices,
+        default=FundingSource.CONTRIBUTION, db_index=True,
+        help_text="What kind of money paid for this — contributions (the default), "
+                  "loan financing, a grant, etc. Informational tagging usable "
+                  "anywhere a payment is recorded.")
     expenditure_type = models.CharField(
         max_length=10, choices=ExpenditureType.choices,
         default=ExpenditureType.RECURRENT, db_index=True,

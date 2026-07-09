@@ -1,5 +1,61 @@
 # Changelog
 
+## v2.23.0 - Loan Management module
+A loan is a liability, never income. The module is deliberately built on the two existing
+source-document types so the general ledger, fund balances, bank reconciliation and every
+report tie out with **no new balance math and no loan-specific rebuild step**:
+
+- **Loan receipt** = a bank/cash credit on the financed fund with `excluded_from_income`
+  (cash in the fund, never income) which the ledger now posts **DR Cash / CR Loans payable
+  (2300)** - the exact shape trust receipts already have.
+- **Principal repayment** = an Expense with new category `LOAN_REPAYMENT`, posting
+  **DR Loans payable / CR Cash** and excluded from the I&E operating view - the exact
+  treatment trust `REMITTANCE` expenses already receive (a liability settlement is not
+  expenditure). Interest is an ordinary expense (`LOAN_INTEREST`, in I&E).
+- **Conversion to donation / write-off** = a contra PAIR dated on the day (an income credit
+  plus a LOAN_REPAYMENT voucher of the same amount) netting to **DR Loans payable /
+  CR Income with zero cash movement**; conversions attribute the lender's linked member so
+  the gift appears on their statement. `/ledger/rebuild/` regenerates all of it unchanged.
+- A loan's outstanding balance is always **computed from its transactions**, and each loan
+  transaction is only *effective* while its underlying document still counts - reversing a
+  bank credit or rejecting a voucher flows straight through to the loan balance.
+
+**Lenders** are their own register (member, visitor, institution, another church) - never
+assumed to be, and never auto-created as, a church Member. Resolution reuses the member
+matcher's conservative shape (national ID > phone > unambiguous name > create). A
+**Lender matching** page links lenders to members (with phone/name suggestions), creates
+pre-filled members, and merges duplicates (loans repointed, absorbed record retired with an
+audit trail). Exact phone/ID duplicates are blocked at the form.
+
+**Bank intake** extends the allocation pipeline rather than adding a parser: configurable,
+database-driven **loan narration patterns** (seeded with the standard aliases; same
+normalisation and match-type semantics as allocation rules, cached, editable at
+/loans/patterns/) run on each credit *before* ordinary allocation. A receipt pattern with a
+fund is fully automatic (lender resolved, open loan on that fund extended or a new one
+opened, receipt recorded); without a fund the row goes to the review queue - never a
+guess - where a new **"Loan receipt" action** completes it while keeping the row on the
+bank ledger for reconciliation. The file importer and the live CBS webhook share one
+intake path. Loan credits are skipped by pledge matching.
+
+Also: reusable **Funding source** field on expenses (Contribution/Loan/Grant/Advance/
+Transfer/Refund/Other); loans dashboard (outstanding, overdue, maturing, by fund, largest
+lenders, recent activity); register/detail/statement with CSV+Excel exports; a **Loan
+financing block on the fund budget page** (financing received, outstanding balance, per-loan
+table); attachments; permanent LN-YYYY-NNNN numbering; three new grantable rights
+(view/manage/convert - conversion and write-off are treasurer-level, like approvals);
+validations (repayment can never exceed outstanding, retired loans are read-only, loans
+with transactions cannot be deleted); full django-simple-history on every loan model.
+
+Tests: 52 new across four files (balances & validations, journal shapes incl. the
+conversion contra netting and trial-balance/accounting-equation checks, importer/webhook
+intake & dedup, views & role permissions). Regression: ledger+statements 141, reports+
+cashbook 167, giving+pledges 116, core nav/rights/render 61 - all green.
+
+Deploy: migrations (cashbook: funding_source + 2 categories; loans: new app + seeded
+patterns/chart). After deploy, point the receipt patterns you want automated at their
+fund in Loans -> Narration patterns; fund-less patterns route to the review queue.
+
+
 ## v2.22.0 - comprehensive Transactions page review
 A full review of the Transactions page against seven distinct concerns, each traced to a concrete root
 cause and fixed or implemented in full.

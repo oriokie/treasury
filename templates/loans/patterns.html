@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Loan narration patterns · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Loan narration patterns</h1>
+<div class="sub">How the statement importer recognises loan money. Checked on the normalised reference (lowercased, spaces removed) before ordinary allocation — a receipt pattern with a fund is fully automatic; without a fund it goes to the review queue.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'loan_dashboard' %}">← Loans</a></div></div>
+
+<div class="table-wrap u-mb"><table class="ledger">
+<thead><tr><th>Pattern</th><th>Match</th><th>Meaning</th><th>Fund (receipts)</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for p in patterns %}<tr {% if not p.active %}style="opacity:.5"{% endif %}>
+  <td class="mono">{{ p.pattern }}</td><td class="muted">{{ p.get_match_type_display }}</td>
+  <td><span class="pill {% if p.kind == 'RECEIPT' %}pill-blue{% elif p.kind == 'CONVERSION' %}pill-brass{% else %}pill-green{% endif %} u-xs">{{ p.get_kind_display }}</span></td>
+  <td>{% if p.fund %}{{ p.fund.name }}{% else %}<span class="muted">— review queue —</span>{% endif %}</td>
+  <td>{% if p.seeded %}<span class="pill u-xs">Seeded</span>{% endif %} {% if p.active %}<span class="pill pill-green u-xs">Active</span>{% else %}<span class="pill pill-amber u-xs">Off</span>{% endif %}</td>
+  <td><form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="toggle"><input type="hidden" name="pk" value="{{ p.id }}">
+    <button class="link u-xs" style="border:none;background:none;cursor:pointer">{% if p.active %}deactivate{% else %}activate{% endif %}</button></form></td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">No patterns.</td></tr>{% endfor %}</tbody></table></div>
+
+<div class="card form-card" style="max-width:600px"><div class="hd">Add a pattern</div><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+    {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+    {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Add pattern</button></div>
+</form></div></div>
+<p class="help" style="max-width:600px">Repayment / interest patterns are informational for debits today — a repayment is recorded from the loan page (where it can be linked to the bank debit row). Receipt patterns drive the automatic intake.</p>
+{% endblock %}

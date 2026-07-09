@@ -188,7 +188,7 @@ class ExpenseReportView(PeriodMixin, TemplateView):
         s, e = ctx["start"], ctx["end"]
         eff = Q(status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
         base = (Expense.objects.filter(eff, date__gte=s, date__lte=e)
-                .exclude(category=Expense.Category.REMITTANCE))
+                .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT]))
         # consolidate by the top-level fund (sub-account spend rolls into its parent)
         from collections import defaultdict
         from departments.models import Department
@@ -242,13 +242,13 @@ class IncomeExpenditureView(PeriodMixin, TemplateView):
         paid = [Expense.Status.APPROVED, Expense.Status.PAID]
         expense = (Expense.objects.filter(
             date__gte=s, date__lte=e, status__in=paid)
-            .exclude(category=Expense.Category.REMITTANCE)
+            .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
             .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         capital = (Expense.objects.filter(
             date__gte=s, date__lte=e, status__in=paid,
             expenditure_type=Expense.ExpenditureType.CAPITAL)
-            .exclude(category=Expense.Category.REMITTANCE)
+            .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         remittances = (Expense.objects.filter(
             date__gte=s, date__lte=e, status__in=paid,
@@ -903,7 +903,7 @@ class AnnualSummaryView(ReportAccessMixin, TemplateView):
                   .values("yr").annotate(total=Sum("amount")).order_by("yr"))
         expense = (Expense.objects.filter(
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-            .exclude(category=Expense.Category.REMITTANCE)
+            .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
             .annotate(yr=ExtractYear("date"))
             .values("yr").annotate(total=Sum("amount")).order_by("yr"))
         inc = {r["yr"]: r["total"] for r in income}
@@ -1999,15 +1999,15 @@ class BoardReportView(PeriodMixin, TemplateView):
             date__gte=s, date__lte=e, department__is_trust=False,
             excluded_from_income=False).aggregate(t=Sum("amount"))["t"] or Decimal(0))
         expense = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid)
-                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                    .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         capital = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid,
                    expenditure_type=Expense.ExpenditureType.CAPITAL)
-                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         ie_cats = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid)
-                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                    .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
                    .values("category").annotate(t=Sum("amount")).order_by("-t"))
         cat_label = dict(Expense.Category.choices)
@@ -2068,7 +2068,7 @@ class BoardReportView(PeriodMixin, TemplateView):
                  .values("yr").annotate(total=Sum("amount")))}
         exp_y = {r["yr"]: r["total"] for r in (_ytd_filter(
                  Expense.objects.filter(status__in=paid)
-                 .exclude(category=Expense.Category.REMITTANCE))
+                 .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT]))
                  .annotate(yr=ExtractYear("date")).values("yr")
                  .annotate(total=Sum("amount")))}
         from core.models import HistoricalYear
@@ -2281,7 +2281,7 @@ class IncomeStatementView(PeriodMixin, TemplateView):
         eff = Q(status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
                 date__gte=s, date__lte=e)
         cats = dict(Expense.Category.choices)
-        base = Expense.objects.filter(eff).exclude(category=Expense.Category.REMITTANCE)
+        base = Expense.objects.filter(eff).exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
 
         def _by_cat(qs):
             rows = [{"name": cats.get(r["category"], r["category"]), "amount": r["t"]}
@@ -2464,7 +2464,7 @@ class ChangesInNetAssetsView(PeriodMixin, TemplateView):
 
         def cap_for(alloc):
             qs = (Expense.objects.filter(eff, expenditure_type=Expense.ExpenditureType.CAPITAL,
-                  department__fund_type="LOCAL").exclude(category=Expense.Category.REMITTANCE))
+                  department__fund_type="LOCAL").exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT]))
             tot = Decimal(0)
             for x in qs.select_related("department"):
                 if (x.department.category == "DEVELOPMENT") == alloc:
@@ -2538,7 +2538,7 @@ class StatementOfCashFlowsView(PeriodMixin, TemplateView):
             return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
         remittances = _sum(Expense.objects.filter(eff, category=Expense.Category.REMITTANCE))
-        nonremit = Expense.objects.filter(eff).exclude(category=Expense.Category.REMITTANCE)
+        nonremit = Expense.objects.filter(eff).exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
         total_nonremit = _sum(nonremit)
         capital = _sum(nonremit.filter(expenditure_type=Expense.ExpenditureType.CAPITAL))
         # everything non-remittance that isn't explicitly capital is operating —
@@ -3083,12 +3083,12 @@ class MonthlyTreasurerReportView(ReportAccessMixin, TemplateView):
             date__gte=s, date__lte=e, department__is_trust=False,
             excluded_from_income=False).aggregate(t=Sum("amount"))["t"] or Decimal(0))
         op_exp = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid)
-                  .exclude(category=Expense.Category.REMITTANCE)
+                  .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                   .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         capital = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid,
                    expenditure_type=Expense.ExpenditureType.CAPITAL)
-                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         ctx["income_stmt"] = {"income": income, "expense": op_exp,
                               "surplus": income - op_exp, "capital": capital}
@@ -3098,7 +3098,7 @@ class MonthlyTreasurerReportView(ReportAccessMixin, TemplateView):
             excluded_from_income=False).values("department__name")
             .annotate(t=Sum("amount")).order_by("-t"))
         exp_cat = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=paid)
-                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(category__in=[Expense.Category.REMITTANCE, Expense.Category.LOAN_REPAYMENT])
                    .exclude(expenditure_type=Expense.ExpenditureType.CAPITAL)
                    .values("category").annotate(t=Sum("amount")).order_by("-t"))
         _cat = dict(Expense.Category.choices)

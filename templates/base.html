@@ -68,6 +68,19 @@
         </div>
       </details>
 
+      {% if can.view_loans %}
+      <details class="navgrp" data-grp="loans">
+        <summary><span class="ic">🤝</span> Loans <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'loan_dashboard' %}" class="{% if request.resolver_match.url_name == 'loan_dashboard' %}active{% endif %}">Overview</a>
+          <a href="{% url 'loan_register' %}" class="{% if request.resolver_match.url_name == 'loan_register' or request.resolver_match.url_name == 'loan_detail' %}active{% endif %}">Loan register</a>
+          <a href="{% url 'lender_list' %}" class="{% if request.resolver_match.url_name == 'lender_list' %}active{% endif %}">Lenders</a>
+          {% if can.manage_loans %}<a href="{% url 'lender_matching' %}" class="{% if request.resolver_match.url_name == 'lender_matching' %}active{% endif %}">Lender matching</a>
+          <a href="{% url 'loan_patterns' %}" class="{% if request.resolver_match.url_name == 'loan_patterns' %}active{% endif %}">Narration patterns</a>{% endif %}
+        </div>
+      </details>
+      {% endif %}
+
       <details class="navgrp" data-grp="expenses">
         <summary><span class="ic">⊟</span> Expenses <span class="chev">▾</span></summary>
         <div class="grp-links">

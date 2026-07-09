@@ -117,6 +117,7 @@ INSTALLED_APPS = [
     "ledger",
     "pledges",
     "leaders",
+    "loans",
     # third party (must come after local apps)
     "axes",
 ]
