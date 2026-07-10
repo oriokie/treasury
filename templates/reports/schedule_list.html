@@ -1,0 +1,47 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Report schedules · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Report schedules</h1>
+<div class="sub">Schedule automatic report generation. Each run creates an immutable snapshot.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'snapshot_history' %}">Snapshots</a></div></div>
+
+<div class="card u-mb"><div class="hd">New schedule</div><div class="bd">
+<form method="post" class="filter-bar">{% csrf_token %}
+  <input type="text" name="name" class="field" placeholder="Schedule name" required>
+  <select name="report_key" class="field">
+    {% for r in reports %}<option value="{{ r.key }}">{{ r.title }}</option>{% endfor %}
+  </select>
+  <select name="frequency" class="field">
+    {% for val, label in frequencies %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+  </select>
+  <select name="period_policy" class="field">
+    {% for val, label in periods %}<option value="{{ val }}">{{ label }}</option>{% endfor %}
+  </select>
+  <select name="formats" class="field"><option value="csv">CSV</option><option value="xlsx">Excel</option></select>
+  <input type="text" name="recipients" class="field" placeholder="emails, comma-separated">
+  <button class="btn btn-sm">Create</button>
+</form>
+</div></div>
+
+<div class="card"><div class="bd">
+{% if schedules %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Name</th><th>Report</th><th>Frequency</th><th>Period</th><th>Next run</th><th>Last</th><th></th></tr></thead>
+<tbody>{% for s in schedules %}<tr>
+  <td><strong>{{ s.name }}</strong>{% if not s.enabled %} <span class="pill pill-grey u-xs">off</span>{% endif %}</td>
+  <td class="mono u-xs">{{ s.report_key }}</td>
+  <td>{{ s.get_frequency_display }}</td>
+  <td>{{ s.get_period_policy_display }}</td>
+  <td class="u-xs">{{ s.next_run|date:"d M Y H:i"|default:"—" }}</td>
+  <td class="u-xs">{% if s.last_status %}<span class="pill {% if s.last_status == 'SUCCESS' %}{% else %}pill-grey{% endif %}">{{ s.last_status }}</span>{% else %}—{% endif %}</td>
+  <td>
+    <form method="post" action="{% url 'schedule_run' s.pk %}" style="display:inline">{% csrf_token %}<button class="btn-link u-xs">run now</button></form> ·
+    <form method="post" action="{% url 'schedule_toggle' s.pk %}" style="display:inline">{% csrf_token %}<button class="btn-link u-xs">{% if s.enabled %}disable{% else %}enable{% endif %}</button></form>
+  </td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}
+<p class="empty">No schedules yet.</p>
+{% endif %}
+</div></div>
+{% endblock %}

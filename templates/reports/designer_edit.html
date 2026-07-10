@@ -1,0 +1,64 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{% if definition %}Edit {{ definition.title }}{% else %}New report{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if definition %}Edit: {{ definition.title }}{% else %}New report{% endif %}</h1>
+<div class="sub">Arrange registered components as a JSON section list. Each section: <code>component</code>, optional <code>params</code>, <code>title</code>, <code>layout</code> (width 1–12, order), and <code>enabled</code>.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'designer_list' %}">← All reports</a>
+{% if definition and definition.enabled %}<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' definition.engine_key %}">Preview</a>{% endif %}
+</div></div>
+
+<form method="post" class="u-mb">{% csrf_token %}
+<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start">
+
+  <div class="card" style="flex:1 1 60%"><div class="hd">Report</div><div class="bd">
+    <label class="fld"><span>Title</span>
+      <input type="text" name="title" class="field" value="{{ definition.title|default:'' }}" required></label>
+    {% if not definition %}<label class="fld"><span>Key (blank = from title)</span>
+      <input type="text" name="key" class="field" placeholder="my_report"></label>{% endif %}
+    <label class="fld"><span>Category</span>
+      <input type="text" name="category" class="field" value="{{ definition.category|default:'Custom' }}"></label>
+    <label class="fld"><span>Description</span>
+      <textarea name="description" class="field" rows="2">{{ definition.description|default:'' }}</textarea></label>
+    <label class="fld"><span>Access</span>
+      <select name="permission" class="field">
+        <option value="reports" {% if definition.permission == 'reports' %}selected{% endif %}>Anyone with report access</option>
+        <option value="treasurer" {% if definition.permission == 'treasurer' %}selected{% endif %}>Treasurer only</option>
+        <option value="admin" {% if definition.permission == 'admin' %}selected{% endif %}>Administrators only</option>
+      </select></label>
+    <label class="u-inline"><input type="checkbox" name="enabled" {% if not definition or definition.enabled %}checked{% endif %}> Live (registered &amp; rendered)</label>
+
+    <label class="fld u-mt"><span>Sections (JSON)</span>
+      <textarea name="sections" class="field mono" rows="16" spellcheck="false">{{ sections_json }}</textarea></label>
+    <label class="fld"><span>Filters (JSON)</span>
+      <textarea name="filters" class="field mono" rows="4" spellcheck="false">{{ filters_json }}</textarea></label>
+
+    <div class="btn-row"><button class="btn">Save</button>
+      {% if definition %}<a class="btn btn-ghost" href="{% url 'engine_report' definition.engine_key %}">Preview</a>{% endif %}</div>
+  </div></div>
+
+  <div class="card" style="flex:1 1 35%"><div class="hd">Component palette</div><div class="bd">
+    <p class="help u-mt-0">Use these <code>component</code> keys. Example section:</p>
+    <pre class="mono u-xs" style="white-space:pre-wrap">{
+  "component": "narrative",
+  "params": {"narrative_key": "executive_summary"},
+  "title": "Summary",
+  "layout": {"width": 12, "order": 10}
+}</pre>
+    {% for category, comps in palette.components.items %}
+    <div class="u-mt-0"><strong class="u-sm">{{ category }}</strong>
+      <div class="pill-row">{% for c in comps %}<span class="pill pill-grey u-xs" title="{{ c.description }}">{{ c.key }}</span>{% endfor %}</div>
+    </div>
+    {% endfor %}
+    <p class="help u-mt">Narrative keys (for <code>component: narrative</code>):</p>
+    <div class="pill-row">{% for n in palette.narratives %}<span class="pill pill-grey u-xs">{{ n }}</span>{% endfor %}</div>
+  </div></div>
+
+</div>
+</form>
+
+{% if definition %}
+<form method="post" action="{% url 'designer_delete' definition.key %}" onsubmit="return confirm('Delete this report definition?')">{% csrf_token %}
+  <button class="btn-link u-xs" style="color:#b04a4a">Delete this report</button>
+</form>
+{% endif %}
+{% endblock %}

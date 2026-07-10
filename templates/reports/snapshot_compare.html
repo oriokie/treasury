@@ -1,0 +1,34 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Compare snapshots · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Compare snapshots</h1>
+<div class="sub">Section-by-section difference between two immutable snapshots.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'snapshot_history' %}">← History</a></div></div>
+
+<div class="engine-grid" style="display:flex;gap:1rem;margin-bottom:1rem">
+  <div class="card" style="flex:1"><div class="hd">A · #{{ a.id }}</div><div class="bd u-sm">
+    <div>{{ a.report_key }}</div>
+    <div class="u-xs">{{ a.period_start|date:"d M y" }} – {{ a.period_end|date:"d M y" }}</div>
+    <div class="u-xs">Generated {{ a.generated_at|date:"d M Y H:i" }} · app {{ a.report_version }} · tmpl {{ a.template_version }}</div>
+  </div></div>
+  <div class="card" style="flex:1"><div class="hd">B · #{{ b.id }}</div><div class="bd u-sm">
+    <div>{{ b.report_key }}</div>
+    <div class="u-xs">{{ b.period_start|date:"d M y" }} – {{ b.period_end|date:"d M y" }}</div>
+    <div class="u-xs">Generated {{ b.generated_at|date:"d M Y H:i" }} · app {{ b.report_version }} · tmpl {{ b.template_version }}</div>
+  </div></div>
+</div>
+
+<div class="card"><div class="hd">Section differences</div><div class="bd">
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Section</th><th>Status</th></tr></thead>
+<tbody>{% for row in diff %}<tr>
+  <td>{{ row.title }}</td>
+  <td>{% if row.status == 'unchanged' %}<span class="pill pill-grey">unchanged</span>
+      {% elif row.status == 'changed' %}<span class="pill">changed</span>
+      {% elif row.status == 'added' %}<span class="pill">added in B</span>
+      {% else %}<span class="pill pill-grey">removed in B</span>{% endif %}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+<p class="help">Comparison is on the immutable structured payload (the deterministic integrity anchor), so a “changed” row reflects a genuine figure or structure change between the two captures.</p>
+</div></div>
+{% endblock %}

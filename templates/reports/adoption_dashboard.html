@@ -1,0 +1,56 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Reporting adoption dashboard · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Reporting platform adoption</h1>
+<div class="sub">Health and adoption of the configuration-driven reporting platform.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'report_library' %}">Library</a></div></div>
+
+<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem">
+  <div class="card" style="flex:1 1 22%"><div class="bd">
+    <div class="stat"><div class="lbl">Registered metrics</div><div class="val mono">{{ metrics_count }}</div></div></div></div>
+  <div class="card" style="flex:1 1 22%"><div class="bd">
+    <div class="stat"><div class="lbl">Engine reports</div><div class="val mono">{{ engine_report_count }}</div></div></div></div>
+  <div class="card" style="flex:1 1 22%"><div class="bd">
+    <div class="stat"><div class="lbl">Reusable components</div><div class="val mono">{{ component_count }}</div></div></div></div>
+  <div class="card" style="flex:1 1 22%"><div class="bd">
+    <div class="stat"><div class="lbl">Narratives</div><div class="val mono">{{ narrative_count }}</div></div></div></div>
+</div>
+
+<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem;margin-top:1rem">
+  <div class="card" style="flex:1 1 30%"><div class="bd">
+    <div class="stat"><div class="lbl">Reports with snapshots</div><div class="val mono">{{ snapshot_report_count }} <span class="u-xs">/ {{ engine_report_count }}</span></div></div>
+    <div class="help u-mt-0">{{ snapshot_total }} snapshots total</div></div></div>
+  <div class="card" style="flex:1 1 30%"><div class="bd">
+    <div class="stat"><div class="lbl">Report views tracked</div><div class="val mono">{{ usage_total|intcomma }}</div></div>
+    <div class="help u-mt-0">avg render {{ avg_render_ms }} ms</div></div></div>
+  <div class="card" style="flex:1 1 30%"><div class="bd">
+    <div class="stat"><div class="lbl">Active schedules</div><div class="val mono">{{ active_schedules }}</div></div>
+    <div class="help u-mt-0">{{ failed_runs }} failed runs</div></div></div>
+</div>
+
+<div class="card u-mb" style="margin-top:1rem"><div class="hd">Component reuse (across engine reports)</div><div class="bd">
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Component (section key)</th><th class="num">Used in reports</th></tr></thead>
+<tbody>{% for key, n in component_reuse %}<tr><td class="mono u-xs">{{ key }}</td><td class="num mono">{{ n }}</td></tr>{% endfor %}</tbody>
+</table></div></div></div>
+
+<div class="card u-mb"><div class="hd">Most-used reports</div><div class="bd">
+{% if top_reports %}<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Report</th><th class="num">Views</th></tr></thead>
+<tbody>{% for r in top_reports %}<tr><td class="mono u-xs">{{ r.report_key }}</td><td class="num mono">{{ r.n }}</td></tr>{% endfor %}</tbody>
+</table></div>{% else %}<p class="help u-mt-0">No usage recorded yet.</p>{% endif %}
+</div></div>
+
+<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem">
+  <div class="card" style="flex:1 1 48%"><div class="hd">Render formats</div><div class="bd">
+    <div class="pill-row">{% for f in renderer_formats %}<span class="pill pill-grey">{{ f }}</span>{% endfor %}</div></div></div>
+  <div class="card" style="flex:1 1 48%"><div class="hd">Open recommendations</div><div class="bd">
+    <div class="val mono">{{ deferred_recommendations|default:"—" }}</div>
+    <div class="help u-mt-0">deferred enhancements not yet addressed</div></div></div>
+</div>
+
+<div class="card"><div class="hd">Remaining legacy reports (not yet migrated)</div><div class="bd">
+<ul class="help">{% for item in legacy_remaining %}<li>{{ item }}</li>{% endfor %}</ul>
+<p class="help u-mt-0">See docs/REPORT_MIGRATION_STATUS.md for the full plan.</p>
+</div></div>
+{% endblock %}

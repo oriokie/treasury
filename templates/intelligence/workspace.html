@@ -1,0 +1,86 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Treasurer workspace · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Treasurer workspace</h1>
+<div class="sub">Financial intelligence for {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}. Every insight is explainable and traces back to the Financial Metrics Registry.</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'report_library' %}">Reports</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'api_analytics_knowledge' %}?{{ request.GET.urlencode }}">Knowledge API</a>
+</div></div>
+
+<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem">
+  <div class="card" style="flex:1 1 30%"><div class="bd">
+    <div class="stat"><div class="lbl">Financial health score</div>
+      <div class="val mono">{{ health.overall|floatformat:0 }}<span class="u-sm"> / 100</span></div></div>
+    <div class="pill {% if health.band == 'Strong' or health.band == 'Sound' %}{% else %}pill-grey{% endif %}">{{ health.band }}</div>
+  </div></div>
+  <div class="card" style="flex:1 1 30%"><div class="bd">
+    <div class="stat"><div class="lbl">Risk score</div>
+      <div class="val mono">{{ risk_score }}<span class="u-sm"> / 100</span></div></div>
+    <div class="help u-mt-0">{{ critical_count }} critical · {{ warning_count }} warning</div>
+  </div></div>
+  <div class="card" style="flex:1 1 30%"><div class="bd">
+    <div class="stat"><div class="lbl">Open insights</div><div class="val mono">{{ insights|length }}</div></div>
+    <div class="help u-mt-0">{{ recommendations|length }} recommendations</div>
+  </div></div>
+</div>
+
+<div class="card u-mb" style="margin-top:1rem"><div class="hd">Recommendations requiring attention</div><div class="bd">
+{% if recommendations %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Priority</th><th>Action</th><th>Why</th></tr></thead>
+<tbody>{% for r in recommendations %}<tr>
+  <td><span class="pill {% if r.severity == 'critical' or r.severity == 'warning' %}{% else %}pill-grey{% endif %}">{{ r.priority }}</span></td>
+  <td><strong>{{ r.action }}</strong>{% if r.subject %} <span class="u-xs">— {{ r.subject }}</span>{% endif %}</td>
+  <td class="u-sm">{{ r.rationale|truncatewords:24 }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="help u-mt-0">No recommendations — financial controls appear to be operating normally.</p>{% endif %}
+</div></div>
+
+<div class="card u-mb"><div class="hd">High-priority insights</div><div class="bd">
+{% if high_priority %}
+{% for i in high_priority %}
+<div class="insight-row" style="border-left:3px solid {% if i.severity == 'critical' %}#b04a4a{% elif i.severity == 'warning' %}#b08d57{% else %}#1f5f4f{% endif %};padding:.5rem .75rem;margin-bottom:.5rem;background:#faf9f6">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <strong>{{ i.title }}</strong>
+    <span class="u-xs">{{ i.category }} · priority {{ i.priority }} · confidence {{ i.confidence }}</span>
+  </div>
+  <div class="u-sm">{{ i.description }}</div>
+  <div class="u-xs help u-mt-0">Why: {{ i.explanation.reason }}
+    {% if i.explanation.metrics %}· metrics: {{ i.explanation.metrics|join:", " }}{% endif %}
+  </div>
+  {% if i.suggested_actions %}<div class="u-xs">→ {{ i.suggested_actions|join:"; " }}</div>{% endif %}
+  <form method="post" action="{% url 'insight_status' %}" class="no-print" style="margin-top:.25rem">{% csrf_token %}
+    <input type="hidden" name="fingerprint" value="{{ i.fingerprint }}">
+    <input type="hidden" name="code" value="{{ i.code }}">
+    <input type="hidden" name="subject" value="{{ i.subject }}">
+    <button name="state" value="acknowledged" class="btn-link u-xs">acknowledge</button> ·
+    <button name="state" value="resolved" class="btn-link u-xs">resolve</button> ·
+    <button name="state" value="dismissed" class="btn-link u-xs">dismiss</button>
+  </form>
+</div>
+{% endfor %}
+{% else %}<p class="help u-mt-0">No high-priority insights.</p>{% endif %}
+</div></div>
+
+<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem">
+  <div class="card" style="flex:1 1 48%"><div class="hd">Health indicators</div><div class="bd">
+    <div class="table-wrap"><table class="ledger">
+    <thead><tr><th>Indicator</th><th class="num">Score</th><th>Detail</th></tr></thead>
+    <tbody>{% for ind in health.indicators %}<tr>
+      <td>{{ ind.label }}</td><td class="num mono">{{ ind.score|floatformat:0 }}</td>
+      <td class="u-xs">{{ ind.detail }}</td>
+    </tr>{% endfor %}</tbody>
+    </table></div>
+  </div></div>
+  <div class="card" style="flex:1 1 48%"><div class="hd">Upcoming & recent</div><div class="bd">
+    <strong class="u-sm">Upcoming scheduled reports</strong>
+    <ul class="help">{% for s in upcoming_schedules %}<li>{{ s.name }} — {{ s.next_run|date:"d M Y"|default:"—" }}</li>{% empty %}<li>None scheduled.</li>{% endfor %}</ul>
+    <strong class="u-sm">Recent snapshots</strong>
+    <ul class="help">{% for s in recent_snapshots %}<li><a class="link" href="{% url 'snapshot_history' %}?report_key={{ s.report_key }}">{{ s.report_key }}</a> — {{ s.generated_at|date:"d M Y H:i" }}</li>{% empty %}<li>None yet.</li>{% endfor %}</ul>
+  </div></div>
+</div>
+
+<p class="help">Insights and forecasts are analytical aids derived from the Financial Metrics Registry; they support but do not replace the audited accounting figures.</p>
+{% endblock %}

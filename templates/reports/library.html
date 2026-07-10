@@ -1,0 +1,54 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Report library · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Report library</h1>
+<div class="sub">Every report — code-defined and designed — in one place. {{ definition_count }} designed, {{ schedule_count }} active schedules, {{ snapshot_count }} snapshots.</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'adoption_dashboard' %}">Adoption dashboard</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'designer_list' %}">Designer</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'schedule_list' %}">Schedules</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'snapshot_history' %}">Snapshots</a>
+</div></div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input type="text" name="q" value="{{ q }}" class="field" placeholder="Search reports…">
+  <button class="btn btn-sm">Search</button>
+</form>
+
+{% if favourites %}
+<div class="card u-mb"><div class="hd">★ Favourites</div><div class="bd">
+  <div class="pill-row">{% for r in favourites %}
+    <a class="pill" href="{% url 'engine_report' r.key %}">{{ r.title }}</a>
+  {% endfor %}</div>
+</div></div>
+{% endif %}
+
+{% if frequent %}
+<div class="card u-mb"><div class="hd">Frequently used</div><div class="bd">
+  <div class="pill-row">{% for r in frequent %}
+    <a class="pill pill-grey" href="{% url 'engine_report' r.report_key %}">{{ r.report_key }} <span class="u-xs">×{{ r.n }}</span></a>
+  {% endfor %}</div>
+</div></div>
+{% endif %}
+
+{% for category, items in by_category.items %}
+<div class="card u-mb"><div class="hd">{{ category }}</div><div class="bd">
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th></th><th>Report</th><th>Description</th><th></th></tr></thead>
+<tbody>{% for r in items %}<tr>
+  <td>
+    <form method="post" action="{% url 'toggle_favourite' r.key %}" style="display:inline">{% csrf_token %}
+      <button type="submit" class="btn-icon" title="Toggle favourite">{% if r.is_favourite %}★{% else %}☆{% endif %}</button>
+    </form>
+  </td>
+  <td><a class="link" href="{% url 'engine_report' r.key %}"><strong>{{ r.title }}</strong></a>
+      {% if r.designed %}<span class="pill pill-grey u-xs">designed</span>{% endif %}</td>
+  <td class="u-sm">{{ r.description|default:"—"|truncatewords:20 }}</td>
+  <td><a class="link u-xs" href="{% url 'snapshot_history' %}?report_key={{ r.key }}">history</a></td>
+</tr>{% endfor %}</tbody>
+</table></div>
+</div></div>
+{% empty %}
+<p class="empty">No reports match “{{ q }}”.</p>
+{% endfor %}
+{% endblock %}

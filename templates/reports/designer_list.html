@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}Report designer · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Report designer</h1>
+<div class="sub">Design reports by arranging registered components — saved as data, rendered by the engine. No code changes.</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-sm" href="{% url 'designer_new' %}">+ New report</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'report_library' %}">Library</a>
+</div></div>
+
+<div class="card"><div class="bd">
+{% if definitions %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Title</th><th>Key</th><th>Category</th><th>Status</th><th>Version</th><th></th></tr></thead>
+<tbody>{% for d in definitions %}<tr>
+  <td><a class="link" href="{% url 'designer_edit' d.key %}"><strong>{{ d.title }}</strong></a></td>
+  <td class="mono u-xs">{{ d.key }}</td>
+  <td>{{ d.category }}</td>
+  <td>{% if d.enabled %}<span class="pill">live</span>{% else %}<span class="pill pill-grey">disabled</span>{% endif %}</td>
+  <td class="mono">v{{ d.template_version }}</td>
+  <td>
+    {% if d.enabled %}<a class="link u-xs" href="{% url 'engine_report' d.engine_key %}">open</a> · {% endif %}
+    <form method="post" action="{% url 'designer_duplicate' d.key %}" style="display:inline">{% csrf_token %}<button class="btn-link u-xs">duplicate</button></form>
+  </td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% else %}
+<p class="empty">No designed reports yet. <a class="link" href="{% url 'designer_new' %}">Create one</a>.</p>
+{% endif %}
+</div></div>
+{% endblock %}

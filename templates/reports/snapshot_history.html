@@ -1,0 +1,52 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Snapshot history · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Snapshot history</h1>
+<div class="sub">Immutable, versioned report snapshots. Select two to compare.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'report_library' %}">Library</a></div></div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <select name="report_key" class="field" onchange="this.form.submit()">
+    <option value="">All reports</option>
+    {% for k in report_keys %}<option value="{{ k }}" {% if k == report_key %}selected{% endif %}>{{ k }}</option>{% endfor %}
+  </select>
+</form>
+
+<div class="card"><div class="bd">
+{% if snapshots %}
+<form method="get" id="cmp" onsubmit="return goCompare(event)">
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th></th><th>Report</th><th>Period</th><th>Generated</th><th>By</th><th>App ver</th><th>Tmpl</th><th>Payload checksum</th></tr></thead>
+<tbody>{% for s in snapshots %}<tr>
+  <td><input type="checkbox" name="pick" value="{{ s.id }}" onclick="limitTwo(this)"></td>
+  <td class="mono u-xs">{{ s.report_key }}</td>
+  <td class="u-xs">{{ s.period_start|date:"d M y"|default:"—" }} – {{ s.period_end|date:"d M y"|default:"—" }}</td>
+  <td class="u-xs">{{ s.generated_at|date:"d M Y H:i" }}</td>
+  <td class="u-xs">{{ s.generated_by|default:"—" }}</td>
+  <td class="mono u-xs">{{ s.report_version }}</td>
+  <td class="mono u-xs">{{ s.template_version }}</td>
+  <td class="mono u-xs">{{ s.checksums.payload|default:""|truncatechars:12 }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+<div class="btn-row"><button class="btn btn-sm">Compare selected two</button></div>
+</form>
+{% else %}
+<p class="empty">No snapshots yet. Run a schedule or create a snapshot to populate this.</p>
+{% endif %}
+</div></div>
+
+<script>
+function limitTwo(cb){
+  var picked = document.querySelectorAll('input[name=pick]:checked');
+  if (picked.length > 2) { cb.checked = false; }
+}
+function goCompare(e){
+  e.preventDefault();
+  var picked = document.querySelectorAll('input[name=pick]:checked');
+  if (picked.length !== 2){ alert('Select exactly two snapshots.'); return false; }
+  var a = picked[0].value, b = picked[1].value;
+  window.location = '/reports/snapshots/compare/' + a + '/' + b + '/';
+  return false;
+}
+</script>
+{% endblock %}
