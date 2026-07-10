@@ -88,12 +88,35 @@ class ComponentRegistry:
         self._meta: dict[str, dict] = {}
 
     def register(self, key, factory, *, label="", category="General",
-                 description=""):
+                 description="", designer_safe=True, params_schema=None):
+        """Register a component factory.
+
+        ``designer_safe`` (default True): whether the Report Designer's visual
+        builder may offer this component. A component whose factory requires a
+        Python object that can't round-trip through JSON (e.g. ``ChartComponent``
+        needs a ``spec_fn`` callable) must be registered with
+        ``designer_safe=False`` — the designer's palette omits it, and
+        ``validate_definition`` refuses a saved definition that references it,
+        so a callable-only component can never reach the designer's JSON path
+        and crash at render time.
+
+        ``params_schema``: an optional list of ``{"name", "label", "kind",
+        "required", "source"}`` dicts describing the extra parameters this
+        component takes (e.g. the ``narrative`` component's ``narrative_key``),
+        so the designer can render real form fields instead of asking an
+        administrator to hand-type a JSON ``params`` object. ``kind`` is one of
+        ``text``, ``textarea``, ``select`` (options come from ``source``, e.g.
+        ``"narratives"``), or ``number``. Components with no schema (the large
+        majority — they read straight from ``ReportContext``/filters) simply
+        show no params fields.
+        """
         if key in self._factories:
             raise ValueError(f"Component '{key}' already registered.")
         self._factories[key] = factory
         self._meta[key] = {"label": label or key, "category": category,
-                           "description": description}
+                           "description": description,
+                           "designer_safe": designer_safe,
+                           "params_schema": params_schema or []}
         return factory
 
     def create(self, key, **kwargs):
@@ -105,13 +128,19 @@ class ComponentRegistry:
     def has(self, key):
         return key in self._factories
 
+    def is_designer_safe(self, key):
+        meta = self._meta.get(key)
+        return bool(meta and meta.get("designer_safe", True))
+
     def all(self):
         return sorted(self._meta.items(),
                       key=lambda kv: (kv[1]["category"], kv[1]["label"]))
 
-    def by_category(self):
+    def by_category(self, designer_safe_only=False):
         out: dict[str, list] = {}
         for key, meta in self.all():
+            if designer_safe_only and not meta.get("designer_safe", True):
+                continue
             out.setdefault(meta["category"], []).append({"key": key, **meta})
         return out
 

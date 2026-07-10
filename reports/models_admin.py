@@ -101,7 +101,7 @@ class ReportDefinition(models.Model):
     """
     key = models.SlugField(
         max_length=100, unique=True,
-        help_text="URL-safe id; the report renders at /reports/d/<key>/.")
+        help_text="URL-safe id; the report renders at /reports/r/def__<key>/.")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     category = models.CharField(max_length=80, default="Custom")

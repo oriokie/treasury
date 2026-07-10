@@ -2,56 +2,80 @@
 {% block title %}{% if definition %}Edit {{ definition.title }}{% else %}New report{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{% if definition %}Edit: {{ definition.title }}{% else %}New report{% endif %}</h1>
-<div class="sub">Arrange registered components as a JSON section list. Each section: <code>component</code>, optional <code>params</code>, <code>title</code>, <code>layout</code> (width 1–12, order), and <code>enabled</code>.</div></div>
+<div class="sub">Click a component to add it, fill in its fields, drag to reorder. No JSON to write.</div></div>
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'designer_list' %}">← All reports</a>
 {% if definition and definition.enabled %}<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' definition.engine_key %}">Preview</a>{% endif %}
 </div></div>
 
-<form method="post" class="u-mb">{% csrf_token %}
-<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start">
+<form method="post" id="designer-form" class="u-mb">{% csrf_token %}
+<div class="ds-layout">
 
-  <div class="card" style="flex:1 1 60%"><div class="hd">Report</div><div class="bd">
-    <label class="fld"><span>Title</span>
-      <input type="text" name="title" class="field" value="{{ definition.title|default:'' }}" required></label>
-    {% if not definition %}<label class="fld"><span>Key (blank = from title)</span>
-      <input type="text" name="key" class="field" placeholder="my_report"></label>{% endif %}
-    <label class="fld"><span>Category</span>
-      <input type="text" name="category" class="field" value="{{ definition.category|default:'Custom' }}"></label>
-    <label class="fld"><span>Description</span>
-      <textarea name="description" class="field" rows="2">{{ definition.description|default:'' }}</textarea></label>
-    <label class="fld"><span>Access</span>
-      <select name="permission" class="field">
-        <option value="reports" {% if definition.permission == 'reports' %}selected{% endif %}>Anyone with report access</option>
-        <option value="treasurer" {% if definition.permission == 'treasurer' %}selected{% endif %}>Treasurer only</option>
-        <option value="admin" {% if definition.permission == 'admin' %}selected{% endif %}>Administrators only</option>
-      </select></label>
-    <label class="u-inline"><input type="checkbox" name="enabled" {% if not definition or definition.enabled %}checked{% endif %}> Live (registered &amp; rendered)</label>
+  <div class="ds-main">
 
-    <label class="fld u-mt"><span>Sections (JSON)</span>
-      <textarea name="sections" class="field mono" rows="16" spellcheck="false">{{ sections_json }}</textarea></label>
-    <label class="fld"><span>Filters (JSON)</span>
-      <textarea name="filters" class="field mono" rows="4" spellcheck="false">{{ filters_json }}</textarea></label>
+    <div class="card"><div class="hd">Report</div><div class="bd">
+      <div class="ds-report-grid">
+        <label class="fld"><span>Title</span>
+          <input type="text" name="title" class="field" value="{{ definition.title|default:'' }}" required></label>
+        {% if not definition %}<label class="fld"><span>Key (blank = from title)</span>
+          <input type="text" name="key" class="field" placeholder="my_report"></label>{% endif %}
+        <label class="fld"><span>Category</span>
+          <input type="text" name="category" class="field" value="{{ definition.category|default:'Custom' }}"></label>
+        <label class="fld"><span>Access</span>
+          <select name="permission" class="field field--select">
+            <option value="reports" {% if definition.permission == 'reports' %}selected{% endif %}>Anyone with report access</option>
+            <option value="treasurer" {% if definition.permission == 'treasurer' %}selected{% endif %}>Treasurer only</option>
+            <option value="admin" {% if definition.permission == 'admin' %}selected{% endif %}>Administrators only</option>
+          </select></label>
+      </div>
+      <label class="fld u-mt-sm"><span>Description</span>
+        <textarea name="description" class="field" rows="2">{{ definition.description|default:'' }}</textarea></label>
+      <label class="check-row u-mt-sm"><input type="checkbox" name="enabled" {% if not definition or definition.enabled %}checked{% endif %}> Live (registered &amp; rendered at /reports/r/def__&lt;key&gt;/)</label>
+    </div></div>
 
-    <div class="btn-row"><button class="btn">Save</button>
+    <div class="card ds-sections-card"><div class="hd">
+      <span>Sections</span><span class="ds-section-count u-xs" id="ds-section-count"></span>
+    </div><div class="bd">
+      <p class="help u-mt-0">Add components from the palette on the right. Drag <span class="mono">⋮⋮</span> to reorder — position on this list is the section's order in the report, so there's no order number to manage by hand.</p>
+      <div id="ds-sections-list" class="ds-sections-list"></div>
+      <p class="empty" id="ds-empty-state"><span class="big">＋</span>No sections yet — add one from the component palette on the right.</p>
+    </div></div>
+
+    <div class="card"><div class="hd">Filters <span class="u-xs help" style="font-weight:400">optional controls shown above the report (e.g. a Consolidate checkbox)</span></div><div class="bd">
+      <div id="ds-filters-list" class="ds-filters-list"></div>
+      <button type="button" class="btn btn-ghost btn-sm u-mt-sm" id="ds-add-filter">+ Add filter</button>
+    </div></div>
+
+    <details class="card ds-advanced"><summary class="hd">Advanced: raw JSON</summary>
+      <div class="bd">
+        <p class="help u-mt-0">The builder above and this JSON always describe the same report — most people never need to open this. Hand-edit here and click Apply to update the builder above.</p>
+        <label class="fld"><span>Sections (JSON)</span>
+          <textarea id="ds-sections-json" name="sections" class="field mono" rows="12" spellcheck="false"></textarea></label>
+        <label class="fld"><span>Filters (JSON)</span>
+          <textarea id="ds-filters-json" name="filters" class="field mono" rows="4" spellcheck="false"></textarea></label>
+        <div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" id="ds-apply-json">Apply JSON to builder</button></div>
+      </div>
+    </details>
+
+    <div class="btn-row u-mt"><button class="btn">Save</button>
       {% if definition %}<a class="btn btn-ghost" href="{% url 'engine_report' definition.engine_key %}">Preview</a>{% endif %}</div>
-  </div></div>
+  </div>
 
-  <div class="card" style="flex:1 1 35%"><div class="hd">Component palette</div><div class="bd">
-    <p class="help u-mt-0">Use these <code>component</code> keys. Example section:</p>
-    <pre class="mono u-xs" style="white-space:pre-wrap">{
-  "component": "narrative",
-  "params": {"narrative_key": "executive_summary"},
-  "title": "Summary",
-  "layout": {"width": 12, "order": 10}
-}</pre>
-    {% for category, comps in palette.components.items %}
-    <div class="u-mt-0"><strong class="u-sm">{{ category }}</strong>
-      <div class="pill-row">{% for c in comps %}<span class="pill pill-grey u-xs" title="{{ c.description }}">{{ c.key }}</span>{% endfor %}</div>
-    </div>
-    {% endfor %}
-    <p class="help u-mt">Narrative keys (for <code>component: narrative</code>):</p>
-    <div class="pill-row">{% for n in palette.narratives %}<span class="pill pill-grey u-xs">{{ n }}</span>{% endfor %}</div>
-  </div></div>
+  <div class="ds-palette">
+    <div class="card ds-palette-card"><div class="hd">Component palette</div><div class="bd">
+      <input type="text" id="ds-palette-search" class="field u-mt-0" placeholder="Search components…">
+      {% for category, comps in palette.components.items %}
+      <div class="ds-palette-group">
+        <div class="ds-palette-group-title">{{ category }}</div>
+        {% for c in comps %}
+        <button type="button" class="ds-palette-item" data-key="{{ c.key }}" title="{{ c.description }}">
+          <span>{{ c.label }}</span><span class="ds-palette-item-add" aria-hidden="true">+</span>
+        </button>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      <p class="help u-mt">Some advanced components (charts, appendices) are built in code and aren't offered here — see the <a class="link" href="{% url 'component_catalogue' %}">component catalogue</a> for the full list.</p>
+    </div></div>
+  </div>
 
 </div>
 </form>
@@ -61,4 +85,468 @@
   <button class="btn-link u-xs" style="color:#b04a4a">Delete this report</button>
 </form>
 {% endif %}
+
+{{ sections_data|json_script:"ds-initial-sections" }}
+{{ filters_data|json_script:"ds-initial-filters" }}
+{{ palette|json_script:"ds-palette-data" }}
+
+<style>
+.ds-layout{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap}
+.ds-main{flex:1 1 620px;min-width:0}
+.ds-palette{flex:0 0 300px;min-width:260px}
+.ds-palette-card{position:sticky;top:.75rem;max-height:calc(100vh - 1.5rem);overflow:auto}
+.ds-report-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.7rem .9rem}
+
+.ds-section-count{font-weight:400;color:var(--muted)}
+.ds-sections-list{display:flex;flex-direction:column;gap:.6rem}
+#ds-empty-state{display:none}
+.ds-sections-list:empty + #ds-empty-state{display:block}
+
+.ds-sec{border:1px solid var(--line);border-radius:var(--radius-sm,10px);background:var(--paper);overflow:hidden}
+.ds-sec.dragging{opacity:.45}
+.ds-sec-disabled{opacity:.6}
+.ds-sec-head{display:flex;align-items:center;gap:.55rem;padding:.55rem .7rem;background:#f7f4ec;
+  border-bottom:1px solid var(--line);cursor:grab}
+.ds-sec-head:active{cursor:grabbing}
+.ds-grip{color:var(--muted);font-size:.85rem;letter-spacing:-2px;flex:0 0 auto}
+.ds-sec-titlewrap{display:flex;flex-direction:column;gap:.05rem;min-width:0;flex:1 1 auto}
+.ds-sec-comp{font-weight:600;font-size:.9rem;color:var(--ink)}
+.ds-sec-key{color:var(--muted)}
+.ds-sec-head-actions{display:flex;align-items:center;gap:.4rem;flex:0 0 auto}
+.btn-icon{background:transparent;border:1px solid var(--line-strong);border-radius:7px;width:1.7rem;height:1.7rem;
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:.82rem;color:var(--ink-soft);padding:0}
+.btn-icon:hover{background:var(--forest-soft);color:var(--forest-deep);border-color:var(--forest-soft)}
+.btn-icon-danger:hover{background:var(--danger-soft);color:var(--danger);border-color:var(--danger-soft)}
+.ds-sec-body{padding:.7rem .8rem .8rem}
+.ds-sec-row{display:flex;gap:.7rem;flex-wrap:wrap}
+.ds-sec-row .fld{flex:1 1 220px;min-width:0}
+.ds-width-fld{flex:0 0 170px}
+.ds-params-row{margin-top:.55rem;padding-top:.55rem;border-top:1px dashed var(--line)}
+.ds-more{margin-top:.6rem}
+.ds-more summary{cursor:pointer;font-size:.78rem;color:var(--forest);font-weight:600;list-style:revert}
+.ds-more-body{display:flex;flex-direction:column;gap:.35rem;margin-top:.5rem;padding-top:.5rem;border-top:1px dashed var(--line)}
+.ds-toggle{gap:.45rem}
+
+.ds-filter-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;padding:.4rem 0;border-bottom:1px solid var(--line)}
+.ds-filter-row:last-child{border-bottom:none}
+.ds-filter-row .field{flex:1 1 140px;min-width:0}
+
+.ds-palette-item{display:flex;align-items:center;justify-content:space-between;gap:.4rem;width:100%;
+  text-align:left;padding:.4rem .6rem;margin-bottom:.28rem;border:1px solid var(--line);border-radius:8px;
+  background:var(--paper);cursor:pointer;font-size:.82rem;color:var(--ink)}
+.ds-palette-item:hover{background:var(--forest-soft);border-color:var(--forest-soft)}
+.ds-palette-item-add{color:var(--forest);font-weight:700}
+.ds-palette-group{margin-bottom:.9rem}
+.ds-palette-group-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);margin-bottom:.35rem}
+
+.ds-advanced summary{cursor:pointer;list-style:revert}
+
+@media (max-width: 900px){
+  .ds-palette{flex-basis:100%}
+  .ds-palette-card{position:static;max-height:none}
+}
+</style>
+
+<script>
+(function(){
+  "use strict";
+
+  function $(id){ return document.getElementById(id); }
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(text != null) e.textContent = text;
+    return e;
+  }
+  function labeledField(labelText, inputEl, extraCls){
+    var wrap = el("label", "fld" + (extraCls ? (" " + extraCls) : ""));
+    wrap.appendChild(el("span", null, labelText));
+    wrap.appendChild(inputEl);
+    return wrap;
+  }
+  function parseJsonScript(id, fallback){
+    var node = $(id);
+    if(!node) return fallback;
+    try { var v = JSON.parse(node.textContent); return v == null ? fallback : v; }
+    catch(e){ return fallback; }
+  }
+
+  var LAYOUT_DEFAULTS = {width:12, order:100, priority:50, group:"", collapsed:false,
+    collapsible:true, hide_if_empty:true, responsive:"stack", print_visible:true,
+    page_break_before:false, export_visible:true, export_formats:[], extra:{}};
+  var WIDTH_OPTIONS = [[12,"Full width"],[9,"Three-quarters"],[8,"Two-thirds"],
+    [6,"Half"],[4,"Third"],[3,"Quarter"],[2,"Sixth"]];
+  var FILTER_KINDS = ["text","date","month","choice","fund","bool"];
+
+  var PALETTE = parseJsonScript("ds-palette-data", {components:{}, narratives:[]});
+  var COMPONENT_META = {};
+  Object.keys(PALETTE.components || {}).forEach(function(cat){
+    (PALETTE.components[cat] || []).forEach(function(c){ COMPONENT_META[c.key] = c; });
+  });
+
+  // ---- state: the single source of truth the builder renders from ----
+  var sections = [];
+  var filters = [];
+
+  function normalizeSection(raw){
+    // Tolerant of anything a definition might contain — including data saved
+    // before this hardening pass (see reports/services/designer.py). A shape
+    // the builder can't make sense of is simply skipped here; the Advanced
+    // JSON panel below still shows exactly what was loaded, unmodified, so
+    // nothing is silently lost — just not rendered as a card.
+    if(!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    var comp = typeof raw.component === "string" ? raw.component : "";
+    if(!comp) return null;
+    var rawLayout = (raw.layout && typeof raw.layout === "object" && !Array.isArray(raw.layout)) ? raw.layout : {};
+    var layout = Object.assign({}, LAYOUT_DEFAULTS, rawLayout);
+    var rawParams = (raw.params && typeof raw.params === "object" && !Array.isArray(raw.params)) ? raw.params : {};
+    return {
+      component: comp,
+      title: typeof raw.title === "string" ? raw.title : "",
+      enabled: raw.enabled !== false,
+      params: Object.assign({}, rawParams),
+      layout: layout
+    };
+  }
+
+  function normalizeFilter(raw){
+    if(!raw || typeof raw !== "object" || Array.isArray(raw) || !raw.name) return null;
+    return {
+      name: String(raw.name),
+      label: raw.label ? String(raw.label) : String(raw.name),
+      kind: FILTER_KINDS.indexOf(raw.kind) > -1 ? raw.kind : "text",
+      default: (raw.default != null) ? raw.default : "",
+      choices: Array.isArray(raw.choices) ? raw.choices : []
+    };
+  }
+
+  (parseJsonScript("ds-initial-sections", []) || []).forEach(function(s){
+    var n = normalizeSection(s); if(n) sections.push(n);
+  });
+  (parseJsonScript("ds-initial-filters", []) || []).forEach(function(f){
+    var n = normalizeFilter(f); if(n) filters.push(n);
+  });
+
+  function reindexOrder(){
+    sections.forEach(function(s, i){ s.layout.order = (i + 1) * 10; });
+  }
+
+  // ---- sections rendering ----
+  var listEl = $("ds-sections-list"), countEl = $("ds-section-count");
+  var dragging = null;
+
+  function paramField(section, field){
+    var value = section.params[field.name];
+    var input;
+    if(field.kind === "textarea"){
+      input = el("textarea", "field"); input.rows = 3; input.value = value != null ? value : "";
+    } else if(field.kind === "select"){
+      input = el("select", "field field--select");
+      input.appendChild(el("option", null, "— choose —")).value = "";
+      var opts = field.source === "narratives" ? (PALETTE.narratives || []) : [];
+      opts.forEach(function(o){
+        var op = el("option", null, o.title || o.key); op.value = o.key;
+        if(value === o.key) op.selected = true;
+        input.appendChild(op);
+      });
+    } else if(field.kind === "number"){
+      input = el("input", "field"); input.type = "number"; input.value = value != null ? value : "";
+    } else {
+      input = el("input", "field"); input.type = "text"; input.value = value != null ? value : "";
+    }
+    function commit(){
+      var v = input.value;
+      if(v === ""){ delete section.params[field.name]; } else { section.params[field.name] = v; }
+      syncHiddenFields();
+    }
+    input.addEventListener("input", commit);
+    input.addEventListener("change", commit);
+    var label = field.label + (field.required ? " *" : "");
+    return labeledField(label, input, "ds-param-fld");
+  }
+
+  function toggleField(section, key, labelText){
+    var wrap = el("label", "check-row u-xs ds-toggle");
+    var cb = el("input"); cb.type = "checkbox"; cb.checked = !!section.layout[key];
+    cb.addEventListener("change", function(){ section.layout[key] = cb.checked; syncHiddenFields(); });
+    wrap.appendChild(cb);
+    wrap.appendChild(document.createTextNode(labelText));
+    return wrap;
+  }
+
+  function renderSections(){
+    listEl.innerHTML = "";
+    countEl.textContent = sections.length ?
+      (sections.length + (sections.length === 1 ? " section" : " sections")) : "";
+
+    sections.forEach(function(section, idx){
+      var meta = COMPONENT_META[section.component] ||
+        {label: section.component, description: "", params_schema: []};
+
+      var card = el("div", "ds-sec" + (section.enabled === false ? " ds-sec-disabled" : ""));
+      card.draggable = true;
+      card.dataset.idx = String(idx);
+
+      var head = el("div", "ds-sec-head");
+      head.appendChild(el("span", "ds-grip", "⋮⋮"));
+
+      var titleWrap = el("div", "ds-sec-titlewrap");
+      titleWrap.appendChild(el("span", "ds-sec-comp", meta.label));
+      titleWrap.appendChild(el("span", "ds-sec-key mono u-xs", section.component));
+      head.appendChild(titleWrap);
+
+      var headRight = el("div", "ds-sec-head-actions");
+      var enabledLbl = el("label", "check-row u-xs");
+      var enabledCb = el("input"); enabledCb.type = "checkbox"; enabledCb.checked = section.enabled !== false;
+      enabledCb.addEventListener("change", function(){
+        section.enabled = enabledCb.checked;
+        card.classList.toggle("ds-sec-disabled", !enabledCb.checked);
+        syncHiddenFields();
+      });
+      enabledLbl.appendChild(enabledCb);
+      enabledLbl.appendChild(document.createTextNode("Shown"));
+      headRight.appendChild(enabledLbl);
+
+      var dupBtn = el("button", "btn-icon", "⧉"); dupBtn.type = "button"; dupBtn.title = "Duplicate section";
+      dupBtn.addEventListener("click", function(){ duplicateSection(idx); });
+      headRight.appendChild(dupBtn);
+
+      var rmBtn = el("button", "btn-icon btn-icon-danger", "✕"); rmBtn.type = "button"; rmBtn.title = "Remove section";
+      rmBtn.addEventListener("click", function(){ removeSection(idx); });
+      headRight.appendChild(rmBtn);
+
+      head.appendChild(headRight);
+      card.appendChild(head);
+
+      var body = el("div", "ds-sec-body");
+      var row1 = el("div", "ds-sec-row");
+
+      var titleInput = el("input", "field"); titleInput.type = "text"; titleInput.placeholder = meta.label;
+      titleInput.value = section.title || "";
+      titleInput.addEventListener("input", function(){ section.title = titleInput.value; syncHiddenFields(); });
+      row1.appendChild(labeledField("Section title (optional)", titleInput));
+
+      var widthSel = el("select", "field field--select");
+      WIDTH_OPTIONS.forEach(function(w){
+        var op = el("option", null, w[1]); op.value = String(w[0]);
+        if(section.layout.width === w[0]) op.selected = true;
+        widthSel.appendChild(op);
+      });
+      widthSel.addEventListener("change", function(){
+        section.layout.width = parseInt(widthSel.value, 10) || 12;
+        syncHiddenFields();
+      });
+      row1.appendChild(labeledField("Width", widthSel, "ds-width-fld"));
+
+      body.appendChild(row1);
+
+      if(meta.params_schema && meta.params_schema.length){
+        var paramsRow = el("div", "ds-sec-row ds-params-row");
+        meta.params_schema.forEach(function(f){ paramsRow.appendChild(paramField(section, f)); });
+        body.appendChild(paramsRow);
+      }
+
+      var moreDetails = el("details", "ds-more");
+      moreDetails.appendChild(el("summary", null, "More layout options"));
+      var moreBody = el("div", "ds-more-body");
+      moreBody.appendChild(toggleField(section, "collapsible", "Allow collapsing on screen"));
+      moreBody.appendChild(toggleField(section, "collapsed", "Start collapsed"));
+      moreBody.appendChild(toggleField(section, "page_break_before", "Start a new page before this (print/PDF)"));
+      moreBody.appendChild(toggleField(section, "hide_if_empty", "Hide automatically when there's no data"));
+      moreBody.appendChild(toggleField(section, "print_visible", "Visible when printed"));
+      moreBody.appendChild(toggleField(section, "export_visible", "Included in exports (PDF/Word/Excel)"));
+
+      var groupInput = el("input", "field"); groupInput.type = "text"; groupInput.value = section.layout.group || "";
+      groupInput.addEventListener("input", function(){ section.layout.group = groupInput.value; syncHiddenFields(); });
+      moreBody.appendChild(labeledField("Group (optional — clusters related sections under one heading)", groupInput, "u-mt-xs"));
+
+      moreDetails.appendChild(moreBody);
+      body.appendChild(moreDetails);
+
+      card.appendChild(body);
+      listEl.appendChild(card);
+    });
+
+    wireDragAndDrop();
+  }
+
+  function wireDragAndDrop(){
+    [].slice.call(listEl.querySelectorAll(".ds-sec")).forEach(function(card){
+      card.addEventListener("dragstart", function(){ dragging = card; card.classList.add("dragging"); });
+      card.addEventListener("dragend", function(){
+        card.classList.remove("dragging");
+        dragging = null;
+        commitDomOrderToState();
+      });
+    });
+  }
+
+  listEl.addEventListener("dragover", function(e){
+    e.preventDefault();
+    if(!dragging) return;
+    var after = null;
+    var items = [].slice.call(listEl.querySelectorAll(".ds-sec:not(.dragging)"));
+    for(var i = 0; i < items.length; i++){
+      var r = items[i].getBoundingClientRect();
+      if(e.clientY < r.top + r.height / 2){ after = items[i]; break; }
+    }
+    if(after) listEl.insertBefore(dragging, after); else listEl.appendChild(dragging);
+  });
+
+  function commitDomOrderToState(){
+    var newOrder = [].slice.call(listEl.querySelectorAll(".ds-sec")).map(function(card){
+      return sections[parseInt(card.dataset.idx, 10)];
+    });
+    sections = newOrder;
+    reindexOrder();
+    renderSections();
+    syncHiddenFields();
+  }
+
+  function addSection(componentKey){
+    var meta = COMPONENT_META[componentKey];
+    if(!meta) return;
+    sections.push({
+      component: componentKey, title: "", enabled: true, params: {},
+      layout: Object.assign({}, LAYOUT_DEFAULTS, {order: (sections.length + 1) * 10})
+    });
+    reindexOrder();
+    renderSections();
+    syncHiddenFields();
+    var newCard = listEl.querySelector('.ds-sec[data-idx="' + (sections.length - 1) + '"]');
+    if(newCard){
+      newCard.scrollIntoView({behavior: "smooth", block: "center"});
+      var firstInput = newCard.querySelector("input[type=text]");
+      if(firstInput) firstInput.focus();
+    }
+  }
+
+  function removeSection(idx){
+    sections.splice(idx, 1);
+    reindexOrder();
+    renderSections();
+    syncHiddenFields();
+  }
+
+  function duplicateSection(idx){
+    var copy = JSON.parse(JSON.stringify(sections[idx]));
+    sections.splice(idx + 1, 0, copy);
+    reindexOrder();
+    renderSections();
+    syncHiddenFields();
+  }
+
+  // ---- filters ----
+  var filtersListEl = $("ds-filters-list");
+
+  function renderFilters(){
+    filtersListEl.innerHTML = "";
+    filters.forEach(function(f, idx){
+      var row = el("div", "ds-filter-row");
+
+      var nameInput = el("input", "field"); nameInput.type = "text";
+      nameInput.placeholder = "name (e.g. consolidated)"; nameInput.value = f.name || "";
+      nameInput.addEventListener("input", function(){ f.name = nameInput.value; syncHiddenFields(); });
+
+      var labelInput = el("input", "field"); labelInput.type = "text";
+      labelInput.placeholder = "Label shown to the user"; labelInput.value = f.label || "";
+      labelInput.addEventListener("input", function(){ f.label = labelInput.value; syncHiddenFields(); });
+
+      var kindSel = el("select", "field field--select");
+      FILTER_KINDS.forEach(function(k){
+        var op = el("option", null, k); op.value = k;
+        if(f.kind === k) op.selected = true;
+        kindSel.appendChild(op);
+      });
+      kindSel.addEventListener("change", function(){ f.kind = kindSel.value; syncHiddenFields(); });
+
+      var defInput = el("input", "field"); defInput.type = "text";
+      defInput.placeholder = "Default (optional)"; defInput.value = (f.default != null) ? f.default : "";
+      defInput.addEventListener("input", function(){ f.default = defInput.value; syncHiddenFields(); });
+
+      var rmBtn = el("button", "btn-icon btn-icon-danger", "✕"); rmBtn.type = "button"; rmBtn.title = "Remove filter";
+      rmBtn.addEventListener("click", function(){ filters.splice(idx, 1); renderFilters(); syncHiddenFields(); });
+
+      [nameInput, labelInput, kindSel, defInput, rmBtn].forEach(function(x){ row.appendChild(x); });
+      filtersListEl.appendChild(row);
+    });
+  }
+
+  $("ds-add-filter").addEventListener("click", function(){
+    filters.push({name: "", label: "", kind: "text", default: "", choices: []});
+    renderFilters();
+    syncHiddenFields();
+  });
+
+  // ---- Advanced JSON <-> builder sync ----
+  var sectionsJsonEl = $("ds-sections-json"), filtersJsonEl = $("ds-filters-json");
+
+  function toWireSection(s){
+    var out = {component: s.component, params: s.params, layout: s.layout};
+    if(s.title) out.title = s.title;
+    if(s.enabled === false) out.enabled = false;
+    return out;
+  }
+  function toWireFilter(f){
+    var out = {name: f.name, label: f.label || f.name, kind: f.kind};
+    if(f.default !== "" && f.default != null) out.default = f.default;
+    if(f.choices && f.choices.length) out.choices = f.choices;
+    return out;
+  }
+
+  function syncHiddenFields(){
+    sectionsJsonEl.value = JSON.stringify(sections.map(toWireSection), null, 2);
+    filtersJsonEl.value = JSON.stringify(filters.map(toWireFilter), null, 2);
+  }
+
+  $("ds-apply-json").addEventListener("click", function(){
+    try {
+      var newSections = JSON.parse(sectionsJsonEl.value || "[]");
+      var newFilters = JSON.parse(filtersJsonEl.value || "[]");
+      if(!Array.isArray(newSections) || !Array.isArray(newFilters)){
+        throw new Error("Both sections and filters must be JSON arrays.");
+      }
+      sections = newSections.map(normalizeSection).filter(Boolean);
+      filters = newFilters.map(normalizeFilter).filter(Boolean);
+      reindexOrder();
+      renderSections();
+      renderFilters();
+      syncHiddenFields();
+    } catch(e){
+      alert("Could not apply JSON: " + e.message);
+    }
+  });
+
+  // ---- palette ----
+  [].slice.call(document.querySelectorAll(".ds-palette-item")).forEach(function(btn){
+    btn.addEventListener("click", function(){ addSection(btn.dataset.key); });
+  });
+  var searchInput = $("ds-palette-search");
+  if(searchInput){
+    searchInput.addEventListener("input", function(){
+      var q = searchInput.value.trim().toLowerCase();
+      [].slice.call(document.querySelectorAll(".ds-palette-group")).forEach(function(group){
+        var any = false;
+        [].slice.call(group.querySelectorAll(".ds-palette-item")).forEach(function(btn){
+          var hit = !q || btn.dataset.key.toLowerCase().indexOf(q) > -1 ||
+                   btn.textContent.toLowerCase().indexOf(q) > -1;
+          btn.style.display = hit ? "" : "none";
+          if(hit) any = true;
+        });
+        group.style.display = any ? "" : "none";
+      });
+    });
+  }
+
+  // safety net: whatever triggered submit, the hidden fields are current
+  $("designer-form").addEventListener("submit", syncHiddenFields);
+
+  // initial paint
+  reindexOrder();
+  renderSections();
+  renderFilters();
+  syncHiddenFields();
+})();
+</script>
 {% endblock %}

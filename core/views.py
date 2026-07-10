@@ -405,17 +405,66 @@ class MemberSearchView(DataEntryRequiredMixin, View):
 
 
 class NextReceiptView(DataEntryRequiredMixin, View):
-    """Return the next sequential envelope receipt number."""
+    """Return the next sequential envelope receipt number — used only to
+    PRE-FILL the entry grid's first row (which the cashier can freely
+    overtype); it also steers clear of numbers another open batch has already
+    claimed, so two treasurers working concurrently are less likely to land
+    on the same suggestion (the authoritative duplicate check still runs at
+    Submit/Approve/Post regardless)."""
 
     def get(self, request):
-        from envelopes.models import Envelope
+        from envelopes.models import Envelope, EnvelopeBatch, EnvelopeBatchRow
         nums = []
         for r in Envelope.objects.values_list("receipt_no", flat=True):
             digits = "".join(ch for ch in str(r) if ch.isdigit())
             if digits:
                 nums.append(int(digits))
+        for r in (EnvelopeBatchRow.objects
+                  .exclude(batch__status__in=[EnvelopeBatch.Status.POSTED,
+                                              EnvelopeBatch.Status.REJECTED])
+                  .values_list("receipt_no", flat=True)):
+            digits = "".join(ch for ch in str(r) if ch.isdigit())
+            if digits:
+                nums.append(int(digits))
         nxt = (max(nums) + 1) if nums else 1
         return JsonResponse({"next": str(nxt)})
+
+
+class TableStateView(LoginRequiredMixin, View):
+    """Get/set one keyed slice of the current user's
+    ``UserPreference.table_state`` — a small, generic per-user layout store
+    (column order/visibility/width/pinned columns, sort, filters) any
+    data-grid template can use; a preference is tied to the *account*, so it
+    follows the person across devices and is restored automatically on every
+    future login, not just cached in one browser. First real consumer: the
+    envelope ledger entry grid's customisable columns.
+
+    ``table_key`` is a short slug the calling template picks (e.g.
+    ``"envelope_ledger_grid"``); the stored value is whatever JSON object the
+    caller sends — this view doesn't interpret its shape, only stores it."""
+
+    def get(self, request, table_key):
+        from core.models import UserPreference
+        pref = UserPreference.get_for(request.user)
+        state = (pref.table_state or {}).get(table_key) or {}
+        return JsonResponse({"ok": True, "state": state})
+
+    def post(self, request, table_key):
+        import json
+        from core.models import UserPreference
+        try:
+            state = json.loads(request.body.decode("utf-8") or "{}")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return JsonResponse({"ok": False, "error": "Invalid JSON."}, status=400)
+        if not isinstance(state, dict):
+            return JsonResponse({"ok": False, "error": "State must be an object."},
+                                status=400)
+        pref = UserPreference.get_for(request.user)
+        ts = dict(pref.table_state or {})
+        ts[table_key] = state
+        pref.table_state = ts
+        pref.save(update_fields=["table_state"])
+        return JsonResponse({"ok": True})
 
 
 class DepartmentBalanceView(DataEntryRequiredMixin, View):

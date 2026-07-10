@@ -205,6 +205,18 @@ class TransactionQuerySet(models.QuerySet):
         # recognised donations only: confirmed, not reversed, not a contra
         return self.active().filter(direction="CREDIT", confirmed=True)
 
+    def signed_cash_total(self):
+        """Aggregate the queryset's true effect on cash, signed the ONE
+        canonical way (see Transaction.signed_cash_case): reversals negative,
+        debits negative, bank-memo rows zero. Every running balance, cash book
+        and export total should use this (or the Case directly) rather than
+        re-deriving the signs — re-derivation is exactly how the reversal and
+        memo double-counts happened."""
+        from decimal import Decimal
+        from django.db.models import Sum
+        agg = self.aggregate(total=Sum(Transaction.signed_cash_case()))
+        return agg["total"] or Decimal(0)
+
 
 class Transaction(models.Model):
     """The central ledger row. Every receipt and bank debit lives here."""
@@ -400,6 +412,48 @@ class Transaction(models.Model):
         return Transaction.objects.filter(
             q, channel=self.channel, direction=self.direction,
             is_reversal=False, is_reversed=False).exclude(pk=self.pk)
+
+    @property
+    def is_bank_memo(self):
+        """True when this BANK row is the memo half of a manually-receipted
+        pair: the same money was (or will be) entered as an ENVELOPE
+        transaction carrying the income and fund, and ``mark_manual_receipt``
+        turned this bank line into a memo (excluded from income, detached from
+        its fund). Its cash lives on the envelope row, so in any cash
+        aggregation this row must contribute ZERO — counting both halves is
+        the double-count. NOTE: ``processed_via_envelope`` rows are NOT memos —
+        that flow attaches an envelope record to this bank row without a second
+        ledger posting, so the bank row is still the money."""
+        return self.channel == self.Channel.BANK and self.manual_receipt
+
+    @property
+    def signed_cash_amount(self):
+        """This row's true effect on cash: zero for a bank-memo row (its cash
+        lives on the envelope counterpart), negative for a reversal (an
+        offsetting entry, stored with the original's direction and a positive
+        amount by design) and for a debit, otherwise the amount. The
+        per-instance twin of ``signed_cash_case`` — keep the two in step."""
+        from decimal import Decimal
+        if self.is_bank_memo:
+            return Decimal(0)
+        if self.is_reversal or self.direction == self.Direction.DEBIT:
+            return -self.amount
+        return self.amount
+
+    @staticmethod
+    def signed_cash_case():
+        """The SQL twin of ``signed_cash_amount`` for aggregates: a Case
+        expression signing each row by its true effect on cash. Defined once so
+        the transactions page, exports and cash book can never disagree about
+        what a row does to the balance."""
+        from django.db.models import (Case, DecimalField, F, Value, When)
+        return Case(
+            When(channel=Transaction.Channel.BANK, manual_receipt=True,
+                 then=Value(0)),
+            When(is_reversal=True, then=-F("amount")),
+            When(direction=Transaction.Direction.DEBIT, then=-F("amount")),
+            default=F("amount"),
+            output_field=DecimalField(max_digits=14, decimal_places=2))
 
     def mark_manual_receipt(self, value=True, cascade_split=True):
         """Mark this entry as receipted MANUALLY on paper: no system envelope is

@@ -531,21 +531,36 @@ def _register_all():
     reg.register("variance_analysis", lambda **k: VarianceAnalysisComponent(**k),
                  label="Variance analysis", category="Analysis")
     reg.register("chart", lambda spec_fn=None, **k: ChartComponent(spec_fn, **k),
-                 label="Chart", category="Visual")
+                 label="Chart", category="Visual", designer_safe=False,
+                 description="Needs a Python chart-spec function — composed "
+                            "in code-defined reports only, not the designer.")
     reg.register("commentary", lambda text="", **k: CommentaryComponent(text, **k),
-                 label="Commentary", category="Narrative")
+                 label="Commentary", category="Narrative",
+                 params_schema=[{"name": "text", "label": "Text",
+                                 "kind": "textarea", "required": True}])
     reg.register("narrative",
                  lambda narrative_key=None, **k: NarrativeComponent(narrative_key, **k),
-                 label="Narrative (auto-generated)", category="Narrative")
+                 label="Narrative (auto-generated)", category="Narrative",
+                 params_schema=[{"name": "narrative_key", "label": "Narrative",
+                                 "kind": "select", "source": "narratives",
+                                 "required": True}])
     reg.register("signature_block", lambda **k: SignatureBlockComponent(**k),
                  label="Signature block", category="Formal")
     reg.register("appendix", lambda fn=None, **k: AppendixComponent(fn, **k),
-                 label="Appendix", category="Formal")
+                 label="Appendix", category="Formal", designer_safe=False,
+                 description="Needs a Python render function — composed in "
+                            "code-defined reports only, not the designer.")
     reg.register("info_panel", lambda text="", **k: InfoPanelComponent(text, **k),
-                 label="Info panel", category="Narrative")
+                 label="Info panel", category="Narrative",
+                 params_schema=[{"name": "text", "label": "Text",
+                                 "kind": "textarea", "required": True}])
     reg.register("financial_statement",
                  lambda lines=(), **k: FinancialStatementComponent(lines, **k),
-                 label="Financial statement", category="Financial")
+                 label="Financial statement", category="Financial",
+                 designer_safe=False,
+                 description="Needs a Python list of (label, metric-or-"
+                            "callable) lines — composed in code-defined "
+                            "reports only, not the designer.")
 
 
 _register_all()

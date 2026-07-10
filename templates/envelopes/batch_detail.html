@@ -1,0 +1,133 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Batch #{{ batch.pk }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Batch #{{ batch.pk }}
+  {% if batch.status == 'DRAFT' %}<span class="pill pill-grey">Draft</span>
+  {% elif batch.status == 'REVIEW' %}<span class="pill pill-amber">In review</span>
+  {% elif batch.status == 'RETURNED' %}<span class="pill pill-red">Returned</span>
+  {% elif batch.status == 'APPROVED' %}<span class="pill pill-green">Approved</span>
+  {% elif batch.status == 'POSTED' %}<span class="pill pill-active">Posted</span>
+  {% elif batch.status == 'REJECTED' %}<span class="pill pill-grey">Rejected</span>{% endif %}
+</h1>
+<div class="sub">{{ batch.get_source_display }} · Sabbath {{ batch.sabbath_date|date:"d F Y" }} · created by {{ batch.created_by.get_full_name|default:batch.created_by.username }}</div></div>
+<div class="btn-row no-print">
+  {% if can_edit %}<a class="btn btn-sm" href="{% url 'envelope_ledger_edit' batch.pk %}">Continue editing</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_batch_list' %}">← Review queue</a>
+</div></div>
+
+{% if batch.status == 'RETURNED' and batch.return_reason %}
+<div class="callout callout-warn u-mb"><strong>Returned for correction:</strong> {{ batch.return_reason }}</div>
+{% endif %}
+{% if batch.status == 'REJECTED' and batch.reject_reason %}
+<div class="callout callout-danger u-mb"><strong>Rejected:</strong> {{ batch.reject_reason }}</div>
+{% endif %}
+
+<div class="entry-summary u-mb">
+  <div class="es-stat"><span class="es-num" >{{ rows|length }}</span><span class="es-lbl">rows</span></div>
+  <div class="es-stat"><span class="es-num mono">{{ batch.computed_total|floatformat:2|intcomma }}</span><span class="es-lbl">total (KSh)</span></div>
+</div>
+
+<div class="card u-mb"><div class="bd">
+<div class="table-wrap"><table class="ledger">
+<thead><tr>
+  <th scope="col">#</th><th scope="col">Receipt</th><th scope="col">Contributor</th>
+  <th scope="col">Channel</th><th scope="col">Funds</th>
+  <th scope="col" class="num">Manual total</th><th scope="col" class="num">Allocated</th><th scope="col"></th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr class="{% if r.error %}row-error{% endif %}">
+  <td class="mono u-xs">{{ r.line_no }}</td>
+  <td class="mono">{{ r.receipt_no|default:"—" }}</td>
+  <td>{{ r.contributor_name|default:"—" }}{% if r.member %} <span class="pill pill-grey u-xs" title="Matched member">member</span>{% endif %}</td>
+  <td>{{ r.get_channel_display }}</td>
+  <td class="u-xs">{% for label, amt in r.fund_breakdown %}<span class="pill pill-grey u-xs">{{ label }} {{ amt|floatformat:2|intcomma }}</span> {% empty %}—{% endfor %}
+    {% if r.dev_group %}<span class="pill pill-brass u-xs">{{ r.dev_group }}</span>{% endif %}</td>
+  <td class="num mono">{{ r.manual_total|default_if_none:"—"|floatformat:2 }}</td>
+  <td class="num mono">{{ r.computed_total|floatformat:2|intcomma }}</td>
+  <td class="u-xs">{% if r.error %}<span class="pill pill-red" title="{{ r.error_detail }}">{{ r.error_detail }}</span>
+    {% elif r.posted_envelope_id %}<a class="link" href="{% url 'envelope_detail' r.posted_envelope_id %}">posted</a>{% endif %}</td>
+</tr>
+{% empty %}
+<tr><td colspan="8" class="empty">No rows in this batch.</td></tr>
+{% endfor %}
+</tbody>
+</table></div>
+</div></div>
+
+<div class="btn-row entry-actions no-print">
+  {% if can_submit %}
+  <form method="post" action="{% url 'envelope_batch_submit' batch.pk %}">{% csrf_token %}
+    <button class="btn">Submit for review</button></form>
+  {% endif %}
+
+  {% if can_review %}
+  <form method="post" action="{% url 'envelope_batch_approve' batch.pk %}" style="display:inline">{% csrf_token %}
+    <button class="btn btn-save">✓ Approve</button></form>
+  <button type="button" class="btn btn-ghost" id="returnBtn">↩ Return for correction</button>
+  <button type="button" class="btn btn-danger" id="rejectBtn">✕ Reject</button>
+  {% endif %}
+
+  {% if can_post %}
+  <form method="post" action="{% url 'envelope_batch_post' batch.pk %}" onsubmit="return confirm('Post this batch? This creates the ledger entries — member giving, fund balances and reports update immediately and this cannot be undone from here (only reversed per entry afterwards).');">{% csrf_token %}
+    <button class="btn btn-save">⬆ Post to ledger</button></form>
+  {% endif %}
+</div>
+
+{% if can_review %}
+<div class="modal-backdrop no-print" id="returnModal" style="display:none">
+  <div class="modal-box">
+    <h3>Return batch #{{ batch.pk }} for correction</h3>
+    <form method="post" action="{% url 'envelope_batch_return' batch.pk %}">{% csrf_token %}
+      <label class="fld"><span>Reason (shown to {{ batch.created_by }})</span>
+        <textarea name="reason" class="field" rows="3" required></textarea></label>
+      <div class="btn-row u-mt"><button class="btn">Return batch</button>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('returnModal').style.display='none'">Cancel</button></div>
+    </form>
+  </div>
+</div>
+<div class="modal-backdrop no-print" id="rejectModal" style="display:none">
+  <div class="modal-box">
+    <h3>Reject batch #{{ batch.pk }}</h3>
+    <p class="help u-mt-0">Rejection is terminal — the batch cannot be resubmitted. Use Return instead if this just needs correcting.</p>
+    <form method="post" action="{% url 'envelope_batch_reject' batch.pk %}">{% csrf_token %}
+      <label class="fld"><span>Reason</span>
+        <textarea name="reason" class="field" rows="3" required></textarea></label>
+      <div class="btn-row u-mt"><button class="btn btn-danger">Reject batch</button>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('rejectModal').style.display='none'">Cancel</button></div>
+    </form>
+  </div>
+</div>
+<script>
+document.getElementById("returnBtn").addEventListener("click",()=>{document.getElementById("returnModal").style.display="flex";});
+document.getElementById("rejectBtn").addEventListener("click",()=>{document.getElementById("rejectModal").style.display="flex";});
+</script>
+{% endif %}
+
+<details class="card u-mt"><summary class="hd">Audit trail</summary><div class="bd">
+<table class="ledger u-xs">
+<thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">Change</th><th scope="col">Status</th></tr></thead>
+<tbody>
+{% for h in history %}
+<tr><td class="mono">{{ h.history_date|date:"d M Y, H:i" }}</td>
+  <td>{{ h.history_user|default:"—" }}</td>
+  <td>{{ h.get_history_type_display }}</td>
+  <td>{{ h.get_status_display }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div></details>
+
+<style>
+.row-error td{background:var(--danger-soft,#fbeceb)}
+.callout{padding:.7rem 1rem;border-radius:8px;font-size:.88rem}
+.callout-warn{background:var(--amber-soft,#fdf3e0);border:1px solid var(--amber,#b07d2c)}
+.callout-danger{background:var(--danger-soft,#fbeceb);border:1px solid var(--danger,#b04a4a)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(20,30,25,.45);z-index:1000;
+  display:flex;align-items:center;justify-content:center}
+.modal-box{background:#fff;border-radius:10px;padding:1.2rem 1.4rem;max-width:420px;width:92%;
+  box-shadow:0 12px 32px rgba(0,0,0,.2)}
+.btn-danger{background:#fff;color:var(--danger,#b04a4a);border:1px solid #e3cbc7}
+.btn-danger:hover{background:var(--danger-soft,#fbeceb)}
+</style>
+{% endblock %}

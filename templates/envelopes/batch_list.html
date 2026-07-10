@@ -1,0 +1,67 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Envelope batches — review queue · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Envelope batch review queue</h1>
+<div class="sub">Every envelope batch moves Draft → Review → Approve → Post. Only Post creates ledger entries.</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-sm" href="{% url 'envelope_ledger' %}">＋ New entry sheet</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import from Excel</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_list' %}">Posted envelopes</a>
+</div></div>
+
+<div class="filters u-mb">
+  <a class="pill {% if not status_filter %}pill-active{% else %}pill-grey{% endif %}" href="?">All open</a>
+  {% for key, label in statuses %}
+  <a class="pill {% if status_filter == key %}pill-active{% else %}pill-grey{% endif %}" href="?status={{ key }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="card"><div class="bd">
+{% if batches %}
+<div class="table-wrap"><table class="ledger">
+<thead><tr>
+  <th scope="col">Batch</th><th scope="col">Sabbath</th><th scope="col">Source</th>
+  <th scope="col">Status</th><th scope="col" class="num">Rows</th><th scope="col" class="num">Total</th>
+  <th scope="col">Created by</th><th scope="col">Last updated</th><th scope="col"></th>
+</tr></thead>
+<tbody>
+{% for b in batches %}
+<tr class="{% if b.status == 'RETURNED' %}row-warn{% elif b.status == 'REJECTED' %}row-muted{% endif %}">
+  <td><a class="link mono" href="{% url 'envelope_batch_detail' b.pk %}">#{{ b.pk }}</a></td>
+  <td>{{ b.sabbath_date|date:"d M Y" }}</td>
+  <td>{% if b.source == 'IMPORT' %}<span class="pill pill-blue u-xs">Import</span>{% else %}<span class="pill pill-grey u-xs">Manual</span>{% endif %}</td>
+  <td>
+    {% if b.status == 'DRAFT' %}<span class="pill pill-grey">Draft</span>
+    {% elif b.status == 'REVIEW' %}<span class="pill pill-amber">In review</span>
+    {% elif b.status == 'RETURNED' %}<span class="pill pill-red">Returned</span>
+    {% elif b.status == 'APPROVED' %}<span class="pill pill-green">Approved</span>
+    {% elif b.status == 'POSTED' %}<span class="pill pill-active">Posted</span>
+    {% elif b.status == 'REJECTED' %}<span class="pill pill-grey">Rejected</span>{% endif %}
+  </td>
+  <td class="num mono">{{ b.row_count_ }}</td>
+  <td class="num mono">{{ b.total_|floatformat:2|intcomma }}</td>
+  <td>{{ b.created_by.get_full_name|default:b.created_by.username }}</td>
+  <td class="u-xs muted">{{ b.updated_at|date:"d M, H:i" }}</td>
+  <td>
+    {% if b.status == 'DRAFT' or b.status == 'RETURNED' %}
+      {% if b.created_by_id == request.user.id %}<a class="link u-xs" href="{% url 'envelope_ledger_edit' b.pk %}">continue editing</a>{% endif %}
+    {% elif b.status == 'REVIEW' and can_review %}
+      <a class="link u-xs" href="{% url 'envelope_batch_detail' b.pk %}">review</a>
+    {% elif b.status == 'APPROVED' and can_review %}
+      <a class="link u-xs" href="{% url 'envelope_batch_detail' b.pk %}">post</a>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table></div>
+{% else %}
+<p class="empty"><span class="big">📭</span>Nothing here right now.</p>
+{% endif %}
+</div></div>
+
+<style>
+.row-warn td{background:var(--danger-soft,#fbeceb)}
+.row-muted td{opacity:.55}
+</style>
+{% endblock %}

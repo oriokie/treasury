@@ -443,3 +443,38 @@ registry.register(Report(
                            layout=LayoutMeta(order=20, priority=60)),
     ],
 ))
+
+
+# ===========================================================================
+# Combined statutory pack (recommendation #36): every statement in one report,
+# under ONE shared ReportContext — the overlapping aggregates (fund_summary,
+# income/expense metrics) compute once and every statement reads the same
+# memoized figures, so the pack is internally consistent by construction.
+# Composes the existing sections only; no new metrics or components.
+# ===========================================================================
+
+registry.register(Report(
+    key="financial_statements_pack",
+    title="Financial Statements (full pack)",
+    description="The complete statutory set in one report — Income & "
+                "Expenditure, Statement of Financial Position, Statement of "
+                "Cash Flows, Statement of Fund Balances and the Trial Balance "
+                "— computed from one shared context so every statement "
+                "reconciles with the others.",
+    category="Financial statements",
+    permission=_can_view_reports,
+    filters=[Filter("consolidated", "Consolidate sub-accounts", kind="bool",
+                    default=True)],
+    sections=[
+        IncomeExpenditureStatementSection(
+            layout=LayoutMeta(order=10, priority=100)),
+        FinancialPositionSummarySection(
+            layout=LayoutMeta(order=20, priority=95, width=6)),
+        CashFlowStatementSection(
+            layout=LayoutMeta(order=21, priority=95, width=6)),
+        FundBalancesStatementSection(
+            layout=LayoutMeta(order=30, priority=90, page_break_before=True)),
+        TrialBalanceSection(
+            layout=LayoutMeta(order=40, priority=85, page_break_before=True)),
+    ],
+))

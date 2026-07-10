@@ -21,6 +21,7 @@ urlpatterns = [
     path("notifications/", views.NotificationListView.as_view(), name="notifications"),
     path("members/search/", views.MemberSearchView.as_view(), name="member_search"),
     path("envelopes/next-receipt/", views.NextReceiptView.as_view(), name="next_receipt"),
+    path("table-state/<slug:table_key>/", views.TableStateView.as_view(), name="table_state"),
     path("departments/balance/", views.DepartmentBalanceView.as_view(), name="department_balance"),
     path("funds/search/", views.FundSearchView.as_view(), name="fund_search"),
     path("search/", views.GlobalSearchView.as_view(), name="global_search"),

@@ -161,7 +161,12 @@ def register_components():
                  label="Financial health score", category="Intelligence")
     reg.register("insights",
                  lambda **k: InsightsComponent(**k),
-                 label="Intelligence insights", category="Intelligence")
+                 label="Intelligence insights", category="Intelligence",
+                 params_schema=[
+                     {"name": "min_priority", "label": "Minimum priority (0-5)",
+                      "kind": "number", "required": False},
+                     {"name": "limit", "label": "Max insights shown",
+                      "kind": "number", "required": False}])
     reg.register("board_recommendations",
                  lambda **k: RecommendationsComponent(**k),
                  label="Board recommendations", category="Intelligence")

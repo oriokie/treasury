@@ -127,6 +127,9 @@ MIDDLEWARE = [
     # WhiteNoise serves static files directly from the app process, so a
     # production deploy needs no separate static-file server.
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # request-scoped SiteConfig memo (recommendation #2) — early, so every
+    # later middleware and the view share one read of the settings row
+    "core.middleware.SiteConfigCacheMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

@@ -100,19 +100,20 @@ registry.register(Report(
             layout=LayoutMeta(order=14, width=12, priority=90, group=G_SUMMARY)),
         HealthScoreComponent(
             layout=LayoutMeta(order=16, width=12, priority=88, group=G_SUMMARY)),
-        # charts sit inside the summary group (screen only; hidden from exports)
+        # charts render live (Chart.js) on screen and as server-side PNGs of
+        # the same registry figures in the PDF/Word exports (rec #28)
         ChartComponent(ChartEngine.income_by_channel, key="chart_income",
                        title="Income by channel",
                        layout=LayoutMeta(order=20, width=4, priority=70,
-                                         group=G_SUMMARY, export_visible=False)),
+                                         group=G_SUMMARY)),
         ChartComponent(ChartEngine.fund_closing_balances, key="chart_funds",
                        title="Largest fund balances",
                        layout=LayoutMeta(order=21, width=4, priority=70,
-                                         group=G_SUMMARY, export_visible=False)),
+                                         group=G_SUMMARY)),
         ChartComponent(ChartEngine.local_vs_trust, key="chart_local_trust",
                        title="Local vs trust funds",
                        layout=LayoutMeta(order=22, width=4, priority=70,
-                                         group=G_SUMMARY, export_visible=False)),
+                                         group=G_SUMMARY)),
 
         # ============================ 2. FINANCIAL STATEMENTS ==============
         IncomeExpenditureStatementSection(

@@ -873,8 +873,16 @@ class CashBookView(PeriodMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         s, e = ctx["start"], ctx["end"]
         entries = []
-        for t in Transaction.objects.filter(date__gte=s, date__lte=e,
-                                             direction=Transaction.Direction.CREDIT):
+        # Cash-effective receipts only, per the one canonical definition:
+        # confirmed, not reversed, not a reversal (confirmed_credits), and not
+        # a bank-memo row (a manually-receipted bank line whose cash is counted
+        # on its envelope entry). The cash book previously summed EVERY credit —
+        # unconfirmed, reversed originals, their reversal contras AND memo
+        # rows — overstating receipts on all four counts.
+        for t in (Transaction.objects.confirmed_credits()
+                  .filter(date__gte=s, date__lte=e)
+                  .exclude(channel=Transaction.Channel.BANK,
+                           manual_receipt=True)):
             entries.append({"date": t.date, "desc": t.payer_name or t.reference or "Receipt",
                             "credit": t.amount, "debit": None})
         for x in Expense.objects.filter(date__gte=s, date__lte=e,
@@ -1164,7 +1172,9 @@ class AuditLogView(ReportAccessMixin, TemplateView):
         from giving.models import Transaction as T, AllocationRule as AR
         from cashbook.models import Expense as X
         from members.models import Member as M
-        candidates = {"Transaction": T, "Expense": X, "Member": M, "Allocation rule": AR}
+        from envelopes.models import EnvelopeBatch as EB
+        candidates = {"Transaction": T, "Expense": X, "Member": M,
+                     "Allocation rule": AR, "Envelope batch": EB}
         return {n: m for n, m in candidates.items() if hasattr(m, "history")}
 
     def _collect(self, request, cap=1500):

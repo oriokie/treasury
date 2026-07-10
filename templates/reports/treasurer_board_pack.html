@@ -81,7 +81,7 @@
     <div class="bp-grid">
     {% for s in g.sections %}
       {% with layout=s.extra|get_item:'layout' %}
-      <div class="bp-cell" style="flex:1 1 {% if layout %}{{ layout.width|default:12|pct_of_12 }}{% else %}100{% endif %}%">
+      <div class="bp-cell{% if layout.collapsible %} bp-can-collapse{% endif %}{% if layout.collapsed %} bp-collapsed{% endif %}" style="flex:1 1 {% if layout %}{{ layout.width|default:12|pct_of_12 }}{% else %}100{% endif %}%">
 
         {# ---- Executive snapshot: rich KPI call-out cards with movement ---- #}
         {% if s.kind == 'kpi' and s.extra|get_item:'snapshot' %}
@@ -240,6 +240,29 @@
 })();
 </script>
 {% endif %}
+
+<script>
+// Per-section collapse (rec #44c): card heads in collapsible cells toggle
+// their body. Screen-only — print CSS forces everything visible.
+(function(){
+  document.querySelectorAll('.bp-can-collapse .bp-card-head').forEach(function(head){
+    var caret = document.createElement('span');
+    caret.className = 'bp-caret no-print';
+    caret.setAttribute('aria-hidden', 'true');
+    head.appendChild(caret);
+    head.setAttribute('role', 'button');
+    head.setAttribute('tabindex', '0');
+    function toggle(){ head.closest('.bp-cell').classList.toggle('bp-collapsed'); }
+    head.addEventListener('click', function(e){
+      if (e.target.closest('a')) return;   // Ask-AI link keeps working
+      toggle();
+    });
+    head.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+})();
+</script>
 
 <script>
 // Sticky-nav active-section highlight

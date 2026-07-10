@@ -5,7 +5,8 @@
   <div class="ws-titles"><h1>Envelopes</h1><div class="ws-sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
   <div class="ws-actions">
     {% if can_enter_data %}<a class="btn" href="{% url 'envelope_ledger' %}">＋ Record</a>
-    <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'envelope_batch_list' %}">📋 Review queue</a>{% endif %}
     {% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'envelope_reverse' %}{% if month_value %}?date={{ month_value }}-07{% endif %}" title="Reverse a batch of envelope entries">↩ Undo entries</a>{% endif %}
     <a class="btn btn-ghost btn-sm" href="{% url 'sabbath_reconcile' %}{% if month_value %}?date={{ month_value }}-07{% endif %}" title="Reconcile a Sabbath's bank giving against its envelopes">⚖ Reconcile Sabbath</a>
   </div>

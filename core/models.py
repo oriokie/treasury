@@ -9,6 +9,13 @@ from simple_history.models import HistoricalRecords
 from core.fields import EncryptedCharField
 
 
+import threading
+
+#: request-scoped memo for SiteConfig.get() — see SiteConfig.get docstring and
+#: core.middleware.SiteConfigCacheMiddleware (recommendation #2, Option A)
+_siteconfig_local = threading.local()
+
+
 class SiteConfig(models.Model):
     """One editable row of configuration. Use SiteConfig.get()."""
 
@@ -404,8 +411,29 @@ class SiteConfig(models.Model):
 
     @classmethod
     def get(cls):
+        """The one settings row. Memoized PER REQUEST via a thread-local that
+        SiteConfigCacheMiddleware opens and closes (recommendation #2, Option
+        A): pages were observed issuing 7–11 identical queries for this row
+        per request. Deliberately NOT cached across requests — several fields
+        gate security and financial controls, and this deployment's default
+        LocMemCache is per-process, so cross-request caching could serve stale
+        control settings under a multi-worker server. Outside a request
+        (shell, management commands, tests calling get() directly) the scope
+        flag is off and every call reads the database exactly as before.
+        ``save()`` drops the memo so a change made mid-request is seen by the
+        rest of that same request."""
+        cached = getattr(_siteconfig_local, "obj", None)
+        if cached is not None:
+            return cached
         obj, _ = cls.objects.get_or_create(pk=1)
+        if getattr(_siteconfig_local, "scope_open", False):
+            _siteconfig_local.obj = obj
         return obj
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # a settings change must be visible to the remainder of this request
+        _siteconfig_local.obj = None
 
     # ---- Board report configuration (#4) ----
     BOARD_SECTIONS = [

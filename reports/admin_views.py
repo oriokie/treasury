@@ -212,18 +212,26 @@ class DesignerListView(TreasurerRequiredMixin, TemplateView):
 
 
 class DesignerEditView(TreasurerRequiredMixin, View):
-    """Create/edit a report definition. The editor is JSON-backed (the section
-    list + filters), with the component palette and validation surfaced so an
-    administrator arranges registered components without writing code. A full
-    drag-and-drop canvas can layer on top of this same persistence later."""
+    """Create/edit a report definition with a visual, click-and-arrange builder:
+    add a component from the palette, fill in its title/params/layout with real
+    form fields (no hand-typed JSON), drag section cards to reorder. The wire
+    format saved to ``ReportDefinition.sections``/``filters`` is unchanged (a
+    JSON list of section/filter dicts) — the builder is purely a friendlier way
+    of producing that same JSON. An "Advanced" panel still shows the raw JSON
+    for anyone who wants to hand-edit or paste a section, kept in sync with the
+    visual builder in both directions."""
     template_name = "reports/designer_edit.html"
 
     def _palette(self):
         from core.reporting.components import component_registry
         from core.reporting.narrative import narrative_registry
         return {
-            "components": component_registry.by_category(),
-            "narratives": narrative_registry.keys(),
+            # designer_safe_only: components needing Python code (chart,
+            # appendix, financial_statement) are excluded — see the
+            # designer_safe flag on ComponentRegistry.register().
+            "components": component_registry.by_category(designer_safe_only=True),
+            "narratives": [{"key": n.key, "title": n.title}
+                          for n in narrative_registry.all()],
         }
 
     def get(self, request, key=None):
@@ -234,10 +242,8 @@ class DesignerEditView(TreasurerRequiredMixin, View):
         return render(request, self.template_name, {
             "definition": definition,
             "palette": self._palette(),
-            "sections_json": json.dumps(definition.sections if definition else [],
-                                        indent=2),
-            "filters_json": json.dumps(definition.filters if definition else [],
-                                       indent=2),
+            "sections_data": definition.sections if definition else [],
+            "filters_data": definition.filters if definition else [],
         })
 
     def post(self, request, key=None):
@@ -275,14 +281,17 @@ class DesignerEditView(TreasurerRequiredMixin, View):
         if not definition.owner_id:
             definition.owner = request.user
 
-        # validate before saving so an invalid config can't be persisted-live
+        # validate before saving so an invalid config can't be persisted-live —
+        # every problem is a specific, human-readable sentence (never a raw
+        # traceback), so the builder can list them precisely rather than one
+        # generic failure message.
         problems = validate_definition(definition)
         if problems:
-            messages.error(request, "Cannot save: " + "; ".join(problems))
+            for p in problems:
+                messages.error(request, p)
             return render(request, self.template_name, {
                 "definition": definition, "palette": self._palette(),
-                "sections_json": data.get("sections") or "[]",
-                "filters_json": data.get("filters") or "[]"})
+                "sections_data": sections, "filters_data": filters})
         definition.save()
         if definition.enabled:
             try:

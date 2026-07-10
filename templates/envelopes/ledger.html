@@ -2,45 +2,45 @@
 {% block title %}Record envelopes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Record envelopes</h1>
-<div class="sub">Key one row per contributor. Names autocomplete, receipts auto-number, and totals update as you type.</div></div>
-<a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import from Excel</a></div>
+<div class="sub">Key one row per contributor. This sheet auto-saves as you type — nothing posts to the ledger until you submit it for review and a treasurer approves and posts it.</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_batch_list' %}">📋 Review queue</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import from Excel</a>
+</div></div>
 
-<form method="post" id="envForm">{% csrf_token %}
-  <input type="hidden" name="rows" id="rowsField">
+{% if return_reason %}
+<div class="callout callout-warn u-mb"><strong>Returned for correction:</strong> {{ return_reason }}</div>
+{% endif %}
 
+<form id="envForm" onsubmit="return false">
   <div class="entry-toolbar">
-    <div class="tb-field"><label>Sabbath</label><input type="date" name="date" id="sabDate" value="{{ default_date }}" class="field"></div>
-    <div class="tb-field"><label>Start receipt #</label><input id="startReceipt" class="field mono" placeholder="auto"></div>
+    <div class="tb-field"><label>Sabbath</label><input type="date" id="sabDate" value="{{ default_date }}" class="field"></div>
+    <div class="tb-status" id="saveStatus"><span class="save-dot" id="saveDot"></span><span id="saveStatusText">Not saved yet</span></div>
     <div class="tb-spacer"></div>
-    <button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Funds</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Columns</button>
     <a class="btn btn-sm btn-ghost" id="tplLink" href="#">⬇ Template</a>
   </div>
 
   <div id="colPicker" class="col-picker">
-    <div class="cp-title">Funds collected this Sabbath <span class="muted">— tick the funds given; untick the rest to keep the sheet small.</span></div>
-    <div class="cp-grid">
+    <div class="cp-title">Columns <span class="muted">— tick the funds given this Sabbath; drag any column's header to reorder; drag its right edge to resize; pin keeps it visible while scrolling.</span></div>
+    <div class="cp-grid" id="cpFundGrid">
       {% for c in columns %}
-      <label class="cp-item"><input type="checkbox" class="colcb" value="{{ c.key }}" data-label="{{ c.label }}" {% if c.default %}checked{% endif %}>
+      <label class="cp-item"><input type="checkbox" class="colcb" value="{{ c.key }}" data-label="{{ c.label|escapejs }}" {% if c.default %}checked{% endif %}>
         <span>{{ c.label }}{% if c.trust %} <span class="pill pill-amber pill-xs">T</span>{% endif %}</span></label>
       {% endfor %}
     </div>
-    <div class="btn-row"><button type="button" class="btn btn-sm" id="applyCols">Apply</button></div>
+    <div class="cp-title u-mt-sm">Layout</div>
+    <div class="cp-pin-grid" id="cpPinGrid"></div>
+    <div class="btn-row"><button type="button" class="btn btn-sm" id="applyCols">Apply</button>
+      <button type="button" class="btn btn-sm btn-ghost" id="resetLayout">Reset layout</button></div>
   </div>
 
-  <div class="table-wrap xl-wrap">
+  <div class="table-wrap xl-wrap" id="xlWrap">
     <table class="ledger xl-grid" id="envTable">
-      <thead><tr id="headRow">
-        <th class="rownum">#</th>
-        <th class="sticky-name">Contributor</th>
-        <th class="col-receipt">Receipt</th>
-        <th class="col-channel">Channel</th>
-        <th class="num">Total</th><th class="rm-col"></th>
-      </tr></thead>
+      <colgroup id="envColgroup"></colgroup>
+      <thead><tr id="headRow"></tr></thead>
       <tbody id="envBody"></tbody>
-      <tfoot><tr id="footRow" class="foot-totals">
-        <td></td><td class="sticky-name foot-label">Column totals</td><td></td><td></td>
-        <td class="num mono foot-grand"></td><td></td>
-      </tr></tfoot>
+      <tfoot><tr id="footRow" class="foot-totals"></tr></tfoot>
     </table>
   </div>
 
@@ -50,11 +50,13 @@
     <div class="es-funds" id="esFunds"></div>
   </div>
 
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically (e.g. 50% trust / 50% local). Use <strong>↑ / ↓ or Enter</strong> to move between rows in a column; Enter on the last row adds a new one.</p>
+  <p class="help" id="blockingHelp" style="display:none"></p>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. New rows copy the Channel and Group above them.</p>
+
   <div class="btn-row entry-actions">
     <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
-    <button class="btn btn-save">Save envelopes <span id="saveTotal" class="save-total"></span></button>
-    <a class="btn btn-ghost" href="{% url 'envelope_list' %}">Cancel</a>
+    <button type="button" class="btn btn-save" id="submitBtn">Submit for review <span id="saveTotal" class="save-total"></span></button>
+    <a class="btn btn-ghost" href="{% url 'envelope_batch_list' %}">Done for now</a>
   </div>
 </form>
 
@@ -62,220 +64,877 @@
 const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
 const DEV_FUND_KEY = "{{ dev_fund_key }}";
 const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const INITIAL_ROWS = {{ batch_rows_json|safe }};
+const INITIAL_BATCH_ID = {{ batch.id|default:"null" }};
 function devGroupOptions(sel){ let o='<option value="">— group —</option>'; DEV_GROUPS.forEach(g=>{ o+=`<option value="${g.id}" ${sel==g.id?'selected':''}>${g.label}</option>`; }); return o; }
 const searchUrl = "{% url 'member_search' %}";
 const nextUrl = "{% url 'next_receipt' %}";
 const tplUrl = "{% url 'envelope_template' %}";
+const autosaveUrl = "{% url 'envelope_batch_autosave' %}";
+const submitUrlBase = "/envelopes/batches/";
+const tableStateUrl = "{% url 'table_state' 'envelope_ledger_grid' %}";
+
+function getCookie(name){
+  const m = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+  return m ? decodeURIComponent(m.pop()) : "";
+}
+const CSRF = getCookie("csrftoken");
+
+// ===========================================================================
+// Column model: meta columns (fixed purpose) + fund columns (dynamic, from
+// the funds picker) share ONE layout — order, visibility, width, pinned —
+// customisable by dragging/resizing/pinning and saved per user.
+// ===========================================================================
+const META_HEAD = [
+  {key:"__rownum", label:"#", hideable:false, resizable:false, width:32},
+  {key:"__name", label:"Contributor", hideable:false, resizable:true, width:170},
+  {key:"__receipt", label:"Receipt", hideable:false, resizable:true, width:96},
+  {key:"__manual_total", label:"Manual Total", hideable:false, resizable:true, width:112},
+  {key:"__channel", label:"Channel", hideable:false, resizable:true, width:90},
+];
+const META_TAIL = [
+  {key:"__allocated", label:"Allocated", hideable:false, resizable:true, width:92},
+];
+const DEFAULT_PINNED = ["__rownum", "__name"];
+
+let COLS = [];              // active fund columns (from the picker), in ALL_COLS order
+let layout = null;          // {order:[keys], hidden:[keys], widths:{key:px}, pinned:[keys]}
+let currentBatchId = INITIAL_BATCH_ID;
 let nextReceipt = null;
-let COLS = [];
+let saveTimer = null, heartbeatTimer = null, saving = false, dirty = false;
 
-function selectedKeys(){ return Array.from(document.querySelectorAll(".colcb:checked")).map(cb=>cb.value); }
-function syncTemplateLink(){ document.getElementById("tplLink").href = tplUrl + "?cols=" + encodeURIComponent(selectedKeys().join(",")); }
+function selectedFundKeys(){ return Array.from(document.querySelectorAll(".colcb:checked")).map(cb=>cb.value); }
+function syncTemplateLink(){ document.getElementById("tplLink").href = tplUrl + "?cols=" + encodeURIComponent(selectedFundKeys().join(",")); }
 
-function buildColumns(){
-  const keys = selectedKeys();
-  COLS = ALL_COLS.filter(c=>keys.includes(c.key));
-  const head=document.getElementById("headRow");
-  head.querySelectorAll(".fundcol").forEach(n=>n.remove());
-  const totalTh=head.querySelector("th.num");
-  COLS.forEach(c=>{ const th=document.createElement("th"); th.className="num fundcol"; th.title=c.label; th.textContent=c.label; head.insertBefore(th,totalTh); });
-  const body=document.getElementById("envBody");
-  const saved=[];
-  body.querySelectorAll("tr").forEach(tr=>{
-    const amounts={}; tr.querySelectorAll(".amt").forEach(i=>{ if(i.value) amounts[i.dataset.fid]=i.value; });
-    saved.push({name:tr.querySelector(".cname").value, mid:tr.querySelector(".mid").value,
-                rcpt:tr.querySelector(".rcpt").value, chan:tr.querySelector(".chan").value, amounts});
+function defaultLayout(){
+  const fundKeys = selectedFundKeys();
+  return {
+    order: [...META_HEAD.map(c=>c.key), ...fundKeys, ...META_TAIL.map(c=>c.key)],
+    hidden: [], widths: {}, pinned: [...DEFAULT_PINNED],
+  };
+}
+
+function allColumnDefs(){
+  // meta defs + current fund defs, keyed for quick lookup
+  const defs = {};
+  META_HEAD.concat(META_TAIL).forEach(c=>defs[c.key]=c);
+  COLS.forEach(c=>defs[c.key]={key:c.key, label:c.label, hideable:true, resizable:true, width:78});
+  return defs;
+}
+
+// ===========================================================================
+// Layout persistence (table_state, keyed "envelope_ledger_grid")
+// ===========================================================================
+async function loadLayout(){
+  try{
+    const d = await (await fetch(tableStateUrl)).json();
+    if(d.ok && d.state && d.state.order && d.state.order.length) return d.state;
+  }catch(e){ /* fall through to default */ }
+  return null;
+}
+let layoutSaveTimer = null;
+function saveLayoutSoon(){
+  clearTimeout(layoutSaveTimer);
+  layoutSaveTimer = setTimeout(()=>{
+    fetch(tableStateUrl, {method:"POST", headers:{"Content-Type":"application/json","X-CSRFToken":CSRF},
+      body: JSON.stringify(layout)}).catch(()=>{});
+  }, 600);
+}
+
+// ===========================================================================
+// Table (re)build — the single function that turns COLS+layout into the
+// actual <colgroup>/<thead>/<tfoot>, preserving whatever is currently in the
+// body rows (name/receipt/manual total/channel/dev group/amounts), exactly
+// like the previous version's buildColumns() did for fund show/hide, now
+// generalised to order/visibility/width/pin for every column.
+// ===========================================================================
+function visibleOrderedColumns(){
+  const defs = allColumnDefs();
+  return layout.order.filter(k => defs[k] && layout.hidden.indexOf(k) === -1)
+                     .map(k => defs[k]);
+}
+
+function rebuildTable(){
+  const cols = visibleOrderedColumns();
+  const defs = allColumnDefs();
+
+  // preserve current row data before wiping
+  const saved = [];
+  document.querySelectorAll("#envBody tr").forEach(tr=>saved.push(readRow(tr)));
+
+  // colgroup + header
+  const colgroup = document.getElementById("envColgroup");
+  const head = document.getElementById("headRow");
+  colgroup.innerHTML = ""; head.innerHTML = "";
+  let leftAcc = 0;
+  cols.forEach(c=>{
+    const w = layout.widths[c.key] || c.width || 90;
+    const col = document.createElement("col"); col.style.width = w + "px";
+    colgroup.appendChild(col);
+    const th = document.createElement("th");
+    th.className = "colhead"; th.dataset.key = c.key;
+    th.draggable = true;
+    const pinned = layout.pinned.indexOf(c.key) > -1;
+    if(pinned){ th.classList.add("pinned"); th.style.left = leftAcc + "px"; leftAcc += w; }
+    const lbl = document.createElement("span"); lbl.className = "colhead-lbl"; lbl.textContent = c.label;
+    th.appendChild(lbl);
+    if(c.hideable !== false){
+      const pinBtn = document.createElement("button"); pinBtn.type="button"; pinBtn.className="colhead-pin";
+      pinBtn.title = pinned ? "Unpin column" : "Pin column"; pinBtn.textContent = pinned ? "📌" : "📍";
+      pinBtn.addEventListener("click", (e)=>{ e.stopPropagation(); togglePin(c.key); });
+      th.appendChild(pinBtn);
+    }
+    if(c.resizable !== false){
+      const grip = document.createElement("span"); grip.className = "colhead-resize";
+      grip.addEventListener("mousedown", (e)=>startResize(e, c.key));
+      th.appendChild(grip);
+    }
+    th.addEventListener("dragstart", ()=>{ dragCol = c.key; th.classList.add("dragging"); });
+    th.addEventListener("dragend", ()=>{ th.classList.remove("dragging"); dragCol=null; });
+    head.appendChild(th);
   });
-  body.innerHTML="";
-  if(saved.length){ saved.forEach(s=>body.appendChild(makeRow(s.rcpt,s))); }
+  const rmTh = document.createElement("th"); rmTh.className = "rm-col"; head.appendChild(rmTh);
+
+  // rebuild rows from saved data
+  const body = document.getElementById("envBody");
+  body.innerHTML = "";
+  if(saved.length){ saved.forEach(s=>body.appendChild(makeRow(cols, s))); }
   else { for(let i=0;i<5;i++) addRow(); }
-  renumber(); syncTemplateLink(); updateTotals();
+
+  applyPinLeftOffsets();
+  renumber();
+  syncTemplateLink();
+  updateTotals();
+  markDirtyAndSave();
 }
 
-function flagDuplicate(tr){
-  const cell=tr.querySelector(".sticky-name"); if(!cell) return;
-  let flag=cell.querySelector(".dup-flag");
-  const name=tr.querySelector(".cname").value.trim().toLowerCase();
-  let dup=false;
-  if(name){ document.querySelectorAll("#envBody tr").forEach(o=>{
-    if(o!==tr && o.querySelector(".cname").value.trim().toLowerCase()===name) dup=true; }); }
-  if(dup){ if(!flag){ flag=document.createElement("span"); flag.className="dup-flag"; flag.textContent="dup?"; cell.appendChild(flag); } }
-  else if(flag){ flag.remove(); }
+let dragCol = null;
+document.getElementById("headRow") && document.getElementById("headRow").addEventListener("dragover", function(e){
+  e.preventDefault();
+  if(!dragCol) return;
+  const target = e.target.closest("th.colhead");
+  if(!target || target.dataset.key === dragCol) return;
+  const keys = layout.order.slice();
+  const from = keys.indexOf(dragCol), to = keys.indexOf(target.dataset.key);
+  if(from === -1 || to === -1) return;
+  keys.splice(from,1); keys.splice(to,0,dragCol);
+  layout.order = keys;
+  rebuildTable();
+  saveLayoutSoon();
+});
+
+function togglePin(key){
+  const i = layout.pinned.indexOf(key);
+  if(i>-1) layout.pinned.splice(i,1); else layout.pinned.push(key);
+  rebuildTable();
+  saveLayoutSoon();
 }
 
-function renumber(){ document.querySelectorAll("#envBody tr .rownum").forEach((c,i)=>c.textContent=i+1); updateTotals(); }
-function rowTotal(tr){ let t=0; tr.querySelectorAll(".amt").forEach(i=>{ const v=parseFloat(i.value); if(!isNaN(v)) t+=v; }); tr.querySelector(".rowtot").textContent=t?t.toLocaleString():""; updateTotals(); }
-
-function updateTotals(){
-  // per-column totals (footer + summary), grand total, contributor count
-  const colSum={}; let grand=0, filledRows=0;
-  COLS.forEach(c=>colSum[c.key]=0);
-  document.querySelectorAll("#envBody tr").forEach(tr=>{
-    let rowHas=false;
-    tr.querySelectorAll(".amt").forEach(i=>{ const v=parseFloat(i.value);
-      if(!isNaN(v)){ colSum[i.dataset.fid]=(colSum[i.dataset.fid]||0)+v; grand+=v; rowHas=true; } });
-    if(tr.querySelector(".cname").value.trim() && rowHas) filledRows++;
-  });
-  // footer column totals — align under each fund column
-  const foot=document.getElementById("footRow");
-  foot.querySelectorAll(".footcol").forEach(n=>n.remove());
-  const grandCell=foot.querySelector(".foot-grand");
-  COLS.forEach(c=>{ const td=document.createElement("td"); td.className="num mono footcol";
-    td.textContent=colSum[c.key]?colSum[c.key].toLocaleString():""; foot.insertBefore(td,grandCell); });
-  grandCell.textContent=grand?grand.toLocaleString():"";
-  // summary bar
-  document.getElementById("esRows").textContent=filledRows;
-  document.getElementById("esTotal").textContent=grand.toLocaleString();
-  const ef=document.getElementById("esFunds"); ef.innerHTML="";
-  COLS.forEach(c=>{ if(colSum[c.key]>0){ const s=document.createElement("span"); s.className="es-fund";
-    s.innerHTML=`<b>${c.label}</b> ${colSum[c.key].toLocaleString()}`; ef.appendChild(s); } });
-  const st=document.getElementById("saveTotal"); if(st) st.textContent=grand?("· KSh "+grand.toLocaleString()):"";
+let resizing = null;
+function startResize(e, key){
+  e.preventDefault();
+  const th = e.target.closest("th");
+  resizing = {key, startX:e.clientX, startW: th.getBoundingClientRect().width};
+  document.addEventListener("mousemove", onResizeMove);
+  document.addEventListener("mouseup", onResizeUp);
+}
+function onResizeMove(e){
+  if(!resizing) return;
+  const w = Math.max(40, Math.round(resizing.startW + (e.clientX - resizing.startX)));
+  layout.widths[resizing.key] = w;
+  const idx = visibleOrderedColumns().findIndex(c=>c.key===resizing.key);
+  const col = document.querySelectorAll("#envColgroup col")[idx];
+  if(col) col.style.width = w + "px";
+}
+function onResizeUp(){
+  if(resizing){ applyPinLeftOffsets(); saveLayoutSoon(); }
+  resizing = null;
+  document.removeEventListener("mousemove", onResizeMove);
+  document.removeEventListener("mouseup", onResizeUp);
 }
 
-function makeRow(receipt, data){
-  data=data||{};
-  const tr=document.createElement("tr");
-  let cells=`
-    <td class="rownum"></td>
-    <td class="sticky-name pos-rel">
-      <input class="field cname" autocomplete="off" placeholder="name…" value="${data.name||''}">
-      <input type="hidden" class="mid" value="${data.mid||''}">
-      <div class="ac-box"></div>
-    </td>
-    <td><input class="field rcpt mono" value="${(data.rcpt!=null?data.rcpt:receipt)||''}"></td>
-    <td><select class="field--select chan"><option value="CASH">Cash</option><option value="BANK" ${data.chan==='BANK'?'selected':''}>Bank</option></select></td>`;
-  COLS.forEach(c=>{ const v=(data.amounts&&data.amounts[c.key])||'';
-    if(c.key===DEV_FUND_KEY && DEV_GROUPS.length){
-      cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"><select class="field--select devgrp devgrp-select">${devGroupOptions(data.dev_group_id||'')}</select></td>`;
+function applyPinLeftOffsets(){
+  const cols = visibleOrderedColumns();
+  let left = 0;
+  const widths = cols.map(c => layout.widths[c.key] || c.width || 90);
+  cols.forEach((c, i)=>{
+    const pinned = layout.pinned.indexOf(c.key) > -1;
+    const cells = document.querySelectorAll('[data-col="'+c.key+'"]');
+    const th = document.querySelector('th.colhead[data-key="'+c.key+'"]');
+    if(pinned){
+      cells.forEach(td=>{ td.classList.add("pinned"); td.style.left = left + "px"; });
+      if(th){ th.classList.add("pinned"); th.style.left = left + "px"; }
+      left += widths[i];
     } else {
-      cells+=`<td class="num fundcell"><input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}"></td>`;
-    } });
-  cells+=`<td class="num mono rowtot"></td><td class="rm-col"><button type="button" class="btn btn-xs btn-ghost rm">✕</button></td>`;
-  tr.innerHTML=cells;
-  tr.querySelectorAll(".amt").forEach(i=>i.addEventListener("input",()=>rowTotal(tr)));
-  tr.querySelector(".rm").addEventListener("click",()=>{ tr.remove(); renumber(); });
-  rowTotal(tr);
-
-  const nameI=tr.querySelector(".cname"), midI=tr.querySelector(".mid"), box=tr.querySelector(".ac-box");
-  let timer=null;
-  nameI.addEventListener("input",()=>{
-    midI.value=""; clearTimeout(timer);
-    const q=nameI.value.trim();
-    if(q.length<2){ box.style.display="none"; return; }
-    timer=setTimeout(async()=>{
-      try{
-        const d=await (await fetch(searchUrl+"?q="+encodeURIComponent(q))).json();
-        box.innerHTML="";
-        if(!d.results.length){ box.style.display="none"; return; }
-        d.results.forEach(m=>{ const it=document.createElement("div"); it.className="ac-item";
-          it.textContent=m.name+(m.phone?"  ·  "+m.phone:"");
-          it.addEventListener("mousedown",e=>{ e.preventDefault(); nameI.value=m.name; midI.value=m.id; box.style.display="none"; });
-          box.appendChild(it); });
-        const r=nameI.getBoundingClientRect();
-        box.style.left=r.left+"px"; box.style.top=r.bottom+"px"; box.style.width=Math.max(r.width,180)+"px";
-        box.style.display="block";
-      }catch(e){ box.style.display="none"; }
-    },170);
+      cells.forEach(td=>{ td.classList.remove("pinned"); td.style.left = ""; });
+      if(th){ th.classList.remove("pinned"); th.style.left = ""; }
+    }
   });
-  nameI.addEventListener("blur",()=>setTimeout(()=>box.style.display="none",150));
-  nameI.addEventListener("input",()=>flagDuplicate(tr));
+}
 
-  tr.querySelectorAll("input,select").forEach(inp=>{
-    inp.addEventListener("keydown",e=>{
-      const isSelect = e.target.tagName === "SELECT";
-      const move=(off)=>{
-        const all=Array.from(document.querySelectorAll("#envBody tr"));
-        const ri=all.indexOf(tr);
-        const cells=Array.from(tr.querySelectorAll("input,select"));
-        const ci=cells.indexOf(e.target);
-        if(off>0 && ri===all.length-1) addRow();
-        const next=document.querySelectorAll("#envBody tr")[ri+off];
-        if(next){ const t=next.querySelectorAll("input,select")[ci];
-          if(t){ t.focus(); if(t.select) t.select(); } }
-      };
-      // Enter and ArrowDown move down a column; ArrowUp moves up. Arrows are left
-      // to their normal behaviour inside <select> (which uses them to change value).
-      if(e.key==="Enter"){ e.preventDefault(); move(1); }
-      else if(e.key==="ArrowDown" && !isSelect){ e.preventDefault(); move(1); }
-      else if(e.key==="ArrowUp" && !isSelect){ e.preventDefault(); move(-1); }
-    });
+// ===========================================================================
+// Row read/write helpers
+// ===========================================================================
+function readRow(tr){
+  const amounts = {};
+  tr.querySelectorAll(".amt").forEach(i=>{ if(i.value) amounts[i.dataset.fid]=i.value; });
+  const dg = tr.querySelector(".devgrp");
+  return {
+    name: tr.querySelector(".cname") ? tr.querySelector(".cname").value : "",
+    mid: tr.querySelector(".mid") ? tr.querySelector(".mid").value : "",
+    phone: tr.dataset.phone || "",
+    rcpt: tr.querySelector(".rcpt") ? tr.querySelector(".rcpt").value : "",
+    rcpt_overridden: tr.dataset.rcptOverridden === "1",
+    chan: tr.querySelector(".chan") ? tr.querySelector(".chan").value : "CASH",
+    manual_total: tr.querySelector(".mtotal") ? tr.querySelector(".mtotal").value : "",
+    dev_group_id: dg ? dg.value : "",
+    amounts,
+  };
+}
+
+function fundCellHtml(c, data){
+  const v = (data.amounts && data.amounts[c.key]) || "";
+  if(c.key === DEV_FUND_KEY && DEV_GROUPS.length){
+    return `<input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}">`
+         + `<select class="field--select devgrp devgrp-select">${devGroupOptions(data.dev_group_id||'')}</select>`;
+  }
+  return `<input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}">`;
+}
+
+function cellHtml(colKey, data, receiptValue){
+  switch(colKey){
+    case "__rownum": return `<span class="rownum-txt"></span>`;
+    case "__name": return `<input class="field cname" autocomplete="off" placeholder="name…" value="${data.name||''}">`
+                        + `<input type="hidden" class="mid" value="${data.mid||''}"><div class="ac-box"></div>`;
+    case "__receipt": return `<input class="field rcpt mono" value="${(data.rcpt!=null?data.rcpt:receiptValue)||''}">`;
+    case "__manual_total": return `<input class="field mtotal num mono" inputmode="decimal" placeholder="0.00" value="${data.manual_total||''}">`;
+    case "__channel": return `<select class="field--select chan"><option value="CASH">Cash</option><option value="BANK" ${data.chan==='BANK'?'selected':''}>Bank</option></select>`;
+    case "__allocated": return `<span class="rowtot"></span>`;
+    default: {
+      const c = COLS.find(x=>x.key===colKey);
+      return c ? fundCellHtml(c, data) : "";
+    }
+  }
+}
+
+function makeRow(cols, data){
+  data = data || {};
+  const tr = document.createElement("tr");
+  if(data.rcpt_overridden) tr.dataset.rcptOverridden = "1";
+  if(data.phone) tr.dataset.phone = data.phone;
+  cols.forEach(c=>{
+    const td = document.createElement("td");
+    td.dataset.col = c.key;
+    td.className = (c.key === "__rownum") ? "rownum" :
+                   (c.key.startsWith("__") ? "meta-cell" : "num fundcell");
+    td.innerHTML = cellHtml(c.key, data, null);
+    tr.appendChild(td);
   });
+  const rmTd = document.createElement("td"); rmTd.className = "rm-col";
+  rmTd.innerHTML = `<button type="button" class="btn btn-xs btn-ghost rm">✕</button>`;
+  tr.appendChild(rmTd);
+
+  wireRowEvents(tr);
   return tr;
 }
 
-async function seedReceipt(){ try{ const d=await (await fetch(nextUrl)).json(); nextReceipt=parseInt(d.next)||1; }catch(e){ nextReceipt=1; }
-  const sr=document.getElementById("startReceipt"); if(sr) sr.placeholder=String(nextReceipt); }
-function addRow(){ const rcpt=nextReceipt!=null?String(nextReceipt++):""; const tr=makeRow(rcpt); document.getElementById("envBody").appendChild(tr); renumber(); return tr; }
-function addRows(n){ for(let i=0;i<n;i++) addRow(); }
-function resequence(start){ nextReceipt=start; document.querySelectorAll("#envBody tr .rcpt").forEach(inp=>{ inp.value=String(nextReceipt++); }); }
+function wireRowEvents(tr){
+  tr.querySelectorAll(".amt").forEach(i=>i.addEventListener("input",()=>{ rowTotal(tr); validateRow(tr); markDirtyAndSave(); }));
+  const mtotal = tr.querySelector(".mtotal");
+  if(mtotal) mtotal.addEventListener("input", ()=>{ validateRow(tr); markDirtyAndSave(); });
+  const chan = tr.querySelector(".chan");
+  if(chan) chan.addEventListener("change", markDirtyAndSave);
+  const devgrp = tr.querySelector(".devgrp");
+  if(devgrp) devgrp.addEventListener("change", markDirtyAndSave);
 
-document.getElementById("addRow").addEventListener("click",()=>addRows(5));
+  const rm = tr.querySelector(".rm");
+  if(rm) rm.addEventListener("click", ()=>{ tr.remove(); renumber(); updateTotals(); markDirtyAndSave(); });
+  rowTotal(tr);
+  validateRow(tr);
+
+  const nameI = tr.querySelector(".cname"), midI = tr.querySelector(".mid"), box = tr.querySelector(".ac-box");
+  if(nameI){
+    let timer = null;
+    nameI.addEventListener("input", ()=>{
+      midI.value = ""; clearTimeout(timer);
+      const q = nameI.value.trim();
+      flagDuplicateName(tr);
+      validateRow(tr);
+      markDirtyAndSave();
+      if(q.length < 2){ box.style.display = "none"; return; }
+      timer = setTimeout(async ()=>{
+        try{
+          const d = await (await fetch(searchUrl + "?q=" + encodeURIComponent(q))).json();
+          box.innerHTML = "";
+          if(!d.results.length){ box.style.display = "none"; return; }
+          d.results.forEach(m=>{
+            const it = document.createElement("div"); it.className = "ac-item";
+            it.textContent = m.name + (m.phone ? "  ·  " + m.phone : "");
+            it.addEventListener("mousedown", e=>{
+              e.preventDefault(); nameI.value = m.name; midI.value = m.id;
+              if(m.phone) tr.dataset.phone = m.phone;
+              box.style.display = "none"; markDirtyAndSave();
+            });
+            box.appendChild(it);
+          });
+          const r = nameI.getBoundingClientRect();
+          box.style.left = r.left + "px"; box.style.top = r.bottom + "px";
+          box.style.width = Math.max(r.width, 180) + "px";
+          box.style.display = "block";
+        }catch(e){ box.style.display = "none"; }
+      }, 170);
+    });
+    nameI.addEventListener("blur", ()=>setTimeout(()=>box.style.display = "none", 150));
+  }
+
+  const rcptI = tr.querySelector(".rcpt");
+  if(rcptI){
+    rcptI.addEventListener("input", ()=>{
+      tr.dataset.rcptOverridden = "1";
+      resequenceFrom(tr);
+      flagDuplicateReceipt();
+      validateRow(tr);
+      markDirtyAndSave();
+    });
+  }
+
+  tr.querySelectorAll("input,select").forEach(inp=>{
+    inp.addEventListener("keydown", e=>{
+      const isSelect = e.target.tagName === "SELECT";
+      const move = (off)=>{
+        const all = Array.from(document.querySelectorAll("#envBody tr"));
+        const ri = all.indexOf(tr);
+        const cells = Array.from(tr.querySelectorAll("input,select"));
+        const ci = cells.indexOf(e.target);
+        if(off > 0 && ri === all.length - 1) addRow();
+        const next = document.querySelectorAll("#envBody tr")[ri + off];
+        if(next){ const t = next.querySelectorAll("input,select")[ci];
+          if(t){ t.focus(); if(t.select) t.select(); } }
+      };
+      if(e.key === "Enter"){ e.preventDefault(); move(1); }
+      else if(e.key === "ArrowDown" && !isSelect){ e.preventDefault(); move(1); }
+      else if(e.key === "ArrowUp" && !isSelect){ e.preventDefault(); move(-1); }
+    });
+  });
+}
+
+// ===========================================================================
+// Receipt sequencing: row 1's value (whatever it ends up being) is the start.
+// Editing ANY row's receipt marks it overridden and continues the sequence
+// from there for every LATER row that hasn't itself been hand-edited.
+// ===========================================================================
+function parseTrailing(str){
+  const m = /^(.*?)(\d+)\s*$/.exec((str||"").trim());
+  if(!m) return null;
+  return {prefix: m[1], num: parseInt(m[2], 10), digits: m[2].length};
+}
+function nextReceiptValue(str){
+  const p = parseTrailing(str);
+  if(!p) return null;
+  const n = p.num + 1;
+  const padded = String(n).padStart(p.digits, "0");
+  return p.prefix + padded;
+}
+function resequenceFrom(startTr){
+  const rows = Array.from(document.querySelectorAll("#envBody tr"));
+  const startIdx = rows.indexOf(startTr);
+  if(startIdx === -1) return;
+  let cursor = startTr.querySelector(".rcpt").value;
+  for(let i = startIdx + 1; i < rows.length; i++){
+    const tr = rows[i];
+    const rcptI = tr.querySelector(".rcpt");
+    if(tr.dataset.rcptOverridden === "1"){
+      cursor = rcptI.value;   // an override becomes the new anchor for what follows
+      continue;
+    }
+    const nxt = nextReceiptValue(cursor);
+    if(nxt == null) break;    // can't continue a non-numeric receipt — stop the cascade
+    rcptI.value = nxt;
+    cursor = nxt;
+  }
+}
+
+function flagDuplicateReceipt(){
+  const seen = {};
+  document.querySelectorAll("#envBody tr").forEach(tr=>{
+    const v = (tr.querySelector(".rcpt").value || "").trim();
+    if(v){ seen[v] = (seen[v]||0) + 1; }
+  });
+  document.querySelectorAll("#envBody tr").forEach(tr=>{
+    const v = (tr.querySelector(".rcpt").value || "").trim();
+    tr.classList.toggle("row-dup-receipt", !!v && seen[v] > 1);
+  });
+  updateBlockingState();
+}
+
+function flagDuplicateName(tr){
+  const cell = tr.querySelector('[data-col="__name"]'); if(!cell) return;
+  let flag = cell.querySelector(".dup-flag");
+  const name = tr.querySelector(".cname").value.trim().toLowerCase();
+  let dup = false;
+  if(name){ document.querySelectorAll("#envBody tr").forEach(o=>{
+    if(o !== tr && o.querySelector(".cname").value.trim().toLowerCase() === name) dup = true; }); }
+  if(dup){ if(!flag){ flag = document.createElement("span"); flag.className = "dup-flag"; flag.textContent = "dup?"; cell.appendChild(flag); } }
+  else if(flag){ flag.remove(); }
+}
+
+// ===========================================================================
+// Manual Total vs. allocation validation — the row-level red-highlight rule
+// ===========================================================================
+function rowIsActive(tr){
+  // matches envelopes.services.batches.row_is_active: a name alone makes a
+  // row "active" (so a name-but-no-allocation row is flagged, not silently
+  // dropped) — see that function's docstring
+  const name = tr.querySelector(".cname") ? tr.querySelector(".cname").value.trim() : "";
+  return !!name;
+}
+
+function rowTotal(tr){
+  let t = 0;
+  tr.querySelectorAll(".amt").forEach(i=>{ const v = parseFloat(i.value); if(!isNaN(v)) t += v; });
+  const cell = tr.querySelector('[data-col="__allocated"] .rowtot');
+  if(cell) cell.textContent = t ? t.toLocaleString() : "";
+  updateTotals();
+  return t;
+}
+
+function validateRow(tr){
+  const errCell = tr.querySelector(".row-err"); if(errCell) errCell.remove();
+  tr.classList.remove("row-mismatch");
+  if(!rowIsActive(tr)){ updateBlockingState(); return true; }
+  const computed = rowTotal(tr);
+  const mtotalI = tr.querySelector(".mtotal");
+  const manual = mtotalI ? parseFloat(mtotalI.value) : NaN;
+  const rcpt = (tr.querySelector(".rcpt").value || "").trim();
+  let msg = "";
+  if(!rcpt) msg = "Enter a receipt number.";
+  else if(isNaN(manual)) msg = "Enter the total written on the envelope.";
+  else if(Math.abs(manual - computed) >= 0.01)
+    msg = `Envelope total ${manual.toLocaleString()} doesn't match allocation ${computed.toLocaleString()}.`;
+  if(msg){
+    tr.classList.add("row-mismatch");
+    const anchor = mtotalI ? mtotalI.closest("td") : tr.querySelector("td");
+    const span = document.createElement("div");
+    span.className = "row-err"; span.textContent = msg;
+    anchor.appendChild(span);
+  }
+  updateBlockingState();
+  return !msg;
+}
+
+function updateBlockingState(){
+  const bad = document.querySelectorAll("#envBody tr.row-mismatch, #envBody tr.row-dup-receipt").length;
+  const help = document.getElementById("blockingHelp");
+  const btn = document.getElementById("submitBtn");
+  if(bad){
+    help.style.display = "block";
+    help.textContent = `${bad} row(s) need fixing (mismatched or duplicate receipt) before you can submit.`;
+    help.classList.add("help-error");
+    btn.disabled = true;
+  } else {
+    help.style.display = "none";
+    help.classList.remove("help-error");
+    btn.disabled = false;
+  }
+}
+
+function renumber(){
+  let n = 0;
+  document.querySelectorAll("#envBody tr").forEach(tr=>{
+    n++;
+    const c = tr.querySelector('[data-col="__rownum"] .rownum-txt');
+    if(c) c.textContent = n;
+  });
+  updateTotals();
+}
+
+function updateTotals(){
+  const colSum = {}; let grand = 0, filledRows = 0;
+  COLS.forEach(c=>colSum[c.key] = 0);
+  document.querySelectorAll("#envBody tr").forEach(tr=>{
+    let rowHas = false;
+    tr.querySelectorAll(".amt").forEach(i=>{
+      const v = parseFloat(i.value);
+      if(!isNaN(v)){ colSum[i.dataset.fid] = (colSum[i.dataset.fid]||0) + v; grand += v; rowHas = true; }
+    });
+    if(rowIsActive(tr)) filledRows++;
+  });
+  const foot = document.getElementById("footRow");
+  foot.innerHTML = "";
+  visibleOrderedColumns().forEach(c=>{
+    const td = document.createElement("td"); td.dataset.col = c.key;
+    if(c.key === "__name"){ td.className = "foot-label meta-cell"; td.textContent = "Column totals"; }
+    else if(c.key === "__allocated"){ td.className = "num mono foot-grand"; td.textContent = grand ? grand.toLocaleString() : ""; }
+    else if(!c.key.startsWith("__")){ td.className = "num mono"; td.textContent = colSum[c.key] ? colSum[c.key].toLocaleString() : ""; }
+    foot.appendChild(td);
+  });
+  foot.appendChild(document.createElement("td"));
+  applyPinLeftOffsets();
+
+  document.getElementById("esRows").textContent = filledRows;
+  document.getElementById("esTotal").textContent = grand.toLocaleString();
+  const ef = document.getElementById("esFunds"); ef.innerHTML = "";
+  COLS.forEach(c=>{ if(colSum[c.key] > 0){ const s = document.createElement("span"); s.className = "es-fund";
+    s.innerHTML = `<b>${c.label}</b> ${colSum[c.key].toLocaleString()}`; ef.appendChild(s); } });
+  const st = document.getElementById("saveTotal");
+  if(st) st.textContent = grand ? ("· KSh " + grand.toLocaleString()) : "";
+}
+
+function addRow(){
+  const rows = document.querySelectorAll("#envBody tr");
+  const prev = rows.length ? rows[rows.length - 1] : null;
+  let rcpt = "";
+  if(prev){
+    const nxt = nextReceiptValue(prev.querySelector(".rcpt").value);
+    rcpt = nxt != null ? nxt : "";
+  } else if(nextReceipt != null){
+    rcpt = String(nextReceipt);
+  }
+  // new rows inherit repetitive values (channel, group) from the row above,
+  // to minimise typing for a run of similar entries
+  const data = {rcpt: rcpt};
+  if(prev){
+    const prevChan = prev.querySelector(".chan");
+    if(prevChan) data.chan = prevChan.value;
+    const prevDg = prev.querySelector(".devgrp");
+    if(prevDg) data.dev_group_id = prevDg.value;
+  }
+  const tr = makeRow(visibleOrderedColumns(), data);
+  document.getElementById("envBody").appendChild(tr);
+  applyPinLeftOffsets();
+  renumber();
+  markDirtyAndSave();
+  return tr;
+}
+function addRows(n){ for(let i=0;i<n;i++) addRow(); }
+
+// ===========================================================================
+// Autosave: debounced, heartbeat, and a best-effort beacon on unload —
+// nothing typed here is lost to a refresh, a crash, or a dropped connection.
+// ===========================================================================
+function collectPayload(){
+  const rows = [];
+  document.querySelectorAll("#envBody tr").forEach((tr, i)=>{
+    const d = readRow(tr);
+    rows.push({
+      line_no: i + 1, receipt_no: d.rcpt, receipt_no_overridden: d.rcpt_overridden,
+      contributor_name: d.name, member_id: d.mid || null, phone: d.phone,
+      channel: d.chan, dev_group_id: d.dev_group_id || null,
+      manual_total: d.manual_total, amounts: d.amounts,
+    });
+  });
+  return {batch_id: currentBatchId, date: document.getElementById("sabDate").value, rows};
+}
+
+function setSaveStatus(state, when){
+  const dot = document.getElementById("saveDot"), txt = document.getElementById("saveStatusText");
+  dot.className = "save-dot save-" + state;
+  if(state === "saving") txt.textContent = "Saving…";
+  else if(state === "saved") txt.textContent = "Saved " + (when || "");
+  else if(state === "error") txt.textContent = "Couldn't save — will retry";
+  else if(state === "offline") txt.textContent = "Offline — will retry";
+  else txt.textContent = "Not saved yet";
+}
+
+function markDirtyAndSave(){
+  dirty = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 1500);
+}
+
+async function saveNow(){
+  if(saving) return;
+  if(!navigator.onLine){ setSaveStatus("offline"); return; }
+  saving = true;
+  setSaveStatus("saving");
+  try{
+    const payload = collectPayload();
+    const r = await fetch(autosaveUrl, {
+      method: "POST", headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if(d.ok){
+      currentBatchId = d.batch_id;
+      dirty = false;
+      applyServerErrors(d.errors || {});
+      const t = new Date(d.saved_at);
+      setSaveStatus("saved", t.toLocaleTimeString());
+    } else {
+      setSaveStatus("error");
+    }
+  }catch(e){
+    setSaveStatus("error");
+  }finally{
+    saving = false;
+  }
+}
+
+function applyServerErrors(errors){
+  // server-side errors (e.g. a receipt another open batch claimed) layer on
+  // top of the client's own instant checks — merged, not replacing them
+  document.querySelectorAll("#envBody tr").forEach((tr, i)=>{
+    const e = errors[i + 1];
+    if(e && e.code === "DUPLICATE_RECEIPT"){
+      tr.classList.add("row-dup-receipt");
+      let note = tr.querySelector(".row-err-server");
+      if(!note){
+        note = document.createElement("div"); note.className = "row-err row-err-server";
+        const anchor = tr.querySelector(".rcpt").closest("td");
+        anchor.appendChild(note);
+      }
+      note.textContent = e.detail;
+    }
+  });
+  updateBlockingState();
+}
+
+function beaconSave(){
+  if(!dirty) return;
+  const payload = collectPayload();
+  const form = new URLSearchParams();
+  form.set("csrfmiddlewaretoken", CSRF);
+  form.set("payload", JSON.stringify(payload));
+  try{ navigator.sendBeacon(autosaveUrl, form); }catch(e){ /* best effort */ }
+}
+window.addEventListener("pagehide", beaconSave);
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState === "hidden") beaconSave(); });
+window.addEventListener("online", ()=>{ if(dirty) saveNow(); });
+heartbeatTimer = setInterval(()=>{ if(dirty) saveNow(); }, 15000);
+
+// ===========================================================================
+// Submit for review
+// ===========================================================================
+document.getElementById("submitBtn").addEventListener("click", async ()=>{
+  clearTimeout(saveTimer);
+  await saveNow();
+  if(!currentBatchId){
+    setSaveStatus("error");
+    return;
+  }
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  const form = document.createElement("form");
+  form.method = "post";
+  form.action = submitUrlBase + currentBatchId + "/submit/";
+  const csrfInput = document.createElement("input");
+  csrfInput.type = "hidden"; csrfInput.name = "csrfmiddlewaretoken"; csrfInput.value = CSRF;
+  form.appendChild(csrfInput);
+  document.body.appendChild(form);
+  form.submit();
+});
+
+// ===========================================================================
+// Column picker / layout controls
+// ===========================================================================
+function renderPinGrid(){
+  const grid = document.getElementById("cpPinGrid");
+  grid.innerHTML = "";
+  const defs = allColumnDefs();
+  layout.order.forEach(key=>{
+    const def = defs[key]; if(!def) return;
+    const hidden = layout.hidden.indexOf(key) > -1;
+    const pinned = layout.pinned.indexOf(key) > -1;
+    const row = document.createElement("div"); row.className = "cp-pin-row";
+    row.innerHTML = `<span class="cp-pin-label">${def.label}</span>`;
+    if(def.hideable !== false){
+      const hideCb = document.createElement("label"); hideCb.className = "u-inline-flex u-xs";
+      hideCb.innerHTML = `<input type="checkbox" ${hidden?"":"checked"}> shown`;
+      hideCb.querySelector("input").addEventListener("change", (e)=>{
+        const i = layout.hidden.indexOf(key);
+        if(e.target.checked && i>-1) layout.hidden.splice(i,1);
+        else if(!e.target.checked && i===-1) layout.hidden.push(key);
+      });
+      row.appendChild(hideCb);
+    }
+    const pinCb = document.createElement("label"); pinCb.className = "u-inline-flex u-xs";
+    pinCb.innerHTML = `<input type="checkbox" ${pinned?"checked":""}> pinned`;
+    pinCb.querySelector("input").addEventListener("change", (e)=>{
+      const i = layout.pinned.indexOf(key);
+      if(e.target.checked && i===-1) layout.pinned.push(key);
+      else if(!e.target.checked && i>-1) layout.pinned.splice(i,1);
+    });
+    row.appendChild(pinCb);
+    grid.appendChild(row);
+  });
+}
+
+document.getElementById("toggleCols").addEventListener("click", ()=>{
+  renderPinGrid();
+  document.getElementById("colPicker").classList.toggle("open");
+});
+document.getElementById("applyCols").addEventListener("click", ()=>{
+  const fundKeys = selectedFundKeys();
+  COLS = ALL_COLS.filter(c=>fundKeys.includes(c.key));
+  // reconcile layout.order with the current fund selection: keep existing
+  // order for funds still selected, append any newly-ticked fund, drop any
+  // unticked one (its data is preserved in the row model regardless — only
+  // hidden funds still carry their amount if re-shown before saving)
+  const defs = allColumnDefs();
+  layout.order = layout.order.filter(k => defs[k] || fundKeys.includes(k));
+  fundKeys.forEach(k=>{ if(layout.order.indexOf(k) === -1){
+    const tailIdx = layout.order.indexOf("__allocated");
+    layout.order.splice(tailIdx > -1 ? tailIdx : layout.order.length, 0, k);
+  }});
+  rebuildTable();
+  saveLayoutSoon();
+  document.getElementById("colPicker").classList.remove("open");
+});
+document.getElementById("resetLayout").addEventListener("click", ()=>{
+  layout = defaultLayout();
+  rebuildTable();
+  saveLayoutSoon();
+  renderPinGrid();
+});
+document.querySelectorAll(".colcb").forEach(cb=>cb.addEventListener("change", syncTemplateLink));
+
 (function(){
-  function hideBoxes(){ document.querySelectorAll(".ac-box").forEach(b=>{ b.style.display="none"; }); }
-  const wrap=document.querySelector(".xl-wrap");
+  function hideBoxes(){ document.querySelectorAll(".ac-box").forEach(b=>{ b.style.display = "none"; }); }
+  const wrap = document.getElementById("xlWrap");
   if(wrap) wrap.addEventListener("scroll", hideBoxes);
   window.addEventListener("resize", hideBoxes);
 })();
-document.getElementById("toggleCols").addEventListener("click",()=>document.getElementById("colPicker").classList.toggle("open"));
-document.getElementById("applyCols").addEventListener("click",()=>{ buildColumns(); document.getElementById("colPicker").classList.remove("open"); });
-document.querySelectorAll(".colcb").forEach(cb=>cb.addEventListener("change",syncTemplateLink));
-document.getElementById("startReceipt").addEventListener("change",function(){ const v=parseInt(this.value); if(!isNaN(v)&&v>0) resequence(v); });
 
-document.getElementById("envForm").addEventListener("submit",function(){
-  const rows=[];
-  document.querySelectorAll("#envBody tr").forEach(tr=>{
-    const name=tr.querySelector(".cname").value.trim();
-    const amounts={}; tr.querySelectorAll(".amt").forEach(i=>{ if(i.value.trim()) amounts[i.dataset.fid]=i.value.trim(); });
-    if(name && Object.keys(amounts).length){
-      const dg=tr.querySelector(".devgrp");
-      rows.push({name, member_id:tr.querySelector(".mid").value||null,
-                 receipt:tr.querySelector(".rcpt").value.trim(),
-                 channel:tr.querySelector(".chan").value,
-                 dev_group_id:(dg&&dg.value)||null, amounts});
+document.getElementById("addRow").addEventListener("click", ()=>addRows(5));
+document.getElementById("sabDate").addEventListener("change", markDirtyAndSave);
+
+// ===========================================================================
+// Boot
+// ===========================================================================
+async function seedReceipt(){
+  try{ const d = await (await fetch(nextUrl)).json(); nextReceipt = parseInt(d.next) || 1; }
+  catch(e){ nextReceipt = 1; }
+}
+
+(async ()=>{
+  await seedReceipt();
+  const saved = await loadLayout();
+  COLS = ALL_COLS.filter(c=>document.querySelector(`.colcb[value="${c.key}"]`).checked);
+  layout = saved || defaultLayout();
+  // guard against a saved layout referencing a fund that's since been
+  // deactivated/removed, or missing a newly added meta column
+  const defs = allColumnDefs();
+  layout.order = layout.order.filter(k=>defs[k]);
+  [...META_HEAD, ...META_TAIL].forEach(c=>{ if(layout.order.indexOf(c.key)===-1) layout.order.push(c.key); });
+  layout.hidden = layout.hidden || []; layout.widths = layout.widths || {}; layout.pinned = layout.pinned || [...DEFAULT_PINNED];
+
+  if(INITIAL_ROWS && INITIAL_ROWS.length){
+    const cols = visibleOrderedColumns();
+    const body = document.getElementById("envBody");
+    INITIAL_ROWS.forEach(r=>{
+      body.appendChild(makeRow(cols, {
+        name: r.contributor_name, mid: r.member_id || "", phone: r.phone,
+        rcpt: r.receipt_no, rcpt_overridden: r.receipt_no_overridden,
+        chan: r.channel, manual_total: r.manual_total, dev_group_id: r.dev_group_id || "",
+        amounts: r.amounts,
+      }));
+    });
+    // rebuild header/colgroup for the loaded layout without discarding rows
+    rebuildHeaderOnly();
+    applyPinLeftOffsets();
+    renumber();
+    flagDuplicateReceipt();
+    document.querySelectorAll("#envBody tr").forEach(validateRow);
+    updateTotals();
+    dirty = false;
+    setSaveStatus("saved", "");
+  } else {
+    rebuildTable();
+    dirty = false;
+    setSaveStatus("idle");
+  }
+})();
+
+function rebuildHeaderOnly(){
+  // same header/colgroup construction as rebuildTable(), without touching
+  // the body — used when rows were already hydrated from INITIAL_ROWS
+  const cols = visibleOrderedColumns();
+  const colgroup = document.getElementById("envColgroup");
+  const head = document.getElementById("headRow");
+  colgroup.innerHTML = ""; head.innerHTML = "";
+  cols.forEach(c=>{
+    const w = layout.widths[c.key] || c.width || 90;
+    const col = document.createElement("col"); col.style.width = w + "px";
+    colgroup.appendChild(col);
+    const th = document.createElement("th");
+    th.className = "colhead"; th.dataset.key = c.key; th.draggable = true;
+    const lbl = document.createElement("span"); lbl.className = "colhead-lbl"; lbl.textContent = c.label;
+    th.appendChild(lbl);
+    if(c.hideable !== false){
+      const pinBtn = document.createElement("button"); pinBtn.type="button"; pinBtn.className="colhead-pin";
+      const pinned = layout.pinned.indexOf(c.key) > -1;
+      pinBtn.title = pinned ? "Unpin column" : "Pin column"; pinBtn.textContent = pinned ? "📌" : "📍";
+      pinBtn.addEventListener("click", (e)=>{ e.stopPropagation(); togglePin(c.key); });
+      th.appendChild(pinBtn);
     }
+    if(c.resizable !== false){
+      const grip = document.createElement("span"); grip.className = "colhead-resize";
+      grip.addEventListener("mousedown", (e)=>startResize(e, c.key));
+      th.appendChild(grip);
+    }
+    th.addEventListener("dragstart", ()=>{ dragCol = c.key; th.classList.add("dragging"); });
+    th.addEventListener("dragend", ()=>{ th.classList.remove("dragging"); dragCol=null; });
+    head.appendChild(th);
   });
-  document.getElementById("rowsField").value=JSON.stringify(rows);
-});
-
-(async()=>{ await seedReceipt(); buildColumns(); })();
+  const rmTh = document.createElement("th"); rmTh.className = "rm-col"; head.appendChild(rmTh);
+}
 </script>
+
 <style>
 .col-picker{display:none;border:1px solid var(--line);border-radius:8px;padding:.8rem 1rem;margin-bottom:.8rem;background:var(--card-head,#faf7f0)}
 .col-picker.open{display:block}
 .cp-title{font-weight:600;margin-bottom:.6rem;font-size:.9rem}
 .cp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.3rem .8rem;margin-bottom:.7rem}
 .cp-item{display:flex;align-items:center;gap:.4rem;font-size:.88rem;cursor:pointer}
-.xl-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch}
-.xl-grid{border-collapse:separate;border-spacing:0;min-width:max-content}
-.xl-grid th,.xl-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0}
-.xl-grid thead th{position:sticky;top:0;z-index:5;background:var(--accent,#1f5f4f);color:#fff;padding:.25rem .35rem;font-size:.7rem;white-space:nowrap;text-align:right;max-width:88px}
-.xl-grid thead th.fundcol{width:78px}
-.xl-grid thead th.sticky-name,.xl-grid thead th.rownum{text-align:left}
+.cp-pin-grid{display:flex;flex-direction:column;gap:.25rem;max-height:220px;overflow:auto;margin-bottom:.7rem}
+.cp-pin-row{display:flex;align-items:center;gap:.8rem;padding:.2rem 0;border-bottom:1px solid var(--line)}
+.cp-pin-label{flex:1;font-size:.82rem}
+
+.xl-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch;position:relative}
+.xl-grid{border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:max-content}
+.xl-grid th,.xl-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;overflow:hidden}
+.xl-grid thead th{position:sticky;top:0;z-index:5;background:var(--accent,#1f5f4f);color:#fff;padding:.25rem .35rem;
+  font-size:.7rem;white-space:nowrap;text-align:right;cursor:grab}
+.xl-grid thead th.dragging{opacity:.5}
+.xl-grid thead th.pinned{z-index:7}
+.colhead-lbl{pointer-events:none}
+.colhead-pin{background:none;border:0;cursor:pointer;font-size:.7rem;padding:0 .15rem;opacity:.85}
+.colhead-resize{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize}
+.xl-grid th.colhead{position:sticky;top:0}
 .xl-grid td .field,.xl-grid td .field--select{border:none;border-radius:0;width:100%;background:transparent;padding:.18rem .3rem;font-size:.78rem;box-shadow:none}
-.xl-grid td .amt{text-align:right}
-.xl-grid td.fundcell{width:78px}
+.xl-grid td .amt,.xl-grid td .mtotal{text-align:right}
 .xl-grid td .field:focus{outline:2px solid var(--accent,#1f5f4f);outline-offset:-2px;background:#fff}
-.xl-grid .rownum{width:28px;text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
-.xl-grid .sticky-name{position:sticky;left:0;z-index:4;background:#fff;min-width:150px}
-.xl-grid thead .sticky-name{z-index:6}
-.xl-grid .rowtot{padding:.18rem .35rem;font-weight:600;font-size:.78rem}
+.xl-grid .rownum{text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
+.xl-grid td.pinned,.xl-grid th.pinned{position:sticky;z-index:4;background:#fff}
+.xl-grid thead th.pinned{background:var(--accent,#1f5f4f)}
+.xl-grid .rowtot{padding:.18rem .35rem;font-weight:600;font-size:.78rem;display:block;text-align:right}
 .xl-grid .rm-col{width:28px;text-align:center}
+.xl-grid tr.row-mismatch td,.xl-grid tr.row-dup-receipt td{background:var(--danger-soft,#fbeceb) !important}
+.row-err{position:absolute;background:var(--danger,#b04a4a);color:#fff;font-size:.66rem;padding:.15rem .4rem;
+  border-radius:4px;white-space:nowrap;z-index:8;margin-top:1px}
+.meta-cell{position:relative}
+.pos-rel{position:relative}
 .ac-box{display:none;position:fixed;z-index:1000;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.12);max-height:200px;overflow:auto}
 .ac-item{padding:.4rem .6rem;cursor:pointer;font-size:.85rem}
 .ac-item:hover{background:var(--accent-soft,#eef5f2)}
 .btn-xs{padding:.1rem .4rem;font-size:.8rem}
 
-/* QuickBooks-style entry chrome */
-.entry-toolbar{display:flex;align-items:flex-end;gap:.8rem;padding:.7rem .9rem;margin-bottom:.8rem;
+.entry-toolbar{display:flex;align-items:center;gap:.8rem;padding:.7rem .9rem;margin-bottom:.8rem;
   background:var(--card-head,#faf7f0);border:1px solid var(--line);border-radius:10px;flex-wrap:wrap}
 .entry-toolbar .tb-field{display:flex;flex-direction:column;gap:.2rem}
 .entry-toolbar .tb-field label{font-size:.72rem;font-weight:600;color:var(--muted,#777);text-transform:uppercase;letter-spacing:.03em}
 .entry-toolbar .tb-field .field{min-width:150px}
 .entry-toolbar .tb-spacer{flex:1}
+.tb-status{display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--muted,#777)}
+.save-dot{width:8px;height:8px;border-radius:50%;background:#ccc;display:inline-block}
+.save-dot.save-saving{background:var(--amber,#b07d2c);animation:pulse 1s infinite}
+.save-dot.save-saved{background:#2f8f5b}
+.save-dot.save-error,.save-dot.save-offline{background:var(--danger,#b04a4a)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
 .foot-totals td{position:sticky;bottom:0;background:var(--card-head,#f3efe5);border-top:2px solid var(--accent,#1f5f4f);
   font-weight:700;font-size:.78rem;padding:.3rem .35rem;z-index:3}
 .foot-totals .foot-label{text-align:left;color:var(--muted,#666);font-weight:600}
-.foot-totals .sticky-name{position:sticky;left:0;z-index:4}
 .entry-summary{display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;margin:.9rem 0 .4rem;
   padding:.7rem 1rem;background:linear-gradient(0deg,var(--card-head,#faf7f0),#fff);
   border:1px solid var(--line);border-radius:10px}
@@ -286,21 +945,23 @@ document.getElementById("envForm").addEventListener("submit",function(){
 .es-fund{font-size:.74rem;background:var(--accent-soft,#eef5f2);border-radius:20px;padding:.18rem .6rem;white-space:nowrap}
 .es-fund b{color:var(--accent,#1f5f4f);font-weight:600}
 .btn-save{font-weight:600}
+.btn-save:disabled{opacity:.5;cursor:not-allowed}
 .save-total{font-weight:400;opacity:.85;font-size:.85em}
 .entry-actions{align-items:center;margin-top:.6rem}
 .dup-flag{position:absolute;right:.3rem;top:50%;transform:translateY(-50%);font-size:.66rem;
   color:var(--brass,#b07d2c);background:#fff4e0;border-radius:10px;padding:.05rem .35rem;pointer-events:none}
+.help-error{color:var(--danger,#b04a4a);font-weight:600}
+.callout{padding:.7rem 1rem;border-radius:8px;font-size:.88rem}
+.callout-warn{background:var(--amber-soft,#fdf3e0);border:1px solid var(--amber,#b07d2c)}
 @media(max-width:760px){
   .entry-summary{gap:1rem}.es-num{font-size:1.15rem}
   .es-funds{justify-content:flex-start;width:100%}
-  /* full-width toolbar fields and action buttons for easy tapping */
   .entry-toolbar{gap:.6rem}
   .entry-toolbar .tb-field{flex:1 1 100%}
   .entry-toolbar .tb-field .field{min-width:0;width:100%}
   .entry-toolbar .tb-spacer{display:none}
   .entry-actions{flex-direction:column;align-items:stretch}
   .entry-actions .btn{width:100%;padding:.6rem}
-  /* larger touch targets inside the grid cells */
   .xl-grid td .field,.xl-grid td .field--select{padding:.45rem .3rem;min-height:40px;font-size:.82rem}
   .cp-grid{grid-template-columns:1fr 1fr}
   .cp-item{min-height:34px}

@@ -274,7 +274,21 @@ class PdfRenderer(Renderer):
             if s.kind in ("commentary", "info"):
                 story.append(Paragraph(s.extra.get("text", ""), styles["Normal"]))
             elif s.kind == "chart":
-                continue  # charts are export-hidden; nothing to omit
+                # server-side PNG of the same registry-sourced figures the
+                # on-screen Chart.js draws (recommendation #28)
+                from reports.services.chart_image import render_chart_config
+                _, png = render_chart_config(s.extra.get("chart"), s.title)
+                if png:
+                    import io as _io
+                    from reportlab.platypus import Image as RLImage
+                    from PIL import Image as PILImage
+                    w_px, h_px = PILImage.open(_io.BytesIO(png)).size
+                    disp_w = min(170 * mm, A4[0] - 36 * mm)
+                    story.append(RLImage(_io.BytesIO(png), width=disp_w,
+                                         height=disp_w * h_px / w_px))
+                else:
+                    story.append(Paragraph("<i>[chart available on screen]</i>",
+                                           styles["Italic"]))
             else:
                 flat = _flatten(s)
                 if flat:
@@ -362,7 +376,14 @@ class DocxRenderer(Renderer):
             if s.kind in ("commentary", "info"):
                 parts.append(f"<p>{escape(s.extra.get('text', ''))}</p>")
             elif s.kind == "chart":
-                continue  # charts are export-hidden
+                # server-side PNG (recommendation #28) — Word can't run
+                # Chart.js; the Monthly report already embeds images this way
+                from reports.services.chart_image import render_chart_config
+                uri, _png = render_chart_config(s.extra.get("chart"), s.title)
+                if uri:
+                    parts.append(f"<p><img src='{uri}' width='620'></p>")
+                else:
+                    parts.append("<p><i>[chart available on screen]</i></p>")
             else:
                 flat = _flatten(s)
                 if flat:

@@ -128,12 +128,14 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                       "Confirmed", "Entry status", "Amount"]
 
             def _receipt_status(t):
+                if t.is_bank_memo:
+                    return "Memo — receipted manually (cash on envelope entry)"
                 if t.processed_via_envelope or t.channel == Transaction.Channel.ENVELOPE:
                     return "Receipted (envelope)"
                 if t.manual_receipt:
                     return "Receipted (manual)"
                 if t.excluded_from_income:
-                    return "Memo (reconciled to envelope)"
+                    return "Non-income (loan / financing)"
                 return "Not receipted"
 
             def _dev_group_label(members):
@@ -150,15 +152,14 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             rows = []
             for members in _group_split_siblings(list(qs)):
                 first = members[0]
-                # A reversal keeps the SAME direction and a positive amount as
-                # its original by design (the ledger nets it to zero by not
-                # posting either side, not by inverting the stored sign) — so
-                # without this, summing the Amount column double-counted a
-                # reversed transaction (original + reversal both positive)
-                # instead of netting to zero, exactly like the transaction
-                # list's own display already correctly shows in parentheses.
-                total = sum(((-t.amount if t.is_reversal else t.amount) for t in members),
-                           Decimal(0))
+                # The Amount column is the row's TRUE effect on cash, signed
+                # the one canonical way (Transaction.signed_cash_amount): a
+                # reversal nets its original to zero, and a manually-receipted
+                # bank memo contributes zero (its cash lives on the envelope
+                # entry — the Receipt status column says so) — so summing the
+                # column equals reality instead of double-counting reversed or
+                # manually-receipted money.
+                total = sum((t.signed_cash_amount for t in members), Decimal(0))
                 rows.append([first.date.isoformat(),
                      first.service_sabbath.isoformat() if first.service_sabbath else "",
                      first.get_channel_display(), first.get_direction_display(),
@@ -172,7 +173,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
                      first.get_allocation_status_display(),
                      "Yes" if first.confirmed else "",
                      _entry_status(first),
-                     float(total if first.direction == "CREDIT" else -total)])
+                     float(total)])   # signed_cash_amount already carries direction
             if export == "xlsx":
                 return xlsx_response("transactions.xlsx", header, rows,
                                      title="Transactions", church=SiteConfig.get().church_name)
@@ -357,39 +358,33 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         """Balance after each transaction on the current page, computed
         chronologically (oldest to newest) and scoped to whatever filters
         are currently applied — so filtering to one fund shows that fund's
-        own running balance, not the whole church's. A reversal is
-        subtracted (it's an offsetting entry, not new income — see the
-        Excel export fix for the same principle) so the running total
-        matches what actually happened to the balance, not a double-count.
+        own running balance, not the whole church's.
+
+        Every row is signed by the CANONICAL Transaction.signed_cash_case /
+        signed_cash_amount definition: a reversal is subtracted (an offsetting
+        entry, not new income), and a manually-receipted bank row contributes
+        ZERO — its cash lives on its envelope counterpart, and counting both
+        halves of that pair was inflating the running balance by every
+        manually-receipted amount (the memo row stays visible, badged, so the
+        audit trail is intact).
 
         Only ever queries the current page's rows plus one aggregate for
         "everything before this page" — never the full, unbounded history —
         so this stays cheap regardless of how many transactions exist."""
-        from decimal import Decimal
-        from django.db.models import Sum, Case, When, F
-
         page_list = list(page_items)
         if not page_list:
             return {}
         chrono = sorted(page_list, key=lambda t: (t.date, t.id))
         earliest = chrono[0]
 
-        def _signed_sum(queryset):
-            agg = queryset.aggregate(total=Sum(Case(
-                When(is_reversal=True, then=-F("amount")),
-                When(direction=Transaction.Direction.DEBIT, then=-F("amount")),
-                default=F("amount"))))
-            return agg["total"] or Decimal(0)
-
-        opening = _signed_sum(filtered_qs.filter(
-            Q(date__lt=earliest.date) | Q(date=earliest.date, id__lt=earliest.id)))
+        opening = filtered_qs.filter(
+            Q(date__lt=earliest.date)
+            | Q(date=earliest.date, id__lt=earliest.id)).signed_cash_total()
 
         balances = {}
         running = opening
         for t in chrono:
-            signed = (-t.amount if (t.is_reversal or t.direction == Transaction.Direction.DEBIT)
-                     else t.amount)
-            running += signed
+            running += t.signed_cash_amount
             balances[t.id] = running
         return balances
 

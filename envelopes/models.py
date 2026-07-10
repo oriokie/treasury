@@ -145,3 +145,151 @@ class CountWitness(models.Model):
     name = models.CharField(max_length=120)
     role = models.CharField(max_length=60, blank=True, help_text="e.g. Head deacon, Treasurer")
     signed = models.BooleanField(default=False)
+
+
+# ===========================================================================
+# Maker-checker workflow: Draft -> Review -> Approve -> Post
+#
+# An EnvelopeBatch is a staging area — a worksheet — that never touches the
+# ledger. Only EnvelopeBatchPosting.post_batch() (envelopes/services/batches.py)
+# creates Envelope/EnvelopeLine/giving.Transaction rows, and it does so by
+# calling the SAME `_save_envelope` helper the ledger has always used, so
+# posted accounting is byte-for-byte identical to before this workflow existed
+# — only *when* it happens changed, never *what* happens.
+#
+# Manual entry always starts a DRAFT (auto-saved as the treasurer types) that
+# only the creator can edit; submitting moves it to REVIEW. A spreadsheet
+# import is parsed and validated the same way but is never editable at a
+# spreadsheet-cell level, so it skips DRAFT and lands directly in REVIEW.
+# ===========================================================================
+
+class EnvelopeBatch(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        REVIEW = "REVIEW", "In review"
+        RETURNED = "RETURNED", "Returned for correction"
+        APPROVED = "APPROVED", "Approved"
+        POSTED = "POSTED", "Posted"
+        REJECTED = "REJECTED", "Rejected"
+
+    class Source(models.TextChoices):
+        MANUAL = "MANUAL", "Manual entry"
+        IMPORT = "IMPORT", "Spreadsheet import"
+
+    #: states in which the creator may still edit the batch's rows
+    EDITABLE_STATUSES = (Status.DRAFT, Status.RETURNED)
+
+    sabbath_date = models.DateField(
+        db_index=True, help_text="The Sabbath these envelopes were given.")
+    source = models.CharField(max_length=8, choices=Source.choices,
+                              default=Source.MANUAL)
+    status = models.CharField(max_length=10, choices=Status.choices,
+                              default=Status.DRAFT, db_index=True)
+
+    created_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
+                                   related_name="envelope_batches_created")
+    submitted_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                     on_delete=models.SET_NULL,
+                                     related_name="envelope_batches_submitted")
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                    on_delete=models.SET_NULL,
+                                    related_name="envelope_batches_reviewed")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    posted_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                  on_delete=models.SET_NULL,
+                                  related_name="envelope_batches_posted")
+    posted_at = models.DateTimeField(null=True, blank=True)
+
+    return_reason = models.TextField(blank=True)
+    reject_reason = models.TextField(blank=True)
+    import_filename = models.CharField(max_length=255, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [models.Index(fields=["status", "sabbath_date"])]
+
+    def __str__(self):
+        return f"Batch #{self.pk} ({self.get_status_display()}) — {self.sabbath_date}"
+
+    @property
+    def is_editable(self):
+        return self.status in self.EDITABLE_STATUSES
+
+    @property
+    def row_count(self):
+        return self.rows.count()
+
+    def computed_total(self):
+        from django.db.models import Sum
+        return self.rows.aggregate(t=Sum("computed_total"))["t"] or Decimal(0)
+
+
+class EnvelopeBatchRow(models.Model):
+    """One contributor's entry within a batch, before posting. Mirrors the
+    shape `_save_envelope` needs (name, receipt, channel, dev group, per-fund
+    amounts) plus the two figures the maker-checker Manual Total control
+    compares: what the cashier typed as the envelope's own total
+    (``manual_total``) versus what the allocation columns sum to
+    (``computed_total``, kept in sync by the batch service on every save)."""
+
+    batch = models.ForeignKey(EnvelopeBatch, on_delete=models.CASCADE,
+                              related_name="rows")
+    line_no = models.PositiveIntegerField(default=0)   # display/posting order
+
+    receipt_no = models.CharField(max_length=20, blank=True)
+    receipt_no_overridden = models.BooleanField(
+        default=False,
+        help_text="True once the cashier has hand-edited this row's receipt "
+                  "number — the auto-increment sequence continues FROM this "
+                  "value for later rows, but never rewrites it again.")
+
+    contributor_name = models.CharField(max_length=120, blank=True)
+    member = models.ForeignKey("members.Member", null=True, blank=True,
+                               on_delete=models.SET_NULL)
+    phone = models.CharField(max_length=20, blank=True)
+    channel = models.CharField(max_length=4, choices=Envelope.Channel.choices,
+                               default=Envelope.Channel.CASH)
+    dev_group = models.ForeignKey("departments.DevelopmentGroup", null=True,
+                                  blank=True, on_delete=models.SET_NULL)
+
+    #: {department_id_or_"split:<id>": "amount string"} — the same shape the
+    #: ledger form has always posted, kept as entered (not yet expanded across
+    #: splits; that happens once, at posting time, via _expand_lines).
+    amounts = models.JSONField(default=dict, blank=True)
+
+    manual_total = models.DecimalField(max_digits=12, decimal_places=2,
+                                       null=True, blank=True,
+                                       help_text="What's written on the envelope.")
+    computed_total = models.DecimalField(max_digits=12, decimal_places=2,
+                                         default=0,
+                                         help_text="Sum of the allocation columns.")
+    #: short machine-readable problem code the client highlights the row for;
+    #: "" when the row is clean. See envelopes.services.batches.row_errors.
+    error = models.CharField(max_length=40, blank=True)
+    error_detail = models.CharField(max_length=200, blank=True)
+
+    #: set once this row is posted — the Envelope it became. A row is only
+    #: ever posted once; re-posting a batch is not possible (status guards it).
+    posted_envelope = models.ForeignKey(Envelope, null=True, blank=True,
+                                        on_delete=models.SET_NULL,
+                                        related_name="source_batch_row")
+
+    class Meta:
+        ordering = ["batch_id", "line_no", "id"]
+        indexes = [models.Index(fields=["batch", "line_no"])]
+
+    def __str__(self):
+        return f"{self.contributor_name or '(unnamed)'} — {self.receipt_no or '—'}"
+
+    @property
+    def is_active(self):
+        """A row counts toward the batch once it has a name — see
+        envelopes.services.batches.row_is_active for why a name-only row
+        (missing its allocation) is still "active" rather than silently
+        dropped. Kept in sync with that function."""
+        return bool(self.contributor_name and self.contributor_name.strip())

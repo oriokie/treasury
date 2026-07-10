@@ -38,7 +38,18 @@ views or exports it.
 
 ---
 
-## 2. `SiteConfig.get()` is not cached — a redundant query on every request
+## 2. `SiteConfig.get()` is not cached — a redundant query on every request — IMPLEMENTED (Option A, v2.38)
+
+**Status: implemented (Option A, request-scoped).** `SiteConfigCacheMiddleware`
+(core/middleware.py, registered early in the stack) opens a per-request memo
+that `SiteConfig.get()` uses; the memo is dropped unconditionally when the
+request ends, `save()` invalidates it mid-request, and outside a request
+(shell, management commands, direct calls in tests) behaviour is unchanged.
+Measured: pages now issue exactly ONE SiteConfig select per request (was
+7–11). Cross-request caching (Option B) remains deliberately not done for the
+control-staleness reasons below.
+
+*(original)*
 
 **Description.** `SiteConfig.get()` (`core/models.py`) is a plain
 `objects.get_or_create(pk=1)` with no caching, called many times per request (7–11
@@ -687,7 +698,19 @@ canvas can layer on the same persistence later (noted as #37).
 *(original)* `LayoutMeta` was a complete serialisable layout model but nothing
 edited it. **Priority: Low-Medium.**
 
-## 28. Server-side chart images for PDF/Word exports
+## 28. Server-side chart images for PDF/Word exports — IMPLEMENTED (v2.38)
+
+**Status: implemented.** `reports/services/chart_image.py` gained
+`render_chart_config()` — a generic renderer taking the engine's Chart.js
+config (what a chart SectionData carries in `extra['chart']`) and producing a
+PNG: bar-family configs as horizontal bars, pie/doughnut as the proportional
+split bar, line-family as a new polyline plot; junk configs return None and
+never break an export. The engine PDF renderer embeds the PNG via reportlab
+(width-scaled), the Word renderer as a base64 data-URI image (the Monthly
+report's proven approach), and the Treasurer's Report charts flipped to
+export-visible — the board pack PDF now carries its three charts.
+
+*(original)*
 
 **Description.** The PDF and Word renderers omit charts (they note "[chart
 omitted]"), since Chart.js is browser-only. The Monthly report already renders
@@ -807,7 +830,16 @@ their checksums become deterministic and can be used for drift detection.
 
 **Priority: Low.**
 
-## 36. Combined "financial statements" bundle report
+## 36. Combined "financial statements" bundle report — IMPLEMENTED (v2.38)
+
+**Status: implemented.** `financial_statements_pack` (reports/
+financial_statements.py) composes the existing I&E, Financial Position
+summary, Cash Flow, Fund Balances and Trial Balance sections under one shared
+ReportContext — overlapping aggregates compute once and the statements are
+internally consistent by construction (asserted by test). No new metrics or
+components.
+
+*(original)*
 
 **Description.** The individual statements (I&E, Cash Flow, Fund Balances,
 Financial Position, Trial Balance) are now engine reports. A single bundle report
@@ -977,7 +1009,15 @@ can also use the richer presentation without code.
 
 **Priority: Low.**
 
-## 44c. Per-section collapse + server-side charts in exports — NEW (small follow-ups)
+## 44c. Per-section collapse + server-side charts in exports — IMPLEMENTED (v2.38)
+
+**Status: implemented, both halves.** (1) Board-pack sections honouring
+`LayoutMeta.collapsible` now carry a click/keyboard toggle on the card head
+(caret indicator, Ask-AI link unaffected, print forces everything open);
+sections composed `collapsible=False` (the executive snapshot, board actions)
+are exempt. (2) Charts render in PDF/Word exports — see #28.
+
+*(original)*
 
 **Description.** Two polish items surfaced during the redesign: (1) the board
 pack groups sections and has the sticky navigator, but a per-section
@@ -1030,7 +1070,32 @@ have):**
 
 **Priority: N/A (documented decisions).**
 
-## 47. Manual bank receipts and their envelope counterparts double-count in the transactions running balance and bank reconciliation — ADVISORY (no code yet, per review brief)
+## 47. Manual bank receipts and their envelope counterparts double-count in the transactions running balance and bank reconciliation — IMPLEMENTED (Option A, v2.38)
+
+**Status: implemented.** One canonical signed-cash definition now lives on the
+Transaction model (`is_bank_memo`, `signed_cash_amount`, `signed_cash_case`,
+queryset `signed_cash_total`): a reversal is negative, a debit is negative, and
+a manually-receipted bank row (`channel=BANK, manual_receipt=True` — the memo
+half whose cash lives on its envelope entry) contributes ZERO. Consumers: the
+transactions page running balance (both the per-page loop and the
+prior-pages SQL aggregate), the CSV/XLSX export's Amount column, and the Cash
+Book (which was also summing unconfirmed and reversed credits — fixed to
+confirmed, non-reversed, non-memo receipts). The memo row stays visible,
+badged "MEMO — no cash effect" with a struck, muted amount, preserving the
+audit trail exactly as Option A specified.
+
+**Correction to the original analysis:** deeper reading showed
+`processed_via_envelope` rows are NOT duplicates — that flow attaches an
+envelope record to the bank row *without a second ledger posting*, so those
+rows still count. The duplicate pair is specifically the MANUAL flow (envelope
+transaction entered by hand + statement import), whose bank half
+`mark_manual_receipt` already converts to a memo for income/fund purposes; the
+cash aggregations had simply never received the same treatment. Bank-side
+reconciliation views (`bank_position`, reports ReconciliationView) were
+verified already correct: their book side is BANK-channel rows only, and memo
+rows rightly count there — the money genuinely is at the bank.
+
+*(original analysis follows)*
 
 **Description.** When a bank credit is receipted through the app, a second
 Transaction (the envelope record carrying the income/fund allocation) is
@@ -1076,3 +1141,145 @@ consistency report. Worth doing after Option A stabilises the figures.
 **Priority: High** — a live correctness issue on a page treasurers read daily,
 and it distorts bank reconciliation. Decision needed on Option A vs B before
 implementation; A is recommended.
+
+## 48. Report Designer — production crash fixed + visual builder replaces hand-typed JSON — IMPLEMENTED (v2.39)
+
+**Incident.** `reports/services/designer.py` line 66 raised
+`AttributeError: 'str' object has no attribute 'get'` — a saved definition's
+`sections` list contained bare strings (component keys, e.g. `"kpi_cards"`)
+instead of section objects. Root cause: the designer's only editing surface
+was a hand-typed JSON textarea instructing administrators to reference
+"component keys", which invites exactly this mistake — typing the key alone
+instead of a full `{"component": "kpi_cards", ...}` object.
+
+**Fix — validator hardening (defence in depth, not just the one line).**
+`validate_definition`/`_build_section`/`compile_definition`/`_build_filters`
+were rewritten so every `.get`/indexing is preceded by an `isinstance` check;
+no shape of malformed JSON (wrong types, missing keys, unknown layout fields,
+a section that's a string/number/list, non-dict params) can escape as an
+uncaught exception — each becomes a specific, human-readable validation
+problem instead. `compile_definition` wraps section construction so even an
+unanticipated failure becomes `DefinitionError`, never a raw traceback, and
+`register_all_enabled` catches any residual exception per-definition so one
+broken saved report can never take the whole reporting platform down at
+startup. Covered by `reports/test_designer_hardening.py` (29 tests), which
+reproduces the exact incident and a dozen other malformed shapes.
+
+**Fix — visual builder replaces the JSON textareas (the "complex to use"
+report).** `DesignerEditView`/`designer_edit.html` were rebuilt as a
+click-to-add, drag-to-reorder builder: a component palette (search-filterable)
+adds a section card with real form fields — title, a width preset dropdown,
+per-component parameter fields rendered from a new `params_schema` on the
+component registry (e.g. narrative gets a dropdown of narrative titles instead
+of a `narrative_key` string to remember), and secondary layout toggles
+(collapsible, page-break, visibility per medium, grouping) tucked under "More
+options". **Section order is now implied by position in the list** — dragging
+reorders; there is no `order` number for an administrator to manage by hand,
+which was likely the single biggest source of friction. An "Advanced: raw
+JSON" panel remains for power users, kept in sync with the visual builder in
+both directions, so nothing is lost for anyone who preferred the old flow.
+Validation problems now render as individual flash messages (one per issue)
+instead of one semicolon-joined blob.
+
+**Registry addition.** `ComponentRegistry.register()` gained `designer_safe`
+(default True) and `params_schema`. Three components that require a raw
+Python object the JSON wire format can't carry — `chart` (a chart-spec
+function), `appendix` (a render function), `financial_statement` (a list of
+label/metric-or-callable pairs) — are marked `designer_safe=False`: excluded
+from the designer's palette, and rejected by `validate_definition` even if a
+saved/hand-edited definition references one directly, so they can never reach
+`component_registry.create()` with a missing callable and crash at render
+time. They remain fully available to code-defined reports and still appear in
+the (unfiltered) Component Catalogue documentation page.
+
+**Priority: was High (production bug); implemented.**
+
+## 49. Envelope Ledger redesigned into a maker-checker workflow (Draft → Review → Approve → Post) — IMPLEMENTED (v2.39)
+
+**Status: implemented.** The Envelope Ledger (`/envelopes/ledger/`) no longer
+posts to the ledger synchronously. `EnvelopeBatch`/`EnvelopeBatchRow`
+(`envelopes/models.py`) are a pre-ledger staging area; `envelopes/services/
+batches.py` owns the whole workflow (validation, duplicate detection,
+submit/approve/return/reject/post). **Only `post_batch` ever writes to the
+ledger**, and it does so by calling the pre-existing `_save_envelope`/
+`_expand_lines` functions — relocated verbatim to `envelopes/services/
+posting.py` (the same relocate-and-re-export pattern used earlier for
+`cashbook/services/treasury_position.py`), so posted accounting is
+byte-identical to before this workflow existed; nothing about *what* gets
+posted changed, only *when*.
+
+**Manual entry** auto-saves into a DRAFT the moment typing starts (debounced
+fetch + a 15s heartbeat + a `navigator.sendBeacon` safety net on tab-close/
+refresh, so nothing is lost to a crash or dropped connection); only the
+creator can edit it. **Import** is parsed, validated, and lands directly in
+REVIEW — it never posts directly, and a row whose receipt clashes with an
+existing envelope is now a reviewable row error rather than a silently
+dropped line (a real fix: the old import silently discarded such rows).
+Submitting requires every active row to be clean; Approve/Return/Reject/Post
+are Treasurer-only (`TreasurerRequiredMixin`, mirroring the existing Expense-
+approval pattern) and honour `SiteConfig.require_different_approver` at both
+Approve and Post. Posting re-validates fresh (including the accounting-period
+lock) and locks the batch row (`select_for_update`) so two treasurers posting
+the same batch concurrently can't double-post; a receipt claimed by another
+process between Approve and Post rolls back cleanly with a clear message.
+`EnvelopeBatch` carries `HistoricalRecords` and is wired into the existing
+Audit Log Report.
+
+**Entry grid redesign.** The "Start receipt #" field is gone — row 1's own
+receipt value is the start; editing any row's receipt marks it "overridden"
+and continues the auto-increment sequence from that point for every later
+un-edited row (alphanumeric-aware: `B12`→`B13`, `EXP007`→`EXP008`), exactly
+preserving earlier manual overrides. New rows inherit the Channel and
+Development Group of the row above. The calculated Total column was replaced
+by an editable **Manual Total** column immediately after Receipt Number
+(what's written on the envelope); the system compares it with the sum of the
+allocation columns (kept as a renamed **Allocated** reference column) and
+highlights the whole row red with an inline message on any mismatch — this
+also blocks Submit, both client-side (instant) and server-side (authoritative,
+re-checked at Submit/Approve/Post). Columns (both the fixed grid columns and
+the dynamic fund columns) can be dragged to reorder, shown/hidden, resized,
+and pinned; the layout is saved per user via a new generic `table_state`
+endpoint (`UserPreference.table_state`, previously a defined-but-unused field)
+and restored automatically on future logins, not just cached in one browser.
+
+**Testing.** `envelopes/test_batches.py` (54 tests): row validation, duplicate
+detection (within-batch, vs posted envelopes, vs other open batches, not vs
+rejected ones), the full Draft→Review→Approve→Post transition set,
+segregation-of-duties, the approve/post concurrency race, autosave (both the
+JSON-fetch and form-encoded/beacon request shapes), permission gating per
+role, the import path landing in Review, and the audit trail. Five pre-
+existing `envelopes/tests.py` tests written against the old synchronous-post
+contract were updated to exercise the new workflow (their original intent —
+correct lines/transactions, duplicate handling, unknown-fund resolution — is
+unchanged, only the workflow shape). The grid's highest-risk client-side logic
+(receipt-cascade sequencing including the multi-override case, Manual-Total-
+vs-allocation validation and the Submit-button gate, duplicate-receipt
+flagging, channel/dev-group inheritance, and the autosave debounce path) was
+additionally verified by running the actual extracted page JavaScript in a
+real DOM (Node + jsdom), not just read — a Playwright/Chromium browser is not
+available in this sandbox (see the earlier session note on that), so this was
+the most rigorous verification achievable here; a live-browser pass is still
+recommended before relying on the drag/resize/pin interactions in production.
+
+**Priority: was High (explicit redesign request); implemented.**
+
+## 50. Follow-ups noted during the maker-checker redesign — NEW
+
+* **Live-browser verification.** The DOM-harness testing above is strong but
+  not a substitute for clicking through the grid (especially drag-reorder,
+  resize, and pin) in a real browser before/soon after this ships.
+* **Three-way segregation of duties.** `require_different_approver` currently
+  only requires Post's actor to differ from the batch's *creator*, not also
+  from the *approver* — a treasurer could approve then post the same batch
+  themselves. A stricter three-actor mode (maker ≠ checker ≠ poster) would be
+  a small, config-gated addition on top of the same pattern if wanted.
+  **Priority: Low** (the current rule already matches the Expense-approval
+  convention this app uses elsewhere).
+* **Column resize persistence granularity.** Widths save per user per grid;
+  no per-device variant, so a very different screen size on a second device
+  will reuse the same saved widths (usually fine, occasionally cramped).
+  **Priority: Low.**
+* **Bulk actions on the Review Queue.** Approve/return/reject/post are
+  currently per-batch; a treasurer processing many small batches at once has
+  no bulk action. **Priority: Low-Medium**, revisit once real usage volume is
+  known.

@@ -1,5 +1,141 @@
 # Changelog
 
+## v2.39.0 - Report Designer visual builder + Envelope Ledger maker-checker redesign
+Two substantial pieces: fixes the production Report Designer crash with deep,
+general hardening and replaces its hand-typed-JSON editor with a real visual
+builder; and rebuilds the Envelope Ledger into a production-grade Draft ->
+Review -> Approve -> Post maker-checker workflow, preserving all existing
+accounting logic.
+
+**Report Designer — crash fixed, then rebuilt as a visual builder.** The
+reported `AttributeError: 'str' object has no attribute 'get'` (a section
+entry that was a bare component-name string instead of an object) is fixed
+with deep hardening, not a one-line patch: `validate_definition`/
+`_build_section`/`compile_definition`/`_build_filters` now guard every access
+with an isinstance check first, so no malformed JSON shape can ever escape as
+an uncaught exception — each becomes a specific, human-readable problem
+instead, and `register_all_enabled` survives even a residual unexpected
+failure per-definition so one broken saved report can never take the whole
+platform down at startup. The editor itself was rebuilt: a click-to-add
+component palette, drag-to-reorder section cards with real form fields
+(title, a width preset, per-component parameters rendered from a new
+`params_schema` on the component registry — e.g. narrative gets a dropdown of
+titles instead of a key to remember), and section **order is now implied by
+position in the list**, removing the manual order-number bookkeeping that was
+likely the single biggest source of friction. `ComponentRegistry.register()`
+gained `designer_safe` (default True); `chart`/`appendix`/`financial_statement`
+— which need a raw Python callable/array the JSON wire format can't carry —
+are marked unsafe: excluded from the palette and rejected by validation even
+if referenced directly, so they can never reach `component_registry.create()`
+with a missing callable and crash at render time. An "Advanced: raw JSON"
+panel remains for power users, synced with the visual builder both ways.
+29 new tests (`reports/test_designer_hardening.py`), including a direct
+reproduction of the production incident.
+
+**Envelope Ledger — Draft -> Review -> Approve -> Post.** New
+`EnvelopeBatch`/`EnvelopeBatchRow` models are a pre-ledger staging area;
+`envelopes/services/batches.py` owns validation, duplicate detection and the
+whole transition set. Only `post_batch` ever writes to the ledger, and it does
+so by calling `_save_envelope`/`_expand_lines` — relocated verbatim to the new
+`envelopes/services/posting.py` (mirroring the `cashbook/services/
+treasury_position.py` relocation pattern from v2.36) — so posted accounting is
+byte-identical to before. Manual entry auto-saves into a Draft from the first
+keystroke (debounced fetch + 15s heartbeat + a `sendBeacon` safety net on
+tab-close, so nothing is lost to a crash); import is validated and lands
+directly in Review, never posting directly, and a receipt clashing with an
+existing envelope is now a reviewable row error instead of a silently dropped
+line. Approve/Return/Reject/Post are Treasurer-only and honour
+`require_different_approver`; Post re-validates fresh (including the
+accounting-period lock) and locks the batch row so concurrent posting can't
+double-post. `EnvelopeBatch` has full history and appears in the existing
+Audit Log Report.
+
+The entry grid itself: the Start-receipt-# field is gone (row 1's own value is
+the start); editing any row's receipt continues the auto-increment sequence
+from that point for every later un-edited row while preserving earlier manual
+overrides (alphanumeric-aware); new rows inherit Channel and Development Group
+from the row above. The calculated Total column was replaced by an editable
+**Manual Total** column right after Receipt Number, compared automatically
+against the allocation-column sum, with the whole row highlighted red and an
+inline message on mismatch — blocking Submit both client-side and
+server-side. Grid columns (fixed and dynamic fund columns alike) can be
+dragged to reorder, shown/hidden, resized, and pinned, saved per user via a
+new generic `table_state` endpoint (activating a previously-unused
+`UserPreference.table_state` field) and restored automatically on future
+logins.
+
+**Tests.** `envelopes/test_batches.py` (54 tests) covers the full workflow,
+duplicate detection, segregation of duties, the approve/post concurrency
+race, autosave (both request shapes), permissions, and the import path. Five
+pre-existing tests written against the old synchronous-post contract were
+updated to the new workflow (same intent, new shape). The grid's highest-risk
+client logic (receipt cascade, Manual Total validation, duplicate flagging,
+inheritance, autosave debounce) was verified by running the actual extracted
+page JavaScript in a real DOM via Node + jsdom, since a browser isn't
+available in this sandbox — recommendation #50 notes a live-browser pass is
+still worth doing before relying on drag/resize/pin in production.
+
+## v2.38.0 - Option A (signed cash) + recommendations pass
+Implements the agreed Option A for the manual-receipt double-count, then works
+through docs/recommendations.md and closes four deferred items with clear,
+bounded solutions.
+
+**Option A — canonical signed-cash definition (rec #47, IMPLEMENTED).** One
+definition on the Transaction model: `is_bank_memo` (a BANK row with
+manual_receipt=True — the memo half of a manually-receipted pair, whose cash
+lives on its envelope entry), `signed_cash_amount` (memo = 0, reversal/debit =
+negative), `signed_cash_case()` (the SQL twin) and queryset
+`signed_cash_total()`. Consumers: the transactions page running balance (both
+the per-page loop and the prior-pages SQL aggregate — verified across a
+pagination boundary), the CSV/XLSX export Amount column (now the row's true
+cash effect; a memo row exports 0 with its Receipt-status column explaining
+why), and the Cash Book — which was also summing unconfirmed and reversed
+credits, fixed to confirmed, non-reversed, non-memo receipts. The memo row
+stays fully visible, badged "MEMO — no cash effect" with a struck, muted
+amount. Correction from deeper reading: processed_via_envelope rows are NOT
+duplicates (that flow attaches an envelope to the bank row without a second
+posting) and still count; bank-side reconciliation views were verified already
+correct (book side = BANK-channel rows only, where memo rows rightly count —
+the money is genuinely at the bank). The mislabelled export status for
+loan/financing rows was also corrected.
+
+**Rec #2 (IMPLEMENTED, Option A) — request-scoped SiteConfig memoization.**
+SiteConfigCacheMiddleware opens a per-request memo for SiteConfig.get();
+save() invalidates mid-request; the memo is unconditionally dropped at request
+end; behaviour outside a request is unchanged. Measured: exactly one
+SiteConfig select per request, down from 7–11. Cross-request caching remains
+deliberately rejected (security/financial-control staleness under
+multi-worker LocMemCache).
+
+**Rec #28 + #44c (IMPLEMENTED) — charts in PDF/Word + per-section collapse.**
+chart_image.render_chart_config() renders the engine's Chart.js configs to
+PNG (bars, proportional split for pie/doughnut, new polyline renderer for
+line charts; junk-safe). The engine PDF embeds via reportlab, Word via base64
+data-URI; the Treasurer's Report charts are now export-visible — the board
+pack PDF carries its three charts. Board-pack sections honouring
+LayoutMeta.collapsible gained a click/keyboard collapse toggle (caret, Ask-AI
+unaffected, print forces open).
+
+**Rec #36 (IMPLEMENTED) — financial_statements_pack.** One report composing
+the I&E, Financial Position, Cash Flow, Fund Balances and Trial Balance
+sections under one shared ReportContext, so the statutory set is one click
+and internally consistent by construction.
+
+**Reviewed and deliberately deferred** (with reasons recorded in the doc):
+#1 (legacy board-report aggregate sharing — superseded by the engine report's
+shared context; retirement path is #32), #6 (advance-list bulk balances —
+marginal at current scale), #8 (dropdown helper), #11 (scope=col sweep —
+needs its own dedicated pass), #13 (BudgetLine rename — migration churn),
+#20/#21 (policy decisions), #44b (designer template picker).
+
+**Tests.** reports/test_recommendations_pass.py (14) + giving/test_signed_cash.py
+(10): memoization query counts and scope isolation, chart PNG rendering and
+junk-safety, PDF image embedding, Word data-URIs, collapse markup, bundle
+registration/reconciliation/exports, signed-cash definition parity, running
+balance across pagination, export column sums, cash-book basis. 416 tests
+across the targeted regression waves (reporting core, giving, pages, accuracy,
+accounts/middleware stack) all pass.
+
 ## v2.37.0 - Production review fixes: fund ledger financing, expense balance, regex fund families, petty cash on SOFP
 Four fixes from live production review, plus one recorded advisory.
 

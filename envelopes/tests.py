@@ -22,11 +22,21 @@ class EnvelopeLedgerTests(TestCase):
         self.client.login(username="t", password="x")
 
     def test_cash_envelope_creates_lines_and_transactions(self):
-        rows = [{"name": "Jane Doe", "member_id": None, "receipt": "5001",
-                 "channel": "CASH",
-                 "amounts": {str(self.tithe.id): "500", str(self.lcb.id): "100"}}]
-        self.client.post(reverse("envelope_ledger"),
-                         {"date": "2026-05-30", "rows": json.dumps(rows)})
+        # Manual entry now stages into a batch (autosave) and only Post writes
+        # the ledger — see envelopes/test_batches.py for the workflow itself;
+        # this test's job is unchanged: verify a cash envelope's lines/
+        # transactions come out correct once posted.
+        from envelopes.models import EnvelopeBatch
+        from envelopes.services import batches as bsvc
+        batch, _ = bsvc.get_or_create_draft(self.user, None, __import__("datetime").date(2026, 5, 30))
+        bsvc.autosave_rows(batch, [
+            {"line_no": 1, "receipt_no": "5001", "contributor_name": "Jane Doe",
+             "channel": "CASH", "manual_total": "600",
+             "amounts": {str(self.tithe.id): "500", str(self.lcb.id): "100"}}])
+        self.assertFalse(bsvc.submit_batch(batch, self.user))
+        self.assertFalse(bsvc.approve_batch(batch, self.user))
+        problems, count = bsvc.post_batch(batch, self.user)
+        self.assertFalse(problems)
         env = Envelope.objects.get(receipt_no="5001")
         self.assertEqual(env.total, Decimal("600"))
         self.assertEqual(env.lines.count(), 2)
@@ -34,13 +44,20 @@ class EnvelopeLedgerTests(TestCase):
         self.assertEqual(Transaction.objects.filter(
             channel=Transaction.Channel.ENVELOPE).count(), 2)
 
-    def test_duplicate_receipt_is_skipped(self):
+    def test_duplicate_receipt_is_blocked_at_submit(self):
+        # "skipped" is now "blocked with a clear reason" — nothing silently
+        # disappears; see envelopes/test_batches.py DuplicateDetectionTests
+        # for the dedicated duplicate-detection coverage.
+        import datetime as dt
+        from envelopes.services import batches as bsvc
         Envelope.objects.create(date="2026-05-30", receipt_no="5001",
                                 contributor_name="X", recorded_by=self.user)
-        rows = [{"name": "Jane", "receipt": "5001", "channel": "CASH",
-                 "amounts": {str(self.tithe.id): "500"}}]
-        self.client.post(reverse("envelope_ledger"),
-                         {"date": "2026-05-30", "rows": json.dumps(rows)})
+        batch, _ = bsvc.get_or_create_draft(self.user, None, dt.date(2026, 5, 30))
+        bsvc.autosave_rows(batch, [
+            {"line_no": 1, "receipt_no": "5001", "contributor_name": "Jane",
+             "manual_total": "500", "amounts": {str(self.tithe.id): "500"}}])
+        problems = bsvc.submit_batch(batch, self.user)
+        self.assertTrue(problems)
         self.assertEqual(Envelope.objects.filter(receipt_no="5001").count(), 1)
 
     def test_next_receipt_increments(self):
@@ -98,6 +115,17 @@ class EnvelopeColumnsImportTests(TestCase):
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
         up = SimpleUploadedFile("f.xlsx", buf.read())
         self.client.post(reverse("envelope_import"), {"date": "2026-05-30", "file": up})
+        # imports land in the Review Queue (never post directly) — see
+        # envelopes/test_batches.py ImportViewTests for the dedicated
+        # "never posts directly" coverage; this test's job is unchanged:
+        # verify the sheet's figures come out correct once approved+posted.
+        from envelopes.models import EnvelopeBatch
+        from envelopes.services import batches as bsvc
+        batch = EnvelopeBatch.objects.get(source=EnvelopeBatch.Source.IMPORT)
+        self.assertEqual(batch.status, EnvelopeBatch.Status.REVIEW)
+        self.assertFalse(bsvc.approve_batch(batch, self.user))
+        problems, count = bsvc.post_batch(batch, self.user)
+        self.assertFalse(problems)
         env = Envelope.objects.get(receipt_no="777001")
         self.assertEqual(env.total, 250)
 
@@ -901,7 +929,8 @@ class EnvelopeImportUnknownFundTests(TestCase):
         self.assertFalse(Envelope.objects.filter(contributor_name__iexact="Ann").exists())
 
     def test_resolve_create_makes_fund_and_imports(self):
-        from envelopes.models import Envelope
+        from envelopes.models import Envelope, EnvelopeBatch
+        from envelopes.services import batches as bsvc
         from departments.models import Department
         f = self._file(["Contributor name", "Receipt no", self.known.name, "Camp Special"],
                        ["Ben", "R2", 500, 300])
@@ -910,6 +939,14 @@ class EnvelopeImportUnknownFundTests(TestCase):
         self.client.post("/envelopes/import/",
             {"resolve": "1", "col_3": "create", "name_3": "Camp Special Fund"})
         self.assertTrue(Department.objects.filter(name="Camp Special Fund").exists())
+        # lands in Review — approve + post before the envelope exists
+        batch = EnvelopeBatch.objects.filter(
+            source=EnvelopeBatch.Source.IMPORT).order_by("-id").first()
+        self.assertIsNotNone(batch)
+        self.assertEqual(batch.status, EnvelopeBatch.Status.REVIEW)
+        self.assertFalse(bsvc.approve_batch(batch, self.u))
+        problems, count = bsvc.post_batch(batch, self.u)
+        self.assertFalse(problems)
         e = Envelope.objects.filter(contributor_name__iexact="Ben").first()
         self.assertIsNotNone(e)
         funds = {ln.department.name for ln in e.lines.all()}
@@ -917,21 +954,40 @@ class EnvelopeImportUnknownFundTests(TestCase):
         self.assertIn("E7 Tithe", funds)
 
     def test_resolve_map_to_existing(self):
-        from envelopes.models import Envelope
+        from envelopes.models import Envelope, EnvelopeBatch
+        from envelopes.services import batches as bsvc
         f = self._file(["Contributor name", "Receipt no", "Strange Column"],
                        ["Cy", "R3", 400])
         self.client.post("/envelopes/import/", {"date": "2026-03-07", "file": f})
         self.client.post("/envelopes/import/",
             {"resolve": "1", "col_2": f"existing:{self.known.id}"})
+        batch = EnvelopeBatch.objects.filter(
+            source=EnvelopeBatch.Source.IMPORT).order_by("-id").first()
+        self.assertIsNotNone(batch)
+        self.assertFalse(bsvc.approve_batch(batch, self.u))
+        problems, count = bsvc.post_batch(batch, self.u)
+        self.assertFalse(problems)
         e = Envelope.objects.filter(contributor_name__iexact="Cy").first()
         self.assertIsNotNone(e)
         self.assertEqual({ln.department.name for ln in e.lines.all()}, {"E7 Tithe"})
 
     def test_known_only_sheet_imports_directly(self):
-        from envelopes.models import Envelope
+        # "imports directly" now means "lands directly in the Review Queue
+        # without needing the unknown-column resolve step" (never straight to
+        # the ledger — see the class docstring's Item 7 and the module-level
+        # workflow this whole file now tests against).
+        from envelopes.models import Envelope, EnvelopeBatch
+        from envelopes.services import batches as bsvc
         f = self._file(["Contributor name", "Receipt no", self.known.name],
                        ["Di", "R4", 250])
         r = self.client.post("/envelopes/import/", {"date": "2026-03-07", "file": f},
                              follow=True)
         # no resolve needed
+        batch = EnvelopeBatch.objects.filter(
+            source=EnvelopeBatch.Source.IMPORT).order_by("-id").first()
+        self.assertIsNotNone(batch)
+        self.assertEqual(batch.status, EnvelopeBatch.Status.REVIEW)
+        self.assertFalse(bsvc.approve_batch(batch, self.u))
+        problems, count = bsvc.post_batch(batch, self.u)
+        self.assertFalse(problems)
         self.assertTrue(Envelope.objects.filter(contributor_name__iexact="Di").exists())

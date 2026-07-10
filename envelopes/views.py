@@ -5,20 +5,24 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.db import transaction as db_tx
+from django.http import JsonResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView, DetailView
 
+from core import roles
 from core.permissions import (ReadAccessMixin, DataEntryRequiredMixin,
                               TreasurerRequiredMixin)
-from core.models import SiteConfig
+from core.models import SiteConfig, entry_blocked
 from core.services.sms import send_receipt_sms
 from core.utils import sabbath_week_of
 from departments.models import Department
 from giving.models import Transaction
 from members.models import Member
-from .models import Envelope, EnvelopeLine
+from .models import Envelope, EnvelopeBatch, EnvelopeBatchRow, EnvelopeLine
+from .services.posting import (PREFERRED, _amount, _expand_lines,       # noqa: F401
+                               _is_building, _save_envelope, column_catalog)
 
 
 from core.utils import (sabbath_bucket, sabbath_of, last_saturday as _last_saturday,
@@ -130,181 +134,314 @@ class EnvelopeDetailView(ReadAccessMixin, DetailView):
     context_object_name = "envelope"
 
 
-# ---- Column catalogue for the ledger / template / import ----
-PREFERRED = ["Tithe", "Combined Offering", "Camp Meeting", "Development",
-             "Sabbath School", "Loose Offering", "LCB – Local Church Budget",
-             "Thanksgiving Offering"]
-
-
-def _is_building(name):
-    return "building" in (name or "").lower()
-
-
-def column_catalog(for_import=False):
-    """Candidate ledger columns: active funds (excluding Building) + split funds,
-    preferred ones first, with sensible defaults pre-selected. When for_import is
-    set, sub-accounts (Trust Fund and LCB children) are excluded — imports use the
-    standalone funds and split offerings only."""
-    from giving.models import SplitFund
-    from departments.models import split_component_dept_ids
-    skip_ids = split_component_dept_ids() if for_import else set()
-    cols = []
-    for d in Department.objects.filter(active=True):
-        if _is_building(d.name):
-            continue
-        if d.id in skip_ids:        # the 50% split halves — shown as one split column
-            continue
-        cols.append({"key": str(d.id), "label": d.name, "name": d.name,
-                     "kind": "dept", "trust": d.is_trust})
-    for s in SplitFund.objects.filter(active=True):
-        cols.append({"key": f"split:{s.id}", "label": f"{s.name} (split)",
-                     "name": s.name, "kind": "split", "trust": False})
-    pref = [p.lower() for p in PREFERRED]
-
-    def rank(c):
-        n = c["name"].lower()
-        return (0, pref.index(n)) if n in pref else (1, c["label"].lower())
-    cols.sort(key=rank)
-    for c in cols:
-        c["default"] = c["name"].lower() in set(pref)
-    return cols
-
-
-def _amount(raw):
-    try:
-        v = Decimal(str(raw).replace(",", "").strip())
-        return v if v else None
-    except (InvalidOperation, TypeError, AttributeError):
-        return None
-
-
-def _expand_lines(amounts, funds, splits, dev_group=None):
-    """amounts: {key: raw}. Returns list of (Department, Decimal[, DevelopmentGroup]),
-    expanding splits. If `dev_group` is given it is attached to the Development line."""
-    lines = []
-    for key, raw in amounts.items():
-        amt = _amount(raw)
-        if not amt:
-            continue
-        if str(key).startswith("split:"):
-            sf = splits.get(int(str(key).split(":", 1)[1]))
-            if sf:
-                for pdept, pamt in sf.split(amt):
-                    if pamt:
-                        lines.append((pdept, pamt))
-        else:
-            try:
-                fid = int(key)
-            except (ValueError, TypeError):
-                continue
-            if fid in funds:
-                dept = funds[fid]
-                if dev_group is not None and dept.category == "DEVELOPMENT":
-                    lines.append((dept, amt, dev_group))
-                else:
-                    lines.append((dept, amt))
-    return lines
-
-
-def _save_envelope(*, date, name, receipt, channel, lines, member, user, cfg):
-    env = Envelope.objects.create(
-        date=date, sabbath_week=sabbath_week_of(date), receipt_no=receipt,
-        member=member, contributor_name=name,
-        channel=(Envelope.Channel.BANK if channel == "BANK" else Envelope.Channel.CASH),
-        recorded_by=user)
-    svc = sabbath_of(date)   # the Sabbath this gift is counted under
-    for line in lines:
-        dept, amt = line[0], line[1]
-        dev_group = line[2] if len(line) > 2 else None
-        # Both cash and bank envelopes post income: the envelope (the offering
-        # record) IS the income, exactly as the legacy import did. A bank
-        # envelope's matching bank-statement credit is excluded from income
-        # during Sabbath reconciliation, so the gift is counted once — on the
-        # envelope side — and never double-counted against the bank credit.
-        txn = Transaction.objects.create(
-            date=date, sabbath_week=env.sabbath_week, service_sabbath=svc,
-            channel=Transaction.Channel.ENVELOPE,
-            direction=Transaction.Direction.CREDIT, amount=amt,
-            department=dept, dev_group=dev_group, member=member, payer_name=name,
-            reference=f"envelope {receipt}",
-            allocation_status=Transaction.Status.MANUAL,
-            raw_narration=f"ENVELOPE {receipt}")
-        EnvelopeLine.objects.create(envelope=env, department=dept, amount=amt,
-                                    dev_group=dev_group, transaction=txn)
-    env.recompute_total()
-    env.save(update_fields=["total"])
-    send_receipt_sms(env, cfg)
-    return env
+# ---- Column catalogue for the ledger / template / import, and the canonical
+# envelope-posting logic (_amount, _expand_lines, _save_envelope, PREFERRED,
+# _is_building) now live in envelopes/services/posting.py — imported above so
+# every existing call site in this module keeps working unchanged. See that
+# module's docstring for why (identical accounting logic reused, verbatim, by
+# both the ledger form and the maker-checker batch poster).
 
 
 class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
-    """Excel-like ledger entry: choose the columns for the Sabbath, then key a
-    row per contributor (autocomplete + auto-incrementing receipt numbers)."""
+    """High-volume keyboard-driven envelope entry. Every keystroke auto-saves
+    into a DRAFT EnvelopeBatch (see the autosave/submit views below) — nothing
+    reaches the ledger until that batch is submitted, approved, and posted.
+    The GET here only decides which draft to resume: the caller's own most
+    recently touched editable (DRAFT/RETURNED) batch for the chosen Sabbath,
+    or a blank sheet (a batch is created on first autosave, not on page load,
+    so idly opening this page never litters the Review Queue with empties).
+    """
     template_name = "envelopes/ledger.html"
 
     def get(self, request):
         from departments.models import DevelopmentGroup, Department
         dev = Department.objects.filter(category="DEVELOPMENT",
                                         parent__isnull=True).first()
+        sab_raw = request.GET.get("date") or _last_saturday().isoformat()
+        try:
+            sab = dt.date.fromisoformat(sab_raw)
+        except ValueError:
+            sab = _last_saturday()
+            sab_raw = sab.isoformat()
+
+        batch = None
+        batch_id = request.GET.get("batch")
+        if batch_id:
+            batch = EnvelopeBatch.objects.filter(
+                pk=batch_id, created_by=request.user,
+                status__in=EnvelopeBatch.EDITABLE_STATUSES).first()
+        if batch is None:
+            batch = (EnvelopeBatch.objects.filter(
+                        created_by=request.user, sabbath_date=sab,
+                        source=EnvelopeBatch.Source.MANUAL,
+                        status__in=EnvelopeBatch.EDITABLE_STATUSES)
+                     .order_by("-updated_at").first())
+
+        rows_json = []
+        if batch is not None:
+            for r in batch.rows.order_by("line_no", "id"):
+                rows_json.append({
+                    "line_no": r.line_no, "receipt_no": r.receipt_no,
+                    "receipt_no_overridden": r.receipt_no_overridden,
+                    "contributor_name": r.contributor_name,
+                    "member_id": r.member_id, "phone": r.phone,
+                    "channel": r.channel, "dev_group_id": r.dev_group_id,
+                    "manual_total": (str(r.manual_total)
+                                    if r.manual_total is not None else ""),
+                    "amounts": r.amounts, "error": r.error,
+                    "error_detail": r.error_detail,
+                })
+
         return render(request, self.template_name, {
             "columns": column_catalog(),
-            "default_date": request.GET.get("date") or _last_saturday().isoformat(),
+            "default_date": sab_raw,
             "dev_groups": DevelopmentGroup.objects.filter(active=True).order_by("number"),
             "dev_fund_key": str(dev.id) if dev else "",
+            "batch": batch,
+            "batch_rows_json": json.dumps(rows_json),
+            "return_reason": batch.return_reason if batch and batch.status ==
+                EnvelopeBatch.Status.RETURNED else "",
         })
 
-    @db_tx.atomic
+
+class EnvelopeBatchAutosaveView(DataEntryRequiredMixin, View):
+    """The endpoint behind "auto-saved Draft batches": called on a debounce
+    timer, on blur, and via ``navigator.sendBeacon`` when the tab is closing,
+    so work in progress survives a refresh, a crash, or a dropped connection.
+    Creates a batch on the FIRST call for a sheet (not on page load — see
+    EnvelopeLedgerCreate.get), replaces its rows, and returns the freshly
+    revalidated row states so the grid can show red/blocked rows immediately,
+    without a second round trip."""
+
     def post(self, request):
-        from giving.models import SplitFund
-        cfg = SiteConfig.get()
-        funds = {d.id: d for d in Department.objects.filter(active=True)}
-        splits = {s.id: s for s in SplitFund.objects.filter(active=True)}
-        try:
-            sab = dt.date.fromisoformat(request.POST.get("date"))
-        except (TypeError, ValueError):
-            messages.error(request, "Please choose a valid Sabbath date.")
-            return redirect("envelope_ledger")
-        from core.models import entry_blocked
-        _why = entry_blocked(sab)
-        if _why:
-            messages.error(request, _why)
-            return redirect("envelope_ledger")
-        try:
-            rows = json.loads(request.POST.get("rows") or "[]")
-        except json.JSONDecodeError:
-            rows = []
-
-        from departments.models import DevelopmentGroup
-        created = 0
-        for row in rows:
-            name = (row.get("name") or "").strip()
-            receipt = (row.get("receipt") or "").strip()
-            channel = (row.get("channel") or "CASH").upper()
-            dev_group = None
-            if row.get("dev_group_id"):
-                dev_group = DevelopmentGroup.objects.filter(
-                    pk=row["dev_group_id"]).first()
-            lines = _expand_lines(row.get("amounts") or {}, funds, splits,
-                                  dev_group=dev_group)
-            if not name or not receipt or not lines:
-                continue
-            if Envelope.objects.filter(receipt_no=receipt).exists():
-                messages.warning(request, f"Receipt {receipt} already used — skipped {name}.")
-                continue
-            member = None
-            if row.get("member_id"):
-                member = Member.objects.filter(pk=row["member_id"]).first()
-            if member is None:
-                member = Member.objects.filter(name__iexact=name).first()
-            _save_envelope(date=sab, name=name, receipt=receipt, channel=channel,
-                           lines=lines, member=member, user=request.user, cfg=cfg)
-            created += 1
-
-        if created:
-            messages.success(request, f"Recorded {created} envelope(s) for {sab:%d %b %Y}.")
+        # Two request shapes reach this endpoint: a normal fetch() call sends
+        # a JSON body with the CSRF token in the X-CSRFToken header; the
+        # unload-safety-net call uses navigator.sendBeacon, which can only
+        # POST form-encoded data (no custom headers) — Django's CSRF check
+        # reads csrfmiddlewaretoken from request.POST for exactly that case,
+        # so the beacon carries the same JSON payload inside one form field.
+        if request.content_type == "application/json":
+            try:
+                payload = json.loads(request.body.decode("utf-8") or "{}")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return JsonResponse({"ok": False, "error": "Invalid JSON."}, status=400)
         else:
-            messages.warning(request, "Nothing recorded — add at least one named row with an amount.")
-        return redirect(f"{reverse('envelope_list')}?date={sab.isoformat()}")
+            try:
+                payload = json.loads(request.POST.get("payload") or "{}")
+            except json.JSONDecodeError:
+                return JsonResponse({"ok": False, "error": "Invalid JSON."}, status=400)
+        try:
+            sab = dt.date.fromisoformat(payload.get("date") or "")
+        except ValueError:
+            return JsonResponse({"ok": False, "error": "Invalid date."}, status=400)
+        why = entry_blocked(sab)
+        if why:
+            return JsonResponse({"ok": False, "error": why}, status=409)
+
+        rows_payload = payload.get("rows") or []
+        if not isinstance(rows_payload, list):
+            rows_payload = []
+
+        from .services import batches as bsvc
+        batch, created = bsvc.get_or_create_draft(
+            request.user, payload.get("batch_id"), sab)
+        bsvc.autosave_rows(batch, rows_payload)
+        batch.refresh_from_db()
+
+        errors = {r.line_no: {"code": r.error, "detail": r.error_detail}
+                 for r in batch.rows.all() if r.error}
+        return JsonResponse({
+            "ok": True, "batch_id": batch.id, "batch_created": created,
+            "status": batch.status, "saved_at": batch.updated_at.isoformat(),
+            "errors": errors,
+        })
+
+
+class EnvelopeBatchSubmitView(DataEntryRequiredMixin, View):
+    """Draft/Returned -> Review. Only the batch's own creator may submit it;
+    validation is re-run server-side (never trust the client alone — the grid
+    already blocks the button, but this is the authoritative gate)."""
+
+    def post(self, request, pk):
+        batch = get_object_or_404(EnvelopeBatch, pk=pk)
+        if batch.created_by_id != request.user.id:
+            messages.error(request, "Only the person who created this batch "
+                                    "can submit it.")
+            return redirect("envelope_batch_list")
+        if not batch.is_editable:
+            messages.error(request, "This batch is no longer editable.")
+            return redirect("envelope_batch_detail", pk=batch.pk)
+        why = entry_blocked(batch.sabbath_date)
+        if why:
+            messages.error(request, why)
+            return redirect("envelope_ledger_edit", pk=batch.pk)
+
+        from .services import batches as bsvc
+        problems = bsvc.submit_batch(batch, request.user)
+        if problems:
+            for p in problems[:8]:
+                messages.error(request, p)
+            return redirect("envelope_ledger_edit", pk=batch.pk)
+        messages.success(request, f"Batch #{batch.pk} submitted for review "
+                                  f"({batch.row_count} entr{'y' if batch.row_count == 1 else 'ies'}).")
+        return redirect("envelope_batch_detail", pk=batch.pk)
+
+
+class EnvelopeBatchDeleteDraftView(DataEntryRequiredMixin, View):
+    """Discard a draft that's no longer wanted (e.g. started by mistake).
+    Only the creator, and only while still editable — once submitted, a batch
+    is only removable from the pipeline via Reject (an auditable decision)."""
+
+    def post(self, request, pk):
+        batch = get_object_or_404(EnvelopeBatch, pk=pk)
+        if batch.created_by_id != request.user.id or not batch.is_editable:
+            messages.error(request, "This batch can't be deleted.")
+            return redirect("envelope_batch_list")
+        batch.delete()
+        messages.success(request, "Draft discarded.")
+        return redirect("envelope_batch_list")
+
+
+class EnvelopeBatchListView(ReadAccessMixin, View):
+    """The Review Queue: every batch not yet posted (plus a recent-posted tail
+    for context), newest-touched first. Action buttons render per row/detail
+    page according to the viewer's role and the batch's status."""
+    template_name = "envelopes/batch_list.html"
+
+    def get(self, request):
+        status_f = request.GET.get("status", "")
+        qs = EnvelopeBatch.objects.select_related(
+            "created_by", "submitted_by", "reviewed_by", "posted_by")
+        if status_f:
+            qs = qs.filter(status=status_f)
+        else:
+            qs = qs.exclude(status=EnvelopeBatch.Status.POSTED)
+        batches = list(qs.order_by("-updated_at")[:200])
+        # annotate row counts + totals without N+1 (small N, one aggregate query)
+        from django.db.models import Count, Sum
+        agg = {a["batch"]: a for a in EnvelopeBatchRow.objects.filter(
+                    batch__in=batches)
+               .values("batch").annotate(n=Count("id"), total=Sum("computed_total"))}
+        for b in batches:
+            a = agg.get(b.id, {})
+            b.row_count_ = a.get("n", 0)
+            b.total_ = a.get("total") or Decimal(0)
+        return render(request, self.template_name, {
+            "batches": batches, "status_filter": status_f,
+            "statuses": EnvelopeBatch.Status.choices,
+            "can_review": roles.can_approve(request.user),
+        })
+
+
+class EnvelopeBatchDetailView(ReadAccessMixin, View):
+    """Review/approve/return/reject/post screen for one batch."""
+    template_name = "envelopes/batch_detail.html"
+
+    def get(self, request, pk):
+        batch = get_object_or_404(
+            EnvelopeBatch.objects.select_related(
+                "created_by", "submitted_by", "reviewed_by", "posted_by"), pk=pk)
+        from .services import batches as bsvc
+        if batch.status in (EnvelopeBatch.Status.REVIEW, EnvelopeBatch.Status.APPROVED):
+            bsvc.revalidate_batch_rows(batch)   # the world may have moved on
+        rows = list(batch.rows.select_related("member", "dev_group")
+                   .order_by("line_no", "id"))
+        funds = {d.id: d for d in Department.objects.filter()}
+        for r in rows:
+            r.fund_breakdown = []
+            for key, raw in (r.amounts or {}).items():
+                amt = _amount(raw)
+                if not amt:
+                    continue
+                if str(key).startswith("split:"):
+                    from giving.models import SplitFund
+                    sf = SplitFund.objects.filter(
+                        pk=int(str(key).split(":", 1)[1])).first()
+                    label = f"{sf.name} (split)" if sf else key
+                else:
+                    dept = funds.get(int(key)) if str(key).isdigit() else None
+                    label = dept.name if dept else key
+                r.fund_breakdown.append((label, amt))
+        return render(request, self.template_name, {
+            "batch": batch, "rows": rows,
+            "can_edit": (batch.created_by_id == request.user.id and batch.is_editable),
+            "can_submit": (batch.created_by_id == request.user.id and batch.is_editable),
+            "can_review": roles.can_approve(request.user) and
+                batch.status == EnvelopeBatch.Status.REVIEW,
+            "can_post": roles.can_approve(request.user) and
+                batch.status == EnvelopeBatch.Status.APPROVED,
+            "history": batch.history.select_related("history_user").all()[:50],
+        })
+
+
+class EnvelopeBatchApproveView(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        batch = get_object_or_404(EnvelopeBatch, pk=pk)
+        if batch.status != EnvelopeBatch.Status.REVIEW:
+            messages.error(request, "This batch isn't awaiting review.")
+            return redirect("envelope_batch_detail", pk=batch.pk)
+        from .services import batches as bsvc
+        problems = bsvc.approve_batch(batch, request.user)
+        if problems:
+            for p in problems[:8]:
+                messages.error(request, p)
+        else:
+            messages.success(request, f"Batch #{batch.pk} approved — ready to post.")
+        return redirect("envelope_batch_detail", pk=batch.pk)
+
+
+class EnvelopeBatchReturnView(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        batch = get_object_or_404(EnvelopeBatch, pk=pk)
+        if batch.status != EnvelopeBatch.Status.REVIEW:
+            messages.error(request, "This batch isn't awaiting review.")
+            return redirect("envelope_batch_detail", pk=batch.pk)
+        from .services import batches as bsvc
+        problems = bsvc.return_batch(batch, request.user,
+                                     request.POST.get("reason", ""))
+        if problems:
+            for p in problems:
+                messages.error(request, p)
+        else:
+            messages.success(request, f"Batch #{batch.pk} returned to "
+                                      f"{batch.created_by} for correction.")
+        return redirect("envelope_batch_detail", pk=batch.pk)
+
+
+class EnvelopeBatchRejectView(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        batch = get_object_or_404(EnvelopeBatch, pk=pk)
+        if batch.status != EnvelopeBatch.Status.REVIEW:
+            messages.error(request, "This batch isn't awaiting review.")
+            return redirect("envelope_batch_detail", pk=batch.pk)
+        from .services import batches as bsvc
+        problems = bsvc.reject_batch(batch, request.user,
+                                     request.POST.get("reason", ""))
+        if problems:
+            for p in problems:
+                messages.error(request, p)
+        else:
+            messages.warning(request, f"Batch #{batch.pk} rejected.")
+        return redirect("envelope_batch_detail", pk=batch.pk)
+
+
+class EnvelopeBatchPostView(TreasurerRequiredMixin, View):
+    """The ONLY action in this whole workflow that writes to the ledger."""
+
+    def post(self, request, pk):
+        batch = get_object_or_404(EnvelopeBatch, pk=pk)
+        if batch.status != EnvelopeBatch.Status.APPROVED:
+            messages.error(request, "This batch isn't approved and ready to post.")
+            return redirect("envelope_batch_detail", pk=batch.pk)
+        from .services import batches as bsvc
+        problems, count = bsvc.post_batch(batch, request.user)
+        if problems:
+            for p in problems[:8]:
+                messages.error(request, p)
+            return redirect("envelope_batch_detail", pk=batch.pk)
+        messages.success(request, f"Posted {count} envelope(s) for "
+                                  f"{batch.sabbath_date:%d %b %Y}.")
+        return redirect(f"{reverse('envelope_list')}?date={batch.sabbath_date.isoformat()}")
 
 
 class EnvelopeTemplateView(DataEntryRequiredMixin, View):
@@ -388,11 +525,12 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
             import base64
             request.session["env_import_b64"] = base64.b64encode(content).decode("ascii")
             request.session["env_import_date"] = sab.isoformat()
+            request.session["env_import_filename"] = f.name
             return render(request, self.template_name, {
                 "stage": "resolve", "unknown_cols": unknown, "sab": sab,
                 "funds": Department.objects.filter(active=True, selectable=True).order_by("name"),
             })
-        return self._import(request, sab, content)
+        return self._import(request, sab, content, filename=f.name)
 
     def _scan_unknown(self, content):
         """Return (unknown_columns, error). An unknown column is a header that is
@@ -446,6 +584,7 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
             return redirect("envelope_import")
         content = base64.b64decode(b64)
         sab = dt.date.fromisoformat(sab_raw)
+        filename = request.session.get("env_import_filename", "")
         extra_cols = {}      # {col_index: department_id}
         created_funds = 0
         for k in list(request.POST.keys()):
@@ -474,17 +613,16 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
             # "ignore" -> leave out
         request.session.pop("env_import_b64", None)
         request.session.pop("env_import_date", None)
+        request.session.pop("env_import_filename", None)
         if created_funds:
             messages.success(request, f"Created {created_funds} new fund(s).")
-        return self._import(request, sab, content, extra_cols=extra_cols)
+        return self._import(request, sab, content, extra_cols=extra_cols,
+                            filename=filename)
 
-    def _import(self, request, sab, content, extra_cols=None):
+    def _import(self, request, sab, content, extra_cols=None, filename=""):
         import openpyxl
-        from giving.models import SplitFund
         extra_cols = extra_cols or {}
-        cfg = SiteConfig.get()
         funds = {d.id: d for d in Department.objects.filter(active=True)}
-        splits = {s.id: s for s in SplitFund.objects.filter(active=True)}
         label_to_key = self._fund_label_map()
 
         try:
@@ -521,7 +659,15 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
                 nums.append(int(d))
         next_no = (max(nums) + 1) if nums else 1
 
-        created = skipped = 0
+        # Imports are parsed and VALIDATED here, then land in the Review
+        # Queue — never posted to the ledger directly. A row's receipt number
+        # is still auto-assigned when the sheet leaves it blank (so every row
+        # has *something* to review by), but a clash with an existing
+        # envelope or another open batch is now a reviewable error on the row
+        # instead of a silently dropped line — the reviewer decides what to
+        # do with it, nothing just vanishes.
+        rows_payload = []
+        line_no = 0
         for r in rows[1:]:
             def cell(i):
                 return r[i] if (i is not None and i < len(r)) else None
@@ -531,43 +677,64 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
             amounts = {}
             for i, key in fund_cols:
                 v = cell(i)
-                if v not in (None, ""):
+                if v not in (None, "") and _amount(v):
                     amounts[key] = v
-            dev_group = None
+            if not amounts:
+                continue
+            dev_group_id = None
             if group_i is not None:
                 gv = cell(group_i)
                 if gv not in (None, ""):
                     from departments.models import DevelopmentGroup
                     digits = "".join(ch for ch in str(gv) if ch.isdigit())
                     if digits:
-                        dev_group = DevelopmentGroup.objects.filter(
-                            number=int(digits)).first()
-            lines = _expand_lines(amounts, funds, splits, dev_group=dev_group)
-            if not lines:
-                continue
+                        dg = DevelopmentGroup.objects.filter(number=int(digits)).first()
+                        dev_group_id = dg.id if dg else None
             receipt = str(cell(rcpt_i) or "").strip() if rcpt_i is not None else ""
             if not receipt:
                 receipt = str(next_no)
                 next_no += 1
-            if Envelope.objects.filter(receipt_no=receipt).exists():
-                skipped += 1
-                continue
             channel = (str(cell(chan_i) or "CASH").strip().upper()
                        if chan_i is not None else "CASH")
+            if channel not in ("CASH", "BANK"):
+                channel = "CASH"
             phone = str(cell(phone_i) or "").strip() if phone_i is not None else ""
             member = Member.objects.filter(name__iexact=name).first()
             if member is None and phone:
                 from members.models import normalize_phone
                 member = Member.objects.filter(phone=normalize_phone(phone)).first()
-            _save_envelope(date=sab, name=name, receipt=receipt, channel=channel,
-                           lines=lines, member=member, user=request.user, cfg=cfg)
-            created += 1
+            line_no += 1
+            rows_payload.append({
+                "line_no": line_no, "receipt_no": receipt,
+                "receipt_no_overridden": bool(cell(rcpt_i)),
+                "contributor_name": name, "member_id": member.id if member else None,
+                "phone": phone, "channel": channel, "dev_group_id": dev_group_id,
+                # the sheet has no separate "manual total" column — the sheet
+                # row IS the source document, so the allocation sum stands in
+                # as the manual total (nothing to mismatch-check against for
+                # an import; the review screen still shows both duplicate and
+                # period-lock problems)
+                "manual_total": str(sum(
+                    (_amount(v) or Decimal(0)) for v in amounts.values())),
+                "amounts": amounts,
+            })
 
-        msg = f"Imported {created} envelope(s) for {sab:%d %b %Y}."
-        if skipped:
-            msg += f" Skipped {skipped} with duplicate receipts."
-        messages.success(request, msg)
-        return redirect(f"{reverse('envelope_list')}?date={sab.isoformat()}")
+        if not rows_payload:
+            messages.warning(request, "No contributor rows with an amount were found.")
+            return redirect("envelope_import")
+
+        from .services import batches as bsvc
+        batch = EnvelopeBatch.objects.create(
+            sabbath_date=sab, source=EnvelopeBatch.Source.IMPORT,
+            status=EnvelopeBatch.Status.REVIEW, created_by=request.user,
+            submitted_by=request.user, submitted_at=dt.datetime.now(dt.timezone.utc),
+            import_filename=filename or "")
+        bsvc.autosave_rows(batch, rows_payload)
+
+        messages.success(
+            request, f"Imported {len(rows_payload)} row(s) for {sab:%d %b %Y} — "
+                     f"in the Review Queue, awaiting approval before posting.")
+        return redirect("envelope_batch_detail", pk=batch.pk)
 
 
 class EnvelopeSabbathExcelView(ReadAccessMixin, View):
