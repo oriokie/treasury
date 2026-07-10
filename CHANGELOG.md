@@ -1,5 +1,64 @@
 # Changelog
 
+## v2.40.0 - Six envelope-ledger/dashboard/fund-report fixes from production review
+Fixes six issues from live production review: a URL-routing crash, a missing
+delete-draft UI, dashboard chart sizing (and the layout break it caused),
+JPEG→PNG across every image export, live Channel/Group cascading, and a
+generalised subgroup picker for any fund with real sub-account children.
+
+**1. `/envelopes/ledger/<pk>/` crash fixed.** `EnvelopeLedgerCreate.get()`
+now accepts the URL's `pk`; a stale/foreign batch id redirects to the Review
+Queue with a message instead of crashing or showing the wrong sheet.
+
+**2. Delete-draft UI added.** The backend endpoint from v2.39 had no button
+anywhere; added to both the Review Queue list and the batch detail page,
+behind a confirm dialog, own-drafts-only.
+
+**3. Dashboard chart sizing fixed (and the "broken" card layout it caused).**
+None of the four dashboard charts set `maintainAspectRatio:false`, and none
+of their containers had a height — a doughnut chart could grow to match its
+card's full width, stretching the card and breaking the three-column row
+alongside it. Added a height-constrained `.chart-box` wrapper + explicit
+`maintainAspectRatio:false` on every chart.
+
+**4. JPEG → PNG, comprehensively renamed.** `static/js/table_jpeg.js` →
+`table_png.js` (`tableToJpeg`→`tableToPng`), the dashboard's inline
+`downloadLocalFundsJpeg()`→`downloadLocalFundsPng()`, and the two server-side
+Pillow budget-page images (`cashbook/services/goal_chart.py`,
+`build_*_jpeg`→`build_*_png`, `format="JPEG",quality=92`→`format="PNG"`) with
+matching URL/view/template renames (`.jpg`→`.png` throughout). PNG is
+strictly better for all of these — sharp table text and flat fills, not
+photos — with no meaningful file-size cost.
+
+**5. Channel/Development-Group now cascade live, not just at row creation.**
+v2.39 only copied the row-above's value when a *new* row was added; editing
+an *existing* row's Channel or Group did nothing further. Now mirrors the
+receipt-number cascade exactly: a change propagates forward to every later
+un-overridden row, and a later explicit change becomes the new anchor.
+
+**6. Subgroup picker generalised beyond Development.** Any fund with real
+`Department.parent` sub-account children (e.g. Trust Fund → Tithe, Camp
+Meeting) now gets its own "which subgroup?" picker in the entry grid —
+`column_catalog()` carries each fund's subgroups (id/label/trailing number).
+Unlike Development's separate non-posting `DevelopmentGroup` tag (left
+untouched — 15+ modules depend on it), choosing a subgroup here re-targets
+the amount to post directly against that child fund's own account, since
+these are independent real funds with their own balances; the grid's summary
+still attributes the amount back to the parent's display bucket. The Excel
+import's "Group Number" column now feeds the same mechanism — reusing the
+identical trailing-number-matching idea a numbered fund family already uses
+for bank-narration parsing, generalised to per-row subgroup reattribution
+("the same row allocate" for numbered subgroups).
+
+**Tests.** `envelopes/test_ledger_fixes_v240.py` (20 tests, items 1/2/6
+backend); `cashbook/test_goal_table_png.py` / `test_budget_items_png.py`
+(replacing the old JPEG test files). Items 5/6's client-side behaviour
+(cascading, subgroup rekeying, totals bucketing) verified by running the
+actual page JavaScript in a real DOM via Node + jsdom (no browser available
+in this sandbox). All six touched pages re-validated with a stack-based HTML
+structural check (zero errors). 150 tests across the directly-touched apps
+plus 149 more across `leaders`/`departments`/`core` all pass.
+
 ## v2.39.0 - Report Designer visual builder + Envelope Ledger maker-checker redesign
 Two substantial pieces: fixes the production Report Designer crash with deep,
 general hardening and replaces its hand-typed-JSON editor with a real visual

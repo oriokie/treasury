@@ -789,8 +789,10 @@ a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px va
 .table-wrap.sticky thead th,.ws-table.sticky thead th{position:sticky;top:0;z-index:3}
 
 /* dashboard helpers */
-.chart-center{display:flex;justify-content:center}
+.chart-center{display:flex;justify-content:center;align-items:center}
 .chart-empty{padding:2rem 0;text-align:center;color:var(--muted)}
+.chart-box{position:relative;height:220px;width:100%}
+.chart-box.chart-box-lg{height:280px}
 .section-head{display:flex;align-items:center;gap:.6rem}
 .section-head .muted{font-weight:400;font-size:.8rem}
 

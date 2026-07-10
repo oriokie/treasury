@@ -61,12 +61,20 @@
 </form>
 
 <script>
-const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}",subgroups:[{% for s in c.subgroups %}{id:"{{ s.id }}",label:"{{ s.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]}{% if not forloop.last %},{% endif %}{% endfor %}];
 const DEV_FUND_KEY = "{{ dev_fund_key }}";
 const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
 const INITIAL_ROWS = {{ batch_rows_json|safe }};
 const INITIAL_BATCH_ID = {{ batch.id|default:"null" }};
 function devGroupOptions(sel){ let o='<option value="">— group —</option>'; DEV_GROUPS.forEach(g=>{ o+=`<option value="${g.id}" ${sel==g.id?'selected':''}>${g.label}</option>`; }); return o; }
+
+// Maps a subgroup's own department id -> its parent fund's column key, so a
+// row's totals/summary attribute a subgroup-targeted amount back to the
+// parent fund's display bucket, while the actual posted amounts dict still
+// carries the precise subgroup id the cashier picked.
+const SUBGROUP_PARENT = {};
+ALL_COLS.forEach(c=>{ (c.subgroups||[]).forEach(s=>{ SUBGROUP_PARENT[String(s.id)] = c.key; }); });
+function displayKeyFor(fid){ return SUBGROUP_PARENT[fid] || fid; }
 const searchUrl = "{% url 'member_search' %}";
 const nextUrl = "{% url 'next_receipt' %}";
 const tplUrl = "{% url 'envelope_template' %}";
@@ -292,11 +300,39 @@ function readRow(tr){
   };
 }
 
+function subgroupOptions(c, sel){
+  let o = `<option value="${c.key}">This fund only</option>`;
+  c.subgroups.forEach(s=>{ o += `<option value="${s.id}" ${sel==s.id?'selected':''}>${s.label}</option>`; });
+  return o;
+}
+
 function fundCellHtml(c, data){
-  const v = (data.amounts && data.amounts[c.key]) || "";
+  // the amount may already be posted against one of this fund's subgroups
+  // (a previous save) — find it so the input/select reopen showing that
+  const amounts = data.amounts || {};
+  let targetKey = c.key, v = amounts[c.key] || "";
+  if(c.subgroups && c.subgroups.length){
+    for(const s of c.subgroups){
+      if (amounts[String(s.id)] !== undefined) { targetKey = String(s.id); v = amounts[String(s.id)]; break; }
+    }
+  }
   if(c.key === DEV_FUND_KEY && DEV_GROUPS.length){
+    // Development keeps its own established mechanism: the amount always
+    // posts to the Development fund itself, and dev_group is a separate
+    // reporting tag alongside it (not a re-targeted posting key) — Development
+    // Group reports depend on this and are unaffected by the change below.
     return `<input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}">`
          + `<select class="field--select devgrp devgrp-select">${devGroupOptions(data.dev_group_id||'')}</select>`;
+  }
+  if(c.subgroups && c.subgroups.length){
+    // Generic subgroup picker: this fund has real sub-account funds (e.g.
+    // Trust Fund -> Tithe, Camp Meeting, ...). Choosing one re-targets the
+    // amount to POST DIRECTLY to that subgroup's own fund, exactly as if the
+    // cashier had typed it in that subgroup's own column — not a tag
+    // alongside the parent, since these are independent real funds with
+    // their own balances.
+    return `<input class="field amt num mono" data-fid="${targetKey}" inputmode="decimal" value="${v}">`
+         + `<select class="field--select subgrp-select">${subgroupOptions(c, targetKey===c.key?'':targetKey)}</select>`;
   }
   return `<input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}">`;
 }
@@ -343,9 +379,30 @@ function wireRowEvents(tr){
   const mtotal = tr.querySelector(".mtotal");
   if(mtotal) mtotal.addEventListener("input", ()=>{ validateRow(tr); markDirtyAndSave(); });
   const chan = tr.querySelector(".chan");
-  if(chan) chan.addEventListener("change", markDirtyAndSave);
+  if(chan) chan.addEventListener("change", ()=>{
+    tr.dataset.chanOverridden = "1";
+    cascadeSelectFrom(tr, ".chan", "chanOverridden");
+    markDirtyAndSave();
+  });
   const devgrp = tr.querySelector(".devgrp");
-  if(devgrp) devgrp.addEventListener("change", markDirtyAndSave);
+  if(devgrp) devgrp.addEventListener("change", ()=>{
+    tr.dataset.devgrpOverridden = "1";
+    cascadeSelectFrom(tr, ".devgrp", "devgrpOverridden");
+    markDirtyAndSave();
+  });
+  tr.querySelectorAll(".subgrp-select").forEach(sel=>{
+    sel.addEventListener("change", ()=>{
+      // the amount stays where it is; only WHICH fund it posts against
+      // changes — move it from its old data-fid to the newly chosen one so
+      // nothing is double-counted or lost
+      const amtInput = sel.previousElementSibling;
+      if(amtInput && amtInput.classList.contains("amt")){
+        amtInput.dataset.fid = sel.value || amtInput.dataset.fid;
+      }
+      rowTotal(tr);
+      markDirtyAndSave();
+    });
+  });
 
   const rm = tr.querySelector(".rm");
   if(rm) rm.addEventListener("click", ()=>{ tr.remove(); renumber(); updateTotals(); markDirtyAndSave(); });
@@ -454,6 +511,29 @@ function resequenceFrom(startTr){
   }
 }
 
+// Channel and Development Group cascade the SAME way receipts do: setting
+// either on one row propagates it forward to every later row that hasn't
+// itself been explicitly changed, and a later explicit change becomes the
+// new anchor for whatever follows it. New rows added at the end start
+// un-overridden (they already inherited their initial value from the row
+// above in addRow()), so they keep following an earlier change made later.
+function cascadeSelectFrom(startTr, selector, overrideFlag){
+  const rows = Array.from(document.querySelectorAll("#envBody tr"));
+  const startIdx = rows.indexOf(startTr);
+  if(startIdx === -1) return;
+  let cursor = startTr.querySelector(selector).value;
+  for(let i = startIdx + 1; i < rows.length; i++){
+    const tr = rows[i];
+    const el = tr.querySelector(selector);
+    if(!el) continue;
+    if(tr.dataset[overrideFlag] === "1"){
+      cursor = el.value;
+      continue;
+    }
+    el.value = cursor;
+  }
+}
+
 function flagDuplicateReceipt(){
   const seen = {};
   document.querySelectorAll("#envBody tr").forEach(tr=>{
@@ -555,7 +635,8 @@ function updateTotals(){
     let rowHas = false;
     tr.querySelectorAll(".amt").forEach(i=>{
       const v = parseFloat(i.value);
-      if(!isNaN(v)){ colSum[i.dataset.fid] = (colSum[i.dataset.fid]||0) + v; grand += v; rowHas = true; }
+      if(!isNaN(v)){ const dk = displayKeyFor(i.dataset.fid);
+        colSum[dk] = (colSum[dk]||0) + v; grand += v; rowHas = true; }
     });
     if(rowIsActive(tr)) filledRows++;
   });

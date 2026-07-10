@@ -35,7 +35,7 @@
 </div>
 
 <div class="card u-mt"><div class="hd u-between">Group Contribution Goals {{ year }}
-  {% if group_rows %}<a class="btn btn-sm btn-ghost no-print" href="{% url 'group_goals_jpeg' dept.id %}?year={{ year }}" title="Download as a JPEG image">⤓ JPEG</a>{% endif %}
+  {% if group_rows %}<a class="btn btn-sm btn-ghost no-print" href="{% url 'group_goals_png' dept.id %}?year={{ year }}" title="Download as a PNG image">⤓ PNG</a>{% endif %}
 </div><div class="bd">
   <p class="help u-mt-0">Each development group has its own contribution goal. Progress is each group's own collection toward its target.</p>
   {% if group_rows %}
@@ -106,7 +106,7 @@
 {% endif %}
 
 <div class="section-title u-mt-lg u-between"><span>Budget vs actual by item — {{ year }}</span>
-  <a class="btn btn-xs btn-ghost no-print" href="{% url 'budget_items_jpeg' dept.id %}?year={{ year }}" title="Download this table as a JPEG image for printing or sharing">⤓ Download JPEG</a></div>
+  <a class="btn btn-xs btn-ghost no-print" href="{% url 'budget_items_png' dept.id %}?year={{ year }}" title="Download this table as a PNG image for printing or sharing">⤓ Download PNG</a></div>
 <div class="card"><div class="bd bd-flush">
   <table class="ledger" id="campBudget">
     <thead><tr><th>Budget item</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th><th>Used</th></tr></thead>

@@ -33,4 +33,4 @@ class LeaderSimplifiedTests(TestCase):
         self.assertNotIn("chart.umd", b)
         self.assertIn(">Opening</th>", b)
         self.assertNotIn("Recent expenses", b)
-        self.assertIn("tableToJpeg('ldSubgroups'", b)
+        self.assertIn("tableToPng('ldSubgroups'", b)

@@ -22,7 +22,8 @@ from giving.models import Transaction
 from members.models import Member
 from .models import Envelope, EnvelopeBatch, EnvelopeBatchRow, EnvelopeLine
 from .services.posting import (PREFERRED, _amount, _expand_lines,       # noqa: F401
-                               _is_building, _save_envelope, column_catalog)
+                               _is_building, _save_envelope, column_catalog,
+                               rekey_to_subgroups, subgroups_for)
 
 
 from core.utils import (sabbath_bucket, sabbath_of, last_saturday as _last_saturday,
@@ -153,7 +154,7 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
     """
     template_name = "envelopes/ledger.html"
 
-    def get(self, request):
+    def get(self, request, pk=None):
         from departments.models import DevelopmentGroup, Department
         dev = Department.objects.filter(category="DEVELOPMENT",
                                         parent__isnull=True).first()
@@ -165,11 +166,23 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
             sab_raw = sab.isoformat()
 
         batch = None
-        batch_id = request.GET.get("batch")
+        batch_id = pk or request.GET.get("batch")
         if batch_id:
             batch = EnvelopeBatch.objects.filter(
                 pk=batch_id, created_by=request.user,
                 status__in=EnvelopeBatch.EDITABLE_STATUSES).first()
+            if batch is None and pk:
+                # the /ledger/<pk>/ link (e.g. "Continue editing" from the
+                # batch detail page) went stale — someone already submitted
+                # it, or it's not this user's batch. Don't silently fall
+                # through to a blank sheet; say so and send them somewhere
+                # useful.
+                messages.info(request, "That draft is no longer editable — "
+                                       "it may already have been submitted.")
+                return redirect("envelope_batch_list")
+            if batch is not None:
+                sab = batch.sabbath_date
+                sab_raw = sab.isoformat()
         if batch is None:
             batch = (EnvelopeBatch.objects.filter(
                         created_by=request.user, sabbath_date=sab,
@@ -682,14 +695,23 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
             if not amounts:
                 continue
             dev_group_id = None
+            group_number = None
             if group_i is not None:
                 gv = cell(group_i)
                 if gv not in (None, ""):
-                    from departments.models import DevelopmentGroup
                     digits = "".join(ch for ch in str(gv) if ch.isdigit())
                     if digits:
-                        dg = DevelopmentGroup.objects.filter(number=int(digits)).first()
+                        group_number = int(digits)
+                        from departments.models import DevelopmentGroup
+                        dg = DevelopmentGroup.objects.filter(number=group_number).first()
                         dev_group_id = dg.id if dg else None
+            # One "Group"/"Group Number" cell applies row-wide: it both feeds
+            # the Development-Group tag above (unchanged) and — generalised —
+            # reattributes any OTHER fund column's amount to that fund's own
+            # numbered subgroup, if it has one (rekey_to_subgroups is a no-op
+            # for funds with no matching numbered subgroup, so a plain sheet
+            # with no such funds behaves exactly as before).
+            amounts = rekey_to_subgroups(amounts, group_number, funds)
             receipt = str(cell(rcpt_i) or "").strip() if rcpt_i is not None else ""
             if not receipt:
                 receipt = str(next_no)

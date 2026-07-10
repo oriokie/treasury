@@ -11,7 +11,10 @@
 </h1>
 <div class="sub">{{ batch.get_source_display }} · Sabbath {{ batch.sabbath_date|date:"d F Y" }} · created by {{ batch.created_by.get_full_name|default:batch.created_by.username }}</div></div>
 <div class="btn-row no-print">
-  {% if can_edit %}<a class="btn btn-sm" href="{% url 'envelope_ledger_edit' batch.pk %}">Continue editing</a>{% endif %}
+  {% if can_edit %}<a class="btn btn-sm" href="{% url 'envelope_ledger_edit' batch.pk %}">Continue editing</a>
+  <form method="post" action="{% url 'envelope_batch_delete' batch.pk %}"
+        onsubmit="return confirm('Delete this draft? This cannot be undone.');">{% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--danger,#b04a4a)">🗑 Delete draft</button></form>{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'envelope_batch_list' %}">← Review queue</a>
 </div></div>
 

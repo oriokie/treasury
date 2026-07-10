@@ -1283,3 +1283,88 @@ recommended before relying on the drag/resize/pin interactions in production.
   currently per-batch; a treasurer processing many small batches at once has
   no bulk action. **Priority: Low-Medium**, revisit once real usage volume is
   known.
+
+## 51. Six production fixes to the envelope ledger / dashboard / fund reports — IMPLEMENTED (v2.40)
+
+**1. `/envelopes/ledger/<pk>/` crashed — fixed.** `EnvelopeLedgerCreate.get()`
+didn't accept the URL's `pk` kwarg the `envelope_ledger_edit` route passes.
+Fixed, and hardened: a stale or another user's `pk` (e.g. the batch was just
+submitted in another tab) now redirects to the Review Queue with a clear
+message instead of either crashing or silently showing the wrong sheet.
+
+**2. Deleting an uncommitted draft — the backend endpoint already existed
+(`EnvelopeBatchDeleteDraftView`, added in v2.39) but no page linked to it.**
+Added a "delete" action on the Review Queue list (per draft/returned row, own
+batches only) and a "🗑 Delete draft" button on the batch detail page, both
+behind a confirm dialog.
+
+**3. Dashboard chart sizing (and the "broken div" it caused).** None of the
+four dashboard `new Chart(...)` calls set `maintainAspectRatio: false`, and
+none of their container `<div>`s had a height — Chart.js's default
+aspect-ratio sizing let a doughnut chart grow to match its card's full width,
+blowing out the card's height and the three-column grid row along with it
+(the "broken" div was that stretched card, not a missing/mismatched tag —
+confirmed by parsing every affected page with a stack-based HTML validator,
+which found zero structural errors before or after). Fixed with a
+`.chart-box` (height-constrained, `position:relative`) wrapper around every
+canvas plus `maintainAspectRatio:false` on every chart, so cards in a row now
+size consistently.
+
+**4. JPEG → PNG across every image-export path — renamed comprehensively, not
+just the output format.** `static/js/table_jpeg.js` → `table_png.js`
+(`tableToJpeg` → `tableToPng`, `canvas.toDataURL('image/jpeg', .95)` →
+`('image/png')`), the dashboard's inline `downloadLocalFundsJpeg()` →
+`downloadLocalFundsPng()`, and the two server-side Pillow-rendered budget
+images (`cashbook/services/goal_chart.py`: `build_group_goals_jpeg` →
+`_png`, `build_budget_items_jpeg` → `_png`, `format="JPEG",quality=92"` →
+`format="PNG"`; views/URLs/templates renamed to match:
+`group-goals.jpg`→`.png`, `items.jpg`→`.png`). PNG is the right choice for
+all of these — every one is a table of sharp text and flat fills, and JPEG's
+lossy compression blurs text edges and bands flat colours, while PNG is
+lossless with no real file-size cost for a one-off download.
+
+**5. Selecting Bank/Cash (or a Development Group) on one row didn't propagate
+to later rows.** The v2.39 design only copied the row-above's value at the
+moment a *new* row was created; changing an *existing* row's channel/group
+did nothing further. Fixed with the same cascade the receipt-number field
+already used: changing a row's Channel or Development Group now propagates
+that value forward to every later row that hasn't itself been explicitly
+changed, and an explicit later change becomes the new anchor for what follows
+it — verified end-to-end (including the multi-override case) by running the
+actual page JavaScript in a real DOM via Node + jsdom.
+
+**6. Subgroup picker generalised beyond Development.** `Department.parent`/
+`subgroups` was already a general mechanism (any fund can have real
+sub-account child funds — e.g. Trust Fund → Tithe, Camp Meeting, Evangelism);
+the ledger only ever offered a "which subgroup?" picker for the Development
+fund specifically, via the separate lightweight `DevelopmentGroup` tag model.
+Rather than migrate `DevelopmentGroup` into a generic model (a large, risky
+change touching 15+ modules — reports, member giving history, the bank
+importer, the assistant — for a fund that already works), the fix builds a
+*second*, additive mechanism for funds that have real `Department.parent`
+children: `column_catalog()` now carries each fund's `subgroups` (id/label/
+trailing-number-if-any), and any such column gets a generic picker — but
+unlike Development's non-posting tag, choosing a subgroup here re-targets the
+amount to post directly against that child fund's own account (since these
+are independent real funds with their own balances, not a reporting
+dimension on one fund). The entry grid's totals/summary still attribute a
+subgroup-targeted amount back to its parent fund's display bucket so the
+running summary reads naturally. The Excel import's "Group"/"Group Number"
+column now also feeds this — "the same row allocate" as requested: reusing
+the identical trailing-number-matching idea a numbered fund family already
+uses for bank-narration parsing, applied per-row to reattribute a
+subgroup-capable fund's amount to its matching numbered child. Development's
+own existing behaviour (DevelopmentGroup, unaffected) continues exactly as
+before — this is a parallel, additive capability, not a replacement.
+
+**Testing.** `envelopes/test_ledger_fixes_v240.py` (20 tests) covers items
+1/2/6 at the Django level (URL fix + redirect, delete-button presence and
+permission, subgroup metadata/rekeying/import). Item 5's cascade and item
+6's client-side picker/rekey/totals-bucketing were verified by running the
+actual extracted page JavaScript in a real DOM (Node + jsdom) — the same
+approach used for the v2.39 grid work, since no browser is available in this
+sandbox. `cashbook/test_goal_table_png.py` / `test_budget_items_png.py`
+replace the old JPEG test files. All four touched pages were re-validated
+with a stack-based HTML structural check (zero errors). 150 tests across the
+directly-touched apps plus a further 149 across `leaders`/`departments`/
+`core` (checking for CSS/template collateral effects) all pass.

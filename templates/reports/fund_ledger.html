@@ -32,7 +32,7 @@
 <div class="btn-row no-print"><a class="btn btn-sm" href="{% url 'report_fund_members' department.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">👤 By member</a>
 <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups">⤓ Excel</a>
 <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=subgroups-csv">CSV</a>
-<button type="button" class="btn btn-ghost btn-sm" onclick="tableToJpeg('subAccountsTable', {title:'{{ department.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'fund-{{ department.slug|default:department.id }}-subaccounts', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download the sub-accounts as a JPEG image">⤓ JPEG</button></div></div>
+<button type="button" class="btn btn-ghost btn-sm" onclick="tableToPng('subAccountsTable', {title:'{{ department.name|escapejs }} — sub-accounts', subtitle:'{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}', filename:'fund-{{ department.slug|default:department.id }}-subaccounts', stamp:'Collections as of '+new Date().toLocaleString()})" title="Download the sub-accounts as a PNG image">⤓ PNG</button></div></div>
 <div class="table-wrap"><table class="ledger" id="subAccountsTable">
   <thead><tr><th>Sub-account</th><th class="num">Opening</th><th class="num">Receipts</th>{% if sub_show_payments %}<th class="num">Payments</th>{% endif %}<th class="num">Closing</th></tr></thead>
   <tbody>
@@ -56,5 +56,5 @@
 </table></div>
 <style>.total-row td{border-top:2px solid var(--line)}</style>
 {% endif %}
-<script src="{% static 'js/table_jpeg.js' %}"></script>
+<script src="{% static 'js/table_png.js' %}"></script>
 {% endblock %}

@@ -1,10 +1,10 @@
-/* Dependency-free "download this table as a JPEG" helper.
- * Draws an HTML <table> onto a canvas and exports image/jpeg — no html2canvas,
+/* Dependency-free "download this table as a PNG" helper.
+ * Draws an HTML <table> onto a canvas and exports image/png — no html2canvas,
  * so it works on the production host (which has no Pillow / image libraries).
  * Adds a title, subtitle and a "current as of" timestamp so a shared image
  * shows how up-to-date the figures are.
  *
- *   tableToJpeg('myTable', {title:'Group A', subtitle:'Jan–Jun 2026',
+ *   tableToPng('myTable', {title:'Group A', subtitle:'Jan–Jun 2026',
  *                          filename:'group-a', stamp:'Collections as of …'});
  */
 (function () {
@@ -20,7 +20,7 @@
     });
   }
 
-  window.tableToJpeg = function (table, opts) {
+  window.tableToPng = function (table, opts) {
     opts = opts || {};
     if (typeof table === 'string') { table = document.getElementById(table); }
     if (!table) { return; }
@@ -93,8 +93,8 @@
     footRows.forEach(function (r) { drawRow(r, { topBorder: true }); });
 
     var link = document.createElement('a');
-    link.download = (opts.filename || 'report') + '.jpg';
-    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.download = (opts.filename || 'report') + '.png';
+    link.href = canvas.toDataURL('image/png');
     document.body.appendChild(link); link.click(); document.body.removeChild(link);
   };
 })();

@@ -1,7 +1,11 @@
-"""Server-side JPEG of a fund's Group Contribution Goals, rendered as an
+"""Server-side PNG of a fund's Group Contribution Goals, rendered as an
 actual table (Group / Goal / Collected / To go / Progress) matching the
 on-screen HTML table exactly — generated with Pillow so it renders
-identically wherever it's downloaded from."""
+identically wherever it's downloaded from. PNG (not JPEG): these are sharp-
+edged tables of text and numbers, and JPEG's lossy compression blurs text
+edges and introduces colour banding on flat fills — PNG is lossless and
+renders crisp at any zoom, at a small file-size cost that doesn't matter for
+a one-off download."""
 import io
 import os
 
@@ -38,15 +42,15 @@ def _money(v):
         return str(v)
 
 
-def build_budget_items_jpeg(*, dept_name, year, rows, tot_budget, tot_actual,
-                            tot_variance, church_name=""):
+def build_budget_items_png(*, dept_name, year, rows, tot_budget, tot_actual,
+                           tot_variance, church_name=""):
     """rows: list of {"name", "category", "note", "budget", "actual",
     "variance", "pct"} — the same shape FundBudgetView already builds for the
-    on-screen page. Returns JPEG bytes. Rendered as a table with the same
+    on-screen page. Returns PNG bytes. Rendered as a table with the same
     five columns as the "Budget vs actual by item" section (Budget item /
     Budget / Actual / Variance / Used), including the totals row — matching
     the on-screen table exactly, using the same server-side rendering
-    approach as build_group_goals_jpeg (Pillow, not a browser screenshot),
+    approach as build_group_goals_png (Pillow, not a browser screenshot),
     so it looks identical wherever it's downloaded."""
     W = 1180
     pad = 40
@@ -175,16 +179,16 @@ def build_budget_items_jpeg(*, dept_name, year, rows, tot_budget, tot_actual,
            font=f_foot, fill=MUTED)
 
     out = io.BytesIO()
-    img.save(out, format="JPEG", quality=92)
+    img.save(out, format="PNG")
     out.seek(0)
     return out.getvalue()
 
 
-def build_group_goals_jpeg(*, dept_name, year, group_rows, contribution_goal,
-                            church_name=""):
+def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
+                          church_name=""):
     """group_rows: list of {"name", "goal", "collected", "pct", "short"}.
     contribution_goal: {"goal", "collected", "short"} totals across all groups.
-    Returns JPEG bytes. Rendered as a table with the same five columns as the
+    Returns PNG bytes. Rendered as a table with the same five columns as the
     on-screen page (Group / Goal / Collected <year> / To go / Progress), not
     a progress-bar chart — so the downloaded image reads exactly like the
     table a treasurer already sees on screen, for printing or sharing
@@ -322,5 +326,5 @@ def build_group_goals_jpeg(*, dept_name, year, group_rows, contribution_goal,
            font=f_foot, fill=MUTED)
 
     buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=92)
+    img.save(buf, format="PNG")
     return buf.getvalue()

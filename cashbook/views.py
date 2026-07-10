@@ -2533,30 +2533,32 @@ class FundBudgetView(LoginRequiredMixin, View):
         return redirect(f"{request.path}?year={year}")
 
 
-class GroupGoalsJpegView(TreasurerRequiredMixin, View):
-    """Server-rendered JPEG of a fund's Group Contribution Goals — a proper
+class GroupGoalsPngView(TreasurerRequiredMixin, View):
+    """Server-rendered PNG of a fund's Group Contribution Goals — a proper
     per-group progress bar chart, generated with Pillow so it looks identical
-    everywhere and needs no client-side rendering (canvas/screenshot)."""
+    everywhere and needs no client-side rendering (canvas/screenshot). PNG
+    rather than JPEG: this is a table of sharp text and flat fills, and PNG's
+    lossless compression keeps it crisp instead of JPEG-blurred."""
     def get(self, request, pk):
         from departments.models import Department
         from core.models import SiteConfig
         from django.http import HttpResponse
-        from .services.goal_chart import build_group_goals_jpeg
+        from .services.goal_chart import build_group_goals_png
         dept = get_object_or_404(Department, pk=pk)
         ctx = FundBudgetView()._ctx(request, dept)
-        data = build_group_goals_jpeg(
+        data = build_group_goals_png(
             dept_name=dept.name, year=ctx["year"], group_rows=ctx["group_rows"],
             contribution_goal=ctx["contribution_goal"],
             church_name=SiteConfig.get().church_name or "")
-        resp = HttpResponse(data, content_type="image/jpeg")
-        fname = f"group-contribution-goals-{dept.slug or dept.id}-{ctx['year']}.jpg"
+        resp = HttpResponse(data, content_type="image/png")
+        fname = f"group-contribution-goals-{dept.slug or dept.id}-{ctx['year']}.png"
         resp["Content-Disposition"] = f'attachment; filename="{fname}"'
         return resp
 
 
-class BudgetItemsJpegView(TreasurerRequiredMixin, View):
-    """Server-rendered JPEG of a fund's 'Budget vs actual by item' table,
-    generated with Pillow — same approach as GroupGoalsJpegView, so it looks
+class BudgetItemsPngView(TreasurerRequiredMixin, View):
+    """Server-rendered PNG of a fund's 'Budget vs actual by item' table,
+    generated with Pillow — same approach as GroupGoalsPngView, so it looks
     identical wherever it's downloaded, matching the on-screen table exactly
     (Budget item / Budget / Actual / Variance / Used), including the totals
     row."""
@@ -2564,16 +2566,16 @@ class BudgetItemsJpegView(TreasurerRequiredMixin, View):
         from departments.models import Department
         from core.models import SiteConfig
         from django.http import HttpResponse
-        from .services.goal_chart import build_budget_items_jpeg
+        from .services.goal_chart import build_budget_items_png
         dept = get_object_or_404(Department, pk=pk)
         ctx = FundBudgetView()._ctx(request, dept)
-        data = build_budget_items_jpeg(
+        data = build_budget_items_png(
             dept_name=dept.name, year=ctx["year"], rows=ctx["rows"],
             tot_budget=ctx["tot_budget"], tot_actual=ctx["tot_actual"],
             tot_variance=ctx["tot_variance"],
             church_name=SiteConfig.get().church_name or "")
-        resp = HttpResponse(data, content_type="image/jpeg")
-        fname = f"budget-vs-actual-{dept.slug or dept.id}-{ctx['year']}.jpg"
+        resp = HttpResponse(data, content_type="image/png")
+        fname = f"budget-vs-actual-{dept.slug or dept.id}-{ctx['year']}.png"
         resp["Content-Disposition"] = f'attachment; filename="{fname}"'
         return resp
 

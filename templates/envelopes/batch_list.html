@@ -44,7 +44,12 @@
   <td class="u-xs muted">{{ b.updated_at|date:"d M, H:i" }}</td>
   <td>
     {% if b.status == 'DRAFT' or b.status == 'RETURNED' %}
-      {% if b.created_by_id == request.user.id %}<a class="link u-xs" href="{% url 'envelope_ledger_edit' b.pk %}">continue editing</a>{% endif %}
+      {% if b.created_by_id == request.user.id %}
+        <a class="link u-xs" href="{% url 'envelope_ledger_edit' b.pk %}">continue editing</a>
+        <form method="post" action="{% url 'envelope_batch_delete' b.pk %}" class="u-inline"
+              onsubmit="return confirm('Delete this draft? This cannot be undone.');">{% csrf_token %}
+          <button type="submit" class="link u-xs link-danger">delete</button></form>
+      {% endif %}
     {% elif b.status == 'REVIEW' and can_review %}
       <a class="link u-xs" href="{% url 'envelope_batch_detail' b.pk %}">review</a>
     {% elif b.status == 'APPROVED' and can_review %}
@@ -63,5 +68,8 @@
 <style>
 .row-warn td{background:var(--danger-soft,#fbeceb)}
 .row-muted td{opacity:.55}
+.link-danger{color:var(--danger,#b04a4a);background:none;border:0;cursor:pointer;
+  font-size:inherit;padding:0;text-decoration:underline}
+.link-danger:hover{opacity:.8}
 </style>
 {% endblock %}

@@ -83,18 +83,18 @@
 
 {% if "charts" in widget_visible %}<div class="grid cols-3 u-mb-lg" data-w="charts" style="order:{{ widget_order.charts }}">
   <div class="card"><div class="hd">Income by channel</div><div class="bd chart-center">
-    <canvas id="channelChart" height="200"></canvas></div></div>
+    <div class="chart-box"><canvas id="channelChart"></canvas></div></div></div>
   <div class="card"><div class="hd">Local vs trust ({{ start|date:"M Y" }})</div><div class="bd">
-    {% if has_local_trust %}<canvas id="localTrustChart" height="200"></canvas>
+    {% if has_local_trust %}<div class="chart-box"><canvas id="localTrustChart"></canvas></div>
     {% else %}<div class="chart-empty">No receipts in this period</div>{% endif %}</div></div>
   <div class="card"><div class="hd">Top funds by receipts</div><div class="bd">
-    {% if has_topfunds %}<canvas id="topFundsChart" height="200"></canvas>
+    {% if has_topfunds %}<div class="chart-box"><canvas id="topFundsChart"></canvas></div>
     {% else %}<div class="chart-empty">No fund receipts in range</div>{% endif %}</div></div>
 </div>{% endif %}
 
 {% if "funds" in widget_visible %}<div data-w="funds" style="order:{{ widget_order.funds }}">
 <div class="section-title section-head">Local funds <span class="muted">— {{ local_rows|length }} fund(s)</span>
-  <button type="button" class="btn btn-sm btn-ghost no-print toolbar right" onclick="downloadLocalFundsJpeg()" title="Download this table as a JPEG image">⤓ JPEG</button>
+  <button type="button" class="btn btn-sm btn-ghost no-print toolbar right" onclick="downloadLocalFundsPng()" title="Download this table as a PNG image">⤓ PNG</button>
 </div>
 <div class="table-wrap u-mb-lg">
   <table class="ledger" id="localFundsTable" data-period="{{ start|date:'j M Y' }} – {{ end|date:'j M Y' }}" data-church="{{ CHURCH_NAME|default:SITE_NAME }}">
@@ -121,7 +121,7 @@
 </div>
 
 <script>
-function downloadLocalFundsJpeg(){
+function downloadLocalFundsPng(){
   var table = document.getElementById('localFundsTable');
   if(!table){ return; }
   var scale = 2;
@@ -182,8 +182,8 @@ function downloadLocalFundsJpeg(){
   bodyRows.forEach(function(r,idx){ drawRow(r, {zebra: idx%2===1}); });
   footRows.forEach(function(r){ drawRow(r, {topBorder:true}); });
   var link = document.createElement('a');
-  link.download = 'local-funds.jpg';
-  link.href = canvas.toDataURL('image/jpeg', 0.95);
+  link.download = 'local-funds.png';
+  link.href = canvas.toDataURL('image/png');
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 </script>
@@ -225,7 +225,7 @@ function downloadLocalFundsJpeg(){
 <div data-w="trend" style="order:{{ widget_order.trend }}">
 <div class="section-title section-head">Multi-year trend <span class="muted">— January–{{ trend_through }}, each year</span></div>
 <div class="card u-mb-lg"><div class="bd">
-  <canvas id="trendChart" height="110"></canvas>
+  <div class="chart-box chart-box-lg"><canvas id="trendChart"></canvas></div>
   <p class="help u-mt-sm">Collection, trust fund, and expenditure for January–{{ trend_through }} of each year, so the year in progress is compared like-for-like. The current year updates from the live ledger.{% if trend_approx %} Years held only as an annual total are pro-rated to this point.{% endif %}</p>
 </div></div>
 </div>{% endif %}
@@ -267,7 +267,8 @@ function downloadLocalFundsJpeg(){
       data: { labels: ch.map(function(d){return d.label;}),
         datasets: [{ data: ch.map(function(d){return d.value;}),
           backgroundColor: [forest, brass, '#6b8f7e'] }]},
-      options: { plugins: { legend: { position: 'bottom' } } }
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } } }
     });
   }
 
@@ -277,7 +278,8 @@ function downloadLocalFundsJpeg(){
     type: 'doughnut',
     data: { labels: ['Local funds', 'Trust funds'], datasets: [
       { data: [lt.local, lt.trust], backgroundColor: [forest, brass] } ]},
-    options: { plugins: { legend: { position: 'bottom' } } }
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } } }
   });
   {% endif %}
 
@@ -286,7 +288,8 @@ function downloadLocalFundsJpeg(){
   new Chart(document.getElementById('topFundsChart'), {
     type: 'bar',
     data: { labels: tf.labels, datasets: [{ label: 'Receipts', data: tf.values, backgroundColor: brass }]},
-    options: { indexAxis: 'y', plugins: { legend: { display: false } },
+    options: { responsive: true, maintainAspectRatio: false,
+      indexAxis: 'y', plugins: { legend: { display: false } },
       scales: { x: { ticks: { callback: money } } } }
   });
   {% endif %}
@@ -300,7 +303,7 @@ function downloadLocalFundsJpeg(){
       { label: 'Trust fund', data: data.map(function(d){return d.trust;}), backgroundColor: brass },
       { label: 'Expenditure', data: data.map(function(d){return d.expenditure;}), backgroundColor: danger }
     ]},
-    options: { responsive: true, plugins: { legend: { position: 'bottom' } },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } },
       scales: { y: { ticks: { callback: function(v){ return (v/1000000).toFixed(1)+'M'; } } } } }
   });
   {% endif %}

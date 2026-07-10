@@ -30,6 +30,6 @@ class FundSubaccountSortTests(TestCase):
         r = self.c.get(f"/reports/fund/{self.parent.id}/?start=2020-01-01&end=2030-12-31")
         b = r.content.decode()
         self.assertEqual(r.status_code, 200)
-        self.assertIn("tableToJpeg('subAccountsTable'", b)
+        self.assertIn("tableToPng('subAccountsTable'", b)
         # the higher-receipts sub-account appears before the lower one
         self.assertLess(b.index("Zzz High"), b.index("Aaa Low"))

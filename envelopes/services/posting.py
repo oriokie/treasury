@@ -35,11 +35,43 @@ def _is_building(name):
     return "building" in (name or "").lower()
 
 
+def _trailing_number(name):
+    """The trailing integer in a name, e.g. 'Small Group 7' -> 7, 'Group_03' ->
+    3 — the same "number a fund by its trailing digits" convention the ledger's
+    receipt-sequencing and the numbered-fund-family bank-narration matching
+    both already use. None if the name has no trailing digits."""
+    import re
+    m = re.search(r"(\d+)\s*$", (name or "").strip())
+    return int(m.group(1)) if m else None
+
+
+def subgroups_for(dept):
+    """A fund's own sub-account children (Department.parent — e.g. Trust Fund
+    → Tithe, Camp Meeting, ...; or any fund set up with numbered subgroups,
+    e.g. 'Small Group 1'..'Small Group 12'), as
+    [{"id", "label", "number"}, ...] ordered by their trailing number where
+    they have one, then by name. Empty for a fund with no subgroups — the
+    common case."""
+    kids = list(dept.subgroups.filter(active=True).order_by("name"))
+    out = []
+    for k in kids:
+        out.append({"id": k.id, "label": k.name, "number": _trailing_number(k.name)})
+    out.sort(key=lambda r: (r["number"] is None, r["number"] or 0, r["label"]))
+    return out
+
+
 def column_catalog(for_import=False):
     """Candidate ledger columns: active funds (excluding Building) + split funds,
     preferred ones first, with sensible defaults pre-selected. When for_import is
     set, sub-accounts (Trust Fund and LCB children) are excluded — imports use the
-    standalone funds and split offerings only."""
+    standalone funds and split offerings only.
+
+    Any fund that itself has active sub-account children (``subgroups`` below)
+    carries that list, so the entry grid can offer a "which subgroup?" picker
+    for it — the same idea Development Groups already provide for the
+    Development fund, generalised to any fund set up with real child funds
+    (Department.parent), not just Development's own lightweight group tags.
+    """
     from giving.models import SplitFund
     from departments.models import split_component_dept_ids
     skip_ids = split_component_dept_ids() if for_import else set()
@@ -50,10 +82,12 @@ def column_catalog(for_import=False):
         if d.id in skip_ids:        # the 50% split halves — shown as one split column
             continue
         cols.append({"key": str(d.id), "label": d.name, "name": d.name,
-                     "kind": "dept", "trust": d.is_trust})
+                     "kind": "dept", "trust": d.is_trust,
+                     "subgroups": subgroups_for(d)})
     for s in SplitFund.objects.filter(active=True):
         cols.append({"key": f"split:{s.id}", "label": f"{s.name} (split)",
-                     "name": s.name, "kind": "split", "trust": False})
+                     "name": s.name, "kind": "split", "trust": False,
+                     "subgroups": []})
     pref = [p.lower() for p in PREFERRED]
 
     def rank(c):
@@ -63,6 +97,33 @@ def column_catalog(for_import=False):
     for c in cols:
         c["default"] = c["name"].lower() in set(pref)
     return cols
+
+
+def rekey_to_subgroups(amounts, group_number, funds):
+    """Given a row's raw amounts ({dept_id_or_split: raw}) and a parsed group
+    number (from a sheet's "Group"/"Group Number" column, or the ledger's
+    Development-Group-style picker generalised to any fund), reattribute any
+    amount whose fund has a subgroup numbered exactly that to the subgroup
+    instead of the parent fund — "use the same row allocate" a numbered fund
+    family already gets, applied per-row at entry time rather than by parsing
+    a bank narration. Amounts for funds with no matching numbered subgroup
+    (including funds with no subgroups at all) are left keyed to the fund
+    itself, unchanged. Returns a NEW dict; does not mutate the input."""
+    if group_number is None:
+        return dict(amounts)
+    out = {}
+    for key, raw in amounts.items():
+        dept = funds.get(int(key)) if str(key).isdigit() else None
+        if dept is not None:
+            for sg in subgroups_for(dept):
+                if sg["number"] == group_number:
+                    out[str(sg["id"])] = raw
+                    break
+            else:
+                out[key] = raw
+        else:
+            out[key] = raw
+    return out
 
 
 def _amount(raw):
