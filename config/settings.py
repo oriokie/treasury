@@ -138,6 +138,10 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
     "axes.middleware.AxesMiddleware",
+    # Opens a request-scoped memo so heavy reporting aggregates (department_summary,
+    # trust_summary, …) that flow through core.perfcache.cached compute at most
+    # once per request. Placed last so it wraps view execution.
+    "core.perfcache.RequestScopeMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

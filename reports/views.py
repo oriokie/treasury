@@ -3936,3 +3936,107 @@ class MonthlyReportWordView(ReportAccessMixin, View):
         return resp
 
 
+
+
+class MetricsCatalogueView(ReportAccessMixin, TemplateView):
+    """The Financial Metrics Registry catalogue — every named financial
+    calculation the system recognises, its accounting definition and its
+    authoritative implementation. This is the human view of the Semantic
+    Reporting Layer: new reports should source figures from these metrics
+    rather than re-deriving accounting logic."""
+    template_name = "reports/metrics_catalogue.html"
+
+    def get_context_data(self, **kwargs):
+        from core.metrics import metrics
+        ctx = super().get_context_data(**kwargs)
+        ctx["by_category"] = metrics.by_category()
+        ctx["count"] = len(metrics.registry)
+        return ctx
+
+
+class EngineReportView(ReportAccessMixin, TemplateView):
+    """Generic view for any report registered on the Generic Report Engine.
+
+    It is a thin adapter: it looks the report up by key, runs the engine's
+    render pipeline (which enforces the report's own permission, resolves
+    filters and builds ONE shared ReportContext), then hands the result to a
+    renderer chosen from the Renderer Registry (?export=csv|xlsx|pdf|docx, or
+    ?print=1). HTML is the default. New engine reports need only be registered;
+    they get a URL, HTML, filters, drill-down, dependency map and every
+    registered export format for free — no per-report or per-format code.
+    """
+    template_name = "reports/engine_report.html"
+
+    def get(self, request, key):
+        from django.core.exceptions import PermissionDenied
+        from django.http import Http404, JsonResponse
+        from core.reporting import (registry, renderer_registry,
+                                    PermissionDenied_, build_dependency_map)
+        report = registry.get(key)
+        if report is None:
+            raise Http404("Unknown report")
+        try:
+            rendered = report.render(request)
+        except PermissionDenied_:
+            raise PermissionDenied
+
+        # dependency map endpoint (documentation / debugging / impact analysis)
+        if request.GET.get("deps") == "json":
+            return JsonResponse(build_dependency_map(rendered).as_dict())
+
+        church = SiteConfig.get().church_name
+        export = request.GET.get("export")
+        fmt = export if export in ("csv", "xlsx", "pdf", "docx") else None
+        if request.GET.get("print") == "1":
+            fmt = "print"
+        if fmt:
+            renderer = renderer_registry.get(fmt)
+            if renderer is not None:
+                out = renderer.render(rendered, church=church, request=request)
+                if isinstance(out, dict):        # print renderer returns ctx
+                    out["querystring"] = request.GET.urlencode()
+                    out["dep_map"] = build_dependency_map(rendered)
+                    out["chart_json"] = self._chart_json(rendered)
+                    return self.render_to_response(out)
+                return out
+
+        return self.render_to_response({
+            "report": report,
+            "rendered": rendered,
+            "sections": rendered.sections,
+            "filters": rendered.filters,
+            "querystring": request.GET.urlencode(),
+            "dep_map": build_dependency_map(rendered),
+            "chart_json": self._chart_json(rendered),
+        })
+
+    @staticmethod
+    def _chart_json(rendered):
+        """Collect chart sections into a {section_key: chartjs_config} JSON blob
+        the template feeds to Chart.js — components stay render-agnostic; the
+        view marshals their specs for the HTML medium."""
+        import json
+        charts = {}
+        for s in rendered.sections:
+            if s.kind == "chart" and s.extra.get("chart"):
+                charts[s.key] = s.extra["chart"]
+        return json.dumps(charts) if charts else ""
+
+
+class ComponentCatalogueView(ReportAccessMixin, TemplateView):
+    """The report component library catalogue — every reusable component the
+    Generic Report Engine offers, grouped by category, plus the registered
+    engine reports and the available render formats. The human view of the
+    component-based reporting architecture: new reports are composed from these
+    components, all fed by the Semantic Reporting Layer."""
+    template_name = "reports/component_catalogue.html"
+
+    def get_context_data(self, **kwargs):
+        from core.reporting import (component_registry, registry,
+                                    renderer_registry)
+        ctx = super().get_context_data(**kwargs)
+        ctx["by_category"] = component_registry.by_category()
+        ctx["component_count"] = len(component_registry._factories)
+        ctx["reports"] = registry.all()
+        ctx["formats"] = [(r.fmt, r.label) for r in renderer_registry.all()]
+        return ctx

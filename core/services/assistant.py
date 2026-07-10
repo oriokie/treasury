@@ -73,19 +73,12 @@ def parse_period(text):
 
 
 def _credit_filter(start, end):
-    from giving.models import Transaction
-    # Recognised-income basis, matching every report: confirmed credits, excluding
-    # reversed originals and their contra entries, and excluding the envelope-twin
-    # rows (bank gifts later receipted as envelopes). Without the last condition the
-    # same money is counted twice — the system's most common figure error.
-    f = (Q(direction=Transaction.Direction.CREDIT) & Q(confirmed=True)
-         & Q(is_reversed=False) & Q(is_reversal=False)
-         & Q(excluded_from_income=False))
-    if start:
-        f &= Q(date__gte=start)
-    if end:
-        f &= Q(date__lte=end)
-    return f
+    # Consolidated: the "recognised income" credit basis now has a single home
+    # in core.metrics.income_credit_filter (confirmed, non-reversed credits,
+    # excluding envelope-twin / loan rows via excluded_from_income). This
+    # wrapper is kept so existing call sites in this module keep working.
+    from core.metrics import income_credit_filter
+    return income_credit_filter(start, end)
 
 
 def _find_fund(text):
@@ -211,8 +204,8 @@ def _data_context():
         pass
     # tithe YTD (a key conference figure)
     try:
-        tithe = (Transaction.objects.filter(_credit_filter(y0, today),
-                 department__name__icontains="tithe").aggregate(t=Sum("amount"))["t"] or 0)
+        from core.metrics import metrics
+        tithe = metrics.tithe(y0, today)
         lines.append(f"Tithe received YTD: {tithe}.")
     except Exception:
         pass
@@ -551,8 +544,8 @@ def _answer_rules(question, user=None):
 
     # tithe
     if "tithe" in t:
-        total = (Transaction.objects.filter(_credit_filter(start, end),
-                 department__name__icontains="tithe").aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        from core.metrics import metrics
+        total = metrics.tithe(start, end)
         return {"text": f"Tithe received in {label}: {_money(total)}.",
                 "link": reverse("report_tithe"), "link_label": "Tithe report"}
 

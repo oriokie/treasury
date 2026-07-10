@@ -23,6 +23,17 @@ def pct_width(value):
 
 
 @register.filter
+def pct_of_12(value):
+    """Turn a 12-column grid width into a flex-basis percentage (6 -> 50)."""
+    try:
+        w = int(value)
+    except (TypeError, ValueError):
+        return 100
+    w = max(1, min(12, w))
+    return round(w / 12 * 100)
+
+
+@register.filter
 def sentence_fund(name):
     """Display a fund/department/member name in a readable case instead of the
     ALL CAPS many were originally entered in. Short all-caps tokens (<=4

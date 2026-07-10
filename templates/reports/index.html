@@ -1,7 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Reports · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Reports</h1><div class="sub">Everything the committee, conference and auditor will ask for — export to CSV, Excel or PDF</div></div></div>
+<div class="page-head"><div><h1>Reports</h1><div class="sub">Everything the committee, conference and auditor will ask for — export to CSV, Excel or PDF</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'metrics_catalogue' %}">Metrics registry</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'component_catalogue' %}">Component library</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' 'fund_overview' %}">Fund overview (engine)</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' 'board_pack_demo' %}">Board pack (demo)</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' 'board_report_v2' %}">Board report (engine)</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' 'income_statement_v2' %}">I&amp;E (engine)</a></div></div>
 
 <div class="tabs" id="rtabs">
   <button type="button" class="tab active" data-tab="treasurer">Treasurer</button>

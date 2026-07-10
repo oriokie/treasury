@@ -560,7 +560,7 @@ archiving, in every sense that matters here.
 
 | # | Item | Priority |
 |---|---|---|
-| 1 | Monthly Treasurer's Report recomputes aggregates per-section instead of once | Medium |
+| 1 | Monthly Treasurer's Report recomputes aggregates per-section instead of once | **Addressed (v2.28)** — request-scoped memo in `perfcache` dedupes same-arg aggregates per render; 133→120 queries, no figure change |
 | 2 | `SiteConfig.get()` uncached (7-11 redundant queries/request) | Medium |
 | 3 | No row-level locking on petty-cash-float checks (TOCTOU race) | Low (today) |
 | 4 | No systematic N+1/index audit against real production traffic | Low |
@@ -582,3 +582,171 @@ archiving, in every sense that matters here.
 | 20 | Password expiry tracked but not enforced — pending a rotation policy decision | Low |
 | 21 | Copy permissions between two existing users not implemented (cloning covers the common case) | Low |
 | 22 | "Archive" intentionally not a separate feature from deactivate | N/A (documented) |
+
+---
+
+## Enhancements identified during the Report Engine phase (v2.28) — deferred
+
+These were found while building the Semantic Reporting Layer and Generic Report
+Engine. They are out of scope for the engine-foundation phase (which explicitly
+does not redesign existing reports) and are recorded for after the review phases.
+
+## 23. Named accounting concepts still computed inline in the Monthly/Board report — ADDRESSED (Phase 6)
+
+**Status: Addressed.** `operating_expense` and `capital_expenditure` (plus a
+helper `expense_by_category`) are registered metrics with canonical
+implementations in `reports.services.balances`, proven equal to the legacy
+Income Statement filters. The migrated Income & Expenditure statement
+(`income_statement_v2`) and Board Report (`board_report_v2`) read them via
+`ctx.metric(...)`. The legacy Monthly/Board views remain unchanged (parallel
+run) until adoption.
+
+*(original)* The Monthly Treasurer's Report and the classic Board Report computed
+recognised income, operating expense and capital expenditure inline. **Priority:
+Medium.**
+
+## 24. Dashboards assemble figures directly rather than via ReportContext — PARTLY ADDRESSED (Phase 6)
+
+**Status: Partly addressed.** The main `DashboardView` now obtains its headline
+figures (fund summary, trust summary, trust-to-remit, giving by group, income by
+channel, tithe) through a single `ReportContext`, so they equal the reports'
+metrics by construction (verified by reconciliation test). The executive
+dashboard's blended live+historical trend and the leader dashboards remain on
+their bespoke paths — a larger, separate migration.
+
+*(original)* `core/views.py` (executive) and `leaders/views.py` built headline
+figures with their own aggregates. **Priority: Medium.**
+
+## 25. Engine chart/HTML section kinds not yet exercised — ADDRESSED (v2.29)
+
+**Status: Addressed.** The Chart Engine (`core/reporting/charts.py`) produces
+metric-driven `ChartSpec`s; the `ChartComponent` renders them through the engine
+as `kind="chart"` sections; the `board_pack_demo` report shows two live charts.
+Commentary / info / kpi / signature kinds are also now exercised by the
+component library, and the generic template renders all of them.
+
+*(original)* `SectionData` supports `kind="chart"` and `kind="html"`, but the
+first demo report only used tables/keyvalue. Chart rendering through the engine
+was unproven.
+
+**Priority: Low.**
+
+## 26. Financial statements each rebuild overlapping aggregates
+
+**Description.** Balance Sheet, Income Statement and Cash Flow are separate views
+that each recompute overlapping fund/receipt/expense aggregates. The
+request-scoped memo already dedupes identical calls within one render, but these
+are *separate* page loads.
+
+**Recommendation.** When migrated to the engine, compose them so a "financial
+statements" report builds one `ReportContext` shared across all three
+statements.
+
+**Priority: Low-Medium.**
+
+---
+
+## Enhancements identified during the Component Library phase (v2.29) — deferred
+
+Found while building the component library, chart engine, rendering framework and
+dependency map. Out of scope for this phase (which builds reusable machinery, not
+report migrations or new UI); recorded for after the review phases.
+
+## 27. Report Designer UI (persist layouts as data)
+
+**Description.** `LayoutMeta` is a complete, serialisable layout model
+(`as_dict`/`from_dict`) but nothing edits it yet — reports are still composed in
+Python. A drag-and-drop Report Designer could let treasurers assemble reports
+from the component library and save layouts as data (a list of component keys +
+`LayoutMeta`), with no code change per report.
+
+**Recommendation.** Add a model to persist report definitions + component layouts
+and a builder UI reading the `component_registry` and writing `LayoutMeta`. The
+engine already renders from such a definition; only persistence + UI are missing.
+
+**Priority: Low-Medium** (a feature, not a gap).
+
+## 28. Server-side chart images for PDF/Word exports
+
+**Description.** The PDF and Word renderers omit charts (they note "[chart
+omitted]"), since Chart.js is browser-only. The Monthly report already renders
+chart images server-side with Pillow for its Word export.
+
+**Recommendation.** Give the Chart Engine a server-side image backend (reuse
+`reports/services/chart_image.py`) so `ChartSpec`s can render to PNG for PDF/Word
+exports, then embed them in those renderers.
+
+**Priority: Low.**
+
+## 29. `html` section kind not yet used
+
+**Description.** `SectionData` supports `kind="html"` for arbitrary safe HTML
+fragments, but no component emits it yet (the library covers its needs with
+table/keyvalue/kpi/chart/commentary/info/signature).
+
+**Recommendation.** Add a `RawHtmlComponent` if/when a report needs bespoke
+markup (e.g. a formatted legal notice); render it in the template with
+appropriate escaping/sanitisation.
+
+**Priority: Low.**
+
+---
+
+## Enhancements identified during the Narrative Engine phase (Phase 6) — deferred
+
+## 30. Remaining reports to migrate onto the engine
+
+**Description.** Phase 6 migrated the Income & Expenditure statement, Trial
+Balance, a Financial Position summary and the Board Report, and began the
+dashboard. Still on their legacy implementations: Cash Flow Statement, Statement
+of Fund Balances, full Budget vs Actual, the detailed Financial Position (with
+NBV/prepayments/advances), and the operational registers (Cash Book, Payment/
+Receipt Register, Asset/Liability/Loan/Envelope/Pledge reports, Member/
+Contribution statements, Department & Giving reports).
+
+**Recommendation.** Migrate each by composing existing components + narratives,
+proving figure-equivalence against the legacy view before removing it. The
+machinery (components, renderers, narratives, dependency map) now exists; these
+are compositions, not new infrastructure.
+
+**Priority: Medium.**
+
+## 31. Executive dashboard & leader dashboards still compute figures inline
+
+**Description.** The executive dashboard blends live and historical
+(HistoricalYear/HistoricalMonth) data into a multi-year trend with bespoke
+aggregates; the leader dashboards are department-scoped with their own queries.
+Neither yet flows through `ReportContext`.
+
+**Recommendation.** Introduce period/scope-aware metrics for the historical-trend
+figures, then route these dashboards through `ReportContext`. Larger than the
+main-dashboard migration because of the historical-data blending and leader
+scoping.
+
+**Priority: Medium.**
+
+## 32. Legacy statement/report views can be retired once engine versions are adopted
+
+**Description.** The migrated reports run in parallel with the legacy views
+(`IncomeStatementView`, `TrialBalanceView`, `FinancialPositionView`, the Monthly/
+Board report) to preserve URLs and allow verification. Once the engine versions
+are adopted as the primary reports, the legacy views and templates can be retired
+(or reduced to thin redirects) to remove duplicated presentation code.
+
+**Recommendation.** After a review period, point the existing report URLs at the
+engine reports (via a small adapter) and delete the superseded view/template
+code. Keep the export byte-compatibility in mind for anyone scripting downloads.
+
+**Priority: Low-Medium.**
+
+## 33. Narrative localisation / templating
+
+**Description.** Narrative text is composed in English in code. A future need for
+other languages, or for churches to customise wording, would benefit from
+externalising the sentence templates.
+
+**Recommendation.** If localisation is required, move narrative sentence fragments
+into templates/catalogues keyed by narrative + style, keeping the metric-sourced
+values as substitutions. Determinism must be preserved.
+
+**Priority: Low.**

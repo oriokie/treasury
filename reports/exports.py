@@ -21,7 +21,10 @@ def xlsx_response(filename, header, rows, title=None, church=None):
     from openpyxl.utils import get_column_letter
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = (title or "Report")[:31]
+    # openpyxl forbids : \ / ? * [ ] in sheet titles
+    _safe_title = "".join(c if c not in ":\\/?*[]" else "-"
+                          for c in (title or "Report"))
+    ws.title = _safe_title[:31]
     r = 1
     if church:
         ws.cell(row=r, column=1, value=church).font = Font(bold=True, size=14); r += 1

@@ -18,10 +18,10 @@ def _f(v):
 
 
 def _credits(**extra):
-    return Transaction.objects.filter(direction=Transaction.Direction.CREDIT,
-                                      confirmed=True, is_reversal=False,
-                                      is_reversed=False, excluded_from_income=False,
-                                      **extra)
+    # Consolidated: the income-credit basis lives in core.metrics; this wrapper
+    # keeps the dashboard's existing call sites working unchanged.
+    from core.metrics import income_credits
+    return income_credits(**extra)
 
 
 def _debits(**extra):
@@ -82,7 +82,8 @@ def cards():
     # computed the same way, so it can never drift from it.
     cash_balance = current_cash_position()
 
-    trust_out = sum((r["to_remit"] for r in balances.trust_summary()), Decimal(0))
+    from core.metrics import metrics as _m
+    trust_out = _m.trust_to_remit()
 
     pending = Expense.objects.filter(
         status__in=[Expense.Status.PENDING, Expense.Status.APPROVED])

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Financial metrics registry · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Financial metrics registry</h1>
+<div class="sub">The authoritative home for every financial calculation — {{ count }} metrics. New reports should source figures from these rather than re-deriving accounting logic.</div></div></div>
+
+<p class="help">Each metric names its accounting definition and its single authoritative implementation. Where two calculations intentionally differ on business rules (for example, receipts-by-fund includes loan cash while total-income excludes it), both are listed with the reason — these distinctions are preserved, not collapsed.</p>
+
+{% for category, items in by_category.items %}
+<div class="card u-mb"><div class="hd">{{ category }}</div><div class="bd">
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Metric</th><th>Definition</th><th>Authoritative implementation</th><th>Inputs</th></tr></thead>
+<tbody>{% for m in items %}<tr>
+  <td><strong>{{ m.label }}</strong><div class="help u-mt-0 mono u-xs">{{ m.key }} · {{ m.unit }}</div></td>
+  <td class="u-sm">{{ m.definition }}{% if m.notes %}<div class="help u-mt-0">{{ m.notes }}</div>{% endif %}</td>
+  <td class="mono u-xs">{{ m.authoritative }}</td>
+  <td class="mono u-xs">{{ m.inputs }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+</div></div>
+{% endfor %}
+{% endblock %}

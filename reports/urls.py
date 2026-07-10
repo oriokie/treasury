@@ -4,6 +4,9 @@ from . import loan_reports as lr
 
 urlpatterns = [
     path("", views.ReportIndexView.as_view(), name="report_index"),
+    path("metrics/", views.MetricsCatalogueView.as_view(), name="metrics_catalogue"),
+    path("components/", views.ComponentCatalogueView.as_view(), name="component_catalogue"),
+    path("r/<slug:key>/", views.EngineReportView.as_view(), name="engine_report"),
     path("monthly/", views.MonthlyReportView.as_view(), name="report_monthly"),
     path("offering-summary/", views.OfferingSummaryView.as_view(), name="report_offering"),
     path("envelopes/sabbath/", views.EnvelopeSabbathView.as_view(), name="report_envelope_sabbath"),

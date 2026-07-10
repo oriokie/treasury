@@ -1,5 +1,259 @@
 # Changelog
 
+## v2.30.0 - Financial Narrative Engine & Report Migration (Phase 6)
+A reusable Financial Narrative Engine plus migration of the core financial
+statements and the Board Report onto the Generic Report Engine — every figure
+from the Financial Metrics Registry, commentary generated from the same figures.
+
+**Financial Narrative Engine (core/reporting/narrative.py + narrative_library.py).**
+24 narratives that consume ONLY the Semantic Reporting Layer (ReportContext →
+Metrics Registry): executive summary, financial highlights, income/expense
+analysis, giving trends, budget performance/variance, fund performance,
+restricted/trust funds, development projects, department performance, cash
+position, bank reconciliation, outstanding items, asset/liability/loan position,
+cash flow, financial risks, key changes, exceptions, warnings, recommendations.
+No hardcoded values or accounting logic — a narrative asks the context for
+registered metrics and renders words around them, so commentary can never
+contradict the statements. Deterministic (a pure function of context figures +
+config; verified byte-identical on re-run). Styles (executive/treasurer/auditor/
+committee/detailed/concise) and tones (informational/analytical/formal/executive
+summary) change phrasing, never numbers. Configurable Thresholds drive condition
+detection (budget overruns, negative balances, cash shortages, inactive funds,
+trust due, pending receipts, unpresented payments, large movements), surfaced as
+structured Findings that power the warnings/exceptions/recommendations narratives
+and are machine-readable for future AI. NarrativeEngine facade + narrative_registry.
+
+**Narrative component.** NarrativeComponent folds any narrative into a report;
+it draws from the same shared ReportContext as the tables, and its metrics flow
+into the dependency map.
+
+**New metrics (recommendation #23, addressed).** operating_expense,
+capital_expenditure and a helper expense_by_category, with canonical
+implementations in reports.services.balances proven equal to the legacy Income
+Statement filters. Registry now has 23 metrics.
+
+**Reports migrated (parallel-run; legacy views untouched).** income_statement_v2
+(Statement of Financial Activity — recurrent/capital/operating/net-surplus proven
+identical to the legacy IncomeStatementView), trial_balance_v2 (ledger trial
+balance; balances by construction), financial_position_v2 (summary), and
+board_report_v2 — the Board/Treasurer's Report rebuilt entirely from reusable
+components + narratives (not copied from the legacy view). All use ReportContext
+exclusively, only registry metrics, reusable components/layouts/renderers and the
+narrative engine, and render in HTML/CSV/Excel/PDF/Word/Print.
+
+**Dashboard migration begun (recommendation #24, partly addressed).** The main
+DashboardView obtains its headline figures (fund summary, trust summary,
+trust-to-remit, giving by group, income by channel, tithe) through a single
+ReportContext. Figures are identical (services unchanged; metrics wrap them) and
+now share the reports' memoized metrics — a dashboard figure equals the report
+figure by construction (verified by reconciliation test).
+
+**Accounting validation.** Income & Expenditure migrated figures equal legacy;
+trial balance balances; dashboard tithe/trust-to-remit equal the registry
+metrics; narrative figures equal the context's metric values. No migrated report
+introduces a new accounting calculation.
+
+**Fix.** xlsx export sheet titles are now sanitised (report titles containing
+"/" such as "Board / Treasurer's Report" previously broke the Excel export).
+
+**Backward compatibility.** No existing report, view, template, export, URL or
+permission changed; migrated reports run alongside the legacy ones. No database
+migrations.
+
+**Docs.** docs/NARRATIVE_ENGINE.md (engine architecture, narrative lifecycle,
+migration strategy, component reuse map, remaining legacy reports, accounting
+validation), docs/METRICS_ADOPTION.md updated (23 metrics; narrative + migration
+status), and four deferred recommendations (#30 remaining report migrations, #31
+executive/leader dashboards, #32 retiring legacy views, #33 narrative
+localisation) recorded in docs/recommendations.md.
+
+Tests: 19 new (narrative determinism/provenance/style/detection/thresholds,
+Income Statement figure-equivalence, trial-balance-balances, migrated-report
+exports in every format, narrative-component integration and dependency
+provenance). Regression across narrative, components, reporting layer, metrics,
+dashboard, executive, report accuracy, report views, position reports and ledger
+— all green.
+
+## v2.29.0 - Report Component Library, Chart Engine & Rendering Framework
+A reusable, component-based reporting layer built on the v2.28 Generic Report
+Engine and the Semantic Reporting Layer. No existing report is redesigned or
+migrated — this is the machinery the Board Report (next phase) and future reports
+will compose from.
+
+**Component Library (16 reusable components).** Each is a ComponentSection that
+draws figures ONLY from a ReportContext (the Semantic Reporting Layer → Metrics
+Registry), carries LayoutMeta, and records the metrics it consumed. Components:
+KPI cards, executive summary (auto-generated), fund summary (drill-down to
+ledgers), income summary, expenditure summary, budget vs actual (self-hiding when
+no budgets), cash position, financial statement, bank reconciliation summary,
+outstanding items, variance analysis (vs prior period), chart, commentary,
+signature block, appendix, info panel. Registered in a ComponentRegistry so
+reports compose by name and future modules add components by registration, never
+by editing the engine.
+
+**Chart Engine.** A chart is a metric-driven ChartSpec (never queries the DB);
+to_config() yields a Chart.js config. Generic builders: line, bar/stacked,
+doughnut/pie, waterfall (stacked-bar emulation), comparison, gauge. Metric-driven
+builders: income_by_channel, fund_closing_balances, local_vs_trust. The
+ChartComponent wraps any spec builder, exercising the engine's kind="chart"
+sections (recommendation #25, addressed).
+
+**Rendering Framework (6 formats).** Components produce format-agnostic
+SectionData; renderers turn a RenderedReport into a medium — HTML, CSV, Excel,
+PDF (ReportLab), Word (Word-compatible HTML, the app's existing approach, no new
+dependency), and Print. Registered in a RendererRegistry; format is orthogonal to
+components (a new format is a new renderer, components unchanged). Every renderer
+honours each component's LayoutMeta export/print visibility uniformly. CSV/Excel
+reuse the existing reports.exports helpers.
+
+**Financial Dependency Map.** Derived from an actual render (never
+hand-maintained): traces each component to the metrics it consumed and, via the
+registry's authoritative metadata, to the accounting services behind them.
+Exposes all_metrics/all_services, a reverse metric->components index for impact
+analysis, and a JSON endpoint (?deps=json). Static impact_of_metric() answers
+"which reports break if this metric changes?" without rendering.
+
+**Layout metadata & the future Report Designer.** LayoutMeta is a complete,
+serialisable placement model (width on a 12-col grid, order, priority, group,
+collapse, responsive, print/export visibility, page-break). The renderers honour
+it now; a future drag-and-drop Report Designer can read/write it (as_dict/
+from_dict) so a report becomes data, not code. This phase builds the model, not
+the UI.
+
+**Demonstration + catalogue.** A board_pack_demo report composes 13 components
+(with charts, KPIs, executive summary, signature block) end to end, rendering in
+all six formats. A component catalogue at /reports/components/ lists the library,
+the engine reports and the render formats. The v2.28 fund_overview demo still
+renders unchanged through the extended template.
+
+**Extension points.** New metric -> core/metrics.py; new component -> subclass +
+register; new chart -> ChartEngine builder; new format -> Renderer + register;
+new report -> compose components. Each is registration, not modification.
+
+**Backward compatibility.** No existing report, view, template, export, URL or
+permission changed. No database migrations (no models added). The generic
+template gained new section kinds and a layout-aware grid; existing engine
+reports render unchanged.
+
+**Docs.** docs/COMPONENT_LIBRARY.md (architecture: component model, chart engine,
+rendering framework, dependency map, layout/designer, extension points),
+docs/METRICS_ADOPTION.md updated (0 new metrics needed — honest outcome; the 20
+existing metrics covered the whole library), and three deferred enhancements
+(#27 Report Designer UI, #28 server-side chart images for PDF/Word, #29 html
+section kind) recorded in docs/recommendations.md.
+
+Tests: 31 new (component registry + rendering, chart engine configs incl.
+stacked/waterfall/gauge, all six renderers incl. export/print visibility, the
+dependency map incl. reverse index and static impact analysis, and the
+board_pack_demo end to end in every format). Regression across reporting layer,
+metrics, report accuracy, report views and position reports — all green.
+
+## v2.28.0 - Semantic Reporting Layer & Generic Report Engine
+Two reusable foundations built on top of the Financial Metrics Registry (v2.27),
+without redesigning any existing report. The Board Report will be the first
+consumer, next phase.
+
+**Semantic Reporting Layer (core/reporting/context.py).** A ReportContext is a
+period- and scope-bound doorway to the Metrics Registry, memoized for the life
+of one render. It is the sole interface new code should use to obtain financial
+data: ctx.metric("tithe"), ctx.fund_summary(), etc. Every accessor resolves to a
+registered metric (unknown names raise KeyError — no ad-hoc figures), period is
+auto-applied to period-aware metrics, and results memoize per (metric, args) so
+a report's sections share one computation. ctx.metrics_used() exposes provenance
+for the adoption audit and future AI features.
+
+**Generic Report Engine (core/reporting/engine.py).** Component-based reports:
+Report (registered composition), Section (reusable unit that turns a
+ReportContext into format-agnostic SectionData), Filter (declarative, typed),
+ReportRegistry, and RenderedReport (exports via the existing reports.exports
+helpers). Report.render() enforces the report's permission, resolves filters,
+builds ONE shared ReportContext, and feeds it to every visible section — so
+shared metrics compute once per report. Generic view (EngineReportView) +
+template (engine_report.html) + route (/reports/r/<key>/) render any registered
+report to HTML/CSV/Excel with drill-down, filters and section/report-level
+permissions — no per-report view code.
+
+**First engine report (reports/engine_reports.py).** A "Fund overview"
+demonstration composed of three reusable sections (fund balances with drill-down
+to fund ledgers, income by channel, trust still-to-remit), drawing every figure
+from the registry. Proves the pipeline end to end without touching any existing
+report.
+
+**Recommendation #1 addressed (request-scoped memo).** core.perfcache now opens
+a per-request memo (via RequestScopeMiddleware) so every aggregate flowing
+through perfcache.cached() — department_summary, trust_summary, … — computes at
+most once per request. This benefits the existing hand-written reports with no
+change to their code: the Monthly Treasurer's Report drops from 133 to 120
+queries per render (the eliminated calls were redundant same-period
+department_summary recomputations; the remaining calls use genuinely different
+periods and are correctly not deduped). A mid-request financial write clears the
+memo (bump_data_version), so no stale figure is ever served within a request.
+
+**Backward compatibility.** No existing URL, view, template, export or
+permission changed. One new middleware (opens/closes a per-request dict). No
+database migrations. The engine runs alongside the existing reporting system;
+nothing is migrated this phase.
+
+**Docs.** docs/REPORT_ENGINE.md (architecture, lifecycles, registry, rendering
+pipeline, extension points, migration strategy, developer guide),
+docs/METRICS_ADOPTION.md (adoption report), and four deferred enhancements
+(#23–26) recorded in docs/recommendations.md.
+
+Tests: 22 new (ReportContext memoization/period/provenance, request-scope memo
+including write-then-read correctness and the department_summary dedup, engine
+registration/render/permission/filters/section-visibility, and the fund_overview
+report end to end with exports and drill-down). Regression across reports,
+metrics, executive, dashboard, leaders and giving — all green.
+
+## v2.27.0 - Calculation inventory & Financial Metrics Registry
+A full inventory of every financial calculation in the system, and a single
+authoritative home for them — the Semantic Reporting Layer. No business
+behaviour changed: the only code edits are behaviour-preserving consolidations,
+each proven equal to the idiom it replaced.
+
+**Calculation inventory** (docs/CALCULATION_INVENTORY.md). Every financial
+calculation across reports, dashboards, GL, cash book, reconciliation, giving,
+envelopes, assets, expenses, budgets, statements, exports, charts, model
+properties, managers, template tags and context processors was reviewed and
+classified (unique / duplicate / intentional variant / cross-check /
+report-specific). Key findings: the authoritative maths already lived in a clean
+services layer; the real issues were a few named concepts recomputed inline in
+dashboards and the assistant, and no single discoverable home for a definition.
+
+**Financial Metrics Registry** (core/metrics.py + Reports → Financial metrics
+registry). A self-documenting facade that re-exports the canonical
+implementations under stable semantic names (metrics.tithe, metrics.fund_summary,
+metrics.total_income, metrics.trust_to_remit, metrics.loans_outstanding, …). Each
+metric carries its accounting definition and the dotted path of its
+authoritative implementation, browsable at /reports/metrics/. It is a facade,
+not a rewrite — every metric forwards to the existing service or is the single
+shared implementation of a consolidated concept.
+
+**Consolidations (behaviour-preserving):**
+- Income-credit basis: dashboard._credits and assistant._credit_filter now
+  delegate to core.metrics.income_credit_filter (they were identical).
+- Tithe: the assistant reimplemented it twice inline — once WITHOUT
+  excluded_from_income, a latent divergence — now both call metrics.tithe,
+  which fixes the drift so the assistant matches every report.
+- Trust still-to-remit: the repeated sum(r['to_remit'] …) idiom is now the
+  single metric metrics.trust_to_remit.
+
+**Intentional variants preserved (not merged):** receipts-by-fund (includes loan
+cash) vs total-income (excludes it); balances._credit_filter (cash-position,
+keeps loan cash) vs metrics.income_credit_filter (income-only); report
+fund_balance vs ledger-derived fund_balance (kept as a cross-check); point
+metrics vs monthly time-series. Each is documented with its reason.
+
+**Compatibility:** all legacy service functions keep their signatures and
+behaviour; existing reports, exports, APIs, dashboards and integrations continue
+working unchanged. Migration is incremental — new code imports
+`from core.metrics import metrics`.
+
+Tests: 10 new (registry resolution, and equality tests proving each consolidated
+metric returns exactly what the legacy idiom returned, plus the intentional
+receipts-vs-income distinction). Regression across dashboard, assistant,
+forecast, executive and report accuracy/views — all green. No migrations.
+
 ## v2.26.0 - Payment Register & payment-instrument lifecycle
 The Payment Register becomes the single source of truth for payment
 instruments, while expense vouchers remain the source documents that authorise

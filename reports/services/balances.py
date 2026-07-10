@@ -278,6 +278,55 @@ def tithe_total(start=None, end=None):
     ).aggregate(total=Sum("amount"))["total"] or Decimal(0))
 
 
+def _effective_expense_qs(start=None, end=None):
+    """Approved/paid, non-liability expenses in the period — the base every
+    income-statement expenditure figure is drawn from. Single definition so the
+    Income Statement, Board Report and the operating/capital metrics agree."""
+    from cashbook.models import Expense
+    from django.db.models import Q
+    eff = Q(status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+    if start:
+        eff &= Q(date__gte=start)
+    if end:
+        eff &= Q(date__lte=end)
+    return (Expense.objects.filter(eff)
+            .exclude(doc_class=Expense.DocClass.LIABILITY))
+
+
+def operating_expense_total(start=None, end=None):
+    """Total recurrent (operating) expenditure over the period: approved/paid,
+    non-liability expenses of expenditure_type RECURRENT. Matches the Income
+    Statement's 'total recurrent'."""
+    from cashbook.models import Expense
+    return (_effective_expense_qs(start, end)
+            .filter(expenditure_type=Expense.ExpenditureType.RECURRENT)
+            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+
+def capital_expenditure_total(start=None, end=None):
+    """Total capital expenditure over the period: approved/paid, non-liability
+    expenses of expenditure_type CAPITAL. Matches the Income Statement's 'total
+    capital'."""
+    from cashbook.models import Expense
+    return (_effective_expense_qs(start, end)
+            .filter(expenditure_type=Expense.ExpenditureType.CAPITAL)
+            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+
+def expense_by_category(start=None, end=None, expenditure_type=None):
+    """Effective expenditure grouped by category (display name → amount),
+    optionally restricted to one expenditure_type. Used by the Income Statement
+    and the expense-analysis narrative."""
+    from cashbook.models import Expense
+    qs = _effective_expense_qs(start, end)
+    if expenditure_type:
+        qs = qs.filter(expenditure_type=expenditure_type)
+    cats = dict(Expense.Category.choices)
+    rows = [{"name": cats.get(r["category"], r["category"]), "amount": r["t"] or Decimal(0)}
+            for r in qs.values("category").annotate(t=Sum("amount")).order_by("-t")]
+    return rows
+
+
 def dev_group_progress(start=None, end=None):
     from departments.models import DevelopmentGroup
     rows = []

@@ -1,0 +1,39 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Report component library · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Report component library</h1>
+<div class="sub">{{ component_count }} reusable components the Generic Report Engine composes reports from. Every component draws its figures from the Semantic Reporting Layer (the Financial Metrics Registry), carries layout metadata, and records its metric dependencies.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'metrics_catalogue' %}">Metrics registry</a></div></div>
+
+<p class="help">Reports are assembled by composition: pick components, give each a layout, and the common rendering framework produces HTML, CSV, Excel, PDF, Word and Print — with drill-down, permissions and a dependency map — for free. New components (including from future modules) are added by registration, never by editing the engine.</p>
+
+{% for category, items in by_category.items %}
+<div class="card u-mb"><div class="hd">{{ category }}</div><div class="bd">
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Component</th><th>Key</th><th>Description</th></tr></thead>
+<tbody>{% for c in items %}<tr>
+  <td><strong>{{ c.label }}</strong></td>
+  <td class="mono u-xs">{{ c.key }}</td>
+  <td class="u-sm">{{ c.description|default:"—" }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+</div></div>
+{% endfor %}
+
+<div class="card u-mb"><div class="hd">Engine reports</div><div class="bd">
+<p class="help u-mt-0">Reports registered on the engine. Each gets a URL, HTML, exports, drill-down and a dependency map automatically.</p>
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Report</th><th>Category</th><th>Open</th></tr></thead>
+<tbody>{% for r in reports %}<tr>
+  <td><strong>{{ r.title }}</strong><div class="help u-mt-0">{{ r.description }}</div></td>
+  <td>{{ r.category }}</td>
+  <td><a class="link" href="{% url 'engine_report' r.key %}">Open →</a></td>
+</tr>{% endfor %}</tbody>
+</table></div>
+</div></div>
+
+<div class="card"><div class="hd">Render formats</div><div class="bd">
+<p>Every engine report renders to: {% for fmt, label in formats %}<span class="pill pill-grey u-xs">{{ label }}</span> {% endfor %}</p>
+<p class="help u-mt-0">Formats are added by registering a renderer — components never change to gain a new output format.</p>
+</div></div>
+{% endblock %}

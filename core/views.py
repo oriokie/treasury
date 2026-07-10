@@ -29,11 +29,20 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         start, end = parse_period(self.request)
 
-        rows = balances.department_summary(start, end)
+        # Semantic Reporting Layer: obtain headline figures through a single
+        # ReportContext so the dashboard shares the exact metrics (and their
+        # request-scoped memoization) that the reports use — guaranteeing a
+        # dashboard figure equals the corresponding report figure by
+        # construction (recommendation #24). The underlying services are
+        # unchanged; the registry metrics wrap them.
+        from core.reporting import ReportContext
+        rc = ReportContext.for_period(start, end)
+
+        rows = rc.fund_summary(consolidated=True)
         ctx["start"], ctx["end"] = start, end
         ctx["totals"] = balances.totals(rows)
-        ctx["trust_rows"] = balances.trust_summary(start, end)
-        ctx["trust_to_remit"] = sum((r["to_remit"] for r in ctx["trust_rows"]), 0)
+        ctx["trust_rows"] = rc.trust_summary()
+        ctx["trust_to_remit"] = rc.trust_to_remit()
         ctx["local_rows"] = sorted(
             [r for r in rows if not r["is_trust"]],
             key=lambda r: r["closing"] or 0, reverse=True)
@@ -51,8 +60,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["missing_receipts_value"] = _mr.aggregate(s=_Sum("amount"))["s"] or 0
         from core.models import SiteConfig
         ctx["field_name"] = SiteConfig.get().field_name or "conference"
-        ctx["by_group"] = balances.giving_by_group(start, end)
-        ctx["by_channel"] = balances.income_by_channel(start, end)
+        ctx["by_group"] = rc.metric("giving_by_group", start, end)
+        ctx["by_channel"] = rc.income_by_channel()
         # Item 4: a clearer "how giving arrives" card — channel mix with shares
         from decimal import Decimal as _D
         _ch_labels = {"BANK": "Bank / M-Pesa", "CASH": "Cash", "ENVELOPE": "Envelopes"}
@@ -63,7 +72,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "pct": int(round((r["total"] or _D(0)) / _ch_total * 100)) if _ch_total else 0,
         } for r in ctx["by_channel"]], key=lambda x: x["total"], reverse=True)
         ctx["channel_total"] = _ch_total
-        ctx["tithe"] = balances.tithe_total(start, end)
+        ctx["tithe"] = rc.tithe()
 
         # per-user dashboard widget visibility + order
         try:
