@@ -78,6 +78,33 @@ def _flatten(section):
     return section.title, header, rows
 
 
+def _section_group(section):
+    """The section's layout group name (or '' if none)."""
+    layout = section.extra.get("layout")
+    if not layout:
+        return ""
+    return layout.get("group", "") or ""
+
+
+def _section_breaks(section):
+    layout = section.extra.get("layout")
+    return bool(layout and layout.get("page_break_before"))
+
+
+def _cover_health_line(rendered):
+    """A one-line financial-health summary for a board-pack export cover, or ''
+    when unavailable. Only computed for reports that opt into a custom template
+    (the board pack), so ordinary engine exports pay nothing for it."""
+    if not getattr(rendered.report, "html_template", None):
+        return ""
+    try:
+        from core.intelligence import compute_health_score
+        hs = compute_health_score(rendered.context)
+        return f"Financial health score: {hs.overall:.0f}/100 ({hs.band})"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 class Renderer:
     """Base renderer. Subclasses set ``fmt`` and implement ``render``."""
     fmt = ""
@@ -176,40 +203,78 @@ class PdfRenderer(Renderer):
         from django.http import HttpResponse
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
         from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
-                                        Paragraph, Spacer)
+                                        Paragraph, Spacer, HRFlowable,
+                                        PageBreak)
         buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm,
-                                bottomMargin=18 * mm)
-        styles = getSampleStyleSheet()
         brand = resolve_branding(church)
+        primary = colors.HexColor(brand.get("primary_colour") or "#1f5f4f")
+
+        def _footer(canvas, doc):
+            canvas.saveState()
+            canvas.setFont("Helvetica", 8)
+            canvas.setFillColor(colors.HexColor("#666666"))
+            title = rendered.report.title
+            canvas.drawString(18 * mm, 12 * mm, title)
+            canvas.drawRightString(
+                A4[0] - 18 * mm, 12 * mm, f"Page {doc.page}")
+            if brand.get("church_name"):
+                canvas.drawCentredString(A4[0] / 2, 12 * mm,
+                                         brand["church_name"])
+            canvas.restoreState()
+
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm,
+                                bottomMargin=20 * mm)
+        styles = getSampleStyleSheet()
+        h_group = ParagraphStyle(
+            "GroupHead", parent=styles["Heading1"], textColor=primary,
+            fontSize=15, spaceBefore=4, spaceAfter=6)
         story = []
+        # ---- cover ----
         if brand.get("header_text"):
             story.append(Paragraph(brand["header_text"], styles["Normal"]))
         if brand.get("church_name"):
-            story.append(Paragraph(f"<b>{brand['church_name']}</b>", styles["Title"]))
+            story.append(Paragraph(f"<b>{brand['church_name']}</b>",
+                                   styles["Title"]))
         if brand.get("conference") or brand.get("region"):
             story.append(Paragraph(
                 " · ".join(x for x in (brand.get("conference"),
                                        brand.get("region")) if x),
                 styles["Normal"]))
+        story.append(Spacer(1, 2 * mm))
         story.append(Paragraph(rendered.report.title, styles["Heading1"]))
         if rendered.context.start and rendered.context.end:
             story.append(Paragraph(
-                f"{rendered.context.start:%d %b %Y} – "
-                f"{rendered.context.end:%d %b %Y}", styles["Normal"]))
-        story.append(Spacer(1, 6 * mm))
+                f"For the period {rendered.context.start:%d %B %Y} – "
+                f"{rendered.context.end:%d %B %Y}", styles["Normal"]))
+        health_line = _cover_health_line(rendered)
+        if health_line:
+            story.append(Spacer(1, 1 * mm))
+            story.append(Paragraph(f"<b>{health_line}</b>", styles["Normal"]))
+        story.append(Spacer(1, 2 * mm))
+        story.append(HRFlowable(width="100%", thickness=1.2, color=primary,
+                                spaceAfter=6))
+        # ---- grouped sections ----
+        current_group = None
         for s in rendered.sections:
             if not _visible_in(s, "pdf"):
                 continue
+            grp = _section_group(s)
+            if grp and grp != current_group:
+                if current_group is not None and _section_breaks(s):
+                    story.append(PageBreak())
+                current_group = grp
+                story.append(Paragraph(grp, h_group))
+                story.append(HRFlowable(width="100%", thickness=0.6,
+                                        color=colors.HexColor("#c79241"),
+                                        spaceAfter=6))
             story.append(Paragraph(s.title, styles["Heading2"]))
             if s.kind in ("commentary", "info"):
                 story.append(Paragraph(s.extra.get("text", ""), styles["Normal"]))
             elif s.kind == "chart":
-                story.append(Paragraph("<i>[chart omitted in PDF]</i>",
-                                       styles["Italic"]))
+                continue  # charts are export-hidden; nothing to omit
             else:
                 flat = _flatten(s)
                 if flat:
@@ -217,7 +282,7 @@ class PdfRenderer(Renderer):
                     data = [header] + [[_fmt_cell(c) for c in r] for r in rows]
                     t = Table(data, hAlign="LEFT")
                     t.setStyle(TableStyle([
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f5f4f")),
+                        ("BACKGROUND", (0, 0), (-1, 0), primary),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                         ("FONTSIZE", (0, 0), (-1, -1), 8),
                         ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
@@ -225,6 +290,8 @@ class PdfRenderer(Renderer):
                          [colors.white, colors.HexColor("#f4f1ea")]),
                     ]))
                     story.append(t)
+            if s.note:
+                story.append(Paragraph(f"<i>{s.note}</i>", styles["Italic"]))
             story.append(Spacer(1, 5 * mm))
         if brand.get("certification_statement"):
             story.append(Spacer(1, 6 * mm))
@@ -233,7 +300,7 @@ class PdfRenderer(Renderer):
         if brand.get("footer_text"):
             story.append(Spacer(1, 4 * mm))
             story.append(Paragraph(brand["footer_text"], styles["Normal"]))
-        doc.build(story)
+        doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
         resp = HttpResponse(buf.getvalue(), content_type="application/pdf")
         resp["Content-Disposition"] = \
             f'attachment; filename="{rendered.report.key}.pdf"'
@@ -274,16 +341,28 @@ class DocxRenderer(Renderer):
                                        brand.get("region")) if x)) + "</p>")
         parts.append(f"<h1>{escape(rendered.report.title)}</h1>")
         if rendered.context.start and rendered.context.end:
-            parts.append(f"<p>{rendered.context.start:%d %b %Y} – "
-                         f"{rendered.context.end:%d %b %Y}</p>")
+            parts.append(f"<p>For the period {rendered.context.start:%d %B %Y} – "
+                         f"{rendered.context.end:%d %B %Y}</p>")
+        health_line = _cover_health_line(rendered)
+        if health_line:
+            parts.append(f"<p style='font-weight:bold'>{escape(health_line)}</p>")
+        parts.append(f"<hr style='border:0;border-top:2px solid {_pc}'>")
+        current_group = None
         for s in rendered.sections:
             if not _visible_in(s, "docx"):
                 continue
+            grp = _section_group(s)
+            if grp and grp != current_group:
+                current_group = grp
+                parts.append("<br style='page-break-before:always'>"
+                             if _section_breaks(s) else "")
+                parts.append(f"<h1 style='border-bottom:1px solid {_pc};"
+                             f"padding-bottom:3px'>{escape(grp)}</h1>")
             parts.append(f"<h2>{escape(s.title)}</h2>")
             if s.kind in ("commentary", "info"):
                 parts.append(f"<p>{escape(s.extra.get('text', ''))}</p>")
             elif s.kind == "chart":
-                parts.append("<p><i>[chart omitted in Word]</i></p>")
+                continue  # charts are export-hidden
             else:
                 flat = _flatten(s)
                 if flat:
@@ -298,6 +377,9 @@ class DocxRenderer(Renderer):
                             else f"<td>{escape(_fmt_cell(c))}</td>" for c in r)
                             + "</tr>")
                     parts.append("</table>")
+            if s.note:
+                parts.append(f"<p style='font-size:9pt;color:#555;font-style:italic'>"
+                             f"{escape(s.note)}</p>")
         if brand.get("certification_statement"):
             parts.append(f"<p style='margin-top:14pt'><i>"
                          f"{escape(brand['certification_statement'])}</i></p>")

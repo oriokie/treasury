@@ -89,6 +89,52 @@ class _Registry:
                                  f"Known: {', '.join(sorted(self._impl))}.")
         return impl
 
+    def has(self, key) -> bool:
+        return key in self.registry
+
+    def get(self, key) -> Optional[Metric]:
+        """Metadata for a metric, or None — the safe lookup for catalogues and
+        tooling (attribute access raises for unknown names by design)."""
+        return self.registry.get(key)
+
+    def validate_authoritative(self):
+        """Self-check that every metric's documented ``authoritative`` dotted
+        path still resolves to a real module (and attribute, where the path is
+        importable). Returns a list of (key, path, problem) tuples — empty when
+        the registry documentation is sound. Guards against the docs drifting
+        from the code as implementations are relocated (e.g. out of view
+        god-files into services)."""
+        import importlib
+        problems = []
+        for key, m in self.registry.items():
+            path = m.authoritative
+            # descriptive (non-importable) entries are allowed but must say so
+            if "(" in path or " " in path:
+                continue
+            mod_path, _, attr = path.rpartition(".")
+            if not mod_path:
+                problems.append((key, path, "not a dotted path"))
+                continue
+            obj = None
+            # walk from the longest importable module prefix
+            parts = mod_path.split(".")
+            for i in range(len(parts), 0, -1):
+                try:
+                    obj = importlib.import_module(".".join(parts[:i]))
+                    remainder = parts[i:] + [attr]
+                    break
+                except ImportError:
+                    continue
+            else:
+                problems.append((key, path, "module does not import"))
+                continue
+            for name in remainder:
+                obj = getattr(obj, name, None)
+                if obj is None:
+                    problems.append((key, path, f"attribute '{name}' missing"))
+                    break
+        return problems
+
     def all(self):
         """(Metric, callable) pairs, ordered by category then label — for the
         catalogue page and documentation."""
@@ -305,8 +351,10 @@ metrics.register(Metric(
         (r["to_remit"] for r in _b().trust_summary(start, end)), Decimal(0)))
 
 metrics.register(Metric(
-    "pending_receipts_total", "Bank receipts pending allocation", "Trust",
-    "Total of confirmed bank credits not yet allocated to a fund (suspense).",
+    "pending_receipts_total", "Bank receipts pending allocation", "Balance",
+    "Total of confirmed bank credits not yet allocated to a fund (suspense). "
+    "Real money at the bank, shown as cash held in suspense on the Statement "
+    "of Financial Position.",
     "reports.services.balances.pending_receipts_total", inputs="as_of"),
     lambda as_of=None: _b().pending_receipts_total(as_of))
 
@@ -388,6 +436,135 @@ metrics.register(Metric(
     "Payment",
     "Value of bank-clearing instruments outstanding as at a date — the "
     "reconciling 'less unpresented' figure.",
-    "cashbook.views.unpresented_cheques_total", inputs="as_of"),
-    lambda as_of=None: __import__("cashbook.views", fromlist=["x"])
-        .unpresented_cheques_total(as_of))
+    "cashbook.services.treasury_position.unpresented_cheques_total",
+    inputs="as_of"),
+    lambda as_of=None: _tp().unpresented_cheques_total(as_of))
+
+
+# ===========================================================================
+# Treasury position — cash locations & receivables
+# (authoritative home: cashbook.services.treasury_position, relocated from the
+#  cashbook views god-file; reports.services.balances.bank_position extracted
+#  from the Bank Position view so the calculation exists exactly once)
+# ===========================================================================
+
+def _tp():
+    from cashbook.services import treasury_position
+    return treasury_position
+
+
+metrics.register(Metric(
+    "petty_cash_balance", "Petty cash float balance (as-at)", "Balance",
+    "The petty-cash float as at a date: top-ups less petty disbursements, plus "
+    "cash refunded into the box, less cash out with advance holders. A cash "
+    "LOCATION control total (reconciled against the box), not a fund.",
+    "cashbook.services.treasury_position.petty_balance_asof", inputs="as_of",
+    notes="Consolidates the _petty_balance_asof helper previously imported "
+          "from cashbook.views by the assistant, dashboards and period close."),
+    lambda as_of=None: _tp().petty_balance_asof(
+        as_of or __import__("datetime").date.today()))
+
+metrics.register(Metric(
+    "staff_advances_outstanding", "Outstanding staff advances (as-at)",
+    "Balance",
+    "Money advanced to staff not yet accounted for by approved/paid expense "
+    "receipts as at a date — a receivable. Only positive balances count (a "
+    "shortfall is owed to staff, not a receivable).",
+    "cashbook.services.treasury_position.outstanding_advances_total",
+    inputs="as_of",
+    notes="Bank- and petty-issued splits exist as service functions "
+          "(outstanding_bank_advances_total / outstanding_petty_advances_total) "
+          "for the reconciliation worksheet."),
+    lambda as_of=None: _tp().outstanding_advances_total(as_of))
+
+metrics.register(Metric(
+    "bank_position", "Bank position (system vs statement)", "Balance",
+    "The system's bank balance (opening bank balance + confirmed bank credits "
+    "− confirmed bank debits − direct bank-paid expenses) compared with the "
+    "latest imported statement's closing balance, with the difference. "
+    "Returns a dict: opening, opening_configured, bank_credits, bank_debits, "
+    "bank_expenses, system_balance, statement_balance, statement_date, "
+    "difference.",
+    "reports.services.balances.bank_position", inputs="as_of",
+    notes="Depends on SiteConfig.opening_bank_balance being configured "
+          "(recommendation #9) — opening_configured flags when it is not."),
+    lambda as_of=None: _b().bank_position(as_of))
+
+metrics.register(Metric(
+    "cash_in_transit", "Cash in transit (as-at)", "Balance",
+    "Deposits in transit as at a date: the IN_TRANSIT reconciling items on the "
+    "most recent bank-reconciliation worksheet dated on or before the date. "
+    "Zero when no worksheet exists.",
+    "cashbook.services.treasury_position.cash_in_transit_asof", inputs="as_of"),
+    lambda as_of=None: _tp().cash_in_transit_asof(as_of))
+
+metrics.register(Metric(
+    "pending_expense_claims", "Pending expense claims", "Expense",
+    "Expense claims awaiting treasurer approval: count and total of expenses "
+    "in PENDING status dated on or before the date. Returns {count, total}. "
+    "Status is the current state — this answers what is pending now, not a "
+    "historical reconstruction.",
+    "cashbook.services.treasury_position.pending_expense_claims",
+    inputs="as_of"),
+    lambda as_of=None: _tp().pending_expense_claims(as_of))
+
+
+# ---- Payments & budget ------------------------------------------------------
+
+metrics.register(Metric(
+    "total_payments", "Total payments (period)", "Expense",
+    "All payments for the period: operating (recurrent) expenditure + capital "
+    "expenditure + remittances to the field. The 'Total payments' headline on "
+    "the Treasurer's Report; pairs with total receipts from fund_summary.",
+    "core.metrics (operating_expense + capital_expenditure + remittances_total)",
+    inputs="start, end",
+    notes="A named composition of three registry metrics so the definition "
+          "exists once instead of being re-summed per report section."),
+    lambda start=None, end=None: (
+        _b().operating_expense_total(start, end)
+        + _b().capital_expenditure_total(start, end)
+        + _b().remittances_total(start, end)))
+
+metrics.register(Metric(
+    "budget_vs_actual", "Budget vs actual (formal budgets)", "Expense",
+    "Per-fund budgeted vs actual expenditure for a budget year/period, with "
+    "variance — from the formal Budget/BudgetLine records (not the legacy "
+    "annual_budget attribute).",
+    "reports.services.budget.budget_vs_actual",
+    inputs="year, period, month, quarter"),
+    lambda year, period="ANNUAL", month=None, quarter=None:
+        __import__("reports.services.budget", fromlist=["x"])
+        .budget_vs_actual(year, period, month, quarter))
+
+metrics.register(Metric(
+    "dev_group_progress", "Development-group progress", "Income",
+    "Per development group: collected vs target vs balance and % complete "
+    "over the period.",
+    "reports.services.balances.dev_group_progress"),
+    lambda start=None, end=None: _b().dev_group_progress(start, end))
+
+
+# ---- Fund attention (canonical selectors over fund_summary) ----------------
+
+metrics.register(Metric(
+    "negative_fund_balances", "Funds with negative balances", "Balance",
+    "Funds whose closing balance for the period is below zero — overdrawn "
+    "funds requiring management attention. A canonical selector over "
+    "fund_summary (no independent balance calculation).",
+    "core.metrics (filters fund_summary)", inputs="start, end"),
+    lambda start=None, end=None: [
+        r for r in _b().department_summary(start, end, True)
+        if (r["closing"] or Decimal(0)) < 0])
+
+metrics.register(Metric(
+    "dormant_funds", "Dormant funds", "Balance",
+    "Funds with no receipts, expenses or transfers in the period but a "
+    "non-zero closing balance — idle money the board may wish to review. A "
+    "canonical selector over fund_summary (no independent balance "
+    "calculation).",
+    "core.metrics (filters fund_summary)", inputs="start, end"),
+    lambda start=None, end=None: [
+        r for r in _b().department_summary(start, end, True)
+        if not (r["receipts"] or 0) and not (r["expenses"] or 0)
+        and not (r.get("net_transfer") or 0)
+        and (r["closing"] or Decimal(0)) != 0])

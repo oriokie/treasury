@@ -344,19 +344,51 @@ class FundLedgerView(PeriodMixin, TemplateView):
         ctx = super().get_context_data(**kwargs)
         dept = get_object_or_404(Department, pk=kwargs["pk"])
         s, e = ctx["start"], ctx["end"]
+        # ALL confirmed, non-reversed credits — including excluded_from_income
+        # rows (loan receipts, asset-disposal proceeds and other non-income
+        # cash). The fund ledger is a CASH statement of the fund: that money
+        # genuinely entered the fund and the fund's opening/closing balances
+        # (brought_forward / department_summary / fund_balance) include it, so
+        # omitting the rows made the ledger irreconcilable with its own closing
+        # balance whenever a loan was received in the period. They are shown,
+        # clearly labelled as financing, and remain excluded from every INCOME
+        # report (total_income / Income & Expenditure), which is the correct
+        # accounting split: cash yes, income no.
         receipts = (Transaction.objects.confirmed_credits().filter(
-            department=dept, date__gte=s, date__lte=e,
-            excluded_from_income=False).order_by("date"))
+            department=dept, date__gte=s, date__lte=e).order_by("date"))
         payments = Expense.objects.filter(
             department=dept, date__gte=s, date__lte=e,
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID]).order_by("date")
         entries = []
         for t in receipts:
-            entries.append({"date": t.date, "desc": t.payer_name or t.reference or "Receipt",
-                            "credit": t.amount, "debit": None, "src": "Receipt", "ref_id": t.id})
+            if t.excluded_from_income:
+                base = t.payer_name or t.reference or "Receipt"
+                entries.append({"date": t.date,
+                                "desc": f"{base} — loan / financing receipt "
+                                        "(not income)",
+                                "credit": t.amount, "debit": None,
+                                "src": "Financing", "ref_id": t.id})
+            else:
+                entries.append({"date": t.date,
+                                "desc": t.payer_name or t.reference or "Receipt",
+                                "credit": t.amount, "debit": None,
+                                "src": "Receipt", "ref_id": t.id})
         for x in payments:
             entries.append({"date": x.date, "desc": x.description,
                             "credit": None, "debit": x.amount, "src": "Expense", "ref_id": x.id})
+        # expense refunds are contra-entries: cash returned to the fund. The
+        # fund's balances net them against expenses (expenses_by_department /
+        # fund_balance), so the ledger must show them or its closing balance
+        # cannot tie whenever a refund exists in the period.
+        from cashbook.models import ExpenseRefund
+        for rf in (ExpenseRefund.objects.filter(
+                expense__department=dept, date__gte=s, date__lte=e,
+                expense__status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+                .select_related("expense")):
+            entries.append({"date": rf.date,
+                            "desc": f"Refund — {rf.expense.description}",
+                            "credit": rf.amount, "debit": None,
+                            "src": "Refund", "ref_id": rf.id})
         from cashbook.models import FundTransfer
         for tr in FundTransfer.objects.filter(destination=dept, date__gte=s, date__lte=e):
             entries.append({"date": tr.date, "desc": f"Transfer from {tr.source.name}"
@@ -2382,7 +2414,15 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
         # expensed — a receivable. Reclassify it out of cash so each is shown
         # correctly; totals are unchanged (it is still inside the cash figure).
         advances = outstanding_advances_total(as_of)
-        cash_on_hand = cash - advances
+        # The petty-cash float is the same story in the other direction: cash
+        # physically held in the petty box rather than at the bank. It is inside
+        # the fund cash figure (petty disbursements are real fund expenses;
+        # top-ups merely move cash between locations), so it is reclassified out
+        # of "Cash & bank" onto its own line — exactly the staff-advance
+        # treatment. Totals are unchanged.
+        from cashbook.services.treasury_position import petty_balance_asof
+        petty = petty_balance_asof(as_of)
+        cash_on_hand = cash - advances - petty
         # Bank money received but not yet receipted/allocated to a fund — shown as
         # cash held in suspense with a matching "pending allocation" liability, so
         # the statement ties to the bank and the money is never invisible.
@@ -2404,7 +2444,7 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
         # trust cash held on the field's behalf). Deducting it here keeps
         # Assets = Liabilities + Net assets true.
         net_assets = unallocated + allocated + nbv + accrual_adj - loans_payable
-        total_assets = cash_on_hand + advances + pending + nbv + prepaid
+        total_assets = cash_on_hand + petty + advances + pending + nbv + prepaid
         total_liabilities = (trust_payable + payables + accruals + pending
                              + loans_payable)
         total_liab_and_na = total_liabilities + net_assets
@@ -2418,6 +2458,7 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
             header = ["Section", "Line", "Amount"]
             data = [
                 ["Assets", "Cash & bank (current)", cash_on_hand],
+                ["Assets", "Petty cash float", petty],
                 ["Assets", "Staff advances (receivable)", advances],
                 ["Assets", "Bank receipts pending allocation", pending],
                 ["Assets", "Prepayments", prepaid],
@@ -2443,6 +2484,7 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
                 return ex
         ctx.update({"as_of": as_of, "cash": cash, "nbv": nbv,
                     "cash_on_hand": cash_on_hand, "advances": advances,
+                    "petty": petty,
                     "pending": pending,
                     "trust_payable": trust_payable, "local_funds": local_funds,
                     "trust_receipted": trust_receipted,
@@ -2809,57 +2851,27 @@ class BankPositionView(ReportAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         from decimal import Decimal
-        from statements.models import StatementImport
         ctx = super().get_context_data(**kwargs)
-        cfg = SiteConfig.get()
-        opening = cfg.opening_bank_balance or Decimal(0)
-
-        # most recent statement with a captured closing balance
-        stmt = (StatementImport.objects.exclude(status="PURGED")
-                .exclude(stmt_closing_balance__isnull=True)
-                .order_by("-stmt_last_date", "-uploaded_at").first())
+        # the calculation lives in reports.services.balances.bank_position (the
+        # bank_position registry metric) — this view only presents it
+        from reports.services.balances import bank_position
+        pos = bank_position()
+        stmt = pos["stmt"]
         ctx["stmt"] = stmt
-
-        # system bank movements up to the statement's last date (or all, if none)
-        cutoff = stmt.stmt_last_date if stmt else None
-        bank = Transaction.objects.filter(channel=Transaction.Channel.BANK,
-                                          confirmed=True, is_reversal=False,
-                                          is_reversed=False)
-        if cutoff:
-            bank = bank.filter(date__lte=cutoff)
-        credits = bank.filter(direction=Transaction.Direction.CREDIT).aggregate(
-            s=Sum("amount"))["s"] or Decimal(0)
-        debits = bank.filter(direction=Transaction.Direction.DEBIT).aggregate(
-            s=Sum("amount"))["s"] or Decimal(0)
-        # Bank-paid expenses that AREN'T already represented by a bank DEBIT row
-        # (i.e. entered directly with method=Bank, not resolved from the debit
-        # queue). These are real outflows from the bank account and must reduce the
-        # system bank balance, otherwise it overstates the cash at bank. Expenses
-        # linked to a bank_transaction are excluded — they're already in `debits`.
-        from cashbook.models import Expense
-        bank_exp_qs = Expense.objects.filter(
-            method=Expense.Method.BANK, status=Expense.Status.PAID,
-            bank_transaction__isnull=True)
-        if cutoff:
-            bank_exp_qs = bank_exp_qs.filter(date__lte=cutoff)
-        bank_expenses = bank_exp_qs.aggregate(s=Sum("amount"))["s"] or Decimal(0)
-        system_balance = opening + credits - debits - bank_expenses
-
-        ctx["opening"] = opening
-        ctx["bank_credits"] = credits
-        ctx["bank_debits"] = debits
-        ctx["bank_expenses"] = bank_expenses
-        ctx["system_balance"] = system_balance
-        ctx["statement_balance"] = stmt.stmt_closing_balance if stmt else None
-        ctx["difference"] = ((stmt.stmt_closing_balance - system_balance)
-                             if stmt else None)
+        ctx["opening"] = pos["opening"]
+        ctx["bank_credits"] = pos["bank_credits"]
+        ctx["bank_debits"] = pos["bank_debits"]
+        ctx["bank_expenses"] = pos["bank_expenses"]
+        ctx["system_balance"] = pos["system_balance"]
+        ctx["statement_balance"] = pos["statement_balance"]
+        ctx["difference"] = pos["difference"]
 
         # real-time cleared balance from the CBS feed (independent of an imported
         # statement) — often more current than the last uploaded statement.
         from statements.services.importer import latest_cleared_balance
         live = latest_cleared_balance()
         ctx["live_balance"] = live
-        ctx["live_difference"] = ((live["balance"] - system_balance)
+        ctx["live_difference"] = ((live["balance"] - pos["system_balance"])
                                   if live else None)
 
         # if there is a gap, surface candidates: recent bank rows that look
@@ -4004,7 +4016,9 @@ class EngineReportView(ReportAccessMixin, TemplateView):
                     out["querystring"] = request.GET.urlencode()
                     out["dep_map"] = build_dependency_map(rendered)
                     out["chart_json"] = self._chart_json(rendered)
-                    return self.render_to_response(out)
+                    out.update(self._grouped_context(rendered))
+                    return self.render_to_response(
+                        out, template=self._template_for(report))
                 return out
 
         return self.render_to_response({
@@ -4016,7 +4030,77 @@ class EngineReportView(ReportAccessMixin, TemplateView):
             "dep_map": build_dependency_map(rendered),
             "chart_json": self._chart_json(rendered),
             "is_favourite": self._is_favourite(request, key),
-        })
+            **self._grouped_context(rendered),
+        }, template=self._template_for(report))
+
+    def render_to_response(self, context, template=None, **kwargs):
+        if template:
+            self.template_name = template
+        return super().render_to_response(context, **kwargs)
+
+    @staticmethod
+    def _template_for(report):
+        """A report may declare its own presentation template; otherwise the
+        generic engine template is used. Section data is identical either way."""
+        return getattr(report, "html_template", None) or \
+            "reports/engine_report.html"
+
+    @staticmethod
+    def _grouped_context(rendered):
+        """Group the rendered sections by their ``LayoutMeta.group`` in layout
+        order, so a purpose-built template (e.g. the board pack) can render
+        grouped, navigable sections. The generic template ignores this and reads
+        the flat ``sections`` list, so this is additive and backward-compatible.
+        """
+        from core.reporting.layout import LayoutMeta
+        groups = []
+        index = {}
+        for s in rendered.sections:
+            layout_raw = s.extra.get("layout")
+            layout = LayoutMeta.from_dict(layout_raw) if layout_raw else LayoutMeta()
+            name = layout.group or "Report"
+            if name not in index:
+                index[name] = {"name": name, "sections": [], "order": layout.order}
+                groups.append(index[name])
+            index[name]["sections"].append(s)
+            index[name]["order"] = min(index[name]["order"], layout.order)
+        groups.sort(key=lambda g: g["order"])
+        # a stable anchor id per group for the table of contents
+        import re as _re
+        break_groups = set()
+        for g in groups:
+            g["anchor"] = "grp-" + _re.sub(r"[^a-z0-9]+", "-", g["name"].lower()).strip("-")
+        # groups whose first section requests a page break -> break before the group
+        for s in rendered.sections:
+            layout_raw = s.extra.get("layout")
+            if not layout_raw:
+                continue
+            layout = LayoutMeta.from_dict(layout_raw)
+            if layout.page_break_before and layout.group:
+                break_groups.add(layout.group)
+        # drop a break on the very first group (nothing to break from)
+        if groups:
+            break_groups.discard(groups[0]["name"])
+
+        out = {"section_groups": groups, "break_groups": break_groups}
+        if getattr(rendered.report, "html_template", None):
+            out.update(EngineReportView._cover_health(rendered))
+        return out
+
+    @staticmethod
+    def _cover_health(rendered):
+        """Compute the health-score band shown on the board-pack cover, reusing
+        the shared ReportContext (so its metrics are already memoized). Purely
+        presentational; never blocks a render if intelligence is unavailable."""
+        try:
+            from core.intelligence import compute_health_score
+            hs = compute_health_score(rendered.context)
+            tone = "good" if hs.overall >= 75 else ("warn" if hs.overall >= 55
+                                                    else "bad")
+            return {"health_overall": hs.overall, "health_band": hs.band,
+                    "health_tone": tone}
+        except Exception:  # noqa: BLE001
+            return {}
 
     @staticmethod
     def _resolve_definition(key):

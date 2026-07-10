@@ -441,10 +441,20 @@ def dev_group_members(group, start=None, end=None):
     return {"rows": rows, "total": sum((r["total"] for r in rows), Decimal(0))}
 
 
-def fund_balance(dept, as_of=None):
-    """Closing balance for a SINGLE fund as at a date, computed with targeted
-    aggregations (no full-portfolio loop). Mirrors department_summary's basis:
-    opening + active receipts − approved/paid expenses + transfers in − out."""
+def fund_balance_parts(dept, as_of=None):
+    """The single-fund closing balance broken into its constituent parts, as a
+    dict: opening, receipts, spent, refunded, transfers_in, transfers_out and
+    balance. This is THE single implementation — ``fund_balance`` sums it, and
+    the expense form's available-balance endpoint displays it — so the guard,
+    the form and the reports can never disagree again (the form previously
+    duplicated this inline with a stale filter that still counted reversed
+    credits).
+
+    Mirrors department_summary's basis exactly: receipts are confirmed,
+    non-reversed, non-reversal credits (INCLUDING loan/financing cash — this
+    is a cash figure); spent is every approved/paid expense; refunds restore
+    the balance; transfers move it.
+    """
     from decimal import Decimal
     from django.db.models import Sum
     from cashbook.models import Expense, FundTransfer, ExpenseRefund
@@ -480,7 +490,18 @@ def fund_balance(dept, as_of=None):
     tout = (FundTransfer.objects.filter(Q(source_id=dept_id) & end)
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
-    return opening + receipts - spent + refunded + tin - tout
+    return {"opening": opening, "receipts": receipts, "spent": spent,
+            "refunded": refunded, "transfers_in": tin, "transfers_out": tout,
+            "balance": opening + receipts - spent + refunded + tin - tout}
+
+
+def fund_balance(dept, as_of=None):
+    """Closing balance for a SINGLE fund as at a date, computed with targeted
+    aggregations (no full-portfolio loop). Mirrors department_summary's basis:
+    opening + active receipts − approved/paid expenses + refunds + transfers
+    in − out. The sum of ``fund_balance_parts``."""
+    parts = fund_balance_parts(dept, as_of)
+    return None if parts is None else parts["balance"]
 
 
 def pending_receipts_total(as_of=None):
@@ -501,6 +522,77 @@ def pending_receipts_total(as_of=None):
     if as_of:
         f &= Q(date__lte=as_of)
     return Transaction.objects.filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+
+def bank_position(as_of=None):
+    """The system's bank position vs the bank's own figure — extracted VERBATIM
+    from the Bank Position report view so the calculation exists exactly once
+    (it was previously inline in reports.views.BankPositionView; the view now
+    consumes this function, and the ``bank_position`` registry metric points
+    here).
+
+    System bank balance = SiteConfig.opening_bank_balance + every confirmed
+    BANK credit − every confirmed BANK debit − bank-paid expenses not already
+    represented by a bank DEBIT row. The bank's figure is the closing running
+    balance of the most recent imported statement.
+
+    ``as_of`` bounds the movement window; when None, the most recent
+    statement's last date is used (the view's original behaviour), or all
+    movements if no statement exists.
+
+    NOTE (recommendation #9): the figure depends on
+    ``SiteConfig.opening_bank_balance`` being configured; while it is at its
+    default of zero the system balance understates by the true bank-only
+    opening balance. The dict includes ``opening_configured`` so callers can
+    surface that.
+    """
+    from core.models import SiteConfig
+    from statements.models import StatementImport
+    cfg = SiteConfig.get()
+    opening = cfg.opening_bank_balance or Decimal(0)
+
+    stmt = (StatementImport.objects.exclude(status="PURGED")
+            .exclude(stmt_closing_balance__isnull=True)
+            .order_by("-stmt_last_date", "-uploaded_at").first())
+    cutoff = as_of or (stmt.stmt_last_date if stmt else None)
+
+    bank = Transaction.objects.filter(channel=Transaction.Channel.BANK,
+                                      confirmed=True, is_reversal=False,
+                                      is_reversed=False)
+    if cutoff:
+        bank = bank.filter(date__lte=cutoff)
+    credits = bank.filter(direction=Transaction.Direction.CREDIT).aggregate(
+        s=Sum("amount"))["s"] or Decimal(0)
+    debits = bank.filter(direction=Transaction.Direction.DEBIT).aggregate(
+        s=Sum("amount"))["s"] or Decimal(0)
+    # Bank-paid expenses that AREN'T already represented by a bank DEBIT row
+    # (i.e. entered directly with method=Bank, not resolved from the debit
+    # queue). These are real outflows from the bank account and must reduce the
+    # system bank balance, otherwise it overstates the cash at bank. Expenses
+    # linked to a bank_transaction are excluded — they're already in `debits`.
+    from cashbook.models import Expense
+    bank_exp_qs = Expense.objects.filter(
+        method=Expense.Method.BANK, status=Expense.Status.PAID,
+        bank_transaction__isnull=True)
+    if cutoff:
+        bank_exp_qs = bank_exp_qs.filter(date__lte=cutoff)
+    bank_expenses = bank_exp_qs.aggregate(s=Sum("amount"))["s"] or Decimal(0)
+    system_balance = opening + credits - debits - bank_expenses
+
+    statement_balance = stmt.stmt_closing_balance if stmt else None
+    return {
+        "opening": opening,
+        "opening_configured": bool(cfg.opening_bank_balance),
+        "bank_credits": credits,
+        "bank_debits": debits,
+        "bank_expenses": bank_expenses,
+        "system_balance": system_balance,
+        "stmt": stmt,
+        "statement_balance": statement_balance,
+        "statement_date": stmt.stmt_last_date if stmt else None,
+        "difference": ((statement_balance - system_balance)
+                       if statement_balance is not None else None),
+    }
 
 
 # --- cached public wrappers (see core.perfcache; no-op unless a TTL is set) ---

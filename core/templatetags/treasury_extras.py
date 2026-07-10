@@ -54,3 +54,13 @@ def sentence_fund(name):
         else:
             out.append(w.capitalize())
     return " ".join(out)
+
+
+@register.filter
+def abs_val(value):
+    """Absolute value of a number, for rendering signed movement deltas where
+    the sign/arrow is shown separately (e.g. '▲ 1,234' vs '▼ 1,234')."""
+    try:
+        return abs(float(value))
+    except (TypeError, ValueError):
+        return value

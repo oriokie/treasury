@@ -265,7 +265,11 @@ class SiteConfig(models.Model):
                   "per line as 'prefixes = NAME_TEMPLATE'. {n} is the number found. "
                   "e.g. 'expense, exp, expe = CAMP_{n}' sends EXPENSE1/exp1/expe1 to "
                   "the fund named CAMP_1, EXPENSE30 to CAMP_30, and so on — no need "
-                  "for a rule per group. Only applies when that fund exists.")
+                  "for a rule per group. A prefix wrapped in slashes is a regular "
+                  "expression for misspellings/variations, e.g. '/expen[sc]es?/, exp "
+                  "= CAMP_{n}' also catches EXPENCE7 and EXPENSES7. Patterns match "
+                  "the lowercased reference with punctuation removed; an invalid "
+                  "pattern is ignored. Only applies when that fund exists.")
     lcb_departments = models.ManyToManyField("departments.Department", blank=True,
         related_name="+",
         help_text="The Local Church Budget fund and its sub-accounts. When set, "

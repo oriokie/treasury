@@ -674,26 +674,12 @@ from .forms import PettyCashTopUpForm, PettyCashDisbursementForm
 from .models import PettyCashTopUp as PettyTopUp
 
 
-def _petty_balance_asof(on):
-    from decimal import Decimal
-    from django.db.models import Sum
-    from .models import StaffAdvance, ExpenseRefund
-    topups = (PettyTopUp.objects.filter(date__lte=on)
-              .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    disb = (Expense.objects.filter(paid_from_petty_cash=True, date__lte=on,
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    # cash refunded back into the petty box tops the float up again
-    refunds_in = (ExpenseRefund.objects.filter(to_petty_cash=True, date__lte=on)
-                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    # advances issued out of the petty box, still unreturned, are also "out"
-    # — deliberately petty_cash_out_asof, not petty_outstanding_asof: the
-    # float's own balance must not change just because an advance was later
-    # accounted for on paper (an expense record, not a cash movement)
-    adv_out = Decimal(0)
-    for adv in StaffAdvance.objects.filter(from_petty_cash=True, date_issued__lte=on):
-        adv_out += adv.petty_cash_out_asof(on)
-    return topups - disb + refunds_in - adv_out
+# The canonical implementation now lives in the treasury-position service
+# (cashbook/services/treasury_position.py) — see that module's docstring.
+# Re-exported here so every existing `from cashbook.views import ...` keeps
+# working unchanged (assistant, dashboards, period close, statements, tests).
+from cashbook.services.treasury_position import (          # noqa: E402
+    petty_balance_asof as _petty_balance_asof)
 
 
 class PettyCashView(ReadAccessMixin, TemplateView):
@@ -1026,80 +1012,9 @@ def unexpired_prepayments_total(as_of=None):
     return sum((p.unexpired(as_of) for p in Prepayment.objects.all()), Decimal(0))
 
 
-def outstanding_bank_advances_total(as_of=None):
-    """Outstanding advances issued from the BANK (not petty cash). These reduce
-    the bank statement balance at issuance but are not yet an expense in the cash
-    book, so until accounted for they are a reconciling item between bank and book.
-    Petty-funded advances are excluded — those sit in the petty-cash float.
-    Top-ups dated after `as_of` are excluded (they hadn't left the bank yet)."""
-    from decimal import Decimal
-    import datetime as _dt
-    from django.db.models import Sum
-    from cashbook.models import StaffAdvance, Expense
-    as_of = as_of or _dt.date.today()
-    total = Decimal(0)
-    for adv in StaffAdvance.objects.filter(date_issued__lte=as_of, from_petty_cash=False
-            ).exclude(status=StaffAdvance.Status.CLOSED):
-        topups_after = (adv.topups.filter(date__gt=as_of)
-                        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        settled = (adv.expenses.filter(
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
-            date__lte=as_of).aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        bal = ((adv.amount or Decimal(0)) - topups_after - settled
-               - (adv.returned_to_petty or Decimal(0)))
-        if bal > 0:
-            total += bal
-    return total
-
-
-def outstanding_petty_advances_total(as_of=None):
-    """Outstanding advances issued from the PETTY-CASH box. The petty float
-    (`_petty_balance_asof`) already subtracts these — the cash has left the box
-    and is with the advance holder — so on a bank reconciliation they must be
-    listed as their own cash-at-hand item, or that money silently disappears
-    from the worksheet."""
-    from decimal import Decimal
-    import datetime as _dt
-    from cashbook.models import StaffAdvance
-    as_of = as_of or _dt.date.today()
-    total = Decimal(0)
-    for adv in StaffAdvance.objects.filter(from_petty_cash=True,
-            date_issued__lte=as_of).exclude(status=StaffAdvance.Status.CLOSED):
-        try:
-            total += adv.petty_outstanding_asof(as_of)
-        except Exception:  # noqa: BLE001
-            continue
-    return total
-
-
-def outstanding_advances_total(as_of=None):
-    """Money advanced to staff that has not yet been accounted for by receipts —
-    i.e. a receivable. Computed as (amount advanced as of the date − expenses
-    settled up to the date) for advances issued on/before `as_of` that are not
-    yet closed. The amount advanced excludes top-ups dated after `as_of` (they
-    had not been advanced yet), keeping both sides of the subtraction as of the
-    same date. Only positive balances count (a shortfall is owed to staff, not a
-    receivable)."""
-    from decimal import Decimal
-    import datetime as _dt
-    from django.db.models import Sum
-    from cashbook.models import StaffAdvance, Expense
-    as_of = as_of or _dt.date.today()
-    total = Decimal(0)
-    for adv in StaffAdvance.objects.filter(date_issued__lte=as_of).exclude(
-            status=StaffAdvance.Status.CLOSED):
-        # amount advanced as of the date: current total less any top-ups that
-        # were only added after the reporting date
-        topups_after = (adv.topups.filter(date__gt=as_of)
-                        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        advanced = (adv.amount or Decimal(0)) - topups_after
-        settled = (adv.expenses.filter(
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
-            date__lte=as_of).aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        bal = advanced - settled
-        if bal > 0:
-            total += bal
-    return total
+from cashbook.services.treasury_position import (          # noqa: E402
+    outstanding_advances_total, outstanding_bank_advances_total,
+    outstanding_petty_advances_total)
 
 
 class AccrualsView(ReadAccessMixin, TemplateView):
@@ -2798,27 +2713,8 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
         return redirect("accruals")
 
 
-def unpresented_payments_qs(as_of=None):
-    """Payment instruments outstanding at the bank AS AT a date: issued by
-    then, not cleared/cancelled/voided/reversed by then — judged on the event
-    DATES via PaymentInstrument.outstanding_asof, never today's status, so
-    historical reconciliations stay correct no matter when they are run.
-    Covers every bank-clearing method (cheque, EFT, RTGS, M-Pesa, other) —
-    cash in hand never clears through the bank."""
-    import datetime as _dt
-    from .models import PaymentInstrument
-    as_of = as_of or _dt.date.today()
-    return PaymentInstrument.outstanding_asof(as_of).filter(
-        method__in=PaymentInstrument.BANK_CLEARING_METHODS)
-
-
-def unpresented_cheques_total(as_of=None):
-    """Total of instruments issued but not yet cleared as at the date (name
-    kept for the existing reconciliation call sites; covers all bank-clearing
-    methods, not only cheques)."""
-    from decimal import Decimal
-    from django.db.models import Sum
-    return unpresented_payments_qs(as_of).aggregate(t=Sum("amount"))["t"]         or Decimal(0)
+from cashbook.services.treasury_position import (          # noqa: E402
+    unpresented_cheques_total, unpresented_payments_qs)
 
 
 class ChequeRegisterView(PaymentViewMixin, View):

@@ -1,5 +1,164 @@
 # Changelog
 
+## v2.37.0 - Production review fixes: fund ledger financing, expense balance, regex fund families, petty cash on SOFP
+Four fixes from live production review, plus one recorded advisory.
+
+**1. Fund ledger now shows loan/financing receipts and expense refunds
+(reports/views.py FundLedgerView).** The ledger excluded excluded_from_income
+credits (loan receipts, asset-disposal proceeds), yet the fund's opening/closing
+balances include that cash — so a loan received in the period was invisible AND
+the ledger could not reconcile with its own closing balance. The fund ledger is a
+CASH statement: those rows now appear, clearly labelled "loan / financing receipt
+(not income)" with src=Financing, and remain excluded from every income report
+(the correct split: cash yes, income no). Expense refunds — which the fund's
+balances net against expenses — now also appear as contra credits (src=Refund),
+so the ledger's closing ties to the canonical fund_balance exactly (asserted by
+test).
+
+**2. Expense form's available balance corrected (core/views.py
+DepartmentBalanceView).** The endpoint duplicated the fund-balance calculation
+inline and had drifted three ways: reversed/reversal credits still counted as
+receipts (the production symptom — 838,375.87 shown vs the true 638,351.87),
+REMITTANCE expenses were excluded from spend (canonical subtracts them: real
+cash out), and refunds were ignored. The canonical calculation was refactored
+into reports.services.balances.fund_balance_parts (fund_balance now sums it —
+one implementation, two shapes) and the endpoint consumes it, so the form, the
+overspend guard, the departments page and every report read the identical
+figure by construction. The form's explanatory breakdown now shows the full
+formula (refunds and transfers included when present).
+
+**3. Numbered fund families accept /regex/ prefixes
+(giving/services/allocation.py).** A prefix wrapped in slashes is a regular
+expression for misspellings/variations — '/expen[sc]es?/, exp = CAMP_{n}' also
+routes EXPENCE7 and EXPENSES7. Safety: patterns must compile (invalid ones are
+skipped, never fatal), user capturing groups are converted to non-capturing,
+and the family number is extracted by a named group so a pattern can never
+shift it. Plain prefixes behave exactly as before. Settings help text updated
+(migration 0050, help-text only).
+
+**4. Petty cash float on its own Statement of Financial Position line.**
+Mirroring the staff-advance treatment: the float is cash physically in the box,
+inside the fund cash figure, so it is reclassified out of "Cash & bank" onto a
+"Petty cash float" line — in the detailed SOFP (view, template, exports) and
+the engine Financial Position summary in the Treasurer's Report (which now also
+shows the staff-advance line). Totals and the balance-sheet tie are unchanged
+(reclassification only, asserted by test).
+
+**5. Manual-bank-receipt / envelope double-count — ADVISORY ONLY (as
+requested).** Recorded as recommendation #47 with a recommended design: one
+canonical signed-cash annotation where a processed_via_envelope bank credit
+contributes zero (both rows stay visible, memo row badged), a reconciliation
+rule that the book side is BANK-channel rows only, and a later hardening that
+links each pair explicitly. Priority High; awaiting the Option A/B decision.
+
+**Tests.** reports/test_production_fixes_v237.py (16 tests) covers all four
+fixes, including a reproduction of the reversal double-count and ledger/
+canonical-balance tie assertions. 493 tests across the targeted regression
+waves (fund ledger, positions, departments, giving, statements, metrics, board
+pack, accuracy, cashbook) all pass.
+
+## v2.36.0 - Financial Metrics Registry expansion + registry hardening
+Registers every distinct financial concept the Treasurer's Report (and the wider
+application) displays, closes gaps in the registry implementation itself, and
+relocates canonical calculations out of view god-files into services — with
+byte-identical figures proven by parity tests.
+
+**Ten new registry metrics.** petty_cash_balance, staff_advances_outstanding,
+bank_position (system vs statement, with an opening_configured flag for rec #9),
+cash_in_transit (from the reconciliation worksheet's IN_TRANSIT items),
+pending_expense_claims ({count, total} of PENDING claims), total_payments (a
+named composition: operating + capital + remittances, replacing per-section
+re-summing), budget_vs_actual (the formal Budget records), dev_group_progress
+(previously canonical but unregistered), and two canonical fund selectors —
+negative_fund_balances and dormant_funds — defined over fund_summary so they can
+never diverge from the balance table. 36 metrics total.
+
+**Registry implementation hardening (core/metrics.py, core/reporting/context.py).**
+The registry gained has()/get() safe lookups and validate_authoritative(), a
+self-check that every metric's documented implementation path resolves (enforced
+by test, so documentation can no longer drift from code as implementations move).
+ReportContext.metric() now auto-applies the context's period end to as_of-keyed
+metrics exactly as it already applied start/end to period metrics — sections no
+longer each need to remember to pass ctx.end. pending_receipts_total was
+recategorised from Trust to Balance (it is suspense cash, not a trust concept).
+
+**Canonical implementations relocated (rec #7 progress).** The petty-cash float,
+the three staff-advance outstanding totals and the unpresented-payment helpers
+moved verbatim from cashbook/views.py into cashbook/services/treasury_position.py
+(cashbook.views re-imports them under the old names, so the assistant, dashboards,
+period close, statements reconciliation and all existing tests are untouched —
+verified by identity assertions). The Bank Position calculation moved verbatim
+from reports.views.BankPositionView into reports.services.balances.bank_position;
+the view now only presents the service's result, and the metric points there.
+
+**Included in the Treasurer's Report.** A new Treasury Position section (bank per
+system vs statement with the difference, petty float, cash in transit, staff
+advances, pending claims — "where, physically, is the money?"), a Funds Requiring
+Attention section (overdrawn funds always listed in full; dormant funds capped at
+the 12 largest with an explicit count note), three new executive-snapshot cards
+(bank balance, petty cash, staff advances) with an unconfigured-opening caveat,
+and Board Action follow-ups for pending claims and unaccounted advances. Both new
+components are registered for the Report Designer.
+
+**Deliberately not modelled:** pending journal entries (journals post immediately;
+no draft state exists) and month-end checklist status (no checklist model) — see
+recommendations #46 for the reasoning.
+
+**Tests.** reports/test_treasury_metrics.py (22 tests): metric/service parity for
+every new metric, relocation identity + figure assertions, registry validation,
+context as_of auto-application, view/metric agreement for bank position, and
+report inclusion + exports. 460 tests across the targeted regression waves
+(metrics, reporting, cashbook advances/payments/liabilities, statements, pages,
+board reports) all pass.
+
+## v2.35.0 - Treasurer's Report redesign (executive board pack)
+A complete presentation redesign of the Treasurer's Report (/reports/r/treasurer_report)
+into a professional board / audit-committee financial pack, while preserving every
+accounting figure and keeping all values sourced from the Financial Metrics Registry
+through the Semantic Reporting Layer. No accounting calculation was added or duplicated;
+the change is composition + presentation over the existing Generic Report Engine.
+
+**Per-report presentation template (backward-compatible engine change).** `Report`
+gained an optional `html_template`; when set, `EngineReportView` renders that template
+(and the print path uses it too), otherwise the generic `engine_report.html` is used
+exactly as before. Every other engine report and the Report Designer are unchanged.
+The view also computes a generic grouped-sections context from `LayoutMeta.group`/
+`order`/`page_break_before`, so any report can present grouped, navigable sections.
+
+**Board-pack template (templates/reports/treasurer_board_pack.html + partials).**
+An executive cover (organisation, title, period, financial-health band), a sticky
+section navigator with active-section highlighting, professional grouped/separated
+sections, executive KPI call-out cards with period-on-period movement, and a
+print-optimised layout (page breaks between groups, running footer, page numbering).
+Keeps every "Ask AI about this report"/per-section affordance and the live charts.
+
+**Two new registered components (reports/board_pack_components.py).** An Executive
+Snapshot band (Total receipts, Total payments, Net surplus/(deficit), Closing cash,
+Trust to remit, Pending allocations, Active funds, Financial health — each with its
+movement vs the prior equal-length period) and a Board Action Summary (decisions +
+follow-ups from the Intelligence Engine and outstanding-item metrics). Both draw only
+from the registry via ReportContext and are registered so the Designer can reuse them.
+
+**Gap-filling composition.** The report now includes the full statutory set —
+Statement of Income & Expenditure, Statement of Financial Position, Statement of Cash
+Flows and Statement of Fund Balances (Financial Position and Cash Flows were missing
+before) — organised into Executive summary, Financial statements, Income & expenditure,
+Budget performance, Funds & cash, Trust & development, Treasury operations, Financial
+intelligence and Board actions. Added a third chart (local vs trust funds).
+
+**Consistent exports.** The engine PDF and Word renderers gained a matching cover,
+group headings, per-group page breaks, a PDF footer with page numbering and the church
+name, and section notes — so HTML, Print, PDF and Word read as one board pack from the
+same SectionData (identical figures). Charts stay export-hidden (clean, no stubs).
+
+**Tests.** reports/test_treasurer_board_pack.py (19 tests) covers the new components,
+figure reconciliation across statements, grouping, the template, and every export;
+the existing treasurer/report/engine suites continue to pass unchanged.
+
+Addresses recommendations #43 (sticky TOC + grouping) and #44 (executive cover +
+per-format layout); notes #28/#44b/#44c as small follow-ups. Runs alongside the
+legacy monthly/board reports — nothing existing changed.
+
 ## v2.34.0 - Treasurer's Report + Report-Aware AI Assistant
 Extends the EXISTING AI assistant (no second chatbot) to consume the Financial
 Knowledge Service, making it report-context-aware, and rebuilds the Treasurer's

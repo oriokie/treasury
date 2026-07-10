@@ -169,6 +169,17 @@ organisation with many simultaneous staff advances adopted the application.
 
 ## 7. Two "god files" — `reports/views.py` (3,889 lines) and `cashbook/views.py` (3,116 lines)
 
+**Progress (metrics-expansion pass):** the six canonical accounting helpers
+that were trapped in `cashbook/views.py` (`_petty_balance_asof`, the three
+`outstanding_*_advances_total` functions, `unpresented_payments_qs`,
+`unpresented_cheques_total`) now live in
+`cashbook/services/treasury_position.py`; the views module re-imports them
+under the old names so every existing import path still works, and the metrics
+registry points at the service as the authoritative home. Similarly the Bank
+Position calculation moved out of `reports.views.BankPositionView` into
+`reports.services.balances.bank_position` (the view now only presents it).
+The broader module split remains open.
+
 **Description.** These two files have grown, release by release, into the largest
 modules in the codebase by a wide margin (the next largest, `giving/views.py`, is
 about half the size). Individual view classes within them are each reasonably
@@ -222,6 +233,15 @@ hand) would only need to happen in one place.
 ---
 
 ## 9. Bank Position report can be wrong if "Opening bank balance" was never configured
+
+**Progress (metrics-expansion pass):** the calculation is now the
+`bank_position` registry metric (`reports.services.balances.bank_position`),
+which returns an explicit `opening_configured` flag; the Treasurer's Report's
+Treasury Position section and the executive snapshot's bank-balance card show a
+"opening bank balance not configured" caveat while the flag is false, so the
+figure can no longer be silently trusted. The underlying operational/data-model
+gap (configure the figure once, or track opening balances by physical location)
+remains as recorded below.
 
 **Description.** The Bank Position report (`/reports/bank-position/`) compares the
 system's recorded bank movements against the actual bank statement's captured
@@ -912,28 +932,59 @@ components + metrics registry + narrative + intelligence. See docs/TREASURER_REP
 
 ### Enhancements identified during this phase — deferred
 
-## 43. Sticky table of contents + expand/collapse in the report HTML
+## 43. Sticky table of contents + expand/collapse in the report HTML — ADDRESSED (Treasurer's Report redesign)
 
-**Description.** The Treasurer's Report renders as a responsive grid with per-
+**Status: Addressed for the Treasurer's Report.** The redesigned board pack
+(`reports/treasurer_board_pack.html`) renders a sticky section navigator built
+from the section `LayoutMeta.group`s, with an IntersectionObserver active-section
+highlight, and groups the sections under headings with per-group page breaks in
+print. The grouping is produced generically by `EngineReportView._grouped_context`
+(reads `LayoutMeta.group`/`order`/`page_break_before`), so any other report that
+opts into a grouped template gets the same navigator for free. A per-section
+expand/collapse toggle honouring `LayoutMeta.collapsible` remains a small future
+addition on top of this grouping.
+
+*(original)* The Treasurer's Report renders as a responsive grid with per-
 section Ask-AI. A sticky section table-of-contents, quick-nav and per-section
-expand/collapse would improve navigation of the long board pack. The LayoutMeta
-already carries `collapsible`/`collapsed`/`group`, so this is a template/JS
-enhancement over existing data.
+expand/collapse would improve navigation of the long board pack. **Priority: Low.**
 
-**Recommendation.** Add a sticky TOC built from the section groups and a collapse
-toggle honouring `LayoutMeta.collapsible`. No backend change needed.
+## 44. Executive cover page + per-format layout optimisation — ADDRESSED (Treasurer's Report redesign)
 
-**Priority: Low (UX polish).**
+**Status: Addressed.** The board pack now has a dedicated executive cover
+(organisation, title, period, financial-health band) in HTML/print, and the
+engine PDF and Word renderers gained a matching cover (title, period, health
+line), group headings, per-group page breaks and a PDF footer with page
+numbering (`Page N`) and the church name — so HTML, Print, PDF and Word read as
+one consistent board pack. Figures still flow from the single `SectionData`
+source, so every format shows identical numbers. Charts are intentionally
+export-hidden (`export_visible=False`) rather than stubbed with a "chart omitted"
+line, keeping the exports clean.
 
-## 44. Executive cover page + per-format layout optimisation
+*(original)* The report used the shared engine renderers with no dedicated cover
+or per-format tuning. **Priority: Low.**
 
-**Description.** The report uses the shared engine renderers. A dedicated executive
-cover page (title, period, health score, logo) and further per-format tuning
-(e.g. PDF page breaks between groups, Excel one-sheet-per-group) would make the
-board pack more polished. Figures already flow identically to every format.
+## 44b. Report-Designer editing of a report's presentation template — NEW
 
-**Recommendation.** Add an optional cover-page renderer hook and group-aware page
-breaks; keep the single SectionData source so figures stay identical.
+**Description.** `Report.html_template` now lets a registered report opt into a
+purpose-built presentation template (the Treasurer's board pack) while keeping
+identical section data and the generic engine template as the default. The
+Report Designer persists *sections/layout* as data but does not yet let an
+administrator choose a presentation template per designed report.
+
+**Recommendation.** Expose a small "presentation style" choice on the designer
+(generic grid vs. board pack) that maps to `html_template`, so designed reports
+can also use the richer presentation without code.
+
+**Priority: Low.**
+
+## 44c. Per-section collapse + server-side charts in exports — NEW (small follow-ups)
+
+**Description.** Two polish items surfaced during the redesign: (1) the board
+pack groups sections and has the sticky navigator, but a per-section
+expand/collapse control honouring `LayoutMeta.collapsible` is not yet wired; and
+(2) charts remain screen-only — see #28 for rendering `ChartSpec`s to PNG via
+`reports/services/chart_image.py` for embedding in PDF/Word. Both are additive
+and low-risk.
 
 **Priority: Low.**
 
@@ -949,3 +1000,79 @@ drill for a given metric+period, surfaced by the assistant when asked, still
 read-only and registry-sourced.
 
 **Priority: Low-Medium.**
+
+---
+
+## Metrics-expansion pass — coverage decisions
+
+## 46. Treasury-position concepts now registry metrics; two brief items deliberately not modelled
+
+**Status: metrics registered.** Ten metrics were added so every figure the
+board pack shows is registry-sourced: `petty_cash_balance`,
+`staff_advances_outstanding`, `bank_position`, `cash_in_transit`,
+`pending_expense_claims`, `total_payments`, `budget_vs_actual`,
+`dev_group_progress`, `negative_fund_balances`, `dormant_funds`. The registry
+itself gained `has()`/`get()` lookups and `validate_authoritative()` (every
+metric's documented implementation path is verified by test, so the catalogue
+can no longer drift from the code), and `ReportContext.metric()` now
+auto-applies the period end to `as_of`-keyed metrics the way it already did
+`start/end` — removing the "forgot to pass ctx.end" footgun.
+
+**Deliberately not modelled (would require inventing data the app doesn't
+have):**
+- **Pending journal entries** — journals in this system post immediately and
+  atomically (`ledger.services.posting`); there is no draft state, so "pending
+  journals" is structurally zero. If a draft/approve journal workflow is ever
+  added, register the metric then.
+- **Month-end checklist status** — no checklist model exists. The period-close
+  service (`core/services/period_close.py`) is the nearest concept; a formal
+  close-checklist would be its own small feature before it can be reported on.
+
+**Priority: N/A (documented decisions).**
+
+## 47. Manual bank receipts and their envelope counterparts double-count in the transactions running balance and bank reconciliation — ADVISORY (no code yet, per review brief)
+
+**Description.** When a bank credit is receipted through the app, a second
+Transaction (the envelope record carrying the income/fund allocation) is
+created and the bank row is flagged `processed_via_envelope=True` — by design,
+the bank line becomes a memo ("its income and fund live on the envelope's own
+record"). The transactions page's running balance (`_running_balances` /
+`_signed_sum` in giving/views.py) signs every row by direction/reversal only,
+so both halves of the pair count as cash — inflating the running balance by
+the receipted amount. The same pair also distorts reconciling the bank
+statement against imported items when the book side includes envelope rows.
+`pending_receipts_total` already solved this exact class of problem for
+suspense by excluding `processed_via_envelope`/`manual_receipt` rows; the
+running balance and reconciliation never received the same treatment.
+
+**Recommended approach (Option A — canonical memo predicate, preferred).**
+Define ONCE — as a Transaction manager method or a registry-adjacent signed
+annotation (e.g. `signed_cash_amount`: a Case expression where a BANK credit
+with `processed_via_envelope=True` contributes 0, reversals negative, debits
+negative) — and have the running balance, the Excel export and any cash
+aggregation consume it. Both rows stay visible on the page (keep the audit
+trail); render the memo row with a "receipted via envelope" badge and a muted
+amount so it is obvious why it does not move the balance. This mirrors how
+reversals were fixed and generalises the pending-receipts exclusion instead of
+each call site re-deriving it.
+
+**Reconciliation rule.** The book side of a statement-vs-imported-items
+comparison should consist of BANK-channel rows ONLY (they are the book's 1:1
+image of statement lines via core_ref/mpesa_ref); envelope counterparts must
+never enter the book side directly — they reconcile THROUGH their bank row.
+Additionally, when a receipt was entered as an envelope BEFORE the statement
+import, the importer should match on reference and link/flag rather than
+leaving an unpaired envelope row.
+
+**Option B (simpler, not preferred).** Hide memo rows from the transactions
+page by default behind a "show bank memo rows" toggle so the running balance
+never sees them — but this hides the audit trail by default.
+
+**Option C (later hardening).** Replace the boolean flag with an explicit
+link between the pair (bank row ↔ envelope counterpart), enabling integrity
+checks (flag set but counterpart missing; amounts of a pair unequal) and a
+consistency report. Worth doing after Option A stabilises the figures.
+
+**Priority: High** — a live correctness issue on a page treasurers read daily,
+and it distorts bank reconciliation. Decision needed on Option A vs B before
+implementation; A is recommended.

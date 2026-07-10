@@ -1,0 +1,152 @@
+<style>
+/* =========================================================================
+   Treasurer's Report — board pack styling.
+   Professional, print-friendly, forest-&-brass. Screen and print share one
+   source of truth; @media print refines pagination, headers and colour.
+   ========================================================================= */
+.bp-toolbar{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.8rem}
+.bp-toolbar-spacer{flex:1}
+.bp-filter{margin-bottom:1rem}
+
+.bp-doc{max-width:1120px;margin:0 auto}
+
+/* ---- cover ---- */
+.bp-cover{position:relative;background:linear-gradient(135deg,var(--forest-deep),var(--forest));
+  color:#fff;border-radius:var(--radius-lg);padding:2.4rem 2.4rem 2.1rem;overflow:hidden;
+  box-shadow:0 10px 34px rgba(20,58,49,.24);margin-bottom:1.4rem}
+.bp-cover-rule{position:absolute;inset:0 0 auto 0;height:6px;
+  background:linear-gradient(90deg,var(--brass-2),var(--brass))}
+.bp-cover-org{font-size:.82rem;letter-spacing:.14em;text-transform:uppercase;
+  font-weight:700;color:var(--brass-soft);opacity:.95}
+.bp-cover-title{font-family:var(--font-display,"Fraunces",Georgia,serif);
+  color:#fff;font-size:2.5rem;line-height:1.06;margin:.5rem 0 .35rem;font-weight:600}
+.bp-cover-period{font-size:1.05rem;color:#eaf3ef;font-weight:500}
+.bp-cover-meta{margin-top:.9rem;font-size:.82rem;color:#cfe1da;display:flex;
+  gap:.5rem;align-items:center;flex-wrap:wrap}
+.bp-cover-meta .bp-dot{opacity:.5}
+.bp-cover-health{position:absolute;right:2.2rem;top:50%;transform:translateY(-50%);
+  text-align:center;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);
+  border-radius:var(--radius);padding:.9rem 1.3rem;backdrop-filter:blur(2px)}
+.bp-cover-health-score{font-family:var(--font-display,"Fraunces",Georgia,serif);
+  font-size:2.6rem;font-weight:700;line-height:1;color:#fff}
+.bp-cover-health-score span{font-size:1rem;opacity:.7;font-weight:500}
+.bp-cover-health-band{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+  margin-top:.3rem;color:#eaf3ef}
+.bp-band-good .bp-cover-health-score{color:#bff0d8}
+.bp-band-warn .bp-cover-health-score{color:#ffe6ad}
+.bp-band-bad  .bp-cover-health-score{color:#ffc9c0}
+
+/* ---- sticky table of contents ---- */
+.bp-toc{position:sticky;top:.4rem;z-index:5;display:flex;flex-wrap:wrap;gap:.3rem;
+  align-items:center;background:var(--paper);border:1px solid var(--forest-soft);
+  border-radius:var(--radius-pill);padding:.4rem .7rem;margin-bottom:1.4rem;
+  box-shadow:0 2px 10px rgba(20,58,49,.06)}
+.bp-toc-label{font-size:.68rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--ink-soft);margin-right:.3rem}
+.bp-toc-link{font-size:.78rem;font-weight:600;color:var(--forest);padding:.24rem .62rem;
+  border-radius:var(--radius-pill);white-space:nowrap;transition:all .15s}
+.bp-toc-link:hover{background:var(--forest-soft)}
+.bp-toc-link.active{background:var(--forest);color:#fff}
+
+/* ---- groups ---- */
+.bp-group{margin-bottom:1.9rem;scroll-margin-top:4rem}
+.bp-group-head{display:flex;align-items:center;gap:1rem;margin:0 0 1rem}
+.bp-group-title{font-family:var(--font-display,"Fraunces",Georgia,serif);
+  font-size:1.28rem;font-weight:600;color:var(--forest-deep);margin:0;white-space:nowrap}
+.bp-group-line{flex:1;height:2px;background:linear-gradient(90deg,var(--brass) ,transparent);
+  border-radius:2px;opacity:.55}
+.bp-grid{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
+.bp-cell{min-width:270px}
+
+/* ---- cards ---- */
+.bp-card{background:var(--paper);border:1px solid #ece6da;border-radius:var(--radius);
+  overflow:hidden;box-shadow:0 1px 3px rgba(27,36,32,.05);height:100%}
+.bp-card-head{display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+  background:var(--card-head,#f1ece0);padding:.6rem .9rem;font-weight:600;font-size:.92rem;
+  color:var(--forest-deep);border-bottom:1px solid #e7e0d2}
+.bp-card-body{padding:.9rem}
+.bp-card-commentary .bp-card-body{background:#fcfbf7}
+.bp-card-info{background:var(--forest-tint);border-color:var(--forest-soft)}
+.bp-card-info .bp-card-head{background:transparent;border-bottom:0;color:var(--forest)}
+
+.bp-prose{font-size:.92rem;line-height:1.62;color:var(--ink-soft)}
+
+/* ---- executive snapshot KPI cards ---- */
+.bp-snapshot{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.8rem}
+.bp-kpi{position:relative;background:var(--paper);border:1px solid #ece6da;
+  border-left:4px solid var(--forest);border-radius:var(--radius-sm);padding:.85rem .95rem}
+.bp-kpi-good{border-left-color:#2f8f5b}
+.bp-kpi-bad{border-left-color:var(--danger)}
+.bp-kpi-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ink-soft)}
+.bp-kpi-value{font-family:var(--font-display,"Fraunces",Georgia,serif);font-size:1.5rem;
+  font-weight:600;color:var(--ink);margin-top:.2rem;line-height:1.1}
+.bp-kpi-unit{font-size:.72rem;color:var(--ink-soft);font-weight:500;font-family:inherit}
+.bp-kpi-delta{font-size:.76rem;font-weight:600;margin-top:.35rem}
+.bp-kpi-delta.up{color:#2f8f5b}
+.bp-kpi-delta.down{color:var(--danger)}
+.bp-kpi-pct{opacity:.75;font-weight:500}
+.bp-kpi-sub{font-size:.74rem;color:var(--ink-soft);margin-top:.35rem;line-height:1.35}
+
+/* ---- tables ---- */
+.bp-table{width:100%;border-collapse:collapse;font-size:.88rem}
+.bp-table thead th{background:var(--forest);color:#fff;text-align:left;
+  padding:.5rem .7rem;font-weight:600;font-size:.8rem;letter-spacing:.02em}
+.bp-table thead th.num{text-align:right}
+.bp-table tbody td,.bp-table tbody th{padding:.42rem .7rem;border-bottom:1px solid #eee7da}
+.bp-table tbody th{text-align:left;font-weight:500;color:var(--ink)}
+.bp-table tbody tr:nth-child(even) td,.bp-table tbody tr:nth-child(even) th{background:#faf7f0}
+.bp-table .num{text-align:right}
+.bp-table tfoot td{padding:.5rem .7rem;border-top:2px solid var(--forest);font-weight:700}
+.bp-emph th,.bp-emph td{font-weight:700;background:var(--brass-soft) !important;color:var(--forest-deep)}
+.bp-neg td.num{color:var(--danger)}
+.bp-kv tbody th{width:70%}
+
+.bp-note{font-size:.76rem;color:var(--ink-soft);margin:.6rem 0 0;line-height:1.45;font-style:italic}
+.bp-empty{color:var(--ink-soft);font-size:.88rem;padding:.4rem 0}
+
+/* ---- signatures ---- */
+.bp-sign-row{display:flex;flex-wrap:wrap;gap:1.6rem;padding-top:.8rem}
+.bp-sign{flex:1;min-width:180px}
+.bp-sign-line{border-bottom:1.5px solid var(--ink-soft);height:2.1rem;margin-bottom:.35rem}
+.bp-sign-role{font-weight:600;font-size:.86rem;color:var(--ink)}
+.bp-sign-date{font-size:.74rem;color:var(--ink-soft)}
+
+.bp-footer{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  border-top:2px solid var(--forest-soft);margin-top:1.6rem;padding-top:.8rem;
+  font-size:.74rem;color:var(--ink-soft)}
+.bp-deps{max-width:1120px;margin-left:auto;margin-right:auto}
+
+.ask-ai-link{font-size:.72rem;font-weight:600;color:var(--forest);padding:.14rem .5rem;
+  border:1px solid var(--forest-soft);border-radius:999px;white-space:nowrap;
+  transition:all .15s;text-decoration:none}
+.ask-ai-link:hover{background:var(--forest-soft);border-color:var(--forest)}
+
+/* ---- responsive ---- */
+@media (max-width:640px){
+  .bp-cover{padding:1.6rem 1.3rem}
+  .bp-cover-title{font-size:1.8rem}
+  .bp-cover-health{position:static;transform:none;display:inline-block;margin-top:1rem}
+  .bp-cell{flex-basis:100% !important}
+}
+
+/* ---- print / PDF-from-browser ---- */
+@media print{
+  .no-print{display:none !important}
+  .bp-doc{max-width:none}
+  .bp-cover{background:var(--forest-deep) !important;-webkit-print-color-adjust:exact;
+    print-color-adjust:exact;box-shadow:none;border-radius:0;page-break-after:avoid}
+  .bp-cover-title{color:#fff}
+  .bp-toc{display:none !important}
+  .bp-group{page-break-inside:auto;margin-bottom:1.2rem}
+  .bp-break{page-break-before:always}
+  .bp-card{page-break-inside:avoid;box-shadow:none}
+  .bp-table thead th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .bp-group-title{color:#143a31}
+  .bp-kpi{page-break-inside:avoid}
+  a[href]:after{content:""}
+}
+@page{margin:16mm 14mm;
+  @bottom-center{content:"Treasurer's Report — page " counter(page) " of " counter(pages);
+    font-size:9pt;color:#666}}
+</style>

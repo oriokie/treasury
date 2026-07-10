@@ -1,0 +1,264 @@
+{% extends 'base.html' %}{% load humanize treasury_extras static %}
+{% block title %}{{ report.title }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+{# ============================================================================
+   Treasurer's Report — executive board pack.
+   A dedicated presentation over the identical engine section data: an
+   executive cover, a sticky section navigator, grouped & collapsible sections,
+   professional call-out cards and a print-optimised layout. Every figure still
+   originates from the Financial Metrics Registry via the Semantic Reporting
+   Layer — this template only presents the SectionData the engine produced.
+   ========================================================================= #}
+
+{# ---- toolbar (screen only) ---- #}
+<div class="bp-toolbar no-print">
+  <a class="btn btn-sm" href="{% url 'assistant' %}?report_key={{ report.key }}{% if rendered.context.start %}&start={{ rendered.context.start|date:'Y-m-d' }}&end={{ rendered.context.end|date:'Y-m-d' }}{% endif %}">✨ Ask AI about this report</a>
+  <span class="bp-toolbar-spacer"></span>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=pdf">⬇ PDF</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=docx">⬇ Word</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=xlsx">⬇ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=csv">⬇ CSV</a>
+  <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖶 Print</button>
+</div>
+
+{# ---- filter bar (screen only) ---- #}
+{% if report.filters %}
+<form method="get" class="filter-bar no-print bp-filter">
+  {% if rendered.context.start %}
+    <input type="date" name="start" value="{{ rendered.context.start|date:'Y-m-d' }}" class="field" title="From">
+    <input type="date" name="end" value="{{ rendered.context.end|date:'Y-m-d' }}" class="field" title="To">
+  {% endif %}
+  {% for f in report.filters %}
+    {% if f.kind == 'bool' %}
+      <label class="u-inline"><input type="checkbox" name="{{ f.name }}" value="1" {% if filters|get_item:f.name %}checked{% endif %}> {{ f.label }}</label>
+    {% endif %}
+  {% endfor %}
+  <button class="btn btn-sm">Apply</button>
+</form>
+{% endif %}
+
+<div class="bp-doc">
+
+  {# ============================ EXECUTIVE COVER ========================= #}
+  <header class="bp-cover">
+    <div class="bp-cover-rule"></div>
+    <div class="bp-cover-org">{{ SITE_NAME }}</div>
+    <h1 class="bp-cover-title">{{ report.title }}</h1>
+    {% if rendered.context.start %}
+      <div class="bp-cover-period">For the period {{ rendered.context.start|date:"d F Y" }} &ndash; {{ rendered.context.end|date:"d F Y" }}</div>
+    {% endif %}
+    <div class="bp-cover-meta">
+      <span>Prepared for the Church Board &amp; Finance Committee</span>
+      <span class="bp-dot">•</span>
+      <span>Generated {% now "d M Y" %}</span>
+    </div>
+    {% if health_band %}
+    <div class="bp-cover-health bp-band-{{ health_tone }}">
+      <div class="bp-cover-health-score">{{ health_overall|floatformat:0 }}<span>/100</span></div>
+      <div class="bp-cover-health-band">Financial health &middot; {{ health_band }}</div>
+    </div>
+    {% endif %}
+  </header>
+
+  {# ============================ STICKY NAVIGATOR ======================= #}
+  {% if section_groups %}
+  <nav class="bp-toc no-print" aria-label="Report sections">
+    <span class="bp-toc-label">Contents</span>
+    {% for g in section_groups %}
+      <a href="#{{ g.anchor }}" class="bp-toc-link">{{ g.name }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {# ============================ GROUPED SECTIONS ======================= #}
+  {% for g in section_groups %}
+  <section id="{{ g.anchor }}" class="bp-group{% if g.name in break_groups %} bp-break{% endif %}">
+    <div class="bp-group-head">
+      <h2 class="bp-group-title">{{ g.name }}</h2>
+      <span class="bp-group-line"></span>
+    </div>
+
+    <div class="bp-grid">
+    {% for s in g.sections %}
+      {% with layout=s.extra|get_item:'layout' %}
+      <div class="bp-cell" style="flex:1 1 {% if layout %}{{ layout.width|default:12|pct_of_12 }}{% else %}100{% endif %}%">
+
+        {# ---- Executive snapshot: rich KPI call-out cards with movement ---- #}
+        {% if s.kind == 'kpi' and s.extra|get_item:'snapshot' %}
+          <div class="bp-snapshot">
+          {% for r in s.rows %}
+            <div class="bp-kpi{% if r.meta.good == True %} bp-kpi-good{% elif r.meta.good == False %} bp-kpi-bad{% endif %}">
+              <div class="bp-kpi-label">{{ r.cells.label }}</div>
+              <div class="bp-kpi-value">
+                {% if r.meta.format == 'money' %}<span class="bp-kpi-unit">KES</span> {{ r.cells.value|floatformat:0|intcomma }}
+                {% elif r.meta.format == 'score' %}{{ r.cells.value|floatformat:0 }}<span class="bp-kpi-unit">/100</span>
+                {% else %}{{ r.cells.value|floatformat:0|intcomma }}{% endif %}
+              </div>
+              {% if r.meta.delta_abs != None %}
+                <div class="bp-kpi-delta {% if r.meta.delta_abs < 0 %}down{% else %}up{% endif %}">
+                  {% if r.meta.delta_abs < 0 %}▼{% else %}▲{% endif %}
+                  KES {{ r.meta.delta_abs|abs_val|floatformat:0|intcomma }}
+                  {% if r.meta.delta_pct != None %}<span class="bp-kpi-pct">({{ r.meta.delta_pct|abs_val|floatformat:1 }}%)</span>{% endif %}
+                </div>
+              {% else %}
+                <div class="bp-kpi-sub">{{ r.meta.sub }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+          </div>
+          {% if s.note %}<p class="bp-note no-print">{{ s.note }}</p>{% endif %}
+
+        {# ---- Plain KPI band (fallback) ---- #}
+        {% elif s.kind == 'kpi' %}
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+            <div class="bp-snapshot">
+            {% for r in s.rows %}
+              <div class="bp-kpi"><div class="bp-kpi-label">{{ r.cells.label }}</div>
+                <div class="bp-kpi-value"><span class="bp-kpi-unit">KES</span> {{ r.cells.value|floatformat:0|intcomma }}</div></div>
+            {% endfor %}
+            </div>
+          </div></div>
+
+        {# ---- Chart ---- #}
+        {% elif s.kind == 'chart' %}
+          <div class="bp-card bp-card-chart"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+            <canvas id="chart_{{ s.key }}" height="200"></canvas>
+          </div></div>
+
+        {# ---- Commentary (narrative / AI briefing) ---- #}
+        {% elif s.kind == 'commentary' %}
+          <div class="bp-card bp-card-commentary"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+            <div class="bp-prose">{{ s.extra|get_item:'text'|linebreaksbr }}</div>
+          </div></div>
+
+        {# ---- Info panel ---- #}
+        {% elif s.kind == 'info' %}
+          <div class="bp-card bp-card-info"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
+            <p class="bp-prose">{{ s.extra|get_item:'text' }}</p>
+          </div></div>
+
+        {# ---- Signature block ---- #}
+        {% elif s.kind == 'signature' %}
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
+            <div class="bp-sign-row">
+            {% for r in s.rows %}
+              <div class="bp-sign">
+                <div class="bp-sign-line"></div>
+                <div class="bp-sign-role">{{ r.cells.role }}</div>
+                <div class="bp-sign-date">Name &amp; date</div>
+              </div>
+            {% endfor %}
+            </div>
+          </div></div>
+
+        {# ---- Key/value statement ---- #}
+        {% elif s.kind == 'keyvalue' %}
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+            <table class="bp-table bp-kv">
+              <tbody>
+              {% for r in s.rows %}
+                <tr {% if r.emphasis %}class="bp-emph"{% endif %}>
+                  <th scope="row">{{ r.cells.label }}</th>
+                  <td class="num mono">{{ r.cells.value|floatformat:2|intcomma }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            {% if s.note %}<p class="bp-note">{{ s.note }}</p>{% endif %}
+          </div></div>
+
+        {# ---- Empty ---- #}
+        {% elif s.is_empty %}
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
+            <p class="bp-empty">No data for this period.</p>
+          </div></div>
+
+        {# ---- Default table ---- #}
+        {% else %}
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+            <div class="table-wrap"><table class="bp-table">
+              <thead><tr>{% for c in s.columns %}<th scope="col" {% if c.numeric %}class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
+              <tbody>
+              {% for r in s.rows %}
+                <tr {% if r.emphasis %}class="bp-emph"{% endif %}{% if r.meta.over or r.meta.down %} class="bp-neg"{% endif %}>
+                  {% for c in s.columns %}
+                    <td {% if c.numeric %}class="num mono"{% endif %}>
+                      {% if c.drilldown and r.url %}<a class="link" href="{{ r.url }}">{{ r.cells|get_item:c.key }}</a>
+                      {% elif c.numeric %}{{ r.cells|get_item:c.key|floatformat:2|intcomma }}
+                      {% else %}{{ r.cells|get_item:c.key }}{% endif %}
+                    </td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+              </tbody>
+              {% if s.total %}<tfoot><tr class="bp-emph">
+                {% for c in s.columns %}<td {% if c.numeric %}class="num mono"{% endif %}>
+                  {% if c.numeric %}{{ s.total.cells|get_item:c.key|floatformat:2|intcomma }}{% else %}{{ s.total.cells|get_item:c.key }}{% endif %}
+                </td>{% endfor %}
+              </tr></tfoot>{% endif %}
+            </table></div>
+            {% if s.note %}<p class="bp-note">{{ s.note }}</p>{% endif %}
+          </div></div>
+        {% endif %}
+
+      </div>
+      {% endwith %}
+    {% endfor %}
+    </div>
+  </section>
+  {% empty %}
+  <p class="bp-empty">This report has no visible sections for your role.</p>
+  {% endfor %}
+
+  {# ---- report footer ---- #}
+  <footer class="bp-footer">
+    <span>{{ SITE_NAME }} — Treasurer's Report</span>
+    <span>Figures sourced from the Financial Metrics Registry via the Semantic Reporting Layer.</span>
+  </footer>
+</div>
+
+{% if dep_map %}
+<details class="u-mt no-print bp-deps"><summary class="link">Financial dependency map</summary>
+<div class="help">
+  <p>Metrics consumed: <span class="mono">{{ dep_map.all_metrics|join:", " }}</span></p>
+  <p>Accounting services: <span class="mono">{{ dep_map.all_services|join:", " }}</span></p>
+  <p><a class="link" href="?{{ querystring }}&deps=json">View full dependency map (JSON)</a></p>
+</div></details>
+{% endif %}
+
+{% if chart_json %}
+<script src="{% static 'vendor/chart.umd.js' %}"></script>
+<script id="engine-charts" type="application/json">{{ chart_json|safe }}</script>
+<script>
+(function(){
+  var data = JSON.parse(document.getElementById('engine-charts').textContent);
+  Object.keys(data).forEach(function(key){
+    var cv = document.getElementById('chart_'+key);
+    if(!cv) return;
+    try { new Chart(cv, data[key]); } catch(e){ console.error('chart', key, e); }
+  });
+})();
+</script>
+{% endif %}
+
+<script>
+// Sticky-nav active-section highlight
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('.bp-toc-link'));
+  var groups = links.map(function(l){ return document.querySelector(l.getAttribute('href')); });
+  if(!('IntersectionObserver' in window) || !groups.length) return;
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        links.forEach(function(l){ l.classList.remove('active'); });
+        var idx = groups.indexOf(e.target);
+        if(idx > -1) links[idx].classList.add('active');
+      }
+    });
+  }, {rootMargin: '-20% 0px -70% 0px'});
+  groups.forEach(function(g){ if(g) obs.observe(g); });
+})();
+</script>
+
+{% include "reports/_bp_styles.html" %}
+{% endblock %}

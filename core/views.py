@@ -419,38 +419,32 @@ class NextReceiptView(DataEntryRequiredMixin, View):
 
 
 class DepartmentBalanceView(DataEntryRequiredMixin, View):
-    """JSON: a department's available balance (opening + receipts − approved/paid
-    expenses), for the expense form to show on selection."""
+    """JSON: a department's available balance for the expense form to show on
+    selection. Reads the CANONICAL single-fund calculation
+    (reports.services.balances.fund_balance_parts — the fund_balance registry
+    metric's basis), so this figure always equals the fund's balance on the
+    departments page and every report. The previous inline calculation here had
+    drifted: it still counted reversed/reversal credits as receipts, excluded
+    remittance expenses from spend, and ignored refunds — overstating the
+    available balance whenever any of those existed."""
 
     def get(self, request):
-        from decimal import Decimal
-        from django.db.models import Sum
         from departments.models import Department
-        from giving.models import Transaction
-        from cashbook.models import Expense
+        from reports.services.balances import fund_balance_parts
         try:
             dept = Department.objects.get(pk=request.GET.get("id"))
         except (Department.DoesNotExist, ValueError, TypeError):
             return JsonResponse({"ok": False})
-        credits = (Transaction.objects.filter(
-            department=dept, direction=Transaction.Direction.CREDIT, confirmed=True)
-            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        spent = (Expense.objects.exclude(
-            category=Expense.Category.REMITTANCE).filter(
-            department=dept,
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        from reports.services import balances as _bal
-        tin = _bal.transfers_in_by_department().get(dept.id, Decimal(0))
-        tout = _bal.transfers_out_by_department().get(dept.id, Decimal(0))
-        bal = ((dept.opening_balance or Decimal(0)) + credits + tin - tout - spent)
+        p = fund_balance_parts(dept)
         return JsonResponse({
             "ok": True, "name": dept.name,
             "fund_type": "Trust" if dept.is_trust else "Local",
-            "opening": float(dept.opening_balance or 0),
-            "receipts": float(credits), "spent": float(spent),
-            "transfers_in": float(tin), "transfers_out": float(tout),
-            "balance": float(bal)})
+            "opening": float(p["opening"] or 0),
+            "receipts": float(p["receipts"]), "spent": float(p["spent"]),
+            "refunded": float(p["refunded"]),
+            "transfers_in": float(p["transfers_in"]),
+            "transfers_out": float(p["transfers_out"]),
+            "balance": float(p["balance"])})
 
 
 class AssistantView(ReadAccessMixin, View):

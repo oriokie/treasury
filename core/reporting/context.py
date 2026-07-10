@@ -104,8 +104,11 @@ class ReportContext:
     def metric(self, name, *args, **kwargs):
         """Return a registry metric's value, computed once per (name, args)
         for this context. Period-aware metrics (those whose registry ``inputs``
-        begin with ``start``) automatically receive this context's period
-        unless the caller passes explicit positional args or period kwargs.
+        begin with ``start``) automatically receive this context's period, and
+        as-at metrics (``inputs`` beginning with ``as_of``) automatically
+        receive this context's period end, unless the caller passes explicit
+        positional args or period kwargs — so every section of a report reads
+        as at the same date without each remembering to pass ``ctx.end``.
 
         Raises KeyError with a helpful message if the metric isn't registered,
         so typos surface immediately rather than silently returning nothing.
@@ -116,12 +119,14 @@ class ReportContext:
                 f"{', '.join(sorted(metrics.registry))}. "
                 f"Add it to core.metrics rather than computing it ad hoc.")
 
-        applies_period = (not args and "start" not in kwargs
-                          and "end" not in kwargs
-                          and metrics.registry[name].inputs.startswith("start"))
+        inputs = metrics.registry[name].inputs
+        no_explicit = (not args and "start" not in kwargs
+                       and "end" not in kwargs and "as_of" not in kwargs)
         call_args = args
-        if applies_period:
+        if no_explicit and inputs.startswith("start"):
             call_args = (self.start, self.end)
+        elif no_explicit and inputs.startswith("as_of") and self.end is not None:
+            call_args = (self.end,)
 
         key = (name, tuple(_hashable(a) for a in call_args),
                tuple(sorted((k, _hashable(v)) for k, v in kwargs.items())))

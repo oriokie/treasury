@@ -449,7 +449,7 @@ class OutstandingInstrumentsModule(IntelligenceModule):
                 thresholds={"material_amount": {
                     "limit": float(cfg.material_amount),
                     "actual": float(unpresented)}},
-                services=["cashbook.views.unpresented_cheques_total"]))]
+                services=["cashbook.services.treasury_position.unpresented_cheques_total"]))]
 
 
 # ===========================================================================

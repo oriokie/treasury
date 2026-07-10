@@ -187,6 +187,12 @@ class Report:
     description: str = ""
     category: str = "General"
     period_from_request: bool = True        # build ctx from ?start/?end
+    #: optional dedicated HTML/print template. When None the generic
+    #: ``reports/engine_report.html`` is used. A report may opt into a richer,
+    #: purpose-built presentation (e.g. the Treasurer's board pack) without the
+    #: engine or any other report changing — the section data is identical, only
+    #: the presentation template differs.
+    html_template: Optional[str] = None
 
     # ---- rendering pipeline ----
 

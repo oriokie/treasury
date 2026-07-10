@@ -21,6 +21,8 @@ class ReportsConfig(AppConfig):
         # Intelligence-backed components + the comprehensive Treasurer's Report.
         from . import intelligence_components
         intelligence_components.register_components()
+        from . import board_pack_components
+        board_pack_components.register_components()
         from . import treasurer_report  # noqa: F401
         # Admin-designed report definitions are compiled and registered lazily on
         # first request (see EngineReportView), NOT at startup — this avoids a

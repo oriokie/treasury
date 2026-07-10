@@ -130,11 +130,14 @@ def allocate(reference, date=None):
 
     # church-configured numbered fund families, e.g. EXPENSE<n> -> fund "CAMP_<n>".
     # One config line covers every group; resolves only when that fund exists.
+    # Prefixes may be plain words OR /regex/ patterns (for misspellings and
+    # variations, e.g. /expen[sc]es?/). The number is captured by a NAMED group
+    # so a user pattern containing its own groups can never shift it.
     for prefixes, template in _numbered_fund_families():
-        fm = re.search(r"(?:%s)[ _-]*0*(\d+)" % "|".join(prefixes), s)
+        fm = re.search(r"(?:%s)[ _-]*0*(?P<famnum>\d+)" % "|".join(prefixes), s)
         if fm:
             from departments.models import Department
-            name = template.replace("{n}", str(int(fm.group(1))))
+            name = template.replace("{n}", str(int(fm.group("famnum"))))
             dept = Department.objects.filter(name__iexact=name).first()
             if dept:
                 return dept, "AUTO"
@@ -210,9 +213,15 @@ def _extra_dev_prefixes():
 def _numbered_fund_families():
     """Parse SiteConfig.numbered_fund_families into [(prefixes, template), ...].
 
-    Each non-empty line is 'prefix1, prefix2 = NAME_TEMPLATE'. Prefixes are
-    normalised (letters/digits only) and sorted longest-first so 'expense' is
-    tried before 'exp'. Tolerant: malformed lines are skipped, never fatal.
+    Each non-empty line is 'prefix1, prefix2 = NAME_TEMPLATE'. A prefix is
+    either a plain word — normalised to letters/digits and matched literally —
+    or, wrapped in slashes, a regular expression (e.g. /expen[sc]es?/ or
+    /exp\\w{0,4}/) for misspellings and variations the plain list can't cover.
+    Regex prefixes are matched against the NORMALISED reference (lowercase,
+    punctuation stripped), must compile, and have any capturing groups made
+    non-capturing so they can never break the number extraction. Plain prefixes
+    are sorted longest-first so 'expense' is tried before 'exp'. Tolerant:
+    malformed lines and invalid patterns are skipped, never fatal.
     """
     try:
         from core.models import SiteConfig
@@ -228,13 +237,29 @@ def _numbered_fund_families():
         template = template.strip()
         if "{n}" not in template:
             continue
-        prefixes = []
+        plain, regexes = [], []
         for part in left.split(","):
-            p = re.sub(r"[^a-z0-9]", "", part.strip().lower())
-            if p:
-                prefixes.append(re.escape(p))
+            part = part.strip()
+            if len(part) > 2 and part.startswith("/") and part.endswith("/"):
+                pattern = part[1:-1].strip()
+                if not pattern:
+                    continue
+                # capturing groups -> non-capturing, so the family matcher's
+                # named number group is the only capture (back-references in a
+                # user pattern would break, an acceptable trade for safety)
+                pattern = re.sub(r"\((?![?])", "(?:", pattern)
+                try:
+                    re.compile(pattern)
+                except re.error:
+                    continue          # an invalid pattern never matches
+                regexes.append(f"(?:{pattern})")
+            else:
+                p = re.sub(r"[^a-z0-9]", "", part.lower())
+                if p:
+                    plain.append(re.escape(p))
+        plain.sort(key=len, reverse=True)
+        prefixes = plain + regexes
         if prefixes:
-            prefixes.sort(key=len, reverse=True)
             families.append((prefixes, template))
     return families
 

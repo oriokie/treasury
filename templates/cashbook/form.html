@@ -97,7 +97,11 @@ async function showBal(){
   if(!deptHidden.value){ box.style.display="none"; return; }
   try{ const d=await (await fetch(balUrl+"?id="+deptHidden.value)).json();
     if(!d.ok){ box.style.display="none"; return; }
-    box.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong> <span class="muted">(opening ${fmt(d.opening)} + receipts ${fmt(d.receipts)} − spent ${fmt(d.spent)})</span>`;
+    let parts=`opening ${fmt(d.opening)} + receipts ${fmt(d.receipts)} − spent ${fmt(d.spent)}`;
+    if(d.refunded) parts+=` + refunds ${fmt(d.refunded)}`;
+    if(d.transfers_in) parts+=` + transfers in ${fmt(d.transfers_in)}`;
+    if(d.transfers_out) parts+=` − transfers out ${fmt(d.transfers_out)}`;
+    box.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong> <span class="muted">(${parts})</span>`;
     box.style.display="block";
   }catch(e){ box.style.display="none"; }
 }

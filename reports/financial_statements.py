@@ -176,7 +176,8 @@ class FinancialPositionSummarySection(ComponentSection):
     key = "financial_position_summary"
     title = "Statement of financial position (summary)"
     declared_metrics = ("fund_summary", "pending_receipts_total",
-                        "trust_to_remit", "loans_outstanding")
+                        "trust_to_remit", "loans_outstanding",
+                        "petty_cash_balance", "staff_advances_outstanding")
 
     def render(self, ctx, filters):
         from core.reporting.engine import Section
@@ -187,11 +188,19 @@ class FinancialPositionSummarySection(ComponentSection):
         pending = _n(ctx.metric("pending_receipts_total", ctx.end))
         loans = ctx.loans_outstanding(ctx.end)
         loan_total = _n(loans.get("total")) if isinstance(loans, dict) else _n(loans)
+        # petty cash and unspent staff advances are inside the fund cash figure;
+        # reclassify them onto their own lines (matching the detailed Statement
+        # of Financial Position) — totals are unchanged.
+        petty = _n(ctx.metric("petty_cash_balance"))
+        advances = _n(ctx.metric("staff_advances_outstanding"))
+        cash_at_bank = cash - petty - advances
         total_assets = cash + pending
         total_liabilities = trust_payable + loan_total + pending
         net_assets = total_assets - total_liabilities
         pairs = [
-            ("Fund cash balances", cash),
+            ("Cash & bank (funds on hand)", cash_at_bank),
+            ("Petty cash float", petty),
+            ("Staff advances (receivable)", advances),
             ("Receipts pending allocation", pending),
             ("Total assets", total_assets, True),
             ("Trust funds payable", trust_payable),
