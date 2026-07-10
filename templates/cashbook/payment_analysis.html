@@ -1,0 +1,38 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Payments analysis · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Payments analysis</h1>
+<div class="sub">Issued {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · grouped by {{ group }}</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=csv">⬇ CSV</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=xlsx">⬇ Excel</a>
+  <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖶 Print</button>
+  <a class="btn btn-ghost btn-sm" href="{% url 'payment_register' %}">← Register</a></div></div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field">
+  <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field">
+  <select name="group" class="field--select">
+    <option value="fund" {% if group == 'fund' %}selected{% endif %}>By fund / department</option>
+    <option value="bank" {% if group == 'bank' %}selected{% endif %}>By bank account</option>
+    <option value="method" {% if group == 'method' %}selected{% endif %}>By payment type</option>
+    <option value="source" {% if group == 'source' %}selected{% endif %}>By source type</option>
+  </select>
+  <button class="btn btn-sm">Run</button>
+</form>
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>{{ group|title }}</th><th class="num">Payments</th><th class="num">Total</th>
+<th class="num">Cleared</th><th class="num">Outstanding</th><th class="num">Outstanding KES</th>
+<th class="num">Cancelled</th><th class="num">Avg days to clear</th><th class="num">Slowest</th></tr></thead>
+<tbody>{% for r in rows %}<tr>
+  <td>{{ r.group }}</td><td class="num">{{ r.count }}</td>
+  <td class="num mono">{{ r.total|floatformat:2|intcomma }}</td>
+  <td class="num">{{ r.cleared }}</td><td class="num">{{ r.outstanding }}</td>
+  <td class="num mono">{{ r.outstanding_total|floatformat:2|intcomma }}</td>
+  <td class="num">{{ r.cancelled }}</td>
+  <td class="num">{% if r.avg_days != None %}{{ r.avg_days }}{% else %}—{% endif %}</td>
+  <td class="num">{% if r.max_days != None %}{{ r.max_days }}{% else %}—{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="9" class="empty">No payments issued in this period.</td></tr>{% endfor %}</tbody></table></div>
+<p class="help">Clearance days = bank clearance date − issue date, per instrument. Instruments never post to the ledger — the analysis is over payment lifecycle data only.</p>
+{% endblock %}

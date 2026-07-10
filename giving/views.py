@@ -882,6 +882,16 @@ class DebitQueueView(DebitClassifyRequiredMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         ctx["funds"] = Department.objects.filter(active=True, selectable=True)
         ctx["categories"] = Expense.Category.choices
+        # Payment Register suggestions: for each debit on this page, an
+        # outstanding instrument matched by number-in-narration or unique
+        # exact amount — one click marks it cleared on the debit's date
+        from cashbook.services.payments import suggest_instrument_for_debit
+        suggestions = {}
+        for d in ctx["debits"]:
+            inst, how = suggest_instrument_for_debit(d)
+            if inst:
+                suggestions[d.pk] = {"inst": inst, "how": how}
+        ctx["instrument_suggestions"] = suggestions
         ctx["pending_expenses"] = Expense.objects.filter(
             status__in=[Expense.Status.PENDING, Expense.Status.APPROVED],
             bank_transaction__isnull=True).order_by("-date")[:200]
@@ -1026,6 +1036,13 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
                     exp.status = Expense.Status.PAID
                     exp.paid_date = txn.date
                 exp.save()
+            # Payment Register integration: the matched expenses' outstanding
+            # payment instruments are cleared with THIS DEBIT'S DATE as the
+            # cleared date (the bank's clearance date) and linked to the debit
+            # for the reconciliation trail — no duplicate records, and
+            # historical reconciliations pick the right date automatically.
+            from cashbook.services.payments import clear_for_bank_debit
+            cleared_insts = clear_for_bank_debit(txn, request.user, exps)
             dept_ids = {e.department_id for e in exps}
             if len(dept_ids) == 1:
                 txn.department = exps[0].department
@@ -1040,8 +1057,54 @@ class DebitResolveView(DebitClassifyRequiredMixin, View):
             txn.allocation_status = Transaction.Status.MANUAL
             txn.save()
             note = (f" across {len(dept_ids)} funds" if len(dept_ids) > 1 else "")
+            pay_note = (f" {len(cleared_insts)} payment instrument(s) marked "
+                        f"cleared on {txn.date:%d %b}." if cleared_insts else "")
             messages.success(
-                request, f"Matched {len(exps)} expense(s) totalling {total:,.2f}{note} to this debit.")
+                request, f"Matched {len(exps)} expense(s) totalling {total:,.2f}{note} "
+                         f"to this debit.{pay_note}")
+
+        elif kind == "clear_instrument":
+            # the debit IS the clearance of a known outstanding instrument:
+            # mark it cleared on the debit's date, link both ways, and settle
+            # the instrument's source expense(s) if still unpaid
+            from cashbook.models import PaymentInstrument
+            from cashbook.services.payments import apply_event
+            inst = PaymentInstrument.objects.filter(
+                pk=request.POST.get("instrument")).first()
+            if not inst:
+                messages.error(request, "Choose the payment instrument this debit clears.")
+                return redirect("debit_queue")
+            if inst.bank_transaction_id:
+                messages.error(request, "That instrument is already cleared by another debit.")
+                return redirect("debit_queue")
+            if abs(inst.amount - txn.amount) > Decimal("0.01"):
+                messages.error(request,
+                    f"The debit is {txn.amount:,.2f} but the instrument is "
+                    f"{inst.amount:,.2f} — they must match.")
+                return redirect("debit_queue")
+            try:
+                apply_event(inst, "CLEAR", request.user, on=txn.date,
+                            bank_transaction=txn,
+                            comment="Cleared from the debit review queue")
+            except Exception as exc:  # noqa: BLE001 — surface validation errors
+                messages.error(request, str(exc))
+                return redirect("debit_queue")
+            depts = set()
+            for exp in inst.all_expenses:
+                if exp.bank_transaction_id is None:
+                    exp.bank_transaction = txn
+                if exp.status != Expense.Status.PAID:
+                    exp.status = Expense.Status.PAID
+                    exp.paid_date = txn.date
+                exp.save()
+                depts.add(exp.department_id)
+            if len(depts) == 1 and inst.expense_id:
+                txn.department = inst.expense.department
+            txn.allocation_status = Transaction.Status.MANUAL
+            txn.save()
+            messages.success(request,
+                f"{inst.get_method_display()} {inst.instrument_number or inst.pk} "
+                f"marked cleared on {txn.date:%d %b %Y}.")
 
         elif kind == "float":
             fund = _float_fund()

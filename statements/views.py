@@ -269,10 +269,12 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             _sync_managed_recon_items(rec)
         if request.GET.get("export") in ("xlsx", "csv"):
             return self._export(request, rec)
-        unpresented = (PaymentInstrument.objects.filter(
-            method=PaymentInstrument.Method.CHEQUE,
-            status__in=PaymentInstrument.OUTSTANDING_STATES,
-            date_issued__lte=rec.statement_date).order_by("date_issued"))
+        # as-at listing: judged on issue/cleared DATES so an instrument that
+        # cleared after this reconciliation's date still shows outstanding here
+        from cashbook.views import unpresented_payments_qs
+        unpresented = (unpresented_payments_qs(rec.statement_date)
+                       .select_related("expense__department")
+                       .order_by("date_issued"))
         petty_float = _petty_balance_asof(rec.statement_date)
         # is the petty-cash float already entered as a reconciling item?
         petty_listed = rec.items.filter(

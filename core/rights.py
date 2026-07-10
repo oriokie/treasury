@@ -44,6 +44,11 @@ RIGHTS = [
     ("convert_loans",        "Convert / write off loans",          "Money controls"),
     ("view_liabilities",     "View liability transactions",        "Money controls"),
     ("manage_liabilities",   "Record liability transactions",      "Money controls"),
+    ("view_payments",        "View the payment register",          "Money controls"),
+    ("manage_payments",      "Create / issue payment instruments", "Money controls"),
+    ("approve_payments",     "Approve payment instruments",        "Money controls"),
+    ("clear_payments",       "Mark payments cleared",              "Money controls"),
+    ("void_payments",        "Void / cancel / reverse payments",   "Money controls"),
     ("lock_periods",         "Lock / unlock periods",              "Money controls"),
     # Setup
     ("manage_funds",         "Manage funds & structure",           "Setup"),
@@ -88,7 +93,8 @@ _DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
                "record_expenses", "manage_members", "manage_campaigns",
                "manage_rules", "allocate_dev_offering", "manage_advances",
                "view_loans", "manage_loans",
-               "view_liabilities", "manage_liabilities"}
+               "view_liabilities", "manage_liabilities",
+               "view_payments", "manage_payments", "clear_payments"}
 _SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}
 _REPORTS = {"view_reports", "export_reports"}
 
@@ -96,7 +102,7 @@ GROUP_RIGHTS = {
     roles.TREASURER: set(_ALL),                                   # everything
     roles.ASSISTANT: _DATA_ENTRY | _REPORTS | _SENSITIVE,         # entry + sees identities
     roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup", "view_loans",
-                                 "view_liabilities"} | _SENSITIVE,
+                                 "view_liabilities", "view_payments"} | _SENSITIVE,
     roles.LEADER:    {"view_giver_identity"},     # names visible; phones masked unless a profile grants more.
                                                     # Deliberately NOT view_reports: a leader's own
                                                     # department views don't gate on it, and granting it

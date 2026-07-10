@@ -41,6 +41,7 @@ urlpatterns = [
     path("liabilities/", liabilities.LiabilityRegisterView.as_view(), name="liability_register"),
     path("payments/", views.ChequeRegisterView.as_view(), name="payment_register"),
     path("payments/outstanding/", views.ChequeOutstandingView.as_view(), name="payment_outstanding"),
+    path("payments/analysis/", views.PaymentAnalysisView.as_view(), name="payment_analysis"),
     path("payments/<int:pk>/print/", views.ChequePrintView.as_view(), name="payment_print"),
     # backward-compatible permanent redirects from the old /cheques/ paths
     path("cheques/", RedirectView.as_view(pattern_name="payment_register", permanent=True), name="cheque_register"),

@@ -1,0 +1,173 @@
+"""Payment-instrument lifecycle. Every state change flows through
+apply_event(), which (atomically) moves the status, stamps the event's OWN
+date field — business dates never overwrite each other — and records a
+PaymentEvent row (user, business date, from/to status, reference, comment).
+The current status is therefore always the product of the latest lifecycle
+event, and the full history is on the instrument's timeline.
+
+None of this touches the ledger: the instrument's source document (the
+expense voucher, remittance, refund or transfer) is the accounting; the
+instrument tracks HOW and WHEN the money physically moved.
+"""
+import datetime as dt
+
+from django.core.exceptions import ValidationError
+from django.db import transaction as db_tx
+
+
+# event -> (resulting status, date field stamped by the event)
+_TRANSITIONS = {
+    "APPROVE": ("APPROVED", None),
+    "PREPARE": ("PREPARED", "date_prepared"),
+    "ISSUE": ("ISSUED", "date_issued"),
+    "PRESENT": ("PRESENTED", "date_presented"),
+    "CLEAR": ("CLEARED", "date_cleared"),
+    "CANCEL": ("CANCELLED", "date_cancelled"),
+    "REJECT": ("REJECTED", "date_cancelled"),
+    "VOID": ("VOIDED", "date_voided"),
+    "REVERSE": ("REVERSED", "date_reversed"),
+    "EXPIRE": ("EXPIRED", "date_cancelled"),
+}
+
+# events that only make sense on an instrument that reached the bank pipeline
+_NEEDS_ISSUED = {"PRESENT", "CLEAR", "REVERSE"}
+# events refused on a cleared instrument (money moved — reverse it instead)
+_BLOCKED_WHEN_CLEARED = {"APPROVE", "PREPARE", "ISSUE", "PRESENT", "CANCEL",
+                         "REJECT", "VOID", "EXPIRE"}
+
+
+@db_tx.atomic
+def apply_event(inst, event, user=None, *, on=None, comment="",
+                reference="", bank_transaction=None):
+    """Apply one lifecycle event to a payment instrument. Returns the
+    PaymentEvent recorded. `on` is the business date (defaults to today);
+    for CLEAR it is the bank's clearance date and drives every historical
+    reconciliation afterwards."""
+    from cashbook.models import PaymentEvent, PaymentInstrument
+
+    event = (event or "").upper()
+    if event not in _TRANSITIONS:
+        raise ValidationError(f"Unknown payment event '{event}'.")
+    new_status, date_field = _TRANSITIONS[event]
+    on = on or dt.date.today()
+
+    if inst.status == PaymentInstrument.Status.CLEARED \
+            and event in _BLOCKED_WHEN_CLEARED:
+        raise ValidationError(
+            "This payment has already cleared the bank — the money moved. "
+            "Reverse it instead of changing its state.")
+    if event in _NEEDS_ISSUED and not inst.date_issued:
+        raise ValidationError(
+            f"Cannot mark an un-issued instrument as {new_status.lower()}.")
+    if event == "CLEAR" and inst.date_issued and on < inst.date_issued:
+        raise ValidationError(
+            "The cleared date cannot be before the issue date.")
+
+    from_status = inst.status
+    fields = ["status"]
+    inst.status = new_status
+    if date_field:
+        # ISSUE keeps an existing issue date (re-marking never rewrites the
+        # original business date); every other event stamps its own field
+        if date_field == "date_issued" and inst.date_issued:
+            pass
+        else:
+            setattr(inst, date_field, on)
+            fields.append(date_field)
+    if event == "APPROVE":
+        from django.utils import timezone
+        inst.approved_by = user
+        inst.approved_at = timezone.now()
+        fields += ["approved_by", "approved_at"]
+    if event == "CLEAR" and bank_transaction is not None:
+        if getattr(bank_transaction, "direction", "DEBIT") != "DEBIT":
+            raise ValidationError("Only a bank DEBIT can clear a payment.")
+        inst.bank_transaction = bank_transaction
+        fields.append("bank_transaction")
+        reference = reference or (bank_transaction.core_ref
+                                  or f"debit #{bank_transaction.pk}")
+    inst.save(update_fields=fields)
+
+    return PaymentEvent.objects.create(
+        payment=inst, event=event, from_status=from_status,
+        to_status=new_status, on=on, user=user,
+        reference=reference[:120], comment=comment[:200])
+
+
+@db_tx.atomic
+def reissue(inst, user, *, number="", on=None, comment=""):
+    """Cancel a (lost/stale/spoilt) instrument and open a fresh draft copy for
+    the same obligation — the standard cancelled-cheque / re-issued-cheque
+    flow. The old instrument keeps its full history; the new one references
+    it."""
+    from cashbook.models import PaymentInstrument
+    if inst.status == PaymentInstrument.Status.CLEARED:
+        raise ValidationError("A cleared payment cannot be re-issued.")
+    on = on or dt.date.today()
+    apply_event(inst, "CANCEL", user, on=on,
+                comment=comment or "Cancelled for re-issue")
+    copy = PaymentInstrument.objects.create(
+        method=inst.method, instrument_number=(number or "")[:40],
+        payee=inst.payee, amount=inst.amount, bank_account=inst.bank_account,
+        source_kind=inst.source_kind, expense=inst.expense,
+        remittance_batch=inst.remittance_batch, refund=inst.refund,
+        transfer=inst.transfer,
+        note=f"Re-issue of {inst.instrument_number or f'payment #{inst.pk}'}"[:200],
+        recorded_by=user, status=PaymentInstrument.Status.DRAFT)
+    if inst.pk:
+        copy.extra_expenses.set(inst.extra_expenses.all())
+    from cashbook.models import PaymentEvent
+    PaymentEvent.objects.create(
+        payment=copy, event=PaymentEvent.Event.REISSUE,
+        from_status="", to_status="DRAFT", on=on, user=user,
+        reference=(inst.instrument_number or str(inst.pk))[:120],
+        comment=f"Replaces cancelled instrument #{inst.pk}")
+    return copy
+
+
+def clear_for_bank_debit(txn, user, expenses=None):
+    """Debit-queue integration: when an imported bank DEBIT is matched to
+    expense voucher(s), clear their outstanding payment instruments with the
+    DEBIT'S DATE as the cleared date and link the debit for the
+    reconciliation trail. Instruments already cleared (or already linked to a
+    different debit) are left alone — no duplicates, ever. Returns the
+    instruments cleared."""
+    from cashbook.models import PaymentInstrument
+    from django.db.models import Q
+    if expenses is None:
+        expenses = list(txn.matched_expenses.all()) \
+            if hasattr(txn, "matched_expenses") else []
+    exp_ids = [e.pk for e in expenses]
+    if not exp_ids:
+        return []
+    qs = (PaymentInstrument.objects.filter(
+            Q(expense_id__in=exp_ids) | Q(extra_expenses__id__in=exp_ids))
+          .filter(status__in=PaymentInstrument.OUTSTANDING_STATES,
+                  bank_transaction__isnull=True)
+          .distinct())
+    cleared = []
+    for inst in qs:
+        apply_event(inst, "CLEAR", user, on=txn.date,
+                    bank_transaction=txn,
+                    comment="Cleared by matched bank debit")
+        cleared.append(inst)
+    return cleared
+
+
+def suggest_instrument_for_debit(txn):
+    """A cheap match suggestion for the debit queue: an outstanding instrument
+    whose number appears in the debit's narration, else a unique
+    exact-amount outstanding instrument. Suggestion only — never auto-applied."""
+    from cashbook.models import PaymentInstrument
+    qs = PaymentInstrument.objects.filter(
+        status__in=PaymentInstrument.OUTSTANDING_STATES,
+        bank_transaction__isnull=True)
+    narration = (txn.raw_narration or "").upper()
+    if narration:
+        for inst in qs.exclude(instrument_number="")[:200]:
+            if inst.instrument_number.upper() in narration:
+                return inst, "number"
+    exact = list(qs.filter(amount=txn.amount)[:2])
+    if len(exact) == 1:
+        return exact[0], "amount"
+    return None, None

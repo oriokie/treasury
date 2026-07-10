@@ -5,55 +5,126 @@
   <div class="sub">Cheques and other payment instruments — every payment references its source obligation</div></div>
 <div class="btn-row">
   <a class="btn btn-ghost btn-sm" href="{% url 'payment_outstanding' %}">Outstanding report</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'payment_analysis' %}">Analysis</a>
   {% if can_enter_data %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="sync"><button class="btn btn-ghost btn-sm">⟳ Import from records</button></form>{% endif %}
 </div></div>
 
-<div class="card u-mb"><div class="bd" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;align-items:center">
-  <div><div class="muted u-xs">Outstanding cheques (not yet cleared)</div>
-    <div class="mono" style="font-size:1.5rem;font-weight:700;color:var(--brass)">KES {{ unpresented_total|floatformat:2|intcomma }}</div></div>
-  <form method="get" class="filters u-m-0">
-    <select name="method" class="field field--select" onchange="this.form.submit()">
-      <option value="">All methods</option>
-      {% for v,l in methods %}<option value="{{ v }}" {% if method == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
-    </select>
-    <select name="status" class="field field--select" onchange="this.form.submit()">
-      <option value="">All statuses</option>
-      {% for v,l in statuses %}<option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
-    </select>
-  </form>
-</div></div>
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Awaiting clearance</div>
+    <div class="val mono">KES {{ stats.awaiting_t|floatformat:2|intcomma }}</div>
+    <div class="help u-mt-0">{{ stats.awaiting_n }} instrument{{ stats.awaiting_n|pluralize }} ·
+      cheques {{ stats.out_cheques.t|default:0|floatformat:0|intcomma }} ·
+      EFT {{ stats.out_eft.t|default:0|floatformat:0|intcomma }} ·
+      RTGS {{ stats.out_rtgs.t|default:0|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Cleared today</div><div class="val mono">{{ stats.cleared_today }}</div></div>
+  <div class="stat"><div class="lbl">Average days to clear</div>
+    <div class="val mono">{% if stats.avg_days != None %}{{ stats.avg_days }}{% else %}—{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Oldest outstanding</div>
+    {% if stats.oldest %}<div class="val mono u-sm">{{ stats.oldest.date_issued|date:"d M y" }}</div>
+    <div class="help u-mt-0">{{ stats.oldest.get_method_display }} {{ stats.oldest.instrument_number|default:stats.oldest.pk }} · KES {{ stats.oldest.amount|floatformat:0|intcomma }}</div>
+    {% else %}<div class="val mono">—</div>{% endif %}
+    <div class="help u-mt-0">{{ stats.cancelled_n }} cancelled/voided all-time</div></div>
+</div>
+
+<form method="get" class="filter-bar no-print u-mb" style="flex-wrap:wrap;gap:.6rem">
+  <input class="field" name="q" value="{{ q }}" placeholder="Instrument no, payee, expense no, bank ref, amount…" style="max-width:280px">
+  <select name="method" class="field--select"><option value="">All methods</option>
+    {% for v,l in methods %}<option value="{{ v }}" {% if method == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <select name="status" class="field--select"><option value="">All statuses</option>
+    <option value="_outstanding" {% if status == '_outstanding' %}selected{% endif %}>— Outstanding only —</option>
+    {% for v,l in statuses %}<option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <select name="fund" class="field--select"><option value="">All funds</option>
+    {% for d in funds %}<option value="{{ d.id }}" {% if f.fund == d.id|stringformat:'s' %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+  {% if banks %}<select name="bank" class="field--select"><option value="">All banks</option>
+    {% for b in banks %}<option value="{{ b.id }}" {% if f.bank == b.id|stringformat:'s' %}selected{% endif %}>{{ b }}</option>{% endfor %}</select>{% endif %}
+  <input type="date" name="start" value="{{ f.start }}" class="field" title="Issued from">
+  <input type="date" name="end" value="{{ f.end }}" class="field" title="Issued to">
+  <select name="sort" class="field--select">
+    {% for v,l in sort_options %}<option value="{{ v }}" {% if sort == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-sm">Filter</button>
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=csv">⬇ CSV</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ f.urlencode }}&export=xlsx">⬇ Excel</a>
+  <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖶 Print</button>
+</form>
 
 <div class="card"><div class="hd">Payments</div><div class="bd">
 <div class="table-wrap"><table class="ledger">
-  <thead><tr><th>Method / No.</th><th>Payee</th><th>Source</th><th class="num">Amount</th><th>Issued</th><th>Status</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
+  <thead><tr><th>Method / No.</th><th>Payee</th><th>Source</th><th>Fund</th><th class="num">Amount</th><th>Issued</th><th>Cleared</th><th>Status</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for c in cheques %}
   <tr>
-    <td><span class="pill pill-grey u-xs">{{ c.get_method_display }}</span> <span class="mono">{{ c.instrument_number|default:"—" }}</span></td>
+    <td><span class="pill pill-grey u-xs">{{ c.get_method_display }}</span> <span class="mono">{{ c.instrument_number|default:"—" }}</span>
+      {% if c.events.all %}<details class="u-inline"><summary class="link u-xs" style="cursor:pointer">history</summary>
+        <div class="help" style="min-width:230px">{% for ev in c.events.all %}
+          <div>{{ ev.on|date:"d/m/y" }} <strong>{{ ev.get_event_display }}</strong>{% if ev.user %} · {{ ev.user.username }}{% endif %}{% if ev.reference %} · {{ ev.reference }}{% endif %}{% if ev.comment %} — {{ ev.comment }}{% endif %}</div>
+        {% endfor %}</div></details>{% endif %}</td>
     <td>{{ c.payee|default:"—" }}{% if c.signatory_1 %}<div class="help u-mt-0">✍ {{ c.signatory_1 }}{% if c.signatory_2 %}, {{ c.signatory_2 }}{% endif %}</div>{% endif %}</td>
-    <td class="u-xs">{{ c.source_label }}</td>
+    <td class="u-xs">{% if c.expense_id %}<a class="link" href="{% url 'expense_detail' c.expense_id %}">{{ c.source_label|truncatechars:40 }}</a>{% if c.extra_expenses.count %} <span class="pill pill-blue u-xs" title="One payment covering several vouchers">+{{ c.extra_expenses.count }}</span>{% endif %}
+        {% elif c.remittance_batch_id %}<a class="link" href="{% url 'remittance_batch_detail' c.remittance_batch_id %}">{{ c.source_label|truncatechars:40 }}</a>
+        {% else %}{{ c.source_label|truncatechars:40 }}{% endif %}</td>
+    <td class="muted u-xs">{{ c.fund_names|default:"—" }}</td>
     <td class="num mono">{{ c.amount|floatformat:2|intcomma }}</td>
     <td class="mono u-xs">{{ c.date_issued|date:"d/m/y"|default:"—" }}</td>
+    <td class="mono u-xs">{% if c.date_cleared %}{{ c.date_cleared|date:"d/m/y" }}{% if c.bank_transaction_id %} <span title="Matched to imported bank debit {{ c.bank_transaction.core_ref }}">🏦</span>{% endif %}
+        {% elif c.is_outstanding %}<span class="pill pill-amber u-xs" title="Issued, not yet cleared at the bank">Outstanding</span>{% else %}—{% endif %}</td>
     <td>{% if c.status == 'CLEARED' %}<span class="pill pill-green u-xs">Cleared</span>
-        {% elif c.status == 'VOIDED' or c.status == 'STOPPED' %}<span class="pill pill-grey u-xs">{{ c.get_status_display }}</span>
+        {% elif c.status == 'VOIDED' or c.status == 'STOPPED' or c.status == 'CANCELLED' or c.status == 'REJECTED' or c.status == 'EXPIRED' %}<span class="pill pill-grey u-xs">{{ c.get_status_display }}</span>
+        {% elif c.status == 'REVERSED' %}<span class="pill pill-red u-xs">Reversed</span>
         {% elif c.status == 'DRAFT' %}<span class="pill pill-grey u-xs">Draft</span>
-        {% elif c.status == 'APPROVED' %}<span class="pill pill-blue u-xs">Approved</span>
+        {% elif c.status == 'APPROVED' or c.status == 'PREPARED' %}<span class="pill pill-blue u-xs">{{ c.get_status_display }}</span>
         {% else %}<span class="pill pill-amber u-xs">{{ c.get_status_display }}</span>{% endif %}</td>
     {% if can_enter_data %}<td class="u-nowrap u-right">
-      {% if c.is_locked %}<a class="link" href="{% url 'payment_print' c.id %}" target="_blank">Print</a>
+      {% if c.is_locked %}
+        <a class="link" href="{% url 'payment_print' c.id %}" target="_blank">Print</a>
+        {% if can_void %} · <form method="post" class="u-inline pay-act" data-verb="reverse" data-need-date="1">{% csrf_token %}<input type="hidden" name="action" value="reverse"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link link-danger">Reverse</button></form>{% endif %}
       {% else %}
-        {% if c.status == 'DRAFT' %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="approve"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Approve</button></form> · {% endif %}
-        {% if c.status == 'APPROVED' %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="issue"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Issue</button></form> · {% endif %}
-        {% if c.is_outstanding %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="clear"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Clear</button></form> · {% endif %}
+        {% if c.status == 'DRAFT' and can_approve %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="approve"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Approve</button></form> · {% endif %}
+        {% if c.status == 'APPROVED' %}<form method="post" class="u-inline pay-act" data-verb="prepare">{% csrf_token %}<input type="hidden" name="action" value="prepare"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Prepare</button></form> · {% endif %}
+        {% if c.status == 'APPROVED' or c.status == 'PREPARED' %}<form method="post" class="u-inline pay-act" data-verb="issue" data-need-date="1">{% csrf_token %}<input type="hidden" name="action" value="issue"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Issue</button></form> · {% endif %}
+        {% if c.status == 'ISSUED' or c.status == 'OUTSTANDING' %}<form method="post" class="u-inline pay-act" data-verb="present" data-need-date="1">{% csrf_token %}<input type="hidden" name="action" value="present"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Present</button></form> · {% endif %}
+        {% if c.is_outstanding and can_clear %}<form method="post" class="u-inline pay-act" data-verb="clear" data-need-date="1" data-date-label="Bank clearance date (from the statement)">{% csrf_token %}<input type="hidden" name="action" value="clear"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link"><strong>Clear</strong></button></form> · {% endif %}
         {% if c.method == 'CHEQUE' %}<a class="link" href="{% url 'payment_print' c.id %}" target="_blank">Print</a> · {% endif %}
-        {% if c.status != 'VOIDED' and c.status != 'STOPPED' %}<form method="post" class="u-inline" onsubmit="return confirm('Void this payment?')">{% csrf_token %}<input type="hidden" name="action" value="void"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link link-danger">Void</button></form>{% endif %}
+        {% if can_void %}
+          {% if c.is_outstanding %}<form method="post" class="u-inline pay-act" data-verb="reissue" data-need-number="1">{% csrf_token %}<input type="hidden" name="action" value="reissue"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link" title="Cancel this instrument (lost / stale / spoilt) and open a replacement draft">Re-issue</button></form> · {% endif %}
+          <form method="post" class="u-inline pay-act" data-verb="cancel" data-need-comment="1" onsubmit="return confirm('Cancel this payment instrument?')">{% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link link-danger">Cancel</button></form> ·
+          <form method="post" class="u-inline pay-act" data-verb="void" data-need-comment="1" onsubmit="return confirm('Void this payment instrument?')">{% csrf_token %}<input type="hidden" name="action" value="void"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link link-danger">Void</button></form>
+        {% endif %}
       {% endif %}
     </td>{% endif %}
   </tr>
   {% empty %}<tr><td colspan="7" class="empty">No payments recorded yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>
+{% include 'partials/pagination.html' %}
 </div></div>
+
+<script>
+// lifecycle prompts: business date (defaults today), optional comment/number
+document.querySelectorAll("form.pay-act").forEach(function(f){
+  f.addEventListener("submit", function(e){
+    if (f.dataset.needDate){
+      var lbl = f.dataset.dateLabel || "Business date (YYYY-MM-DD)";
+      var d = prompt(lbl, new Date().toISOString().slice(0,10));
+      if (d === null){ e.preventDefault(); return; }
+      var i = document.createElement("input");
+      i.type = "hidden"; i.name = "on"; i.value = d; f.appendChild(i);
+    }
+    if (f.dataset.needComment){
+      var cmt = prompt("Reason / comment (optional)", "");
+      if (cmt === null){ e.preventDefault(); return; }
+      var c = document.createElement("input");
+      c.type = "hidden"; c.name = "comment"; c.value = cmt; f.appendChild(c);
+    }
+    if (f.dataset.needNumber){
+      var num = prompt("New instrument number for the replacement (optional)", "");
+      if (num === null){ e.preventDefault(); return; }
+      var n = document.createElement("input");
+      n.type = "hidden"; n.name = "new_number"; n.value = num; f.appendChild(n);
+    }
+  });
+});
+</script>
 
 {% if can_enter_data %}
 <div class="card u-mt"><div class="hd">Record a payment</div><div class="bd">
@@ -65,7 +136,7 @@
     <div class="form-row"><label>Instrument number</label><input type="text" name="instrument_number" class="field mono" placeholder="Cheque no. / EFT ref"></div>
     <div class="form-row"><label>Source obligation</label><select name="source_kind" class="field field--select">
       {% for v,l in source_kinds %}<option value="{{ v }}" {% if prefill_kind == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
-    <div class="form-row"><label>Source ID</label><input type="number" name="source_id" class="field" placeholder="e.g. expense / batch id" value="{{ prefill_id|default:'' }}"></div>
+    <div class="form-row"><label>Source ID</label><input type="number" name="source_id" class="field" placeholder="expense id — or 12,13,14 for one payment covering several" value="{{ prefill_id|default:'' }}"></div>
     <div class="form-row"><label>Payee</label><input type="text" name="payee" class="field" value="{{ prefill_payee|default:'' }}"></div>
     <div class="form-row"><label>Amount</label><input type="number" step="0.01" min="0.01" name="amount" class="field" required value="{{ prefill_amount|default:'' }}"></div>
     <div class="form-row"><label>Date issued</label><input type="date" name="date_issued" class="field"></div>

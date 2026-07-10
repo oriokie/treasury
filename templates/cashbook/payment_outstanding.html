@@ -12,7 +12,7 @@
 <div class="card u-mb"><div class="bd" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
   <div><div class="muted u-xs">Total outstanding</div>
     <div class="mono" style="font-size:1.5rem;font-weight:700;color:var(--brass)">KES {{ total|floatformat:2|intcomma }}</div></div>
-  <form method="get"><select name="method" class="field field--select" onchange="this.form.submit()">
+  <form method="get" class="u-inline"><label class="u-xs">As at</label> <input type="date" name="as_of" value="{{ as_of|date:'Y-m-d' }}" class="field" onchange="this.form.submit()"></form> <form method="get"><select name="method" class="field field--select" onchange="this.form.submit()">
     <option value="">All methods</option>
     {% for v,l in methods %}<option value="{{ v }}" {% if method == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
   </select></form>

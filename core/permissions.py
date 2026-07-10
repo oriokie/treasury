@@ -69,6 +69,14 @@ class LiabilityViewMixin(RoleRequiredMixin):
     permission_message = "You don't have the liability-transactions right."
 
 
+class PaymentViewMixin(RoleRequiredMixin):
+    """Read access to the payment register. Department leaders are admitted;
+    the register self-scopes them to instruments on their own funds."""
+    allow_check = staticmethod(
+        lambda u: roles.can_view_payments(u) or roles.is_leader(u))
+    permission_message = "You don't have the payment-register right."
+
+
 class AllocateRequiredMixin(RoleRequiredMixin):
     """Allocate/resolve the giving review queue: treasurers/assistants, or any
     user granted the 'allocate transactions' right."""

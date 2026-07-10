@@ -1,5 +1,78 @@
 # Changelog
 
+## v2.26.0 - Payment Register & payment-instrument lifecycle
+The Payment Register becomes the single source of truth for payment
+instruments, while expense vouchers remain the source documents that authorise
+them. Complete instrument lifecycle, event-driven status, per-event dates, and
+— critically — historical bank reconciliation judged on the CLEARED DATE, not
+today's status.
+
+**Lifecycle & audit.** A payment instrument now moves Draft → Approved →
+Prepared → Issued → Presented → Cleared, with Cancelled / Rejected / Voided /
+Reversed / Expired as terminal states. Every transition flows through one
+audited service (apply_event): it moves the status, stamps that event's OWN
+date field (dates never overwrite each other), and writes a PaymentEvent row
+(user, business date, from/to status, reference, comment) — the timeline shown
+inline on each register row. The current status is always the product of the
+latest event.
+
+**Cleared date (the critical fix).** Bank reconciliation now asks
+`issued ≤ as-of AND not cleared/cancelled/voided/reversed by as-of`, judged on
+the event dates via PaymentInstrument.outstanding_asof — never the current
+status. A cheque issued 5 Jul that cleared 19 Jul correctly shows OUTSTANDING
+on a 10 Jul reconciliation and CLEARED on a 31 Jul one, automatically, however
+late the reconciliation is run. This now covers every bank-clearing method
+(cheque, EFT, RTGS, M-Pesa), not just cheques. Legacy rows with no event dates
+fall back to their status, so historical totals are preserved.
+
+**Debit-queue integration.** Matching an imported bank debit to expense
+voucher(s) now clears their outstanding instruments on the DEBIT'S date and
+links the debit both ways — no duplicate records. The queue also suggests an
+instrument per debit (number-in-narration, else unique exact amount) for
+one-click clearing, and a new clear_instrument resolve action settles the
+instrument and its source expense together. The same debit can never clear two
+instruments.
+
+**Register enhancements.** Search (instrument no, payee, expense no, bank ref,
+amount), filters (status incl. outstanding-only, method, fund, bank, issue-date
+range), whitelisted sorting, pagination, and CSV/Excel/print export. New
+columns: source document (one-click to the voucher/batch), fund(s), cleared
+date with a 🏦 marker when matched to an imported debit, expanded status pills,
+and a per-row event history. Dashboard header: awaiting clearance (with
+cheque/EFT/RTGS split), cleared today, average days to clear, oldest
+outstanding, cancelled/voided count.
+
+**Reports.** Outstanding report is now as-at-a-date (the reconciliation view of
+the world) with days-outstanding. New Payment Analysis groups by fund / bank /
+method / source over a period with cleared/outstanding/cancelled counts and
+average & slowest days-to-clear. Both export.
+
+**Source links & multi-instrument.** One EFT/RTGS can cover several vouchers
+(comma-separated ids; the combined total must match); each instrument links
+back to its expense, remittance batch, refund or transfer. Cancelled + re-issued
+flow keeps the old instrument's full history and opens a replacement draft.
+
+**Permissions (granular).** New rights view/manage/approve/clear/void_payments
+(Treasurer full; Assistant create+clear; Auditor view-only). Department leaders
+reaching the register are scoped to instruments on their own funds.
+
+**Accounting integrity.** Instruments never post — the source voucher is the
+accounting. Verified: the full lifecycle (issue → clear → reverse) creates zero
+journal entries; trial balance, accounting equation, and every financial
+statement are unchanged.
+
+Tests: 27 new (full lifecycle & audit, the 5 Jul/19 Jul reconciliation case,
+cancelled-date handling, EFT/M-Pesa as unpresented, legacy fallbacks, debit
+auto-clear/one-click/no-duplicates, multi-expense EFT, loan repayment by
+cheque, accounting invariance, granular permissions, leader scoping, search &
+exports). Regression: cashbook, statements, giving, ledger, loans, reports,
+rights/nav — all green.
+
+Deploy: one migration (cashbook 0037: PaymentEvent, per-event dates,
+bank_transaction link, extra_expenses, expanded statuses). No data backfill —
+legacy rows use the status fallback.
+
+
 ## v2.25.0 - Liability transactions separated from the Expense Register
 Operational expenses and balance-sheet liability settlements are now distinct
 document classes with their own registers. Classification only - the posting

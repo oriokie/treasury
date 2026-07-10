@@ -10,7 +10,7 @@ from django.views import View
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 
 from core.utils import block_if_locked as _block_if_locked, PrefPaginationMixin
-from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin, AdvanceAccessMixin
+from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin, AdvanceAccessMixin, PaymentViewMixin
 from core.utils import sabbath_week_of
 from departments.models import Department
 from .forms import ExpenseForm, FundTransferForm, RecurringExpenseForm
@@ -2798,46 +2798,157 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
         return redirect("accruals")
 
 
+def unpresented_payments_qs(as_of=None):
+    """Payment instruments outstanding at the bank AS AT a date: issued by
+    then, not cleared/cancelled/voided/reversed by then — judged on the event
+    DATES via PaymentInstrument.outstanding_asof, never today's status, so
+    historical reconciliations stay correct no matter when they are run.
+    Covers every bank-clearing method (cheque, EFT, RTGS, M-Pesa, other) —
+    cash in hand never clears through the bank."""
+    import datetime as _dt
+    from .models import PaymentInstrument
+    as_of = as_of or _dt.date.today()
+    return PaymentInstrument.outstanding_asof(as_of).filter(
+        method__in=PaymentInstrument.BANK_CLEARING_METHODS)
+
+
 def unpresented_cheques_total(as_of=None):
-    """Total of cheques issued but not yet cleared (still unpresented at the bank)."""
+    """Total of instruments issued but not yet cleared as at the date (name
+    kept for the existing reconciliation call sites; covers all bank-clearing
+    methods, not only cheques)."""
     from decimal import Decimal
     from django.db.models import Sum
-    from .models import PaymentInstrument
-    qs = PaymentInstrument.objects.filter(
-        method=PaymentInstrument.Method.CHEQUE,
-        status__in=PaymentInstrument.OUTSTANDING_STATES)
-    if as_of:
-        qs = qs.filter(date_issued__lte=as_of)
-    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+    return unpresented_payments_qs(as_of).aggregate(t=Sum("amount"))["t"]         or Decimal(0)
 
 
-class ChequeRegisterView(ReadAccessMixin, View):
+class ChequeRegisterView(PaymentViewMixin, View):
     """Payment register — cheques today, extensible to EFT/RTGS/M-Pesa. Lists
     payment instruments, filterable by method and status, and drives the full
     lifecycle (draft -> approved -> issued -> cleared, plus void/stop)."""
     template_name = "cashbook/payment_register.html"
 
-    def get(self, request):
+    def _scoped(self, request, qs):
+        """Department leaders only see instruments on funds they lead."""
+        from core import roles
         from .models import PaymentInstrument
-        from core.roles import is_treasurer
-        status = request.GET.get("status", "")
-        method = request.GET.get("method", "")
+        if roles.can_view_payments(request.user):
+            return qs
+        from leaders.permissions import allowed_departments
+        ids = list(allowed_departments(request.user).values_list("id", flat=True))
+        from django.db.models import Q
+        return qs.filter(Q(expense__department_id__in=ids)
+                         | Q(extra_expenses__department_id__in=ids)).distinct()
+
+    def get(self, request):
+        import datetime as dtt
+        from decimal import Decimal
+        from django.core.paginator import Paginator
+        from django.db.models import Count, Q, Sum
+        from core import roles
+        from .models import PaymentInstrument
+        g = request.GET
+        status = g.get("status", "")
+        method = g.get("method", "")
+        q = (g.get("q") or "").strip()
         qs = PaymentInstrument.objects.select_related(
-            "expense", "remittance_batch", "refund", "transfer", "bank_account")
-        if status:
+            "expense__department", "remittance_batch", "refund", "transfer",
+            "bank_account", "recorded_by", "approved_by", "bank_transaction")
+        qs = self._scoped(request, qs)
+        if status == "_outstanding":
+            qs = qs.filter(status__in=PaymentInstrument.OUTSTANDING_STATES)
+        elif status:
             qs = qs.filter(status=status)
         if method:
             qs = qs.filter(method=method)
+        if g.get("source_kind"):
+            qs = qs.filter(source_kind=g["source_kind"])
+        if g.get("bank"):
+            qs = qs.filter(bank_account_id=g["bank"])
+        if g.get("fund"):
+            qs = qs.filter(Q(expense__department_id=g["fund"])
+                           | Q(extra_expenses__department_id=g["fund"])).distinct()
+        for key, lookup in (("start", "date_issued__gte"),
+                            ("end", "date_issued__lte")):
+            if g.get(key):
+                try:
+                    qs = qs.filter(**{lookup: dtt.date.fromisoformat(g[key])})
+                except ValueError:
+                    pass
+        if q:
+            amount_q = Q()
+            try:
+                from decimal import Decimal as _D
+                amount_q = Q(amount=_D(q.replace(",", "")))
+            except Exception:  # noqa: BLE001
+                pass
+            qs = qs.filter(
+                Q(instrument_number__icontains=q) | Q(payee__icontains=q)
+                | Q(note__icontains=q) | Q(expense__voucher_no__icontains=q)
+                | Q(expense__description__icontains=q)
+                | Q(bank_transaction__core_ref__icontains=q) | amount_q).distinct()
+        sort = g.get("sort") or "-date_issued"
+        allowed_sorts = {"date_issued", "-date_issued", "amount", "-amount",
+                         "date_cleared", "-date_cleared", "payee", "-payee",
+                         "status", "-status", "instrument_number"}
+        if sort in allowed_sorts:
+            qs = qs.order_by(sort, "-id")
+
+        export = g.get("export")
+        if export in ("csv", "xlsx"):
+            return self._export_register(request, qs)
+
+        # ---- dashboard metrics (Part 10) ----
+        today = dtt.date.today()
+        base = PaymentInstrument.objects.all()
+        base = self._scoped(request, base)
+        outq = base.filter(status__in=PaymentInstrument.OUTSTANDING_STATES)
+        by_method = {r["method"]: r for r in outq.values("method").annotate(
+            n=Count("id"), t=Sum("amount"))}
+        cleared_pairs = list(base.filter(
+            status=PaymentInstrument.Status.CLEARED,
+            date_issued__isnull=False, date_cleared__isnull=False)
+            .values_list("date_issued", "date_cleared")[:2000])
+        avg_days = (sum((c - i).days for i, c in cleared_pairs)
+                    / len(cleared_pairs)) if cleared_pairs else None
+        oldest = outq.filter(date_issued__isnull=False)                      .order_by("date_issued").first()
+        stats = {
+            "out_cheques": by_method.get("CHEQUE", {}),
+            "out_eft": by_method.get("EFT", {}),
+            "out_rtgs": by_method.get("RTGS", {}),
+            "awaiting_n": outq.count(),
+            "awaiting_t": outq.aggregate(t=Sum("amount"))["t"] or Decimal(0),
+            "cleared_today": base.filter(date_cleared=today).count(),
+            "cancelled_n": base.filter(
+                status__in=PaymentInstrument.TERMINAL_STATES).count(),
+            "avg_days": round(avg_days, 1) if avg_days is not None else None,
+            "oldest": oldest,
+        }
+
+        page = Paginator(qs, 40).get_page(g.get("page"))
+        from departments.models import Department
+        from statements.models import BankAccount
         ctx = {
-            "cheques": qs[:500],
-            "status": status, "method": method,
+            "cheques": page.object_list, "page_obj": page,
+            "is_paginated": page.has_other_pages(),
+            "status": status, "method": method, "q": q, "f": g,
+            "sort": sort, "stats": stats,
+            "sort_options": [("-date_issued", "Newest issued first"),
+                             ("date_issued", "Oldest issued first"),
+                             ("-amount", "Largest amount"), ("amount", "Smallest amount"),
+                             ("-date_cleared", "Recently cleared"),
+                             ("payee", "Payee A–Z"), ("status", "Status"),
+                             ("instrument_number", "Instrument no.")],
             "statuses": PaymentInstrument.Status.choices,
             "methods": PaymentInstrument.Method.choices,
             "source_kinds": PaymentInstrument.SourceKind.choices,
+            "funds": Department.objects.filter(active=True).order_by("name"),
+            "banks": BankAccount.objects.all(),
             "unpresented_total": unpresented_cheques_total(),
-            "can_enter_data": is_treasurer(request.user)
-                              or getattr(request.user, "is_superuser", False),
-            "is_treasurer": is_treasurer(request.user)
+            "can_enter_data": roles.can_manage_payments(request.user),
+            "can_approve": roles.can_approve_payments(request.user),
+            "can_clear": roles.can_clear_payments(request.user),
+            "can_void": roles.can_void_payments(request.user),
+            "is_treasurer": roles.is_treasurer(request.user)
                             or getattr(request.user, "is_superuser", False),
         }
         # deep-link prefill: e.g. from an expense's "Issue a payment" link
@@ -2852,17 +2963,68 @@ class ChequeRegisterView(ReadAccessMixin, View):
                 ctx["prefill_payee"] = exp.claimant or exp.department.name
         return render(request, self.template_name, ctx)
 
+    def _export_register(self, request, qs):
+        from reports.exports import csv_response, xlsx_response
+        from core.models import SiteConfig
+        header = ["Instrument no", "Type", "Source type", "Source ref", "Payee",
+                  "Fund(s)", "Bank account", "Amount", "Issue date",
+                  "Cleared date", "Status", "Outstanding?", "Days to clear",
+                  "Created by", "Approved by", "Bank ref"]
+        rows = []
+        for p in qs[:5000]:
+            src = p.source
+            rows.append([
+                p.instrument_number or f"#{p.pk}", p.get_method_display(),
+                p.get_source_kind_display(),
+                (p.expense.voucher_no or f"EXP-{p.expense_id}") if p.expense_id
+                else (str(src) if src else ""),
+                p.payee, p.fund_names,
+                str(p.bank_account) if p.bank_account_id else "",
+                float(p.amount),
+                p.date_issued.isoformat() if p.date_issued else "",
+                p.date_cleared.isoformat() if p.date_cleared else "",
+                p.get_status_display(),
+                "Yes" if p.is_outstanding else "",
+                p.clearance_days if p.clearance_days is not None else "",
+                getattr(p.recorded_by, "username", ""),
+                getattr(p.approved_by, "username", ""),
+                p.bank_transaction.core_ref if p.bank_transaction_id else ""])
+        fn = "payment_register"
+        if request.GET.get("export") == "xlsx":
+            return xlsx_response(fn + ".xlsx", header, rows,
+                                 title="Payment Register",
+                                 church=SiteConfig.get().church_name)
+        return csv_response(fn + ".csv", header, rows)
+
     def post(self, request):
         from decimal import Decimal, InvalidOperation
         import datetime as dt
         from django.core.exceptions import ValidationError
-        from core.roles import is_treasurer
+        from core import roles
         from .models import (PaymentInstrument, Expense, RemittanceBatch,
                              ExpenseRefund, FundTransfer)
+        from .services.payments import apply_event, reissue
         action = request.POST.get("action")
-        treas = is_treasurer(request.user) or getattr(request.user, "is_superuser", False)
-        if not treas:
-            messages.error(request, "You do not have permission to manage payments.")
+        treas = roles.is_treasurer(request.user) or getattr(request.user, "is_superuser", False)
+        # granular gates per action (Part 13); everything else needs manage
+        _need = {"add": roles.can_manage_payments,
+                 "prepare": roles.can_manage_payments,
+                 "issue": roles.can_manage_payments,
+                 "present": roles.can_manage_payments,
+                 "approve": roles.can_approve_payments,
+                 "clear": roles.can_clear_payments,
+                 "void": roles.can_void_payments,
+                 "cancel": roles.can_void_payments,
+                 "reject": roles.can_void_payments,
+                 "reverse": roles.can_void_payments,
+                 "expire": roles.can_void_payments,
+                 "stop": roles.can_void_payments,
+                 "reissue": roles.can_void_payments,
+                 "delete": roles.can_void_payments,
+                 "sync": roles.can_manage_payments}
+        gate = _need.get(action, roles.can_manage_payments)
+        if not gate(request.user):
+            messages.error(request, "You do not have the right for that payment action.")
             return redirect("payment_register")
 
         if action == "add":
@@ -2885,9 +3047,29 @@ class ChequeRegisterView(ReadAccessMixin, View):
                 signatory_2=(request.POST.get("signatory_2") or "")[:120],
                 note=(request.POST.get("note") or "")[:200],
                 recorded_by=request.user, status="DRAFT")
-            # attach the referenced source
-            if kind == "EXPENSE" and src_id.isdigit():
-                inst.expense = Expense.objects.filter(pk=src_id).first()
+            # attach the referenced source. For EXPENSE, a comma-separated
+            # id list makes one instrument settle several vouchers (one EFT
+            # covering multiple expenses); the total must match exactly.
+            extra_expenses = []
+            if kind == "EXPENSE" and src_id:
+                ids = [i.strip() for i in src_id.split(",") if i.strip().isdigit()]
+                # preserve the order the ids were given in — the first is the
+                # primary expense, the rest become extra_expenses
+                by_id = Expense.objects.in_bulk([int(i) for i in ids])
+                exps = [by_id[int(i)] for i in ids if int(i) in by_id]
+                if exps:
+                    inst.expense = exps[0]
+                    extra_expenses = exps[1:]
+                if len(exps) > 1:
+                    total = sum((e.amount for e in exps), Decimal(0))
+                    if abs(total - amount) > Decimal("0.01"):
+                        messages.error(request,
+                            f"The {len(exps)} expenses total {total:,.2f} but the "
+                            f"payment is {amount:,.2f} — they must match.")
+                        return redirect("payment_register")
+                    # tell clean() this payment legitimately covers several
+                    # vouchers, so the single-expense ceiling guard is skipped
+                    inst._covers_multiple = True
             elif kind == "REMITTANCE" and src_id.isdigit():
                 inst.remittance_batch = RemittanceBatch.objects.filter(pk=src_id).first()
             elif kind == "REFUND" and src_id.isdigit():
@@ -2906,25 +3088,49 @@ class ChequeRegisterView(ReadAccessMixin, View):
                 messages.error(request, msg)
                 return redirect("payment_register")
             inst.save()
-            messages.success(request, f"Payment {inst.instrument_number or '(draft)'} recorded.")
+            if extra_expenses:
+                inst.extra_expenses.set(extra_expenses)
+            from .models import PaymentEvent
+            PaymentEvent.objects.create(
+                payment=inst, event=PaymentEvent.Event.CREATE,
+                from_status="", to_status=inst.status,
+                on=inst.date_issued or dt.date.today(), user=request.user,
+                comment=(inst.note or "")[:200])
+            messages.success(request, f"Payment {inst.instrument_number or '(draft)'} recorded"
+                + (f" covering {1 + len(extra_expenses)} expenses." if extra_expenses else "."))
 
-        elif action in ("approve", "issue", "clear", "void", "stop"):
+        elif action in ("approve", "prepare", "issue", "present", "clear",
+                        "void", "cancel", "reject", "reverse", "expire", "stop"):
             inst = get_object_or_404(PaymentInstrument, pk=request.POST.get("pk"))
-            if inst.is_locked and action != "clear":
-                messages.error(request, "A cleared payment cannot be changed — void "
-                                        "or reverse it instead.")
+            verb = {"stop": "CANCEL"}.get(action, action.upper())
+            on = None
+            if request.POST.get("on"):
+                try:
+                    on = dt.date.fromisoformat(request.POST["on"])
+                except ValueError:
+                    on = None
+            try:
+                apply_event(inst, verb, request.user, on=on,
+                            comment=(request.POST.get("comment") or "")[:200])
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
                 return redirect("payment_register")
-            if action == "approve":
-                inst.approve(request.user)
-            elif action == "issue":
-                inst.issue()
-            elif action == "clear":
-                inst.clear()
-            elif action == "void":
-                inst.void()
-            elif action == "stop":
-                inst.stop()
-            messages.success(request, f"Payment marked {inst.get_status_display()}.")
+            when = f" ({on:%d %b %Y})" if on else ""
+            messages.success(request, f"Payment marked {inst.get_status_display()}{when}.")
+
+        elif action == "reissue":
+            inst = get_object_or_404(PaymentInstrument, pk=request.POST.get("pk"))
+            try:
+                copy = reissue(inst, request.user,
+                               number=(request.POST.get("new_number") or "")[:40],
+                               comment=(request.POST.get("comment") or "")[:200])
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+                return redirect("payment_register")
+            messages.success(request,
+                f"{inst.get_method_display()} {inst.instrument_number or inst.pk} "
+                f"cancelled; replacement draft #{copy.pk} created — set its "
+                f"number and issue it when ready.")
 
         elif action == "delete":
             inst = get_object_or_404(PaymentInstrument, pk=request.POST.get("pk"))
@@ -3217,27 +3423,117 @@ class ChequePrintView(ReadAccessMixin, View):
 
 
 class ChequeOutstandingView(ReadAccessMixin, View):
-    """Outstanding (unpresented) payments report with Excel/CSV export."""
+    """Outstanding (unpresented) payments AS AT a date, per method, with
+    exports — judged on issue/cleared DATES via outstanding_asof, so the
+    report is correct for any historical date (the reconciliation view of
+    the world), not just today."""
     def get(self, request):
+        import datetime as dtt
         from .models import PaymentInstrument
         from reports.exports import csv_response, xlsx_response
-        qs = (PaymentInstrument.objects.filter(
-                status__in=PaymentInstrument.OUTSTANDING_STATES)
-              .select_related("expense", "remittance_batch")
+        as_of = dtt.date.today()
+        if request.GET.get("as_of"):
+            try:
+                as_of = dtt.date.fromisoformat(request.GET["as_of"])
+            except ValueError:
+                pass
+        qs = (PaymentInstrument.outstanding_asof(as_of)
+              .select_related("expense__department", "remittance_batch")
               .order_by("date_issued"))
         method = request.GET.get("method", "")
         if method:
             qs = qs.filter(method=method)
-        header = ["Method", "Number", "Payee", "Source", "Amount", "Date issued"]
+        header = ["Method", "Number", "Payee", "Source", "Fund(s)", "Amount",
+                  "Date issued", "Days outstanding"]
         rows = [[c.get_method_display(), c.instrument_number, c.payee,
-                 c.source_label, c.amount, c.date_issued] for c in qs]
+                 c.source_label, c.fund_names, float(c.amount), c.date_issued,
+                 (as_of - c.date_issued).days if c.date_issued else ""]
+                for c in qs]
         export = request.GET.get("export")
         if export == "csv":
-            return csv_response("outstanding_payments", header, rows)
+            return csv_response(f"outstanding_payments_{as_of}", header, rows)
         if export == "xlsx":
-            return xlsx_response("outstanding_payments", header, rows,
-                                 title="Outstanding payments")
+            return xlsx_response(f"outstanding_payments_{as_of}", header, rows,
+                                 title=f"Outstanding payments as at {as_of:%d %b %Y}")
         total = sum((c.amount for c in qs), __import__("decimal").Decimal(0))
         return render(request, "cashbook/payment_outstanding.html", {
-            "rows": qs, "total": total, "method": method,
+            "rows": qs, "total": total, "method": method, "as_of": as_of,
             "methods": PaymentInstrument.Method.choices})
+
+
+class PaymentAnalysisView(ReadAccessMixin, View):
+    """Payments grouped by fund / bank account / method / source type over a
+    period, plus the clearance-performance figures (cleared count, average
+    and slowest days-to-clear) and cancelled/voided listing — the reporting
+    side of the payment lifecycle."""
+
+    def get(self, request):
+        import datetime as dtt
+        from decimal import Decimal
+        from core.utils import parse_period
+        from .models import PaymentInstrument
+        from reports.exports import csv_response, xlsx_response
+        start, end = parse_period(request)
+        group = request.GET.get("group") or "fund"
+        qs = (PaymentInstrument.objects.filter(
+                date_issued__gte=start, date_issued__lte=end)
+              .select_related("expense__department", "bank_account"))
+
+        def _key(p):
+            if group == "bank":
+                return str(p.bank_account) if p.bank_account_id else "(no bank account)"
+            if group == "method":
+                return p.get_method_display()
+            if group == "source":
+                return p.get_source_kind_display()
+            return p.fund_names or "(no fund)"
+
+        agg = {}
+        for pmt in qs:
+            row = agg.setdefault(_key(pmt), {
+                "count": 0, "total": Decimal(0),
+                "cleared": 0, "cleared_total": Decimal(0),
+                "outstanding": 0, "outstanding_total": Decimal(0),
+                "cancelled": 0, "days": []})
+            row["count"] += 1
+            row["total"] += pmt.amount
+            if pmt.status == PaymentInstrument.Status.CLEARED:
+                row["cleared"] += 1
+                row["cleared_total"] += pmt.amount
+                if pmt.clearance_days is not None:
+                    row["days"].append(pmt.clearance_days)
+            elif pmt.is_outstanding:
+                row["outstanding"] += 1
+                row["outstanding_total"] += pmt.amount
+            elif pmt.status in PaymentInstrument.TERMINAL_STATES:
+                row["cancelled"] += 1
+        rows = []
+        for key in sorted(agg):
+            r = agg[key]
+            rows.append({
+                "group": key, **r,
+                "avg_days": (round(sum(r["days"]) / len(r["days"]), 1)
+                             if r["days"] else None),
+                "max_days": max(r["days"]) if r["days"] else None})
+
+        export = request.GET.get("export")
+        if export in ("csv", "xlsx"):
+            from core.models import SiteConfig
+            header = [group.title(), "Payments", "Total", "Cleared",
+                      "Cleared total", "Outstanding", "Outstanding total",
+                      "Cancelled", "Avg days to clear", "Slowest (days)"]
+            data = [[r["group"], r["count"], float(r["total"]), r["cleared"],
+                     float(r["cleared_total"]), r["outstanding"],
+                     float(r["outstanding_total"]), r["cancelled"],
+                     r["avg_days"] if r["avg_days"] is not None else "",
+                     r["max_days"] if r["max_days"] is not None else ""]
+                    for r in rows]
+            fn = f"payments_by_{group}_{start}_{end}"
+            if export == "xlsx":
+                return xlsx_response(fn + ".xlsx", header, data,
+                    title=f"Payments by {group} — {start:%d %b %Y} to {end:%d %b %Y}",
+                    church=SiteConfig.get().church_name)
+            return csv_response(fn + ".csv", header, data)
+        return render(request, "cashbook/payment_analysis.html", {
+            "rows": rows, "group": group, "start": start, "end": end,
+            "f": request.GET})

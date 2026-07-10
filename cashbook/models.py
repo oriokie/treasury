@@ -1021,11 +1021,17 @@ class PaymentInstrument(models.Model):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
         APPROVED = "APPROVED", "Approved"
+        PREPARED = "PREPARED", "Prepared"
         ISSUED = "ISSUED", "Issued"
         OUTSTANDING = "OUTSTANDING", "Outstanding"
+        PRESENTED = "PRESENTED", "Presented"
         CLEARED = "CLEARED", "Cleared"
+        CANCELLED = "CANCELLED", "Cancelled"
+        REJECTED = "REJECTED", "Rejected"
         VOIDED = "VOIDED", "Voided"
-        STOPPED = "STOPPED", "Stopped"
+        REVERSED = "REVERSED", "Reversed"
+        EXPIRED = "EXPIRED", "Expired"
+        STOPPED = "STOPPED", "Stopped"      # legacy alias of Cancelled
 
     class SourceKind(models.TextChoices):
         EXPENSE = "EXPENSE", "Expense voucher"
@@ -1036,9 +1042,14 @@ class PaymentInstrument(models.Model):
         MANUAL = "MANUAL", "Manual / standalone"
 
     # states still outstanding at the bank (not yet cleared, not cancelled)
-    OUTSTANDING_STATES = ("ISSUED", "OUTSTANDING")
+    OUTSTANDING_STATES = ("ISSUED", "OUTSTANDING", "PRESENTED")
+    # terminal, never-cleared states (the instrument will not hit the bank)
+    TERMINAL_STATES = ("CANCELLED", "REJECTED", "VOIDED", "REVERSED",
+                       "EXPIRED", "STOPPED")
     # states whose details are locked (cannot be edited or deleted)
     LOCKED_STATES = ("CLEARED",)
+    # methods that clear through the bank (everything except cash in hand)
+    BANK_CLEARING_METHODS = ("CHEQUE", "EFT", "RTGS", "MPESA", "OTHER")
 
     method = models.CharField(max_length=8, choices=Method.choices,
                               default=Method.CHEQUE, db_index=True)
@@ -1050,8 +1061,25 @@ class PaymentInstrument(models.Model):
     bank_account = models.ForeignKey("statements.BankAccount", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="payment_instruments")
 
+    # Each business event keeps its own date — they never overwrite each other.
+    date_prepared = models.DateField(null=True, blank=True)
     date_issued = models.DateField(null=True, blank=True, db_index=True)
-    date_cleared = models.DateField(null=True, blank=True)
+    date_payment = models.DateField(null=True, blank=True,
+        help_text="Value/payment date if different from the issue date.")
+    date_presented = models.DateField(null=True, blank=True)
+    # THE critical reconciliation field: the date the instrument actually
+    # cleared the bank per the statement. Historical reconciliations test
+    # `date_cleared <= reconciliation date`, never the current status, so a
+    # cheque issued 5 Jul that cleared 19 Jul still shows OUTSTANDING on a
+    # 10 Jul reconciliation even when today's status is Cleared.
+    date_cleared = models.DateField(null=True, blank=True, db_index=True)
+    date_cancelled = models.DateField(null=True, blank=True)
+    date_voided = models.DateField(null=True, blank=True)
+    date_reversed = models.DateField(null=True, blank=True)
+    # the imported bank debit that cleared this instrument (reconciliation
+    # trail + the guard that stops the same debit clearing two instruments)
+    bank_transaction = models.ForeignKey("giving.Transaction", null=True,
+        blank=True, on_delete=models.SET_NULL, related_name="cleared_instruments")
 
     status = models.CharField(max_length=12, choices=Status.choices,
                               default=Status.DRAFT, db_index=True)
@@ -1061,6 +1089,10 @@ class PaymentInstrument(models.Model):
                                    default=SourceKind.EXPENSE)
     expense = models.ForeignKey("cashbook.Expense", null=True, blank=True,
         on_delete=models.SET_NULL, related_name="payments")
+    # one EFT/RTGS may settle several vouchers at once: the primary expense
+    # stays on `expense`, the rest attach here; validation checks the total
+    extra_expenses = models.ManyToManyField(
+        "cashbook.Expense", blank=True, related_name="covering_payments")
     remittance_batch = models.ForeignKey("cashbook.RemittanceBatch", null=True,
         blank=True, on_delete=models.SET_NULL, related_name="payments")
     refund = models.ForeignKey("cashbook.ExpenseRefund", null=True, blank=True,
@@ -1106,9 +1138,59 @@ class PaymentInstrument(models.Model):
             return f"Supplier: {self.payee}" if self.payee else "Supplier payment"
         return str(s) if s else self.get_source_kind_display()
 
+    @classmethod
+    def outstanding_asof(cls, as_of, qs=None):
+        """Instruments outstanding at the bank AS AT a date — the heart of
+        historical bank reconciliation. An instrument is outstanding at
+        `as_of` when it had been issued by then and had not yet cleared or
+        been cancelled/voided/reversed BY THEN, judged by the event DATES —
+        never by today's status. A cheque issued 1 Jul that cleared 19 Jul is
+        outstanding on a 10 Jul reconciliation and cleared on a 31 Jul one,
+        automatically, whenever the reconciliation is run.
+
+        Legacy rows recorded before per-event dates existed fall back to their
+        status (a CLEARED row with no cleared date is treated as always
+        cleared), so historical reconciliation totals are preserved."""
+        from django.db.models import Q
+        qs = qs if qs is not None else cls.objects.all()
+        qs = qs.filter(date_issued__isnull=False, date_issued__lte=as_of)
+        qs = qs.exclude(status=cls.Status.DRAFT)
+        # cleared by then — or legacy cleared with no date recorded
+        qs = qs.exclude(Q(date_cleared__isnull=False, date_cleared__lte=as_of)
+                        | Q(status=cls.Status.CLEARED, date_cleared__isnull=True))
+        # cancelled / voided / reversed by then — or legacy terminal, no date
+        for field in ("date_cancelled", "date_voided", "date_reversed"):
+            qs = qs.exclude(**{f"{field}__isnull": False, f"{field}__lte": as_of})
+        qs = qs.exclude(Q(status__in=cls.TERMINAL_STATES),
+                        Q(date_cancelled__isnull=True),
+                        Q(date_voided__isnull=True),
+                        Q(date_reversed__isnull=True))
+        return qs
+
     @property
     def is_outstanding(self):
         return self.status in self.OUTSTANDING_STATES
+
+    @property
+    def clearance_days(self):
+        """Days from issue to bank clearance (None while outstanding)."""
+        if self.date_issued and self.date_cleared:
+            return (self.date_cleared - self.date_issued).days
+        return None
+
+    @property
+    def all_expenses(self):
+        """The expense voucher(s) this instrument settles (primary + extras)."""
+        out = [self.expense] if self.expense_id else []
+        if self.pk:
+            out += [e for e in self.extra_expenses.all()
+                    if e.pk != self.expense_id]
+        return out
+
+    @property
+    def fund_names(self):
+        return ", ".join(sorted({e.department.name for e in self.all_expenses
+                                 if e.department_id}))
 
     @property
     def is_locked(self):
@@ -1130,40 +1212,86 @@ class PaymentInstrument(models.Model):
             raise ValidationError(
                 "A payment must reference its source "
                 f"({self.get_source_kind_display()}).")
-        # the linked source amount should match (guards against mis-linking)
+        # the linked source amount should match (guards against mis-linking).
+        # Skipped for multi-expense payments (one EFT covering several
+        # vouchers): extra_expenses are set after save so aren't visible here,
+        # and the view validates the combined total explicitly. Only enforce
+        # the single-expense ceiling when this instrument already has a pk and
+        # no extra expenses attached.
         src = self.source
         src_amt = getattr(src, "amount", None) if src else None
-        if src_amt is not None and self.source_kind == self.SourceKind.EXPENSE \
-                and self.amount > src_amt:
+        # `_covers_multiple` is a transient flag the register sets before
+        # full_clean when this instrument covers several vouchers (the M2M
+        # can't be read pre-save); the view validates the combined total.
+        has_extras = getattr(self, "_covers_multiple", False) or (
+            bool(self.pk) and self.extra_expenses.exists())
+        if (src_amt is not None and self.source_kind == self.SourceKind.EXPENSE
+                and not has_extras and self.amount > src_amt):
             raise ValidationError(
                 {"amount": "Payment exceeds the linked expense amount."})
 
-    def approve(self, user):
-        from django.utils import timezone
-        self.status = self.Status.APPROVED
-        self.approved_by = user
-        self.approved_at = timezone.now()
-        self.save(update_fields=["status", "approved_by", "approved_at"])
+    # thin wrappers kept for backward compatibility; the audited entry point
+    # is cashbook.services.payments.apply_event (records a PaymentEvent too)
+    def approve(self, user, on=None, comment=""):
+        from cashbook.services.payments import apply_event
+        apply_event(self, "APPROVE", user, on=on, comment=comment)
 
-    def issue(self, on=None):
-        import datetime as _d
-        self.status = self.Status.ISSUED
-        self.date_issued = on or self.date_issued or _d.date.today()
-        self.save(update_fields=["status", "date_issued"])
+    def issue(self, on=None, user=None, comment=""):
+        from cashbook.services.payments import apply_event
+        apply_event(self, "ISSUE", user, on=on, comment=comment)
 
-    def clear(self, on=None):
-        import datetime as _d
-        self.status = self.Status.CLEARED
-        self.date_cleared = on or _d.date.today()
-        self.save(update_fields=["status", "date_cleared"])
+    def clear(self, on=None, user=None, comment="", bank_transaction=None):
+        from cashbook.services.payments import apply_event
+        apply_event(self, "CLEAR", user, on=on, comment=comment,
+                    bank_transaction=bank_transaction)
 
-    def void(self):
-        self.status = self.Status.VOIDED
-        self.save(update_fields=["status"])
+    def void(self, user=None, on=None, comment=""):
+        from cashbook.services.payments import apply_event
+        apply_event(self, "VOID", user, on=on, comment=comment)
 
-    def stop(self):
-        self.status = self.Status.STOPPED
-        self.save(update_fields=["status"])
+    def stop(self, user=None, on=None, comment=""):
+        from cashbook.services.payments import apply_event
+        apply_event(self, "CANCEL", user, on=on, comment=comment)
+
+
+class PaymentEvent(models.Model):
+    """One lifecycle event on a payment instrument — the audit trail the
+    register's timeline shows. Records who, when (both the business date and
+    the wall clock), the status transition, a free comment and an optional
+    reference (e.g. the bank row that cleared it). The instrument's current
+    status is always the result of its latest lifecycle event."""
+
+    class Event(models.TextChoices):
+        CREATE = "CREATE", "Created"
+        APPROVE = "APPROVE", "Approved"
+        PREPARE = "PREPARE", "Prepared / printed"
+        ISSUE = "ISSUE", "Issued"
+        PRESENT = "PRESENT", "Presented"
+        CLEAR = "CLEAR", "Cleared"
+        CANCEL = "CANCEL", "Cancelled"
+        REJECT = "REJECT", "Rejected"
+        VOID = "VOID", "Voided"
+        REVERSE = "REVERSE", "Reversed"
+        EXPIRE = "EXPIRE", "Expired"
+        REISSUE = "REISSUE", "Re-issued"
+
+    payment = models.ForeignKey(PaymentInstrument, on_delete=models.CASCADE,
+                                related_name="events")
+    event = models.CharField(max_length=8, choices=Event.choices)
+    from_status = models.CharField(max_length=12, blank=True)
+    to_status = models.CharField(max_length=12, blank=True)
+    on = models.DateField(help_text="The business date of the event.")
+    user = models.ForeignKey("auth.User", null=True, blank=True,
+                             on_delete=models.SET_NULL)
+    reference = models.CharField(max_length=120, blank=True)
+    comment = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return f"{self.payment_id} {self.event} {self.on}"
 
 
 class PaymentAttachment(models.Model):

@@ -134,6 +134,34 @@ def can_manage_liabilities(user):
             or has_right(user, "manage_liabilities"))
 
 
+def can_view_payments(user):
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user) or is_auditor(user)
+            or has_right(user, "view_payments"))
+
+
+def can_manage_payments(user):
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "manage_payments"))
+
+
+def can_approve_payments(user):
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "approve_payments")
+
+
+def can_clear_payments(user):
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "clear_payments"))
+
+
+def can_void_payments(user):
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "void_payments")
+
+
 def can_convert_loans(user):
     """Retiring a loan (conversion / write-off) is a treasurer decision, like
     expense approval; grantable to others via the right."""

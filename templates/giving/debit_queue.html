@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Bank debits · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="btn-row no-print" style="justify-content:flex-end;margin-bottom:.4rem"><a class="btn btn-ghost btn-sm" href="{% url 'auto_reconcile' %}">⟳ Try auto-reconciliation</a></div>
@@ -21,6 +21,14 @@
     <div style="flex:1;min-width:220px">
       <div><strong class="mono">KES {{ t.amount|floatformat:2|intcomma }}</strong> · {{ t.date|date:"d M Y" }}</div>
       <div class="muted" style="font-size:.84rem;margin-top:.3rem">{{ t.raw_narration|default:t.reference }}</div>
+      {% with s=instrument_suggestions|get_item:t.pk %}{% if s %}
+      <form method="post" action="{% url 'debit_resolve' t.id %}" class="u-mt-sm">{% csrf_token %}
+        <input type="hidden" name="kind" value="clear_instrument">
+        <input type="hidden" name="instrument" value="{{ s.inst.pk }}">
+        <button class="btn btn-sm btn-brass" title="Matched by {% if s.how == 'number' %}the instrument number appearing in the narration{% else %}unique exact amount{% endif %} — clears the instrument on this debit's date and links it for reconciliation">
+          ✓ Clear {{ s.inst.get_method_display }} {{ s.inst.instrument_number|default:s.inst.pk }} — {{ s.inst.payee|truncatechars:24 }}</button>
+      </form>
+      {% endif %}{% endwith %}
     </div>
     <form method="post" action="{% url 'debit_resolve' t.id %}" style="flex:2;min-width:300px">{% csrf_token %}
       <div class="debit-grid">
