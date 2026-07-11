@@ -980,41 +980,10 @@ from .models import Payable, Accrual, Prepayment
 from .forms import PayableForm, AccrualForm, PrepaymentForm
 
 
-def open_payables_total(as_of=None):
-    from decimal import Decimal
-    from django.db.models import Sum, Q
-    if as_of:
-        # outstanding *as at* a date: incurred on/before it and either not settled
-        # or only settled after it (so settling on the 15th still shows as a
-        # liability on a 14th statement of financial position).
-        qs = Payable.objects.filter(date__lte=as_of).filter(
-            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
-    else:
-        qs = Payable.objects.filter(settled=False)
-    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
-
-
-def open_accruals_total(as_of=None):
-    from decimal import Decimal
-    from django.db.models import Sum, Q
-    if as_of:
-        qs = Accrual.objects.filter(date__lte=as_of).filter(
-            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
-    else:
-        qs = Accrual.objects.filter(settled=False)
-    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
-
-
-def unexpired_prepayments_total(as_of=None):
-    from decimal import Decimal
-    import datetime as _dt
-    as_of = as_of or _dt.date.today()
-    return sum((p.unexpired(as_of) for p in Prepayment.objects.all()), Decimal(0))
-
-
 from cashbook.services.treasury_position import (          # noqa: E402
     outstanding_advances_total, outstanding_bank_advances_total,
-    outstanding_petty_advances_total)
+    outstanding_petty_advances_total, open_payables_total, open_accruals_total,
+    unexpired_prepayments_total)
 
 
 class AccrualsView(ReadAccessMixin, TemplateView):
@@ -3218,11 +3187,23 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
 def missing_receipts_queryset(start, end, department_ids=None):
     """Expenses in the period that have no supporting document (no attachment
     file, text or link). Charge lines are excluded — they ride on their parent.
-    Once any attachment is added, the expense leaves this queue."""
+    Once any attachment is added, the expense leaves this queue.
+
+    Also excludes a loan CONVERSION/WRITE_OFF's contra expense: that "expense"
+    is one half of a same-day, same-amount book-entry pair (see
+    loans.services.loans._retire) that retires a liability against income
+    with no cash ever changing hands — there is no physical transaction for a
+    receipt to document, so it can never leave this queue by any real action
+    a treasurer could take. An ordinary loan PRINCIPAL/INTEREST repayment
+    (also category=LOAN_REPAYMENT, but a genuine cash disbursement) still
+    correctly appears here until its proof of payment is attached."""
     from .models import Expense
+    from loans.models import LoanTransaction
     qs = (Expense.objects.filter(date__gte=start, date__lte=end,
                                  attachments__isnull=True)
           .exclude(category=Expense.Category.BANK_CHARGE)
+          .exclude(loan_transaction__kind__in=[LoanTransaction.Kind.CONVERSION,
+                                               LoanTransaction.Kind.WRITE_OFF])
           .select_related("department", "recorded_by")
           .order_by("-date", "-id"))
     if department_ids is not None:

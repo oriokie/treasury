@@ -78,6 +78,17 @@ class ChartSpec:
             options["scales"].setdefault("x", {})["stacked"] = True
             options["scales"].setdefault("y", {})["stacked"] = True
 
+        # Every engine chart renders into a height-constrained container (see
+        # each renderer's CSS, e.g. .chart-box) — maintainAspectRatio must be
+        # off for Chart.js to respect that container instead of computing its
+        # own size from the chart type's default aspect ratio (which made a
+        # doughnut chart grow to match its card's full WIDTH, since doughnut's
+        # default aspect ratio is 1:1 — the "chart is huge" bug). A caller's
+        # own options still win via setdefault, so this is a safe default,
+        # not a forced override.
+        options.setdefault("responsive", True)
+        options.setdefault("maintainAspectRatio", False)
+
         cfg = {
             "type": base_type,
             "data": {"labels": self.labels, "datasets": datasets},

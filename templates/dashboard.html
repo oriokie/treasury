@@ -124,7 +124,7 @@
 function downloadLocalFundsPng(){
   var table = document.getElementById('localFundsTable');
   if(!table){ return; }
-  var scale = 2;
+  var scale = 4;   // high-DPI (v2.43) — see static/js/table_png.js's header comment
   var pad = 18*scale, rowH = 30*scale, font = 13*scale, titleH = 50*scale;
   function rowCells(tr){
     var foot = tr.parentElement.tagName === 'TFOOT';

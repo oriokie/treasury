@@ -69,6 +69,8 @@
 .bp-card-info{background:var(--forest-tint);border-color:var(--forest-soft)}
 .bp-card-info .bp-card-head{background:transparent;border-bottom:0;color:var(--forest)}
 
+.bp-chart-box{position:relative;height:220px;width:100%}
+
 .bp-prose{font-size:.92rem;line-height:1.62;color:var(--ink-soft)}
 
 /* ---- executive snapshot KPI cards ---- */
@@ -117,17 +119,11 @@
   font-size:.74rem;color:var(--ink-soft)}
 .bp-deps{max-width:1120px;margin-left:auto;margin-right:auto}
 
-.ask-ai-link{font-size:.72rem;font-weight:600;color:var(--forest);padding:.14rem .5rem;
-  border:1px solid var(--forest-soft);border-radius:999px;white-space:nowrap;
-  transition:all .15s;text-decoration:none}
-.ask-ai-link:hover{background:var(--forest-soft);border-color:var(--forest)}
-
 /* ---- per-section collapse (rec #44c) ---- */
 .bp-can-collapse .bp-card-head{cursor:pointer;user-select:none}
 .bp-caret{margin-left:auto;width:0;height:0;border-left:5px solid transparent;
   border-right:5px solid transparent;border-top:6px solid var(--forest);
   transition:transform .15s;flex:0 0 auto}
-.bp-card-head .ask-ai-link + .bp-caret{margin-left:.5rem}
 .bp-collapsed .bp-card-body{display:none}
 .bp-collapsed .bp-caret{transform:rotate(-90deg)}
 

@@ -1,5 +1,113 @@
 # Changelog
 
+## v2.43.0 - Six fixes from live production review: loans, financial position, ledger UX, print-quality images, member merge
+**1. Loan-conversion contra expense no longer queued as "awaiting a
+receipt."** A Convert-to-donation/Write-off posts a same-day, same-amount
+contra pair (income + a LOAN_REPAYMENT expense) that retires the liability
+against income with no cash movement — there was never a physical document
+for a receipt to attach. `missing_receipts_queryset` now excludes
+specifically that contra expense (via the LoanTransaction link, kind
+CONVERSION/WRITE_OFF); a genuine principal/interest repayment still
+correctly requires proof of payment.
+
+**2 & 3. Financial Position summary (Treasurer's Report board pack): Cash &
+bank split, payables/accruals/prepayments wired in.** The legacy full
+Statement of Financial Position already showed these correctly; the newer
+engine-based summary didn't (by prior explicit design, for the board pack).
+Three new Financial Metrics Registry entries (`payables_outstanding`/
+`accruals_outstanding`/`prepayments_unexpired`, relocated from
+`cashbook/views.py` to `cashbook/services/treasury_position.py`) wire the
+same accrual-basis adjustments into the summary so the two statements can't
+silently diverge. The lumped "Cash & bank (funds on hand)" line was replaced
+with a Local/Trust (unrestricted/restricted) split rather than deleted —
+Total Assets is built from it, so removing it outright would have broken
+the statement's own reconciliation.
+
+**4. Envelope ledger validation UX.** The mismatch message now only
+evaluates once a row is finished (focusout on the row, not every keystroke
+— the Allocated column still updates live) and renders in one panel below
+the table instead of floating text inside a cell. A final validation pass
+runs on Submit for a row that was never blurred. The Allocated column's
+purpose is now explained in the page's help text.
+
+**5. Server-generated report images — genuinely high-DPI, across the whole
+pipeline.** Every Pillow image (the two budget-page PNGs, the three PDF/
+Word-export chart builders) was drawn at ~96-DPI-equivalent screen pixel
+sizes with no scale-up. Both files now render at 4× their previous logical
+size with every PNG tagged at 300 DPI. The two client-side canvas exporters
+already used the same technique at 2×; raised to 4× for consistency.
+
+**6. Member merge phone numbers — verified already working, two gaps
+closed.** `merge_members` already correctly preserved both members' phone
+numbers (confirmed empirically). `match_or_create_member` — every future
+import's matching step — only checked a member's PRIMARY number, so a
+payment from an absorbed member's own preserved number would silently fail
+to match; now checks both. The preserved secondary numbers were also never
+shown anywhere in the UI; now shown on the member detail page.
+
+**Tests.** 6 + 10 + 6 + 13 + 11 new tests across the six areas
+(`cashbook/test_loan_contra_receipts.py`,
+`reports/test_financial_position_v242.py`,
+`envelopes/test_ledger_validation_ux_v242.py`,
+`reports/test_high_dpi_images_v243.py`,
+`members/test_phone_merge_v243.py`), plus two pre-existing tests updated to
+match the intentional Cash & bank / image-dimension changes. 213+ tests
+across the full regression pass.
+
+## v2.41.0 - Five follow-up fixes from live review of the maker-checker/board-pack work
+Fixes five issues raised after v2.39/v2.40 shipped: a genuine regression in
+Development Groups (root-caused, not just patched), numbered subgroups
+cluttering summary reports, chart sizing fixed at its systemic root, the
+non-functional Ask AI affordances removed from the treasurer report, and a
+broken multi-line Django comment that was rendering as visible page text.
+
+**1. Development Groups — root cause found and fixed properly.** The ledger
+picked "the" Development fund via an AMBIGUOUS, unordered `.filter(category=
+"DEVELOPMENT", parent__isnull=True).first()` — fragile whenever more than one
+department carries that category (a real case: several active building/
+project funds). The v2.40 subgroup work happened to make this latent bug
+visible. Fixed at the root: every column now carries its own `is_development`
+flag via the SAME per-department check the cash-entry form and review queue
+already use, so multiple Development funds each get an independent,
+deterministic picker — and Development is now unconditionally immune to the
+generic subgroup mechanism (`subgroups_for` always returns `[]` for it),
+regardless of what `Department.parent` relations might otherwise exist.
+
+**2. Numbered subgroups roll up to their parent in summaries — named
+sub-accounts don't.** Real subgroup posting (v2.40) exploded the Sabbath
+statement / monthly summary / Sabbath Excel export into one column per
+subgroup for a fund with many. Rather than blanket-collapsing every
+Department.parent child (which would have hidden Tithe/Camp Meeting under
+"Trust Fund" — a real regression against reports treasurers already rely on),
+the rollup targets specifically NUMBERED sub-accounts (a child whose name
+ends in a number, e.g. "Small Group 7") via
+`departments.models.numbered_subgroup_parent_map`. Ledger postings are
+unaffected either way — display-only, in three places.
+
+**3. Chart sizing fixed at its systemic root.** `ChartSpec.to_config()` — the
+one place every engine chart's config is built — now defaults
+`maintainAspectRatio:false`/`responsive:true` unless a caller overrides it,
+so the fix covers every current and future engine chart, not just the
+treasurer report's "Local vs trust funds" (a doughnut growing to match its
+card's full width). Every canvas sits in a height-constrained box, including
+the generic `engine_report.html` (so ordinary reports don't regress from
+"too big" to "collapsed"). Fund balances are now sorted alphabetically within
+each block, in both `FundSummaryComponent` and `FundBalancesStatementSection`.
+
+**4. Ask AI removed from the treasurer report** (toolbar button, five
+per-section links, the partial, related CSS) — scoped to that report as
+asked; the same feature is untouched elsewhere.
+
+**5. A broken multi-line Django `{# #}` comment removed** — Django comments
+cannot span multiple lines; the board pack's header comment was rendering as
+literal visible page text instead of being stripped. A repo-wide scan found
+no other instance.
+
+**Tests.** `envelopes/test_subgroup_followups_v241.py` (9) +
+`reports/test_board_pack_fixes_v241.py` (13), plus two pre-existing tests
+updated to match the intentional Ask AI removal. 462 tests across the
+directly-touched apps and the broader regression all pass.
+
 ## v2.40.0 - Six envelope-ledger/dashboard/fund-report fixes from production review
 Fixes six issues from live production review: a URL-routing crash, a missing
 delete-draft UI, dashboard chart sizing (and the layout break it caused),

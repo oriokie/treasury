@@ -186,7 +186,11 @@ class StatementsPackTests(_ReportSeed):
         by = {r.cells["label"]: Decimal(r.cells["value"]) for r in pos.rows}
         cash = sum((r["closing"] or Decimal(0) for r in ctx.fund_summary()),
                    Decimal(0))
-        self.assertEqual(by["Cash & bank (funds on hand)"]
+        # v2.42: the single "Cash & bank (funds on hand)" row was split into
+        # Local/Trust (unrestricted/restricted) — the reclassification
+        # identity now sums both halves instead of one combined figure.
+        self.assertEqual(by["Local fund cash (unrestricted)"]
+                         + by["Trust fund cash (restricted)"]
                          + by["Petty cash float"]
                          + by["Staff advances (receivable)"], cash)
 

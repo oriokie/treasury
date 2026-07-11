@@ -51,7 +51,21 @@ def subgroups_for(dept):
     e.g. 'Small Group 1'..'Small Group 12'), as
     [{"id", "label", "number"}, ...] ordered by their trailing number where
     they have one, then by name. Empty for a fund with no subgroups — the
-    common case."""
+    common case.
+
+    Always empty for a Development-category fund, however it's set up:
+    Development already has its own, separately-established group mechanism
+    (the DevelopmentGroup tag model — see the ledger's per-column
+    ``is_development`` handling) that many other parts of the app already key
+    off ``Department.category == DEVELOPMENT`` for (the cash-entry form, the
+    review queue's resolve action, the bank importer). This generic
+    subgroup-picker is a *different* mechanism (it re-targets the posting
+    department itself) and must never engage for a Development fund even if
+    that fund happens to also have Department.parent children for some other
+    reason — Development keeps exactly its established behaviour.
+    """
+    if dept.category == Department.Category.DEVELOPMENT:
+        return []
     kids = list(dept.subgroups.filter(active=True).order_by("name"))
     out = []
     for k in kids:
@@ -66,11 +80,21 @@ def column_catalog(for_import=False):
     set, sub-accounts (Trust Fund and LCB children) are excluded — imports use the
     standalone funds and split offerings only.
 
-    Any fund that itself has active sub-account children (``subgroups`` below)
-    carries that list, so the entry grid can offer a "which subgroup?" picker
-    for it — the same idea Development Groups already provide for the
-    Development fund, generalised to any fund set up with real child funds
-    (Department.parent), not just Development's own lightweight group tags.
+    Each column carries ``is_development`` (True when that fund's own
+    ``category`` is DEVELOPMENT) so the entry grid can offer the Development-
+    Group tag picker for it — mirroring the SAME per-department check the
+    cash-entry form, the review queue's resolve action and the bank importer
+    already use (``dept.category == Department.Category.DEVELOPMENT``),
+    rather than assuming there is exactly one "the" Development fund. A
+    church can have more than one fund categorised DEVELOPMENT (e.g. several
+    active building/project funds); each gets its own independent picker.
+
+    Any fund that itself has active sub-account children (``subgroups``
+    below) carries that list, so the entry grid can offer a "which
+    subgroup?" picker for it — the same idea Development Groups provide,
+    generalised to any fund set up with real child funds (Department.parent).
+    Development funds never carry subgroups here (see subgroups_for) — they
+    keep exactly their own established mechanism.
     """
     from giving.models import SplitFund
     from departments.models import split_component_dept_ids
@@ -83,11 +107,12 @@ def column_catalog(for_import=False):
             continue
         cols.append({"key": str(d.id), "label": d.name, "name": d.name,
                      "kind": "dept", "trust": d.is_trust,
+                     "is_development": d.category == Department.Category.DEVELOPMENT,
                      "subgroups": subgroups_for(d)})
     for s in SplitFund.objects.filter(active=True):
         cols.append({"key": f"split:{s.id}", "label": f"{s.name} (split)",
                      "name": s.name, "kind": "split", "trust": False,
-                     "subgroups": []})
+                     "is_development": False, "subgroups": []})
     pref = [p.lower() for p in PREFERRED]
 
     def rank(c):

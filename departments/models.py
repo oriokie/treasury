@@ -192,6 +192,41 @@ class DevelopmentGroup(models.Model):
         return f"{base} – {self.name}" if self.name else base
 
 
+def _trailing_number(name):
+    """The trailing integer in a name, e.g. 'Small Group 7' -> 7. None if the
+    name has no trailing digits. Shared with envelopes.services.posting,
+    which has its own identical copy to avoid a cross-app import for one
+    small helper — keep the two in step if this ever changes."""
+    import re
+    m = re.search(r"(\d+)\s*$", (name or "").strip())
+    return int(m.group(1)) if m else None
+
+
+def numbered_subgroup_parent_map():
+    """{child_department_id: parent_department} for every *numbered*
+    sub-account (Department.parent set AND the child's own name ends in a
+    number, e.g. "Small Group 7", "Development Group 12") — deliberately
+    NOT every Department.parent child. Trust Fund's and LCB's established,
+    individually-named children (Tithe, Camp Meeting, Sabbath School, ...)
+    are NOT numbered and are excluded here on purpose: those have always
+    been reported individually and church treasurers rely on seeing each by
+    name — this rollup only targets the "many numbered subgroups" case (a
+    fund set up with a numbered family of sub-accounts, e.g. Small Group
+    1..30), where listing every one separately in a summary/export makes it
+    unreadable. Used by the envelope Sabbath statement, monthly summary and
+    Sabbath Excel export to consolidate numbered subgroups back under their
+    parent fund for DISPLAY — actual ledger postings still go to the exact
+    subgroup account (see envelopes.services.posting.subgroups_for), so
+    accounting stays precise; only these summary views roll up.
+    """
+    out = {}
+    for d in Department.objects.filter(parent__isnull=False, active=True
+                                       ).select_related("parent"):
+        if _trailing_number(d.name) is not None:
+            out[d.id] = d.parent
+    return out
+
+
 def split_component_dept_ids():
     """IDs of departments that are halves of a split offering (collection-only)."""
     from giving.models import SplitComponent

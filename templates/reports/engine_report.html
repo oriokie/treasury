@@ -52,7 +52,7 @@
       </div>
 
     {% elif s.kind == 'chart' %}
-      <canvas id="chart_{{ s.key }}" height="200"></canvas>
+      <div class="chart-box"><canvas id="chart_{{ s.key }}"></canvas></div>
 
     {% elif s.kind == 'commentary' %}
       <p>{{ s.extra|get_item:'text' }}</p>

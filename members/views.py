@@ -57,6 +57,12 @@ class MemberDetailView(ReadAccessMixin, DetailView):
         ctx["transactions"] = txns[:100]
         ctx["total_given"] = txns.aggregate(t=Sum("amount"))["t"] or Decimal(0)
         ctx["aliases"] = self.object.aliases.all()
+        # Other numbers this member gives from (e.g. after a merge — see
+        # members.services.matching.merge_members) — the primary number
+        # above is used for receipting; these are shown so a treasurer can
+        # actually see them, not just have them silently preserved in the
+        # database.
+        ctx["other_phones"] = self.object.phones.filter(is_primary=False)
         return ctx
 
 

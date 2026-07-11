@@ -4,6 +4,22 @@
  * Adds a title, subtitle and a "current as of" timestamp so a shared image
  * shows how up-to-date the figures are.
  *
+ * High-DPI (v2.43): scale=4 — the canvas is drawn at 4x the size implied by
+ * its logical padding/row-height/font measurements below, the same "render
+ * big, let the viewer downscale" technique used for the server-rendered
+ * budget-page PNGs (cashbook/services/goal_chart.py). A canvas is just a
+ * pixel grid with no inherent "size": drawing text at a LARGER font size
+ * onto a LARGER canvas produces real additional detail (the browser's own
+ * text rasteriser draws each glyph bigger), it does not blur anything —
+ * the blur previously reported came from there not being enough source
+ * pixels for print/zoom, not from any compression (this was already true
+ * before the JPEG→PNG change, since PNG is lossless either way).
+ * toDataURL('image/png') has no way to embed a physical-DPI (pHYs) chunk —
+ * a Canvas API limitation, not something this file can work around — so
+ * unlike the Pillow pipeline this relies on pixel count alone for
+ * perceived quality; 4x is generous enough that this is not a practical
+ * limitation for a page-width table.
+ *
  *   tableToPng('myTable', {title:'Group A', subtitle:'Jan–Jun 2026',
  *                          filename:'group-a', stamp:'Collections as of …'});
  */
@@ -24,7 +40,7 @@
     opts = opts || {};
     if (typeof table === 'string') { table = document.getElementById(table); }
     if (!table) { return; }
-    var scale = 2;
+    var scale = 4;
     var pad = 18 * scale, rowH = 30 * scale, font = 13 * scale;
     var stamp = opts.stamp || ('Current as of ' + new Date().toLocaleString());
     var hasSub = !!opts.subtitle;

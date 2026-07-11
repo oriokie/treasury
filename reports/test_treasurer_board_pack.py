@@ -154,10 +154,11 @@ class BoardPackReportTests(_Seed):
                        "Board action summary"):
             self.assertIn(needle, html, needle)
 
-    def test_keeps_ask_ai_affordances(self):
+    def test_ask_ai_removed(self):
+        # v2.41: removed — see docs/recommendations.md #52.
         html = self.client.get(self.base + self.q).content.decode()
-        self.assertIn("Ask AI about this report", html)
-        self.assertIn("ask-ai-link", html)
+        self.assertNotIn("Ask AI", html)
+        self.assertNotIn("ask-ai-link", html)
 
     def test_sections_are_grouped(self):
         r = self.client.get(self.base + self.q)

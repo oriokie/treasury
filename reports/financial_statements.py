@@ -169,15 +169,21 @@ registry.register(Report(
 # ===========================================================================
 
 class FinancialPositionSummarySection(ComponentSection):
-    """A summary statement of financial position: assets (fund cash + pending),
-    liabilities (trust payable + loans), and net assets — all metric-sourced.
-    A summary (not the full legacy SOFP with NBV/prepayments), suitable for the
-    board pack; the legacy detailed view remains for the full statement."""
+    """A summary statement of financial position: assets (fund cash +
+    prepayments + pending), liabilities (trust payable + loans + payables +
+    accruals), and net assets — all metric-sourced. A summary (not the full
+    legacy SOFP with NBV — property, plant & equipment stays off this
+    board-pack view by design), but the same accrual-basis adjustments
+    (payables, accruals, prepayments) the legacy statement has always shown,
+    via the payables_outstanding/accruals_outstanding/prepayments_unexpired
+    metrics, so the two statements can never silently diverge."""
     key = "financial_position_summary"
     title = "Statement of financial position (summary)"
     declared_metrics = ("fund_summary", "pending_receipts_total",
                         "trust_to_remit", "loans_outstanding",
-                        "petty_cash_balance", "staff_advances_outstanding")
+                        "petty_cash_balance", "staff_advances_outstanding",
+                        "payables_outstanding", "accruals_outstanding",
+                        "prepayments_unexpired")
 
     def render(self, ctx, filters):
         from core.reporting.engine import Section
@@ -194,17 +200,38 @@ class FinancialPositionSummarySection(ComponentSection):
         petty = _n(ctx.metric("petty_cash_balance"))
         advances = _n(ctx.metric("staff_advances_outstanding"))
         cash_at_bank = cash - petty - advances
-        total_assets = cash + pending
-        total_liabilities = trust_payable + loan_total + pending
+        # Cash & bank, split local vs trust (unrestricted vs restricted) rather
+        # than shown as one lumped figure — trust cash is already a liability
+        # below (trust funds payable), so seeing it broken out on the asset
+        # side too makes the restriction visible instead of hidden inside a
+        # single "Cash & bank" total. is_trust rows may also carry petty/
+        # advances in principle, but those are church-wide (unrestricted)
+        # float/receivables in practice, so the netting stays on the local side.
+        trust_cash = sum((_n(r["closing"]) for r in rows if r.get("is_trust")),
+                         Decimal(0))
+        local_cash = cash_at_bank - trust_cash
+        # Accrual-basis overlay: credit purchases owed, expenses accrued, and
+        # amounts prepaid — the SAME adjustments the legacy Statement of
+        # Financial Position has always applied (accrual_adj there), now
+        # through the registry so both statements move together.
+        payables = _n(ctx.metric("payables_outstanding", ctx.end))
+        accruals = _n(ctx.metric("accruals_outstanding", ctx.end))
+        prepaid = _n(ctx.metric("prepayments_unexpired", ctx.end))
+        total_assets = cash + pending + prepaid
+        total_liabilities = trust_payable + loan_total + pending + payables + accruals
         net_assets = total_assets - total_liabilities
         pairs = [
-            ("Cash & bank (funds on hand)", cash_at_bank),
+            ("Local fund cash (unrestricted)", local_cash),
+            ("Trust fund cash (restricted)", trust_cash),
             ("Petty cash float", petty),
             ("Staff advances (receivable)", advances),
             ("Receipts pending allocation", pending),
+            ("Prepayments (unexpired)", prepaid),
             ("Total assets", total_assets, True),
             ("Trust funds payable", trust_payable),
             ("Outstanding loans", loan_total),
+            ("Accounts payable", payables),
+            ("Accrued expenses", accruals),
             ("Pending receipts (unallocated)", pending),
             ("Total liabilities", total_liabilities, True),
             ("Net assets", net_assets, True),
@@ -352,8 +379,10 @@ class FundBalancesStatementSection(ComponentSection):
                            emphasis=True))
             return out, tot
 
-        local = [r for r in rows if not r.get("is_trust")]
-        trust = [r for r in rows if r.get("is_trust")]
+        local = sorted((r for r in rows if not r.get("is_trust")),
+                      key=lambda r: r["department"].name.lower())
+        trust = sorted((r for r in rows if r.get("is_trust")),
+                      key=lambda r: r["department"].name.lower())
         body = []
         lblock, ltot = _block(local, "Local funds")
         tblock, ttot = _block(trust, "Trust funds")

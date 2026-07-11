@@ -205,3 +205,49 @@ def pending_expense_claims(as_of=None):
                                   date__lte=as_of)
            .aggregate(t=Sum("amount"), n=Count("id")))
     return {"count": agg["n"] or 0, "total": agg["t"] or Decimal(0)}
+
+
+# ===========================================================================
+# Accrual-basis overlay: payables, accruals, prepayments
+# (relocated VERBATIM from cashbook/views.py — same rationale as the module
+#  docstring: not view code, and the Financial Metrics Registry needs a
+#  non-view home to import from. Previously called directly by the legacy
+#  Statement of Financial Position — reports.financial_statements now reaches
+#  these through registered metrics instead, per the "every figure through
+#  the registry" rule, so the engine-based board-pack summary can show the
+#  identical accrual-basis adjustments the legacy statement always has.)
+# ===========================================================================
+
+def open_payables_total(as_of=None):
+    """Credit purchases owed as at a date: incurred on/before it and either
+    unsettled, or settled only after it (so settling on the 15th still shows
+    as a liability on a 14th statement)."""
+    from django.db.models import Q
+    from cashbook.models import Payable
+    if as_of:
+        qs = Payable.objects.filter(date__lte=as_of).filter(
+            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
+    else:
+        qs = Payable.objects.filter(settled=False)
+    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+
+def open_accruals_total(as_of=None):
+    """Expenses incurred but not yet invoiced/paid, owed as at a date — same
+    as-of treatment as open_payables_total."""
+    from django.db.models import Q
+    from cashbook.models import Accrual
+    if as_of:
+        qs = Accrual.objects.filter(date__lte=as_of).filter(
+            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
+    else:
+        qs = Accrual.objects.filter(settled=False)
+    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+
+def unexpired_prepayments_total(as_of=None):
+    """The unexpired (not-yet-consumed) portion of every recorded prepayment
+    as at a date — an asset (a future benefit already paid for)."""
+    from cashbook.models import Prepayment
+    as_of = as_of or _dt.date.today()
+    return sum((p.unexpired(as_of) for p in Prepayment.objects.all()), Decimal(0))

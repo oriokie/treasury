@@ -12,9 +12,13 @@ def match_or_create_member(payer_name, payer_phone):
     ph = normalize_phone(payer_phone)
     key = name_key(payer_name)
 
-    # 1) trusted: phone
+    # 1) trusted: phone — checks BOTH a member's primary number and any
+    # other numbers preserved from a merge (see merge_members below): a
+    # payment from someone's second line must still find their existing
+    # record, or preserving that number at merge time would be pointless.
     if ph:
-        m = Member.objects.filter(phone=ph).first()
+        m = Member.objects.filter(
+            models.Q(phone=ph) | models.Q(phones__number=ph)).distinct().first()
         if m:
             return m, "matched_phone"
 

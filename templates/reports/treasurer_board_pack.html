@@ -1,19 +1,9 @@
 {% extends 'base.html' %}{% load humanize treasury_extras static %}
 {% block title %}{{ report.title }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-{# ============================================================================
-   Treasurer's Report — executive board pack.
-   A dedicated presentation over the identical engine section data: an
-   executive cover, a sticky section navigator, grouped & collapsible sections,
-   professional call-out cards and a print-optimised layout. Every figure still
-   originates from the Financial Metrics Registry via the Semantic Reporting
-   Layer — this template only presents the SectionData the engine produced.
-   ========================================================================= #}
 
 {# ---- toolbar (screen only) ---- #}
 <div class="bp-toolbar no-print">
-  <a class="btn btn-sm" href="{% url 'assistant' %}?report_key={{ report.key }}{% if rendered.context.start %}&start={{ rendered.context.start|date:'Y-m-d' }}&end={{ rendered.context.end|date:'Y-m-d' }}{% endif %}">✨ Ask AI about this report</a>
-  <span class="bp-toolbar-spacer"></span>
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=pdf">⬇ PDF</a>
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=docx">⬇ Word</a>
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=xlsx">⬇ Excel</a>
@@ -110,7 +100,7 @@
 
         {# ---- Plain KPI band (fallback) ---- #}
         {% elif s.kind == 'kpi' %}
-          <div class="bp-card"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
             <div class="bp-snapshot">
             {% for r in s.rows %}
               <div class="bp-kpi"><div class="bp-kpi-label">{{ r.cells.label }}</div>
@@ -121,13 +111,13 @@
 
         {# ---- Chart ---- #}
         {% elif s.kind == 'chart' %}
-          <div class="bp-card bp-card-chart"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
-            <canvas id="chart_{{ s.key }}" height="200"></canvas>
+          <div class="bp-card bp-card-chart"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
+            <div class="bp-chart-box"><canvas id="chart_{{ s.key }}"></canvas></div>
           </div></div>
 
         {# ---- Commentary (narrative / AI briefing) ---- #}
         {% elif s.kind == 'commentary' %}
-          <div class="bp-card bp-card-commentary"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+          <div class="bp-card bp-card-commentary"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
             <div class="bp-prose">{{ s.extra|get_item:'text'|linebreaksbr }}</div>
           </div></div>
 
@@ -153,7 +143,7 @@
 
         {# ---- Key/value statement ---- #}
         {% elif s.kind == 'keyvalue' %}
-          <div class="bp-card"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
             <table class="bp-table bp-kv">
               <tbody>
               {% for r in s.rows %}
@@ -175,7 +165,7 @@
 
         {# ---- Default table ---- #}
         {% else %}
-          <div class="bp-card"><div class="bp-card-head">{{ s.title }}{% include "reports/_bp_askai.html" %}</div><div class="bp-card-body">
+          <div class="bp-card"><div class="bp-card-head">{{ s.title }}</div><div class="bp-card-body">
             <div class="table-wrap"><table class="bp-table">
               <thead><tr>{% for c in s.columns %}<th scope="col" {% if c.numeric %}class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
               <tbody>
@@ -254,7 +244,7 @@
     head.setAttribute('tabindex', '0');
     function toggle(){ head.closest('.bp-cell').classList.toggle('bp-collapsed'); }
     head.addEventListener('click', function(e){
-      if (e.target.closest('a')) return;   // Ask-AI link keeps working
+      if (e.target.closest('a')) return;   // any in-head link keeps working
       toggle();
     });
     head.addEventListener('keydown', function(e){

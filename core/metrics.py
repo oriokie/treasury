@@ -568,3 +568,41 @@ metrics.register(Metric(
         if not (r["receipts"] or 0) and not (r["expenses"] or 0)
         and not (r.get("net_transfer") or 0)
         and (r["closing"] or Decimal(0)) != 0])
+
+
+# ===========================================================================
+# Accrual-basis overlay: payables, accruals, prepayments
+# (authoritative home: cashbook.services.treasury_position, relocated from
+#  cashbook/views.py — see that module's docstring. The legacy Statement of
+#  Financial Position (reports/views.py FinancialPositionView) has always
+#  shown these by calling the functions directly; registering them here lets
+#  the engine-based Financial Position summary — used by the Treasurer's
+#  Report board pack — show the identical accrual-basis adjustments through
+#  ctx.metric(), rather than the two statements silently diverging.)
+# ===========================================================================
+
+metrics.register(Metric(
+    "payables_outstanding", "Accounts payable (as-at)", "Balance",
+    "Credit purchases owed as at a date: recorded on/before it and either "
+    "still unsettled, or settled only after it — so settling on the 15th "
+    "still shows as a liability on a 14th statement.",
+    "cashbook.services.treasury_position.open_payables_total", inputs="as_of"),
+    lambda as_of=None: _tp().open_payables_total(
+        as_of or __import__("datetime").date.today()))
+
+metrics.register(Metric(
+    "accruals_outstanding", "Accrued expenses (as-at)", "Balance",
+    "Expenses incurred but not yet invoiced or paid, owed as at a date — "
+    "same as-of treatment as payables_outstanding.",
+    "cashbook.services.treasury_position.open_accruals_total", inputs="as_of"),
+    lambda as_of=None: _tp().open_accruals_total(
+        as_of or __import__("datetime").date.today()))
+
+metrics.register(Metric(
+    "prepayments_unexpired", "Unexpired prepayments (as-at)", "Balance",
+    "The unexpired (not-yet-consumed) portion of every recorded prepayment "
+    "as at a date — an asset (a future benefit already paid for).",
+    "cashbook.services.treasury_position.unexpired_prepayments_total",
+    inputs="as_of"),
+    lambda as_of=None: _tp().unexpired_prepayments_total(
+        as_of or __import__("datetime").date.today()))

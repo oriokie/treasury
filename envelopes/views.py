@@ -155,9 +155,7 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
     template_name = "envelopes/ledger.html"
 
     def get(self, request, pk=None):
-        from departments.models import DevelopmentGroup, Department
-        dev = Department.objects.filter(category="DEVELOPMENT",
-                                        parent__isnull=True).first()
+        from departments.models import DevelopmentGroup
         sab_raw = request.GET.get("date") or _last_saturday().isoformat()
         try:
             sab = dt.date.fromisoformat(sab_raw)
@@ -209,7 +207,6 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
             "columns": column_catalog(),
             "default_date": sab_raw,
             "dev_groups": DevelopmentGroup.objects.filter(active=True).order_by("number"),
-            "dev_fund_key": str(dev.id) if dev else "",
             "batch": batch,
             "batch_rows_json": json.dumps(rows_json),
             "return_reason": batch.return_reason if batch and batch.status ==
@@ -791,6 +788,17 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                 if comp.department.is_trust:
                     split_name_is_trust[sf.name] = True
 
+        # Map each NUMBERED sub-account (e.g. "Small Group 7") to its parent
+        # fund, so a fund set up with many numbered subgroups doesn't explode
+        # this sheet into one column per subgroup — established, individually-
+        # named sub-accounts (Tithe, Camp Meeting, ...) are NOT numbered and
+        # are unaffected, still shown on their own exactly as before. The
+        # subgroup account is still what the ledger actually posted to
+        # (accounting stays precise); this only changes how it's DISPLAYED
+        # here. See departments.models.numbered_subgroup_parent_map.
+        from departments.models import numbered_subgroup_parent_map
+        subgroup_parent = numbered_subgroup_parent_map()
+
         def _strip_suffix(receipt):
             # receipts are stored globally-unique as "<MON><sidx>-<original>"
             # (e.g. "JUN1-0421"); show only the original number to the reader.
@@ -802,8 +810,8 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                     return tail or s
             return s
 
-        # ---- entries-table columns: real funds, but split halves collapsed to
-        # their single concept name ----
+        # ---- entries-table columns: real funds, but split halves AND numbered
+        # subgroups collapsed to their single concept / parent name ----
         present = {}   # key -> ("dept", dept) or ("split", name); preserves order info
         for e in envs:
             for l in e.lines.all():
@@ -812,7 +820,8 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                     present.setdefault(("split", name),
                                        split_name_is_trust.get(name, False))
                 else:
-                    present.setdefault(("dept", l.department_id), l.department)
+                    dept = subgroup_parent.get(l.department_id, l.department)
+                    present.setdefault(("dept", dept.id), dept)
 
         # build ordered display columns (trust first), each with a label + a test
         entry_cols = []   # list of dicts: {label, is_trust, match(line)->bool}
@@ -824,15 +833,19 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                     "ids": {d for d, n in split_parent.items() if n == nm}})
             else:
                 d = val
+                ids = {d.id} | {cid for cid, p in subgroup_parent.items()
+                                if p.id == d.id}
                 entry_cols.append({
-                    "label": d.name, "is_trust": d.is_trust, "ids": {d.id}})
+                    "label": d.name, "is_trust": d.is_trust, "ids": ids})
         entry_cols.sort(key=lambda c: (not c["is_trust"], c["label"]))
 
-        # ---- summary funds: the REAL funds (halves stay separate), trust first ----
+        # ---- summary funds: the REAL funds (halves stay separate, numbered
+        # subgroups roll up to their parent), trust first ----
         present_real = {}
         for e in envs:
             for l in e.lines.all():
-                present_real[l.department_id] = l.department
+                dept = subgroup_parent.get(l.department_id, l.department)
+                present_real[dept.id] = dept
         funds = sorted(present_real.values(), key=lambda d: (not d.is_trust, d.name))
 
         wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Sabbath"
@@ -881,8 +894,9 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         grand = Decimal(0)
         for e in envs:
             for l in e.lines.all():
-                if l.department_id in totals:
-                    totals[l.department_id] += l.amount
+                did = subgroup_parent.get(l.department_id, l.department).id
+                if did in totals:
+                    totals[did] += l.amount
             grand += e.total
         col_totals = []
         for col in entry_cols:

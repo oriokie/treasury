@@ -146,13 +146,18 @@ class TreasurerReportTests(_Data):
                             + "?start=2026-01-01&end=2026-12-31")
         self.assertEqual(r.status_code, 200)
 
-    def test_has_ask_ai_affordances(self):
+    def test_ask_ai_removed(self):
+        # v2.41: the Ask AI affordances were removed from the treasurer board
+        # pack (they weren't working) — see docs/recommendations.md #52.
+        # The generic engine_report.html template (every OTHER report) still
+        # has its own Ask AI links, untouched; this report opted out via its
+        # dedicated treasurer_board_pack.html template.
         self.client.force_login(self.tr)
         r = self.client.get(reverse("engine_report", args=["treasurer_report"])
                             + "?start=2026-01-01&end=2026-12-31")
         html = r.content.decode()
-        self.assertIn("Ask AI about this report", html)
-        self.assertIn("ask-ai-link", html)
+        self.assertNotIn("Ask AI", html)
+        self.assertNotIn("ask-ai-link", html)
 
     def test_exports_all_formats(self):
         self.client.force_login(self.tr)

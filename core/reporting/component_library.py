@@ -98,6 +98,7 @@ class FundSummaryComponent(ComponentSection):
         from django.urls import reverse
         rows_data = ctx.fund_summary(
             consolidated=filters.get("consolidated", True))
+        rows_data = sorted(rows_data, key=lambda r: r["department"].name.lower())
         columns = [
             Column("fund", "Fund", drilldown=True),
             Column("opening", "Opening", numeric=True),

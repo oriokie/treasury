@@ -35,7 +35,9 @@ class GoalTablePngTests(TestCase):
         from PIL import Image
         img = Image.open(io.BytesIO(data))
         self.assertEqual(img.format, "PNG")
-        self.assertEqual(img.width, 1180)
+        # v2.43: rendered at 4x logical size for print quality — see
+        # reports/test_high_dpi_images_v243.py for the dedicated coverage
+        self.assertEqual(img.width, 1180 * 4)
 
     def test_empty_group_rows_still_renders(self):
         from cashbook.services.goal_chart import build_group_goals_png

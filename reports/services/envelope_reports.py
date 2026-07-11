@@ -31,7 +31,15 @@ def _fund_label(dept):
 
 def sabbath_statement(date):
     """Per-contributor listing for one Sabbath. Only funds actually given to
-    (non-zero) appear; parent funds are excluded (giving lands on sub-accounts)."""
+    (non-zero) appear; parent funds are excluded (giving lands on sub-accounts).
+    A NUMBERED sub-account (e.g. "Small Group 7" — see
+    departments.models.numbered_subgroup_parent_map) is consolidated under its
+    parent fund here for readability; an established, individually-named
+    sub-account (Tithe, Camp Meeting, ...) is unaffected and still reads on
+    its own, exactly as before — only the "many numbered subgroups" case
+    rolls up. Ledger postings themselves are untouched either way."""
+    from departments.models import numbered_subgroup_parent_map
+    rollup = numbered_subgroup_parent_map()
     envs = sorted(_envelopes_for_bucket(date), key=lambda e: e.receipt_no)
 
     fund_totals = defaultdict(Decimal)
@@ -40,7 +48,7 @@ def sabbath_statement(date):
     for env in envs:
         cells = {}
         for line in env.lines.all():
-            d = line.department
+            d = rollup.get(line.department_id, line.department)
             # Note: a fund that has sub-accounts is normally an umbrella that
             # giving doesn't land on directly — but when money IS given straight
             # to it (e.g. VBS), that is real giving and must be listed, or the
@@ -69,14 +77,19 @@ def sabbath_statement(date):
 
 def monthly_summary(year, month):
     """OFFERING SUMMARY style: funds (rows) x Sabbaths (cols) + total, trust then
-    local. Only funds with giving in the month appear; parents excluded."""
+    local. Only funds with giving in the month appear; parents excluded.
+    Numbered sub-accounts consolidate under their parent, same as
+    sabbath_statement — see numbered_subgroup_parent_map for why only the
+    numbered case rolls up."""
+    from departments.models import numbered_subgroup_parent_map
+    rollup = numbered_subgroup_parent_map()
     saturdays = _saturdays_in_month(year, month)
     grid = defaultdict(lambda: defaultdict(Decimal))   # fid -> {saturday: total}
     fund_obj = {}
     for sat in saturdays:
         for env in _envelopes_for_bucket(sat):
             for line in env.lines.all():
-                d = line.department
+                d = rollup.get(line.department_id, line.department)
                 # Include direct giving even to umbrella/parent funds (see
                 # sabbath_statement): dropping it loses real money and breaks the
                 # reconciliation against the envelope totals. Umbrella funds with
