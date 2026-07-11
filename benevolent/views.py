@@ -500,14 +500,16 @@ class CaseCreateView(BenevolentManageMixin, View):
         scheme = get_object_or_404(BenevolentScheme, pk=pk)
         form = CaseForm(request.POST, scheme=scheme)
         if form.is_valid():
-            case = form.save(commit=False)
-            case.scheme = scheme
-            case.raised_by = request.user
-            case.status = BenevolentCase.Status.DRAFT
+            d = form.cleaned_data
             try:
-                case.full_clean(exclude=["number", "policy_snapshot",
-                                         "eligibility_snapshot"])
-                case.save()
+                case = case_svc.create_case(
+                    scheme, membership=d.get("membership"), event_type=d["event_type"],
+                    dependant=d.get("dependant"),
+                    beneficiary_name=d.get("beneficiary_name") or "",
+                    event_date=d["event_date"], reported_date=d.get("reported_date"),
+                    description=d.get("description") or "",
+                    claimed_amount=d.get("claimed_amount"),
+                    funding_target=d.get("funding_target"), user=request.user)
             except ValidationError as e:
                 for msg in e.messages:
                     form.add_error(None, msg)
@@ -531,7 +533,8 @@ class CaseDetailView(BenevolentViewMixin, View):
             preview = None
         else:
             preview = evaluate_case(case)
-        from .forms import VoteForm
+        from .forms import BereavedDecisionForm, FundingTargetForm, VoteForm
+        from .services.eligibility import missing_required_documents
         committee = case_svc.committee_state(case)
         return render(request, "benevolent/case_detail.html", {
             "case": case, "preview": preview,
@@ -540,12 +543,18 @@ class CaseDetailView(BenevolentViewMixin, View):
             "approve_form": ApproveForm(initial={"amount": case.assessed_amount}),
             "reject_form": RejectForm(),
             "payout_form": PayoutForm(initial={"amount": case.available_to_voucher}),
-            "attach_form": AttachmentForm(),
+            "attach_form": AttachmentForm(case=case),
             "committee": committee,
             "vote_form": VoteForm(initial={"amount": case.assessed_amount}),
             "my_vote": next((v for v in committee["votes"]
                              if v.user_id == request.user.pk), None),
             "levy": contrib_svc.levy_summary(case),
+            # ---- Phase 5 ----
+            "funding_target_form": FundingTargetForm(
+                initial={"amount": case.funding_target or case.assessed_amount}),
+            "bereaved_decision_form": BereavedDecisionForm(),
+            "missing_documents": missing_required_documents(case.event_type, case),
+            "events": case.events.select_related("actor")[:50],
         })
 
 
@@ -572,12 +581,14 @@ class CaseActionView(BenevolentManageMixin, View):
                                  f"still be approved with a recorded reason, if the policy "
                                  f"allows an override.")
             elif action == "attach":
-                form = AttachmentForm(request.POST, request.FILES)
+                form = AttachmentForm(request.POST, request.FILES, case=case)
                 if form.is_valid():
                     a = form.save(commit=False)
                     a.case = case
                     a.uploaded_by = request.user
                     a.save()
+                    case_svc.log_document_added(
+                        case, a.document_type or a.label, user=request.user)
                     messages.success(request, "Document attached.")
                 else:
                     messages.error(request, "Choose a file to attach.")
@@ -652,4 +663,48 @@ class CasePayoutView(BenevolentManageMixin, View):
             messages.success(
                 request, f"Payment voucher for {payout.amount} raised on {case.number}. "
                          f"It is pending approval in the expenses queue like any other claim.")
+        return redirect("benevolent_case_detail", pk=pk)
+
+
+class CaseFundingTargetView(BenevolentManageMixin, View):
+    """Set or change what a case is aiming to raise. A fundraising goal, not a
+    policy decision — anyone who can administer the scheme can set one."""
+
+    def post(self, request, pk):
+        case = get_object_or_404(BenevolentCase, pk=pk)
+        from .forms import FundingTargetForm
+        form = FundingTargetForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "Enter a positive funding target.")
+            return redirect("benevolent_case_detail", pk=pk)
+        try:
+            case_svc.set_funding_target(
+                case, amount=form.cleaned_data["amount"], user=request.user)
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        else:
+            messages.success(request, f"Funding target set at {form.cleaned_data['amount']}.")
+        return redirect("benevolent_case_detail", pk=pk)
+
+
+class CaseBereavedDecisionView(BenevolentApproveMixin, View):
+    """The committee's ruling on the bereaved member's own contribution, under
+    a COMMITTEE_DECIDES policy. Gated at the same permission as approving a
+    benefit — it is a money decision about the same case."""
+
+    def post(self, request, pk):
+        case = get_object_or_404(BenevolentCase, pk=pk)
+        from .forms import BereavedDecisionForm
+        form = BereavedDecisionForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "Record the committee's decision and why.")
+            return redirect("benevolent_case_detail", pk=pk)
+        try:
+            case_svc.decide_bereaved_contribution(
+                case, waived=(form.cleaned_data["waived"] == "1"),
+                reason=form.cleaned_data["reason"], user=request.user)
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        else:
+            messages.success(request, "The committee's decision is recorded.")
         return redirect("benevolent_case_detail", pk=pk)

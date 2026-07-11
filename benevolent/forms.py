@@ -34,6 +34,13 @@ class SchemeForm(StyledFormMixin, forms.ModelForm):
 
 
 class EventTypeForm(StyledFormMixin, forms.ModelForm):
+    required_documents_text = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 3}),
+        label="Named documents required",
+        help_text="One per line, e.g. 'Burial permit', 'Death certificate'. A case "
+                  "then shows each as its own checklist item. Leave blank to fall "
+                  "back to the plain toggle below (any one document, unnamed).")
+
     class Meta:
         model = BenevolentEventType
         fields = ["name", "code", "description", "covers_dependants",
@@ -43,7 +50,21 @@ class EventTypeForm(StyledFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["code"].required = False
         self.fields["code"].help_text = "Leave blank to derive it from the name."
+        if self.instance.pk and self.instance.required_documents:
+            self.fields["required_documents_text"].initial = "\n".join(
+                self.instance.required_documents)
         self._style()
+
+    def clean_required_documents_text(self):
+        raw = self.cleaned_data.get("required_documents_text") or ""
+        return [line.strip() for line in raw.splitlines() if line.strip()]
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        obj.required_documents = self.cleaned_data.get("required_documents_text") or []
+        if commit:
+            obj.save()
+        return obj
 
 
 class PolicyForm(StyledFormMixin, forms.ModelForm):
@@ -73,8 +94,8 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
         ("Approval",
          ["approval_mode", "committee_threshold", "committee_quorum"]),
         ("The bereaved member",
-         ["bereaved_exempt_own_levy", "bereaved_deduct_own_levy",
-          "bereaved_dues_waiver_months"]),
+         ["bereaved_contribution_policy", "bereaved_reduction_percent",
+          "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
         ("Inactivity & lapsing",
          ["inactivity_months", "inactivity_action", "reinstatement_fee",
           "reinstatement_waiting_days"]),
@@ -112,8 +133,8 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
                 ("Approval",
                  ["approval_mode", "committee_threshold", "committee_quorum"]),
                 ("The bereaved member",
-                 ["bereaved_exempt_own_levy", "bereaved_deduct_own_levy",
-                  "bereaved_dues_waiver_months"]),
+                 ["bereaved_contribution_policy", "bereaved_reduction_percent",
+                  "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
                 ("Inactivity & lapsing",
                  ["inactivity_months", "inactivity_action", "reinstatement_fee",
                   "reinstatement_waiting_days"]),
@@ -207,11 +228,18 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
 
         # exempting a member from their own levy and deducting it from their
         # benefit are two answers to the same question
-        if cleaned.get("bereaved_exempt_own_levy") and cleaned.get("bereaved_deduct_own_levy"):
+        bcp = cleaned.get("bereaved_contribution_policy")
+        if bcp == SchemePolicy.BereavedContributionPolicy.EXEMPT \
+                and cleaned.get("bereaved_deduct_own_levy"):
             self.add_error(
                 "bereaved_deduct_own_levy",
-                "A member cannot be both exempt from their own levy AND have it deducted "
-                "from their benefit. Choose one.")
+                "An exempt member has nothing to deduct — 'deduct from the benefit' only "
+                "makes sense where the bereaved member DOES contribute (fully or at a "
+                "reduced amount).")
+        if bcp == SchemePolicy.BereavedContributionPolicy.REDUCED \
+                and not cleaned.get("bereaved_reduction_percent"):
+            self.add_error("bereaved_reduction_percent",
+                           "Say what percentage a reduced contribution actually is.")
 
         if cleaned.get("approval_mode") in (SchemePolicy.ApprovalMode.COMMITTEE,
                                             SchemePolicy.ApprovalMode.TWO_STAGE) \
@@ -270,6 +298,12 @@ class DependantForm(StyledFormMixin, forms.ModelForm):
 
 
 class CaseForm(StyledFormMixin, forms.ModelForm):
+    funding_target = forms.DecimalField(
+        max_digits=12, decimal_places=2, required=False, min_value=Decimal("0.01"),
+        help_text="Optional. What this case is aiming to raise or receive — a "
+                  "fundraising goal you can set now or later, independent of "
+                  "whatever the policy ultimately computes as the benefit.")
+
     class Meta:
         model = BenevolentCase
         fields = ["membership", "event_type", "dependant", "beneficiary_name",
@@ -379,7 +413,44 @@ class PayoutForm(StyledFormMixin, forms.Form):
 class AttachmentForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = CaseAttachment
-        fields = ["file", "label"]
+        fields = ["file", "document_type", "label"]
+
+    def __init__(self, *args, case=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        named = list((case.event_type.required_documents if case and case.event_type_id
+                     else []) or [])
+        if named:
+            missing_now = []
+            try:
+                from .services.eligibility import missing_required_documents
+                missing_now = missing_required_documents(case.event_type, case)
+            except Exception:  # noqa: BLE001
+                missing_now = named
+            choices = [("", "— choose —")] + [(n, n) for n in named] + [("OTHER", "Other")]
+            self.fields["document_type"] = forms.ChoiceField(
+                choices=choices, required=False, label="Which document",
+                help_text=(f"Still needed: {', '.join(missing_now)}." if missing_now
+                          else "All named documents are already on file — this adds "
+                               "another anyway."))
+        self._style()
+
+
+class FundingTargetForm(StyledFormMixin, forms.Form):
+    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"),
+                                label="Funding target")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
+class BereavedDecisionForm(StyledFormMixin, forms.Form):
+    waived = forms.ChoiceField(
+        choices=[("1", "Waived — they do not contribute to this case"),
+                 ("0", "They contribute, as normal")],
+        label="The committee's decision")
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}),
+                             label="Reason / minute reference")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

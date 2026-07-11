@@ -811,7 +811,7 @@ class Command(BaseCommand):
             benefit_rounding=SchemePolicy.Rounding.HUNDRED,
             approval_mode=SchemePolicy.ApprovalMode.COMMITTEE,
             committee_quorum=3,
-            bereaved_exempt_own_levy=True,
+            bereaved_contribution_policy=SchemePolicy.BereavedContributionPolicy.EXEMPT,
             inheritance_mode=SchemePolicy.InheritanceMode.NEXT_OF_KIN,
             claim_window_days=60, max_claims_per_year=2, allow_override=True,
             created_by=treasurer,
@@ -1019,12 +1019,99 @@ class Command(BaseCommand):
             w.save(update_fields=["approved_by", "approved_at"])
 
         from benevolent.models import ContributionIntake
-        counts = dict(ContributionIntake.objects.values_list("status").annotate(
-            n=models.Count("id"))) if False else {}
         self.stdout.write(self.style.SUCCESS(
             f"Benevolent (Phase 4): 2 narration rules, "
             f"{ContributionIntake.objects.count()} receipts through the allocator "
             f"(auto / spouse / unmatched / duplicate), 1 penalty, 1 waiver"))
+
+        self._seed_benevolent_phase5(treasurer, sab, main_scheme)
+
+    # ---- Phase 5: bereavement case management ------------------------------
+    def _seed_benevolent_phase5(self, treasurer, sab, main_scheme):
+        """Three cases showing the phase's actual new ground: a funding target
+        with real progress against it, a case-by-case committee decision on
+        the bereaved member's own contribution, and a document checklist
+        partly satisfied — plus the full history each one now leaves behind."""
+        from benevolent.models import (BenevolentCase, SchemeMembership,
+                                       SchemePolicy)
+        from benevolent.services import cases as case_svc
+        from benevolent.services import contributions as contrib_svc
+        from benevolent.services import schemes as scheme_svc
+
+        if BenevolentCase.objects.filter(
+                scheme=main_scheme, funding_target__isnull=False).exists():
+            self.stdout.write(self.style.SUCCESS(
+                "Benevolent (Phase 5): cases already exist, skipping"))
+            return
+
+        bereavement = main_scheme.event_types.filter(code="BER").first() \
+            or main_scheme.event_types.first()
+        if bereavement is None:
+            return
+
+        live = list(main_scheme.memberships.filter(
+            status=SchemeMembership.Status.ACTIVE).select_related("member")[:6])
+        if len(live) < 3:
+            return
+
+        # 1. a funding target, part-collected — the fundraising-progress case
+        target_case = case_svc.create_case(
+            main_scheme, event_type=bereavement, membership=live[0],
+            event_date=sab - dt.timedelta(days=6), reported_date=sab - dt.timedelta(days=5),
+            description="Funeral expenses — father of the member.",
+            funding_target=Decimal("30000"), user=treasurer)
+        case_svc.submit_case(target_case, user=treasurer)
+        case_svc.assess_case(target_case, user=treasurer)
+        for i, payer in enumerate(live[1:4]):
+            contrib_svc.record_contribution(
+                main_scheme, date=sab - dt.timedelta(days=4 - i), amount=Decimal("500"),
+                membership=payer, case=target_case, user=treasurer)
+
+        # 2. a committee-decides bereaved policy, ruled on — the constitution
+        #    keeps its default EXEMPT scheme-wide, so this case gets its own
+        #    one-off policy version to demonstrate the pathway without
+        #    disturbing every other case's assessment basis
+        v2 = scheme_svc.new_version_from(
+            main_scheme.current_policy, effective_from=sab - dt.timedelta(days=3),
+            user=treasurer)
+        v2.bereaved_contribution_policy = \
+            SchemePolicy.BereavedContributionPolicy.COMMITTEE_DECIDES
+        v2.save()
+        scheme_svc.publish_policy(v2, user=treasurer)
+
+        decided_case = case_svc.create_case(
+            main_scheme, event_type=bereavement, membership=live[1],
+            event_date=sab - dt.timedelta(days=2), reported_date=sab - dt.timedelta(days=1),
+            description="Bereavement — spouse.", user=treasurer)
+        case_svc.submit_case(decided_case, user=treasurer)
+        case_svc.assess_case(decided_case, user=treasurer)
+        case_svc.decide_bereaved_contribution(
+            decided_case, waived=True,
+            reason="Family circumstances discussed at the board meeting; waived by "
+                  "unanimous vote.", user=treasurer)
+        case_svc.approve_case(decided_case, user=treasurer, allow_self_approval=True)
+
+        # 3. a document checklist, half-satisfied — the case sits at ASSESSED,
+        #    correctly not yet approvable. Applied only now: cases 1 and 2
+        #    above must not be affected by a requirement introduced for case 3.
+        bereavement.required_documents = ["Burial permit", "Death certificate"]
+        bereavement.save(update_fields=["required_documents"])
+        doc_case = case_svc.create_case(
+            main_scheme, event_type=bereavement, membership=live[2],
+            event_date=sab - dt.timedelta(days=1), reported_date=sab, user=treasurer)
+        case_svc.submit_case(doc_case, user=treasurer)
+        from benevolent.models import CaseAttachment
+        from django.core.files.base import ContentFile
+        CaseAttachment.objects.create(
+            case=doc_case, document_type="Burial permit", uploaded_by=treasurer,
+            file=ContentFile(b"Demo placeholder - burial permit.", name="burial_permit.txt"))
+        case_svc.assess_case(doc_case, user=treasurer)
+
+        self.stdout.write(self.style.SUCCESS(
+            "Benevolent (Phase 5): a funding-target case (part-collected), a "
+            "committee-decided bereaved contribution, a document checklist "
+            f"half-satisfied — {sum(c.events.count() for c in [target_case, decided_case, doc_case])} "
+            "case-history events logged"))
 
     def _print_login(self):
         self.stdout.write(self.style.SUCCESS(

@@ -926,3 +926,125 @@ for their own case**, which the policy already says is not done.
   a list of people who signed up, not of people who happened to send money.
 
 Tracked in `docs/recommendations.md` (#62).
+
+---
+---
+
+# Phase 5 — Bereavement Case Management
+
+## 1. The case's own narrative
+
+`django-simple-history` answers "what was this field on 3 March?" It has never answered
+"what happened on this case, and why?" — the question a treasurer re-opening a case six
+months later, a board reviewing a large payment, or a bereaved family asking why their
+claim took so long, actually asks.
+
+`CaseEvent` is that answer, mirroring `MembershipEvent` from Phase 3 exactly. Every
+workflow function in `services/cases.py` — raise, submit, assess, vote, approve, reject,
+cancel, raise a payout, a voucher clearing or being reversed in the ordinary expense
+screen, close — writes one line. Automated entries (a voucher status sync, an automatic
+exemption) are marked `automated=True`, so a reader can always tell whether a person
+decided something or a rule did.
+
+Case creation itself moved into the service layer (`case_svc.create_case`) for exactly
+this reason — a `BenevolentCase.objects.create()` in a view would miss the very first
+line of the case's own history.
+
+## 2. Funding targets are a goal, not a rule
+
+`BenevolentCase.funding_target` is deliberately **not** consulted by the eligibility
+engine. The policy alone still decides what is owed. A target is a fundraising goal a
+committee or treasurer sets — "we're aiming for 30,000" — tracked against
+`funding_collected` (every levy contribution tagged to the case; the same figure
+`levy_summary()` reports, so the two can never disagree) and shown as a progress bar.
+Reaching it fires a notification exactly once, via a dedicated
+`notify_on_funding_target_reached` toggle — not a repurposed one.
+
+## 3. The bereaved member's own contribution — four options, one function
+
+Phase 2 modelled this as two overlapping booleans (`bereaved_exempt_own_levy` /
+`bereaved_deduct_own_levy`). Building Phase 5 surfaced that they could not express
+"reduced" or "committee decides" at all, **and had a live double-charge bug**: a
+"deduct" member was left on the levy roster (asked to pay up front) *and* had the same
+amount taken off their benefit.
+
+Replaced with one explicit choice, `SchemePolicy.BereavedContributionPolicy`:
+
+| | |
+|---|---|
+| **CONTRIBUTES** | Levied like anyone else, on the roster in full. |
+| **REDUCED** | On the roster at `bereaved_reduction_percent`% of the normal amount. |
+| **EXEMPT** | Off the roster entirely. The default — "almost every real constitution says this." |
+| **COMMITTEE_DECIDES** | Off the roster until `decide_bereaved_contribution()` records a ruling; undecided is treated as EXEMPT's weight, never CONTRIBUTES' — nobody is chased on the strength of a rule nobody has actually applied yet. |
+
+`bereaved_deduct_own_levy` survives as an orthogonal modifier — where the member does
+contribute (CONTRIBUTES or REDUCED), collect it by deduction from their benefit instead
+of the ordinary roster. **This is the fix**: a deduct-collected member is now excluded
+from the roster (`raise_case_levy`), and `_bereaved_weight()` — one function — is the
+only place that decides how much they owe, consumed identically by the levy roster, the
+PER_MEMBER_MULTIPLE pledge calculation, and the benefit deduction. All three can no
+longer disagree, because there is only one answer to ask.
+
+## 4. Automatic exemption is a real exemption, not silent arithmetic
+
+Phase 2's `bereaved_dues_waiver_months` correctly zeroed a bereaved member's dues for N
+months — but did it by adjusting `arrears_for()`'s arithmetic inline, with **no
+record**: no exemption row, no membership event, no line in the standing register.
+Phase 3 established, for every other exemption in the system, that "an exemption
+without a recorded reason is indistinguishable from favouritism." A silently-zeroed due
+was exactly that gap, just for the bereaved member specifically.
+
+Fixed: approving a case under an EXEMPT bereaved policy with a nonzero waiver now calls
+`registry.grant_policy_exemption()` — a new, deliberately distinct entry point from the
+human-discretionary `grant_exemption()`/`approve_exemption()` pair. A policy-computed
+waiver is not a new decision needing a second signature; the church already wrote the
+rule down and published it. Auto-approved, but identical in shape and just as visible as
+a hand-granted exemption: it shows in the member's exemptions panel, Standing correctly
+reports `EXEMPT` (not a silent `GOOD`), and both a `MembershipEvent` and a `CaseEvent`
+record it, each marked `automated=True`.
+
+## 5. Documents: a checklist, not a checkbox
+
+`BenevolentEventType.required_documents` (a JSON list, e.g. `["Burial permit", "Death
+certificate"]`) turns the old single `requires_document` boolean into a real checklist.
+`CaseAttachment.document_type` matches against it; `missing_required_documents()` says
+exactly what's still needed, surfaced both on the case screen and in the `documents`
+eligibility check's detail text. An event type with no named list falls back to the old
+"at least one attachment" behaviour unchanged — nothing that used the plain toggle
+before needs to change.
+
+## 6. Multiple concurrent cases
+
+Nothing in the case workflow ever restricted a member to one open case at a time, and
+Phase 5 adds nothing that would: levies, funding targets and document checklists are all
+scoped to the individual case, so two open cases for the same member never cross-
+contaminate each other's money or paperwork. The annual claim-frequency cap already only
+counted *decided* cases (Phase 1) — confirmed, not changed, and covered by new tests
+proving an undecided second case never blocks eligibility for a first, and a decided one
+correctly does count against a later claim.
+
+## 7. New models & fields
+
+`CaseEvent` (new model, `models_case.py`) · `BenevolentCase.funding_target` +
+`funding_target_set_by/_at` · `BenevolentCase.bereaved_levy_waived` +
+`_decision_reason/_decided_by/_decided_at` · `SchemePolicy.bereaved_contribution_policy`
++ `bereaved_reduction_percent` (replacing `bereaved_exempt_own_levy`, removed via a
+three-step migration: add → translate → remove, the same pattern Phase 3 used for the
+status/standing split) · `BenevolentEventType.required_documents` ·
+`CaseAttachment.document_type` · `BenevolentSettings.notify_on_funding_target_reached`.
+
+## 8. Deliberately not in Phase 5
+
+* **The case list view has no funding-progress column.** The case detail screen — where
+  a treasurer actually works a case — carries the full progress bar and history; adding
+  it to the list too is a reasonable follow-up, not done here to keep the change
+  surgical.
+* **A funding target cannot be enforced** (e.g. "do not approve until reached") — it
+  remains purely informational, deliberately, per the objective's own framing of it as a
+  goal rather than a rule.
+* **COMMITTEE_DECIDES supports only a binary ruling** (waived / contributes in full),
+  not a committee-set custom reduced amount for one specific case. The brief asked for
+  "committee approval" as one of four options, not an open-ended per-case override; a
+  scheme wanting a genuinely custom figure still has REDUCED at the policy level.
+
+Tracked in `docs/recommendations.md` (#65).

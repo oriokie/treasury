@@ -1908,3 +1908,30 @@ than assumed to be. *Priority: Low.*
 
 **Tests.** A jsdom harness (outside the repo, used for development verification only) executed the real rendered script before and after the fix, confirming the bug and its resolution across single-row and 7-row multi-fund scenarios. A permanent Python-level regression test
 (`envelopes/test_ledger_column_data_loss_v2481.py`) checks the server-side prerequisites the fix depends on and tripwires if the fix's key functions are ever removed from the template. Full `envelopes` suite (163 tests) green.
+
+---
+
+## 65. Benevolent Phase 5 — case management shipped; two follow-ups noted — NEW
+
+Phase 5 added case-level history (`CaseEvent`), funding targets with progress tracking,
+a proper four-way bereaved-contribution policy (replacing two overlapping booleans and
+fixing a real double-charge bug found while doing so), automatic policy-driven
+exemptions that are now genuinely auditable rather than silent arithmetic, and a named
+document checklist. See `docs/BENEVOLENT_MODULE.md`.
+
+**65a. The case list has no funding-progress column.** Deliberately deferred — the case
+detail screen carries the full picture — but worth adding if treasurers want to scan
+several fundraising cases at once without opening each. *Priority: Low.*
+
+**65b. `post_batch`-style silent drop, checked for and NOT found here.** While auditing
+`raise_case_levy` and `_apply_deductions` for the double-charge bug, I specifically
+checked whether a case's levy roster or deduction logic could similarly reference a
+membership or fund that no longer resolves (mirroring recommendation #63's finding in
+the envelope ledger). It cannot: both read live from `SchemeMembership`/`case.policy`
+at call time, not from a stale snapshot, so there's nothing parallel to fix here — noted
+for the record rather than left as an open question.
+
+**65c. `COMMITTEE_DECIDES` is binary only** (waived / contributes in full) — no
+per-case custom reduced amount. A church wanting that combination sets REDUCED at the
+policy level instead. *Priority: Low* — the brief specified four categorical options,
+not an open-ended override, and this stays inside that scope deliberately.

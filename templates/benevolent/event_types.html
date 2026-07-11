@@ -6,12 +6,13 @@
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
 
 <div class="table-wrap"><table class="ledger compact">
-<thead><tr><th>Event</th><th>Code</th><th>Covers dependants</th><th>Needs a document</th><th>Active</th><th></th></tr></thead>
+<thead><tr><th>Event</th><th>Code</th><th>Covers dependants</th><th>Documents needed</th><th>Active</th><th></th></tr></thead>
 <tbody>{% for e in event_types %}<tr>
   <td>{{ e.name }}{% if e.description %}<div class="muted u-xs">{{ e.description }}</div>{% endif %}</td>
   <td class="mono">{{ e.code }}</td>
   <td>{% if e.covers_dependants %}Yes{% else %}No{% endif %}</td>
-  <td>{% if e.requires_document %}Yes{% else %}No{% endif %}</td>
+  <td>{% if e.required_documents %}<span class="muted u-xs">{{ e.required_documents|join:", " }}</span>
+      {% elif e.requires_document %}Yes (unnamed){% else %}No{% endif %}</td>
   <td>{% if e.active %}<span class="pill pill-green u-xs">Active</span>{% else %}<span class="pill pill-brass u-xs">Retired</span>{% endif %}</td>
   <td><a class="link" href="?edit={{ e.id }}">Edit</a></td>
 </tr>{% empty %}<tr><td colspan="6" class="empty">No events defined yet.</td></tr>{% endfor %}</tbody>

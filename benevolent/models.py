@@ -269,6 +269,13 @@ class BenevolentEventType(models.Model):
         default=False,
         help_text="A supporting document (burial permit, medical report…) must be "
                   "attached before the case can be approved.")
+    required_documents = models.JSONField(
+        default=list, blank=True,
+        help_text="Named documents this event needs (e.g. 'Burial permit', "
+                  "'Death certificate'), one per line in the form. A case shows "
+                  "each as a checklist item rather than a single yes/no. Leave "
+                  "empty to fall back to the plain requires_document toggle above "
+                  "(at least one attachment of any kind).")
     sort_order = models.PositiveSmallIntegerField(default=0)
     active = models.BooleanField(default=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -418,8 +425,8 @@ class SchemePolicy(models.Model):
         # approvals
         "approval_mode", "committee_threshold", "committee_quorum",
         # bereaved-member rules
-        "bereaved_exempt_own_levy", "bereaved_dues_waiver_months",
-        "bereaved_deduct_own_levy",
+        "bereaved_contribution_policy", "bereaved_reduction_percent",
+        "bereaved_deduct_own_levy", "bereaved_dues_waiver_months",
         # inactivity
         "inactivity_months", "inactivity_action", "reinstatement_fee",
         "reinstatement_waiting_days", "inactivity_missed_cases",
@@ -563,21 +570,54 @@ class SchemePolicy(models.Model):
         help_text="How many committee members must record an approval before a benefit is "
                   "authorised.")
 
+    class BereavedContributionPolicy(models.TextChoices):
+        """The four ways a constitution answers one question: does the member
+        who is themselves the reason for a case still have to pay into it?
+
+        Phase 2 modelled this as two overlapping booleans
+        (`bereaved_exempt_own_levy` / `bereaved_deduct_own_levy`), which could
+        not express "pay a reduced amount" or "let the committee decide" at
+        all, and which — audited while building this — had a live bug: a
+        "deduct" member was left on the levy roster AND had the same amount
+        taken off their benefit, charging them twice. This replaces both
+        booleans with one explicit choice, covering exactly the four cases a
+        real constitution actually distinguishes.
+        """
+        CONTRIBUTES = "CONTRIBUTES", "Contributes like any other member"
+        REDUCED = "REDUCED", "Contributes a reduced amount"
+        EXEMPT = "EXEMPT", "Automatically exempt"
+        COMMITTEE_DECIDES = "COMMITTEE_DECIDES", "The committee decides, case by case"
+
     # ---- Bereaved-member rules ---------------------------------------------
-    bereaved_exempt_own_levy = models.BooleanField(
-        default=True,
-        help_text="The bereaved member is not asked to contribute to the levy raised for "
-                  "their own case. (Almost every real constitution says this; asking a "
-                  "grieving family to chip in for their own benefit is the thing schemes "
-                  "explicitly write down that they do not do.)")
-    bereaved_dues_waiver_months = models.PositiveSmallIntegerField(
-        default=0,
-        help_text="Months of ordinary dues waived for a member after their own case. "
-                  "0 = no waiver.")
+    bereaved_contribution_policy = models.CharField(
+        max_length=18, choices=BereavedContributionPolicy.choices,
+        default=BereavedContributionPolicy.EXEMPT,
+        help_text="Whether the member a case is FOR still has to pay into it — "
+                  "the levy round, or their own dues. EXEMPT is what almost every "
+                  "real constitution says: asking a grieving family to chip in "
+                  "for their own benefit is the thing schemes explicitly write "
+                  "down that they do not do.")
+    bereaved_reduction_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal("50"),
+        help_text="Under REDUCED, what percentage of the normal amount the "
+                  "bereaved member is asked for.")
     bereaved_deduct_own_levy = models.BooleanField(
         default=False,
-        help_text="Instead of exempting them, take the bereaved member's own levy out of "
-                  "the benefit they receive. Mutually exclusive with the exemption above.")
+        help_text="Where the bereaved member DOES contribute (CONTRIBUTES or "
+                  "REDUCED), collect it by taking it out of their own benefit "
+                  "rather than asking them to pay it up front like everyone "
+                  "else. They are then left OFF the levy roster — being asked "
+                  "to pay in AND having it deducted would charge them twice.")
+    bereaved_dues_waiver_months = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Months of ordinary periodic dues waived for a member after "
+                  "their own case — independent of the levy question above; a "
+                  "scheme can waive dues, exempt the levy, both, or neither. "
+                  "0 = no waiver. Where this applies and the levy policy is "
+                  "EXEMPT, the waiver is granted as a visible, auditable "
+                  "exemption (see benevolent.services.registry) rather than a "
+                  "silent adjustment to arrears — a member has a right to see "
+                  "why they owe nothing, the same as for any other exemption.")
 
     # ---- Inactivity ---------------------------------------------------------
     inactivity_months = models.PositiveSmallIntegerField(
@@ -1270,6 +1310,39 @@ class BenevolentCase(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="What the approver authorised. This — not the assessment — is what may be paid.")
 
+    # ---- Funding target (Phase 5) -------------------------------------------
+    # Distinct from assessed_amount/approved_amount on purpose. Under a POOLED
+    # or PER_MEMBER_MULTIPLE policy the entitlement itself MOVES as levy money
+    # comes in — but a family, a committee, or a treasurer often still needs an
+    # explicit goal to work towards and show progress against ("we are aiming
+    # for 50,000") that is independent of, and usually set well before, any
+    # policy computation. It is never used BY the eligibility engine — the
+    # policy alone still decides what is owed — it is purely a fundraising
+    # goal the case tracks itself against.
+    funding_target = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="The amount this case is aiming to raise or receive. Optional, "
+                  "and separate from the assessed/approved benefit — a goal to "
+                  "track progress against, not a rule the policy enforces.")
+    funding_target_set_by = models.ForeignKey(
+        "auth.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    funding_target_set_at = models.DateTimeField(null=True, blank=True)
+
+    # ---- The bereaved member's own contribution, where the policy leaves it
+    # to the committee (SchemePolicy.BereavedContributionPolicy.COMMITTEE_DECIDES)
+    bereaved_levy_waived = models.BooleanField(
+        null=True, blank=True, default=None,
+        help_text="Only meaningful under a COMMITTEE_DECIDES bereaved policy. "
+                  "None = not yet decided (the member is left off the levy "
+                  "roster while it is pending — nobody chases a grieving family "
+                  "on the strength of a rule nobody has actually applied yet). "
+                  "True = waived for this case. False = they contribute as "
+                  "normal.")
+    bereaved_levy_decision_reason = models.TextField(blank=True)
+    bereaved_levy_decided_by = models.ForeignKey(
+        "auth.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    bereaved_levy_decided_at = models.DateTimeField(null=True, blank=True)
+
     # ---- the frozen decision basis (immutability) ------------------------
     policy = models.ForeignKey(
         SchemePolicy, null=True, blank=True, on_delete=models.PROTECT, related_name="cases",
@@ -1388,6 +1461,39 @@ class BenevolentCase(models.Model):
                    self.approved_amount - self.paid_total - self.committed_total)
 
     @property
+    def funding_collected(self):
+        """Money actually raised FOR this case so far — every contribution
+        (almost always a levy) tagged to it. Reads the contribution index, the
+        same figure `services.contributions.levy_collected` reports, so the
+        funding-progress bar and the levy round can never disagree."""
+        return sum((c.amount for c in self.levy_contributions.select_related("transaction")
+                    if c.effective), Decimal(0))
+
+    @property
+    def funding_progress_percent(self):
+        """0-100, or None where there is no target to measure against — a case
+        under a kitty-funded policy simply has nothing to show a bar for."""
+        if not self.funding_target or self.funding_target <= 0:
+            return None
+        pct = (self.funding_collected / self.funding_target) * 100
+        return min(Decimal(100), pct)
+
+    @property
+    def funding_fully_raised(self):
+        return bool(self.funding_target) and self.funding_collected >= self.funding_target
+
+    @property
+    def bereaved_levy_decision_pending(self):
+        """True only where the policy actually asks the committee, and they
+        have not yet answered."""
+        policy = self.policy
+        if policy is None:
+            return False
+        return (policy.bereaved_contribution_policy ==
+                SchemePolicy.BereavedContributionPolicy.COMMITTEE_DECIDES
+                and self.bereaved_levy_waived is None)
+
+    @property
     def is_editable(self):
         return self.status in self.EDITABLE_STATUSES
 
@@ -1500,6 +1606,10 @@ class CaseAttachment(models.Model):
     case = models.ForeignKey(BenevolentCase, on_delete=models.CASCADE,
                              related_name="attachments")
     file = models.FileField(upload_to=case_attachment_path)
+    document_type = models.CharField(
+        max_length=120, blank=True,
+        help_text="Matched against the event type's required_documents checklist, "
+                  "where it has one. Free text otherwise.")
     label = models.CharField(max_length=120, blank=True)
     uploaded_by = models.ForeignKey("auth.User", null=True, on_delete=models.SET_NULL)
     uploaded_at = models.DateTimeField(auto_now_add=True)
@@ -1522,4 +1632,5 @@ from benevolent.models_config import (  # noqa: E402,F401
     BenevolentSettings, CaseApproval, PolicyProfile, SchemeNominee)
 from benevolent.models_contrib import (  # noqa: E402,F401
     ContributionIntake, ContributionRefund, ContributionRule, MemberAdjustment)
+from benevolent.models_case import CaseEvent  # noqa: E402,F401
 

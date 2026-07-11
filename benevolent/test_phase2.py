@@ -184,7 +184,7 @@ class SettingsVersusPolicyTests(Phase2Fixture):
         a rule that is not in RULE_FIELDS is a rule that could be changed after a
         case was decided on it."""
         for f in ["registration_required", "renewal_required", "levy_amount",
-                  "approval_mode", "committee_quorum", "bereaved_exempt_own_levy",
+                  "approval_mode", "committee_quorum", "bereaved_contribution_policy",
                   "inactivity_action", "household_mode", "inheritance_mode",
                   "arrears_treatment", "funding_methods"]:
             self.assertIn(f, SchemePolicy.RULE_FIELDS, f)
@@ -447,7 +447,7 @@ class BenefitCalculationTests(Phase2Fixture):
             "effective_from": TODAY.isoformat(),
             "contribution_mode": "PER_CASE_LEVY", "levy_amount": "500",
             "benefit_mode": "FIXED", "benefit_amount": "1000",
-            "bereaved_exempt_own_levy": "on", "bereaved_deduct_own_levy": "on",
+            "bereaved_contribution_policy": "EXEMPT", "bereaved_deduct_own_levy": "on",
             "approval_mode": "TREASURER", "committee_quorum": "3",
             "arrears_treatment": "IGNORE", "registration_approval": "AUTO",
             "renewal_period": "NONE", "inactivity_action": "NONE",
@@ -752,7 +752,7 @@ class WizardTests(Phase2Fixture):
         self.assertEqual(cfg["approval_mode"], "TWO_STAGE")
         self.assertEqual(cfg["committee_threshold"], "40000")
         self.assertEqual(cfg["arrears_treatment"], "DEDUCT")
-        self.assertTrue(cfg["bereaved_exempt_own_levy"])
+        self.assertEqual(cfg["bereaved_contribution_policy"], "EXEMPT")
         self.assertEqual(cfg["bereaved_dues_waiver_months"], 3)
         self.assertEqual(cfg["inactivity_action"], "LAPSE")
         self.assertEqual(cfg["reinstatement_waiting_days"], 90)

@@ -111,3 +111,15 @@ class CaseApprovalAdmin(SimpleHistoryAdmin):
 class SchemeNomineeAdmin(SimpleHistoryAdmin):
     list_display = ("name", "membership", "relationship", "share_percent", "is_successor")
     search_fields = ("name",)
+
+
+# ---- Phase 5 -----------------------------------------------------------
+from .models import CaseEvent
+
+
+@admin.register(CaseEvent)
+class CaseEventAdmin(admin.ModelAdmin):
+    list_display = ("case", "kind", "on", "summary", "automated", "actor")
+    list_filter = ("kind", "automated")
+    search_fields = ("case__number", "summary")
+    raw_id_fields = ("case",)

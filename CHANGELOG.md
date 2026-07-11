@@ -1,5 +1,82 @@
 # Changelog
 
+## v2.49.0 - Benevolent Phase 5: Bereavement Case Management
+
+### The case's own narrative
+
+`django-simple-history` has always answered "what was this field on 3 March?" It has
+never answered "what happened on this case, and why?" — the question a treasurer
+re-opening a case six months later, a board reviewing a large payment, or a bereaved
+family asking why their claim took so long, actually asks. **`CaseEvent`** is that
+answer, mirroring Phase 3's `MembershipEvent` exactly: every workflow function — raise,
+submit, assess, vote, approve, reject, cancel, raise a payout, a voucher clearing or
+being reversed in the ordinary expense screen, close — writes one line, marked
+`automated=True` where a rule did it rather than a person.
+
+### Funding targets are a goal, not a rule
+
+A case can now track an explicit fundraising goal (`funding_target`) with a progress bar
+against `funding_collected` — deliberately **never consulted by the eligibility engine**.
+The policy alone still decides what is owed; a target is something a committee sets to
+work towards, tracked against the same collected figure the levy round itself reports,
+so the two can never disagree. Reaching it notifies once, through its own dedicated
+setting rather than a repurposed one.
+
+### The bereaved member's own contribution — four options, one function, one bug fixed
+
+Phase 2 modelled this as two overlapping booleans. Building this phase surfaced that they
+**could not express "reduced" or "committee decides" at all, and had a live double-charge
+bug**: a "deduct" bereaved member was left on the levy roster (asked to pay up front)
+*and* had the same amount taken off their benefit — charged twice for one contribution.
+
+Replaced with one explicit choice — **CONTRIBUTES / REDUCED / EXEMPT /
+COMMITTEE_DECIDES** — resolved everywhere through a single shared weight function, so
+the levy roster, the PER_MEMBER_MULTIPLE pledge calculation and the benefit deduction can
+no longer disagree about how much, or whether, the bereaved member owes. The fix: a
+deduct-collected member is now excluded from the roster, full stop.
+
+### Automatic exemption is a real exemption, not silent arithmetic
+
+Phase 2's dues waiver after a bereavement correctly zeroed what was owed — but did it
+with **no record**: no exemption row, no membership event, nothing in the standing
+register. Phase 3 already established, for every other exemption in the system, that
+"an exemption without a recorded reason is indistinguishable from favouritism." A
+silently-zeroed due was exactly that gap, just for the bereaved member specifically.
+
+Fixed: approving a case under an EXEMPT bereaved policy now grants a real, auditable
+`MembershipExemption` — auto-approved (a policy-computed waiver is not a new decision
+needing a second signature; the church already wrote the rule down), but identical in
+shape and just as visible as a hand-granted one. Standing correctly shows **EXEMPT**,
+not a silent GOOD; both a membership event and a case event record it.
+
+### Documents: a checklist, not a checkbox
+
+Event types can now name the documents a case actually needs ("Burial permit", "Death
+certificate"), each tracked individually rather than one yes/no. An event type with no
+named list falls back to the old behaviour unchanged.
+
+### Multiple concurrent cases
+
+Nothing ever restricted a member to one open case at a time, and nothing added here
+would either — confirmed with new tests proving two open cases never cross-contaminate
+each other's levies, funding targets, or the annual claim-frequency cap (which already
+only counted *decided* cases).
+
+**Tests:** 45 new (245 in the module, all green). Full regression clean across
+benevolent, cashbook (396), giving (234), core (419), and reports+members (439) —
+1,733 tests total.
+
+**Migration note:** `bereaved_exempt_own_levy` is retired via the same three-step
+pattern Phase 3 used for its status/standing split — add the new field, translate every
+existing value, then remove the old one — so existing data carries forward losslessly.
+
+**Deferred, named** (`docs/recommendations.md` #65): the case *list* has no
+funding-progress column yet (the detail screen carries it); `COMMITTEE_DECIDES` is a
+binary ruling, not a per-case custom percentage — a church wanting that sets REDUCED at
+the policy level instead. Checked, and found NOT to apply here: the silent-fund-drop
+shape from recommendation #63 does not recur in the levy/deduction logic, since both
+read live at call time rather than from a stale snapshot.
+
 ## v2.48.1 - Fix: envelope ledger could lose data for a fund outside the "preferred" defaults
 
 **The bug, as reported:** opening an existing envelope batch and adding fund columns

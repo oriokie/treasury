@@ -198,15 +198,22 @@ QUESTIONS = [
     # --- Section 6: the bereaved member ----------------------------------
     Question(
         "bereaved_levy", "When the scheme raises a levy for a member's own case, "
-                         "is that member levied too?",
+                         "does that member contribute to it too?",
         "choice", section="The bereaved member",
         depends_on=("funding", ("PER_CASE_LEVY", "HYBRID")),
         options=[
-            Option("EXEMPT", "No — they are not asked to contribute to their own benefit",
+            Option("EXEMPT", "No — automatically exempt",
                    "What almost every constitution says."),
-            Option("DEDUCT", "Yes, but it comes out of what they receive"),
-            Option("LEVY", "Yes, they pay it like anyone else"),
+            Option("REDUCED", "Yes, but at a reduced amount"),
+            Option("DEDUCT", "Yes in full, but taken out of what they receive rather "
+                             "than collected up front"),
+            Option("CONTRIBUTES", "Yes, they pay it like anyone else"),
+            Option("COMMITTEE_DECIDES", "It is left to the committee, case by case"),
         ]),
+    Question(
+        "bereaved_reduction", "What percentage of the normal amount, when reduced?",
+        "number", section="The bereaved member", default="50",
+        depends_on=("bereaved_levy", "REDUCED")),
     Question(
         "dues_waiver", "How many months of dues are waived for a member after their own "
                        "case? (0 if none)",
@@ -468,13 +475,24 @@ def build_config(answers):
     # --- the bereaved member ---------------------------------------------
     if funding in ("PER_CASE_LEVY", "HYBRID"):
         bl = answers.get("bereaved_levy", "EXEMPT")
-        set_("bereaved_exempt_own_levy", bl == "EXEMPT",
-             "The bereaved member is not levied towards their own benefit."
-             if bl == "EXEMPT"
-             else "The bereaved member is levied like anyone else.")
+        policy_map = {"EXEMPT": "EXEMPT", "REDUCED": "REDUCED", "DEDUCT": "CONTRIBUTES",
+                      "CONTRIBUTES": "CONTRIBUTES", "COMMITTEE_DECIDES": "COMMITTEE_DECIDES"}
+        reasons = {
+            "EXEMPT": "The bereaved member is not levied towards their own benefit.",
+            "REDUCED": f"The bereaved member contributes {_num(answers, 'bereaved_reduction', 50)}% "
+                      f"of the normal amount.",
+            "DEDUCT": "The bereaved member contributes in full, taken out of their benefit.",
+            "CONTRIBUTES": "The bereaved member is levied like anyone else.",
+            "COMMITTEE_DECIDES": "The committee decides the bereaved member's contribution "
+                                 "for each case.",
+        }
+        set_("bereaved_contribution_policy", policy_map.get(bl, "EXEMPT"), reasons.get(bl, ""))
+        if bl == "REDUCED":
+            set_("bereaved_reduction_percent", str(_num(answers, "bereaved_reduction", 50)),
+                 "The reduced percentage you gave.")
         set_("bereaved_deduct_own_levy", bl == "DEDUCT",
-             "Their levy is taken out of what they receive." if bl == "DEDUCT"
-             else "Their levy is not deducted from their benefit.")
+             "Their contribution is taken out of what they receive, rather than collected "
+             "up front." if bl == "DEDUCT" else "Collected the ordinary way, not deducted.")
     if funding in ("FIXED_PERIODIC", "HYBRID"):
         w = _num(answers, "dues_waiver", 0)
         set_("bereaved_dues_waiver_months", w,

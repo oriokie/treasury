@@ -395,6 +395,44 @@ def transfer(membership, to_member, *, on=None, user=None, reason=""):
 # ---------------------------------------------------------------------------
 
 @db_tx.atomic
+def grant_policy_exemption(membership, *, kind, reason, from_date=None, to_date=None,
+                           exempt_dues=True, exempt_levies=False, user=None):
+    """Grant AND approve an exemption in one step, because the constitution
+    already decided this, not a person deciding it in the moment.
+
+    Every other exemption in this system is a discretionary human judgement —
+    someone proposes it, a second person approves it, because it relieves a
+    member of an obligation everyone else is carrying and that is a call two
+    people should make together. A policy-computed waiver (the automatic
+    bereavement dues waiver this exists for) is a different thing: the church
+    already wrote the rule down and published it, so applying it is not a new
+    decision that needs a second signature — it is the SAME decision, applied.
+    Requiring a human "approver" here would only ever produce a rubber stamp,
+    and a rubber-stamp requirement teaches people to stop reading what they
+    are approving.
+
+    It is still fully auditable — the exemption row and its MembershipEvent are
+    identical in shape to a hand-granted one, and both are marked automated so
+    a member (or an auditor) can always see that a policy did this, not a
+    person, and can always see why.
+    """
+    ex = MembershipExemption(
+        membership=membership, kind=kind, reason=reason,
+        from_date=from_date or _dt.date.today(), to_date=to_date,
+        exempt_dues=exempt_dues, exempt_levies=exempt_levies,
+        granted_by=user, approved_by=user, approved_at=timezone.now())
+    ex.full_clean()
+    ex.save()
+    log(membership, MembershipEvent.Kind.EXEMPTED,
+        f"Exemption granted automatically — {ex.get_kind_display().lower()}"
+        + (f" until {ex.to_date:%d %b %Y}." if ex.to_date else ", with no end date.")
+        + " Applied under a published policy, not a discretionary decision.",
+        user=user, on=ex.from_date, reason=reason, automated=True)
+    standing_svc.refresh(membership, user=user)
+    return ex
+
+
+@db_tx.atomic
 def grant_exemption(membership, *, kind, reason, from_date=None, to_date=None,
                     exempt_dues=True, exempt_levies=False, user=None):
     """Propose that a member be excused from contributing.

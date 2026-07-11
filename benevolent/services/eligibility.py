@@ -474,20 +474,67 @@ def _check_annual_benefit_cap(policy, membership, event_date, exclude_case=None)
                  f"{_money(used)} of {_money(cap)} used in {event_date.year}.")
 
 
+def missing_required_documents(event_type, case):
+    """Which named documents (event_type.required_documents) this case has not
+    yet had attached, matched by CaseAttachment.document_type. Empty where the
+    event type names none — the plain requires_document toggle covers that
+    case on its own."""
+    names = list((event_type.required_documents if event_type is not None else []) or [])
+    if not names or case is None or not case.pk:
+        return names
+    have = set(case.attachments.exclude(document_type="").values_list(
+        "document_type", flat=True))
+    return [n for n in names if n not in have]
+
+
 def _check_documents(policy, event_type, case) -> Check:
     label = "Supporting document attached"
+    named = list((event_type.required_documents if event_type is not None else []) or [])
     needed = policy.require_documents or (
-        event_type is not None and event_type.requires_document)
+        event_type is not None and event_type.requires_document) or bool(named)
     if not needed:
         return Check("documents", label, True, "No document is required.", blocking=False)
     if case is None or not case.pk:
-        return Check("documents", label, False,
-                     "A supporting document is required before this case can be approved.")
+        detail = (f"Required: {', '.join(named)}." if named
+                  else "A supporting document is required before this case can be approved.")
+        return Check("documents", label, False, detail)
+
+    if named:
+        missing = missing_required_documents(event_type, case)
+        ok = not missing
+        return Check("documents", label, ok,
+                     "All required documents are attached: " + ", ".join(named) + "."
+                     if ok else "Still needed: " + ", ".join(missing) + ".")
+
     n = case.attachments.count()
     ok = n > 0
     return Check("documents", label, ok,
                  f"{n} document(s) attached." if ok
                  else "A supporting document is required and none is attached.")
+
+
+def _check_bereaved_decision(policy, membership, case) -> Check:
+    """Purely informational: under COMMITTEE_DECIDES, has anyone actually
+    decided the bereaved member's own contribution yet? Never blocks a claim —
+    that would let a levy-collection question hold up a family's benefit — it
+    just makes sure the gap is SEEN rather than silently defaulting."""
+    label = "Bereaved member's own contribution decided"
+    if policy.bereaved_contribution_policy != \
+            SchemePolicy.BereavedContributionPolicy.COMMITTEE_DECIDES:
+        return Check("bereaved_decision", label, True,
+                     "Not applicable under this policy's bereaved-member rule.",
+                     blocking=False)
+    if membership is None:
+        return Check("bereaved_decision", label, True, "No membership to decide for.",
+                     blocking=False)
+    if case is not None and case.bereaved_levy_waived is not None:
+        verdict = "waived" if case.bereaved_levy_waived else "must contribute"
+        return Check("bereaved_decision", label, True,
+                     f"The committee decided: {verdict}.", blocking=False)
+    return Check("bereaved_decision", label, False,
+                 "The committee has not yet decided whether this member contributes to "
+                 "their own case; they are left off the levy roster until it does.",
+                 blocking=False)
 
 
 def _check_nominee(policy, membership, case, event_type) -> Check:
@@ -523,6 +570,31 @@ def _round(amount, policy):
     if not step or amount <= 0:
         return _money(amount)
     return (amount / step).quantize(Decimal("1"), rounding=ROUND_HALF_UP) * step
+
+
+def _bereaved_weight(policy, case) -> Decimal:
+    """How much of a normal member's contribution the bereaved member owes
+    towards their OWN case: 0 (exempt), the reduction fraction (reduced), or 1
+    (contributes in full). One function, because this exact question is asked
+    from two places — the PER_MEMBER_MULTIPLE pledge calculation and the levy
+    roster/deduction logic — and they must never compute a different answer.
+
+    COMMITTEE_DECIDES resolves through whatever the committee has actually
+    recorded on the case (`case.bereaved_levy_waived`): undecided defaults to
+    the SAME weight as EXEMPT, not CONTRIBUTES — nobody is chased for money on
+    the strength of a rule the committee has not yet actually applied.
+    """
+    P = SchemePolicy.BereavedContributionPolicy
+    bcp = policy.bereaved_contribution_policy
+    if bcp == P.EXEMPT:
+        return Decimal(0)
+    if bcp == P.REDUCED:
+        return Decimal(policy.bereaved_reduction_percent or 0) / Decimal(100)
+    if bcp == P.COMMITTEE_DECIDES:
+        if case is None or case.bereaved_levy_waived is None:
+            return Decimal(0)
+        return Decimal(0) if case.bereaved_levy_waived else Decimal(1)
+    return Decimal(1)          # CONTRIBUTES
 
 
 def compute_entitlement(policy, rule, claimed_amount=None, membership=None,
@@ -604,16 +676,22 @@ def compute_entitlement(policy, rule, claimed_amount=None, membership=None,
         levy = policy.levy_amount or policy.contribution_amount or Decimal(0)
         sch = scheme or (case.scheme if case is not None else None) or (
             membership.scheme if membership is not None else None)
-        n = 0
+        n = Decimal(0)
         if sch is not None:
-            n = sch.memberships.filter(status=SchemeMembership.Status.ACTIVE).count()
-            if policy.bereaved_exempt_own_levy and membership is not None:
-                n = max(0, n - 1)
+            n = Decimal(sch.memberships.filter(status=SchemeMembership.Status.ACTIVE).count())
+            if membership is not None:
+                # the bereaved member counts as less than a full contributor
+                # (or not at all), by exactly the same weight they actually owe
+                # — see _bereaved_weight for why this is one function, not a
+                # duplicate of the reasoning in _apply_deductions.
+                weight = _bereaved_weight(policy, case)
+                n = n - Decimal(1) + weight
         e.amount = _money(Decimal(levy) * n)
+        weight_note = (" (the bereaved member is not counted)" if membership is not None
+                      and _bereaved_weight(policy, case) == 0 else "")
         e.workings.append(
             f"Levy {_money(levy)} × {n} contributing member(s) = {_money(e.amount)}"
-            + (" (the bereaved member is not levied for their own case)"
-               if policy.bereaved_exempt_own_levy and membership is not None else ""))
+            + weight_note)
 
     # ---- 1. cap, floor, rounding: what the policy will pay at all ----------
     cap = rule.cap if (rule is not None and rule.cap is not None) else policy.benefit_cap
@@ -665,16 +743,27 @@ def _apply_deductions(e, policy, membership, case):
                 f"Arrears of {_money(owed)} deducted ({_money(take)} taken; "
                 f"{_money(amount)} payable).")
 
-    # deducting the member's own levy and exempting them from it are two answers
-    # to the same question, so only one can apply
-    if policy.bereaved_deduct_own_levy and not policy.bereaved_exempt_own_levy:
-        levy = Decimal(policy.levy_amount or 0)
-        if levy > 0:
-            take = min(levy, amount)
-            amount -= take
-            e.deductions.append(
-                f"The member's own levy of {_money(levy)} deducted from their benefit "
-                f"({_money(amount)} payable).")
+    # The bereaved member's own contribution, where it is collected by
+    # deduction rather than the ordinary levy roster. `bereaved_deduct_own_levy`
+    # only ever applies where they contribute at all (CONTRIBUTES or REDUCED,
+    # or COMMITTEE_DECIDES having ruled they must) — an EXEMPT member has
+    # nothing to deduct, and this must be the ONLY place their contribution is
+    # collected: services.contributions.raise_case_levy excludes a
+    # deduct-collected member from the roster for exactly this reason. Before
+    # this was unified into one weight, a "deduct" member could be left on the
+    # roster (asked to pay up front) AND have the same amount taken off their
+    # benefit here — charged twice for the one contribution.
+    if policy.bereaved_deduct_own_levy and case is not None:
+        weight = _bereaved_weight(policy, case)
+        if weight > 0:
+            levy = Decimal(policy.levy_amount or policy.contribution_amount or 0)
+            take = min(levy * weight, amount)
+            if take > 0:
+                amount -= take
+                e.deductions.append(
+                    f"The member's own contribution of {_money(take)} "
+                    f"({policy.get_bereaved_contribution_policy_display().lower()}) "
+                    f"deducted from their benefit ({_money(amount)} payable).")
 
     return _money(max(Decimal(0), amount))
 
@@ -726,6 +815,7 @@ def evaluate(scheme, *, event_type, event_date, membership=None,
                                exclude_case=case),
         _check_annual_benefit_cap(policy, membership, event_date, exclude_case=case),
         _check_documents(policy, event_type, case),
+        _check_bereaved_decision(policy, membership, case),
         _check_nominee(policy, membership, case, event_type),
     ]
 

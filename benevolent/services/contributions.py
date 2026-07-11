@@ -396,7 +396,29 @@ def record_contribution(scheme, *, date, amount, user=None, membership=None,
     # a receipt saved before the index row existed is re-posted so the ledger
     # sees the final shape of the document (same belt-and-braces as loans)
     _repost(txn)
+
+    if case is not None and case.funding_target:
+        _maybe_announce_funding_reached(case)
     return contribution
+
+
+def _maybe_announce_funding_reached(case):
+    """Tell whoever the settings say should hear it, the FIRST time a case's
+    funding target is met — never on every contribution after, and never if
+    the case has no target to measure against in the first place."""
+    case.refresh_from_db(fields=["funding_target"])
+    if not case.funding_target or not case.funding_fully_raised:
+        return
+    from benevolent.models import CaseEvent
+    if case.events.filter(kind=CaseEvent.Kind.FUNDING_REACHED).exists():
+        return
+    from benevolent.services.cases import log as case_log
+    from benevolent.services.cases import _notify
+    case_log(case, CaseEvent.Kind.FUNDING_REACHED,
+            f"Funding target of {case.funding_target} reached "
+            f"({case.funding_collected} collected).", automated=True)
+    _notify(case, "funding_target_reached",
+            f"{case.number} has reached its funding target of {case.funding_target}.")
 
 
 def _repost(txn):
@@ -413,13 +435,24 @@ def raise_case_levy(case, *, amount=None, user=None):
     list a treasurer collects against; each payment is then an ordinary
     `record_contribution(case=case)`.
 
-    The bereaved member is handled here, because it is the one part of a levy
-    round a church will never get wrong on paper and software very easily gets
-    wrong in code: under almost every real constitution, the family receiving the
-    benefit is NOT asked to chip in towards their own benefit. Where a policy says
-    otherwise (`bereaved_deduct_own_levy`), they are levied and it comes out of
-    what they receive instead — never both.
+    The bereaved member's own line is worked out from the SAME weight function
+    the entitlement calculation uses (`eligibility._bereaved_weight`), so this
+    roster and the benefit computation can never disagree about how much — or
+    whether — the bereaved member owes towards their own case:
+
+      * EXEMPT               — off the roster entirely.
+      * CONTRIBUTES / REDUCED, collected by DEDUCTION — off the roster too
+        (collected from their benefit instead; leaving them on it as well
+        would charge them twice for the one contribution — a real bug found
+        and fixed while building this).
+      * CONTRIBUTES / REDUCED, collected normally — on the roster, at the
+        full or reduced amount.
+      * COMMITTEE_DECIDES, undecided — off the roster (nobody is chased on
+        the strength of a rule nobody has actually applied yet); decided
+        "must contribute" — on the roster in full; decided "waived" — off.
     """
+    from benevolent.services.eligibility import _bereaved_weight
+
     policy = case.policy or case.scheme.policy_on(case.event_date)
     if policy is None:
         raise ValidationError("No policy is in force for this case, so no levy can be raised.")
@@ -440,23 +473,29 @@ def raise_case_levy(case, *, amount=None, user=None):
                .select_related("member").order_by("member__name"))
     rows, exempt = [], []
     for m in members:
-        if policy.bereaved_exempt_own_levy and case.membership_id == m.pk:
-            exempt.append(m)
-            continue
-        # a member formally excused from levies is not on the roster either. Left
-        # out, they would be chased for money the church has already decided in
-        # writing that they do not owe — which is worse than not having the
-        # exemption at all, because now it is on file and being ignored.
-        from benevolent.services.standing import live_exemption
-        ex = live_exemption(m, case.event_date)
-        if ex and ex.exempt_levies:
-            exempt.append(m)
-            continue
+        if case.membership_id == m.pk:
+            weight = _bereaved_weight(policy, case)
+            if weight <= 0 or policy.bereaved_deduct_own_levy:
+                exempt.append(m)
+                continue
+            due = (per_member * weight).quantize(Decimal("0.01"))
+        else:
+            # a member formally excused from levies is not on the roster either.
+            # Left out, they would be chased for money the church has already
+            # decided in writing that they do not owe — which is worse than not
+            # having the exemption at all, because now it is on file and being
+            # ignored.
+            from benevolent.services.standing import live_exemption
+            ex = live_exemption(m, case.event_date)
+            if ex and ex.exempt_levies:
+                exempt.append(m)
+                continue
+            due = per_member
         paid = levy_paid_by(m, case)
-        rows.append({"membership": m, "due": per_member, "paid": paid,
-                     "outstanding": max(Decimal(0), per_member - paid)})
+        rows.append({"membership": m, "due": due, "paid": paid,
+                     "outstanding": max(Decimal(0), due - paid)})
 
-    expected = per_member * len(rows)
+    expected = sum((r["due"] for r in rows), Decimal(0))
     collected = sum((r["paid"] for r in rows), Decimal(0))
     return {"case": case, "per_member": per_member, "rows": rows,
             "exempt": exempt, "policy": policy,

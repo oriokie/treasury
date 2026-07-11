@@ -15,6 +15,52 @@
     <div class="foot">{{ CURRENCY }} {{ case.outstanding|floatformat:2|intcomma }} still authorised</div></div>
 </div>
 
+<div class="card u-mb"><div class="hd">Funding target <span class="muted u-xs">— a fundraising goal, separate from what the policy computes as the benefit</span></div><div class="bd">
+{% if case.funding_target %}
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+    <div><span class="mono" style="font-size:1.3rem;font-weight:700">{{ CURRENCY }} {{ case.funding_collected|floatformat:2|intcomma }}</span>
+      <span class="muted">of {{ CURRENCY }} {{ case.funding_target|floatformat:2|intcomma }}</span>
+      {% if case.funding_fully_raised %}<span class="pill pill-green u-xs">Target reached</span>{% endif %}</div>
+  </div>
+  <div class="progress u-mt-sm" style="height:10px;background:var(--line);border-radius:6px;overflow:hidden">
+    <div style="width:{{ case.funding_progress_percent|floatformat:0 }}%;height:100%;background:var(--forest,#1f5f4f)"></div>
+  </div>
+  <p class="help u-mt-sm">Set by {{ case.funding_target_set_by|default:"—" }}
+    {% if case.funding_target_set_at %}on {{ case.funding_target_set_at|date:"d M Y" }}{% endif %}.
+    Collected figure is the same one the levy round below reports — this never keeps a second total.</p>
+{% else %}
+  <p class="muted u-mt-0">No funding target set. {% if levy %}This scheme raises money per case; a target gives the
+    collection something visible to work towards.{% else %}This scheme is funded from its reserve rather than raised
+    per case, so a target is optional here.{% endif %}</p>
+{% endif %}
+{% if can.manage_benevolent %}
+<form method="post" action="{% url 'benevolent_case_funding_target' case.id %}" class="u-mt btn-row">{% csrf_token %}
+  {{ funding_target_form.amount }}
+  <button class="btn btn-ghost btn-sm">{% if case.funding_target %}Change target{% else %}Set a target{% endif %}</button>
+</form>
+{% endif %}
+</div></div>
+
+{% if case.bereaved_levy_decision_pending or case.bereaved_levy_waived is not None %}
+<div class="card u-mb"><div class="hd">The bereaved member's own contribution</div><div class="bd">
+<p class="help u-mt-0">This scheme's policy leaves it to the committee, case by case, rather than deciding it in
+  advance — so it needs an explicit answer here.</p>
+{% if case.bereaved_levy_waived is not None %}
+  <p><strong>Decided:</strong> {% if case.bereaved_levy_waived %}Waived — not required to contribute{% else %}Contributes, as normal{% endif %}
+    <span class="muted u-xs">by {{ case.bereaved_levy_decided_by|default:"—" }} on {{ case.bereaved_levy_decided_at|date:"d M Y" }}</span></p>
+  <p class="muted">{{ case.bereaved_levy_decision_reason }}</p>
+{% elif can.approve_benevolent %}
+  <form method="post" action="{% url 'benevolent_case_bereaved_decision' case.id %}">{% csrf_token %}
+    <div class="form-grid">{% for f in bereaved_decision_form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}</div>
+    <div class="btn-row u-mt"><button class="btn btn-sm">Record the committee's decision</button></div>
+  </form>
+{% else %}
+  <p class="muted">Awaiting the committee's decision. Nobody is being asked to pay until it decides.</p>
+{% endif %}
+</div></div>
+{% endif %}
+
 <div class="card u-mb"><div class="hd">The claim</div><div class="bd">
 <table class="ledger compact">
   <tr><th>Claimant</th><td>{{ case.claimant_display }}{% if case.membership %} <span class="muted u-xs">({{ case.membership.number }}, enrolled {{ case.membership.joined_on|date:"d M Y" }})</span>{% endif %}</td></tr>
@@ -87,12 +133,19 @@
 
 {% if case.attachments.exists or can.manage_benevolent %}
 <div class="card u-mb"><div class="hd">Supporting documents</div><div class="bd">
-<ul>{% for a in case.attachments.all %}<li><a class="link" href="{{ a.file.url }}">{{ a.label|default:a.file.name }}</a>
-  <span class="muted u-xs">{{ a.uploaded_at|date:"d M Y" }}</span></li>{% empty %}<li class="muted">None attached.</li>{% endfor %}</ul>
+{% if missing_documents %}
+<div class="alert alert-warn u-mb">Still needed: <strong>{{ missing_documents|join:", " }}</strong>.</div>
+{% elif case.event_type.required_documents %}
+<div class="alert alert-info u-mb">All named documents are on file: {{ case.event_type.required_documents|join:", " }}.</div>
+{% endif %}
+<ul>{% for a in case.attachments.all %}<li><a class="link" href="{{ a.file.url }}">{{ a.document_type|default:a.label|default:a.file.name }}</a>
+  {% if a.document_type and a.label %}<span class="muted u-xs">({{ a.label }})</span>{% endif %}
+  <span class="muted u-xs">{{ a.uploaded_at|date:"d M Y" }} · {{ a.uploaded_by|default:"—" }}</span></li>{% empty %}<li class="muted">None attached.</li>{% endfor %}</ul>
 {% if can.manage_benevolent %}
 <form method="post" action="{% url 'benevolent_case_action' case.id 'attach' %}" enctype="multipart/form-data" class="u-mt">{% csrf_token %}
   <div class="form-grid">{% for f in attach_form %}<div class="form-row">
-    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}</div>
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+    {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
   <div class="btn-row u-mt"><button class="btn btn-ghost btn-sm">Attach</button></div>
 </form>{% endif %}
 </div></div>
@@ -177,5 +230,17 @@
   separately and clears the ordinary expense approval on its own.</p>
 </div>
 {% endif %}
+</div></div>
+
+<div class="card u-mt"><div class="hd">Everything that has happened on this case</div><div class="bd">
+<p class="help u-mt-0">The audit log tells you what a field was on a given day. This tells you <em>what happened, and
+  why</em> — which is what a treasurer, a board and a bereaved family actually ask for.</p>
+<table class="ledger compact"><thead><tr><th>Date</th><th>What</th><th>Why</th><th>Who</th></tr></thead>
+<tbody>{% for e in events %}<tr>
+  <td>{{ e.on|date:"d M Y" }}</td>
+  <td>{{ e.summary }}</td>
+  <td class="muted">{{ e.reason|truncatechars:90 }}</td>
+  <td class="muted u-xs">{% if e.automated %}<span class="pill pill-brass u-xs">Automatic</span>{% else %}{{ e.actor|default:"—" }}{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="4" class="empty">Nothing recorded yet.</td></tr>{% endfor %}</tbody></table>
 </div></div>
 {% endblock %}

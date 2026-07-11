@@ -664,7 +664,7 @@ class ValidationTests(EngineFixture):
             user=self.treasurer)
         v2.contribution_mode = SchemePolicy.ContributionMode.HYBRID
         v2.levy_amount = Decimal("500")
-        v2.bereaved_exempt_own_levy = True
+        v2.bereaved_contribution_policy = SchemePolicy.BereavedContributionPolicy.EXEMPT
         v2.save()
         scheme_svc.publish_policy(v2, user=self.treasurer)
 

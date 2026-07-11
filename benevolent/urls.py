@@ -86,6 +86,10 @@ urlpatterns = [
          name="benevolent_case_payout"),
     path("cases/<int:pk>/decide/<str:action>/", views.CaseDecisionView.as_view(),
          name="benevolent_case_decide"),
+    path("cases/<int:pk>/funding-target/", views.CaseFundingTargetView.as_view(),
+         name="benevolent_case_funding_target"),
+    path("cases/<int:pk>/bereaved-decision/", views.CaseBereavedDecisionView.as_view(),
+         name="benevolent_case_bereaved_decision"),
     # same reasoning as the scheme action above: keep the verb namespaced so it
     # can never shadow a sibling route added later
     path("cases/<int:pk>/action/<str:action>/", views.CaseActionView.as_view(),

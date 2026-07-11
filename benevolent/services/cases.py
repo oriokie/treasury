@@ -33,8 +33,44 @@ from django.core.exceptions import ValidationError
 from django.db import transaction as db_tx
 from django.utils import timezone
 
-from benevolent.models import BenevolentCase, BenevolentPayout, SchemePolicy
+from benevolent.models import BenevolentCase, BenevolentPayout, CaseEvent, SchemePolicy
 from benevolent.services.eligibility import evaluate_case
+
+
+# ---------------------------------------------------------------------------
+# The case's own narrative (Phase 5) — mirrors services/registry.py's log()
+# ---------------------------------------------------------------------------
+
+def log(case, kind, summary, *, user=None, on=None, reason="", automated=False):
+    """One line in the case's narrative. Every workflow function below writes
+    one; no view or service moves a case through its lifecycle without it."""
+    return CaseEvent.objects.create(
+        case=case, kind=kind, on=on or _dt.date.today(),
+        summary=summary[:255], reason=reason or "", actor=user,
+        automated=automated or user is None)
+
+
+@db_tx.atomic
+def create_case(scheme, *, event_type, event_date, membership=None, dependant=None,
+                beneficiary_name="", reported_date=None, description="",
+                claimed_amount=None, funding_target=None, user=None):
+    """Raise a case. The one place a `BenevolentCase` is created, so the first
+    line of its history — that it was raised, by whom, for whom — is never
+    missed the way a direct `.objects.create()` in a view would miss it."""
+    case = BenevolentCase(
+        scheme=scheme, membership=membership, event_type=event_type,
+        dependant=dependant, beneficiary_name=beneficiary_name,
+        event_date=event_date, reported_date=reported_date or _dt.date.today(),
+        description=description, claimed_amount=claimed_amount,
+        status=BenevolentCase.Status.DRAFT, raised_by=user)
+    case.full_clean(exclude=["number", "policy_snapshot", "eligibility_snapshot"])
+    case.save()
+    log(case, CaseEvent.Kind.RAISED,
+        f"Case raised for {case.beneficiary_display} ({case.event_type.name}, "
+        f"{event_date:%d %b %Y}).", user=user, on=event_date)
+    if funding_target:
+        set_funding_target(case, amount=funding_target, user=user)
+    return case
 
 
 # ---------------------------------------------------------------------------
@@ -117,9 +153,13 @@ def record_vote(case, *, user, decision, amount=None, note=""):
     if approval_route(case) != "COMMITTEE":
         raise ValidationError(
             f"{case.number} does not need a committee decision under the policy in force.")
-    vote, _created = CaseApproval.objects.update_or_create(
+    vote, created = CaseApproval.objects.update_or_create(
         case=case, user=user,
         defaults={"decision": decision, "amount": amount, "note": note})
+    log(case, CaseEvent.Kind.COMMITTEE_VOTE,
+        f"{user} voted {vote.get_decision_display().lower()}"
+        + (f" ({amount})" if amount is not None else "") + ".",
+        user=user, reason=note)
     return vote
 
 
@@ -134,6 +174,7 @@ def submit_case(case, user=None):
     case.status = BenevolentCase.Status.SUBMITTED
     case.submitted_at = timezone.now()
     case.save(update_fields=["status", "submitted_at"])
+    log(case, CaseEvent.Kind.SUBMITTED, "Submitted for assessment.", user=user)
     _notify(case, "case_submitted",
             f"Benevolent case {case.number} ({case.scheme.name}) submitted for "
             f"{case.beneficiary_display}.")
@@ -166,7 +207,117 @@ def assess_case(case, user=None):
     case.status = BenevolentCase.Status.ASSESSED
     case.save(update_fields=["policy", "policy_snapshot", "eligibility_snapshot",
                              "assessed_amount", "assessed_by", "assessed_at", "status"])
+    log(case, CaseEvent.Kind.ASSESSED,
+        f"Assessed under policy v{result.policy.version}: "
+        + ("eligible, " if result.eligible else "NOT eligible, ")
+        + f"entitlement {result.entitlement.amount}.", user=user)
     return result
+
+
+def log_document_added(case, label, *, user=None):
+    """Called from the attachment-upload view. Kept as a one-line wrapper
+    rather than folding upload into this module, so the view still owns the
+    file-handling and this module still owns the one place a CaseEvent for a
+    case is written."""
+    return log(case, CaseEvent.Kind.DOCUMENT_ADDED,
+              f"Document attached: {label}." if label else "Document attached.",
+              user=user)
+
+
+def _apply_bereavement_exemption(case, *, user=None):
+    """Where the policy says the bereaved member is automatically EXEMPT and
+    also waives their ordinary dues for a period, GRANT that waiver as a real,
+    visible `MembershipExemption` — not the silent arithmetic adjustment this
+    used to be.
+
+    Phase 3 established, for every other exemption in this system, that "an
+    exemption without a recorded reason is indistinguishable from favouritism"
+    and that a member has a right to see why they owe nothing. Waiving a
+    bereaved member's dues without a record was exactly that gap: correct
+    arithmetic, invisible reasoning. This closes it by routing through the
+    SAME exemption machinery every other exemption uses — the standing engine,
+    the member's exemptions panel and the membership event log all pick it up
+    automatically, because they already know how to read one.
+
+    Auto-approved, not merely proposed: this is a policy the church already
+    wrote down and published, not a discretionary favour someone is granting
+    in the moment, so it does not wait on a second person the way a
+    hand-proposed exemption does.
+    """
+    if case.membership_id is None:
+        return None
+    policy = case.policy
+    if policy is None or \
+            policy.bereaved_contribution_policy != SchemePolicy.BereavedContributionPolicy.EXEMPT:
+        return None
+    if not policy.bereaved_dues_waiver_months:
+        return None
+
+    from benevolent.services import registry as reg_svc
+    end = case.event_date
+    for _ in range(policy.bereaved_dues_waiver_months):
+        end = (end.replace(day=28) + _dt.timedelta(days=7)).replace(day=1)
+    exemption = reg_svc.grant_policy_exemption(
+        case.membership,
+        kind="BEREAVEMENT", from_date=case.event_date, to_date=end,
+        reason=f"Automatic {policy.bereaved_dues_waiver_months}-month dues waiver "
+               f"following {case.number} ({case.event_type.name}), per policy "
+               f"v{policy.version}.",
+        exempt_dues=True, exempt_levies=False, user=user)
+    log(case, CaseEvent.Kind.EXEMPTION_GRANTED,
+        f"{policy.bereaved_dues_waiver_months}-month dues waiver granted to "
+        f"{case.membership.member.name}, automatically, under policy v{policy.version}.",
+        user=user, automated=True)
+    return exemption
+
+
+@db_tx.atomic
+def set_funding_target(case, *, amount, user=None):
+    """Set (or change) what this case is aiming to raise. Purely a fundraising
+    goal — the policy alone still decides what is actually owed — so it can be
+    set, changed, or left blank at any point in the case's life, by whoever is
+    running the collection."""
+    amount = Decimal(amount)
+    if amount <= 0:
+        raise ValidationError("A funding target must be a positive amount.")
+    before = case.funding_target
+    case.funding_target = amount
+    case.funding_target_set_by = user
+    case.funding_target_set_at = timezone.now()
+    case.save(update_fields=["funding_target", "funding_target_set_by",
+                             "funding_target_set_at"])
+    log(case, CaseEvent.Kind.FUNDING_TARGET,
+        f"Funding target {'changed to' if before else 'set at'} {amount}"
+        + (f" (was {before})" if before and before != amount else "") + ".",
+        user=user)
+    return case
+
+
+@db_tx.atomic
+def decide_bereaved_contribution(case, *, waived, reason, user):
+    """The committee's ruling on whether the bereaved member contributes to
+    their own case, under a COMMITTEE_DECIDES policy. Only meaningful once —
+    and only ever needed — under that specific policy; anything else has
+    already been decided by the constitution itself and needs no committee."""
+    policy = case.policy or case.scheme.policy_on(case.event_date)
+    if policy is None or policy.bereaved_contribution_policy != \
+            SchemePolicy.BereavedContributionPolicy.COMMITTEE_DECIDES:
+        raise ValidationError(
+            "This policy does not leave the bereaved member's own contribution to "
+            "the committee — there is nothing to decide.")
+    if not (reason or "").strip():
+        raise ValidationError("Record why the committee decided this way.")
+    case.bereaved_levy_waived = bool(waived)
+    case.bereaved_levy_decision_reason = reason
+    case.bereaved_levy_decided_by = user
+    case.bereaved_levy_decided_at = timezone.now()
+    case.save(update_fields=["bereaved_levy_waived", "bereaved_levy_decision_reason",
+                             "bereaved_levy_decided_by", "bereaved_levy_decided_at"])
+    log(case, CaseEvent.Kind.BEREAVED_DECISION,
+        f"The committee decided the bereaved member "
+        + ("is not required to contribute." if waived else "does contribute, as normal."),
+        user=user, reason=reason)
+    return case
 
 
 @db_tx.atomic
@@ -245,9 +396,15 @@ def approve_case(case, *, amount=None, user, override_reason="", allow_self_appr
     case.status = BenevolentCase.Status.APPROVED
     case.save(update_fields=["approved_amount", "override_reason", "approved_by",
                              "approved_at", "status"])
+    log(case, CaseEvent.Kind.APPROVED,
+        f"Approved for {amount}."
+        + (f" Override: {override_reason}" if override_reason else ""),
+        user=user, reason=override_reason)
     _notify(case, "case_approved",
             f"Benevolent case {case.number} approved for {amount} "
             f"({case.beneficiary_display}).")
+
+    _apply_bereavement_exemption(case, user=user)
     return case
 
 
@@ -262,6 +419,7 @@ def reject_case(case, *, reason, user=None):
     case.rejected_by = user
     case.closed_at = timezone.now()
     case.save(update_fields=["status", "rejection_reason", "rejected_by", "closed_at"])
+    log(case, CaseEvent.Kind.REJECTED, "Rejected.", user=user, reason=reason)
     _notify(case, "case_rejected",
             f"Benevolent case {case.number} rejected — {reason[:120]}")
     return case
@@ -282,6 +440,7 @@ def cancel_case(case, *, user=None, reason=""):
     case.rejection_reason = reason or case.rejection_reason
     case.closed_at = timezone.now()
     case.save(update_fields=["status", "rejection_reason", "closed_at"])
+    log(case, CaseEvent.Kind.CANCELLED, "Cancelled.", user=user, reason=reason)
     return case
 
 
@@ -339,6 +498,8 @@ def record_payout(case, *, amount, date=None, user, payee_name="", method=None,
     payout = BenevolentPayout.objects.create(
         case=case, expense=expense, payee_name=payee[:120], note=note, created_by=user)
     case.refresh_status()
+    log(case, CaseEvent.Kind.PAYOUT_RAISED,
+        f"Payment voucher of {amount} raised, payable to {payee}.", user=user)
     _notify(case, "payout_raised",
             f"Payment voucher of {amount} raised on benevolent case {case.number} "
             f"— awaiting approval.")
@@ -355,6 +516,8 @@ def close_case(case, *, user=None, note=""):
     case.status = BenevolentCase.Status.CLOSED
     case.closed_at = timezone.now()
     case.save(update_fields=["status", "closed_at"])
+    log(case, CaseEvent.Kind.CLOSED, "Closed." + (f" {note}" if note else ""),
+        user=user, reason=note)
     return case
 
 
@@ -370,7 +533,20 @@ def sync_case_from_expense(expense):
     if payout is None:
         return None
     case = payout.case
+    before = case.status
     case.refresh_status()
+    if case.status != before:
+        from cashbook.models import Expense
+        if expense.status in (Expense.Status.APPROVED, Expense.Status.PAID):
+            log(case, CaseEvent.Kind.PAYOUT_PAID,
+                f"Voucher for {payout.amount} cleared ({expense.get_status_display().lower()}) "
+                f"— case is now {case.get_status_display().lower()}.",
+                automated=True)
+        else:
+            log(case, CaseEvent.Kind.PAYOUT_REVERSED,
+                f"Voucher for {payout.amount} {expense.get_status_display().lower()} in the "
+                f"expense screen — case reverted to {case.get_status_display().lower()}.",
+                automated=True)
     return case
 
 

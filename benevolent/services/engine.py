@@ -108,15 +108,20 @@ def validate(scheme, *, kind, membership=None, case=None, amount=None, date=None
     if amount is not None and Decimal(amount) <= 0:
         problems.append("A contribution must be a positive amount.")
 
-    # a member is not asked to levy themselves for their own bereavement — and if
-    # they have been, the treasurer should know before the money is receipted, not
-    # afterwards when the family asks why
+    # a member with nothing to contribute towards their own bereavement is not
+    # asked to levy themselves — and if they have been, the treasurer should
+    # know before the money is receipted, not afterwards when the family asks
+    # why. Uses the SAME weight the levy roster and the benefit deduction use,
+    # so this validation can never disagree with what raise_case_levy actually
+    # rosters them for.
     if kind == K.LEVY and case is not None and membership is not None \
-            and policy.bereaved_exempt_own_levy and case.membership_id == membership.pk:
-        problems.append(
-            f"{membership.member.name} is the bereaved member on {case.number}, and this "
-            f"policy does not levy them for their own case. Receipt this as a voluntary "
-            f"contribution if they insisted on giving anyway.")
+            and case.membership_id == membership.pk:
+        from benevolent.services.eligibility import _bereaved_weight
+        if _bereaved_weight(policy, case) <= 0 or policy.bereaved_deduct_own_levy:
+            problems.append(
+                f"{membership.member.name} is the bereaved member on {case.number}, and "
+                f"this policy does not levy them (directly) for their own case. Receipt "
+                f"this as a voluntary contribution if they insisted on giving anyway.")
     return problems
 
 

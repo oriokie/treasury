@@ -146,10 +146,19 @@ class CaseAPI(BenevolentViewMixin, View):
                         "approved": _d(case.approved_amount),
                         "paid": _d(case.paid_total),
                         "outstanding": _d(case.outstanding)},
+            "funding": {"target": _d(case.funding_target),
+                       "collected": _d(case.funding_collected),
+                       "fully_raised": case.funding_fully_raised}
+                      if case.funding_target else None,
             "policy_version": case.policy.version if case.policy else None,
             "policy_snapshot": case.policy_snapshot,
             "eligibility": case.eligibility_snapshot,
             "override_reason": case.override_reason,
+            "history": [{"on": e.on.isoformat(), "kind": e.kind, "summary": e.summary,
+                        "automated": e.automated,
+                        "actor": (e.actor.get_full_name() or e.actor.username)
+                                if e.actor_id else None}
+                       for e in case.events.select_related("actor")[:100]],
             "payouts": [{"amount": _d(p.amount),
                          "date": p.date.isoformat() if p.date else None,
                          "status": p.status, "effective": p.effective,

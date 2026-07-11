@@ -82,6 +82,10 @@ class BenevolentSettings(models.Model):
     notify_on_case_rejected = models.BooleanField(default=True)
     notify_on_payout_raised = models.BooleanField(default=True)
     notify_on_levy_raised = models.BooleanField(default=True)
+    notify_on_funding_target_reached = models.BooleanField(
+        default=True,
+        help_text="Tell staff the moment a case's funding target has been fully "
+                  "raised — fires once per case, the first time it happens.")
     notify_committee_on_pending_vote = models.BooleanField(
         default=True,
         help_text="Tell committee members when a case is waiting for their decision.")
