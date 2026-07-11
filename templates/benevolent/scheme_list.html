@@ -1,0 +1,36 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Schemes · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Schemes &amp; policies</h1>
+  <div class="sub">Each scheme is defined by configuration — a fund and a versioned policy — not by code</div></div>
+<div class="btn-row no-print">
+  {% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Scheme</th><th>Code</th><th>Type</th><th>Fund</th><th>Policy in force</th>
+<th class="num">Balance</th><th class="num">Members</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for r in rows %}<tr>
+  <td><a class="link" href="{% url 'benevolent_scheme_detail' r.scheme.id %}">{{ r.scheme.name }}</a></td>
+  <td class="mono">{{ r.scheme.code }}</td>
+  <td class="muted">{{ r.scheme.get_kind_display }}</td>
+  <td class="muted">{{ r.fund.name }}</td>
+  <td>{% with p=r.scheme.current_policy %}{% if p %}v{{ p.version }} <span class="muted u-xs">from {{ p.effective_from|date:"d M y" }}</span>{% else %}<span class="pill pill-red u-xs">None</span>{% endif %}{% endwith %}</td>
+  <td class="num mono">{{ r.closing|floatformat:2|intcomma }}</td>
+  <td class="num">{{ r.members }}</td>
+  <td><span class="pill {% if r.scheme.status == 'ACTIVE' %}pill-green{% elif r.scheme.status == 'SUSPENDED' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ r.scheme.get_status_display }}</span></td>
+  <td><a class="link" href="{% url 'benevolent_scheme_detail' r.scheme.id %}">Open</a></td>
+</tr>{% empty %}<tr><td colspan="9" class="empty">No live schemes.</td></tr>{% endfor %}</tbody>
+</table></div>
+
+{% if drafts %}
+<h2 class="u-mt">Drafts</h2>
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Scheme</th><th>Fund</th><th>Policy</th><th></th></tr></thead>
+<tbody>{% for s in drafts %}<tr>
+  <td>{{ s.name }}</td><td class="muted">{{ s.fund.name }}</td>
+  <td>{% if s.current_policy %}v{{ s.current_policy.version }}{% else %}<span class="muted">Not yet published</span>{% endif %}</td>
+  <td><a class="link" href="{% url 'benevolent_scheme_detail' s.id %}">Open</a></td>
+</tr>{% endfor %}</tbody></table></div>
+{% endif %}
+{% endblock %}

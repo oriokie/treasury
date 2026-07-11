@@ -1,0 +1,48 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Levy · {{ case.number }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Levy for {{ case.number }}</h1>
+  <div class="sub">{{ case.scheme.name }} · {{ case.beneficiary_display }} · {{ CURRENCY }} {{ levy.per_member|floatformat:2|intcomma }} per member</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_detail' case.id %}">← {{ case.number }}</a></div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Expected</div><div class="val mono">{{ CURRENCY }} {{ levy.expected|floatformat:2|intcomma }}</div>
+    <div class="foot">{{ levy.rows|length }} member{{ levy.rows|length|pluralize }} levied</div></div>
+  <div class="stat accent"><div class="lbl">Collected</div><div class="val mono">{{ CURRENCY }} {{ levy.collected|floatformat:2|intcomma }}</div></div>
+  <div class="stat brass"><div class="lbl">Still to collect</div><div class="val mono">{{ CURRENCY }} {{ levy.outstanding|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Exempt</div><div class="val mono">{{ levy.exempt|length }}</div>
+    <div class="foot">Not levied for their own case</div></div>
+</div>
+
+{% if levy.exempt %}
+<div class="alert alert-info u-mb">
+  {% for m in levy.exempt %}<strong>{{ m.member.name }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
+  {{ levy.exempt|pluralize:"is,are" }} not levied — this policy does not ask a bereaved family to contribute towards
+  their own benefit.
+</div>
+{% endif %}
+
+{% if case.policy.benefit_mode == 'POOLED' %}
+<div class="alert alert-warn u-mb"><strong>This scheme pays out what the levy collects.</strong> The benefit for
+  {{ case.number }} is therefore {{ CURRENCY }} {{ levy.collected|floatformat:2|intcomma }} as things stand — it will
+  rise as more members pay. Assess the case again once collection is complete.</div>
+{% endif %}
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Member</th><th class="num">Levied</th><th class="num">Paid</th><th class="num">Outstanding</th><th></th></tr></thead>
+<tbody>{% for r in levy.rows %}<tr>
+  <td><a class="link" href="{% url 'benevolent_membership_detail' r.membership.id %}">{{ r.membership.member.name }}</a>
+    <span class="muted u-xs mono">{{ r.membership.number }}</span></td>
+  <td class="num mono">{{ r.due|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.paid|floatformat:2|intcomma }}</td>
+  <td class="num mono">{% if r.outstanding %}<strong>{{ r.outstanding|floatformat:2|intcomma }}</strong>{% else %}<span class="pill pill-green u-xs">Paid</span>{% endif %}</td>
+  <td>{% if can.manage_benevolent and r.outstanding %}
+    <form method="post" class="u-inline">{% csrf_token %}
+      <input type="hidden" name="membership" value="{{ r.membership.id }}">
+      <input class="field" type="number" step="0.01" name="amount" value="{{ r.outstanding|floatformat:2 }}" style="max-width:110px">
+      <button class="btn btn-sm">Receipt</button></form>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="5" class="empty">No members to levy.</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="help u-mt">Each levy payment is an ordinary receipt into {{ case.scheme.fund.name }}, tagged to this case.
+  It is <em>not</em> a due: paying a levy never clears a member's own monthly contributions.</p>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ profile.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ profile.name }}</h1>
+  <div class="sub">{{ profile.summary }}{% if profile.builtin %} · <span class="pill pill-brass u-xs">Built in</span>{% endif %}</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_profile_list' %}">← Profiles</a></div></div>
+
+{% if profile.description %}<p class="muted u-mb">{{ profile.description }}</p>{% endif %}
+
+<div class="card u-mb"><div class="hd">Apply to a scheme</div><div class="bd">
+<form method="post">{% csrf_token %}
+  <div class="form-grid">
+    <div class="form-row"><label for="scheme">Scheme</label>
+      <select class="field--select" name="scheme" id="scheme" required>
+        <option value="">Choose…</option>
+        {% for s in schemes %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+      </select></div>
+    <div class="form-row"><label for="ef">These rules take effect from</label>
+      <input class="field" type="date" name="effective_from" id="ef" required></div>
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Create a draft policy from this profile</button></div>
+</form>
+<p class="help u-mt">This creates a <strong>draft</strong>. Nothing is in force until someone reads it and publishes it.</p>
+</div></div>
+
+<div class="card u-mb"><div class="hd">The rules it carries</div><div class="bd">
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Rule</th><th>Value</th></tr></thead>
+<tbody>{% for k, v in profile.config.items %}<tr>
+  <td class="mono u-xs">{{ k }}</td><td class="mono">{{ v }}</td>
+</tr>{% endfor %}</tbody></table></div>
+</div></div>
+
+{% if profile.benefit_lines %}
+<div class="card u-mb"><div class="hd">Benefit schedule</div><div class="bd">
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Event</th><th>Code</th><th class="num">Amount</th></tr></thead>
+<tbody>{% for l in profile.benefit_lines %}<tr>
+  <td>{{ l.event }}</td><td class="mono u-xs">{{ l.code }}</td>
+  <td class="num mono">{{ l.amount|default:"—" }}</td>
+</tr>{% endfor %}</tbody></table></div>
+</div></div>
+{% endif %}
+
+<div class="card"><div class="hd">Manage</div><div class="bd"><div class="btn-row">
+  <form method="post"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+    <button class="btn btn-ghost btn-sm" name="duplicate" value="1">Copy &amp; adjust</button></form>
+  {% if not profile.builtin %}
+  <form method="post" onsubmit="return confirm('Delete this profile? No policy already created from it is affected.')">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+    <button class="btn btn-ghost btn-sm" name="delete" value="1">Delete</button></form>
+  {% endif %}
+</div>
+{% if profile.builtin %}<p class="help u-mt">A built-in profile cannot be deleted — copy it and adjust the copy, so the
+  library always has a starting point. Deleting a profile never affects a policy already created from it.</p>{% endif %}
+</div></div>
+{% endblock %}

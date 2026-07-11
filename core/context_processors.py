@@ -90,6 +90,14 @@ def site_context(request):
         ctx["liability_badge"] = Expense.objects.filter(
             status=Expense.Status.PENDING,
             doc_class=Expense.DocClass.LIABILITY).count()
+        # NOTE: a benevolent "cases awaiting action" badge was deliberately NOT
+        # added here. It would be a seventh unconditional COUNT on every single
+        # page render, and accounts.test_user_list_search's query-count bound
+        # caught it immediately — the nav badges are already six fixed queries
+        # per request. The dashboard's "Needs attention" panel covers the same
+        # need without taxing every page in the app. See docs/recommendations.md:
+        # consolidating the badge counts into one query would make a benevolent
+        # badge free, and is the right time to add one.
         from core.services.notifications import unread_count
         ctx["notif_badge"] = unread_count(user)
     return ctx

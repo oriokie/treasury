@@ -77,6 +77,45 @@ class PaymentViewMixin(RoleRequiredMixin):
     permission_message = "You don't have the payment-register right."
 
 
+class BenevolentViewMixin(RoleRequiredMixin):
+    """Read access to schemes, memberships and cases."""
+    allow_check = staticmethod(roles.can_view_benevolent)
+    permission_message = "You don't have the benevolent-schemes right."
+
+
+class BenevolentManageMixin(RoleRequiredMixin):
+    """Day-to-day scheme administration: enrol members, raise cases, record
+    contributions and payment vouchers."""
+    allow_check = staticmethod(roles.can_manage_benevolent)
+    permission_message = "You don't have the benevolent-administration right."
+
+
+class BenevolentApproveMixin(RoleRequiredMixin):
+    """Authorise (or refuse) a benefit — a money decision, treasurer by default."""
+    allow_check = staticmethod(roles.can_approve_benevolent)
+    permission_message = "Approving a benevolent case is restricted to Treasurers."
+
+
+class BenevolentSetupMixin(RoleRequiredMixin):
+    """Create schemes and publish policies — the rule-making power."""
+    allow_check = staticmethod(roles.can_manage_benevolent_schemes)
+    permission_message = "Setting up schemes and policies is restricted to Treasurers."
+
+
+class BenevolentCommitteeMixin(RoleRequiredMixin):
+    """Vote on a benevolent case. A treasurer is NOT admitted by default: sitting
+    on the committee is its own right, because the committee's whole purpose is to
+    be a body distinct from the treasurer who pays."""
+    allow_check = staticmethod(roles.can_vote_benevolent)
+    permission_message = "You are not on the benevolent committee."
+
+
+class BenevolentSettingsMixin(RoleRequiredMixin):
+    """The benevolent settings area."""
+    allow_check = staticmethod(roles.can_manage_benevolent_settings)
+    permission_message = "You don't have the benevolent-settings right."
+
+
 class AllocateRequiredMixin(RoleRequiredMixin):
     """Allocate/resolve the giving review queue: treasurers/assistants, or any
     user granted the 'allocate transactions' right."""

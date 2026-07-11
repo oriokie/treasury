@@ -1546,3 +1546,246 @@ bugs); implemented.**
   this pass but worth checking: does `convert_to_donation`/`write_off`
   respect the same `require_different_approver` pattern used elsewhere?
   **Priority: Low-Medium**, flagged for a future review.
+
+## 55. Four fixes from live production review — IMPLEMENTED (v2.44)
+
+**1. "Cash & bank (funds on hand)" reverted and relabelled "Bank (funds on
+hand)".** The v2.42 Local/Trust split (my own earlier judgement call) was
+reverted per explicit correction. The underlying reasoning: petty cash and
+staff advances are already broken out onto their own lines in both the
+engine-based board-pack summary AND the legacy full Statement of Financial
+Position — once both are excluded, what remains genuinely is bank-only, not
+"cash and bank". Every OTHER "Cash & bank" occurrence in the app was
+individually audited against this same test (is the underlying figure
+reduced by petty/advances, with both ALSO shown separately elsewhere in the
+SAME statement?) and left alone where it didn't apply: the dashboard widget,
+the assistant's figures, the Monthly Treasurer's Report (which doesn't
+itemise petty cash at all, so its own "Cash & bank" is still accurate), and
+every cash-FLOW statement occurrence (a different, correctly-unreduced
+"cash and cash equivalents" concept per standard accounting convention).
+9 tests updated/added (`reports/test_financial_position_v242.py`), 2 more
+updated in older test files that asserted the pre-v2.42 label.
+
+**2. Fund budget page: PNG downloads 403'd for non-Treasurers; table
+sprawled too wide.** Two separate bugs, same page.
+`GroupGoalsPngView`/`BudgetItemsPngView` required `TreasurerRequiredMixin` —
+narrower than `FundBudgetView`'s own `can_view_fund_budget` check (which
+also covers Assistants and leaders granted the right for their own fund).
+Since the "Download PNG" links sit on the budget page itself, anyone who
+could see that page but wasn't a Treasurer got an inexplicable 403 clicking
+them — likely what was reported as "figures are not showing". Both views
+now use the identical permission check. Separately, `fund_budget.html` used
+`class="ledger compact"` on two tables but — unlike every other page in the
+app that uses this class — never defined the matching CSS rule locally, so
+"compact" was a no-op; the "Budget vs actual by item" table didn't even
+carry the class. Added the missing rule, added the class where missing,
+wrapped both tables in `.table-wrap`, and tightened the Progress/Used
+column widths (130px/120px → 96px) — the table now fits a portrait viewport
+without the numeric columns being scrolled out of view with no visible cue
+that more content exists to the right. 9 tests
+(`cashbook/test_budget_page_v244.py`).
+
+**3. Envelope ledger UI cleanup, per explicit spec.** "Manual Total" →
+"Total" (shorter header). Default/pinned funds changed to exactly Tithe,
+Combined Offering, Camp Meeting, Development, LCB – Local Church Budget, in
+that order (`envelopes.services.posting.PREFERRED`) — these now pin
+automatically on first load, not just default-check, via a new `isDefault`
+flag threaded from the server's existing `column.default` computation into
+`ALL_COLS`. The "Allocated" running-sum column was removed entirely — the
+same Total-vs-fund-amounts comparison still runs (`rowTotal()` still
+computes it), it just doesn't have a dedicated visible column any more; a
+mismatch still surfaces via the row-errors panel below the table (v2.42).
+The footer's grand-total cell moved from the removed Allocated column to
+the Total column, which is a more natural home for it. DOM-harness
+(Node+jsdom) verified: header labels, pin state, column order (Total
+immediately after Receipt), and that background validation still correctly
+fires without a visible Allocated column.
+
+**4. CRITICAL: Development Group was never actually saved — root cause
+found and fixed.** `envelopes.services.batches.autosave_rows` built
+`{model.id: model}` lookup dicts (int keys, since Django PKs are int) but
+looked dev_group/member up using the raw value straight from the client's
+JSON payload — always a STRING (a `<select>`'s `.value`, a hidden
+`<input>`'s `.value` are strings in every browser). `{4: obj}.get("4")`
+returns `None`: Python dict keys are type-sensitive, and — critically —
+the SAME string value works FINE in the ORM's own `pk__in` filter
+immediately above it (Django coerces query parameters; a plain dict lookup
+does not), so nothing about this was visible from a query-level check. This
+silently dropped `dev_group` on every single row, regardless of the fund's
+category or how many Development funds existed — the v2.41 `is_development`
+fix ensured the UI *offered* the correct picker for every Development fund,
+but that picker's answer never reached the database. Fixed with a single
+`_as_id()` coercion helper applied consistently at every lookup site
+(`dev_group_id` and `member_id`, which had the identical bug, partially
+masked by a name-based fallback at posting time that dev_group has no
+equivalent of). Verified end-to-end: batch row → submit → approve → post →
+the posted Transaction/EnvelopeLine correctly carries `dev_group`. 9 tests
+(`envelopes/test_dev_group_capture_v244.py`) — a string dev_group_id/
+member_id is now captured at the service-function level, the real HTTP
+endpoint (JSON round-trip), and confirmed present on the final posted
+ledger rows; empty/None/garbage/nonexistent ids are all handled without
+crashing.
+
+**Note on the view-tool outage during this review:** visual PNG inspection
+was unavailable for part of this session (even a freshly-generated trivial
+test image returned no description) — items 2's "figures not showing" and
+the PNG rendering quality itself were instead verified via exhaustive
+line-by-line source audit of `goal_chart.py` and programmatic pixel-content
+sampling at the coordinates text should occupy, confirming the v2.43
+high-DPI rendering itself has no defect; the actual root cause was the
+permission mismatch described above.
+
+**Testing:** 9 + 9 + (DOM harness) + 9 = 27+ new/updated tests, full
+regression across envelopes (178 tests), reports (117+ tests), members,
+cashbook (advance/petty/receipt/budget modules), departments, and core all
+pass.
+
+---
+
+## 56. Benevolent Scheme Engine — Phase 1 shipped; follow-ups — NEW
+
+The Benevolent Module shipped as a configurable **Benevolent Scheme Engine**
+(see `docs/BENEVOLENT_MODULE.md`). Phase 1 delivered the data model, the policy
+engine, the case workflow, services, rights, navigation, admin, a read-only JSON
+API, seed data and 43 tests. The following were deliberately deferred rather than
+half-built.
+
+**56a. Per-case levy collection screen.** The model (`BenevolentContribution.case`)
+and the working list (`benevolent.services.contributions.raise_case_levy`) exist
+and are exercised at the service layer, but there is no UI to run a levy round —
+issue the levy to every active member, track who has paid, chase the rest. Today a
+levy is collected by recording ordinary contributions against the case. *Priority:
+Medium* — only matters for schemes whose policy uses `PER_CASE_LEVY`.
+
+**56b. Benevolent sections on the Report Engine.** Benevolent figures are all
+registry metrics, so they are *available* to the engine, but no `ComponentSection`
+has been written. A "Welfare schemes" section on the Board Pack (balances,
+contributions, benefits paid, open cases, commitments) is a small piece of work
+now that the metrics exist, and would put welfare in front of the board without a
+separate report. *Priority: Medium.*
+
+**56c. Bank-narration intake for dues.** The loans module recognises loan money on
+a bank statement via `LoanNarrationPattern`. There is no equivalent for scheme
+dues, so a member paying `BEN` by M-Pesa lands in the review queue and is
+allocated by hand. The pattern engine is already generic enough to extend.
+*Priority: Medium.*
+
+**56d. Arrears reminders.** `schemes.refresh_arrears_status()` marks members
+LAPSED / reinstates them, but nothing schedules it and nobody is told. Wiring it
+to the existing SMS/WhatsApp channels (as pledges already does with
+`pledges/services/reminders.py`) is the obvious next step. *Priority: Low.*
+
+**56e. Dependant-aware benefit rules.** A different benefit for a spouse vs a
+child is currently expressed by creating separate event types
+("Bereavement — spouse", "Bereavement — parent"), which works but is blunt: the
+relationship is already on `SchemeDependant`, so a benefit rule could key off it
+directly. *Priority: Low* — the current approach is workable and no data would be
+lost by changing later.
+
+---
+
+## 57. Nav badge counts are six fixed queries on EVERY page render — NEW
+
+**Description.** `core.context_processors.site_context` issues a separate `COUNT`
+for each nav badge (review queue, Sabbath confirmations, bank debits, expenses,
+liabilities, notifications) on every single page load, whatever page it is.
+
+**How it surfaced.** Adding a seventh — a benevolent "cases awaiting action"
+badge — took `/users/` to exactly 30 queries and tripped
+`accounts.test_user_list_search.test_query_count_does_not_grow_per_user`, whose
+bound is `< 30`. The badge was **removed** rather than the bound raised: the
+guardrail was doing its job, and taxing every page in the application for a nav
+count is the wrong trade. (The benevolent dashboard's "Needs attention" panel
+covers the same need.)
+
+**Recommendation.** Consolidate the badge counts. The three `Transaction` badges
+could be one grouped query, and the two `Expense` badges another — taking six
+queries to three, or with a little care to two. That would both claw back the
+headroom the perf test is protecting and make a benevolent badge (and any future
+one) essentially free to add.
+
+**Expected benefit.** ~4 fewer queries on *every authenticated page render* in the
+app, and a nav badge stops being a thing that costs something.
+
+**Priority: Medium.** Not a correctness issue, but it is a cost paid everywhere,
+and it is now actively blocking a small feature.
+
+---
+
+## 58. `cashbook/test_group_goals_jpeg.py` was stale and failing — FIXED (this review)
+
+**Description.** Three of the four tests in this file were failing before any of
+this review's work. The file targeted a `/budget/group-goals.jpg` route and
+asserted `image/jpeg`; the application ships **PNG** (`GroupGoalsPngView`, route
+`group-goals.png` — the same views v2.44 fixed the permissions on). The tests were
+never updated when the format changed, so they were requesting a 404 and then
+trying to `PIL.Image.open()` the error page.
+
+**Resolution.** The route was never broken — only the test was. Assertions
+repointed at the PNG route and content type; all four now pass. The filename is
+kept (it is a misnomer now) so no test path references break.
+
+---
+
+## 59. Benevolent Phase 2 — shipped; honest gaps — NEW
+
+Phase 2 delivered the settings/policy split, the extended constitution (54 rule
+fields), committee approval, policy profiles, the Constitution Wizard and
+automation. See `docs/BENEVOLENT_MODULE.md`. What was *not* finished, named rather
+than glossed:
+
+**59a. Household cover is modelled but only half-enforced.** `household_mode`,
+`household_name`, the dependant cap and the child age limit all work and are
+tested. What does not exist is a true household object with its own members and a
+single subscription per household rather than per member. A HOUSEHOLD scheme today
+behaves as an individual scheme with generous dependant cover — which is workable,
+and is not what the field name promises. *Priority: Medium.*
+
+**59b. Inheritance stops at the nomination.** Nominees, their shares and the
+successor flag are recorded, and the engine reports a missing nominee rather than
+guessing. But splitting a payout across nominees *in their recorded shares* is not
+automated (the treasurer raises the vouchers by hand), and
+`transfer_membership_on_death` is stored without a "succeed to this membership"
+action to act on it. *Priority: Medium* — the data is right, the workflow is
+missing.
+
+**59c. `refund_contributions_on_exit` / `refund_percent`** are policy fields the
+engine does not act on. A member leaving a scheme that promises a refund will not
+get one automatically. *Priority: Low* — rare, and visible on the policy.
+
+**59d. Reminders are settings with nothing behind them.**
+`arrears_reminder_days` and `renewal_reminder_days` are configurable and stored;
+no job sends the reminder. The automation command is the obvious place.
+*Priority: Medium* — a setting that does nothing is worse than an absent one.
+
+**59e. `max_levies_per_year` is recorded but not enforced.** The protection against
+a bad year bankrupting the membership is stated on the policy and shown, but no
+check stops the twelfth levy. *Priority: Medium.*
+
+---
+
+## 60. `core/apps.py::ready()` queries the database at startup — NEW
+
+**Description.** `CoreConfig.ready()` calls `start_in_app_poller()`, which calls
+`SiteConfig.get()` — a `get_or_create` — during app initialisation. Django emits
+`RuntimeWarning: Accessing the database during app initialization is discouraged`
+on *every* management command as a result.
+
+**Why it matters.** It is not cosmetic. A DB query in `ready()` runs before the app
+registry is finished, which means (a) every `manage.py` invocation touches the
+database, including ones that should not need it, and (b) it will fail outright
+against an unmigrated database — the exact situation `migrate` itself exists to
+resolve. It also silently creates a `SiteConfig` row as a side effect of running
+*any* command.
+
+**Discovery.** Surfaced while tracing a warning during Benevolent Phase 2 work. It
+predates that work entirely and is unrelated to it; the benevolent module was not
+touched to reach it.
+
+**Recommendation.** Defer the poller's config read until the first request (or a
+lazy accessor), so `ready()` only registers signals and does no I/O. Left
+unfixed here on purpose: the Telegram poller is outside this phase's scope, and
+changing thread-startup behaviour deserves its own change with its own tests
+rather than being smuggled into a benevolent release.
+
+**Priority: Medium.**

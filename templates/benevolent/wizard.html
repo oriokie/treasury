@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block title %}Constitution wizard · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Constitution &amp; Policy Wizard</h1>
+  <div class="sub">Answer the questions your constitution already answers, and the policy configures itself</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_list' %}">← Schemes</a></div></div>
+
+<div class="progress u-mb"><span style="width:{{ progress }}%"></span></div>
+<div class="wiz-steps u-mb">
+  {% for s in sections %}<span class="wiz-step {% if forloop.counter0 == step %}on{% elif forloop.counter0 < step %}done{% endif %}">{{ s }}</span>{% endfor %}
+</div>
+
+<div class="card form-card" style="max-width:760px"><div class="hd">{{ section }}</div><div class="bd">
+<form method="post">{% csrf_token %}
+  {% for q in questions %}
+  <div class="form-row u-mb wiz-q" data-key="{{ q.key }}"
+       {% if q.depends_on %}data-dep="{{ q.dep_key }}" data-dep-val="{{ q.dep_values_csv }}"{% endif %}>
+    <label for="q_{{ q.key }}"><strong>{{ q.text }}</strong></label>
+    {% if q.kind == 'choice' %}
+      <div class="wiz-opts">
+      {% for o in q.options %}
+        <label class="wiz-opt">
+          <input type="radio" name="{{ q.key }}" id="q_{{ q.key }}" value="{{ o.value }}"
+                 {% if answers|default_if_none:'' %}{% endif %}
+                 {% if answers.items %}{% endif %}
+                 {% for k, v in answers.items %}{% if k == q.key and v == o.value %}checked{% endif %}{% endfor %}>
+          <span><b>{{ o.label }}</b>{% if o.help %}<em>{{ o.help }}</em>{% endif %}</span>
+        </label>
+      {% endfor %}
+      </div>
+    {% elif q.kind == 'bool' %}
+      <select class="field--select" name="{{ q.key }}" id="q_{{ q.key }}">
+        <option value="yes">Yes</option><option value="no">No</option></select>
+    {% else %}
+      <input class="field" type="{% if q.kind == 'number' or q.kind == 'money' %}number{% else %}text{% endif %}"
+             {% if q.kind == 'money' %}step="0.01"{% endif %}
+             name="{{ q.key }}" id="q_{{ q.key }}"
+             value="{% for k, v in answers.items %}{% if k == q.key %}{{ v }}{% endif %}{% endfor %}"
+             placeholder="{{ q.default }}">
+    {% endif %}
+    {% if q.help %}<div class="help">{{ q.help }}</div>{% endif %}
+  </div>
+  {% empty %}
+  <p class="muted">Nothing to ask in this section, given your earlier answers.</p>
+  {% endfor %}
+
+  <div class="btn-row u-mt">
+    {% if step > 0 %}<button class="btn btn-ghost" name="back" value="1">← Back</button>{% endif %}
+    <button class="btn">Continue →</button>
+    <button class="btn btn-ghost" name="restart" value="1">Start over</button>
+  </div>
+</form>
+</div></div>
+
+<p class="help u-mt" style="max-width:760px">The wizard produces a <strong>draft</strong> policy, never a live one.
+  You will see everything it derived — and why — before anything is created, and nothing governs a single case until
+  you publish it.</p>
+
+<script>
+// Show a question only when the answer it depends on makes it relevant. The
+// dependency may be on a question in the SAME section, so this has to happen
+// live as the person answers — the server cannot know yet.
+(function(){
+  function refresh(){
+    document.querySelectorAll(".wiz-q[data-dep]").forEach(function(row){
+      var dep = row.dataset.dep;
+      var want = (row.dataset.depVal || "").split(",").filter(Boolean);
+      var el = document.querySelector('[name="' + dep + '"]:checked')
+               || document.querySelector('[name="' + dep + '"]');
+      var got = el ? el.value : "";
+      row.style.display = (want.length === 0 || want.indexOf(got) > -1) ? "" : "none";
+    });
+  }
+  document.querySelectorAll(".wiz-q input, .wiz-q select").forEach(function(el){
+    el.addEventListener("change", refresh);
+  });
+  refresh();
+})();
+</script>
+<style>
+.wiz-steps{display:flex;gap:.4rem;flex-wrap:wrap}
+.wiz-step{font-size:.75rem;font-weight:600;padding:.25rem .55rem;border-radius:6px;
+  background:var(--paper);border:1px solid var(--line);color:var(--muted)}
+.wiz-step.on{background:var(--forest,#1f5f4f);color:#fff;border-color:var(--forest,#1f5f4f)}
+.wiz-step.done{color:var(--forest,#1f5f4f);border-color:var(--forest,#1f5f4f)}
+.wiz-opts{display:flex;flex-direction:column;gap:.4rem;margin-top:.3rem}
+.wiz-opt{display:flex;gap:.6rem;align-items:flex-start;padding:.6rem .7rem;border:1px solid var(--line);
+  border-radius:8px;cursor:pointer;background:var(--paper)}
+.wiz-opt:hover{border-color:var(--forest,#1f5f4f)}
+.wiz-opt input{margin-top:.2rem}
+.wiz-opt b{display:block;font-weight:600}
+.wiz-opt em{display:block;font-style:normal;font-size:.82rem;color:var(--muted);margin-top:.15rem}
+</style>
+{% endblock %}

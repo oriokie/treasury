@@ -1,4 +1,13 @@
-"""Server-side JPEG chart download for the Group Contribution Goals section."""
+"""Server-side chart download for the Group Contribution Goals section.
+
+NOTE (fixed during the Benevolent Phase 1 review): this file was written when the
+download was a JPEG and was never updated when the feature moved to PNG (the
+route is `group-goals.png`, served by GroupGoalsPngView — see the v2.44 notes on
+those views). Every assertion here was therefore hitting a 404 and failing:
+`Image.open` on a 404 body, and the button assertions looking for a filename the
+template no longer emits. The route was never broken — only the test was stale.
+The filename is kept so no test path references break.
+"""
 import datetime as dt
 from decimal import Decimal
 from django.test import TestCase, Client
@@ -26,26 +35,26 @@ class GroupGoalsJpegTests(TestCase):
                 channel="CASH", allocation_status="MANUAL", department=g)
         self.c = Client(); self.c.force_login(self.tr)
 
-    def test_jpeg_download_status_and_type(self):
-        r = self.c.get(f"/reports/fund/{self.exp.id}/budget/group-goals.jpg?year=2026")
+    def test_chart_download_status_and_type(self):
+        r = self.c.get(f"/reports/fund/{self.exp.id}/budget/group-goals.png?year=2026")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r["Content-Type"], "image/jpeg")
+        self.assertEqual(r["Content-Type"], "image/png")
 
-    def test_jpeg_is_valid_image(self):
+    def test_chart_is_a_valid_image(self):
         import io
         from PIL import Image
-        r = self.c.get(f"/reports/fund/{self.exp.id}/budget/group-goals.jpg?year=2026")
+        r = self.c.get(f"/reports/fund/{self.exp.id}/budget/group-goals.png?year=2026")
         img = Image.open(io.BytesIO(r.content))
-        self.assertEqual(img.format, "JPEG")
+        self.assertEqual(img.format, "PNG")
         self.assertGreater(img.size[0], 0)
         self.assertGreater(img.size[1], 0)
 
     def test_download_button_on_budget_page(self):
         b = self.c.get(f"/reports/fund/{self.exp.id}/budget/?year=2026").content.decode()
-        self.assertIn("group-goals.jpg", b)
+        self.assertIn("group-goals.png", b)
 
     def test_no_button_when_no_groups(self):
         plain = Department.objects.create(name="NoGroupsFund", fund_type="LOCAL",
             category="MINISTRY")
         b = self.c.get(f"/reports/fund/{plain.id}/budget/?year=2026").content.decode()
-        self.assertNotIn("group-goals.jpg", b)
+        self.assertNotIn("group-goals.png", b)

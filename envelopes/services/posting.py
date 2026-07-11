@@ -27,8 +27,7 @@ from giving.models import Transaction
 from ..models import Envelope, EnvelopeLine
 
 PREFERRED = ["Tithe", "Combined Offering", "Camp Meeting", "Development",
-             "Sabbath School", "Loose Offering", "LCB – Local Church Budget",
-             "Thanksgiving Offering"]
+             "LCB – Local Church Budget"]
 
 
 def _is_building(name):

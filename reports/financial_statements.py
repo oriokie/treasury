@@ -196,20 +196,13 @@ class FinancialPositionSummarySection(ComponentSection):
         loan_total = _n(loans.get("total")) if isinstance(loans, dict) else _n(loans)
         # petty cash and unspent staff advances are inside the fund cash figure;
         # reclassify them onto their own lines (matching the detailed Statement
-        # of Financial Position) — totals are unchanged.
+        # of Financial Position) — totals are unchanged. Once both are shown
+        # separately, what remains is genuinely BANK ONLY (there is no more
+        # "cash on hand" left uncounted — that's exactly what the petty float
+        # line is) — so this line is labelled "Bank", not "Cash & bank".
         petty = _n(ctx.metric("petty_cash_balance"))
         advances = _n(ctx.metric("staff_advances_outstanding"))
-        cash_at_bank = cash - petty - advances
-        # Cash & bank, split local vs trust (unrestricted vs restricted) rather
-        # than shown as one lumped figure — trust cash is already a liability
-        # below (trust funds payable), so seeing it broken out on the asset
-        # side too makes the restriction visible instead of hidden inside a
-        # single "Cash & bank" total. is_trust rows may also carry petty/
-        # advances in principle, but those are church-wide (unrestricted)
-        # float/receivables in practice, so the netting stays on the local side.
-        trust_cash = sum((_n(r["closing"]) for r in rows if r.get("is_trust")),
-                         Decimal(0))
-        local_cash = cash_at_bank - trust_cash
+        bank = cash - petty - advances
         # Accrual-basis overlay: credit purchases owed, expenses accrued, and
         # amounts prepaid — the SAME adjustments the legacy Statement of
         # Financial Position has always applied (accrual_adj there), now
@@ -221,8 +214,7 @@ class FinancialPositionSummarySection(ComponentSection):
         total_liabilities = trust_payable + loan_total + pending + payables + accruals
         net_assets = total_assets - total_liabilities
         pairs = [
-            ("Local fund cash (unrestricted)", local_cash),
-            ("Trust fund cash (restricted)", trust_cash),
+            ("Bank (funds on hand)", bank),
             ("Petty cash float", petty),
             ("Staff advances (receivable)", advances),
             ("Receipts pending allocation", pending),

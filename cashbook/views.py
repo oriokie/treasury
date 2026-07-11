@@ -2502,18 +2502,28 @@ class FundBudgetView(LoginRequiredMixin, View):
         return redirect(f"{request.path}?year={year}")
 
 
-class GroupGoalsPngView(TreasurerRequiredMixin, View):
+class GroupGoalsPngView(LoginRequiredMixin, View):
     """Server-rendered PNG of a fund's Group Contribution Goals — a proper
     per-group progress bar chart, generated with Pillow so it looks identical
     everywhere and needs no client-side rendering (canvas/screenshot). PNG
     rather than JPEG: this is a table of sharp text and flat fills, and PNG's
-    lossless compression keeps it crisp instead of JPEG-blurred."""
+    lossless compression keeps it crisp instead of JPEG-blurred.
+
+    Permission (v2.44 fix): must match FundBudgetView's own
+    can_view_fund_budget check exactly, not a narrower Treasurer-only check —
+    this page is embedded/linked FROM the budget page, so anyone who can see
+    that page (assistants, and leaders granted view_fund_budget for their own
+    fund) must also be able to load the image on it, or the img tag simply
+    shows broken/blank for them with no obvious reason why."""
     def get(self, request, pk):
         from departments.models import Department
         from core.models import SiteConfig
+        from core import roles
         from django.http import HttpResponse
         from .services.goal_chart import build_group_goals_png
         dept = get_object_or_404(Department, pk=pk)
+        if not roles.can_view_fund_budget(request.user, dept):
+            return HttpResponse(status=403)
         ctx = FundBudgetView()._ctx(request, dept)
         data = build_group_goals_png(
             dept_name=dept.name, year=ctx["year"], group_rows=ctx["group_rows"],
@@ -2525,18 +2535,23 @@ class GroupGoalsPngView(TreasurerRequiredMixin, View):
         return resp
 
 
-class BudgetItemsPngView(TreasurerRequiredMixin, View):
+class BudgetItemsPngView(LoginRequiredMixin, View):
     """Server-rendered PNG of a fund's 'Budget vs actual by item' table,
     generated with Pillow — same approach as GroupGoalsPngView, so it looks
     identical wherever it's downloaded, matching the on-screen table exactly
     (Budget item / Budget / Actual / Variance / Used), including the totals
-    row."""
+    row.
+
+    Permission: see GroupGoalsPngView's docstring — same fix, same reason."""
     def get(self, request, pk):
         from departments.models import Department
         from core.models import SiteConfig
+        from core import roles
         from django.http import HttpResponse
         from .services.goal_chart import build_budget_items_png
         dept = get_object_or_404(Department, pk=pk)
+        if not roles.can_view_fund_budget(request.user, dept):
+            return HttpResponse(status=403)
         ctx = FundBudgetView()._ctx(request, dept)
         data = build_budget_items_png(
             dept_name=dept.name, year=ctx["year"], rows=ctx["rows"],

@@ -201,6 +201,23 @@ def get_or_create_draft(user, batch_id, sabbath_date):
     return batch, True
 
 
+def _as_id(value):
+    """Coerce a payload id to int, or None. Client JSON always sends form
+    values as strings (dev_group_id from a <select>'s .value, member_id from
+    a hidden <input>'s .value) — a dict keyed by model .id (always int) never
+    matches a string lookup key ("4" != 4 as dict keys), even though the SAME
+    string works fine in an ORM pk__in filter (Django coerces it there). This
+    silently dropped dev_group on every row despite the group being sent
+    correctly — the fix is here, once, rather than trusting every call site
+    to remember the coercion."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def autosave_rows(batch, rows_payload):
     """Replace the batch's rows from the client's current grid state and
     re-validate. `rows_payload` is a list of dicts (line_no, receipt_no,
@@ -208,9 +225,9 @@ def autosave_rows(batch, rows_payload):
     dev_group_id, manual_total, amounts). Wholesale replace is simplest and
     entirely safe here — rows are pre-ledger staging data with no history
     worth diffing, and a Sabbath's batch is at most a few dozen rows."""
-    member_ids = {r.get("member_id") for r in rows_payload if r.get("member_id")}
+    member_ids = {_as_id(r.get("member_id")) for r in rows_payload} - {None}
     members = {m.id: m for m in Member.objects.filter(pk__in=member_ids)}
-    dg_ids = {r.get("dev_group_id") for r in rows_payload if r.get("dev_group_id")}
+    dg_ids = {_as_id(r.get("dev_group_id")) for r in rows_payload} - {None}
     dev_groups = {g.id: g for g in DevelopmentGroup.objects.filter(pk__in=dg_ids)}
 
     with db_tx.atomic():
@@ -226,10 +243,10 @@ def autosave_rows(batch, rows_payload):
                 receipt_no=(r.get("receipt_no") or "").strip()[:20],
                 receipt_no_overridden=bool(r.get("receipt_no_overridden")),
                 contributor_name=(r.get("contributor_name") or "").strip()[:120],
-                member=members.get(r.get("member_id")),
+                member=members.get(_as_id(r.get("member_id"))),
                 phone=(r.get("phone") or "")[:20],
                 channel=r.get("channel") if r.get("channel") in ("CASH", "BANK") else "CASH",
-                dev_group=dev_groups.get(r.get("dev_group_id")),
+                dev_group=dev_groups.get(_as_id(r.get("dev_group_id"))),
                 amounts=amounts, manual_total=manual_total))
         EnvelopeBatchRow.objects.bulk_create(new_rows)
     revalidate_batch_rows(batch)

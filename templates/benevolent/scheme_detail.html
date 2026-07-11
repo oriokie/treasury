@@ -1,0 +1,91 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ scheme.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }}</h1>
+  <div class="sub">{{ scheme.get_kind_display }} · fund: {{ scheme.fund.name }} ·
+    <span class="pill {% if scheme.status == 'ACTIVE' %}pill-green{% elif scheme.status == 'SUSPENDED' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ scheme.get_status_display }}</span></div></div>
+<div class="btn-row no-print">
+  {% if can.manage_benevolent and scheme.is_open %}<a class="btn btn-sm" href="{% url 'benevolent_case_new' scheme.id %}">+ New case</a>{% endif %}
+  {% if can.manage_benevolent and scheme.accepts_contributions %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_contribute' scheme.id %}">Record contribution</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_enrol' scheme.id %}">Enrol member</a>{% endif %}
+  {% if can.manage_benevolent_schemes %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_edit' scheme.id %}">Edit</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_list' %}">← Schemes</a></div></div>
+
+{% if scheme.description %}<p class="muted u-mb">{{ scheme.description }}</p>{% endif %}
+
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">Fund balance</div><div class="val mono">{{ CURRENCY }} {{ balance|floatformat:2|intcomma }}</div>
+    <div class="foot">{{ scheme.fund.name }}</div></div>
+  <div class="stat"><div class="lbl">Contributions</div><div class="val mono">{{ CURRENCY }} {{ contributions|floatformat:2|intcomma }}</div>
+    <div class="foot">{{ start|date:"d M y" }} – {{ end|date:"d M y" }}</div></div>
+  <div class="stat"><div class="lbl">Benefits paid</div><div class="val mono">{{ CURRENCY }} {{ payouts|floatformat:2|intcomma }}</div>
+    <div class="foot">In the period</div></div>
+  <div class="stat brass"><div class="lbl">Approved, unpaid</div><div class="val mono">{{ CURRENCY }} {{ committed|floatformat:2|intcomma }}</div>
+    <div class="foot">{{ members }} member{{ members|pluralize }}</div></div>
+</div>
+
+{% if not policy %}
+<div class="alert alert-warn u-mb"><strong>No policy is in force.</strong> Without one, no case can be
+  assessed and the scheme cannot be opened. {% if can.manage_benevolent_schemes %}<a class="link" href="{% url 'benevolent_policy_new' scheme.id %}">Draft a policy</a>.{% endif %}</div>
+{% endif %}
+
+{% if can.manage_benevolent_schemes %}
+<div class="card u-mb"><div class="hd">Scheme status</div><div class="bd">
+  <div class="btn-row">
+    {% if scheme.status != 'ACTIVE' and scheme.status != 'CLOSED' %}
+    <form method="post" action="{% url 'benevolent_scheme_action' scheme.id 'activate' %}">{% csrf_token %}
+      <button class="btn btn-sm">Open the scheme</button></form>{% endif %}
+    {% if scheme.status == 'ACTIVE' %}
+    <form method="post" action="{% url 'benevolent_scheme_action' scheme.id 'suspend' %}">{% csrf_token %}
+      <button class="btn btn-ghost btn-sm">Suspend (no new cases)</button></form>{% endif %}
+    {% if scheme.status != 'CLOSED' %}
+    <form method="post" action="{% url 'benevolent_scheme_action' scheme.id 'close' %}">{% csrf_token %}
+      <button class="btn btn-ghost btn-sm">Close</button></form>{% endif %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_event_types' scheme.id %}">Covered events ({{ event_types|length }})</a>
+  </div>
+  <p class="help u-mt">Suspending stops new cases but keeps taking contributions and paying benefits already
+    approved — a suspension is not a reason to renege on a benefit already granted.</p>
+</div></div>
+{% endif %}
+
+<h2 class="u-mt">Policy versions</h2>
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Version</th><th>Effective</th><th>Benefit</th><th>Contributions</th><th>Status</th><th>Locked</th><th></th></tr></thead>
+<tbody>{% for p in policies %}<tr>
+  <td class="mono">v{{ p.version }}</td>
+  <td>{{ p.effective_from|date:"d M y" }}{% if p.effective_to %} – {{ p.effective_to|date:"d M y" }}{% endif %}</td>
+  <td class="muted">{{ p.get_benefit_mode_display }}{% if p.benefit_amount %} · {{ p.benefit_amount|floatformat:0|intcomma }}{% endif %}</td>
+  <td class="muted">{{ p.get_contribution_mode_display }}{% if p.contribution_amount %} · {{ p.contribution_amount|floatformat:0|intcomma }}{% endif %}</td>
+  <td><span class="pill {% if p.status == 'ACTIVE' %}pill-green{% elif p.status == 'DRAFT' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ p.get_status_display }}</span></td>
+  <td>{% if p.is_locked %}<span class="muted u-xs" title="This version has decided cases; its rules are permanently fixed.">🔒 Fixed</span>{% else %}<span class="muted u-xs">Editable</span>{% endif %}</td>
+  <td class="btn-row">
+    {% if can.manage_benevolent_schemes %}
+      {% if not p.is_locked and p.status == 'DRAFT' %}<a class="link" href="{% url 'benevolent_policy_edit' scheme.id p.id %}">Edit</a>
+        <form method="post" action="{% url 'benevolent_policy_action' scheme.id p.id 'publish' %}" style="display:inline">{% csrf_token %}
+          <button class="btn btn-sm">Publish</button></form>
+      {% elif p.status == 'ACTIVE' %}<a class="link" href="{% url 'benevolent_policy_edit' scheme.id p.id %}">View</a>
+        <form method="post" action="{% url 'benevolent_policy_action' scheme.id p.id 'new-version' %}" style="display:inline">{% csrf_token %}
+          <input class="field" type="date" name="effective_from" required style="max-width:150px">
+          <button class="btn btn-ghost btn-sm">New version from</button></form>
+      {% else %}<a class="link" href="{% url 'benevolent_policy_edit' scheme.id p.id %}">View</a>{% endif %}
+    {% else %}<a class="link" href="{% url 'benevolent_policy_edit' scheme.id p.id %}">View</a>{% endif %}
+  </td>
+</tr>{% empty %}<tr><td colspan="7" class="empty">No policy drafted yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% if can.manage_benevolent_schemes %}<div class="btn-row u-mt"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_policy_new' scheme.id %}">+ Draft a policy</a></div>{% endif %}
+<p class="help u-mt">A policy version is frozen the moment a case is decided under it. Changing the rules means
+  publishing a new version, which applies from its own effective date forward and never disturbs a decision already made.</p>
+
+<h2 class="u-mt">Recent cases</h2>
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Case</th><th>Beneficiary</th><th>Event</th><th>Date</th><th class="num">Approved</th><th class="num">Paid</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for c in cases %}<tr>
+  <td class="mono">{{ c.number }}</td><td>{{ c.beneficiary_display }}</td>
+  <td class="muted">{{ c.event_type.name }}</td><td>{{ c.event_date|date:"d M y" }}</td>
+  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ c.paid_total|floatformat:2|intcomma }}</td>
+  <td><span class="pill u-xs">{{ c.get_status_display }}</span></td>
+  <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">Open</a></td>
+</tr>{% empty %}<tr><td colspan="8" class="empty">No cases yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

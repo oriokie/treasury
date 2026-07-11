@@ -1,0 +1,181 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ case.number }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ case.number }}</h1>
+  <div class="sub">{{ case.scheme.name }} · {{ case.event_type.name }} ·
+    <span class="pill {% if case.status == 'PAID' or case.status == 'CLOSED' %}pill-green{% elif case.status == 'REJECTED' or case.status == 'CANCELLED' %}pill-red{% elif case.status == 'APPROVED' or case.status == 'PARTLY_PAID' %}pill-blue{% else %}pill-amber{% endif %} u-xs">{{ case.get_status_display }}</span></div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">← Cases</a></div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Claimed</div><div class="val mono">{% if case.claimed_amount %}{{ case.claimed_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Assessed entitlement</div><div class="val mono">{% if case.assessed_amount is not None %}{{ case.assessed_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div>
+    <div class="foot">By the policy engine</div></div>
+  <div class="stat accent"><div class="lbl">Approved</div><div class="val mono">{% if case.approved_amount %}{{ case.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div></div>
+  <div class="stat brass"><div class="lbl">Paid / outstanding</div><div class="val mono">{{ case.paid_total|floatformat:2|intcomma }}</div>
+    <div class="foot">{{ CURRENCY }} {{ case.outstanding|floatformat:2|intcomma }} still authorised</div></div>
+</div>
+
+<div class="card u-mb"><div class="hd">The claim</div><div class="bd">
+<table class="ledger compact">
+  <tr><th>Claimant</th><td>{{ case.claimant_display }}{% if case.membership %} <span class="muted u-xs">({{ case.membership.number }}, enrolled {{ case.membership.joined_on|date:"d M Y" }})</span>{% endif %}</td></tr>
+  <tr><th>Beneficiary</th><td>{{ case.beneficiary_display }}</td></tr>
+  <tr><th>Event</th><td>{{ case.event_type.name }} on {{ case.event_date|date:"d M Y" }}, reported {{ case.reported_date|date:"d M Y" }}</td></tr>
+  {% if case.description %}<tr><th>Details</th><td>{{ case.description|linebreaksbr }}</td></tr>{% endif %}
+  <tr><th>Raised by</th><td>{{ case.raised_by|default:"—" }}{% if case.submitted_at %} · submitted {{ case.submitted_at|date:"d M Y H:i" }}{% endif %}</td></tr>
+  {% if case.approved_by %}<tr><th>Approved by</th><td>{{ case.approved_by }} on {{ case.approved_at|date:"d M Y H:i" }}</td></tr>{% endif %}
+  {% if case.rejection_reason %}<tr><th>Rejected</th><td>{{ case.rejection_reason }}</td></tr>{% endif %}
+  {% if case.override_reason %}<tr><th>Override recorded</th><td class="warn">{{ case.override_reason }}</td></tr>{% endif %}
+</table>
+</div></div>
+
+<div class="card u-mb"><div class="hd">
+  {% if snapshot %}Decision basis — frozen {{ case.assessed_at|date:"d M Y H:i" }}{% else %}Eligibility (live preview — not yet assessed){% endif %}</div><div class="bd">
+{% if snapshot %}
+  <p class="help">This is exactly what the policy engine found when the case was assessed, and it is now part of the
+    permanent record. It is shown as it was frozen, never re-run — a later change to the policy cannot rewrite what
+    was actually decided here.</p>
+  <p><strong>Policy v{{ snapshot.policy_version }}</strong> ·
+    {% if snapshot.eligible %}<span class="pill pill-green u-xs">Meets the policy</span>{% else %}<span class="pill pill-red u-xs">Does not meet the policy</span>{% endif %}</p>
+  <table class="ledger compact"><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead>
+  <tbody>{% for c in snapshot.checks %}<tr>
+    <td>{{ c.label }}{% if not c.blocking %} <span class="muted u-xs">(advisory)</span>{% endif %}</td>
+    <td>{% if c.passed %}<span class="pill pill-green u-xs">Pass</span>{% else %}<span class="pill {% if c.blocking %}pill-red{% else %}pill-amber{% endif %} u-xs">Fail</span>{% endif %}</td>
+    <td class="muted">{{ c.detail }}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="u-mt"><strong>Entitlement: {{ CURRENCY }} {{ snapshot.entitlement.amount|floatformat:2 }}</strong>
+    <span class="muted">({{ snapshot.entitlement.basis }})</span></p>
+  <ul class="muted u-xs">{% for w in snapshot.entitlement.workings %}<li>{{ w }}</li>{% endfor %}</ul>
+  {% if snapshot.entitlement.deductions %}
+  <p class="u-mt-0"><strong>Deductions</strong></p>
+  <ul class="muted u-xs">{% for d in snapshot.entitlement.deductions %}<li>{{ d }}</li>{% endfor %}</ul>
+  {% endif %}
+{% elif preview %}
+  <p class="help">A preview against the policy in force on the event date. It becomes the permanent record only when
+    the case is assessed.</p>
+  <table class="ledger compact"><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead>
+  <tbody>{% for c in preview.checks %}<tr>
+    <td>{{ c.label }}{% if not c.blocking %} <span class="muted u-xs">(advisory)</span>{% endif %}</td>
+    <td>{% if c.passed %}<span class="pill pill-green u-xs">Pass</span>{% else %}<span class="pill {% if c.blocking %}pill-red{% else %}pill-amber{% endif %} u-xs">Fail</span>{% endif %}</td>
+    <td class="muted">{{ c.detail }}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="u-mt"><strong>Indicative entitlement: {{ CURRENCY }} {{ preview.entitlement.amount|floatformat:2|intcomma }}</strong>
+    <span class="muted">({{ preview.entitlement.basis }})</span></p>
+{% endif %}
+</div></div>
+
+<div class="card u-mb"><div class="hd">Payment vouchers</div><div class="bd">
+<p class="help">A benefit leaves the church through an ordinary expense voucher on {{ case.scheme.fund.name }},
+  category "Benevolence". It still needs the usual expense approval — this module never approves its own payments.</p>
+<table class="ledger compact"><thead><tr><th>Date</th><th>Payee</th><th class="num">Amount</th><th>Voucher status</th><th>Counts</th><th></th></tr></thead>
+<tbody>{% for p in payouts %}<tr>
+  <td>{{ p.date|date:"d M y"|default:"—" }}</td><td>{{ p.payee_name }}</td>
+  <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+  <td>{{ p.status }}</td>
+  <td>{% if p.effective %}<span class="pill pill-green u-xs">Yes</span>{% else %}<span class="pill pill-amber u-xs">Not yet</span>{% endif %}</td>
+  <td>{% if p.expense_id %}<a class="link" href="/expenses/{{ p.expense_id }}/">Voucher</a>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">No payment raised yet.</td></tr>{% endfor %}</tbody></table>
+
+{% if can.manage_benevolent and case.available_to_voucher > 0 %}
+<form method="post" action="{% url 'benevolent_case_payout' case.id %}" class="u-mt">{% csrf_token %}
+  <div class="form-grid">{% for f in payout_form %}<div class="form-row">
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+    {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
+  <div class="btn-row u-mt"><button class="btn">Raise payment voucher</button></div>
+</form>
+{% endif %}
+</div></div>
+
+{% if case.attachments.exists or can.manage_benevolent %}
+<div class="card u-mb"><div class="hd">Supporting documents</div><div class="bd">
+<ul>{% for a in case.attachments.all %}<li><a class="link" href="{{ a.file.url }}">{{ a.label|default:a.file.name }}</a>
+  <span class="muted u-xs">{{ a.uploaded_at|date:"d M Y" }}</span></li>{% empty %}<li class="muted">None attached.</li>{% endfor %}</ul>
+{% if can.manage_benevolent %}
+<form method="post" action="{% url 'benevolent_case_action' case.id 'attach' %}" enctype="multipart/form-data" class="u-mt">{% csrf_token %}
+  <div class="form-grid">{% for f in attach_form %}<div class="form-row">
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}</div>
+  <div class="btn-row u-mt"><button class="btn btn-ghost btn-sm">Attach</button></div>
+</form>{% endif %}
+</div></div>
+{% endif %}
+
+{% if levy %}
+<div class="card u-mb"><div class="hd u-between"><span>Levy for this case</span>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_levy' case.id %}">Open the levy round</a></div><div class="bd">
+  <p>{{ CURRENCY }} {{ levy.collected|floatformat:2|intcomma }} collected of
+     {{ CURRENCY }} {{ levy.expected|floatformat:2|intcomma }} expected
+     ({{ levy.rows|length }} member{{ levy.rows|length|pluralize }} levied at
+     {{ CURRENCY }} {{ levy.per_member|floatformat:2|intcomma }} each{% if levy.exempt %}; {{ levy.exempt|length }} exempt{% endif %}).</p>
+  {% if case.policy.benefit_mode == 'POOLED' %}
+  <p class="help">This scheme pays out what the levy collects, so the benefit will rise as more members pay.
+    Re-assess the case once collection is complete.</p>{% endif %}
+</div></div>
+{% endif %}
+
+{% if committee.required %}
+<div class="card u-mb"><div class="hd">Committee decision</div><div class="bd">
+  <p class="help u-mt-0">Policy v{{ case.policy.version }} routes this benefit to the committee, so it cannot be
+    authorised by one person — whatever their role. That is the point of having a committee.</p>
+  <p><strong>{{ committee.have }} of {{ committee.quorum }}</strong> approvals recorded
+    {% if committee.carried %}<span class="pill pill-green u-xs">Quorum reached</span>
+    {% elif committee.blocked %}<span class="pill pill-red u-xs">Refused</span>
+    {% else %}<span class="pill pill-amber u-xs">Awaiting the committee</span>{% endif %}
+    {% if committee.agreed_amount %} · the quorum agreed on at most {{ CURRENCY }} {{ committee.agreed_amount|floatformat:2|intcomma }}{% endif %}</p>
+
+  <table class="ledger compact"><thead><tr><th>Member</th><th>Decision</th><th class="num">Would approve</th><th>Note</th><th>When</th></tr></thead>
+  <tbody>{% for v in committee.votes %}<tr>
+    <td>{{ v.user.get_full_name|default:v.user.username }}</td>
+    <td><span class="pill {% if v.decision == 'APPROVE' %}pill-green{% elif v.decision == 'REJECT' %}pill-red{% else %}pill-brass{% endif %} u-xs">{{ v.get_decision_display }}</span></td>
+    <td class="num mono">{% if v.amount %}{{ v.amount|floatformat:2|intcomma }}{% else %}<span class="muted">as assessed</span>{% endif %}</td>
+    <td class="muted">{{ v.note }}</td>
+    <td class="muted u-xs">{{ v.created_at|date:"d M y H:i" }}</td>
+  </tr>{% empty %}<tr><td colspan="5" class="empty">No decisions recorded yet.</td></tr>{% endfor %}</tbody></table>
+
+  {% if can.benevolent_committee and case.status == 'ASSESSED' %}
+  <form method="post" action="{% url 'benevolent_case_vote' case.id %}" class="u-mt">{% csrf_token %}
+    <div class="form-grid">{% for f in vote_form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
+    <div class="btn-row u-mt"><button class="btn">{% if my_vote %}Change my decision{% else %}Record my decision{% endif %}</button></div>
+  </form>
+  <p class="help u-mt">Where the committee differs on the figure, the <em>lowest</em> approved amount is what carries —
+    a quorum has only truly agreed on the largest sum every one of them was willing to authorise.</p>
+  {% endif %}
+</div></div>
+{% endif %}
+
+<div class="card"><div class="hd">Actions</div><div class="bd"><div class="btn-row">
+  {% if can.manage_benevolent and case.status == 'DRAFT' %}
+    <form method="post" action="{% url 'benevolent_case_action' case.id 'submit' %}">{% csrf_token %}
+      <button class="btn">Submit for assessment</button></form>{% endif %}
+  {% if can.manage_benevolent and case.status == 'SUBMITTED' or can.manage_benevolent and case.status == 'ASSESSED' %}
+    <form method="post" action="{% url 'benevolent_case_action' case.id 'assess' %}">{% csrf_token %}
+      <button class="btn">{% if case.status == 'ASSESSED' %}Re-assess{% else %}Assess against the policy{% endif %}</button></form>{% endif %}
+  {% if can.manage_benevolent and case.status == 'PAID' %}
+    <form method="post" action="{% url 'benevolent_case_action' case.id 'close' %}">{% csrf_token %}
+      <button class="btn btn-ghost">Close the case</button></form>{% endif %}
+  {% if can.manage_benevolent and not case.is_final and case.paid_total == 0 %}
+    <form method="post" action="{% url 'benevolent_case_action' case.id 'cancel' %}">{% csrf_token %}
+      <button class="btn btn-ghost">Cancel</button></form>{% endif %}
+</div>
+
+{% if can.approve_benevolent and case.status == 'ASSESSED' and not committee.required or can.approve_benevolent and case.status == 'ASSESSED' and committee.carried %}
+<div class="u-mt"><h3>Decision</h3>
+<div class="grid cols-2">
+  <form method="post" action="{% url 'benevolent_case_decide' case.id 'approve' %}">{% csrf_token %}
+    <div class="form-grid">{% for f in approve_form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
+    <div class="btn-row u-mt"><button class="btn">Approve the benefit</button></div>
+  </form>
+  <form method="post" action="{% url 'benevolent_case_decide' case.id 'reject' %}">{% csrf_token %}
+    <div class="form-grid">{% for f in reject_form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}</div>
+    <div class="btn-row u-mt"><button class="btn btn-ghost">Reject</button></div>
+  </form>
+</div>
+<p class="help u-mt">Approving records a decision — it moves no money. The payment voucher it authorises is raised
+  separately and clears the ordinary expense approval on its own.</p>
+</div>
+{% endif %}
+</div></div>
+{% endblock %}

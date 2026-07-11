@@ -12,7 +12,7 @@
   <div class="stmt-section">ASSETS</div>
   <table class="ledger compact"><tbody>
     <tr class="grp"><td colspan="2">Current assets</td></tr>
-    <tr><td class="indent">Cash &amp; bank (funds on hand)</td><td class="num mono">{{ cash_on_hand|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="indent">Bank (funds on hand)</td><td class="num mono">{{ cash_on_hand|floatformat:2|intcomma }}</td></tr>
     {% if petty %}<tr><td class="indent">Petty cash float</td><td class="num mono">{{ petty|floatformat:2|intcomma }}</td></tr>{% endif %}
     {% if advances %}<tr><td class="indent">Staff advances (receivable)</td><td class="num mono">{{ advances|floatformat:2|intcomma }}</td></tr>{% endif %}
     {% if pending %}<tr><td class="indent">Bank receipts pending allocation</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}

@@ -1,0 +1,63 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Review the constitution · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Review — is this your constitution?</h1>
+  <div class="sub">Everything the wizard derived, and the answer it derived it from. Check it against the document on your desk.</div></div></div>
+
+<div class="card u-mb"><div class="hd">In plain words</div><div class="bd">
+  <p style="font-size:1.05rem;line-height:1.7">{{ summary }}</p>
+  <p class="help">If any sentence there is wrong, go back and change the answer — it is far easier to fix now than
+    after a case has been decided under it.</p>
+</div></div>
+
+<div class="card u-mb"><div class="hd">What the wizard set, and why</div><div class="bd">
+<p class="help u-mt-0">A wizard you cannot check is a wizard you should not trust. Every derived setting is listed with
+  the reasoning behind it.</p>
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Rule</th><th>Set to</th><th>Because</th></tr></thead>
+<tbody>{% for d in why %}<tr>
+  <td class="mono u-xs">{{ d.setting }}</td>
+  <td class="mono">{{ d.value }}</td>
+  <td class="muted">{{ d.because }}</td>
+</tr>{% endfor %}</tbody>
+</table></div>
+</div></div>
+
+{% if lines %}
+<div class="card u-mb"><div class="hd">Events it will cover</div><div class="bd">
+<p class="help u-mt-0">The wizard will create these event types on the scheme. It leaves the <em>amounts</em> at zero
+  on purpose — it will not invent what a life is worth to your church. Set them on the draft policy before you publish.</p>
+<ul>{% for l in lines %}<li>{{ l.event }} <span class="muted u-xs mono">{{ l.code }}</span></li>{% endfor %}</ul>
+</div></div>
+{% endif %}
+
+<div class="card"><div class="hd">Create the draft policy</div><div class="bd">
+<form method="post">{% csrf_token %}
+  <div class="form-grid">
+    <div class="form-row"><label for="scheme">Which scheme is this for?</label>
+      <select class="field--select" name="scheme" id="scheme" required>
+        <option value="">Choose a scheme…</option>
+        {% for s in schemes %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+      </select>
+      <div class="help">No scheme yet? <a class="link" href="{% url 'benevolent_scheme_new' %}">Create one first</a> — it needs a fund to hold its money.</div>
+    </div>
+    <div class="form-row"><label for="eff">These rules take effect from</label>
+      <input class="field" type="date" name="effective_from" id="eff" value="{{ today|date:'Y-m-d' }}" required>
+      <div class="help">A case is decided by the policy in force on the day the <em>event</em> happened — so this date matters.</div>
+    </div>
+    <div class="form-row"><label>Also save these rules as a reusable profile?</label>
+      <input class="field" type="text" name="profile_name" placeholder="e.g. Our church's benevolent constitution 2026">
+      <label class="u-mt-sm"><input type="checkbox" name="save_profile" value="1"> Save it to the profile library</label>
+      <div class="help">So the next scheme — or the next church — can start from what you have just worked out.</div>
+    </div>
+  </div>
+  <div class="btn-row u-mt">
+    <button class="btn">Create the draft policy</button>
+    <a class="btn btn-ghost" href="{% url 'benevolent_wizard' step|add:'-1' %}">← Back</a>
+    <button class="btn btn-ghost" name="restart" value="1">Start over</button>
+  </div>
+</form>
+<p class="help u-mt"><strong>This creates a draft.</strong> Nothing governs a single case until you have read it through
+  and published it. The wizard has interpreted your constitution; you are the one who knows whether it got it right.</p>
+</div></div>
+{% endblock %}

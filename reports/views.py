@@ -2467,7 +2467,7 @@ class FinancialPositionView(ReportAccessMixin, TemplateView):
         if request.GET.get("export") in ("csv", "xlsx"):
             header = ["Section", "Line", "Amount"]
             data = [
-                ["Assets", "Cash & bank (current)", cash_on_hand],
+                ["Assets", "Bank (current)", cash_on_hand],
                 ["Assets", "Petty cash float", petty],
                 ["Assets", "Staff advances (receivable)", advances],
                 ["Assets", "Bank receipts pending allocation", pending],

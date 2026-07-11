@@ -52,7 +52,7 @@
     <div class="es-funds" id="esFunds"></div>
   </div>
 
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. The <strong>Allocated</strong> column is a running sum of what you've entered across the fund columns for that row — check it against the envelope's own <strong>Manual Total</strong> before moving on. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. New rows copy the Channel and Group above them.</p>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. New rows copy the Channel and Group above them.</p>
 
   <div class="btn-row entry-actions">
     <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
@@ -62,7 +62,7 @@
 </form>
 
 <script>
-const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}",isDevelopment:{{ c.is_development|yesno:"true,false" }},subgroups:[{% for s in c.subgroups %}{id:"{{ s.id }}",label:"{{ s.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]}{% if not forloop.last %},{% endif %}{% endfor %}];
+const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}",isDevelopment:{{ c.is_development|yesno:"true,false" }},isDefault:{{ c.default|yesno:"true,false" }},subgroups:[{% for s in c.subgroups %}{id:"{{ s.id }}",label:"{{ s.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]}{% if not forloop.last %},{% endif %}{% endfor %}];
 const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
 const INITIAL_ROWS = {{ batch_rows_json|safe }};
 const INITIAL_BATCH_ID = {{ batch.id|default:"null" }};
@@ -97,12 +97,15 @@ const META_HEAD = [
   {key:"__rownum", label:"#", hideable:false, resizable:false, width:32},
   {key:"__name", label:"Contributor", hideable:false, resizable:true, width:170},
   {key:"__receipt", label:"Receipt", hideable:false, resizable:true, width:96},
-  {key:"__manual_total", label:"Manual Total", hideable:false, resizable:true, width:112},
+  {key:"__manual_total", label:"Total", hideable:false, resizable:true, width:100},
   {key:"__channel", label:"Channel", hideable:false, resizable:true, width:90},
 ];
-const META_TAIL = [
-  {key:"__allocated", label:"Allocated", hideable:false, resizable:true, width:92},
-];
+// No tail meta-columns: the running-sum "Allocated" column was removed —
+// the same comparison (does the envelope's own Total match what's been
+// entered across the fund columns?) still runs, just silently, surfacing
+// only as a row-errors-panel message on a genuine mismatch instead of a
+// second number to eyeball on every row.
+const META_TAIL = [];
 const DEFAULT_PINNED = ["__rownum", "__name"];
 
 let COLS = [];              // active fund columns (from the picker), in ALL_COLS order
@@ -116,9 +119,15 @@ function syncTemplateLink(){ document.getElementById("tplLink").href = tplUrl + 
 
 function defaultLayout(){
   const fundKeys = selectedFundKeys();
+  // The five funds a Sabbath sheet always needs (Tithe, Combined Offering,
+  // Camp Meeting, Development, LCB — see envelopes.services.posting.
+  // PREFERRED) are pinned by default, same as the identity columns, so they
+  // stay in view while scrolling right for less-common funds.
+  const defaultFundKeys = ALL_COLS.filter(c => c.isDefault && fundKeys.includes(c.key))
+                                  .map(c => c.key);
   return {
     order: [...META_HEAD.map(c=>c.key), ...fundKeys, ...META_TAIL.map(c=>c.key)],
-    hidden: [], widths: {}, pinned: [...DEFAULT_PINNED],
+    hidden: [], widths: {}, pinned: [...DEFAULT_PINNED, ...defaultFundKeys],
   };
 }
 
@@ -349,7 +358,6 @@ function cellHtml(colKey, data, receiptValue){
     case "__receipt": return `<input class="field rcpt mono" value="${(data.rcpt!=null?data.rcpt:receiptValue)||''}">`;
     case "__manual_total": return `<input class="field mtotal num mono" inputmode="decimal" placeholder="0.00" value="${data.manual_total||''}">`;
     case "__channel": return `<select class="field--select chan"><option value="CASH">Cash</option><option value="BANK" ${data.chan==='BANK'?'selected':''}>Bank</option></select>`;
-    case "__allocated": return `<span class="rowtot"></span>`;
     default: {
       const c = COLS.find(x=>x.key===colKey);
       return c ? fundCellHtml(c, data) : "";
@@ -572,7 +580,7 @@ function flagDuplicateName(tr){
 }
 
 // ===========================================================================
-// Manual Total vs. allocation validation — the row-level red-highlight rule
+// Total vs. fund-amounts validation — the row-level red-highlight rule
 // ===========================================================================
 function rowIsActive(tr){
   // matches envelopes.services.batches.row_is_active: a name alone makes a
@@ -583,10 +591,11 @@ function rowIsActive(tr){
 }
 
 function rowTotal(tr){
+  // Still computed for the background Total-vs-fund-amounts check
+  // (validateRow) and the running summary — there just isn't a visible
+  // "Allocated" column showing it per row any more.
   let t = 0;
   tr.querySelectorAll(".amt").forEach(i=>{ const v = parseFloat(i.value); if(!isNaN(v)) t += v; });
-  const cell = tr.querySelector('[data-col="__allocated"] .rowtot');
-  if(cell) cell.textContent = t ? t.toLocaleString() : "";
   updateTotals();
   return t;
 }
@@ -622,7 +631,7 @@ function rowProblemMessages(tr){
     const rcpt = (tr.querySelector(".rcpt").value || "").trim();
     if(!rcpt) msgs.push("Enter a receipt number.");
     else if(isNaN(manual)) msgs.push("Enter the total written on the envelope.");
-    else msgs.push(`Envelope total ${manual.toLocaleString()} doesn't match the allocated total ${computed.toLocaleString()}.`);
+    else msgs.push(`Total ${manual.toLocaleString()} doesn't match the fund amounts entered (${computed.toLocaleString()}).`);
   }
   if(tr.classList.contains("row-dup-receipt")){
     msgs.push("Receipt number is used by another row.");
@@ -672,15 +681,17 @@ function renumber(){
 }
 
 function updateTotals(){
-  const colSum = {}; let grand = 0, filledRows = 0;
+  const colSum = {}; let grand = 0, manualSum = 0, filledRows = 0;
   COLS.forEach(c=>colSum[c.key] = 0);
   document.querySelectorAll("#envBody tr").forEach(tr=>{
-    let rowHas = false;
     tr.querySelectorAll(".amt").forEach(i=>{
       const v = parseFloat(i.value);
       if(!isNaN(v)){ const dk = displayKeyFor(i.dataset.fid);
-        colSum[dk] = (colSum[dk]||0) + v; grand += v; rowHas = true; }
+        colSum[dk] = (colSum[dk]||0) + v; grand += v; }
     });
+    const mt = tr.querySelector(".mtotal");
+    const mv = mt ? parseFloat(mt.value) : NaN;
+    if(!isNaN(mv)) manualSum += mv;
     if(rowIsActive(tr)) filledRows++;
   });
   const foot = document.getElementById("footRow");
@@ -688,7 +699,7 @@ function updateTotals(){
   visibleOrderedColumns().forEach(c=>{
     const td = document.createElement("td"); td.dataset.col = c.key;
     if(c.key === "__name"){ td.className = "foot-label meta-cell"; td.textContent = "Column totals"; }
-    else if(c.key === "__allocated"){ td.className = "num mono foot-grand"; td.textContent = grand ? grand.toLocaleString() : ""; }
+    else if(c.key === "__manual_total"){ td.className = "num mono foot-grand"; td.textContent = manualSum ? manualSum.toLocaleString() : ""; }
     else if(!c.key.startsWith("__")){ td.className = "num mono"; td.textContent = colSum[c.key] ? colSum[c.key].toLocaleString() : ""; }
     foot.appendChild(td);
   });
@@ -901,10 +912,7 @@ document.getElementById("applyCols").addEventListener("click", ()=>{
   // hidden funds still carry their amount if re-shown before saving)
   const defs = allColumnDefs();
   layout.order = layout.order.filter(k => defs[k] || fundKeys.includes(k));
-  fundKeys.forEach(k=>{ if(layout.order.indexOf(k) === -1){
-    const tailIdx = layout.order.indexOf("__allocated");
-    layout.order.splice(tailIdx > -1 ? tailIdx : layout.order.length, 0, k);
-  }});
+  fundKeys.forEach(k=>{ if(layout.order.indexOf(k) === -1){ layout.order.push(k); } });
   rebuildTable();
   saveLayoutSoon();
   document.getElementById("colPicker").classList.remove("open");
@@ -1036,7 +1044,6 @@ function rebuildHeaderOnly(){
 .xl-grid .rownum{text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
 .xl-grid td.pinned,.xl-grid th.pinned{position:sticky;z-index:4;background:#fff}
 .xl-grid thead th.pinned{background:var(--accent,#1f5f4f)}
-.xl-grid .rowtot{padding:.18rem .35rem;font-weight:600;font-size:.78rem;display:block;text-align:right}
 .xl-grid .rm-col{width:28px;text-align:center}
 .xl-grid tr.row-mismatch td,.xl-grid tr.row-dup-receipt td{background:var(--danger-soft,#fbeceb) !important}
 .meta-cell{position:relative}

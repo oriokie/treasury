@@ -65,6 +65,27 @@ class MovableDateDefaultInventoryTests(TestCase):
                                # functions, and that file already pins
                                # start_date explicitly wherever a hardcoded
                                # contribution date needs to fall within range.
+        "benevolent/models.py",  # BenevolentCase.reported_date and
+                               # SchemeDependant.registered_on default to
+                               # dt.date.today.
+                               #
+                               # REVIEWED (Benevolent Phase 1). reported_date is
+                               # exactly the dangerous shape this guardrail
+                               # exists for: the policy engine's claim-window
+                               # check compares (reported_date - event_date), so
+                               # a test that hardcoded an absolute event_date and
+                               # let reported_date default would pass when
+                               # written and then silently start FAILING the
+                               # claim window as the gap grew — the pledges bug,
+                               # exactly. Mitigated: benevolent/test_benevolent.py
+                               # creates every case through one `_case()` helper
+                               # that pins reported_date explicitly, and uses
+                               # TODAY-relative dates throughout. The single
+                               # absolute date in that file (dt.date(2000,1,1))
+                               # is used only to assert "no policy was in force",
+                               # which does not depend on the size of the gap.
+                               # Any NEW test creating a BenevolentCase must pin
+                               # reported_date for the same reason.
     }
 
     def test_no_new_movable_date_default_files_without_review(self):

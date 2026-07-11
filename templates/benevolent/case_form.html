@@ -1,0 +1,33 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}New case · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · new case</h1>
+  <div class="sub">The policy in force on the <em>event</em> date decides this claim — not the policy in force today.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+{% if policy %}
+<div class="alert alert-info u-mb">Policy <strong>v{{ policy.version }}</strong> is currently in force
+  (from {{ policy.effective_from|date:"d M Y" }}): {{ policy.get_benefit_mode_display|lower }}{% if policy.benefit_cap %}, capped at {{ CURRENCY }} {{ policy.benefit_cap|floatformat:0|intcomma }}{% endif %}.
+  {% if policy.waiting_period_days %}Waiting period {{ policy.waiting_period_days }} days.{% endif %}
+  {% if policy.claim_window_days %}Claims must be reported within {{ policy.claim_window_days }} days.{% endif %}</div>
+{% else %}
+<div class="alert alert-warn u-mb">No policy is in force, so this case could not be assessed. Publish one first.</div>
+{% endif %}
+
+<div class="card form-card" style="max-width:660px"><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Save as a draft</button>
+    <a class="btn btn-ghost" href="{% url 'benevolent_scheme_detail' scheme.id %}">Cancel</a></div>
+</form>
+</div></div>
+<p class="help" style="max-width:660px">Saving drafts the case. Submitting it, then assessing it, runs every rule the
+  policy carries and freezes the result onto the case as its permanent decision basis.</p>
+{% endblock %}

@@ -162,6 +162,55 @@ def can_void_payments(user):
     return is_treasurer(user) or has_right(user, "void_payments")
 
 
+def can_view_benevolent(user):
+    """Treasurers, assistants and auditors see the schemes by default; grantable."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user) or is_auditor(user)
+            or has_right(user, "view_benevolent"))
+
+
+def can_manage_benevolent(user):
+    """Enrol members, raise cases, record contributions — day-to-day scheme
+    administration. Treasurers and assistants by default; grantable to (say) a
+    welfare secretary who runs the scheme but never touches the bank."""
+    from .rights import has_right
+    return (is_treasurer(user) or is_assistant(user)
+            or has_right(user, "manage_benevolent"))
+
+
+def can_approve_benevolent(user):
+    """Authorise a benefit. A money decision, so it sits with the treasurer by
+    default — exactly like expense approval and loan conversion. Note this only
+    authorises the CASE; the payment voucher it produces still has to clear the
+    ordinary expense approval on its own."""
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "approve_benevolent")
+
+
+def can_vote_benevolent(user):
+    """Sit on the benevolent committee. Deliberately its OWN right, not folded
+    into the treasurer role: the whole point of a committee is that it is not one
+    person, so a church must be able to grant a seat on it to an elder or a
+    welfare secretary who has no other treasury access at all."""
+    from .rights import has_right
+    return has_right(user, "benevolent_committee")
+
+
+def can_manage_benevolent_settings(user):
+    """Change the module's settings, profiles and automation. Separate from
+    scheme setup: a church may want its administrator tuning notifications and
+    automation without also being able to publish a policy."""
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "manage_benevolent_settings")
+
+
+def can_manage_benevolent_schemes(user):
+    """Create schemes and publish policies — the rule-making power, deliberately
+    narrower than day-to-day administration."""
+    from .rights import has_right
+    return is_treasurer(user) or has_right(user, "manage_benevolent_schemes")
+
+
 def can_convert_loans(user):
     """Retiring a loan (conversion / write-off) is a treasurer decision, like
     expense approval; grantable to others via the right."""

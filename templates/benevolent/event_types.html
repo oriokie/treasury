@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}{{ scheme.name }} events · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · covered events</h1>
+  <div class="sub">The scheme's vocabulary of qualifying events. Each one can carry its own benefit on the policy's schedule.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Event</th><th>Code</th><th>Covers dependants</th><th>Needs a document</th><th>Active</th><th></th></tr></thead>
+<tbody>{% for e in event_types %}<tr>
+  <td>{{ e.name }}{% if e.description %}<div class="muted u-xs">{{ e.description }}</div>{% endif %}</td>
+  <td class="mono">{{ e.code }}</td>
+  <td>{% if e.covers_dependants %}Yes{% else %}No{% endif %}</td>
+  <td>{% if e.requires_document %}Yes{% else %}No{% endif %}</td>
+  <td>{% if e.active %}<span class="pill pill-green u-xs">Active</span>{% else %}<span class="pill pill-brass u-xs">Retired</span>{% endif %}</td>
+  <td><a class="link" href="?edit={{ e.id }}">Edit</a></td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">No events defined yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+
+<div class="card u-mt form-card" style="max-width:660px"><div class="hd">{% if editing %}Edit "{{ editing.name }}"{% else %}Add an event{% endif %}</div><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if editing %}<input type="hidden" name="edit_id" value="{{ editing.id }}">{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Save event</button>
+    {% if editing %}<a class="btn btn-ghost" href="{% url 'benevolent_event_types' scheme.id %}">Cancel</a>{% endif %}</div>
+</form>
+</div></div>
+<p class="help u-mt">Retiring an event stops new cases citing it; cases already decided under it are untouched.</p>
+{% endblock %}

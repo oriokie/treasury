@@ -1,0 +1,76 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Benevolent · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Benevolent schemes</h1>
+  <div class="sub">Member welfare schemes — contributions in, benefits out, all through the church's own funds</div></div>
+<div class="btn-row no-print">
+  {% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">All cases</a></div></div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input class="field" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  <input class="field" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
+  <button class="btn btn-sm">Apply</button>
+</form>
+
+{% if not rows %}
+<div class="panel u-mb"><p class="muted">No scheme is open yet.
+  {% if can.manage_benevolent_schemes %}Create a scheme, give it a fund, publish a policy, and open it.{% endif %}</p></div>
+{% endif %}
+
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">Scheme balances</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.closing|floatformat:2|intcomma }}</div>
+    <div class="foot">Closing, all scheme funds</div></div>
+  <div class="stat"><div class="lbl">Contributions</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.contributions|floatformat:2|intcomma }}</div>
+    <div class="foot">In the period</div></div>
+  <div class="stat"><div class="lbl">Benefits paid</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.payouts|floatformat:2|intcomma }}</div>
+    <div class="foot">In the period</div></div>
+  <div class="stat brass"><div class="lbl">Approved, not yet paid</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.committed|floatformat:2|intcomma }}</div>
+    <div class="foot">{{ totals.members }} member{{ totals.members|pluralize }} · {{ totals.open_cases }} open case{{ totals.open_cases|pluralize }}</div></div>
+</div>
+
+<h2 class="u-mt">Schemes</h2>
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Scheme</th><th>Fund</th><th class="num">Opening</th><th class="num">Contributions</th>
+<th class="num">Benefits paid</th><th class="num">Closing</th><th class="num">Members</th>
+<th class="num">Open cases</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for r in rows %}<tr>
+  <td><a class="link" href="{% url 'benevolent_scheme_detail' r.scheme.id %}">{{ r.scheme.name }}</a>
+      <div class="muted u-xs">{{ r.scheme.get_kind_display }}</div></td>
+  <td class="muted">{{ r.fund.name }}</td>
+  <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.contributions|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.payouts|floatformat:2|intcomma }}</td>
+  <td class="num mono"><strong>{{ r.closing|floatformat:2|intcomma }}</strong></td>
+  <td class="num">{{ r.members }}</td>
+  <td class="num">{{ r.open_cases }}</td>
+  <td><span class="pill {% if r.scheme.status == 'ACTIVE' %}pill-green{% elif r.scheme.status == 'SUSPENDED' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ r.scheme.get_status_display }}</span></td>
+  <td><a class="link" href="{% url 'benevolent_scheme_detail' r.scheme.id %}">Open</a></td>
+</tr>{% empty %}<tr><td colspan="10" class="empty">No schemes yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="muted u-xs u-mt">Every figure above is the scheme fund's own balance, taken from the Financial
+  Metrics Registry — the same numbers the board pack and the statement of financial position show.</p>
+
+{% if action %}
+<h2 class="u-mt">Needs attention</h2>
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Case</th><th>Scheme</th><th>Beneficiary</th><th>Event</th><th>Event date</th>
+<th class="num">Approved</th><th class="num">Outstanding</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for c in action %}<tr>
+  <td class="mono">{{ c.number }}</td>
+  <td class="muted">{{ c.scheme.code }}</td>
+  <td>{{ c.beneficiary_display }}</td>
+  <td class="muted">{{ c.event_type.name }}</td>
+  <td>{{ c.event_date|date:"d M y" }}</td>
+  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{% if c.outstanding %}{{ c.outstanding|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td><span class="pill {% if c.status == 'SUBMITTED' %}pill-amber{% elif c.status == 'ASSESSED' %}pill-blue{% else %}pill-green{% endif %} u-xs">{{ c.get_status_display }}</span></td>
+  <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">Open</a></td>
+</tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% endblock %}

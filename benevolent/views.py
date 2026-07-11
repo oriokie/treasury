@@ -1,0 +1,632 @@
+"""Benevolent module views.
+
+Deliberately thin. Every decision that touches money or policy goes through
+benevolent.services, so accounting integrity and the audit trail live in one
+place and cannot be bypassed by a second code path in a view.
+"""
+import datetime as dt
+from decimal import Decimal
+
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
+from django.views import View
+
+from core.permissions import (BenevolentApproveMixin, BenevolentManageMixin,
+                              BenevolentSetupMixin, BenevolentViewMixin)
+
+from .forms import (ApproveForm, AttachmentForm, BenefitRuleForm, CaseForm,
+                    ContributionForm, DependantForm, EventTypeForm, MembershipForm,
+                    PayoutForm, PolicyForm, RejectForm, SchemeForm)
+from .models import (BenevolentCase, BenevolentContribution, BenevolentEventType,
+                     BenevolentScheme, SchemeBenefitRule, SchemeMembership, SchemePolicy)
+from .services import cases as case_svc
+from .services import contributions as contrib_svc
+from .services import reporting as report_svc
+from .services import schemes as scheme_svc
+from .services.eligibility import evaluate, evaluate_case
+
+
+def _period(request):
+    """The date window every screen shares. Defaults to the current year, which
+    is the natural period for a welfare scheme's annual caps and dues."""
+    today = dt.date.today()
+    try:
+        start = dt.date.fromisoformat(request.GET.get("start") or "")
+    except ValueError:
+        start = dt.date(today.year, 1, 1)
+    try:
+        end = dt.date.fromisoformat(request.GET.get("end") or "")
+    except ValueError:
+        end = today
+    return start, end
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+
+class BenevolentDashboardView(BenevolentViewMixin, View):
+    def get(self, request):
+        start, end = _period(request)
+        rows = report_svc.scheme_summary(start, end)
+        stats = report_svc.case_statistics(start, end)
+        recent = (BenevolentCase.objects.select_related("scheme", "event_type",
+                                                        "membership__member")
+                  .prefetch_related("payouts__expense")[:10])
+        action = (BenevolentCase.objects
+                  .filter(status__in=[BenevolentCase.Status.SUBMITTED,
+                                      BenevolentCase.Status.ASSESSED,
+                                      BenevolentCase.Status.APPROVED,
+                                      BenevolentCase.Status.PARTLY_PAID])
+                  .select_related("scheme", "event_type", "membership__member")
+                  .prefetch_related("payouts__expense")
+                  .order_by("event_date")[:12])
+        return render(request, "benevolent/dashboard.html", {
+            "rows": rows, "totals": report_svc.totals(rows), "stats": stats,
+            "recent": recent, "action": action, "start": start, "end": end,
+            "schemes": BenevolentScheme.objects.all(),
+        })
+
+
+# ---------------------------------------------------------------------------
+# Schemes & policies (setup)
+# ---------------------------------------------------------------------------
+
+class SchemeListView(BenevolentViewMixin, View):
+    def get(self, request):
+        start, end = _period(request)
+        return render(request, "benevolent/scheme_list.html", {
+            "rows": report_svc.scheme_summary(start, end),
+            "drafts": BenevolentScheme.objects.filter(
+                status=BenevolentScheme.Status.DRAFT).select_related("fund"),
+            "start": start, "end": end})
+
+
+class SchemeFormView(BenevolentSetupMixin, View):
+    def _obj(self, pk):
+        return get_object_or_404(BenevolentScheme, pk=pk) if pk else None
+
+    def get(self, request, pk=None):
+        obj = self._obj(pk)
+        return render(request, "benevolent/scheme_form.html",
+                      {"form": SchemeForm(instance=obj), "scheme": obj})
+
+    def post(self, request, pk=None):
+        obj = self._obj(pk)
+        form = SchemeForm(request.POST, instance=obj)
+        if form.is_valid():
+            scheme = form.save(commit=False)
+            if not scheme.pk:
+                scheme.created_by = request.user
+            try:
+                scheme.full_clean(exclude=["slug"])
+                scheme.save()
+            except ValidationError as e:
+                for msg in e.messages:
+                    form.add_error(None, msg)
+            else:
+                messages.success(request, f"Scheme '{scheme.name}' saved.")
+                return redirect("benevolent_scheme_detail", pk=scheme.pk)
+        return render(request, "benevolent/scheme_form.html",
+                      {"form": form, "scheme": obj})
+
+
+class SchemeDetailView(BenevolentViewMixin, View):
+    def get(self, request, pk):
+        scheme = get_object_or_404(
+            BenevolentScheme.objects.select_related("fund"), pk=pk)
+        start, end = _period(request)
+        policies = list(scheme.policies.prefetch_related("benefit_rules__event_type"))
+        return render(request, "benevolent/scheme_detail.html", {
+            "scheme": scheme,
+            "policy": scheme.current_policy,
+            "policies": policies,
+            "event_types": scheme.event_types.all(),
+            "balance": report_svc.scheme_balance(scheme),
+            "contributions": report_svc.contributions_total(start, end, scheme),
+            "payouts": report_svc.payouts_total(start, end, scheme),
+            "committed": report_svc.approved_unpaid_total(scheme),
+            "stats": report_svc.case_statistics(start, end, scheme),
+            "members": scheme.memberships.filter(
+                status=SchemeMembership.Status.ACTIVE).count(),
+            "cases": (scheme.cases.select_related("event_type", "membership__member")
+                      .prefetch_related("payouts__expense")[:10]),
+            "start": start, "end": end,
+        })
+
+
+class SchemeActionView(BenevolentSetupMixin, View):
+    """Open / suspend / close a scheme."""
+    def post(self, request, pk, action):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        fn = {"activate": scheme_svc.activate_scheme,
+              "suspend": scheme_svc.suspend_scheme,
+              "close": scheme_svc.close_scheme}.get(action)
+        if fn is None:
+            messages.error(request, "Unknown action.")
+        else:
+            try:
+                fn(scheme, user=request.user)
+                messages.success(request, f"{scheme.name} is now "
+                                          f"{scheme.get_status_display().lower()}.")
+            except ValidationError as e:
+                messages.error(request, "; ".join(e.messages))
+        return redirect("benevolent_scheme_detail", pk=pk)
+
+
+class EventTypeView(BenevolentSetupMixin, View):
+    """The scheme's vocabulary of qualifying events."""
+    def get(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        edit = None
+        if request.GET.get("edit"):
+            edit = scheme.event_types.filter(pk=request.GET["edit"]).first()
+        return render(request, "benevolent/event_types.html", {
+            "scheme": scheme, "form": EventTypeForm(instance=edit), "editing": edit,
+            "event_types": scheme.event_types.all()})
+
+    def post(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        edit = scheme.event_types.filter(pk=request.POST.get("edit_id")).first() \
+            if request.POST.get("edit_id") else None
+        form = EventTypeForm(request.POST, instance=edit)
+        if form.is_valid():
+            et = form.save(commit=False)
+            et.scheme = scheme
+            et.save()
+            messages.success(request, f"Event type '{et.name}' saved.")
+            return redirect("benevolent_event_types", pk=pk)
+        return render(request, "benevolent/event_types.html", {
+            "scheme": scheme, "form": form, "editing": edit,
+            "event_types": scheme.event_types.all()})
+
+
+class PolicyFormView(BenevolentSetupMixin, View):
+    """Draft a policy. Editing an ACTIVE-but-unused version is allowed; editing a
+    version that has decided a case is impossible by design (the model refuses),
+    so the only route to changing settled rules is a new version."""
+
+    def _scheme(self, pk):
+        return get_object_or_404(BenevolentScheme, pk=pk)
+
+    def get(self, request, pk, policy_id=None):
+        scheme = self._scheme(pk)
+        policy = get_object_or_404(SchemePolicy, pk=policy_id, scheme=scheme) \
+            if policy_id else None
+        return render(request, "benevolent/policy_form.html", {
+            "scheme": scheme, "policy": policy,
+            "form": PolicyForm(instance=policy),
+            "rule_form": BenefitRuleForm(scheme=scheme),
+            "rules": (policy.benefit_rules.select_related("event_type") if policy else []),
+        })
+
+    def post(self, request, pk, policy_id=None):
+        scheme = self._scheme(pk)
+        policy = get_object_or_404(SchemePolicy, pk=policy_id, scheme=scheme) \
+            if policy_id else None
+        form = PolicyForm(request.POST, instance=policy)
+        if form.is_valid():
+            obj = form.save(commit=False)
+            obj.scheme = scheme
+            if not obj.pk:
+                obj.created_by = request.user
+            try:
+                obj.save()
+            except ValidationError as e:
+                for m in e.messages:
+                    form.add_error(None, m)
+            else:
+                messages.success(request, f"Policy v{obj.version} saved as a draft.")
+                return redirect("benevolent_policy_edit", pk=scheme.pk, policy_id=obj.pk)
+        return render(request, "benevolent/policy_form.html", {
+            "scheme": scheme, "policy": policy, "form": form,
+            "rule_form": BenefitRuleForm(scheme=scheme),
+            "rules": (policy.benefit_rules.select_related("event_type") if policy else []),
+        })
+
+
+class PolicyRuleView(BenevolentSetupMixin, View):
+    """Add or remove a benefit-schedule line on a draft policy."""
+    def post(self, request, pk, policy_id):
+        policy = get_object_or_404(SchemePolicy, pk=policy_id, scheme_id=pk)
+        back = redirect("benevolent_policy_edit", pk=pk, policy_id=policy_id)
+        if request.POST.get("delete"):
+            rule = policy.benefit_rules.filter(pk=request.POST["delete"]).first()
+            if rule and not policy.is_locked:
+                rule.delete()
+                messages.success(request, "Benefit line removed.")
+            else:
+                messages.error(request, "That policy version is locked; its schedule is fixed.")
+            return back
+        form = BenefitRuleForm(request.POST, scheme=policy.scheme)
+        if form.is_valid():
+            rule = form.save(commit=False)
+            rule.policy = policy
+            try:
+                rule.save()
+                messages.success(request, f"Benefit for '{rule.event_type.name}' saved.")
+            except ValidationError as e:
+                messages.error(request, "; ".join(e.messages))
+        else:
+            messages.error(request, "Check the benefit line: " + form.errors.as_text())
+        return back
+
+
+class PolicyActionView(BenevolentSetupMixin, View):
+    """Publish a draft, withdraw one, or start a new version from an existing one."""
+    def post(self, request, pk, policy_id, action):
+        policy = get_object_or_404(SchemePolicy, pk=policy_id, scheme_id=pk)
+        try:
+            if action == "publish":
+                scheme_svc.publish_policy(policy, user=request.user)
+                messages.success(
+                    request, f"Policy v{policy.version} is in force from "
+                             f"{policy.effective_from:%d %b %Y}. It is now permanent: any "
+                             f"further change must be a new version.")
+            elif action == "withdraw":
+                scheme_svc.withdraw_policy(policy, user=request.user)
+                messages.success(request, f"Policy v{policy.version} withdrawn.")
+            elif action == "new-version":
+                try:
+                    eff = dt.date.fromisoformat(request.POST.get("effective_from") or "")
+                except ValueError:
+                    messages.error(request, "Give the date the new rules take effect.")
+                    return redirect("benevolent_scheme_detail", pk=pk)
+                draft = scheme_svc.new_version_from(policy, effective_from=eff,
+                                                    user=request.user)
+                messages.success(
+                    request, f"Draft v{draft.version} created from v{policy.version}. "
+                             f"Edit it and publish when ready — v{policy.version} and every "
+                             f"case decided under it are untouched.")
+                return redirect("benevolent_policy_edit", pk=pk, policy_id=draft.pk)
+            else:
+                messages.error(request, "Unknown action.")
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        return redirect("benevolent_scheme_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Membership
+# ---------------------------------------------------------------------------
+
+class MembershipListView(BenevolentViewMixin, View):
+    def get(self, request):
+        q = (request.GET.get("q") or "").strip()
+        f_scheme = request.GET.get("scheme") or ""
+        f_status = request.GET.get("status") or ""
+        qs = (SchemeMembership.objects.select_related("scheme", "member")
+              .order_by("scheme__name", "member__name"))
+        if q:
+            qs = qs.filter(Q(member__name__icontains=q) | Q(number__icontains=q))
+        if f_scheme:
+            qs = qs.filter(scheme_id=f_scheme)
+        if f_status:
+            qs = qs.filter(status=f_status)
+        page = Paginator(qs, 50).get_page(request.GET.get("page"))
+        return render(request, "benevolent/membership_list.html", {
+            "page_obj": page, "memberships": page.object_list, "q": q,
+            "f_scheme": f_scheme, "f_status": f_status,
+            "schemes": BenevolentScheme.objects.exclude(
+                status=BenevolentScheme.Status.DRAFT),
+            "statuses": SchemeMembership.Status.choices})
+
+
+class MembershipCreateView(BenevolentManageMixin, View):
+    def get(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        return render(request, "benevolent/membership_form.html",
+                      {"scheme": scheme, "form": MembershipForm(scheme=scheme)})
+
+    def post(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        form = MembershipForm(request.POST, scheme=scheme)
+        if form.is_valid():
+            try:
+                m = scheme_svc.enrol(
+                    scheme, form.cleaned_data["member"],
+                    joined_on=form.cleaned_data["joined_on"], user=request.user,
+                    notes=form.cleaned_data.get("notes") or "")
+            except ValidationError as e:
+                for msg in e.messages:
+                    form.add_error(None, msg)
+            else:
+                messages.success(request, f"{m.member.name} enrolled as {m.number}.")
+                return redirect("benevolent_membership_detail", pk=m.pk)
+        return render(request, "benevolent/membership_form.html",
+                      {"scheme": scheme, "form": form})
+
+
+class MembershipDetailView(BenevolentViewMixin, View):
+    def get(self, request, pk):
+        m = get_object_or_404(
+            SchemeMembership.objects.select_related("scheme", "member"), pk=pk)
+        from .forms import FeeForm, NomineeForm
+        policy = m.scheme.policy_on()
+        ctx = report_svc.member_statement(m)
+        ctx.update({
+            "dependants": m.dependants.filter(active=True),
+            "dependant_form": DependantForm(),
+            "policy": policy,
+            "nominees": m.nominees.filter(active=True),
+            "nominee_form": NomineeForm(),
+            "fee_form": FeeForm(),
+            "renewal_due": m.renewal_due_on(policy),
+            "renewal_overdue": m.renewal_overdue(policy),
+            "months_idle": m.months_since_contribution(),
+            "cover_from": m.cover_from,
+        })
+        return render(request, "benevolent/membership_detail.html", ctx)
+
+    def post(self, request, pk):
+        """Add a dependant, or withdraw the membership."""
+        from core.roles import can_manage_benevolent
+        m = get_object_or_404(SchemeMembership, pk=pk)
+        if not can_manage_benevolent(request.user):
+            messages.error(request, "You don't have the benevolent-administration right.")
+            return redirect("benevolent_membership_detail", pk=pk)
+        if request.POST.get("withdraw"):
+            try:
+                scheme_svc.withdraw_membership(m, user=request.user)
+                messages.success(request, f"{m.member.name} withdrawn from {m.scheme.name}.")
+            except ValidationError as e:
+                messages.error(request, "; ".join(e.messages))
+            return redirect("benevolent_membership_detail", pk=pk)
+        form = DependantForm(request.POST)
+        if form.is_valid():
+            d = form.save(commit=False)
+            d.membership = m
+            d.save()
+            messages.success(request, f"{d.name} registered as a dependant.")
+        else:
+            messages.error(request, "Check the dependant details.")
+        return redirect("benevolent_membership_detail", pk=pk)
+
+
+# ---------------------------------------------------------------------------
+# Contributions
+# ---------------------------------------------------------------------------
+
+class ContributionListView(BenevolentViewMixin, View):
+    def get(self, request):
+        start, end = _period(request)
+        f_scheme = request.GET.get("scheme") or ""
+        scheme = BenevolentScheme.objects.filter(pk=f_scheme).first() if f_scheme else None
+        qs = contrib_svc.contributions_qs(scheme=scheme, start=start, end=end) \
+            .select_related("scheme", "membership__member", "transaction")
+        page = Paginator(qs, 50).get_page(request.GET.get("page"))
+        return render(request, "benevolent/contribution_list.html", {
+            "page_obj": page, "contributions": page.object_list,
+            "total": contrib_svc.contributions_total(scheme=scheme, start=start, end=end),
+            "schemes": BenevolentScheme.objects.exclude(
+                status=BenevolentScheme.Status.DRAFT),
+            "f_scheme": f_scheme, "start": start, "end": end})
+
+
+class ContributionCreateView(BenevolentManageMixin, View):
+    def get(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        return render(request, "benevolent/contribution_form.html", {
+            "scheme": scheme, "form": ContributionForm(scheme=scheme),
+            "policy": scheme.policy_on()})
+
+    def post(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        form = ContributionForm(request.POST, scheme=scheme)
+        if form.is_valid():
+            d = form.cleaned_data
+            try:
+                c = contrib_svc.record_contribution(
+                    scheme, date=d["date"], amount=d["amount"], user=request.user,
+                    membership=d.get("membership"), member=d.get("member"),
+                    channel=d.get("channel"), period_label=d.get("period_label") or None,
+                    note=d.get("note") or "")
+            except ValidationError as e:
+                for msg in e.messages:
+                    form.add_error(None, msg)
+            else:
+                messages.success(
+                    request, f"Contribution of {c.amount} receipted into "
+                             f"{scheme.fund.name}.")
+                return redirect("benevolent_scheme_detail", pk=scheme.pk)
+        return render(request, "benevolent/contribution_form.html", {
+            "scheme": scheme, "form": form, "policy": scheme.policy_on()})
+
+
+# ---------------------------------------------------------------------------
+# Cases
+# ---------------------------------------------------------------------------
+
+class CaseListView(BenevolentViewMixin, View):
+    def get(self, request):
+        q = (request.GET.get("q") or "").strip()
+        f_scheme = request.GET.get("scheme") or ""
+        f_status = request.GET.get("status") or ""
+        qs = (BenevolentCase.objects
+              .select_related("scheme", "event_type", "membership__member")
+              .prefetch_related("payouts__expense"))
+        if q:
+            qs = qs.filter(Q(number__icontains=q)
+                           | Q(membership__member__name__icontains=q)
+                           | Q(beneficiary_name__icontains=q))
+        if f_scheme:
+            qs = qs.filter(scheme_id=f_scheme)
+        if f_status:
+            qs = qs.filter(status=f_status)
+        page = Paginator(qs, 50).get_page(request.GET.get("page"))
+        return render(request, "benevolent/case_list.html", {
+            "page_obj": page, "cases": page.object_list, "q": q,
+            "f_scheme": f_scheme, "f_status": f_status,
+            "schemes": BenevolentScheme.objects.exclude(
+                status=BenevolentScheme.Status.DRAFT),
+            "statuses": BenevolentCase.Status.choices})
+
+
+class CaseCreateView(BenevolentManageMixin, View):
+    def get(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        return render(request, "benevolent/case_form.html", {
+            "scheme": scheme, "form": CaseForm(scheme=scheme),
+            "policy": scheme.current_policy})
+
+    def post(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        form = CaseForm(request.POST, scheme=scheme)
+        if form.is_valid():
+            case = form.save(commit=False)
+            case.scheme = scheme
+            case.raised_by = request.user
+            case.status = BenevolentCase.Status.DRAFT
+            try:
+                case.full_clean(exclude=["number", "policy_snapshot",
+                                         "eligibility_snapshot"])
+                case.save()
+            except ValidationError as e:
+                for msg in e.messages:
+                    form.add_error(None, msg)
+            else:
+                messages.success(request, f"Case {case.number} drafted.")
+                return redirect("benevolent_case_detail", pk=case.pk)
+        return render(request, "benevolent/case_form.html", {
+            "scheme": scheme, "form": form, "policy": scheme.current_policy})
+
+
+class CaseDetailView(BenevolentViewMixin, View):
+    def get(self, request, pk):
+        case = get_object_or_404(
+            BenevolentCase.objects.select_related(
+                "scheme", "scheme__fund", "event_type", "membership__member", "policy")
+            .prefetch_related("payouts__expense", "attachments"), pk=pk)
+        # a live preview for a case not yet assessed; for an assessed case the
+        # FROZEN snapshot is what's shown — never a re-run, which could silently
+        # differ from what was actually decided
+        if case.eligibility_snapshot:
+            preview = None
+        else:
+            preview = evaluate_case(case)
+        from .forms import VoteForm
+        committee = case_svc.committee_state(case)
+        return render(request, "benevolent/case_detail.html", {
+            "case": case, "preview": preview,
+            "snapshot": case.eligibility_snapshot or {},
+            "payouts": case.payouts.select_related("expense").all(),
+            "approve_form": ApproveForm(initial={"amount": case.assessed_amount}),
+            "reject_form": RejectForm(),
+            "payout_form": PayoutForm(initial={"amount": case.available_to_voucher}),
+            "attach_form": AttachmentForm(),
+            "committee": committee,
+            "vote_form": VoteForm(initial={"amount": case.assessed_amount}),
+            "my_vote": next((v for v in committee["votes"]
+                             if v.user_id == request.user.pk), None),
+            "levy": contrib_svc.levy_summary(case),
+        })
+
+
+class CaseActionView(BenevolentManageMixin, View):
+    """Submit / assess / attach / cancel. Approval and rejection have their own
+    view with a stricter permission — a money decision is not administration."""
+
+    def post(self, request, pk, action):
+        case = get_object_or_404(BenevolentCase, pk=pk)
+        try:
+            if action == "submit":
+                case_svc.submit_case(case, user=request.user)
+                messages.success(request, f"{case.number} submitted for assessment.")
+            elif action == "assess":
+                result = case_svc.assess_case(case, user=request.user)
+                if result.eligible:
+                    messages.success(
+                        request, f"{case.number} meets policy v{result.policy.version}. "
+                                 f"Entitlement: {result.entitlement.amount}.")
+                else:
+                    failed = ", ".join(c.label for c in result.blocking_failures)
+                    messages.warning(
+                        request, f"{case.number} does NOT meet the policy ({failed}). It can "
+                                 f"still be approved with a recorded reason, if the policy "
+                                 f"allows an override.")
+            elif action == "attach":
+                form = AttachmentForm(request.POST, request.FILES)
+                if form.is_valid():
+                    a = form.save(commit=False)
+                    a.case = case
+                    a.uploaded_by = request.user
+                    a.save()
+                    messages.success(request, "Document attached.")
+                else:
+                    messages.error(request, "Choose a file to attach.")
+            elif action == "cancel":
+                case_svc.cancel_case(case, user=request.user,
+                                     reason=request.POST.get("reason", ""))
+                messages.success(request, f"{case.number} cancelled.")
+            elif action == "close":
+                case_svc.close_case(case, user=request.user)
+                messages.success(request, f"{case.number} closed.")
+            else:
+                messages.error(request, "Unknown action.")
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        return redirect("benevolent_case_detail", pk=pk)
+
+
+class CaseDecisionView(BenevolentApproveMixin, View):
+    """Approve or reject — the money decision."""
+
+    def post(self, request, pk, action):
+        case = get_object_or_404(BenevolentCase, pk=pk)
+        try:
+            if action == "approve":
+                form = ApproveForm(request.POST)
+                if not form.is_valid():
+                    messages.error(request, "Enter the amount to approve.")
+                    return redirect("benevolent_case_detail", pk=pk)
+                case_svc.approve_case(
+                    case, amount=form.cleaned_data["amount"], user=request.user,
+                    override_reason=form.cleaned_data.get("override_reason") or "")
+                messages.success(
+                    request, f"{case.number} approved for {case.approved_amount}. Raise a "
+                             f"payment voucher to pay it — the voucher still needs the "
+                             f"usual expense approval.")
+            elif action == "reject":
+                form = RejectForm(request.POST)
+                if not form.is_valid():
+                    messages.error(request, "A rejection must record a reason.")
+                    return redirect("benevolent_case_detail", pk=pk)
+                case_svc.reject_case(case, reason=form.cleaned_data["reason"],
+                                     user=request.user)
+                messages.success(request, f"{case.number} rejected.")
+            else:
+                messages.error(request, "Unknown action.")
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        return redirect("benevolent_case_detail", pk=pk)
+
+
+class CasePayoutView(BenevolentManageMixin, View):
+    """Raise the payment voucher. It enters the ordinary expense queue in
+    PENDING — this module never approves its own payments."""
+
+    def post(self, request, pk):
+        case = get_object_or_404(BenevolentCase, pk=pk)
+        form = PayoutForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "Check the payout details.")
+            return redirect("benevolent_case_detail", pk=pk)
+        d = form.cleaned_data
+        try:
+            payout = case_svc.record_payout(
+                case, amount=d["amount"], date=d["date"], user=request.user,
+                payee_name=d.get("payee_name") or "", method=d.get("method"),
+                voucher_no=d.get("voucher_no") or "",
+                paid_from_petty_cash=d.get("paid_from_petty_cash") or False,
+                note=d.get("note") or "")
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        else:
+            messages.success(
+                request, f"Payment voucher for {payout.amount} raised on {case.number}. "
+                         f"It is pending approval in the expenses queue like any other claim.")
+        return redirect("benevolent_case_detail", pk=pk)

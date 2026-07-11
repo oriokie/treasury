@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Policy profiles · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Policy profiles</h1>
+  <div class="sub">Reusable constitutions — choose the nearest shape and adjust it, rather than starting from a blank page</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-sm" href="{% url 'benevolent_wizard_start' %}">✨ Constitution wizard</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_list' %}">← Schemes</a></div></div>
+
+<p class="help u-mt-0">A profile governs nothing. Applying one creates a <strong>draft</strong> policy on a scheme,
+  which a human still reads and publishes. That is why profiles can be edited and copied freely, while a published
+  policy version can never be changed.</p>
+
+<div class="grid cols-2 u-mt">
+{% for p in profiles %}
+  <div class="card"><div class="hd u-between">
+    <span>{{ p.name }}</span>
+    {% if p.builtin %}<span class="pill pill-brass u-xs">Built in</span>{% endif %}</div>
+  <div class="bd">
+    <p class="muted">{{ p.description }}</p>
+    <p class="mono u-xs">{{ p.summary }}</p>
+    {% if p.benefit_lines %}<p class="help">{{ p.benefit_lines|length }} event{{ p.benefit_lines|length|pluralize }} in its schedule.</p>{% endif %}
+    <div class="btn-row u-mt"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_profile_detail' p.id %}">Open</a></div>
+  </div></div>
+{% empty %}
+  <div class="panel"><p class="muted">No profiles. The built-in library should have installed automatically —
+    run <code>python manage.py benevolent_profiles</code> to install it.</p></div>
+{% endfor %}
+</div>
+{% endblock %}

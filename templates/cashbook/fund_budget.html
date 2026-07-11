@@ -39,7 +39,8 @@
 </div><div class="bd">
   <p class="help u-mt-0">Each development group has its own contribution goal. Progress is each group's own collection toward its target.</p>
   {% if group_rows %}
-  <table class="ledger compact u-mt"><thead><tr><th>Group</th><th class="num">Goal</th><th class="num">Collected {{ year }}</th><th class="num">To go</th><th style="width:120px">Progress</th></tr></thead><tbody>
+  <div class="table-wrap">
+  <table class="ledger compact u-mt"><thead><tr><th>Group</th><th class="num">Goal</th><th class="num">Collected {{ year }}</th><th class="num">To go</th><th style="width:96px">Progress</th></tr></thead><tbody>
   {% for g in group_rows %}<tr>
     <td>{{ g.name }}</td>
     <td class="num mono">{{ g.goal|floatformat:0|intcomma }}</td>
@@ -53,6 +54,7 @@
     <td class="num mono"><strong>{{ contribution_goal.short|floatformat:0|intcomma }}</strong></td>
     <td></td></tr>
   </tbody></table>
+  </div>
   {% else %}<p class="muted u-mt-0">This fund has no development groups (sub-accounts) yet.</p>{% endif %}
 </div></div>
 
@@ -108,7 +110,8 @@
 <div class="section-title u-mt-lg u-between"><span>Budget vs actual by item — {{ year }}</span>
   <a class="btn btn-xs btn-ghost no-print" href="{% url 'budget_items_png' dept.id %}?year={{ year }}" title="Download this table as a PNG image for printing or sharing">⤓ Download PNG</a></div>
 <div class="card"><div class="bd bd-flush">
-  <table class="ledger" id="campBudget">
+  <div class="table-wrap">
+  <table class="ledger compact" id="campBudget">
     <thead><tr><th>Budget item</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th><th>Used</th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
@@ -116,7 +119,7 @@
       <td class="num mono">{{ r.budget|floatformat:0|intcomma }}</td>
       <td class="num mono">{{ r.actual|floatformat:0|intcomma }}</td>
       <td class="num mono {% if r.variance < 0 %}u-danger{% endif %}">{{ r.variance|floatformat:0|intcomma }}</td>
-      <td style="width:130px"><div class="progress u-mt-0"><span style="width:{% if r.pct > 100 %}100{% else %}{{ r.pct }}{% endif %}%;{% if r.pct > 100 %}background:var(--danger){% endif %}"></span></div><span class="muted u-xs">{{ r.pct }}%</span></td>
+      <td style="width:96px"><div class="progress u-mt-0"><span style="width:{% if r.pct > 100 %}100{% else %}{{ r.pct }}{% endif %}%;{% if r.pct > 100 %}background:var(--danger){% endif %}"></span></div><span class="muted u-xs">{{ r.pct }}%</span></td>
     </tr>{% empty %}<tr><td colspan="5" class="empty">No budget items yet for {{ year }} — add one below.</td></tr>{% endfor %}
     </tbody>
     <tfoot><tr><td><strong>Total</strong></td>
@@ -125,6 +128,7 @@
       <td class="num mono {% if tot_variance < 0 %}u-danger{% endif %}"><strong>{{ tot_variance|floatformat:0|intcomma }}</strong></td>
       <td></td></tr></tfoot>
   </table>
+  </div>
 </div></div>
 {% if untagged %}<div class="help u-mt-0">Plus {{ untagged|floatformat:0|intcomma }} of spend this year on this fund not tagged to any budget item.</div>{% endif %}
 
@@ -142,4 +146,12 @@
   </form>
   <div class="help u-mt-sm">Add each camp budget item (Accommodation, Catering, Pulpit, …). When recording an expense on this fund, you'll be able to pick the item it relates to, and the actual spend per item shows here. The expense's own category is kept separate for the overall categorisation.</div>
 </div></details>
+<style>
+/* v2.44: this page's ".compact" tables had no matching CSS rule anywhere —
+   every other page in the app that uses class="ledger compact" also defines
+   this same tightened padding locally (see e.g. reports/_report_styles.html,
+   departments/budget.html); this page was simply missing it, so "compact"
+   was a no-op and these tables rendered at full default width/padding. */
+.ledger.compact td,.ledger.compact th{padding:.3rem .55rem;font-size:.88rem}
+</style>
 {% endblock %}

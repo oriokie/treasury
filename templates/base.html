@@ -83,6 +83,22 @@
       </details>
       {% endif %}
 
+      {% if can.view_benevolent %}
+      <details class="navgrp" data-grp="benevolent">
+        <summary><span class="ic">🫱</span> Benevolent <span class="chev">▾</span></summary>
+        <div class="grp-links">
+          <a href="{% url 'benevolent_dashboard' %}" class="{% if request.resolver_match.url_name == 'benevolent_dashboard' %}active{% endif %}">Overview</a>
+          <a href="{% url 'benevolent_case_list' %}" class="{% if 'benevolent_case' in request.resolver_match.url_name %}active{% endif %}">Cases</a>
+          <a href="{% url 'benevolent_membership_list' %}" class="{% if 'benevolent_membership' in request.resolver_match.url_name %}active{% endif %}">Members</a>
+          <a href="{% url 'benevolent_contribution_list' %}" class="{% if 'benevolent_contribution' in request.resolver_match.url_name %}active{% endif %}">Contributions</a>
+          <a href="{% url 'benevolent_scheme_list' %}" class="{% if 'benevolent_scheme' in request.resolver_match.url_name or 'benevolent_policy' in request.resolver_match.url_name %}active{% endif %}">Schemes &amp; policies</a>
+          {% if can.manage_benevolent_schemes %}<a href="{% url 'benevolent_wizard_start' %}" class="{% if 'wizard' in request.resolver_match.url_name %}active{% endif %}">Constitution wizard</a>
+          <a href="{% url 'benevolent_profile_list' %}" class="{% if 'profile' in request.resolver_match.url_name %}active{% endif %}">Policy profiles</a>{% endif %}
+          {% if can.manage_benevolent_settings %}<a href="{% url 'benevolent_settings' %}" class="{% if request.resolver_match.url_name == 'benevolent_settings' %}active{% endif %}">Settings</a>{% endif %}
+        </div>
+      </details>
+      {% endif %}
+
       <details class="navgrp" data-grp="expenses">
         <summary><span class="ic">⊟</span> Expenses <span class="chev">▾</span></summary>
         <div class="grp-links">

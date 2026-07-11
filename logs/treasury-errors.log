@@ -1,0 +1,950 @@
+2026-07-11 11:12:54,974 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:15:01,545 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:15:01,850 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:02,151 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:02,454 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:02,757 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:02,758 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:02,769 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:02,769 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:03,361 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:15:03,663 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:03,958 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:04,273 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:04,573 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:04,574 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:04,581 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:04,582 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:05,474 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:15:05,777 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:06,075 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:06,379 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:06,681 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:06,682 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:06,689 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:06,690 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:06,697 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:06,698 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:07,598 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:15:07,899 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:08,200 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:08,498 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:08,801 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:08,802 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:08,809 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:08,809 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:15:08,816 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:15:08,816 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:17:56,173 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:21:24,812 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:29:24,681 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:29:25,174 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:25,487 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:25,801 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:26,121 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:26,122 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:26,130 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:26,131 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:26,741 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:29:27,059 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:27,372 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:27,679 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:27,986 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:27,987 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:27,994 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:27,995 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:28,913 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:29:29,225 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:29,530 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:29,832 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:30,134 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:30,135 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:30,142 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:30,143 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:30,149 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:30,150 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:31,080 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:29:31,393 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:31,709 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:32,026 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:32,339 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:32,340 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:32,348 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:32,349 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:29:32,356 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:29:32,357 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:31:03,203 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:31:03,589 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:31:03,976 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:31:04,388 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:31:08,529 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:31:16,091 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:33:58,341 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:33:58,739 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:33:59,043 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:33:59,350 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:33:59,655 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:33:59,656 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:33:59,664 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:33:59,665 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:00,278 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:34:00,589 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:00,898 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:01,199 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:01,503 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:01,504 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:01,511 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:01,512 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:02,409 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:34:02,716 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:03,017 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:03,318 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:03,623 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:03,623 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:03,631 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:03,632 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:03,639 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:03,639 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:04,544 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 11:34:04,849 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:05,149 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:05,456 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:05,764 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:05,765 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:05,772 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:05,773 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:34:05,779 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 11:34:05,780 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 11:35:36,930 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:35:37,333 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:35:37,725 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:35:38,124 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:35:42,270 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:35:49,891 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:09,057 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:09,552 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:09,951 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:10,347 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:11,070 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:11,487 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:11,897 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:12,298 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:12,699 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:13,107 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:13,111 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:13,667 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:14,844 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:15,273 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:15,277 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:15,949 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:16,469 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:17,010 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:17,548 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:18,563 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:18,961 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:18,965 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:19,477 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:19,481 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:20,020 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:20,026 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:26,415 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:26,840 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:27,267 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:27,678 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:28,109 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:28,521 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:28,939 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:29,372 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:29,377 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:29,916 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:29,920 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:30,456 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:30,894 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:31,387 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:31,777 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:32,174 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:32,178 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:32,685 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:33,452 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:33,456 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:34,000 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:34,003 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:34,548 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:34,551 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:35,091 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:35,094 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:35,644 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:36,017 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:50,800 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:44:51,179 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:45:01,986 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:45:20,351 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:45:35,737 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:46:04,037 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:48:52,067 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 11:51:57,966 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 12:55:44,370 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 12:55:45,151 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:45,775 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:46,398 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:47,038 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:47,039 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:47,046 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:47,046 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:48,307 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 12:55:48,930 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:49,544 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:50,164 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:50,844 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:50,845 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:50,852 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:50,853 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:52,779 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 12:55:53,417 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:54,038 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:54,659 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:55,289 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:55,290 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:55,297 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:55,297 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:55,304 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:55,305 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:57,186 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 12:55:57,810 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:58,435 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:59,061 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:59,680 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:59,681 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:59,688 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:59,689 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:55:59,695 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 12:55:59,696 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 12:59:00,106 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 12:59:00,807 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 12:59:01,510 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 12:59:02,217 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 12:59:10,348 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 12:59:25,223 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:00:54,657 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:00:55,353 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:00:56,059 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:00:56,756 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:01:04,653 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:01:19,362 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:05:49,950 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 13:05:50,624 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:51,214 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:51,803 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:52,387 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:52,387 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:05:52,395 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:52,395 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:05:53,568 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 13:05:54,162 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:54,754 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:55,344 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:55,941 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:55,942 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:05:55,949 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:55,950 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:05:57,720 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 13:05:58,321 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:58,911 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:05:59,501 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:00,097 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:00,098 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:06:00,105 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:00,106 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:06:00,112 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:00,113 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:06:01,891 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-11 13:06:02,482 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:03,074 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:03,664 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:04,256 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:04,257 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:06:04,264 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:04,265 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:06:04,271 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-11 13:06:04,272 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-11 13:11:09,188 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:16:23,833 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:21:29,886 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:27:28,375 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:38,215 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:38,911 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:39,597 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:40,286 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:41,588 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:42,315 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:43,010 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:43,700 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:44,406 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:45,102 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:45,105 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:45,950 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:47,949 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:48,673 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:48,679 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:49,638 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:50,440 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:51,268 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:52,080 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:53,938 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:54,615 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:54,618 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:55,429 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:55,433 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:56,241 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:39:56,247 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:06,836 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:07,562 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:08,250 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:08,931 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:09,608 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:10,285 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:10,971 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:11,675 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:11,678 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:12,487 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:12,490 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:13,302 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:14,008 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:14,782 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:15,470 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:16,132 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:16,136 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:16,916 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:18,253 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:18,256 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:19,096 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:19,099 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:19,948 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:19,952 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:20,804 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:20,807 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3582, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:21,666 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:22,322 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:48,184 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:40:48,842 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:41:08,149 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:41:40,170 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:42:06,695 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:42:59,034 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-11 13:51:48,269 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off

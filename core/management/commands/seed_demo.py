@@ -641,7 +641,216 @@ class Command(BaseCommand):
                 g.leader_name = nm
                 g.leader_email = em
                 g.save(update_fields=["leader_name", "leader_email"])
+        self._seed_benevolent(treasurer, sab)
         self._print_login()
+
+    # ---- Benevolent Scheme Engine -----------------------------------------
+    def _seed_benevolent(self, treasurer, sab):
+        """A working benevolent scheme, so the module is usable the moment the
+        demo comes up: a fund, a published policy with a benefit schedule, a
+        handful of enrolled members with their dues, and one case run all the way
+        through to a paid benefit."""
+        from benevolent.models import (BenevolentCase, BenevolentEventType,
+                                       BenevolentScheme, SchemeBenefitRule,
+                                       SchemePolicy)
+        from benevolent.services import cases as case_svc
+        from benevolent.services import contributions as contrib_svc
+        from benevolent.services import schemes as scheme_svc
+
+        if BenevolentScheme.objects.exists():
+            return
+
+        fund, _ = Department.objects.get_or_create(
+            name="BENEVOLENT", defaults=dict(
+                slug="benevolent", fund_type=Department.FundType.LOCAL,
+                category=Department.Category.MINISTRY, show_in_expenses=True,
+                # a real welfare scheme runs on accumulated reserves; without an
+                # opening balance the seeded benefit would drive the fund
+                # negative, which is not what a healthy scheme looks like
+                opening_balance=Decimal("60000")))
+
+        scheme = BenevolentScheme.objects.create(
+            name="Church Benevolent Scheme", code="BEN", fund=fund,
+            kind=BenevolentScheme.Kind.BENEVOLENT, created_by=treasurer,
+            description="Members contribute monthly dues; the scheme pays a set benefit "
+                        "on a bereavement or a hospitalisation.")
+
+        events = {}
+        for name, code in [("Bereavement — member", "BER_MEMBER"),
+                           ("Bereavement — spouse or child", "BER_SPOUSE"),
+                           ("Bereavement — parent", "BER_PARENT"),
+                           ("Hospitalisation", "HOSPITAL")]:
+            events[code] = BenevolentEventType.objects.create(
+                scheme=scheme, name=name, code=code, requires_document=False)
+
+        policy = SchemePolicy.objects.create(
+            scheme=scheme, effective_from=dt.date(sab.year, 1, 1),
+            membership_required=True, waiting_period_days=60, min_contributions=1,
+            contribution_mode=SchemePolicy.ContributionMode.FIXED_PERIODIC,
+            contribution_amount=Decimal("200"),
+            contribution_frequency=SchemePolicy.Frequency.MONTHLY,
+            benefit_mode=SchemePolicy.BenefitMode.SCHEDULE,
+            benefit_cap=Decimal("50000"), claim_window_days=90,
+            max_claims_per_year=2, allow_override=True, created_by=treasurer,
+            notes="Approved by the church board. Benefits differ by relationship.")
+        for code, amt in [("BER_MEMBER", "50000"), ("BER_SPOUSE", "30000"),
+                          ("BER_PARENT", "20000"), ("HOSPITAL", "10000")]:
+            SchemeBenefitRule.objects.create(
+                policy=policy, event_type=events[code], amount=Decimal(amt))
+        scheme_svc.publish_policy(policy, user=treasurer)
+        scheme_svc.activate_scheme(scheme, user=treasurer, on=dt.date(sab.year, 1, 1))
+
+        joined = dt.date(sab.year, 1, 1)
+        members = list(Member.objects.filter(active=True).order_by("id")[:8])
+        memberships = [scheme_svc.enrol(scheme, m, joined_on=joined, user=treasurer)
+                       for m in members]
+
+        # dues up to the seeded Sabbath — two members are left a month behind, so
+        # the arrears view has something real to show
+        for i, ms in enumerate(memberships):
+            month = dt.date(sab.year, 1, 1)
+            while month <= sab.replace(day=1):
+                if i >= 6 and month == sab.replace(day=1):
+                    break
+                contrib_svc.record_contribution(
+                    scheme, date=month.replace(day=8), amount=Decimal("200"),
+                    membership=ms, user=treasurer, channel=Transaction.Channel.CASH)
+                month = (month.replace(day=28) + dt.timedelta(days=7)).replace(day=1)
+
+        # one case, run end to end, so every screen has real content
+        if memberships:
+            claimant = memberships[0]
+            case = BenevolentCase.objects.create(
+                scheme=scheme, membership=claimant, event_type=events["BER_PARENT"],
+                event_date=sab - dt.timedelta(days=14),
+                reported_date=sab - dt.timedelta(days=12),
+                beneficiary_name=f"Late parent of {claimant.member.name}",
+                description="Bereavement reported to the elders; burial permit received.",
+                raised_by=treasurer)
+            case_svc.submit_case(case, user=treasurer)
+            case_svc.assess_case(case, user=treasurer)
+            case_svc.approve_case(case, amount=Decimal("20000"), user=treasurer,
+                                  allow_self_approval=True)
+            payout = case_svc.record_payout(
+                case, amount=Decimal("20000"), date=sab - dt.timedelta(days=7),
+                user=treasurer, method=Expense.Method.MPESA, voucher_no="BEN-001")
+            # the treasurer clears the voucher through the ORDINARY expense
+            # workflow; the case follows automatically, via the signal
+            exp = payout.expense
+            exp.status = Expense.Status.PAID
+            exp.approved_by = treasurer
+            exp.paid_date = sab - dt.timedelta(days=7)
+            exp.save()
+
+        self._seed_benevolent_phase2(treasurer, sab, scheme, memberships)
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Benevolent: 1 scheme, policy v1 (4 benefits), "
+            f"{len(memberships)} members, 1 paid case"))
+
+    # ---- Phase 2: settings, profiles, a committee/levy scheme --------------
+    def _seed_benevolent_phase2(self, treasurer, sab, main_scheme, memberships):
+        """Enough Phase 2 in the demo to see it working: the built-in profile
+        library, sensible module settings, and a SECOND scheme configured the
+        other way round — a per-case levy paying out what it collects, approved by
+        a committee — so the two shapes sit side by side and the engine's claim
+        (same code, different configuration) is visible rather than asserted."""
+        from benevolent.models import (BenevolentCase, BenevolentEventType,
+                                       BenevolentScheme, BenevolentSettings,
+                                       PolicyProfile, SchemeNominee, SchemePolicy)
+        from benevolent.services import cases as case_svc
+        from benevolent.services import contributions as contrib_svc
+        from benevolent.services import profiles as profile_svc
+        from benevolent.services import schemes as scheme_svc
+
+        profile_svc.install_builtins()
+
+        cfg = BenevolentSettings.get()
+        cfg.automation_enabled = False          # off until a treasurer has seen a dry run
+        cfg.default_profile = PolicyProfile.objects.filter(
+            name="Monthly dues, fixed benefit").first()
+        cfg.save()
+
+        # a nominee on the main scheme, so the inheritance rule has something real
+        if memberships:
+            SchemeNominee.objects.get_or_create(
+                membership=memberships[0], name="Next of kin",
+                defaults={"relationship": "Spouse", "share_percent": Decimal("100"),
+                          "is_successor": True})
+
+        if BenevolentScheme.objects.filter(code="MED").exists():
+            return
+
+        med_fund, _ = Department.objects.get_or_create(
+            name="MEDICAL", defaults=dict(
+                slug="medical", fund_type=Department.FundType.LOCAL,
+                category=Department.Category.MINISTRY, show_in_expenses=True,
+                opening_balance=Decimal("15000")))
+        med = BenevolentScheme.objects.create(
+            name="Medical Harambee Scheme", code="MED", fund=med_fund,
+            kind=BenevolentScheme.Kind.MEDICAL, created_by=treasurer,
+            description="No standing dues. When a member is hospitalised, every member is "
+                        "levied and the family receives what is collected. Approved by the "
+                        "welfare committee, not by one person.")
+        hosp = BenevolentEventType.objects.create(
+            scheme=med, name="Hospitalisation", code="HOSPITAL")
+        BenevolentEventType.objects.create(scheme=med, name="Surgery", code="SURGERY")
+
+        pol = SchemePolicy.objects.create(
+            scheme=med, effective_from=dt.date(sab.year, 1, 1),
+            membership_required=True, waiting_period_days=30,
+            registration_required=True,
+            registration_approval=SchemePolicy.RegistrationApproval.AUTO,
+            registration_fee=Decimal("200"),
+            contribution_mode=SchemePolicy.ContributionMode.PER_CASE_LEVY,
+            levy_amount=Decimal("500"), max_levies_per_year=12,
+            funding_methods=["LEVY", "DONATION"],
+            arrears_treatment=SchemePolicy.ArrearsTreatment.IGNORE,
+            benefit_mode=SchemePolicy.BenefitMode.POOLED,
+            benefit_rounding=SchemePolicy.Rounding.HUNDRED,
+            approval_mode=SchemePolicy.ApprovalMode.COMMITTEE,
+            committee_quorum=3,
+            bereaved_exempt_own_levy=True,
+            inheritance_mode=SchemePolicy.InheritanceMode.NEXT_OF_KIN,
+            claim_window_days=60, max_claims_per_year=2, allow_override=True,
+            created_by=treasurer,
+            notes="Adopted by the church board. The scheme pays out what it collects, so "
+                  "it can never become insolvent.")
+        scheme_svc.publish_policy(pol, user=treasurer)
+        scheme_svc.activate_scheme(med, user=treasurer, on=dt.date(sab.year, 1, 1))
+
+        joined = dt.date(sab.year, 1, 15)
+        med_members = []
+        for m in Member.objects.filter(active=True).order_by("id")[:6]:
+            ms = scheme_svc.enrol(med, m, joined_on=joined, user=treasurer)
+            ms.registration_fee_paid = True
+            ms.save(update_fields=["registration_fee_paid"])
+            med_members.append(ms)
+
+        # a live levy round: one member hospitalised, the others levied, some paid
+        if med_members:
+            patient = med_members[0]
+            case = BenevolentCase.objects.create(
+                scheme=med, membership=patient, event_type=hosp,
+                event_date=sab - dt.timedelta(days=10),
+                reported_date=sab - dt.timedelta(days=9),
+                claimed_amount=Decimal("18000"),
+                description="Admitted for five nights; discharge summary on file.",
+                raised_by=treasurer)
+            case_svc.submit_case(case, user=treasurer)
+            case_svc.assess_case(case, user=treasurer)
+            # three of the five levied members have paid so far — the case is still
+            # collecting, which is exactly what a pooled scheme looks like mid-round
+            for ms in med_members[1:4]:
+                contrib_svc.record_contribution(
+                    med, date=sab - dt.timedelta(days=5), amount=Decimal("500"),
+                    membership=ms, case=case, user=treasurer,
+                    channel=Transaction.Channel.CASH,
+                    note=f"Levy for {case.number}")
+
+        self.stdout.write(self.style.SUCCESS(
+            "Benevolent (Phase 2): 4 policy profiles, settings, "
+            "1 levy/committee scheme mid-collection"))
 
     def _print_login(self):
         self.stdout.write(self.style.SUCCESS(

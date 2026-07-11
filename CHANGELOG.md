@@ -1,5 +1,244 @@
 # Changelog
 
+## v2.46.0 - Benevolent Phase 2: Constitution, Settings & Policy Engine
+
+Every church-specific behaviour is now configuration. The danger in doing that is
+obvious and fatal — if the rules become *settings*, then editing a setting rewrites
+the basis of decisions already made, and the module's central promise collapses. So
+everything configurable goes to one of two homes, and the test for which is one
+question: **does it decide an outcome?**
+
+* **YES → it is a RULE.** It lives on the versioned `SchemePolicy`, which is frozen
+  the instant a case is decided under it. Registration, fees, renewals, contribution
+  models, benefit calculations, committee approvals, bereaved-member rules,
+  inactivity, household cover and inheritance are all rules: change one and a claim
+  that would have been paid might now be refused.
+* **NO → it is a SETTING.** It lives on `BenevolentSettings`, freely editable.
+  Accounting mappings, notification preferences, automation cadence and defaults
+  steer how the module *operates*; none can change whether a past claim qualified.
+
+That line is what lets "all behaviour driven by configuration" and "policy changes
+do not modify historical transactions" both hold, instead of trading off.
+`RULE_FIELDS` grew 19 → 54, and a test asserts every constitution dimension is
+actually in it — a rule that is *not* under the version lock is one that could be
+quietly changed after a case was decided on it. Accounting mappings sit on the
+settings side because every posted document stores its own fund and category when
+written: re-pointing a mapping steers future postings only and is physically
+incapable of rewriting a historical one. There is a test for exactly that.
+
+**The settings area** (`/benevolent/settings/`) is its own page under its own right,
+inheriting the app's theme, layout, tab framework and permissions wholesale — but
+separate, so a welfare secretary can run the module without also holding the keys to
+the church's SMS gateway and bank feed. Four tabs: accounting, notifications,
+automation (with a "run it now and show me what it would do" button), defaults.
+
+**The constitution** now covers: registration (approval route, fee, forms, ID,
+joining age — measured *at joining*, so a scheme capping entry at 70 does not throw a
+member out on their 71st birthday); renewals (period, month, fee, grace, lapse);
+contribution models including **hybrid** (dues *and* a per-case levy); funding methods
+(a rule, not a note — it stops a member-funded scheme being quietly subsidised out of
+the church budget without the constitution being changed); two new benefit modes —
+**POOLED** (the family receives what the levy actually collects; such a scheme can
+never become insolvent) and **PER_MEMBER_MULTIPLE** (the levy × the membership: what
+the scheme *promises* if everyone pays, deliberately distinct from what was raised);
+benefit rounding; arrears treatment with **DEDUCT** as the default, because refusing a
+bereaved family over two months of dues is not what a welfare scheme is for;
+bereaved-member rules (not levied towards their own benefit — what almost every real
+constitution says — or deducted from it, never both); inactivity with a
+**reinstatement waiting period**; household cover and dependant caps; and inheritance
+by nominee, next of kin or household succession.
+
+**`cover_from`** is the single definition of what every waiting period counts from:
+reinstatement > registration > joining. The reinstatement case is the point — without
+it a member could lapse for years, rejoin the week a relative fell ill, and claim on
+the strength of a 2019 joining date.
+
+**Committee approval** means a benefit routed to the committee is not authorised by an
+individual *at all* — a treasurer cannot approve past a quorum, and there is a test
+that says so. Where members differ on the amount, the **lowest** approved figure
+carries: three people voting 10,000 / 8,000 / 10,000 have agreed on 8,000, not 10,000.
+`benevolent_committee` is its own right, because a committee whose seats are held
+automatically by the treasurer is not a committee.
+
+**Policy profiles** — four built in (monthly dues, harambee levy, hybrid, medical
+percentage). A profile governs nothing: applying one creates a **draft** policy a
+human still publishes, which is why profiles can be edited freely. A working policy
+can be captured back as a profile.
+
+**The Constitution Wizard** asks the ~28 questions a constitution actually answers, in
+the language a constitution actually uses, and writes the policy. It **shows its
+reasoning** — every derived setting is listed with the answer that produced it, because
+a black box that emits a constitution is worse than no wizard at all, since it will be
+trusted. It produces a **draft**, and its output travels the same code path a
+hand-picked profile does, so the two can never drift apart.
+
+**Automation** (`manage.py benevolent_automation`, with `--dry-run`) applies the
+policy's rules to the register. It **never overrides a human** — a membership someone
+deliberately suspended or expelled is left alone — and it **never suspends or expels
+anyone itself**, even when the policy names that as the inactivity action: removing
+someone from a welfare scheme is a decision a person should make and answer for. The
+policy still bars their claims; automation declines to be the one who throws them out.
+
+**Two bugs the tests caught:**
+1. A registration fee was counting as **dues paid**, silently wiping a member's
+   arrears — a 500 fee cleared 300 of arrears. `exclude_levies` was too narrow: a fee
+   is neither a levy nor a due. Contributions now carry an explicit `kind`
+   (DUES / LEVY / FEE / DONATION), and only DUES settle dues.
+2. A wizard question depending on another question **in the same section** could never
+   be answered — it was hidden at render time *and* at save time (the controlling
+   answer arrives in the same POST), so every wizard-built policy came out with dues
+   of zero. Same-section dependencies are now shown and toggled live.
+
+**Tests:** 56 new (99 in the module). Full targeted regression green across accounts,
+core, cashbook, giving, departments, ledger, reports and loans.
+
+**Deferred, named rather than glossed** (`docs/recommendations.md` #59): household
+cover is modelled but only half-enforced (no true household object with one
+subscription per household); inheritance stops at the nomination (shares are recorded,
+splitting a payout across them is not automated); refunds on exit, arrears/renewal
+reminders and `max_levies_per_year` are policy/settings fields nothing yet acts on.
+Also noted (#60): `core/apps.py::ready()` queries the DB at startup — pre-existing,
+unrelated, and left for its own change rather than smuggled into this release.
+
+## v2.45.0 - Benevolent Scheme Engine (Phase 1: foundation & architecture)
+
+A configurable **Benevolent Scheme Engine**, not a single benevolent fund. A
+scheme is defined entirely by configuration — a fund, a set of covered events and
+a versioned policy — so a Medical Fund, an Education Fund or an Emergency Relief
+Fund is a data change, not a code change. There is one eligibility engine and one
+case workflow, and both read policy fields. See `docs/BENEVOLENT_MODULE.md`.
+
+**No new accounting machinery.** Following the loans module's precedent exactly,
+every shilling flows through the two existing source-document types: a
+contribution is an ordinary `giving.Transaction` credit on the scheme's fund (DR
+Cash / CR Income), and a benefit is an ordinary `cashbook.Expense` with category
+BENEVOLENCE (DR Benevolence / CR Cash). The ledger, fund balances, cash book,
+bank reconciliation, budget and Board Pack therefore pick up benevolent activity
+with no benevolent-specific code, and `/ledger/rebuild/` needs no new step. A
+scheme's balance *is* its fund's balance, read from the Financial Metrics
+Registry — there is no second number that can drift. `BenevolentContribution` and
+`BenevolentPayout` index those documents and read `amount`/`date` back off them
+as properties rather than storing copies.
+
+**The module never approves its own payments.** Approving a *case* records a
+decision and moves nothing. Paying it raises an expense voucher in PENDING, which
+then clears the ordinary expense route — treasurer approval, the dual-approval
+threshold, period locks, the payment register. A benevolent payout is no easier to
+get out of the bank than any other payment. A treasurer rejecting that voucher in
+the ordinary expense screen, knowing nothing about cases, correctly un-pays the
+case with nobody having to remember anything (`benevolent/signals.py`).
+
+**Immutability.** A policy version locks the instant a case is decided under it —
+the model refuses to change a rule field or delete the row. The only way to change
+the rules is to publish a new version, which supersedes the old one from its own
+effective date forward. Every case additionally freezes the full policy terms and
+the complete eligibility evaluation (every check, whether it passed, the figures
+compared), so a decision is reproducible years later even if a policy row were
+tampered with. Policies resolve by **event date, not today**: a claim reported late
+is judged by the rules in force when the event happened.
+
+**The policy engine** (`services/eligibility.py`) never returns a bare yes/no — it
+returns every rule it ran and its workings, the same transparency principle as the
+intelligence platform's HealthScore. Rules modelled today, all as policy fields:
+membership required, waiting period (policy-wide or per event), minimum
+contributions, arrears block with a tolerance, claim window, annual claim limits
+(overall and per event type), annual benefit cap, documents required, and four
+benefit modes (fixed / per-event schedule / percentage of cost / discretionary
+within a cap) with per-event caps and a policy floor.
+
+**Controls:** segregation of duties (the raiser cannot approve); an ineligible case
+can be approved only where the policy permits an override *and* a written reason is
+recorded; a policy can forbid overrides outright; approving above the cap also needs
+a reason; `available_to_voucher` nets off pending vouchers as well as paid ones, so
+several pending vouchers cannot each claim the full approved amount. Four new
+granular rights, splitting *administering* a scheme from *making its rules*.
+
+**Also:** 5 metrics registered (all delegating to existing registry
+implementations; `benevolent_commitments` is documented as a memorandum figure that
+deliberately does *not* touch the balance sheet), a read-only JSON API including a
+live eligibility endpoint, a Benevolent nav group, Django admin with full history,
+seed data (a scheme, a published policy with four benefits, 8 members with dues,
+and one case run end to end to a paid benefit), and 43 tests.
+
+**Three bugs the tests caught during development, all fixed:**
+1. `policy_on()` filtered on `status=ACTIVE`, so a *superseded* version resolved
+   for no date at all — publishing v2 would have meant every past date found "no
+   policy in force", and a late-reported claim would have been refused instead of
+   being decided by the rules that actually applied. It now resolves ACTIVE and
+   SUPERSEDED versions within their own effective windows.
+2. Arrears accrued only from the *current* policy's effective date, so simply
+   republishing a policy silently wiped every member's arrears — a treasurer could
+   have cleared the scheme's whole debt by republishing the same rules with a new
+   date. Dues now accrue from enrolment, each period charged at the rate of the
+   policy in force during it.
+3. Payouts were guarded against `outstanding` (approved − paid), which ignored
+   pending vouchers — so three PENDING vouchers could each be raised for the full
+   approved amount and the case would overpay the moment they were all approved.
+
+**Fixed outside the module:** `cashbook/test_group_goals_jpeg.py` was stale and had
+been failing before this work — it targeted a `.jpg` chart route that no longer
+exists (the app ships PNG). Repointed at the real route; all four tests pass.
+
+**Deliberately deferred, not overclaimed** (tracked in `docs/recommendations.md`
+#56): the per-case levy *collection screen* (the model and service exist; the UI
+does not), benevolent sections on the Report Engine, bank-narration auto-intake of
+dues, arrears reminders over SMS, and dependant-aware benefit rules. Also noted
+(#57): a benevolent nav badge was **removed** rather than shipped, because it would
+have been a seventh unconditional COUNT on every page render and tripped an
+existing query-count guardrail — the right fix is to consolidate the six existing
+badge queries first.
+
+## v2.44.0 - Critical dev_group capture bug, budget page permissions/width, ledger UI cleanup, Cash & bank relabel
+**1. CRITICAL: Development Group was never actually saved.**
+`envelopes.services.batches.autosave_rows` looked up dev_group/member in a
+dict keyed by integer model id using the raw client payload value — always
+a string in JSON from a browser. `{4: obj}.get("4")` returns `None`: the
+same string works fine in the ORM's own `pk__in` filter just above it
+(Django coerces it there), so this was invisible at a query level. Silently
+dropped `dev_group` on every single row regardless of the fund's category
+or how many Development funds existed. Fixed with a single `_as_id()`
+coercion helper applied at every lookup site (dev_group_id and member_id,
+which had the identical bug). Verified end-to-end from batch autosave
+through submit/approve/post to the posted Transaction/EnvelopeLine.
+
+**2. Fund budget page: PNG downloads 403'd for non-Treasurers; table too
+wide.** `GroupGoalsPngView`/`BudgetItemsPngView` required Treasurer-only
+access — narrower than the budget page's own permission check (which also
+covers Assistants and qualifying leaders), so the "Download PNG" links on
+that very page 403'd for them with no obvious reason — likely what was
+reported as "figures are not showing". Both views now match the page's own
+permission model exactly. Separately, the page used `class="ledger
+compact"` without ever defining the matching CSS rule (every other page in
+the app that uses this class defines it locally) — "compact" was a no-op.
+Added the missing rule, added the class to the one table missing it,
+wrapped both tables in a scroll container, and tightened two column widths
+— the tables now fit a portrait viewport properly.
+
+**3. Envelope ledger UI, per spec.** "Manual Total" → "Total". Default/
+pinned funds are now exactly Tithe, Combined Offering, Camp Meeting,
+Development, LCB – Local Church Budget, in that order, and pin
+automatically on first load. The "Allocated" running-sum column was
+removed — the same Total-vs-fund-amounts check still runs in the
+background, surfacing only via the row-errors panel on an actual mismatch.
+
+**4. "Cash & bank (funds on hand)" reverted and relabelled "Bank (funds on
+hand)".** The v2.42 Local/Trust split was reverted per explicit correction:
+since petty cash and staff advances are already broken out onto their own
+lines, what remains is genuinely bank-only. Applied to both the
+board-pack summary and the legacy full Statement of Financial Position.
+Every other "Cash & bank" occurrence in the app was individually checked
+against this same test and left alone where the underlying figure isn't
+actually reduced by petty/advances (the dashboard, the assistant, cash-flow
+statements, the Monthly Treasurer's Report).
+
+**Tests.** 9 + 9 + 9 = 27+ new tests across
+`envelopes/test_dev_group_capture_v244.py`,
+`cashbook/test_budget_page_v244.py`, plus updates to
+`reports/test_financial_position_v242.py` and two older test files that
+asserted pre-v2.42/pre-v2.44 labels. Full regression across envelopes,
+reports, members, and the directly-affected cashbook/departments modules
+all pass.
+
 ## v2.43.0 - Six fixes from live production review: loans, financial position, ledger UX, print-quality images, member merge
 **1. Loan-conversion contra expense no longer queued as "awaiting a
 receipt."** A Convert-to-donation/Write-off posts a same-day, same-amount

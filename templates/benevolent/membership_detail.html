@@ -1,0 +1,134 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ membership.number }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ membership.member.name }}</h1>
+  <div class="sub">{{ membership.number }} · {{ membership.scheme.name }} · enrolled {{ membership.joined_on|date:"d M Y" }} ·
+    <span class="pill {% if membership.status == 'ACTIVE' %}pill-green{% elif membership.status == 'LAPSED' %}pill-red{% else %}pill-brass{% endif %} u-xs">{{ membership.get_status_display }}</span></div></div>
+<div class="btn-row no-print">
+  {% if can.manage_benevolent and membership.scheme.is_open %}<a class="btn btn-sm" href="{% url 'benevolent_case_new' membership.scheme.id %}">+ New case</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_contribute' membership.scheme.id %}">Record contribution</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_membership_list' %}">← Members</a></div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">Contributed</div><div class="val mono">{{ CURRENCY }} {{ contributed|floatformat:2|intcomma }}</div></div>
+  <div class="stat {% if arrears %}warn{% endif %}"><div class="lbl">Arrears</div><div class="val mono">{{ CURRENCY }} {{ arrears|floatformat:2|intcomma }}</div>
+    <div class="foot">{% if arrears %}Behind on dues{% else %}Up to date{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Benefits received</div><div class="val mono">{{ CURRENCY }} {{ benefits_received|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Cases</div><div class="val mono">{{ cases|length }}</div>
+    <div class="foot">{{ dependants|length }} dependant{{ dependants|length|pluralize }} registered</div></div>
+</div>
+
+<div class="card u-mb"><div class="hd">Standing</div><div class="bd">
+<table class="ledger compact">
+  <tr><th>Cover runs from</th><td>{{ cover_from|date:"d M Y" }}
+    {% if membership.reinstated_on %}<span class="muted u-xs">(reinstated — the waiting period runs again from here)</span>
+    {% elif membership.registered_on %}<span class="muted u-xs">(formally admitted)</span>{% endif %}</td></tr>
+  {% if policy.registration_required %}
+  <tr><th>Registration</th><td>
+    {% if membership.registered_on %}Admitted {{ membership.registered_on|date:"d M Y" }}{% else %}<span class="pill pill-amber u-xs">Not yet admitted</span>{% endif %}
+    {% if policy.registration_fee %} · fee {% if membership.registration_fee_paid %}<span class="pill pill-green u-xs">paid</span>{% else %}<span class="pill pill-red u-xs">unpaid</span>{% endif %}{% endif %}
+    {% if policy.require_registration_form %} · form {% if membership.registration_form_on_file %}✓{% else %}✗{% endif %}{% endif %}
+    {% if policy.require_id_document %} · ID {% if membership.id_document_on_file %}✓{% else %}✗{% endif %}{% endif %}
+  </td></tr>{% endif %}
+  {% if renewal_due %}
+  <tr><th>Renewal</th><td>Due {{ renewal_due|date:"d M Y" }}
+    {% if renewal_overdue %}<span class="pill pill-red u-xs">Overdue</span>{% else %}<span class="pill pill-green u-xs">In date</span>{% endif %}</td></tr>{% endif %}
+  <tr><th>Last contributed</th><td>{{ months_idle }} month{{ months_idle|pluralize }} ago
+    {% if policy.inactivity_months %}<span class="muted u-xs">(this policy treats {{ policy.inactivity_months }} months as inactive)</span>{% endif %}</td></tr>
+</table>
+
+{% if can.manage_benevolent %}
+<div class="btn-row u-mt">
+  {% if membership.status == 'PENDING' %}
+  <form method="post" action="{% url 'benevolent_membership_admin' membership.id 'admit' %}">{% csrf_token %}
+    <button class="btn btn-sm">Admit this member</button></form>{% endif %}
+  {% if membership.status == 'LAPSED' or membership.status == 'INACTIVE' or membership.status == 'EXPIRED' %}
+  <form method="post" action="{% url 'benevolent_membership_admin' membership.id 'reinstate' %}">{% csrf_token %}
+    <button class="btn btn-sm">Reinstate</button></form>{% endif %}
+</div>
+
+<form method="post" action="{% url 'benevolent_membership_admin' membership.id 'papers' %}" class="u-mt">{% csrf_token %}
+  <label><input type="checkbox" name="form_on_file" value="1" {% if membership.registration_form_on_file %}checked{% endif %}> Signed application form on file</label><br>
+  <label><input type="checkbox" name="id_on_file" value="1" {% if membership.id_document_on_file %}checked{% endif %}> Identity document on file</label>
+  <div class="btn-row u-mt-sm"><button class="btn btn-ghost btn-sm">Update papers</button></div>
+</form>
+
+<form method="post" action="{% url 'benevolent_membership_admin' membership.id 'fee' %}" class="u-mt">{% csrf_token %}
+  <div class="form-grid">{% for f in fee_form %}<div class="form-row">
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+    {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
+  <div class="btn-row u-mt-sm"><button class="btn btn-ghost btn-sm">Receipt a fee</button></div>
+</form>
+{% endif %}
+</div></div>
+
+{% if policy.inheritance_mode == 'NOMINEE' or nominees %}
+<div class="card u-mb"><div class="hd">Nominees</div><div class="bd">
+<p class="help u-mt-0">Who this member's benefit is paid to on their own death, and in what share. Recorded before the
+  event, never asserted after it — paying a benefit to whoever turns up at the church office is how welfare schemes end
+  up in front of a board.</p>
+<table class="ledger compact"><thead><tr><th>Name</th><th>Relationship</th><th class="num">Share</th><th>Successor</th></tr></thead>
+<tbody>{% for n in nominees %}<tr>
+  <td>{{ n.name }}</td><td class="muted">{{ n.relationship }}</td>
+  <td class="num mono">{{ n.share_percent }}%</td>
+  <td>{% if n.is_successor %}<span class="pill pill-green u-xs">Takes over the membership</span>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="4" class="empty">None recorded.</td></tr>{% endfor %}</tbody></table>
+{% if can.manage_benevolent %}
+<form method="post" action="{% url 'benevolent_membership_admin' membership.id 'nominee' %}" class="u-mt">{% csrf_token %}
+  <div class="form-grid">{% for f in nominee_form %}<div class="form-row">
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+    {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
+  <div class="btn-row u-mt"><button class="btn btn-ghost btn-sm">Record a nominee</button></div>
+</form>{% endif %}
+</div></div>
+{% endif %}
+
+<div class="card u-mb"><div class="hd">Registered dependants</div><div class="bd">
+<p class="help">Who is covered has to be on record <em>before</em> an event, not asserted after it.</p>
+<table class="ledger compact"><thead><tr><th>Name</th><th>Relationship</th><th>Registered</th></tr></thead>
+<tbody>{% for d in dependants %}<tr><td>{{ d.name }}</td><td>{{ d.get_relationship_display }}</td>
+  <td>{{ d.registered_on|date:"d M y" }}</td></tr>
+{% empty %}<tr><td colspan="3" class="empty">None registered.</td></tr>{% endfor %}</tbody></table>
+{% if can.manage_benevolent %}
+<form method="post" class="u-mt">{% csrf_token %}
+  <div class="form-grid">{% for f in dependant_form %}<div class="form-row">
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}</div>
+  <div class="btn-row u-mt"><button class="btn btn-ghost btn-sm">Register a dependant</button></div>
+</form>{% endif %}
+</div></div>
+
+{% if dues %}
+<div class="card u-mb"><div class="hd">Dues</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Period</th><th class="num">Due</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead>
+<tbody>{% for d in dues %}<tr><td class="mono">{{ d.period }}</td>
+  <td class="num mono">{{ d.due|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ d.paid|floatformat:2|intcomma }}</td>
+  <td class="num mono">{% if d.outstanding %}<strong>{{ d.outstanding|floatformat:2|intcomma }}</strong>{% else %}—{% endif %}</td>
+</tr>{% endfor %}</tbody></table>
+</div></div>
+{% endif %}
+
+<div class="card u-mb"><div class="hd">Contributions</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Date</th><th>Period</th><th class="num">Amount</th><th>Receipt</th></tr></thead>
+<tbody>{% for c in contributions %}<tr>
+  <td>{{ c.date|date:"d M y" }}</td><td class="mono">{{ c.period_label|default:"—" }}</td>
+  <td class="num mono">{{ c.amount|floatformat:2|intcomma }}</td>
+  <td class="muted u-xs">{{ c.transaction.get_channel_display }}</td>
+</tr>{% empty %}<tr><td colspan="4" class="empty">No contributions recorded.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<div class="card"><div class="hd">Cases</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Case</th><th>Event</th><th>Date</th><th class="num">Approved</th><th class="num">Paid</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for c in cases %}<tr>
+  <td class="mono">{{ c.number }}</td><td class="muted">{{ c.event_type.name }}</td>
+  <td>{{ c.event_date|date:"d M y" }}</td>
+  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ c.paid_total|floatformat:2|intcomma }}</td>
+  <td><span class="pill u-xs">{{ c.get_status_display }}</span></td>
+  <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">Open</a></td>
+</tr>{% empty %}<tr><td colspan="7" class="empty">No cases.</td></tr>{% endfor %}</tbody></table>
+{% if can.manage_benevolent and membership.status != 'WITHDRAWN' %}
+<form method="post" class="u-mt">{% csrf_token %}
+  <button class="btn btn-ghost btn-sm" name="withdraw" value="1">Withdraw this membership</button></form>{% endif %}
+</div></div>
+{% endblock %}

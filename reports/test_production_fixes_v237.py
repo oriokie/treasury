@@ -268,7 +268,7 @@ class SofpPettyCashTests(TestCase):
         by = {row.cells["label"]: row.cells["value"] for row in data.rows}
         self.assertEqual(by["Petty cash float"], Decimal("3000"))
         # the three cash lines sum to the fund cash inside total assets
-        cash_lines = (by["Cash & bank (funds on hand)"]
+        cash_lines = (by["Bank (funds on hand)"]
                       + by["Petty cash float"]
                       + by["Staff advances (receivable)"])
         self.assertEqual(cash_lines + by["Receipts pending allocation"],

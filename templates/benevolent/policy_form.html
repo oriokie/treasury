@@ -1,0 +1,112 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{% if policy %}Policy v{{ policy.version }}{% else %}Draft a policy{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>{% if policy %}{{ scheme.name }} · policy v{{ policy.version }}{% else %}{{ scheme.name }} · draft a policy{% endif %}</h1>
+  <div class="sub">Every rule the engine can enforce lives on this one form. This is what makes a Medical Fund
+    and a Bereavement Fund the same code with different values.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+{% if policy and policy.is_locked %}
+<div class="alert alert-info u-mb"><strong>🔒 This version is fixed.</strong> It has been used to decide a case,
+  so its rules are now historical fact and cannot be changed. To change the rules, publish a new version from the
+  scheme page — the new rules will apply from their own effective date forward, and every decision already made
+  under v{{ policy.version }} stays exactly as it was.</div>
+{% endif %}
+
+<div class="card form-card" style="max-width:760px"><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    <div class="form-row"><label for="{{ form.effective_from.id_for_label }}">{{ form.effective_from.label }}</label>
+      {% if policy and policy.is_locked %}<div class="mono">{{ form.effective_from.value }}</div>{% else %}{{ form.effective_from }}{% endif %}
+      {% if form.effective_from.help_text %}<div class="help">{{ form.effective_from.help_text }}</div>{% endif %}
+      {% for e in form.effective_from.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+  </div>
+
+  {% for group, fields in form.grouped %}
+  <details class="pol-group" {% if forloop.first %}open{% endif %}>
+    <summary>{{ group }}</summary>
+    <div class="form-grid">
+    {% for f in fields %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>
+      {% if policy and policy.is_locked %}<div class="mono">{{ f.value|default:"—" }}</div>{% else %}{{ f }}{% endif %}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+    </div>
+  </details>
+  {% endfor %}
+
+  <div class="form-grid u-mt">
+    <div class="form-row"><label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+      {% if policy and policy.is_locked %}<div class="mono">{{ form.notes.value|default:"—" }}</div>{% else %}{{ form.notes }}{% endif %}</div>
+  </div>
+  {% if not policy or not policy.is_locked %}
+  <div class="btn-row u-mt"><button class="btn">Save draft</button>
+    <a class="btn btn-ghost" href="{% url 'benevolent_scheme_detail' scheme.id %}">Cancel</a></div>
+  {% endif %}
+</form>
+</div></div>
+
+{% if policy %}
+<h2 class="u-mt">Benefit schedule</h2>
+<p class="help">Under a <em>schedule</em> policy this is what each event is worth. Under other benefit modes these
+  lines still override the policy default for the events they name — which is how one policy carries different
+  amounts for, say, the loss of a spouse and the loss of a parent.</p>
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Event</th><th class="num">Amount</th><th class="num">Percent</th><th class="num">Cap</th>
+<th class="num">Wait (days)</th><th class="num">Max / year</th><th></th></tr></thead>
+<tbody>{% for r in rules %}<tr>
+  <td>{{ r.event_type.name }}</td>
+  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{% if r.percent %}{{ r.percent }}%{% else %}—{% endif %}</td>
+  <td class="num mono">{% if r.cap %}{{ r.cap|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{% if r.waiting_period_days is not None %}{{ r.waiting_period_days }}{% else %}<span class="muted">policy</span>{% endif %}</td>
+  <td class="num mono">{% if r.max_per_year %}{{ r.max_per_year }}{% else %}—{% endif %}</td>
+  <td>{% if can.manage_benevolent_schemes and not policy.is_locked %}
+    <form method="post" action="{% url 'benevolent_policy_rule' scheme.id policy.id %}">{% csrf_token %}
+      <button class="btn btn-ghost btn-sm" name="delete" value="{{ r.id }}">Remove</button></form>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="7" class="empty">No benefit lines.</td></tr>{% endfor %}</tbody>
+</table></div>
+
+{% if can.manage_benevolent_schemes and not policy.is_locked %}
+<div class="card u-mt" style="max-width:760px"><div class="hd">Add a benefit line</div><div class="bd">
+<form method="post" action="{% url 'benevolent_policy_rule' scheme.id policy.id %}">{% csrf_token %}
+  <div class="form-grid">
+    {% for f in rule_form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn btn-sm">Add line</button></div>
+</form>
+<p class="help u-mt">No events listed? <a class="link" href="{% url 'benevolent_event_types' scheme.id %}">Define the scheme's covered events</a> first.</p>
+</div></div>
+{% endif %}
+{% endif %}
+
+{% if policy and can.manage_benevolent_schemes %}
+<div class="card u-mt" style="max-width:760px"><div class="hd">Save these rules as a reusable profile</div><div class="bd">
+<form method="post" action="{% url 'benevolent_profile_save_as' scheme.id policy.id %}">{% csrf_token %}
+  <div class="form-grid">
+    <div class="form-row"><label for="pn">Profile name</label>
+      <input class="field" type="text" name="name" id="pn" required
+             placeholder="e.g. {{ scheme.name }} constitution {{ policy.effective_from|date:'Y' }}"></div>
+    <div class="form-row"><label for="pd">Description</label>
+      <textarea class="field" name="description" id="pd" rows="2"></textarea></div>
+  </div>
+  <div class="btn-row u-mt"><button class="btn btn-ghost btn-sm">Save as a profile</button></div>
+</form>
+<p class="help u-mt">So the next scheme — or the next church — can start from the constitution you have worked out,
+  rather than from a blank page.</p>
+</div></div>
+{% endif %}
+
+<style>
+.pol-group{border:1px solid var(--line);border-radius:9px;margin-bottom:.7rem;background:var(--paper)}
+.pol-group > summary{padding:.65rem .9rem;font-weight:600;cursor:pointer;font-size:.92rem}
+.pol-group[open] > summary{border-bottom:1px solid var(--line)}
+.pol-group .form-grid{padding:.9rem}
+</style>
+{% endblock %}

@@ -49,6 +49,10 @@ RIGHTS = [
     ("approve_payments",     "Approve payment instruments",        "Money controls"),
     ("clear_payments",       "Mark payments cleared",              "Money controls"),
     ("void_payments",        "Void / cancel / reverse payments",   "Money controls"),
+    ("view_benevolent",      "View benevolent schemes & cases",    "Money controls"),
+    ("manage_benevolent",    "Enrol members, raise cases, record contributions", "Money controls"),
+    ("approve_benevolent",   "Approve / reject benevolent cases",  "Money controls"),
+    ("benevolent_committee", "Sit on the benevolent committee (vote on cases)", "Money controls"),
     ("lock_periods",         "Lock / unlock periods",              "Money controls"),
     # Setup
     ("manage_funds",         "Manage funds & structure",           "Setup"),
@@ -57,6 +61,8 @@ RIGHTS = [
     ("manage_assets",        "Manage assets",                      "Setup"),
     ("manage_channels",      "Manage SMS / channels / settings",   "Setup"),
     ("manage_profiles",      "Manage profiles & users",            "Setup"),
+    ("manage_benevolent_schemes", "Set up benevolent schemes & policies", "Setup"),
+    ("manage_benevolent_settings", "Change benevolent settings, profiles & automation", "Setup"),
     # Reports
     ("view_reports",         "View reports",                       "Reports"),
     ("export_reports",       "Export reports (Excel / PDF)",       "Reports"),
@@ -94,7 +100,8 @@ _DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
                "manage_rules", "allocate_dev_offering", "manage_advances",
                "view_loans", "manage_loans",
                "view_liabilities", "manage_liabilities",
-               "view_payments", "manage_payments", "clear_payments"}
+               "view_payments", "manage_payments", "clear_payments",
+               "view_benevolent", "manage_benevolent"}
 _SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}
 _REPORTS = {"view_reports", "export_reports"}
 
@@ -102,7 +109,8 @@ GROUP_RIGHTS = {
     roles.TREASURER: set(_ALL),                                   # everything
     roles.ASSISTANT: _DATA_ENTRY | _REPORTS | _SENSITIVE,         # entry + sees identities
     roles.AUDITOR:   _REPORTS | {"view_audit", "download_backup", "view_loans",
-                                 "view_liabilities", "view_payments"} | _SENSITIVE,
+                                 "view_liabilities", "view_payments",
+                                 "view_benevolent"} | _SENSITIVE,
     roles.LEADER:    {"view_giver_identity"},     # names visible; phones masked unless a profile grants more.
                                                     # Deliberately NOT view_reports: a leader's own
                                                     # department views don't gate on it, and granting it

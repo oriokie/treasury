@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}{% if scheme %}Edit {{ scheme.name }}{% else %}New scheme{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{% if scheme %}Edit {{ scheme.name }}{% else %}New benevolent scheme{% endif %}</h1>
+<div class="sub">A scheme is configuration: a fund to hold its money, and a policy that states its rules.
+  No code is written to add one.</div></div></div>
+<div class="card form-card" style="max-width:660px"><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Save scheme</button>
+    <a class="btn btn-ghost" href="{% if scheme %}{% url 'benevolent_scheme_detail' scheme.id %}{% else %}{% url 'benevolent_scheme_list' %}{% endif %}">Cancel</a></div>
+</form>
+</div></div>
+{% if not scheme %}<p class="help" style="max-width:660px">Next: add the events the scheme covers, draft a policy,
+  publish it, then open the scheme. A scheme cannot be opened without a policy in force — with none, no case could be assessed.</p>{% endif %}
+{% endblock %}

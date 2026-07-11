@@ -118,6 +118,7 @@ INSTALLED_APPS = [
     "pledges",
     "leaders",
     "loans",
+    "benevolent",
     # third party (must come after local apps)
     "axes",
 ]

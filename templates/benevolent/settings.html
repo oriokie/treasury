@@ -1,0 +1,141 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Benevolent settings · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Benevolent settings</h1>
+  <div class="sub">Accounting mappings, notifications, automation and defaults for the welfare schemes</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>Settings are not policy.</strong> Nothing on this page can change whether a claim qualifies or what it is
+  worth — that is what a <a class="link" href="{% url 'benevolent_scheme_list' %}">scheme's policy</a> decides, and it
+  is why a policy is versioned and frozen once a case is decided under it, while these settings can be changed freely.
+  Re-pointing an accounting mapping steers <em>future</em> postings only: every receipt and voucher already written
+  carries its own fund and category, so the past is safe by construction.
+</div>
+
+<div class="settings-tabs" id="tabs">
+  <div class="st-group"><span class="st-grouplabel">Module</span>
+    <button type="button" class="tab active" data-tab="accounting">Accounting</button>
+    <button type="button" class="tab" data-tab="notifications">Notifications</button>
+    <button type="button" class="tab" data-tab="automation">Automation</button>
+    <button type="button" class="tab" data-tab="defaults">Defaults</button>
+  </div>
+</div>
+
+<form method="post">{% csrf_token %}
+  <input type="hidden" name="active_tab" id="activeTab" value="{{ request.GET.tab|default:'accounting' }}">
+
+  <section class="tabpane active" data-pane="accounting">
+    <div class="card"><div class="hd">Where benevolent money lands</div><div class="bd">
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'default_benefit_category registration_fee_fund separate_levy_tracking' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <p class="help u-mt">A contribution is an ordinary receipt on the scheme's fund; a benefit is an ordinary expense
+        voucher charged to it. There is no separate benevolent accounting, which is why the ledger, the cash book, the
+        bank reconciliation and the board pack all see this module's money with no special handling.</p>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="notifications">
+    <div class="card"><div class="hd">What the treasury is told</div><div class="bd"><div class="form-grid">
+      {% for f in form %}{% if f.name in 'notify_on_case_submitted notify_on_case_approved notify_on_case_rejected notify_on_payout_raised notify_on_levy_raised notify_committee_on_pending_vote staff_channel' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+    </div></div></div>
+    <div class="card u-mt"><div class="hd">What members are told</div><div class="bd"><div class="form-grid">
+      {% for f in form %}{% if f.name in 'notify_member_on_enrolment notify_member_on_benefit_paid notify_member_on_arrears member_channel' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+    </div>
+    <p class="help u-mt">Email and SMS only ever go out if they are configured and switched on in the main
+      <a class="link" href="{% url 'settings' %}">system settings</a>. Nothing here overrides that.</p>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="automation">
+    <div class="card"><div class="hd">Standing membership rules</div><div class="bd">
+      <p class="help u-mt-0">These apply the <em>policy's</em> rules to the membership register night by night — they
+        do not make rules of their own. Automation never overrides a person: a membership someone deliberately
+        suspended, withdrew or expelled is left completely alone, and every rule reinstates as readily as it demotes
+        (a member who clears their arrears goes back to active on the next run without anyone lifting a finger).</p>
+      <div class="form-grid u-mt">
+      {% for f in form %}{% if f.name in 'automation_enabled auto_refresh_arrears auto_flag_inactive auto_lapse_unrenewed arrears_reminder_days renewal_reminder_days' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="u-mt">
+        <button class="btn btn-ghost btn-sm" name="run_automation" value="1">▶ Run it now and show me what it would do</button>
+        <span class="help u-inline">Runs the rules immediately, whatever the master switch says, and reports every change.
+          Do this before you trust a nightly job with your register.</span>
+      </div>
+      {% if cfg.automation_last_run %}
+      <p class="help u-mt">Last run {{ cfg.automation_last_run|date:"d M Y H:i" }} — {{ cfg.automation_last_summary }}</p>
+      {% endif %}
+      <p class="help u-mt">Schedule <code>python manage.py benevolent_automation</code> nightly to run this unattended.
+        Suspension and expulsion are deliberately <strong>never</strong> automated: removing someone from a welfare
+        scheme is a decision a person should make and be answerable for. The policy still bars their claims; automation
+        just declines to be the one who throws them out.</p>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="defaults">
+    <div class="card"><div class="hd">Where a new scheme starts</div><div class="bd"><div class="form-grid">
+      {% for f in form %}{% if f.name in 'default_profile require_wizard_for_new_schemes' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+    </div>
+    <p class="help u-mt">A default is a starting point, never a live rule: it seeds a <em>draft</em> policy, which a
+      human still has to read and publish before it governs anything.</p>
+    <div class="btn-row u-mt">
+      <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_profile_list' %}">Manage policy profiles</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_wizard_start' %}">Open the Constitution Wizard</a>
+    </div>
+    </div></div>
+  </section>
+
+  <div class="btn-row u-mt"><button class="btn">Save settings</button></div>
+</form>
+
+<script>
+function activateSettingsTab(name){
+  var btn=document.querySelector('#tabs .tab[data-tab="'+name+'"]');
+  if(!btn) return false;
+  document.querySelectorAll("#tabs .tab").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll('.tabpane[data-pane="'+name+'"]').forEach(x=>x.classList.add("active"));
+  var hidden=document.getElementById("activeTab"); if(hidden) hidden.value=name;
+  return true;
+}
+document.querySelectorAll("#tabs .tab").forEach(b=>b.addEventListener("click",()=>{
+  activateSettingsTab(b.dataset.tab);
+  try{ history.replaceState(null,'', '?tab='+b.dataset.tab); }catch(e){}
+}));
+(function(){
+  var want=new URLSearchParams(location.search).get("tab");
+  if(want) activateSettingsTab(want);
+})();
+</script>
+<style>
+.settings-tabs{display:flex;align-items:center;gap:.15rem;flex-wrap:wrap;padding:.4rem .5rem;margin-bottom:1.3rem;
+  background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-sm)}
+.st-group{display:flex;align-items:center;gap:.15rem}
+.st-grouplabel{display:none}
+.settings-tabs .tab{font:inherit;border:1px solid transparent;background:none;text-align:center;padding:.4rem .7rem;
+  color:var(--ink-soft,#555);cursor:pointer;border-radius:7px;font-weight:600;font-size:.82rem;white-space:nowrap;
+  transition:background .12s,color .12s}
+.settings-tabs .tab:hover{background:var(--accent-soft,#eef5f2);color:var(--forest,#1f5f4f)}
+.settings-tabs .tab.active{color:#fff;background:linear-gradient(180deg,var(--forest-2,#24705d),var(--forest,#1f5f4f));
+  border-color:var(--forest,#1f5f4f);box-shadow:0 1px 2px rgba(20,33,28,.15)}
+.tabpane{display:none}.tabpane.active{display:block}
+@media(max-width:760px){.settings-tabs{gap:.1rem;overflow-x:auto;flex-wrap:nowrap}.settings-tabs .tab{font-size:.78rem;padding:.35rem .55rem}}
+</style>
+{% endblock %}

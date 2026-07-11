@@ -43,6 +43,7 @@ urlpatterns = [
     path("", include("envelopes.urls")),
     path("reports/", include("reports.urls")),
     path("loans/", include("loans.urls")),
+    path("benevolent/", include("benevolent.urls")),
     path("", include("assets.urls")),
     path("", include("ledger.urls")),
     path("", include("pledges.urls")),
