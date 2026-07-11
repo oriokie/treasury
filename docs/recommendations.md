@@ -1789,3 +1789,122 @@ changing thread-startup behaviour deserves its own change with its own tests
 rather than being smuggled into a benevolent release.
 
 **Priority: Medium.**
+
+---
+
+## 61. Benevolent Phase 3 — registry shipped; honest gaps — NEW
+
+Phase 3 split the membership lifecycle from computed standing, built the member
+registry on top of `members.Member` (no second person-database), and added
+households, exemptions, transfers, missed-case inactivity and the membership event
+log. See `docs/BENEVOLENT_MODULE.md`.
+
+**Carried forward, still open** (from #59, and now re-stated honestly rather than
+quietly dropped):
+
+**61a. Nominee payout splitting is still manual.** Shares are recorded and the
+successor flag drives the transfer prompt, but a benefit is not automatically split
+across nominees in their recorded percentages — the treasurer raises the vouchers.
+*Priority: Medium.* The data is right; the workflow is missing.
+
+**61b. `refund_contributions_on_exit` / `refund_percent`** remain policy fields the
+engine does not act on. *Priority: Low.*
+
+**61c. Reminders still do nothing.** `arrears_reminder_days` and
+`renewal_reminder_days` are configurable, stored, and acted on by nothing. The
+automation command is the obvious home now that it recomputes standing anyway — it
+already knows exactly who fell into ARREARS and when. *Priority: Medium — a setting
+that does nothing is worse than an absent one, and this one has now survived two
+phases.*
+
+**61d. `max_levies_per_year` is recorded but not enforced.** *Priority: Medium.*
+
+**New in Phase 3:**
+
+**61e. A household still pays one subscription per MEMBERSHIP, not per household
+head-count.** For a household registration that is the common case and is correct.
+But a scheme whose constitution charges *per adult in the household* has no way to
+say so — `household_mode` and `max_household_size` exist, and a `household_dues_mode`
+(single / per-adult) does not. *Priority: Medium.*
+
+**61f. Standing is cached and refreshed on write and by the nightly job — but not on
+a schedule anyone has set up.** A member falls into ARREARS the day a dues period
+ends, and until `benevolent_automation` runs, the register will not say so. This is
+correct behaviour for a cache, and the member's own page recomputes live, but a
+church that never schedules the command will have a register that is quietly stale.
+The settings page warns about this; a deployment check would be better.
+*Priority: Medium.*
+
+---
+
+## 62. Benevolent Phase 4 — contribution engine shipped; honest gaps — NEW
+
+Phase 4 separated money from obligations (penalties and waivers post nothing; a
+refund is a real voucher and is not a reversal), built the intelligent allocator with
+confidence scoring over every identifier the brief named, and added the intake queue.
+See `docs/BENEVOLENT_MODULE.md`.
+
+**62a. Recurring contributions are recognised, not scheduled.** The engine handles
+dues arriving on any cadence and knows what is owed per period, but it *initiates*
+nothing — no standing order, no scheduled M-Pesa pull, no recurring-contribution
+object a member can be signed up to. The word "recurring" in the brief is satisfied
+in the sense of *recognising* recurring money; it is not satisfied in the sense of
+*collecting* it. Naming that plainly rather than claiming both. *Priority: Medium.*
+
+**62b. Refund on exit is not automatic.** `refund_contributions_on_exit` and
+`refund_percent` remain policy fields the engine does not act on: a treasurer raises
+the voucher and types the amount by hand. The refund *mechanism* now exists (Phase 4),
+so wiring the policy to it is a small piece of work. *Priority: Medium* — open since
+Phase 2, and now cheap to close.
+
+**62c. Reminders STILL do nothing.** `arrears_reminder_days` and
+`renewal_reminder_days` have now survived three phases as settings that are stored,
+displayed, and acted on by nothing. This is the third time it has been written down.
+The nightly automation job already computes exactly who fell into ARREARS and when —
+the data is sitting there. *Priority: raised to HIGH.* A setting that does nothing is
+worse than an absent one, and one that has outlived three releases is a credibility
+problem, not a backlog item.
+
+**62d. `max_levies_per_year` is still not enforced** (open since Phase 2).
+*Priority: Medium.*
+
+**62e. The allocator's weights are hard-coded.** They are stated in one place and
+documented with reasons (`allocation.WEIGHTS`), and the thresholds around them ARE
+configurable — but a church that finds, say, that its members share handsets far more
+than average cannot tune the phone weight without a code change. *Priority: Low* — the
+thresholds are the knob that actually matters, and they are exposed.
+
+**62f. Duplicate detection only looks at (member, amount, scheme, window).** It will
+not catch the same M-Pesa receipt imported twice from two overlapping statement files —
+though the importer's own `core_ref`/`bank_receipt` uniqueness already does, at the
+database level. Worth confirming that belt-and-braces is genuinely redundant rather
+than assumed to be. *Priority: Low.*
+
+---
+
+## 63. `post_batch` silently drops a line if its fund was deactivated between entry and posting — NEW
+
+**Description.** While investigating the envelope-ledger column/data-loss bug (#64, this fix), `envelopes.services.batches.post_batch` was found to build its fund-resolution dict as `{d.id: d for d in Department.objects.filter(active=True)}`. `_expand_lines` then silently `continue`s past any `amounts` key whose fund id is not in that dict. If a fund is deactivated in the window between a batch being drafted/approved and actually posted, the line for it is posted as if it never existed — no error, no row flagged, and no visible sign that money was dropped.
+
+**Why it wasn't the reported bug.** The fund in the reported case (a real, active fund merely outside the "preferred" quick-pick defaults) was never deactivated — this is a distinct, narrower edge case, not a different cause for the same symptom.
+
+**Recommendation.** Either (a) resolve `funds`/`splits` in `post_batch` without the `active=True` filter (a fund referenced by an already-approved batch should still post; deactivating a fund should stop *new* entries against it, not un-post historical ones), or (b) have `validate_batch_for_post` explicitly flag any row whose `amounts` references a fund/split that no longer resolves, so it surfaces as a blocking error instead of a silent drop.
+
+**Priority: Medium.** Rare in practice (a fund would have to be deactivated mid-flight on a specific batch), but it is a silent-money-loss shape and cheap to close.
+
+---
+
+## 64. Envelope ledger: a fund outside the "preferred" defaults could lose its data — FIXED
+
+**Symptom.** Opening an existing `/envelopes/ledger/<id>/` batch whose rows held money against a fund outside the five "preferred" quick-pick funds (`envelopes.services.posting.PREFERRED`) showed that fund's amount as invisible, its row flagged "Total N doesn't match the fund amounts entered (0)" for every such row, and — critically — the very next autosave (the 15-second heartbeat fires with no further typing required) silently erased that fund's amount from the database, because autosave replaces a batch's rows wholesale from whatever the grid can currently see.
+
+**Root cause.** Purely client-side (`templates/envelopes/ledger.html`). The fund-column checkboxes start ticked only for the PREFERRED five; on page load the script computed its working column set (`COLS`) — and, in turn, `layout.order` — from those checkbox states alone, with no regard for which funds the batch's own rows actually used. A fund outside the defaults was therefore never rendered, `readRow()`/`rowTotal()` (which read only currently-rendered `.amt` inputs) saw it as zero, and the next autosave persisted that zero permanently. Confirmed by reproducing the exact reported symptom (`computed total 0` against a saved `200`) against the pre-fix template with a jsdom harness driving the real rendered script, and confirming it no longer reproduces post-fix, across a 7-row batch shaped like the actual report.
+
+**Fix.**
+1. At boot, every fund key any of the batch's own rows reference is ticked automatically, before the column set is computed from the checkboxes — so a used fund is never hidden by default (`usedFundKeysFromRows`).
+2. A row's amounts are now read as a merge of everything it is *known* to carry (`tr._amounts`, seeded whenever the row is built) with whatever is currently rendered (`currentAmounts`) — so hiding, reordering, or failing to initially show a fund column can never again be how an amount is silently dropped, whether from this exact scenario, a deliberate hide, or (per #63) a deactivated fund.
+3. The Total-vs-fund-amounts check and the autosave payload both now go through that same merge, so they can never disagree with what the row actually holds.
+4. A light, non-blocking notice appears if applying the column picker would hide a fund that currently has money entered, so a treasurer is told where a figure went rather than left to wonder.
+
+**Tests.** A jsdom harness (outside the repo, used for development verification only) executed the real rendered script before and after the fix, confirming the bug and its resolution across single-row and 7-row multi-fund scenarios. A permanent Python-level regression test
+(`envelopes/test_ledger_column_data_loss_v2481.py`) checks the server-side prerequisites the fix depends on and tripwires if the fix's key functions are ever removed from the template. Full `envelopes` suite (163 tests) green.

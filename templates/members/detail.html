@@ -1,6 +1,32 @@
 {% extends 'base.html' %}{% load humanize %}
 {% load rights_tags %}
-{% block title %}{{ member.name }} · {{ SITE_NAME }}{% endblock %}
+{% block title %}{{ member.name }} · {{ SITE_NAME }}
+{% if scheme_memberships or covered_by %}
+<div class="card u-mt"><div class="hd">Welfare schemes</div><div class="bd">
+<p class="help u-mt-0">The benevolent schemes draw on this same member record — there is no separate list of people —
+  so a member's welfare standing is visible here without anyone reconciling two registers.</p>
+
+{% if scheme_memberships %}
+<table class="ledger compact"><thead><tr><th>Scheme</th><th>Membership</th><th>Registration</th><th>Standing</th><th>Lifecycle</th><th></th></tr></thead>
+<tbody>{% for m in scheme_memberships %}<tr>
+  <td>{{ m.scheme.name }}</td>
+  <td class="mono">{{ m.number }}</td>
+  <td>{% if m.registration_type == 'HOUSEHOLD' %}<span class="pill pill-brass u-xs">Household</span> <span class="muted u-xs">{{ m.household_name }}</span>{% else %}<span class="muted u-xs">Individual</span>{% endif %}</td>
+  <td><span class="pill {% if m.standing == 'GOOD' %}pill-green{% elif m.standing == 'EXEMPT' or m.standing == 'GRACE' %}pill-blue{% elif m.standing == 'ARREARS' or m.standing == 'INACTIVE' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ m.get_standing_display }}</span></td>
+  <td class="muted u-xs">{{ m.get_status_display }}</td>
+  <td>{% if can.view_benevolent %}<a class="link" href="{% url 'benevolent_membership_detail' m.id %}">Open</a>{% endif %}</td>
+</tr>{% endfor %}</tbody></table>
+{% endif %}
+
+{% if covered_by %}
+<p class="u-mt"><strong>Also covered under someone else's registration:</strong></p>
+<ul>{% for d in covered_by %}<li>{{ d.membership.scheme.name }} — as
+  {{ d.get_relationship_display|lower }} on {{ d.membership.member.name }}'s membership
+  ({{ d.membership.number }}), since {{ d.registered_on|date:"d M Y" }}</li>{% endfor %}</ul>
+{% endif %}
+</div></div>
+{% endif %}
+{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">{{ member.get_group_display|default:"No group" }}{% if member.phone %} · <span class="mono">{{ member.phone|phone_for:user }}</span>{% endif %}</div></div>
 <div class="btn-row">
@@ -46,4 +72,30 @@
   </tbody></table></div>
 {% endif %}
 {% endwith %}
+
+{% if scheme_memberships or covered_by %}
+<div class="card u-mt"><div class="hd">Welfare schemes</div><div class="bd">
+<p class="help u-mt-0">The benevolent schemes draw on this same member record — there is no separate list of people —
+  so a member's welfare standing is visible here without anyone reconciling two registers.</p>
+
+{% if scheme_memberships %}
+<table class="ledger compact"><thead><tr><th>Scheme</th><th>Membership</th><th>Registration</th><th>Standing</th><th>Lifecycle</th><th></th></tr></thead>
+<tbody>{% for m in scheme_memberships %}<tr>
+  <td>{{ m.scheme.name }}</td>
+  <td class="mono">{{ m.number }}</td>
+  <td>{% if m.registration_type == 'HOUSEHOLD' %}<span class="pill pill-brass u-xs">Household</span> <span class="muted u-xs">{{ m.household_name }}</span>{% else %}<span class="muted u-xs">Individual</span>{% endif %}</td>
+  <td><span class="pill {% if m.standing == 'GOOD' %}pill-green{% elif m.standing == 'EXEMPT' or m.standing == 'GRACE' %}pill-blue{% elif m.standing == 'ARREARS' or m.standing == 'INACTIVE' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ m.get_standing_display }}</span></td>
+  <td class="muted u-xs">{{ m.get_status_display }}</td>
+  <td>{% if can.view_benevolent %}<a class="link" href="{% url 'benevolent_membership_detail' m.id %}">Open</a>{% endif %}</td>
+</tr>{% endfor %}</tbody></table>
+{% endif %}
+
+{% if covered_by %}
+<p class="u-mt"><strong>Also covered under someone else's registration:</strong></p>
+<ul>{% for d in covered_by %}<li>{{ d.membership.scheme.name }} — as
+  {{ d.get_relationship_display|lower }} on {{ d.membership.member.name }}'s membership
+  ({{ d.membership.number }}), since {{ d.registered_on|date:"d M Y" }}</li>{% endfor %}</ul>
+{% endif %}
+</div></div>
+{% endif %}
 {% endblock %}

@@ -63,6 +63,22 @@ class MemberDetailView(ReadAccessMixin, DetailView):
         # actually see them, not just have them silently preserved in the
         # database.
         ctx["other_phones"] = self.object.phones.filter(is_primary=False)
+
+        # Welfare schemes. The whole point of the benevolent module extending THIS
+        # registry rather than keeping its own is that a member's page can show
+        # their welfare standing without anyone having to reconcile two lists of
+        # people. Includes households they are covered BY, not only ones they hold.
+        try:
+            from benevolent.models import SchemeDependant, SchemeMembership
+            ctx["scheme_memberships"] = (
+                SchemeMembership.objects.filter(member=self.object)
+                .select_related("scheme").order_by("scheme__name"))
+            ctx["covered_by"] = (
+                SchemeDependant.objects.filter(member=self.object, active=True)
+                .select_related("membership__scheme", "membership__member"))
+        except Exception:  # noqa: BLE001 — the module may not be installed
+            ctx["scheme_memberships"] = []
+            ctx["covered_by"] = []
         return ctx
 
 

@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Narration rules · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Contribution narration rules</h1>
+  <div class="sub">What a member types on a phone keypad, and which scheme it means</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_allocation_test' %}">Test a narration</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_intake_queue' %}">← Intake</a></div></div>
+
+<p class="help u-mt-0">These use the same match types and the same normalised text as the main
+  <a class="link" href="{% url 'rule_list' %}">allocation rules</a> — a companion to that engine, not a second parser.
+  A rule says which <strong>scheme</strong> the money is for. It does not say which <strong>member</strong>: the
+  allocator works that out from far better evidence (phone numbers, membership numbers, case references) than a keyword
+  could ever give.</p>
+
+{% if proposed %}
+<div class="card u-mb"><div class="hd">Rules the system has proposed</div><div class="bd">
+<p class="help u-mt-0">A treasurer allocated the same unrecognised narration by hand three times, so the system worked
+  out a rule for it — and left it <strong>switched off</strong>. A rule that silently started routing money because of
+  a pattern nobody agreed to would be a rule nobody agreed to.</p>
+<table class="ledger compact"><thead><tr><th>Pattern</th><th>Scheme</th><th>Kind</th><th></th></tr></thead>
+<tbody>{% for r in proposed %}<tr>
+  <td class="mono">{{ r.pattern }}</td><td>{{ r.scheme.code }}</td>
+  <td class="muted">{{ r.kind|default:"—"|lower }}</td>
+  <td><form method="post">{% csrf_token %}
+    <button class="btn btn-sm" name="activate" value="{{ r.id }}">Switch it on</button></form></td>
+</tr>{% endfor %}</tbody></table>
+</div></div>
+{% endif %}
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Pattern</th><th>Match</th><th>Scheme</th><th>Kind</th><th class="num">Priority</th>
+<th class="num">Hits</th><th>Source</th><th>Active</th><th></th></tr></thead>
+<tbody>{% for r in rules %}<tr>
+  <td class="mono">{{ r.pattern }}</td>
+  <td class="muted u-xs">{{ r.get_match_type_display }}</td>
+  <td>{{ r.scheme.code }}</td>
+  <td class="muted">{{ r.kind|default:"—"|lower }}</td>
+  <td class="num mono">{{ r.priority }}</td>
+  <td class="num mono">{{ r.hits }}</td>
+  <td class="muted u-xs">{{ r.source }}</td>
+  <td>{% if r.active %}<span class="pill pill-green u-xs">On</span>{% else %}<span class="pill pill-brass u-xs">Off</span>{% endif %}</td>
+  <td class="btn-row"><a class="link" href="?edit={{ r.id }}">Edit</a>
+    <form method="post" style="display:inline">{% csrf_token %}
+      <button class="btn btn-ghost btn-sm" name="delete" value="{{ r.id }}">Delete</button></form></td>
+</tr>{% empty %}<tr><td colspan="9" class="empty">No rules. Without one, scheme money arriving by bank will not be recognised as scheme money.</td></tr>{% endfor %}</tbody>
+</table></div>
+
+<div class="card u-mt form-card" style="max-width:660px">
+  <div class="hd">{% if editing %}Edit '{{ editing.pattern }}'{% else %}Add a rule{% endif %}</div><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if editing %}<input type="hidden" name="edit_id" value="{{ editing.id }}">{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Save rule</button>
+    {% if editing %}<a class="btn btn-ghost" href="{% url 'benevolent_rules' %}">Cancel</a>{% endif %}</div>
+</form>
+</div></div>
+{% endblock %}

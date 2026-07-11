@@ -128,6 +128,38 @@ class BenevolentSettings(models.Model):
     automation_last_run = models.DateTimeField(null=True, blank=True, editable=False)
     automation_last_summary = models.CharField(max_length=255, blank=True, editable=False)
 
+    # ---- Intelligent allocation (Phase 4) -----------------------------------
+    auto_allocate = models.BooleanField(
+        default=True,
+        help_text="Let the allocator attach a receipt to a member by itself when it is "
+                  "confident enough. With this off, every receipt goes to the review "
+                  "queue — which is slower, and which some treasurers will rightly "
+                  "prefer for their first month.")
+    auto_allocate_threshold = models.PositiveSmallIntegerField(
+        default=85,
+        help_text="Confidence (0–100) at or above which a receipt is attached without a "
+                  "human. Set it high: a confidently WRONG allocation is worse than an "
+                  "honest queue, because nobody goes looking for it.")
+    review_threshold = models.PositiveSmallIntegerField(
+        default=40,
+        help_text="Confidence at or above which a receipt goes to the REVIEW queue with "
+                  "suggestions. Below this it goes to the UNMATCHED queue with none — "
+                  "which is more honest than a bad guess.")
+    fuzzy_name_threshold = models.PositiveSmallIntegerField(
+        default=82,
+        help_text="How close a name has to be (0–100) before it counts as a match at all. "
+                  "Kenyan bank narrations abbreviate and reorder names constantly, so some "
+                  "fuzziness is essential — but two brothers share a surname, so it must "
+                  "never be the ONLY evidence.")
+    duplicate_window_days = models.PositiveSmallIntegerField(
+        default=3,
+        help_text="Flag a receipt as a possible duplicate if the same member paid the same "
+                  "amount to the same scheme within this many days. 0 = never flag.")
+    learn_allocation_rules = models.BooleanField(
+        default=True,
+        help_text="Propose a narration rule after a treasurer has allocated the same "
+                  "unrecognised narration by hand a few times.")
+
     # ---- Defaults for new schemes ------------------------------------------
     default_profile = models.ForeignKey(
         "PolicyProfile", null=True, blank=True, on_delete=models.SET_NULL,

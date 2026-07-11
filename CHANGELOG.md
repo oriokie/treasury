@@ -1,5 +1,284 @@
 # Changelog
 
+## v2.48.1 - Fix: envelope ledger could lose data for a fund outside the "preferred" defaults
+
+**The bug, as reported:** opening an existing envelope batch and adding fund columns
+partway through data entry could make previously-entered amounts vanish, with rows
+failing to submit ("Total 200 doesn't match the fund amounts entered (0)"), across as
+many rows as used a fund outside the ledger's five "preferred" quick-pick funds
+(Tithe, Combined Offering, Camp Meeting, Development, LCB).
+
+**Root cause — confirmed, not assumed.** Purely client-side, in the inline script on
+`templates/envelopes/ledger.html`. The fund-column checkboxes start ticked only for the
+five preferred funds. On page load, the script built its working column set entirely
+from those checkbox states, with no regard for which funds the batch's OWN rows
+actually used — so a row holding money against any other fund loaded with that
+column hidden, its amount invisible, its on-screen total computed as 0 against
+whatever "Total" was saved, and every such row flagged as mismatched. Worse: the grid
+autosaves every 15 seconds with no further typing required, and autosave replaces a
+batch's rows *wholesale* from whatever is currently on screen — so the very next
+autosave silently erased that fund's amount from the database. "Adding the column
+back" afterwards restored an empty box, not the original figure, because by then the
+value was already gone.
+
+Verified end-to-end with a jsdom harness that executes the real rendered page script:
+reproduced the exact reported symptom (computed total 0 against a saved 200) against
+the pre-fix template, across a 7-row batch shaped like the actual report (same row
+numbers, same names, same "Total 200 / 1,000 / 200 vs (0)" pattern), and confirmed it
+no longer reproduces post-fix.
+
+**Fix (client-side only — no server bug, no migration):**
+1. Any fund a batch's own rows already use is ticked automatically at boot, before the
+   column set is computed — a used fund is never hidden by default.
+2. A row's amounts are now read as a merge of everything it is *known* to carry with
+   whatever is currently rendered, so hiding, reordering, or not-yet-showing a fund
+   column can never again be how an amount is silently dropped.
+3. The mismatch check and the autosave payload both go through that same merge, so
+   they can never disagree with what the row actually holds.
+4. A light, non-blocking notice appears if hiding a column would hide money that's
+   already been entered against it.
+
+**Tests:** a permanent regression test
+(`envelopes/test_ledger_column_data_loss_v2481.py`) checks the server-side
+prerequisites the fix depends on. Full `envelopes` suite (163 tests) green.
+
+**Also found, not yet fixed** (`docs/recommendations.md` #63): `post_batch` resolves
+funds as `active=True` only, so a fund deactivated between a batch being approved and
+posted would have its line silently dropped at posting — the same *shape* of bug, in a
+narrower, rarer window. Left open, tracked, and explicitly not folded into this fix.
+
+## v2.48.0 - Benevolent Phase 4: Contribution Engine & Intelligent Allocation
+
+### Money and obligations are different things
+
+A welfare scheme deals in two currencies at once, and confusing them is the classic way
+a member ledger goes quietly wrong. Booking a **waiver as an expense** shows a cash
+outflow that never happened. Booking a **penalty as income** recognises revenue that may
+never arrive. Booking a **refund as negative income** hides a real payment from the cash
+book.
+
+So money goes where money has always gone in this module — `giving.Transaction` in,
+`cashbook.Expense` out, no new machinery — and **obligations get their own home**
+(`MemberAdjustment`) which **posts nothing at all**. That is not an omission; it is the
+design. A penalty charged is not income: nobody has paid it, and they may never. It
+becomes income on the day it is actually paid, as an ordinary receipt. A waiver is the
+church deciding to stop asking; no money left, so no entry.
+
+What they change is one number — what `arrears_for()` says a member owes — and that
+function is still the *one* place in the system that knows. It now has three inputs (the
+policy's dues, the obligations ledger, the money received) and still gives one answer, to
+the register, the eligibility engine, the arrears deduction on a benefit and the member's
+statement alike.
+
+### A refund is not a reversal
+
+A receipt that **should never have existed** — wrong member, duplicate, bounced — is
+**reversed**: the church never had that money. A receipt that was **correct**, where money
+is genuinely handed back, is **refunded**: the church really received it and is really
+paying it out, and **both facts belong in the cash book**. Reversing a correct receipt to
+"cancel out" a refund would hide a real payment from the bank reconciliation and understate
+income *and* expenditure. So a refund is an ordinary expense voucher, built exactly as a
+benefit payout is, clearing the usual approval — the module still never approves its own
+payments.
+
+### Unallocated is not unrecorded
+
+The single most important sentence in this phase. **Allocation is allowed to fail. It is
+never allowed to lose the money.**
+
+A receipt whose owner cannot be identified is still receipted, still in the scheme's fund,
+still in the general ledger, still on the bank reconciliation, still in the board pack. It
+sits in an intake queue until a human says whose it is — and the fund balance is right the
+whole time. A system that refused to bank money it could not attribute would produce a fund
+balance that disagreed with the bank, which is far worse than an unattributed receipt.
+
+The importer therefore does two things in a deliberate order: it gets the **fund** right
+(from a narration rule, with certainty) and banks the money; and only *then* asks whose it
+is. The first must never wait on the second. Rejecting a queue item follows the same
+principle — deciding a receipt is not benevolent money is a statement about *attribution*,
+not about whether the church received it, so the transaction is left exactly where it was.
+Conflating the two would let a treasurer make money vanish from the cash book by clicking a
+button.
+
+### The allocator
+
+Every identifier the brief named, each a weighted **signal**: membership number (70,
+conclusive) · case reference (55) · member's own phone (55) · household identifier (45) ·
+the member's other numbers (45) · **the spouse's phone (45)** · a dependant's phone (35) ·
+name, exact (30) and fuzzy (20) · narration rule → scheme (25) · the amount matching what
+this member owes (10–12).
+
+**Signals add**, so corroboration is what produces confidence — no single medium signal
+reaches the auto-allocation threshold alone. A **name never carries an allocation by
+itself**: two brothers share a surname. A **spouse paying her husband's dues from her own
+phone** is completely routine, and a system that cannot see it would queue a perfectly
+ordinary payment every single month.
+
+**It shows its working** — every candidate, every signal, the score, frozen onto the queue
+row, so a wrong automatic allocation can be *understood* rather than merely undone. There is
+a screen where a treasurer can ask "what would you do with this?" and see the reasoning.
+
+**It refuses when it should.** Two candidates within 15 points of each other is **not
+confidence, however high the top score** — it is the allocator saying it cannot tell them
+apart, which is exactly where a wrong automatic answer is most likely and least likely to be
+noticed. Such a receipt goes to review even at 95%.
+
+### The intake queue
+
+AUTO / REVIEW / UNMATCHED / DUPLICATE / REJECTED. A suspected duplicate never
+auto-allocates, whatever the confidence — and it is flagged, never *blocked*: some
+duplicates are genuine, and silently refusing a real payment would be worse than accepting
+one, because the member would have paid and the scheme would deny it.
+
+**Learned rules are proposed, never switched on.** After a treasurer allocates the same
+unrecognised narration by hand three times, the system writes the rule — inactive. A rule
+that silently started routing money because of a pattern nobody agreed to would be a rule
+nobody agreed to.
+
+### Policy-driven validation
+
+One function, asked by both the manual path and the intake path, so they cannot disagree
+about what is legal. It refuses dues to a scheme with no dues, a levy with no case, a fee the
+policy does not charge, an obligation from a member who owes nothing (their money is a
+donation) — and the one a treasurer would not think of: **levying the bereaved member for
+their own case**, which the policy already says is not done.
+
+### Also
+
+The full contribution taxonomy (dues / levy / registration / renewal / penalty / voluntary /
+donation), with a data migration off the old coarser kinds; `SchemeDependant.phone`;
+configurable thresholds; and the statement importer hooked alongside loans.
+
+**Tests:** 50 new (200 in the module). Full regression green across statements, giving,
+cashbook, ledger, reports, core and members.
+
+**Deferred, named** (`docs/recommendations.md` #62): recurring contributions are
+*recognised*, not *scheduled* — the engine handles dues arriving on any cadence but
+initiates nothing, and I would rather say so than claim both; refund-on-exit is still not
+automatic (though the mechanism now exists, so it is cheap to close); the allocator's weights
+are hard-coded (the thresholds, which matter more, are not). And **reminders have now
+survived three phases doing nothing — raised to HIGH priority**, because a setting that has
+outlived three releases is a credibility problem, not a backlog item.
+
+## v2.47.0 - Benevolent Phase 3: Member Registry, Households & Standing
+
+### The refactor this phase turns on
+
+Phases 1–2 kept a single `SchemeMembership.status`, and it was quietly doing two
+incompatible jobs: carrying decisions a **human** makes (pending, active, suspended,
+withdrawn) *and* facts a **job** derives (lapsed, expired, inactive). So automation
+wrote into the same column a treasurer wrote into, kept safe only by an allowlist of
+statuses it was permitted to touch — a rule someone had to remember, and would one day
+forget. Worse, it made a derived fact look like a decision: a membership marked LAPSED
+told you nothing about whether a person had chosen that or a nightly job had inferred
+it.
+
+Phase 3 splits them into two axes, and everything else follows:
+
+* **`status` — the LIFECYCLE.** Pending, Active, Suspended, Withdrawn, Deceased,
+  Closed. A human decides every one, records a reason, and is answerable for it.
+* **`standing` — COMPUTED.** Good standing, Exempt, Grace period, Arrears, Inactive —
+  plus the lifecycle states, which dominate. A pure function of the policy and the
+  facts. Never hand-set.
+
+`standing` is a **cache of a pure function**, so recomputing it can never lose
+information. Automation now writes **only** to that column and is therefore
+*structurally* incapable of overruling a treasurer — not because it is told not to,
+but because `status` is a different column and the job does not write to it. A test
+states it plainly: a suspended member who pays off every shilling stays suspended.
+
+`LAPSED`, `EXPIRED`, `INACTIVE` and `EXPELLED` are gone from `status`; a data
+migration moves existing rows across and records the original word in the event log so
+nothing is lost.
+
+### Standing reports; the policy decides
+
+They must never disagree about a plain fact — so **they do not each compute it**.
+`MembershipFacts` is computed once and consumed by both the register and the
+eligibility engine. There is exactly one place in this system that knows how many
+months a member is behind.
+
+A test walks every combination of arrears treatment and inactivity action and asserts
+that the register's view of cover and the engine's verdict never differ. An early
+version of `covered` used a fixed list of "good" standings, and that test caught it
+telling a treasurer an ARREARS member was "not covered" while the engine happily paid
+them — because under DEDUCT, the commonest real rule, it does.
+
+The same principle put exemptions inside `arrears_for()` rather than in the standing
+engine. Had they lived anywhere else, an exempt member would have shown as clear on the
+register **and still had money docked from their bereavement payout**. There is a test
+for exactly that.
+
+### Extending Members, not duplicating it
+
+`members.Member` remains the only record of a person. A dependant on the church roll is
+**linked** to their member record, not typed in a second time — so a spouse's name and
+phone live in one place and cannot drift. A household is a *registration type*, not a
+parallel person-database. A member's own page now shows their welfare standing, and the
+households they are *covered by* as well as the ones they hold — a page that can only
+exist because there is one registry.
+
+### Death, transfer and inheritance
+
+**Recording a death does not close the membership.** Their own death is very often the
+last claim on the scheme — the thing they paid in for — and a system that closed the
+membership there would discard a family's entitlement at the exact moment it fell due.
+The eligibility engine explicitly does not bar a claim on a deceased member's own death.
+
+**A transfer keeps the joining date.** A widow whose husband paid in for eleven years is
+not a new member with a ninety-day wait. `transfer()` keeps `joined_on` and deliberately
+does *not* set `reinstated_on` — that field exists to stop a lapsed member gaming the
+scheme, and a grieving widow is not a lapsed member gaming the scheme. The household
+travels with the membership; the trail is intact in both directions. Reinstatement still
+restarts the waiting period, and that anti-gaming rule survives intact and tested.
+
+### Exemptions
+
+Without a first-class record, exemptions are handled by a treasurer quietly not chasing
+certain people — which is **indistinguishable from favouritism**, cannot be handed over,
+and disappears when they do. So an exemption must record why, is **approved by a second
+person** (it relieves someone of an obligation everyone else is carrying), excuses nobody
+until it is approved, and can cover dues, levies or both. A levy-exempt member comes off
+the levy roster — leaving them on it would chase them for money the church has already
+decided, in writing, that they do not owe.
+
+### Inactivity: missed contributions *or* missed cases
+
+A levy scheme has no monthly dues to miss, so "months since a contribution" sees nothing
+— and the member who never stands with a bereaved family, then expects the family to
+stand with them, walks straight through. `inactivity_missed_cases` catches them. Counted
+**consecutively** backwards from the most recent case (an old lapse since made good is
+not the problem this rule is for), and skipping cases raised for the member themselves —
+they were never levied for their own bereavement, and counting it as a miss would punish
+them for being bereaved.
+
+### The membership event log
+
+`simple-history` answers "what was this field on 3 March?". `MembershipEvent` answers
+"what happened to this member, and why?" — which is what a treasurer, a board and a
+bereaved family actually ask for. Every registration, admission, refusal, fee, renewal,
+suspension, reinstatement, withdrawal, death, transfer, exemption and standing change is
+one line, with who did it, why, and whether a person or a job did it.
+
+### Also
+
+Households (one spouse, size caps counting the principal member, removal that never
+deletes — a dependant covered when an event happened stays covered for it); a register
+with standing counts and filters; six new policy rules (`grace_period_days`,
+`allow_exemptions`, `exemption_age`, `inactivity_missed_cases`, `allow_transfers`,
+`max_household_size`).
+
+**Tests:** 49 new (149 in the module). Seven Phase 2 tests were rewritten to the new
+two-axis contract — legitimately, because the refactor changed it. Full regression green
+across members, core, accounts, cashbook, giving, departments, ledger, reports, loans,
+pledges, statements and envelopes.
+
+**Deferred, named** (`docs/recommendations.md` #61): nominee payout splitting is still
+manual; refunds on exit, arrears/renewal reminders and `max_levies_per_year` remain
+fields nothing acts on (reminders have now survived two phases — noted as such); a
+household cannot yet be charged per-adult; and a church that never schedules
+`benevolent_automation` will have a quietly stale register.
+
 ## v2.46.0 - Benevolent Phase 2: Constitution, Settings & Policy Engine
 
 Every church-specific behaviour is now configuration. The danger in doing that is

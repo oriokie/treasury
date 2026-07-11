@@ -1,0 +1,508 @@
+"""The Contribution Engine.
+
+Everything that can happen to a member's money, and everything that can happen to
+what they owe — with the two kept firmly apart.
+
+    MONEY IN     a receipt. `giving.Transaction`, exactly as in Phase 1.
+                 Registration fees, renewal fees, dues, levies, voluntary gifts,
+                 payment of a penalty.
+
+    MONEY OUT    a payment voucher. `cashbook.Expense`, exactly as a benefit is.
+                 A refund.
+
+    OBLIGATIONS  no money at all. `MemberAdjustment`. Penalties charged, dues
+                 waived, debts written off, corrections made. NOTHING POSTS.
+
+The third of those is the one that gets built wrong, and it gets built wrong in the
+same way every time: somebody books a waiver as an expense, or a penalty as income,
+and the fund quietly starts reporting money that does not exist. See
+`models_contrib.MemberAdjustment` for the argument in full.
+"""
+from __future__ import annotations
+
+import datetime as _dt
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError
+from django.db import transaction as db_tx
+from django.utils import timezone
+
+from benevolent.models import (BenevolentContribution, BenevolentScheme,
+                               BenevolentSettings, ContributionIntake,
+                               ContributionRefund, ContributionRule, MemberAdjustment,
+                               SchemeMembership, SchemePolicy)
+from benevolent.services import allocation as alloc_svc
+from benevolent.services import contributions as contrib_svc
+
+
+# ---------------------------------------------------------------------------
+# Policy-driven validation
+# ---------------------------------------------------------------------------
+
+def validate(scheme, *, kind, membership=None, case=None, amount=None, date=None):
+    """Is this contribution one the policy actually permits?
+
+    Returns a list of problems, in words. Deliberately returns rather than raises,
+    because the intake path wants to SHOW a treasurer what is wrong and let them
+    fix it, while the manual path wants to refuse — and both should ask the same
+    question of the same function rather than each deciding for itself what is
+    legal.
+    """
+    date = date or _dt.date.today()
+    problems = []
+    policy = scheme.policy_on(date)
+
+    if not scheme.accepts_contributions:
+        problems.append(
+            f"{scheme.name} is {scheme.get_status_display().lower()} and is not "
+            f"accepting contributions.")
+    if policy is None:
+        problems.append(
+            f"No policy was in force on {date:%d %b %Y}, so there is nothing to say "
+            f"what is owed or permitted.")
+        return problems
+
+    K = BenevolentContribution.Kind
+    periodic = (SchemePolicy.ContributionMode.FIXED_PERIODIC,
+                SchemePolicy.ContributionMode.HYBRID)
+    leviable = (SchemePolicy.ContributionMode.PER_CASE_LEVY,
+                SchemePolicy.ContributionMode.HYBRID)
+
+    if kind == K.DUES and policy.contribution_mode not in periodic:
+        problems.append(
+            f"This scheme has no periodic dues (its contribution mode is "
+            f"{policy.get_contribution_mode_display().lower()}), so money cannot be "
+            f"receipted as dues. It is probably a voluntary contribution.")
+    if kind == K.LEVY:
+        if policy.contribution_mode not in leviable:
+            problems.append(
+                f"This scheme does not levy per case, so money cannot be receipted as "
+                f"a levy.")
+        if case is None:
+            problems.append("A levy has to say which case it was raised for.")
+    if kind == K.REGISTRATION and not policy.registration_fee:
+        problems.append("This policy charges no registration fee.")
+    if kind == K.RENEWAL and not policy.renewal_fee:
+        problems.append("This policy charges no renewal fee.")
+
+    if kind in BenevolentContribution.OBLIGATIONS and membership is None:
+        problems.append(
+            f"A {kind.lower()} is a member meeting an obligation, so it must say which "
+            f"member. Money from someone with no membership is a donation.")
+
+    if membership is not None:
+        if membership.scheme_id != scheme.pk:
+            problems.append(
+                f"{membership.number} belongs to {membership.scheme.code}, not "
+                f"{scheme.code}.")
+        if membership.status in SchemeMembership.ENDED_STATUSES \
+                and kind != K.DONATION:
+            problems.append(
+                f"{membership.member.name} is "
+                f"{membership.get_status_display().lower()} and owes the scheme nothing. "
+                f"Money from them is a donation, not a contribution.")
+
+    if case is not None and case.scheme_id != scheme.pk:
+        problems.append(f"{case.number} belongs to a different scheme.")
+
+    if amount is not None and Decimal(amount) <= 0:
+        problems.append("A contribution must be a positive amount.")
+
+    # a member is not asked to levy themselves for their own bereavement — and if
+    # they have been, the treasurer should know before the money is receipted, not
+    # afterwards when the family asks why
+    if kind == K.LEVY and case is not None and membership is not None \
+            and policy.bereaved_exempt_own_levy and case.membership_id == membership.pk:
+        problems.append(
+            f"{membership.member.name} is the bereaved member on {case.number}, and this "
+            f"policy does not levy them for their own case. Receipt this as a voluntary "
+            f"contribution if they insisted on giving anyway.")
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# Intake — a receipt arrives from an unattended channel
+# ---------------------------------------------------------------------------
+
+@db_tx.atomic
+def intake(transaction, *, scheme=None, user=None):
+    """Take a receipt that is (or may be) scheme money and work out whose it is.
+
+    THE MONEY IS ALREADY BANKED. `transaction` exists; it is in the ledger; it is on
+    the bank reconciliation. This function decides only who it belongs to, and it is
+    allowed to fail at that without any of the above becoming untrue.
+
+    Outcomes:
+      * confident, unambiguous, valid → attached to the member automatically
+      * confident but AMBIGUOUS       → review queue (two candidates a whisker apart
+                                        is not confidence; it is the allocator saying
+                                        it cannot tell them apart)
+      * plausible                     → review queue, with the suggestions
+      * nothing                       → unmatched queue, with none
+      * looks like a repeat           → duplicate queue, for a human to judge
+    """
+    cfg = BenevolentSettings.get()
+
+    existing = ContributionIntake.objects.filter(transaction=transaction).first()
+    if existing is not None:
+        return existing
+
+    result = alloc_svc.allocate(
+        reference=transaction.reference or transaction.raw_narration,
+        phone=transaction.payer_phone, name=transaction.payer_name,
+        amount=transaction.amount, date=transaction.date,
+        fund=transaction.department, scheme=scheme)
+
+    item = ContributionIntake(
+        transaction=transaction, scheme=result.scheme,
+        confidence=result.confidence,
+        candidates=result.as_dict()["candidates"],
+        suggested_kind=result.kind or "",
+        duplicate_of=result.duplicate_of,
+        note="; ".join(result.notes)[:200])
+
+    if result.scheme is None:
+        item.status = ContributionIntake.Status.UNMATCHED
+        item.save()
+        return item
+
+    best = result.best
+    if best is not None:
+        item.suggested_membership_id = best.membership_id
+        item.suggested_case_id = best.case_id
+
+    # a suspected duplicate never allocates itself, whatever the confidence. The
+    # whole point of the flag is that a human looks at it.
+    if result.duplicate_of is not None:
+        item.status = ContributionIntake.Status.DUPLICATE
+        item.save()
+        return item
+
+    problems = []
+    if best is not None:
+        membership = SchemeMembership.objects.filter(pk=best.membership_id).first()
+        from benevolent.models import BenevolentCase
+        case = BenevolentCase.objects.filter(pk=best.case_id).first() if best.case_id \
+            else None
+        problems = validate(
+            result.scheme, kind=(best.kind or BenevolentContribution.Kind.VOLUNTARY),
+            membership=membership, case=case, amount=transaction.amount,
+            date=transaction.date)
+
+    can_auto = (cfg.auto_allocate
+                and best is not None
+                and result.confidence >= (cfg.auto_allocate_threshold or 85)
+                and not result.is_ambiguous
+                and not problems)
+
+    if can_auto:
+        contribution = _attach(
+            item, membership_id=best.membership_id, case_id=best.case_id,
+            kind=best.kind or BenevolentContribution.Kind.VOLUNTARY,
+            user=None, automatic=True, confidence=result.confidence)
+        item.status = ContributionIntake.Status.AUTO
+        item.contribution = contribution
+        item.resolved_at = timezone.now()
+        item.save()
+        return item
+
+    if problems:
+        item.note = ("; ".join(problems))[:200]
+    item.status = (ContributionIntake.Status.REVIEW
+                   if (best is not None
+                       and result.confidence >= (cfg.review_threshold or 40))
+                   else ContributionIntake.Status.UNMATCHED)
+    item.save()
+    return item
+
+
+@db_tx.atomic
+def resolve(item, *, membership=None, case=None, kind=None, user, note="",
+            learn=True):
+    """A treasurer says whose the money is. The receipt does not move — it is
+    already banked and already in the ledger. All that changes is the index row that
+    says who gave it."""
+    if not item.is_open:
+        raise ValidationError(f"{item} is already {item.get_status_display().lower()}.")
+    scheme = item.scheme
+    if scheme is None:
+        raise ValidationError(
+            "This receipt has no scheme. Say which scheme it belongs to, or reject it "
+            "as not scheme money.")
+
+    kind = kind or item.suggested_kind or BenevolentContribution.Kind.VOLUNTARY
+    problems = validate(scheme, kind=kind, membership=membership, case=case,
+                        amount=item.amount, date=item.date)
+    if problems:
+        raise ValidationError(problems)
+
+    contribution = _attach(
+        item, membership_id=(membership.pk if membership else None),
+        case_id=(case.pk if case else None), kind=kind, user=user,
+        automatic=False, confidence=0)
+
+    item.status = ContributionIntake.Status.RESOLVED
+    item.contribution = contribution
+    item.resolved_by = user
+    item.resolved_at = timezone.now()
+    if note:
+        item.note = note[:200]
+    item.save()
+
+    if learn:
+        _maybe_learn(item, scheme, kind)
+    return contribution
+
+
+@db_tx.atomic
+def reject(item, *, user, note=""):
+    """Not scheme money after all.
+
+    Note what this does NOT do: it does not reverse the receipt or move the money.
+    The transaction stays exactly where the importer put it, in the ledger and on
+    the bank reconciliation. Deciding a receipt is not benevolent money is a
+    statement about ATTRIBUTION, not about whether the church received it — and
+    conflating the two would let a treasurer make money disappear from the cash book
+    by clicking "not ours".
+    """
+    if not item.is_open:
+        raise ValidationError(f"{item} is already {item.get_status_display().lower()}.")
+    item.status = ContributionIntake.Status.REJECTED
+    item.resolved_by = user
+    item.resolved_at = timezone.now()
+    item.note = (note or "Not scheme money.")[:200]
+    item.save()
+    return item
+
+
+def _attach(item, *, membership_id, case_id, kind, user, automatic, confidence):
+    """Create the index row against a receipt that already exists.
+
+    Reuses `contributions.record_contribution` with the existing transaction, so
+    there is ONE function that creates a BenevolentContribution, whatever door the
+    money came in by. A second creation path is a second set of rules about period
+    labels and kinds, and it would drift.
+    """
+    from benevolent.models import BenevolentCase
+    membership = SchemeMembership.objects.filter(pk=membership_id).first()
+    case = BenevolentCase.objects.filter(pk=case_id).first() if case_id else None
+
+    contribution = contrib_svc.record_contribution(
+        item.scheme, date=item.transaction.date, amount=item.transaction.amount,
+        user=user, membership=membership,
+        member=(membership.member if membership else item.transaction.member),
+        case=case, kind=kind, existing_transaction=item.transaction,
+        note=("Allocated automatically." if automatic else "Allocated by a treasurer."))
+    contribution.allocated_automatically = automatic
+    contribution.allocation_confidence = confidence
+    contribution.save(update_fields=["allocated_automatically", "allocation_confidence"])
+    return contribution
+
+
+def _maybe_learn(item, scheme, kind):
+    """Propose a narration rule once the same unrecognised narration has been
+    allocated by hand a few times.
+
+    Proposes — it does not create an ACTIVE rule. A rule that silently starts
+    routing money because a treasurer happened to allocate three receipts the same
+    way is a rule nobody agreed to. It is created inactive, and a human turns it on.
+    """
+    cfg = BenevolentSettings.get()
+    if not cfg.learn_allocation_rules:
+        return None
+    ref = alloc_svc.normalise(item.transaction.reference)
+    if not ref or len(ref) < 3:
+        return None
+    if ContributionRule.objects.filter(pattern=ref).exists():
+        return None
+
+    seen = ContributionIntake.objects.filter(
+        transaction__reference__iexact=item.transaction.reference,
+        status=ContributionIntake.Status.RESOLVED).count()
+    if seen < 3:
+        return None
+    return ContributionRule.objects.create(
+        pattern=ref[:60], match_type=ContributionRule.MatchType.CONTAINS,
+        scheme=scheme, kind=kind, active=False, source="LEARNED", priority=5)
+
+
+# ---------------------------------------------------------------------------
+# Obligations — penalties, waivers, write-offs. NOTHING POSTS.
+# ---------------------------------------------------------------------------
+
+@db_tx.atomic
+def charge(membership, *, kind, amount, reason, on=None, period_label="",
+           case=None, user=None):
+    """Charge a penalty, or make some other charge against a member.
+
+    NO ACCOUNTING ENTRY IS MADE, and that is not an omission. A penalty charged is
+    not income: nobody has paid it, and they may never. Recognising it as revenue
+    would book money the church does not have. It becomes income on the day it is
+    actually paid — as an ordinary receipt, like everything else.
+
+    Like an exemption, it takes a second person to approve: it changes what a member
+    owes, and a treasurer who can fine a member single-handedly is a treasurer with
+    a power nobody voted to give them.
+    """
+    adj = MemberAdjustment(
+        membership=membership, kind=kind, amount=Decimal(amount),
+        on=on or _dt.date.today(), period_label=period_label or "",
+        reason=reason, case=case, raised_by=user)
+    adj.full_clean(exclude=["approved_by", "case"])
+    adj.save()
+    _log(membership, f"{adj.get_kind_display()} of {adj.amount} proposed.",
+         reason=reason, user=user)
+    return adj
+
+
+@db_tx.atomic
+def waive(membership, *, amount, reason, on=None, period_label="", user=None,
+          write_off=False):
+    """Waive dues, or write off a debt.
+
+    NO ACCOUNTING ENTRY. A waiver is not an expense: no money left the church. The
+    church simply stopped asking for it. Booking it as a payment would show a cash
+    outflow that never happened, and the cash book would stop agreeing with the bank.
+    """
+    return charge(
+        membership,
+        kind=(MemberAdjustment.Kind.WRITE_OFF if write_off
+              else MemberAdjustment.Kind.WAIVER),
+        amount=amount, reason=reason, on=on, period_label=period_label, user=user)
+
+
+@db_tx.atomic
+def approve_adjustment(adj, *, user):
+    """A second person approves. Not the one who proposed it."""
+    if adj.raised_by_id and user is not None and adj.raised_by_id == user.pk:
+        raise ValidationError(
+            "An adjustment must be approved by someone other than the person who "
+            "proposed it. It changes what a member owes.")
+    if adj.approved_by_id:
+        raise ValidationError("That adjustment is already approved.")
+    adj.approved_by = user
+    adj.approved_at = timezone.now()
+    adj.save(update_fields=["approved_by", "approved_at"])
+    _log(adj.membership,
+         f"{adj.get_kind_display()} of {adj.amount} approved.",
+         reason=adj.reason, user=user)
+    from benevolent.services import standing as standing_svc
+    standing_svc.refresh(adj.membership, user=user)
+    return adj
+
+
+@db_tx.atomic
+def reverse_adjustment(adj, *, user, reason):
+    """Undo an adjustment. Never deleted — a charge that was made and withdrawn is
+    part of the member's history, and a member who was fined and then let off has a
+    right to have both facts on the record."""
+    if not (reason or "").strip():
+        raise ValidationError("Reversing an adjustment must record a reason.")
+    adj.reversed_on = _dt.date.today()
+    adj.reversed_reason = reason[:200]
+    adj.save(update_fields=["reversed_on", "reversed_reason"])
+    _log(adj.membership, f"{adj.get_kind_display()} of {adj.amount} reversed.",
+         reason=reason, user=user)
+    from benevolent.services import standing as standing_svc
+    standing_svc.refresh(adj.membership, user=user)
+    return adj
+
+
+def adjustments_total(membership, as_of=None) -> Decimal:
+    """The net effect of the obligations ledger on what this member owes.
+
+    Positive = they owe more (penalties). Negative = they owe less (waivers,
+    write-offs). Consumed by `arrears_for()`, which remains the ONE function that
+    knows what a member owes.
+    """
+    as_of = as_of or _dt.date.today()
+    total = Decimal(0)
+    for adj in membership.adjustments.filter(on__lte=as_of):
+        if adj.reversed_on and adj.reversed_on <= as_of:
+            continue
+        total += adj.signed
+    return total
+
+
+# ---------------------------------------------------------------------------
+# Refunds — the one thing here that IS money leaving
+# ---------------------------------------------------------------------------
+
+@db_tx.atomic
+def refund(membership, *, amount, reason, date=None, user=None, method=None,
+           voucher_no=""):
+    """Return money to a member.
+
+    Distinct from REVERSING a receipt, and the distinction is the point:
+
+      * A receipt that should never have existed — wrong member, duplicate, bounced
+        — is REVERSED. The church never had that money.
+      * A receipt that was CORRECT, where money is genuinely handed back, is
+        REFUNDED. The church really received it and is really paying it out. Both
+        facts belong in the cash book.
+
+    Reversing a correct receipt to "cancel out" a refund would hide a real payment
+    from the bank reconciliation and understate income and expenditure alike.
+
+    So this raises an ordinary `cashbook.Expense` in PENDING. It clears the usual
+    approval, gets a voucher, appears on the payment register and posts to the
+    ledger like any other payment — the module does not approve its own payments,
+    here or anywhere.
+    """
+    from cashbook.models import Expense
+
+    date = date or _dt.date.today()
+    amount = Decimal(amount)
+    if amount <= 0:
+        raise ValidationError("A refund must be a positive amount.")
+    if not (reason or "").strip():
+        raise ValidationError("A refund must record why the money is being returned.")
+
+    scheme = membership.scheme
+    given = contrib_svc.contributions_total(membership=membership)
+    if amount > given:
+        raise ValidationError(
+            f"{membership.member.name} has contributed {given} in total, so {amount} "
+            f"cannot be refunded. A payment larger than what a member has given is not "
+            f"a refund — it is a benefit, and it goes through a case.")
+
+    policy = scheme.policy_on(date)
+    if policy is not None and not policy.refund_contributions_on_exit:
+        # a policy that does not refund on exit can still refund an overpayment, so
+        # this is a warning carried on the voucher rather than a refusal — but it is
+        # recorded, so nobody can pretend the constitution allowed it
+        reason = (f"[Policy v{policy.version} does not provide for refunds on exit.] "
+                  f"{reason}")
+
+    # Built exactly as a benefit payout is (services/cases.record_payout), because
+    # it IS the same thing accounting-wise: money leaving the scheme's fund on an
+    # approved voucher. Mirroring it rather than inventing a second shape means the
+    # payment register, the expense approval workflow and the ledger posting all
+    # treat a refund the way they already treat every other payment.
+    expense = Expense.objects.create(
+        date=date, department=scheme.fund, amount=amount,
+        description=f"Refund of contributions — {membership.member.name} "
+                    f"({membership.number})"[:200],
+        category=Expense.Category.BENEVOLENCE,
+        funding_source=Expense.FundingSource.CONTRIBUTION,
+        expenditure_type=Expense.ExpenditureType.RECURRENT,
+        claimant=membership.member.name[:120],
+        method=method or Expense.Method.CASH,
+        voucher_no=voucher_no or "",
+        status=Expense.Status.PENDING,          # never self-approved
+        recorded_by=user)
+
+    ref = ContributionRefund.objects.create(
+        membership=membership, scheme=scheme, expense=expense,
+        reason=reason, requested_by=user)
+    _log(membership, f"Refund of {amount} raised (voucher pending approval).",
+         reason=reason, user=user)
+    return ref
+
+
+def _log(membership, summary, *, reason="", user=None):
+    from benevolent.models import MembershipEvent
+    MembershipEvent.objects.create(
+        membership=membership, kind=MembershipEvent.Kind.NOTE,
+        summary=summary[:255], reason=reason or "", actor=user,
+        automated=(user is None))

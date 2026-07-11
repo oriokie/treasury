@@ -345,9 +345,17 @@ class MembershipDetailView(BenevolentViewMixin, View):
     def get(self, request, pk):
         m = get_object_or_404(
             SchemeMembership.objects.select_related("scheme", "member"), pk=pk)
-        from .forms import FeeForm, NomineeForm
+        from .forms import (AdjustmentForm, ExemptionForm, FeeForm,
+                            HouseholdMemberForm, LifecycleForm, NomineeForm,
+                            RefundForm, TransferForm)
+        from .services import registry as reg_svc
+        from .services import standing as standing_svc
         policy = m.scheme.policy_on()
         ctx = report_svc.member_statement(m)
+        # the standing is shown WITH its reasoning, live — the cached column is what
+        # the register lists, but on the member's own page a treasurer should see the
+        # working, not just the verdict
+        result = standing_svc.assess(m)
         ctx.update({
             "dependants": m.dependants.filter(active=True),
             "dependant_form": DependantForm(),
@@ -359,6 +367,21 @@ class MembershipDetailView(BenevolentViewMixin, View):
             "renewal_overdue": m.renewal_overdue(policy),
             "months_idle": m.months_since_contribution(),
             "cover_from": m.cover_from,
+            # ---- Phase 3 ----
+            "standing": result,
+            "facts": result.facts,
+            "household": reg_svc.household_members(m),
+            "household_form": HouseholdMemberForm(),
+            "exemptions": m.exemptions.select_related("granted_by", "approved_by"),
+            "exemption_form": ExemptionForm(),
+            "transfer_form": TransferForm(),
+            "lifecycle_form": LifecycleForm(),
+            "events": m.events.select_related("actor")[:30],
+            # ---- Phase 4: the member's account ----
+            "adjustments": m.adjustments.select_related("raised_by", "approved_by"),
+            "adjustment_form": AdjustmentForm(),
+            "refund_form": RefundForm(),
+            "refunds": m.refunds.select_related("expense"),
         })
         return render(request, "benevolent/membership_detail.html", ctx)
 

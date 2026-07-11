@@ -63,6 +63,13 @@ from django.db import models
 from django.utils.text import slugify
 from simple_history.models import HistoricalRecords
 
+# Phase 3 registry models. Imported at the TOP, not the bottom, because
+# SchemeMembership uses Standing.choices and RegistrationType.choices at
+# class-definition time. models_registry refers to this module only by string FK,
+# so there is no cycle.
+from benevolent.models_registry import (  # noqa: E402,F401
+    MembershipEvent, MembershipExemption, RegistrationType, Standing)
+
 
 # ---------------------------------------------------------------------------
 # Numbering — permanent, never-reused references (same guarantee as
@@ -415,7 +422,11 @@ class SchemePolicy(models.Model):
         "bereaved_deduct_own_levy",
         # inactivity
         "inactivity_months", "inactivity_action", "reinstatement_fee",
-        "reinstatement_waiting_days",
+        "reinstatement_waiting_days", "inactivity_missed_cases",
+        # standing (Phase 3)
+        "grace_period_days", "allow_exemptions", "exemption_age",
+        # registry (Phase 3)
+        "allow_transfers", "max_household_size",
         # household
         "household_mode", "max_dependants", "dependant_age_limit",
         "spouse_auto_covered",
@@ -580,6 +591,41 @@ class SchemePolicy(models.Model):
         default=0,
         help_text="A reinstated member serves this waiting period again before they can "
                   "claim. Stops a lapsed member rejoining the week a relative falls ill.")
+    inactivity_missed_cases = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="A member who fails to contribute to this many consecutive case levies "
+                  "is inactive. The measure that matters in a levy scheme, where there "
+                  "are no monthly dues to miss — the member who never stands with a "
+                  "bereaved family, and then expects the family to stand with them. "
+                  "0 = do not measure this.")
+
+    # ---- Standing (Phase 3) -------------------------------------------------
+    grace_period_days = models.PositiveIntegerField(
+        default=0,
+        help_text="How long a member who has fallen behind stays in GOOD STANDING before "
+                  "they are counted as in arrears. A grace period is a promise that cover "
+                  "does not evaporate the day a payment is late — and while it lasts, the "
+                  "member is covered. 0 = no grace.")
+    allow_exemptions = models.BooleanField(
+        default=True,
+        help_text="Members may be formally excused from contributing (life members, the "
+                  "very old, genuine hardship). Turning this off means no one can be, "
+                  "which some constitutions do insist on.")
+    exemption_age = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Members at or over this age are automatically exempt from dues, with no "
+                  "paperwork. 0 = no automatic age exemption.")
+
+    # ---- Registry (Phase 3) -------------------------------------------------
+    allow_transfers = models.BooleanField(
+        default=True,
+        help_text="A membership may be passed to a successor (usually the surviving spouse) "
+                  "keeping its original joining date, so the years already paid in are not "
+                  "lost by the household.")
+    max_household_size = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="The most people one household registration may cover, including the "
+                  "principal member. 0 = no limit.")
 
     # ---- Household ----------------------------------------------------------
     household_mode = models.CharField(
@@ -764,32 +810,43 @@ class SchemeBenefitRule(models.Model):
 
 class SchemeMembership(models.Model):
     """A church member's enrolment in one scheme. A member may belong to several
-    schemes; each enrolment is separate, with its own dates and standing."""
+    schemes; each enrolment is separate, with its own dates and standing.
+
+    TWO AXES (Phase 3). `status` is the administrative LIFECYCLE — what a human
+    decided. `standing` is COMPUTED — where the member stands under the policy.
+    See benevolent/models_registry.py for why they were separated, and
+    benevolent/services/standing.py for the function that derives the second.
+    """
 
     class Status(models.TextChoices):
-        PENDING = "PENDING", "Pending approval"
+        """The administrative lifecycle. A HUMAN sets every one of these.
+
+        Automation cannot write here at all — not because it is told not to, but
+        because it writes to `standing` and this field is not `standing`. That is
+        a structural guarantee rather than a rule someone has to remember.
+
+        Note what is NOT here any more: LAPSED, EXPIRED and INACTIVE. Those were
+        never decisions — they were derived facts wearing a decision's clothes,
+        and they now live on `standing`, where they can be recomputed from the
+        policy without anyone's judgement being overwritten.
+        """
+        PENDING = "PENDING", "Pending registration"
         ACTIVE = "ACTIVE", "Active"
-        INACTIVE = "INACTIVE", "Inactive (not contributing)"
         SUSPENDED = "SUSPENDED", "Suspended"
-        LAPSED = "LAPSED", "Lapsed (in arrears)"
-        EXPIRED = "EXPIRED", "Expired (not renewed)"
         WITHDRAWN = "WITHDRAWN", "Withdrawn"
-        EXPELLED = "EXPELLED", "Removed from the scheme"
+        DECEASED = "DECEASED", "Deceased"
+        CLOSED = "CLOSED", "Closed"
 
-    # Statuses in which a membership still exists and can be worked with. Note
-    # that "live" is NOT the same as "covered": a LAPSED or SUSPENDED member is
-    # still on the books (and can catch up), but whether they may CLAIM is a
-    # question for the policy, answered by the eligibility engine — never by a
-    # status check scattered through the code.
-    LIVE_STATUSES = [Status.ACTIVE, Status.INACTIVE, Status.SUSPENDED,
-                     Status.LAPSED, Status.EXPIRED]
+    # Statuses in which a membership still exists and can be worked with. "Live"
+    # is NOT "covered": a suspended member is still on the books and can be
+    # reinstated, but whether they may CLAIM is a question for the policy,
+    # answered by the eligibility engine — never by a status check scattered
+    # through the code.
+    LIVE_STATUSES = [Status.ACTIVE, Status.SUSPENDED]
 
-    # The statuses automation is allowed to move a membership BETWEEN. It must
-    # never touch one a human deliberately set (SUSPENDED, WITHDRAWN, EXPELLED,
-    # PENDING) — an automated job overriding a human decision is exactly the kind
-    # of surprise that destroys trust in an automated system.
-    AUTOMATABLE_STATUSES = [Status.ACTIVE, Status.INACTIVE, Status.LAPSED,
-                            Status.EXPIRED]
+    # Statuses from which nothing more is expected of the member, and nothing more
+    # is owed to them.
+    ENDED_STATUSES = [Status.WITHDRAWN, Status.DECEASED, Status.CLOSED]
 
     number = models.CharField(max_length=24, unique=True, editable=False,
                               help_text="Permanent membership reference; assigned once, never reused.")
@@ -828,10 +885,41 @@ class SchemeMembership(models.Model):
         help_text="If the member lapsed and came back: when. A reinstatement waiting "
                   "period runs from this date, not from the original joining date.")
 
-    # ---- Household (Phase 2) ------------------------------------------------
+    # ---- Household (Phase 3) ------------------------------------------------
+    registration_type = models.CharField(
+        max_length=10, choices=RegistrationType.choices,
+        default=RegistrationType.INDIVIDUAL, db_index=True,
+        help_text="An individual enrolment, or one subscription covering a household.")
     household_name = models.CharField(
         max_length=120, blank=True,
-        help_text="Under a household policy, the household this enrolment covers.")
+        help_text="Under a household registration, the household this enrolment covers "
+                  "(e.g. 'the Otieno household').")
+
+    # ---- Standing (Phase 3) — COMPUTED, never hand-set ----------------------
+    standing = models.CharField(
+        max_length=10, choices=Standing.choices, default=Standing.PENDING,
+        db_index=True, editable=False,
+        help_text="Where this member stands under the policy. Derived by "
+                  "benevolent.services.standing.assess() — a pure function of the "
+                  "policy and the facts. This column is a CACHE of that function, so "
+                  "recomputing it can never lose information, and a nightly job "
+                  "writing here can never overwrite a human's decision (which lives on "
+                  "`status`).")
+    standing_reason = models.CharField(max_length=200, blank=True, editable=False)
+    standing_as_of = models.DateField(null=True, blank=True, editable=False)
+
+    # ---- Death and transfer (Phase 3) --------------------------------------
+    died_on = models.DateField(null=True, blank=True)
+    transferred_to = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="transferred_from",
+        help_text="Where this membership went, if it was passed to a successor.")
+    succeeded_from = models.ForeignKey(
+        "members.Member", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The member this enrolment was inherited from, if it was. Their "
+                  "joining date is kept, so the years they paid in are not lost by "
+                  "the household.")
 
     enrolled_by = models.ForeignKey("auth.User", null=True, blank=True,
                                     on_delete=models.SET_NULL,
@@ -955,12 +1043,32 @@ class SchemeDependant(models.Model):
 
     membership = models.ForeignKey(SchemeMembership, on_delete=models.CASCADE,
                                    related_name="dependants")
-    name = models.CharField(max_length=120)
+    # A dependant who is themselves on the church roll is LINKED, not typed in a
+    # second time. This is the whole "extend Members, do not duplicate it"
+    # instruction made concrete: a spouse who is a church member has ONE record,
+    # and their name, phone and status cannot drift between the roll and the
+    # scheme. Where the dependant is not a church member (a young child, an
+    # elderly parent in the village), `name` carries them, and nothing is lost.
+    member = models.ForeignKey(
+        "members.Member", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="benevolent_dependencies",
+        help_text="Link this dependant to their church-member record where they have "
+                  "one, so their details are never kept in two places.")
+    name = models.CharField(
+        max_length=120, blank=True,
+        help_text="Only needed for a dependant who is not on the church roll.")
     relationship = models.CharField(max_length=8, choices=Relationship.choices)
+    phone = models.CharField(
+        max_length=20, blank=True, db_index=True,
+        help_text="A spouse or grown child very often pays the member's dues from "
+                  "their OWN phone. Recording the number here lets the allocator "
+                  "recognise that money instead of dropping it into an unmatched "
+                  "queue for a treasurer to puzzle over.")
     date_of_birth = models.DateField(null=True, blank=True)
     registered_on = models.DateField(default=_dt.date.today,
                                      help_text="When this dependant was registered on the scheme.")
     active = models.BooleanField(default=True, db_index=True)
+    removed_on = models.DateField(null=True, blank=True)
     notes = models.CharField(max_length=200, blank=True)
     history = HistoricalRecords()
 
@@ -968,7 +1076,30 @@ class SchemeDependant(models.Model):
         ordering = ["relationship", "name"]
 
     def __str__(self):
-        return f"{self.name} ({self.get_relationship_display()})"
+        return f"{self.display_name} ({self.get_relationship_display()})"
+
+    @property
+    def display_name(self):
+        """The member registry wins where it knows them — one name, one place."""
+        return (self.member.name if self.member_id else self.name) or "(unnamed)"
+
+    @property
+    def is_spouse(self):
+        return self.relationship == self.Relationship.SPOUSE
+
+    def clean(self):
+        if not self.member_id and not (self.name or "").strip():
+            raise ValidationError(
+                "Give the dependant a name, or link them to their church-member record.")
+
+    def covered_on(self, date):
+        """Was this dependant on record, and still covered, when the event happened?
+        Registering someone after the fact is the oldest trick there is."""
+        if self.registered_on and self.registered_on > date:
+            return False
+        if self.removed_on and self.removed_on <= date:
+            return False
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -984,16 +1115,44 @@ class BenevolentContribution(models.Model):
     """
 
     class Kind(models.TextChoices):
+        """What KIND of money came in.
+
+        Not a label. Only DUES settle dues, so misclassifying a levy or a
+        registration fee would let it silently clear a member's own arrears — and
+        the scheme's arrears book would go quietly and permanently wrong. Every
+        route into `record_contribution` therefore says what kind of money it is,
+        and where it does not, the engine infers it from the evidence rather than
+        guessing a default.
+        """
         DUES = "DUES", "Periodic dues"
         LEVY = "LEVY", "Per-case levy"
-        FEE = "FEE", "Registration or renewal fee"
-        DONATION = "DONATION", "Donation or gift"
+        REGISTRATION = "REGISTRATION", "Registration fee"
+        RENEWAL = "RENEWAL", "Renewal fee"
+        PENALTY = "PENALTY", "Payment of a penalty"
+        VOLUNTARY = "VOLUNTARY", "Voluntary contribution"
+        DONATION = "DONATION", "Donation or gift (from anyone)"
+
+    # The kinds that actually settle a member's periodic dues. Everything else is
+    # money the member has given the scheme WITHOUT it being a subscription — and
+    # `arrears_for()` must not treat it as one.
+    SETTLES_DUES = [Kind.DUES]
+
+    # The kinds that are a member meeting an obligation (as opposed to a gift).
+    OBLIGATIONS = [Kind.DUES, Kind.LEVY, Kind.REGISTRATION, Kind.RENEWAL, Kind.PENALTY]
 
     kind = models.CharField(
-        max_length=8, choices=Kind.choices, default=Kind.DUES, db_index=True,
+        max_length=12, choices=Kind.choices, default=Kind.DUES, db_index=True,
         help_text="What kind of money this is. It matters: only DUES count against a "
                   "member's dues, so a levy paid towards someone else's bereavement — or "
                   "a registration fee — can never silently clear a member's own arrears.")
+
+    # Where the money came in from an unattended channel and the allocator decided
+    # who it belonged to, this records how sure it was — so a treasurer reading the
+    # member's statement can see which lines a machine attributed and which a human
+    # did. A confidently-wrong allocation is the failure mode worth being able to
+    # audit for.
+    allocated_automatically = models.BooleanField(default=False, db_index=True)
+    allocation_confidence = models.PositiveSmallIntegerField(default=0)
 
     scheme = models.ForeignKey(BenevolentScheme, on_delete=models.PROTECT,
                                related_name="contributions")
@@ -1361,3 +1520,6 @@ class CaseAttachment(models.Model):
 # ---------------------------------------------------------------------------
 from benevolent.models_config import (  # noqa: E402,F401
     BenevolentSettings, CaseApproval, PolicyProfile, SchemeNominee)
+from benevolent.models_contrib import (  # noqa: E402,F401
+    ContributionIntake, ContributionRefund, ContributionRule, MemberAdjustment)
+

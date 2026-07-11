@@ -1,0 +1,60 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Test a narration · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>What would the allocator do?</h1>
+  <div class="sub">Try a narration, a number and a name, and see every signal it would fire</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_intake_queue' %}">← Intake</a></div></div>
+
+<p class="help u-mt-0">A treasurer who can ask "what would you do with this?" and see the reasoning will trust the
+  queue. One who can only watch money arrive in the wrong place will not.</p>
+
+<div class="card form-card u-mt" style="max-width:760px"><div class="bd">
+<form method="get">
+  <div class="form-grid">
+    <div class="form-row"><label for="ref">Narration / reference</label>
+      <input class="field" type="text" name="reference" id="ref" value="{{ reference }}" placeholder="e.g. ben dues"></div>
+    <div class="form-row"><label for="ph">Phone number</label>
+      <input class="field" type="text" name="phone" id="ph" value="{{ phone }}" placeholder="0712345678"></div>
+    <div class="form-row"><label for="nm">Name, as the bank spells it</label>
+      <input class="field" type="text" name="name" id="nm" value="{{ name }}"></div>
+    <div class="form-row"><label for="am">Amount</label>
+      <input class="field" type="number" step="0.01" name="amount" id="am" value="{{ amount }}"></div>
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Run the allocator</button></div>
+</form>
+</div></div>
+
+{% if result %}
+<div class="card u-mt"><div class="hd">The answer</div><div class="bd">
+  {% if result.scheme %}<p><strong>Scheme:</strong> {{ result.scheme.name }}
+    {% if result.kind %}· <strong>Kind:</strong> {{ result.kind|lower }}{% endif %}</p>
+  {% else %}<p class="muted">No rule or fund identifies this as scheme money.</p>{% endif %}
+  {% for n in result.notes %}<div class="alert alert-warn u-mt-0">{{ n }}</div>{% endfor %}
+
+  {% for c in result.candidates %}
+  <div class="card u-mb" style="border-left:3px solid {% if forloop.first %}var(--forest,#1f5f4f){% else %}var(--line){% endif %}">
+    <div class="bd">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>{{ c.member_name }}</strong> <span class="muted mono u-xs">{{ c.membership_number }}</span></div>
+        <div class="mono" style="font-size:1.1rem;font-weight:700">{{ c.score }}%</div>
+      </div>
+      <table class="ledger compact u-mt"><tbody>
+      {% for s in c.signals %}<tr><td>{{ s.label }}</td><td class="muted">{{ s.detail }}</td>
+        <td class="num mono">+{{ s.weight }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+  {% empty %}
+  <p class="muted">No candidate. That is an honest blank, not a failure — the evidence is not there.</p>
+  {% endfor %}
+</div></div>
+{% endif %}
+
+<div class="card u-mt"><div class="hd">How the signals are weighted</div><div class="bd">
+<p class="help u-mt-0">Signals <strong>add</strong>. Corroboration is what produces confidence, so no single
+  medium signal reaches the auto-allocation threshold by itself — which is exactly how a careful treasurer works.</p>
+<table class="ledger compact"><thead><tr><th>Signal</th><th class="num">Weight</th></tr></thead>
+<tbody>{% for code, w in weights %}<tr><td class="mono u-xs">{{ code }}</td><td class="num mono">{{ w }}</td></tr>{% endfor %}</tbody>
+</table>
+</div></div>
+{% endblock %}

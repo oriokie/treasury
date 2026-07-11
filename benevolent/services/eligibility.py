@@ -123,17 +123,27 @@ def _check_membership(policy, membership) -> Check:
     if membership is None:
         return Check("membership", "Claimant is enrolled", False,
                      "The policy requires enrolment, and no membership was given.")
-    # SUSPENDED / EXPELLED / WITHDRAWN / PENDING members are not covered. LAPSED
-    # and INACTIVE deliberately are NOT listed: whether those bar a claim is a
-    # question for the arrears and inactivity rules, which may still let it
-    # through (with a deduction). That is a policy decision, and it must not be
-    # pre-empted by a status lookup buried here.
-    bad = (SchemeMembership.Status.SUSPENDED, SchemeMembership.Status.EXPELLED,
-           SchemeMembership.Status.WITHDRAWN, SchemeMembership.Status.PENDING)
+    # The LIFECYCLE bars a claim: a suspended, withdrawn, closed or not-yet-admitted
+    # member is not covered, because a human decided so.
+    #
+    # A DECEASED member is deliberately NOT barred. Their own death is very often
+    # the last claim on the scheme — the very thing they paid in for — and refusing
+    # it because they are dead would be an absurdity a computer could easily commit
+    # and a church never would.
+    #
+    # Standing (arrears, inactive) is NOT consulted here either: whether those bar
+    # a claim is the policy's decision, made by the arrears and inactivity rules
+    # below, which may still let it through with a deduction. A summary must never
+    # pre-empt a decision.
+    bad = (SchemeMembership.Status.SUSPENDED, SchemeMembership.Status.WITHDRAWN,
+           SchemeMembership.Status.CLOSED, SchemeMembership.Status.PENDING)
     ok = membership.status not in bad
-    return Check("membership", "Claimant is enrolled and covered", ok,
-                 f"Membership {membership.number} is "
-                 f"{membership.get_status_display().lower()}.")
+    detail = (f"Membership {membership.number} is "
+              f"{membership.get_status_display().lower()}.")
+    if membership.status == SchemeMembership.Status.DECEASED:
+        detail += (" A claim on the member's own death is exactly what the scheme is "
+                   "for, so this does not bar it.")
+    return Check("membership", "Claimant is enrolled and covered", ok, detail)
 
 
 def _check_registration(policy, membership) -> Check:
@@ -241,9 +251,20 @@ def _check_arrears(policy, membership, event_date) -> Check:
     if membership is None:
         return Check("arrears", label, False,
                      "No membership, so arrears cannot be assessed.")
-    from benevolent.services.contributions import arrears_for
-    owed = arrears_for(membership, policy, as_of=event_date)
+    # THE facts, computed in one place and shared with the standing engine — so the
+    # register and this decision can never disagree about a plain number
+    from benevolent.services.standing import facts_for
+    facts = facts_for(membership, policy, as_of=event_date)
+    owed = facts.arrears
     allowed = policy.max_arrears_allowed or Decimal(0)
+
+    # A grace period covers. If it did not, it would not be grace — it would just
+    # be a politer word for arrears.
+    if facts.in_grace:
+        return Check("arrears", label, True,
+                     f"{_money(owed)} outstanding, but only {facts.days_past_due} day(s) "
+                     f"late of the {facts.grace_days}-day grace period — still covered.",
+                     blocking=False)
     ok = owed <= allowed
     if treatment == SchemePolicy.ArrearsTreatment.DEDUCT:
         return Check("arrears", label, ok,
@@ -275,23 +296,45 @@ def _check_renewal(policy, membership, event_date) -> Check:
 
 
 def _check_inactivity(policy, membership, event_date) -> Check:
+    """Two ways to be inactive, and a levy scheme only has the second.
+
+    A dues scheme measures inactivity in MONTHS SINCE A CONTRIBUTION. A levy scheme
+    has no monthly dues to miss, so that measure sees nothing at all — and the
+    member who never stands with a bereaved family, and then expects the family to
+    stand with them, walks straight through. `inactivity_missed_cases` is the
+    measure that catches them.
+    """
     label = "Member is contributing"
-    if not policy.inactivity_months or \
-            policy.inactivity_action == SchemePolicy.InactivityAction.NONE:
+    measures = bool(policy.inactivity_months) or bool(policy.inactivity_missed_cases)
+    if not measures or policy.inactivity_action == SchemePolicy.InactivityAction.NONE:
         return Check("inactivity", label, True, "No inactivity rule applies.",
                      blocking=False)
     if membership is None:
         return Check("inactivity", label, False, "No membership to check.")
-    months = membership.months_since_contribution(as_of=event_date)
-    ok = months < policy.inactivity_months
+
+    from benevolent.services.standing import facts_for
+    facts = facts_for(membership, policy, as_of=event_date)
+
     # FLAG means "note it", not "refuse it" — only the harder actions bar a claim
     blocking = policy.inactivity_action in (
         SchemePolicy.InactivityAction.SUSPEND, SchemePolicy.InactivityAction.LAPSE,
         SchemePolicy.InactivityAction.EXPEL)
+
+    bits, ok = [], True
+    if policy.inactivity_months:
+        bits.append(f"{facts.months_idle} month(s) since the last contribution "
+                    f"(the policy allows {policy.inactivity_months})")
+        if facts.months_idle >= policy.inactivity_months:
+            ok = False
+    if policy.inactivity_missed_cases:
+        bits.append(f"{facts.missed_cases} consecutive case levy/levies unpaid "
+                    f"(the policy allows {policy.inactivity_missed_cases})")
+        if facts.missed_cases >= policy.inactivity_missed_cases:
+            ok = False
     return Check("inactivity", label, ok,
-                 f"{months} month(s) since the last contribution; this policy treats "
-                 f"{policy.inactivity_months} as inactive "
-                 f"({policy.get_inactivity_action_display().lower()}).",
+                 "; ".join(bits)
+                 + f". This policy's response is to "
+                   f"{policy.get_inactivity_action_display().lower()}.",
                  blocking=blocking)
 
 
@@ -337,13 +380,16 @@ def _check_beneficiary_covered(policy, membership, case, event_type) -> Check:
                      f"'{event_type.name}' does not cover dependants.")
     event_date = case.event_date
 
-    if dep.registered_on and dep.registered_on > event_date:
+    if not dep.covered_on(event_date):
+        if dep.registered_on and dep.registered_on > event_date:
+            return Check("beneficiary", label, False,
+                         f"{dep.display_name} was registered on "
+                         f"{dep.registered_on:%d %b %Y}, AFTER the event on "
+                         f"{event_date:%d %b %Y}. A dependant must be on record before the "
+                         f"event to be covered.")
         return Check("beneficiary", label, False,
-                     f"{dep.name} was registered on {dep.registered_on:%d %b %Y}, AFTER the "
-                     f"event on {event_date:%d %b %Y}. A dependant must be on record before "
-                     f"the event to be covered.")
-    if not dep.active:
-        return Check("beneficiary", label, False, f"{dep.name} is no longer covered.")
+                     f"{dep.display_name} was removed from cover on "
+                     f"{dep.removed_on:%d %b %Y}, before the event.")
 
     if policy.dependant_age_limit and dep.date_of_birth and \
             dep.relationship == dep.Relationship.CHILD:
@@ -352,8 +398,8 @@ def _check_beneficiary_covered(policy, membership, case, event_type) -> Check:
                - ((event_date.month, event_date.day) < (b.month, b.day)))
         if age > policy.dependant_age_limit:
             return Check("beneficiary", label, False,
-                         f"{dep.name} was {age} at the event; children are covered to "
-                         f"{policy.dependant_age_limit}.")
+                         f"{dep.display_name} was {age} at the event; children are covered "
+                         f"to {policy.dependant_age_limit}.")
 
     if policy.max_dependants and membership is not None:
         covered = list(membership.dependants.filter(active=True)
@@ -365,9 +411,10 @@ def _check_beneficiary_covered(policy, membership, case, event_type) -> Check:
         if dep.pk not in allowed_ids and not (is_spouse and policy.spouse_auto_covered):
             return Check("beneficiary", label, False,
                          f"This membership covers {policy.max_dependants} dependant(s), and "
-                         f"{dep.name} is beyond that number (cover goes to those registered "
-                         f"first).")
-    return Check("beneficiary", label, True, f"{dep.name} is a covered dependant.")
+                         f"{dep.display_name} is beyond that number (cover goes to those "
+                         f"registered first).")
+    return Check("beneficiary", label, True,
+                 f"{dep.display_name} is a covered dependant.")
 
 
 def _check_claim_frequency(policy, membership, event_type, event_date, rule,
@@ -605,9 +652,12 @@ def _apply_deductions(e, policy, membership, case):
 
     treatment = policy.arrears_treatment
     if treatment == SchemePolicy.ArrearsTreatment.DEDUCT:
-        from benevolent.services.contributions import arrears_for
+        from benevolent.services.standing import facts_for
         as_of = case.event_date if (case is not None and case.pk) else None
-        owed = arrears_for(membership, policy, as_of=as_of)
+        # the same facts the register shows and the arrears CHECK used — an exempt
+        # member shows as clear and has nothing docked, because there is one answer
+        # to "what does this member owe" and everything asks it
+        owed = facts_for(membership, policy, as_of=as_of).arrears
         if owed > 0:
             take = min(owed, amount)
             amount -= take

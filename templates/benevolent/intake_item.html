@@ -1,0 +1,92 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Intake · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Whose money is this?</h1>
+  <div class="sub">{{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }} received {{ item.date|date:"d M Y" }}
+    · <span class="pill u-xs">{{ item.get_status_display }}</span></div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_intake_queue' %}">← Queue</a></div></div>
+
+<div class="card u-mb"><div class="hd">The receipt</div><div class="bd">
+<table class="ledger compact">
+  <tr><th>Amount</th><td class="mono">{{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }}</td></tr>
+  <tr><th>Date</th><td>{{ item.date|date:"d M Y" }}</td></tr>
+  <tr><th>Narration</th><td class="mono">{{ item.transaction.reference|default:"—" }}</td></tr>
+  <tr><th>Paid by</th><td>{{ item.transaction.payer_name|default:"—" }}
+    <span class="muted mono">{{ item.transaction.payer_phone }}</span></td></tr>
+  <tr><th>Banked into</th><td>{{ item.transaction.department.name }}
+    <span class="muted u-xs">— already in the ledger; this page only decides whose it is</span></td></tr>
+  {% if item.transaction.raw_narration %}<tr><th>Raw</th><td class="muted u-xs">{{ item.transaction.raw_narration|truncatechars:160 }}</td></tr>{% endif %}
+</table>
+</div></div>
+
+{% if item.duplicate_of %}
+<div class="alert alert-warn u-mb"><strong>This may be the same money twice.</strong>
+  {{ item.duplicate_of.membership.member.name }} already paid
+  {{ CURRENCY }} {{ item.duplicate_of.amount|floatformat:2|intcomma }} to {{ item.scheme.code }} on
+  {{ item.duplicate_of.date|date:"d M Y" }}.
+  <div class="help u-mt-0">It is only a suspicion, and some of these are genuine — a member paying two months in two
+    identical instalments, or two households sending the same levy on the same day. So it is flagged for you rather
+    than blocked: silently refusing a real payment would be worse than accepting a duplicate, because the member would
+    have paid and the scheme would deny it.</div>
+</div>
+{% endif %}
+
+<div class="card u-mb"><div class="hd">What the allocator thought, and why</div><div class="bd">
+{% if item.note %}<p class="muted">{{ item.note }}</p>{% endif %}
+{% if candidates %}
+<p class="help u-mt-0">Every candidate it considered, with the signals that argued for each. Signals <em>add</em>: it
+  takes corroboration to reach confidence, so no single medium signal can carry an allocation on its own.</p>
+{% for c in candidates %}
+<div class="card u-mb" style="border-left:3px solid {% if forloop.first %}var(--forest,#1f5f4f){% else %}var(--line){% endif %}">
+  <div class="bd">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><strong>{{ c.member_name }}</strong> <span class="muted mono u-xs">{{ c.membership_number }}</span>
+        {% if c.case_number %}<span class="pill pill-blue u-xs">{{ c.case_number }}</span>{% endif %}
+        {% if c.kind %}<span class="muted u-xs">{{ c.kind|lower }}</span>{% endif %}</div>
+      <div class="mono" style="font-size:1.1rem;font-weight:700;color:var(--forest,#1f5f4f)">{{ c.score }}%</div>
+    </div>
+    <table class="ledger compact u-mt"><tbody>
+    {% for s in c.signals %}<tr>
+      <td>{{ s.label }}</td>
+      <td class="muted">{{ s.detail }}</td>
+      <td class="num mono">+{{ s.weight }}</td>
+    </tr>{% endfor %}
+    </tbody></table>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="muted">Nothing identified the member — no known phone number, no membership number in the narration, no
+  recognisable name. That is an honest blank rather than a bad guess, and it is the right answer when the evidence is
+  not there.</p>
+{% endif %}
+</div></div>
+
+{% if item.is_open %}
+<div class="card"><div class="hd">Attribute it</div><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt">
+    <button class="btn">Attribute the money</button>
+    <button class="btn btn-ghost" name="reject" value="1"
+            onclick="return confirm('Mark as not scheme money? The receipt stays in the ledger and on the bank reconciliation — only the attribution changes.')">Not scheme money</button>
+  </div>
+</form>
+<p class="help u-mt">Attributing does not move the money — it is already banked. It creates the index row that says who
+  gave it, which is what makes it appear on the member's statement and against their dues.</p>
+</div></div>
+{% elif item.contribution %}
+<div class="alert alert-info">Resolved — attributed to
+  <a class="link" href="{% url 'benevolent_membership_detail' item.contribution.membership.id %}">{{ item.contribution.membership.member.name }}</a>
+  as {{ item.contribution.get_kind_display|lower }}
+  {% if item.contribution.allocated_automatically %}<strong>automatically</strong>, at
+  {{ item.contribution.allocation_confidence }}% confidence{% else %}by {{ item.resolved_by }}{% endif %}.</div>
+{% endif %}
+{% endblock %}

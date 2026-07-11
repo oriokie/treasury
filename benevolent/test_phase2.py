@@ -31,11 +31,12 @@ from members.models import Member
 from benevolent.models import (BenevolentCase, BenevolentEventType, BenevolentScheme,
                                BenevolentSettings, CaseApproval, PolicyProfile,
                                SchemeBenefitRule, SchemeDependant, SchemeMembership,
-                               SchemeNominee, SchemePolicy)
+                               SchemeNominee, SchemePolicy, Standing)
 from benevolent.services import cases as case_svc
 from benevolent.services import contributions as contrib_svc
 from benevolent.services import profiles as profile_svc
 from benevolent.services import schemes as scheme_svc
+from benevolent.services import standing as standing_svc
 from benevolent.services import wizard as wizard_svc
 from benevolent.services.eligibility import evaluate
 
@@ -638,9 +639,10 @@ class ReinstatementTests(Phase2Fixture):
             inactivity_action=SchemePolicy.InactivityAction.LAPSE,
             inactivity_months=6)
         m = self._enrol(self.mary, days_ago=1000)
-        m.status = SchemeMembership.Status.LAPSED
-        m.save()
-
+        # Phase 3: falling behind is a STANDING, not a lifecycle status. To model a
+        # member who left and came back, the lifecycle change is a withdrawal —
+        # which is a decision, and is what reinstatement reverses.
+        scheme_svc.withdraw_membership(m, user=self.treasurer)
         scheme_svc.reinstate(m, on=TODAY - dt.timedelta(days=10),
                              user=self.treasurer)
         m.refresh_from_db()
@@ -811,24 +813,36 @@ class WizardTests(Phase2Fixture):
 # ===========================================================================
 
 class AutomationTests(Phase2Fixture):
+    """Phase 3 rewrote what automation DOES, and these tests were rewritten with it.
+
+    In Phase 2 the job mutated `SchemeMembership.status` — the very column a
+    treasurer writes to — and was kept safe by an allowlist of statuses it was
+    permitted to touch. That worked, but it was a rule someone had to remember.
+
+    It now recomputes `standing`, a cache of a pure function, and does not write to
+    `status` at all. So it is *structurally* incapable of overruling a human, and
+    these tests assert the new contract: the standing moves, the lifecycle does not.
+    """
 
     def test_it_does_nothing_when_switched_off(self):
         result = scheme_svc.run_automation()
         self.assertFalse(result["ran"])
         self.assertIn("switched off", result["reason"])
 
-    def test_it_lapses_a_member_in_arrears_and_reinstates_them_when_they_pay(self):
+    def test_a_member_in_arrears_is_shown_as_such_and_clears_when_they_pay(self):
         self._new_version(arrears_block=True,
                           arrears_treatment=SchemePolicy.ArrearsTreatment.BLOCK,
                           max_arrears_allowed=Decimal("100"))
         m = self._enrol(self.mary, days_ago=200)
 
-        r = scheme_svc.run_automation(self.scheme, force=True)
+        # registering already computes standing, so the job finds it correct and
+        # changes nothing — which is the right answer, and the reason a recompute is
+        # safe to run as often as you like
+        scheme_svc.run_automation(self.scheme, force=True)
         m.refresh_from_db()
-        self.assertEqual(m.status, SchemeMembership.Status.LAPSED)
-        self.assertEqual(r["changed"], 1)
+        self.assertEqual(m.standing, Standing.ARREARS)
+        self.assertEqual(m.status, SchemeMembership.Status.ACTIVE)   # LIFECYCLE untouched
 
-        # they pay everything off
         owed = contrib_svc.arrears_for(m)
         contrib_svc.record_contribution(
             self.scheme, date=TODAY, amount=owed, membership=m,
@@ -836,25 +850,36 @@ class AutomationTests(Phase2Fixture):
 
         scheme_svc.run_automation(self.scheme, force=True)
         m.refresh_from_db()
-        self.assertEqual(m.status, SchemeMembership.Status.ACTIVE)
+        self.assertEqual(m.standing, Standing.GOOD)
 
-    def test_it_never_touches_a_status_a_human_set(self):
-        """A membership someone deliberately suspended must not be quietly
-        reinstated by a nightly job — that is how people stop trusting automation."""
+    def test_it_cannot_write_to_the_lifecycle_at_all(self):
+        """The Phase 3 guarantee, stated as a test. A membership someone suspended
+        stays suspended, whatever the facts do — because the job writes to a
+        different column."""
         self._new_version(arrears_block=True,
                           arrears_treatment=SchemePolicy.ArrearsTreatment.BLOCK)
         m = self._enrol(self.mary, days_ago=200)
-        m.status = SchemeMembership.Status.SUSPENDED
-        m.save()
+        from benevolent.services import registry as reg_svc
+        reg_svc.suspend(m, user=self.treasurer, reason="Under investigation.")
 
+        # they pay everything off — in Phase 2 this would have flipped them back to
+        # ACTIVE, silently reversing a treasurer's decision
+        owed = contrib_svc.arrears_for(m)
+        if owed:
+            contrib_svc.record_contribution(
+                self.scheme, date=TODAY, amount=owed, membership=m,
+                user=self.treasurer, period_label="")
         scheme_svc.run_automation(self.scheme, force=True)
+
         m.refresh_from_db()
         self.assertEqual(m.status, SchemeMembership.Status.SUSPENDED)
+        self.assertEqual(m.standing, Standing.SUSPENDED)
 
     def test_it_never_suspends_or_expels_anyone_by_itself(self):
-        """Removing someone from a welfare scheme is a decision a person should
-        make and answer for. The policy still bars their claims; automation simply
-        declines to be the one who throws them out."""
+        """Removing someone from a welfare scheme is a decision a person should make
+        and answer for. Automation computes the FACT (inactive); it does not carry
+        out the punishment. The engine still refuses their claim, which is the part
+        that actually protects the fund."""
         self._new_version(
             inactivity_months=1,
             inactivity_action=SchemePolicy.InactivityAction.EXPEL,
@@ -863,10 +888,9 @@ class AutomationTests(Phase2Fixture):
 
         scheme_svc.run_automation(self.scheme, force=True)
         m.refresh_from_db()
-        self.assertNotEqual(m.status, SchemeMembership.Status.EXPELLED)
-        self.assertEqual(m.status, SchemeMembership.Status.ACTIVE)
+        self.assertEqual(m.status, SchemeMembership.Status.ACTIVE)   # not expelled
+        self.assertEqual(m.standing, Standing.INACTIVE)              # but named
 
-        # but the ENGINE still refuses their claim, which is the part that matters
         r = evaluate(self.scheme, event_type=self.bereavement, event_date=TODAY,
                      membership=m)
         self.assertIn("inactivity", [c.code for c in r.blocking_failures])
@@ -880,26 +904,48 @@ class AutomationTests(Phase2Fixture):
 
         scheme_svc.run_automation(self.scheme, force=True)
         m.refresh_from_db()
-        self.assertEqual(m.status, SchemeMembership.Status.INACTIVE)
-        self.assertEqual(m.inactive_since, TODAY)
+        self.assertEqual(m.standing, Standing.INACTIVE)
 
+        # they come back and clear everything they owe
+        owed = contrib_svc.arrears_for(m)
         contrib_svc.record_contribution(
-            self.scheme, date=TODAY, amount=Decimal("100"), membership=m,
-            user=self.treasurer)
+            self.scheme, date=TODAY, amount=owed or Decimal("100"), membership=m,
+            user=self.treasurer, period_label="")
         scheme_svc.run_automation(self.scheme, force=True)
         m.refresh_from_db()
-        self.assertEqual(m.status, SchemeMembership.Status.ACTIVE)
-        self.assertIsNone(m.inactive_since)
+        self.assertEqual(m.standing, Standing.GOOD)
 
     def test_it_reports_every_change_it_makes(self):
         self._new_version(arrears_block=True,
                           arrears_treatment=SchemePolicy.ArrearsTreatment.BLOCK)
-        self._enrol(self.mary, days_ago=200)
+        m = self._enrol(self.mary, days_ago=200)
+        # force a stale cache, as a real one goes stale: time passes, and dues fall
+        # due, without anybody touching the record
+        SchemeMembership.objects.filter(pk=m.pk).update(standing=Standing.GOOD)
+
         r = scheme_svc.run_automation(self.scheme, force=True)
         c = r["changes"][0]
-        self.assertEqual(c["to"], SchemeMembership.Status.LAPSED)
-        self.assertIn("arrears", c["reason"])
+        self.assertEqual(c["from"], Standing.GOOD)
+        self.assertEqual(c["to"], Standing.ARREARS)
+        self.assertIn("arrears", c["reason"].lower())
         self.assertIs(c["scheme"], self.scheme)
+
+    def test_recomputing_is_idempotent_and_free_of_consequence(self):
+        """A cache can be rebuilt as often as you like, in any order, after a
+        failure, with no thought at all. That is why it is safe to schedule."""
+        self._new_version(arrears_block=True,
+                          arrears_treatment=SchemePolicy.ArrearsTreatment.BLOCK)
+        m = self._enrol(self.mary, days_ago=200)
+        SchemeMembership.objects.filter(pk=m.pk).update(standing=Standing.GOOD)
+
+        first = scheme_svc.run_automation(self.scheme, force=True)
+        second = scheme_svc.run_automation(self.scheme, force=True)
+        third = scheme_svc.run_automation(self.scheme, force=True)
+        self.assertEqual(first["changed"], 1)
+        self.assertEqual(second["changed"], 0)   # nothing left to change
+        self.assertEqual(third["changed"], 0)
+        m.refresh_from_db()
+        self.assertEqual(m.standing, Standing.ARREARS)
 
 
 # ===========================================================================

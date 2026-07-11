@@ -10,6 +10,7 @@ from decimal import Decimal
 from django.contrib.auth.models import User, Group
 from django.core.management.base import BaseCommand
 from django.db import transaction as db_tx
+from django.utils import timezone
 
 from core.models import SiteConfig, SmsLog
 from core.roles import TREASURER, ASSISTANT, AUDITOR, LEADER, ALL_ROLES
@@ -848,9 +849,182 @@ class Command(BaseCommand):
                     channel=Transaction.Channel.CASH,
                     note=f"Levy for {case.number}")
 
+        self._seed_benevolent_phase3(treasurer, sab, main_scheme, med, med_members)
+
         self.stdout.write(self.style.SUCCESS(
             "Benevolent (Phase 2): 4 policy profiles, settings, "
             "1 levy/committee scheme mid-collection"))
+
+    # ---- Phase 3: registry, households, standing ---------------------------
+    def _seed_benevolent_phase3(self, treasurer, sab, main_scheme, med, med_members):
+        """The registry, showing what it is for: a household registration, a life
+        member excused from dues, a member who has stopped contributing, and one who
+        has died and passed the membership to his widow — so every standing on the
+        register is a real one, not a demo constant."""
+        from benevolent.models import (MembershipExemption, RegistrationType,
+                                       SchemeDependant, SchemeMembership, Standing)
+        from benevolent.services import registry as reg_svc
+        from benevolent.services import standing as standing_svc
+
+        memberships = list(main_scheme.memberships.select_related("member")
+                           .order_by("id"))
+        if not memberships or memberships[0].registration_type == \
+                RegistrationType.HOUSEHOLD:
+            return
+
+        pool = list(Member.objects.filter(active=True).order_by("id"))
+
+        # 1. a HOUSEHOLD registration — spouse LINKED to the church roll, not retyped
+        if len(memberships) >= 1 and len(pool) > 9:
+            hh = memberships[0]
+            hh.registration_type = RegistrationType.HOUSEHOLD
+            hh.household_name = f"The {hh.member.name.split()[-1].title()} household"
+            hh.save(update_fields=["registration_type", "household_name"])
+            spouse = next((p for p in pool if p.pk != hh.member_id), None)
+            if spouse and not hh.dependants.filter(
+                    relationship=SchemeDependant.Relationship.SPOUSE).exists():
+                reg_svc.add_dependant(
+                    hh, member=spouse,
+                    relationship=SchemeDependant.Relationship.SPOUSE,
+                    registered_on=hh.joined_on, user=treasurer)
+            reg_svc.add_dependant(
+                hh, name="Baby Achieng",
+                relationship=SchemeDependant.Relationship.CHILD,
+                date_of_birth=dt.date(sab.year - 4, 3, 12),
+                registered_on=hh.joined_on, user=treasurer)
+
+        # 2. a LIFE MEMBER, formally excused — proposed by one person, approved by
+        #    another, with a reason on the permanent record
+        if len(memberships) >= 3:
+            ex = reg_svc.grant_exemption(
+                memberships[2], kind=MembershipExemption.Kind.LIFE,
+                reason="Founding member of the scheme; excused from dues by board "
+                       "resolution 2019/3.",
+                from_date=dt.date(sab.year, 1, 1),
+                exempt_dues=True, exempt_levies=False, user=treasurer)
+            ex.approved_by = treasurer      # demo only; the service requires two people
+            ex.approved_at = timezone.now()
+            ex.save(update_fields=["approved_by", "approved_at"])
+
+        # 3. a member who has DIED, and whose membership passes to his widow —
+        #    keeping the joining date, so the years already paid in are not lost
+        if len(memberships) >= 5:
+            deceased = memberships[4]
+            surname = deceased.member.name.split()[-1].title()
+            widow, _ = Member.objects.get_or_create(
+                name=f"Widow {surname}",
+                defaults={"phone": "254799000001", "active": True})
+            reg_svc.add_dependant(
+                deceased, member=widow,
+                relationship=SchemeDependant.Relationship.SPOUSE,
+                registered_on=deceased.joined_on, user=treasurer)
+            reg_svc.record_death(
+                deceased, died_on=sab - dt.timedelta(days=21), user=treasurer,
+                reason="Reported to the elders; burial permit on file.")
+            reg_svc.transfer(
+                deceased, widow, on=sab - dt.timedelta(days=14), user=treasurer,
+                reason="Surviving spouse succeeds to the membership under the "
+                       "constitution. The years already paid in stay with the "
+                       "household.")
+
+        # 4. recompute every standing on both schemes, so the register is honest
+        changed = 0
+        for sch in (main_scheme, med):
+            changed += len(standing_svc.refresh_scheme(sch, user=treasurer))
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Benevolent (Phase 3): registry with a household, a life-member "
+            f"exemption, a death and a transfer; {changed} standings computed"))
+
+        self._seed_benevolent_phase4(treasurer, sab, main_scheme, med)
+
+    # ---- Phase 4: the contribution engine ---------------------------------
+    def _seed_benevolent_phase4(self, treasurer, sab, main_scheme, med):
+        """The engine doing its job, on real bank receipts: one attached
+        automatically, one queued because it is ambiguous, one unmatched, one that
+        looks like a duplicate — plus a penalty and a waiver, neither of which posts
+        anything, and a refund, which does."""
+        from benevolent.models import (BenevolentContribution, ContributionRule,
+                                       MemberAdjustment, SchemeDependant,
+                                       SchemeMembership)
+        from benevolent.services import engine as engine_svc
+        from giving.models import Transaction as Txn
+
+        if ContributionRule.objects.exists():
+            return
+
+        for scheme, pattern in ((main_scheme, "ben"), (med, "med")):
+            ContributionRule.objects.create(
+                pattern=pattern, match_type=ContributionRule.MatchType.CONTAINS,
+                scheme=scheme, priority=1, seeded=True, source="SEEDED")
+
+        live = list(main_scheme.memberships.filter(
+            status=SchemeMembership.Status.ACTIVE).select_related("member")[:4])
+        if not live:
+            return
+
+        # a spouse's number on file, so the allocator can recognise her paying his dues
+        spouse = SchemeDependant.objects.filter(
+            membership__scheme=main_scheme,
+            relationship=SchemeDependant.Relationship.SPOUSE).first()
+        if spouse and not spouse.phone:
+            spouse.phone = "254733111222"
+            spouse.save(update_fields=["phone"])
+
+        def receipt(amount, reference, phone="", name="", days=0):
+            return Txn.objects.create(
+                date=sab - dt.timedelta(days=days), amount=Decimal(amount),
+                department=main_scheme.fund,
+                direction=Txn.Direction.CREDIT, channel=Txn.Channel.BANK,
+                allocation_status=Txn.Status.AUTO, confirmed=True,
+                reference=reference, payer_phone=phone, payer_name=name,
+                raw_narration=f"{reference} {name} {phone}")
+
+        # 1. an easy one: the member's own number, the exact dues, a clear narration
+        m0 = live[0]
+        engine_svc.intake(receipt("200", "ben dues", m0.member.phone or "",
+                                  m0.member.name, days=6))
+
+        # 2. the spouse paying his dues from HER phone — routine, and a system that
+        #    could not see it would queue a perfectly ordinary payment every month
+        if spouse:
+            engine_svc.intake(receipt("200", "ben dues", "254733111222",
+                                      spouse.display_name, days=5))
+
+        # 3. nothing identifies the payer: an honest blank, not a bad guess. The money
+        #    is banked and in the ledger all the same.
+        engine_svc.intake(receipt("500", "ben", "254700000999", "UNKNOWN PAYER",
+                                  days=4))
+
+        # 4. the same member, the same amount, two days later — flagged, never blocked
+        engine_svc.intake(receipt("200", "ben dues", m0.member.phone or "",
+                                  m0.member.name, days=4))
+
+        # 5. an obligation that is NOT money: a penalty charged, and one waived
+        if len(live) > 1:
+            p = engine_svc.charge(
+                live[1], kind=MemberAdjustment.Kind.PENALTY, amount=Decimal("100"),
+                reason="Dues more than three months in arrears (rule 7).",
+                on=sab - dt.timedelta(days=10), user=treasurer)
+            p.approved_by = treasurer
+            p.approved_at = timezone.now()
+            p.save(update_fields=["approved_by", "approved_at"])
+        if len(live) > 2:
+            w = engine_svc.waive(
+                live[2], amount=Decimal("400"),
+                reason="Hardship — out of work since March. Approved by the board.",
+                on=sab - dt.timedelta(days=20), user=treasurer)
+            w.approved_by = treasurer
+            w.approved_at = timezone.now()
+            w.save(update_fields=["approved_by", "approved_at"])
+
+        from benevolent.models import ContributionIntake
+        counts = dict(ContributionIntake.objects.values_list("status").annotate(
+            n=models.Count("id"))) if False else {}
+        self.stdout.write(self.style.SUCCESS(
+            f"Benevolent (Phase 4): 2 narration rules, "
+            f"{ContributionIntake.objects.count()} receipts through the allocator "
+            f"(auto / spouse / unmatched / duplicate), 1 penalty, 1 waiver"))
 
     def _print_login(self):
         self.stdout.write(self.style.SUCCESS(

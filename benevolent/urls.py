@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import api, views, views_config
+from . import api, views, views_config, views_engine, views_registry
 
 urlpatterns = [
     path("", views.BenevolentDashboardView.as_view(), name="benevolent_dashboard"),
@@ -29,6 +29,40 @@ urlpatterns = [
          name="benevolent_policy_rule"),
     path("schemes/<int:pk>/policy/<int:policy_id>/do/<str:action>/",
          views.PolicyActionView.as_view(), name="benevolent_policy_action"),
+
+    # ---- Phase 4: the contribution engine ----
+    path("intake/", views_engine.IntakeQueueView.as_view(),
+         name="benevolent_intake_queue"),
+    path("intake/<int:pk>/", views_engine.IntakeItemView.as_view(),
+         name="benevolent_intake_item"),
+    path("rules/", views_engine.ContributionRuleView.as_view(),
+         name="benevolent_rules"),
+    path("allocation-test/", views_engine.AllocationTestView.as_view(),
+         name="benevolent_allocation_test"),
+    path("members/<int:pk>/adjustment/", views_engine.AdjustmentView.as_view(),
+         name="benevolent_adjustment"),
+    path("members/<int:pk>/refund/", views_engine.RefundView.as_view(),
+         name="benevolent_refund"),
+    path("adjustments/<int:pk>/<str:action>/",
+         views_engine.AdjustmentDecisionView.as_view(),
+         name="benevolent_adjustment_decision"),
+
+    # ---- Phase 3: the member registry ----
+    path("registry/", views_registry.RegistryView.as_view(), name="benevolent_registry"),
+    path("schemes/<int:pk>/register/", views_registry.RegisterView.as_view(),
+         name="benevolent_register"),
+    path("members/<int:pk>/lifecycle/<str:action>/",
+         views_registry.MembershipLifecycleView.as_view(),
+         name="benevolent_membership_lifecycle"),
+    path("members/<int:pk>/household/", views_registry.HouseholdView.as_view(),
+         name="benevolent_household"),
+    path("members/<int:pk>/exemption/", views_registry.ExemptionView.as_view(),
+         name="benevolent_exemption"),
+    path("members/<int:pk>/standing/", views_registry.StandingRefreshView.as_view(),
+         name="benevolent_standing_refresh"),
+    path("exemptions/<int:pk>/<str:action>/",
+         views_registry.ExemptionDecisionView.as_view(),
+         name="benevolent_exemption_decision"),
 
     # Membership
     path("members/", views.MembershipListView.as_view(), name="benevolent_membership_list"),

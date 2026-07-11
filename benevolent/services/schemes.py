@@ -162,138 +162,72 @@ def withdraw_policy(policy, user=None):
 # Membership
 # ---------------------------------------------------------------------------
 
-@db_tx.atomic
+# ---------------------------------------------------------------------------
+# Membership — Phase 3 moved the substance to services/registry.py
+# ---------------------------------------------------------------------------
+#
+# These remain as the names the rest of the app already calls, and delegate. The
+# registry is now the one place that writes the membership lifecycle, so that
+# every such write is logged as a MembershipEvent without any caller having to
+# remember to do it.
+
 def enrol(scheme, member, *, joined_on=None, user=None, notes="", date_of_birth=None,
-          household_name=""):
-    """Enrol a member.
-
-    Where the policy requires formal registration, the enrolment starts PENDING
-    and cover does not begin until someone admits them (`admit`). Where it does
-    not, they are active immediately. Which of those happens is the policy's
-    decision, not this function's.
-    """
-    if not scheme.accepts_contributions:
-        raise ValidationError(
-            f"{scheme.name} is {scheme.get_status_display().lower()} and is not enrolling.")
-    joined_on = joined_on or _dt.date.today()
-    policy = scheme.policy_on(joined_on)
-
-    needs_admission = bool(
-        policy and policy.registration_required
-        and policy.registration_approval != SchemePolicy.RegistrationApproval.AUTO)
-    start_status = (SchemeMembership.Status.PENDING if needs_admission
-                    else SchemeMembership.Status.ACTIVE)
-
-    existing = SchemeMembership.objects.filter(scheme=scheme, member=member).first()
-    if existing:
-        if existing.is_live:
-            raise ValidationError(
-                f"{member.name} is already enrolled in {scheme.name} "
-                f"({existing.number}, {existing.get_status_display().lower()}).")
-        # a returning member: REINSTATE the same membership so their history —
-        # contributions, past cases, their number — is never orphaned. Their
-        # waiting period restarts from today (see SchemeMembership.cover_from):
-        # without that, a member could lapse for years, rejoin the week a relative
-        # fell ill, and claim on the strength of a 2019 joining date.
-        return reinstate(existing, on=joined_on, user=user)
-
-    m = SchemeMembership.objects.create(
-        scheme=scheme, member=member, joined_on=joined_on,
-        status=start_status, enrolled_by=user, notes=notes,
-        date_of_birth=date_of_birth, household_name=household_name,
-        registered_on=(None if needs_admission
-                       else (joined_on if (policy and policy.registration_required)
-                             else None)))
-    if policy and policy.renewal_required:
-        m.renewed_until = m.renewal_due_on(policy, as_of=joined_on)
-        m.save(update_fields=["renewed_until"])
-    return m
+          household_name="", **kw):
+    from benevolent.services import registry
+    return registry.register(
+        scheme, member, joined_on=joined_on, user=user, notes=notes,
+        date_of_birth=date_of_birth, household_name=household_name, **kw)
 
 
-@db_tx.atomic
-def admit(membership, *, on=None, user=None):
-    """Formally admit a member whose registration needed approval. Cover — and so
-    the waiting period — runs from THIS date, not from the day their name was
-    first typed into a list."""
-    if membership.status != SchemeMembership.Status.PENDING:
-        raise ValidationError(
-            f"{membership.member.name} is {membership.get_status_display().lower()}, "
-            f"not awaiting admission.")
-    on = on or _dt.date.today()
-    membership.registered_on = on
-    membership.status = SchemeMembership.Status.ACTIVE
-    membership.save(update_fields=["registered_on", "status"])
-    return membership
+def admit(membership, *, on=None, user=None, reason=""):
+    from benevolent.services import registry
+    return registry.admit(membership, on=on, user=user, reason=reason)
 
 
-@db_tx.atomic
-def reinstate(membership, *, on=None, user=None):
-    """Bring a lapsed / inactive / expired member back.
-
-    `reinstated_on` is what makes any reinstatement waiting period run from the
-    day they returned rather than the day they originally joined — see
-    SchemeMembership.cover_from.
-    """
-    on = on or _dt.date.today()
-    if membership.status in (SchemeMembership.Status.EXPELLED,):
-        raise ValidationError(
-            f"{membership.member.name} was removed from the scheme and must be enrolled "
-            f"afresh by a treasurer, not simply reinstated.")
-    membership.status = SchemeMembership.Status.ACTIVE
-    membership.left_on = None
-    membership.inactive_since = None
-    membership.reinstated_on = on
-    membership.save(update_fields=["status", "left_on", "inactive_since", "reinstated_on"])
-    return membership
+def reinstate(membership, *, on=None, user=None, reason=""):
+    from benevolent.services import registry
+    return registry.reinstate(membership, on=on, user=user, reason=reason)
 
 
-@db_tx.atomic
-def withdraw_membership(membership, *, on=None, user=None):
-    from benevolent.models import BenevolentCase
-    open_cases = membership.cases.filter(status__in=BenevolentCase.OPEN_STATUSES).count()
-    if open_cases:
-        raise ValidationError(
-            f"{membership.member.name} has {open_cases} open case(s). Settle them before "
-            f"withdrawing the membership.")
-    membership.status = SchemeMembership.Status.WITHDRAWN
-    membership.left_on = on or _dt.date.today()
-    membership.save(update_fields=["status", "left_on"])
-    return membership
-
-
-def refresh_arrears_status(scheme, as_of=None):
-    """Backwards-compatible entry point (Phase 1). Delegates to the automation
-    engine, running only the arrears rule."""
-    result = run_automation(scheme, as_of=as_of, only={"arrears"}, force=True)
-    return result["changed"]
+def withdraw_membership(membership, *, on=None, user=None, reason=""):
+    from benevolent.services import registry
+    return registry.withdraw(membership, on=on, user=user, reason=reason)
 
 
 # ---------------------------------------------------------------------------
 # Automation
 # ---------------------------------------------------------------------------
 
+def refresh_arrears_status(scheme, as_of=None):
+    """Backwards-compatible entry point. Recomputes standing, and returns how many
+    memberships changed."""
+    from benevolent.services import standing as standing_svc
+    return len(standing_svc.refresh_scheme(scheme, as_of=as_of))
+
+
 def run_automation(scheme=None, as_of=None, only=None, force=False, user=None):
-    """Apply the standing membership rules: arrears, inactivity, renewals.
+    """Recompute where every member stands.
 
-    Two principles govern everything here, and they are what make an automated
-    job safe to point at a church's welfare register:
+    Phase 3 rewrote this, and the rewrite is the point of the phase.
 
-    1. **It never overrides a human.** Only memberships in
-       `AUTOMATABLE_STATUSES` are touched. A membership someone deliberately
-       SUSPENDED, WITHDREW or EXPELLED is left exactly alone. An automated job
-       quietly reversing a decision a treasurer made on purpose is the fastest
-       way to make people stop trusting automation.
+    Phase 2's version mutated `SchemeMembership.status` — the same column a
+    treasurer writes to. It was kept safe by an allowlist of statuses it was
+    permitted to touch, which worked, but was a rule someone had to remember and
+    could one day forget.
 
-    2. **It is reversible and it reports.** Every change is returned, and each
-       rule reinstates as readily as it demotes: a member who catches up on their
-       arrears goes back to ACTIVE on the next run without anyone intervening.
+    It now writes ONLY to `standing`, which is a cache of a pure function of the
+    policy and the facts. It is therefore *structurally* incapable of overriding a
+    human's decision — not because it is told not to, but because `status` is a
+    different column and this code does not write to it. Suspension, withdrawal
+    and closure remain what they always should have been: decisions a person makes
+    and answers for.
 
-    Which rules run at all is a SETTING (BenevolentSettings), because none of them
-    can change the outcome of a decision already made — they change the state a
-    FUTURE claim will be assessed against, which the policy then rules on.
+    Recomputing a cache is also idempotent and free of consequence, which means
+    this job can be run as often as you like, in any order, and re-run after a
+    failure, with no thought at all.
     """
     from benevolent.models import BenevolentScheme, BenevolentSettings
-    from benevolent.services.contributions import arrears_for
+    from benevolent.services import standing as standing_svc
 
     as_of = as_of or _dt.date.today()
     cfg = BenevolentSettings.get()
@@ -301,87 +235,18 @@ def run_automation(scheme=None, as_of=None, only=None, force=False, user=None):
         return {"ran": False, "changed": 0, "changes": [],
                 "reason": "Automation is switched off in the benevolent settings."}
 
-    only = only or {"arrears", "inactivity", "renewal"}
     schemes = ([scheme] if scheme is not None
                else list(BenevolentScheme.objects.filter(
                    status=BenevolentScheme.Status.ACTIVE)))
 
     changes = []
     for sch in schemes:
-        policy = sch.policy_on(as_of)
-        if policy is None:
-            continue
-        members = sch.memberships.filter(
-            status__in=SchemeMembership.AUTOMATABLE_STATUSES).select_related("member")
+        for c in standing_svc.refresh_scheme(sch, as_of=as_of, user=user):
+            c["scheme"] = sch
+            changes.append(c)
 
-        for m in members:
-            before = m.status
-            want = before
-            reason = ""
-
-            # --- renewal: strongest signal, so it is decided first ----------
-            if "renewal" in only and (force or cfg.auto_lapse_unrenewed) \
-                    and policy.renewal_required and policy.lapse_on_non_renewal:
-                if m.renewal_overdue(policy, as_of=as_of):
-                    want = SchemeMembership.Status.EXPIRED
-                    due = m.renewal_due_on(policy, as_of=as_of)
-                    reason = f"renewal was due {due:%d %b %Y} and the grace period has passed"
-                elif before == SchemeMembership.Status.EXPIRED:
-                    want = SchemeMembership.Status.ACTIVE
-                    reason = "renewed"
-
-            # --- inactivity -----------------------------------------------
-            if want == before and "inactivity" in only \
-                    and (force or cfg.auto_flag_inactive) \
-                    and policy.inactivity_months \
-                    and policy.inactivity_action != SchemePolicy.InactivityAction.NONE:
-                months = m.months_since_contribution(as_of=as_of)
-                if months >= policy.inactivity_months:
-                    action = policy.inactivity_action
-                    mapping = {
-                        SchemePolicy.InactivityAction.FLAG: SchemeMembership.Status.INACTIVE,
-                        SchemePolicy.InactivityAction.LAPSE: SchemeMembership.Status.LAPSED,
-                        # SUSPEND and EXPEL are deliberately NOT automated: they are
-                        # punitive, and removing someone from a welfare scheme is a
-                        # decision a person should make and be answerable for. The
-                        # policy still BLOCKS their claims via the eligibility engine;
-                        # automation just declines to be the one who throws them out.
-                    }
-                    target = mapping.get(action)
-                    if target and before != target:
-                        want = target
-                        reason = (f"{months} month(s) without a contribution "
-                                  f"(the policy allows {policy.inactivity_months})")
-                elif before == SchemeMembership.Status.INACTIVE:
-                    want = SchemeMembership.Status.ACTIVE
-                    reason = "contributing again"
-
-            # --- arrears ---------------------------------------------------
-            if want == before and "arrears" in only and (force or cfg.auto_refresh_arrears):
-                treatment = policy.arrears_treatment
-                if policy.arrears_block and treatment == SchemePolicy.ArrearsTreatment.IGNORE:
-                    treatment = SchemePolicy.ArrearsTreatment.BLOCK
-                if treatment == SchemePolicy.ArrearsTreatment.BLOCK:
-                    owed = arrears_for(m, policy, as_of=as_of)
-                    allowed = policy.max_arrears_allowed or 0
-                    if owed > allowed and before == SchemeMembership.Status.ACTIVE:
-                        want = SchemeMembership.Status.LAPSED
-                        reason = f"in arrears by {owed}"
-                    elif owed <= allowed and before == SchemeMembership.Status.LAPSED:
-                        want = SchemeMembership.Status.ACTIVE
-                        reason = "arrears cleared"
-
-            if want != before:
-                m.status = want
-                m.inactive_since = (as_of if want == SchemeMembership.Status.INACTIVE
-                                    else None)
-                m.save(update_fields=["status", "inactive_since"])
-                changes.append({
-                    "membership": m, "scheme": sch,
-                    "from": before, "to": want, "reason": reason,
-                })
-
-    summary = f"{len(changes)} membership(s) updated across {len(schemes)} scheme(s)."
+    summary = (f"{len(changes)} membership standing(s) recomputed across "
+               f"{len(schemes)} scheme(s).")
     if not force:
         cfg.automation_last_run = timezone.now()
         cfg.automation_last_summary = summary[:255]

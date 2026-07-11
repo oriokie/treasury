@@ -216,6 +216,22 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         # to the review queue, where "Record as loan receipt"
                         # completes it. Skip member creation for the same reason.
                         loan_hit = lp
+                # Benevolent scheme money is recognised here, alongside loans, for
+                # the same reason: a narration rule knows which FUND the money
+                # belongs to, which ordinary allocation would have to guess at. What
+                # it does NOT know is which member — and that is deliberately a
+                # separate question, answered after the money is safely banked (see
+                # the intake call below). Getting the fund right is what keeps the
+                # ledger correct; getting the member right is what keeps the member's
+                # statement correct, and the first must never wait on the second.
+                ben_scheme = None
+                if is_credit and loan_hit is None:
+                    try:
+                        from benevolent.services.allocation import detect_scheme
+                        ben_scheme, _bk, _bs = detect_scheme(row["reference"])
+                    except Exception:  # noqa: BLE001 — never break an import
+                        ben_scheme = None
+
                 if is_credit and loan_hit is None:
                     member, _ = match_or_create_member(row["name"], row["phone"])
                     resolver, alloc_status = allocate(row["reference"], row["date"])
@@ -246,6 +262,16 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                                           else Transaction.Status.REVIEW)
                 else:
                     status = Transaction.Status.REVIEW
+
+                if ben_scheme is not None and ben_scheme.fund_id:
+                    # the fund is known with certainty, so the receipt is allocated
+                    # and the ledger is right immediately. WHOSE money it is goes to
+                    # the benevolent intake queue below — an unattributed receipt is
+                    # still a banked receipt.
+                    dept = ben_scheme.fund
+                    dev_group = None
+                    split_fund = None
+                    status = Transaction.Status.AUTO
 
                 # When import confirmation is required, auto/learned allocations are
                 # held unconfirmed (they don't affect balances until a treasurer
@@ -304,9 +330,23 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                             bank_receipt=receipt if i == 0 else None,
                             **common)
                 else:
-                    Transaction.objects.create(
+                    txn = Transaction.objects.create(
                         amount=amount, department=dept, dev_group=dev_group,
                         core_ref=core_ref, bank_receipt=receipt, **common)
+
+                    if ben_scheme is not None and txn.confirmed:
+                        # The money is banked and in the ledger. NOW work out whose
+                        # it is — and if that fails, it fails into a queue, not into
+                        # a hole. Never allowed to break an import: a matching
+                        # failure must not cost the church its bank statement.
+                        try:
+                            from benevolent.services.engine import intake as ben_intake
+                            ben_intake(txn, scheme=ben_scheme)
+                        except Exception as _e:  # noqa: BLE001
+                            row_errors.append(
+                                f"{core_ref or receipt}: receipted, but benevolent "
+                                f"allocation failed ({type(_e).__name__}). The money is "
+                                f"in the fund; attach it to a member by hand.")
 
                 if status == Transaction.Status.REVIEW:
                     queued += 1

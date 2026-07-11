@@ -1,13 +1,21 @@
-"""Apply the standing membership rules — arrears, inactivity, renewals.
+"""Recompute where every member stands — arrears, grace, inactivity, exemptions.
 
 Schedule nightly:
 
     python manage.py benevolent_automation
 
-Safe to run repeatedly (it is idempotent), and safe to run unattended: it only
-touches memberships in an automatable state, never one a human deliberately set,
-and it reports every change it makes. --dry-run shows what it WOULD do without
-touching anything, which is how it should be introduced to a live register.
+Safe to run repeatedly, safe to run unattended, and safe to run after a failure,
+for a reason that is structural rather than careful: it writes ONLY to
+`SchemeMembership.standing`, which is a cache of a pure function of the policy and
+the facts. It does not write to `status` at all, so it is incapable of overruling a
+treasurer's decision to suspend, withdraw or close a membership — not because it is
+told not to, but because there is nowhere for it to write.
+
+Recomputing a cache is also idempotent and free of consequence, which is why this
+can be run as often as you like, in any order.
+
+--dry-run reports what would change and changes nothing, which is how it should be
+introduced to a live register.
 """
 from django.core.management.base import BaseCommand
 
@@ -15,7 +23,7 @@ from benevolent.services import schemes as scheme_svc
 
 
 class Command(BaseCommand):
-    help = "Apply benevolent membership rules (arrears, inactivity, renewals)."
+    help = "Recompute benevolent membership standing (arrears, grace, inactivity)."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true",
@@ -48,7 +56,8 @@ class Command(BaseCommand):
         for c in result["changes"]:
             self.stdout.write(
                 f"{prefix}{c['scheme'].code} {c['membership'].number} "
-                f"{c['membership'].member.name}: {c['from']} → {c['to']} ({c['reason']})")
+                f"{c['membership'].member.name}: {c['from'] or '—'} → {c['to']} "
+                f"({c['reason']})")
         self.stdout.write(self.style.SUCCESS(prefix + result["summary"]))
 
 

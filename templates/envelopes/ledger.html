@@ -117,6 +117,35 @@ let saveTimer = null, heartbeatTimer = null, saving = false, dirty = false;
 function selectedFundKeys(){ return Array.from(document.querySelectorAll(".colcb:checked")).map(cb=>cb.value); }
 function syncTemplateLink(){ document.getElementById("tplLink").href = tplUrl + "?cols=" + encodeURIComponent(selectedFundKeys().join(",")); }
 
+// Every fund key (or subgroup id, mapped back to its PARENT fund's column
+// key) that any of these rows' amounts actually reference. Used once at
+// boot, before anything else touches the column checkboxes.
+//
+// Why this exists: the checkboxes start out ticked only for the five
+// "preferred" funds (see envelopes.services.posting.PREFERRED); a batch
+// entered or imported with money against any OTHER fund would otherwise
+// load with that fund's checkbox unticked, its column never rendered, and
+// its amount invisible — the row's on-screen total then sums to 0 against
+// whatever "Total" was saved, every such row is flagged as mismatched, and
+// the FIRST autosave after that (the 15s heartbeat fires on its own; no
+// further typing is required) wholesale-replaces the batch's rows with
+// whatever the grid can currently see — silently erasing that fund's
+// amount from the database. This is what "adding columns doesn't bring the
+// data back" actually was: by the time a column is added back by hand, an
+// autosave has often already thrown the value away.
+function usedFundKeysFromRows(rows){
+  const subgroupParent = {};
+  ALL_COLS.forEach(c=>(c.subgroups||[]).forEach(s=>{ subgroupParent[String(s.id)] = c.key; }));
+  const keys = new Set();
+  (rows||[]).forEach(r=>{
+    Object.keys((r && r.amounts) || {}).forEach(k=>{
+      if(ALL_COLS.some(c=>c.key===k)) keys.add(k);
+      else if(subgroupParent[k]) keys.add(subgroupParent[k]);
+    });
+  });
+  return keys;
+}
+
 function defaultLayout(){
   const fundKeys = selectedFundKeys();
   // The five funds a Sabbath sheet always needs (Tithe, Combined Offering,
@@ -292,9 +321,29 @@ function applyPinLeftOffsets(){
 // ===========================================================================
 // Row read/write helpers
 // ===========================================================================
+// The merged, true amounts for a row: every key it is KNOWN to carry
+// (tr._amounts — set from the server/previous state whenever the row is
+// built, see makeRow) with whatever is currently ON SCREEN laid over the
+// top. A rendered field the cashier has cleared is respected (its key is
+// removed); a key with NO rendered field at all — because its fund's
+// column isn't ticked right now, or the fund has since been deactivated —
+// is left exactly alone. This is what stops hiding, reordering or adding a
+// column from ever being how an amount silently disappears: readRow (what
+// autosave persists) and rowTotal (what the mismatch check compares
+// against) both go through here, so neither can act on less than the row
+// actually holds.
+function currentAmounts(tr){
+  const amounts = Object.assign({}, tr._amounts || {});
+  tr.querySelectorAll(".amt").forEach(i=>{
+    const key = i.dataset.fid;
+    if(i.value) amounts[key] = i.value;
+    else delete amounts[key];
+  });
+  return amounts;
+}
+
 function readRow(tr){
-  const amounts = {};
-  tr.querySelectorAll(".amt").forEach(i=>{ if(i.value) amounts[i.dataset.fid]=i.value; });
+  const amounts = currentAmounts(tr);
   const dg = tr.querySelector(".devgrp");
   return {
     name: tr.querySelector(".cname") ? tr.querySelector(".cname").value : "",
@@ -368,6 +417,12 @@ function cellHtml(colKey, data, receiptValue){
 function makeRow(cols, data){
   data = data || {};
   const tr = document.createElement("tr");
+  // The row's full known amounts, independent of which columns happen to be
+  // rendered right now — see currentAmounts(). Carried forward by readRow()
+  // whenever a row is rebuilt (rebuildTable's saved.push(readRow(tr)) before
+  // wiping the body), so this is the one place a row's amounts are ever
+  // seeded from outside data.
+  tr._amounts = Object.assign({}, data.amounts || {});
   if(data.rcpt_overridden) tr.dataset.rcptOverridden = "1";
   if(data.phone) tr.dataset.phone = data.phone;
   cols.forEach(c=>{
@@ -406,9 +461,13 @@ function wireRowEvents(tr){
     sel.addEventListener("change", ()=>{
       // the amount stays where it is; only WHICH fund it posts against
       // changes — move it from its old data-fid to the newly chosen one so
-      // nothing is double-counted or lost
+      // nothing is double-counted or lost. The OLD key has to be dropped
+      // from tr._amounts explicitly here: currentAmounts() otherwise still
+      // has it from before this input's fid changed, and would report the
+      // same figure under both the old and new fund at once.
       const amtInput = sel.previousElementSibling;
       if(amtInput && amtInput.classList.contains("amt")){
+        delete tr._amounts[amtInput.dataset.fid];
         amtInput.dataset.fid = sel.value || amtInput.dataset.fid;
       }
       rowTotal(tr);
@@ -594,8 +653,15 @@ function rowTotal(tr){
   // Still computed for the background Total-vs-fund-amounts check
   // (validateRow) and the running summary — there just isn't a visible
   // "Allocated" column showing it per row any more.
+  //
+  // Sums currentAmounts(tr), not just the .amt inputs presently on screen:
+  // the mismatch check must answer against everything the row actually
+  // holds, or hiding a fund column (which no longer loses the amount —
+  // see currentAmounts) would make an otherwise-correct row look wrong,
+  // and — the original bug — a fund that was never shown in the first
+  // place would make its total look like 0 rather than what was saved.
   let t = 0;
-  tr.querySelectorAll(".amt").forEach(i=>{ const v = parseFloat(i.value); if(!isNaN(v)) t += v; });
+  Object.values(currentAmounts(tr)).forEach(v=>{ const n = parseFloat(v); if(!isNaN(n)) t += n; });
   updateTotals();
   return t;
 }
@@ -905,11 +971,23 @@ document.getElementById("toggleCols").addEventListener("click", ()=>{
 });
 document.getElementById("applyCols").addEventListener("click", ()=>{
   const fundKeys = selectedFundKeys();
+  // Warn — don't block — if unticking would hide a fund that some row
+  // currently has money against. It genuinely IS preserved (currentAmounts
+  // keeps it whether or not the column is shown), but a treasurer who
+  // can't see a figure they know they typed should be told where it went,
+  // not left to wonder.
+  const hiddenWithMoney = COLS.filter(c=>!fundKeys.includes(c.key) &&
+    Array.from(document.querySelectorAll('#envBody .amt[data-fid="'+c.key+'"]'))
+      .some(i=>parseFloat(i.value) > 0));
+  if(hiddenWithMoney.length && window.toast){
+    toast(`${hiddenWithMoney.map(c=>c.label).join(", ")}: the amounts already entered are ` +
+          `kept, just hidden — tick the fund again to see or edit them.`, "info");
+  }
   COLS = ALL_COLS.filter(c=>fundKeys.includes(c.key));
   // reconcile layout.order with the current fund selection: keep existing
   // order for funds still selected, append any newly-ticked fund, drop any
-  // unticked one (its data is preserved in the row model regardless — only
-  // hidden funds still carry their amount if re-shown before saving)
+  // unticked one (its data is preserved regardless — see currentAmounts —
+  // so a hidden fund still carries its amount if re-shown before saving)
   const defs = allColumnDefs();
   layout.order = layout.order.filter(k => defs[k] || fundKeys.includes(k));
   fundKeys.forEach(k=>{ if(layout.order.indexOf(k) === -1){ layout.order.push(k); } });
@@ -945,6 +1023,14 @@ async function seedReceipt(){
 
 (async ()=>{
   await seedReceipt();
+  // Show whatever fund columns this batch's own rows already have money
+  // against, whatever the "preferred" defaults say — see
+  // usedFundKeysFromRows for why this has to happen BEFORE COLS is read
+  // off the checkboxes below.
+  usedFundKeysFromRows(INITIAL_ROWS).forEach(k=>{
+    const cb = document.querySelector(`.colcb[value="${k}"]`);
+    if(cb) cb.checked = true;
+  });
   const saved = await loadLayout();
   COLS = ALL_COLS.filter(c=>document.querySelector(`.colcb[value="${c.key}"]`).checked);
   layout = saved || defaultLayout();

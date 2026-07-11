@@ -497,3 +497,224 @@ class FeeForm(StyledFormMixin, forms.Form):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._style()
+
+
+# ===========================================================================
+# Phase 3 — the member registry
+# ===========================================================================
+
+from .models import (MembershipEvent, MembershipExemption, RegistrationType,
+                     SchemeDependant, Standing)
+
+
+class RegistrationForm(StyledFormMixin, forms.Form):
+    """Register a member — individually, or as a household.
+
+    The household fields are on the SAME form, not a separate one, because a
+    household registration is the same membership with more people attached, not a
+    different kind of thing. A second form would invite a second code path.
+    """
+    member = forms.ModelChoiceField(
+        queryset=Member.objects.none(), label="Principal member",
+        help_text="From the church roll. The scheme keeps no separate list of people.")
+    registration_type = forms.ChoiceField(
+        choices=RegistrationType.choices, initial=RegistrationType.INDIVIDUAL,
+        label="Register as")
+    household_name = forms.CharField(
+        required=False, max_length=120,
+        help_text="Only for a household registration. Left blank, it is derived from "
+                  "the principal member's surname.")
+    joined_on = forms.DateField(
+        initial=dt.date.today, widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Cover — and any waiting period — counts from here.")
+    date_of_birth = forms.DateField(
+        required=False, widget=forms.DateInput(attrs={"type": "date"}),
+        help_text="Only needed where the policy sets a joining-age limit or an age "
+                  "exemption.")
+    spouse = forms.ModelChoiceField(
+        queryset=Member.objects.none(), required=False,
+        help_text="If the spouse is on the church roll, link them here rather than "
+                  "typing their name — one person, one record.")
+    spouse_name = forms.CharField(
+        required=False, max_length=120, label="…or the spouse's name",
+        help_text="Only if they are not on the church roll.")
+    notes = forms.CharField(required=False, max_length=200)
+
+    def __init__(self, *args, scheme=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scheme = scheme
+        live = Member.objects.filter(active=True).order_by("name")
+        self.fields["member"].queryset = live
+        self.fields["spouse"].queryset = live
+        self._style()
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("spouse") and cleaned.get("spouse_name"):
+            self.add_error("spouse_name",
+                           "Link the spouse to their member record, or type a name — "
+                           "not both.")
+        if cleaned.get("registration_type") == RegistrationType.INDIVIDUAL \
+                and (cleaned.get("spouse") or cleaned.get("spouse_name")):
+            self.add_error("registration_type",
+                           "A spouse is being registered, so this is a household "
+                           "registration.")
+        return cleaned
+
+
+class HouseholdMemberForm(StyledFormMixin, forms.Form):
+    """Add a person to a household registration."""
+    member = forms.ModelChoiceField(
+        queryset=Member.objects.none(), required=False, label="Church member",
+        help_text="Link them where the church knows them — then their details live in "
+                  "one place, not two.")
+    name = forms.CharField(
+        required=False, max_length=120, label="…or a name",
+        help_text="For someone not on the church roll (a young child, a parent in the "
+                  "village).")
+    relationship = forms.ChoiceField(choices=SchemeDependant.Relationship.choices)
+    date_of_birth = forms.DateField(required=False,
+                                    widget=forms.DateInput(attrs={"type": "date"}))
+    registered_on = forms.DateField(initial=dt.date.today,
+                                    widget=forms.DateInput(attrs={"type": "date"}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["member"].queryset = Member.objects.filter(
+            active=True).order_by("name")
+        self._style()
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("member") and not (cleaned.get("name") or "").strip():
+            raise forms.ValidationError(
+                "Link them to their member record, or give a name.")
+        return cleaned
+
+
+class ExemptionForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = MembershipExemption
+        fields = ["kind", "from_date", "to_date", "reason",
+                  "exempt_dues", "exempt_levies"]
+        widgets = {"from_date": forms.DateInput(attrs={"type": "date"}),
+                   "to_date": forms.DateInput(attrs={"type": "date"}),
+                   "reason": forms.Textarea(attrs={"rows": 3})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["from_date"].initial = dt.date.today()
+        self._style()
+
+
+class TransferForm(StyledFormMixin, forms.Form):
+    to_member = forms.ModelChoiceField(
+        queryset=Member.objects.none(), label="Transfer the membership to",
+        help_text="Usually the surviving spouse.")
+    on = forms.DateField(initial=dt.date.today,
+                         widget=forms.DateInput(attrs={"type": "date"}))
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["to_member"].queryset = Member.objects.filter(
+            active=True).order_by("name")
+        self._style()
+
+
+class LifecycleForm(StyledFormMixin, forms.Form):
+    """Suspend / withdraw / close / record a death. Every one needs a reason."""
+    on = forms.DateField(initial=dt.date.today,
+                         widget=forms.DateInput(attrs={"type": "date"}))
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
+# ===========================================================================
+# Phase 4 — the contribution engine
+# ===========================================================================
+
+from .models import (BenevolentCase, BenevolentContribution, ContributionIntake,
+                     ContributionRule, MemberAdjustment)
+
+
+class IntakeResolveForm(StyledFormMixin, forms.Form):
+    """A treasurer says whose the money is."""
+    membership = forms.ModelChoiceField(queryset=SchemeMembership.objects.none(),
+                                        required=False)
+    case = forms.ModelChoiceField(queryset=BenevolentCase.objects.none(),
+                                  required=False,
+                                  help_text="For a per-case levy.")
+    kind = forms.ChoiceField(choices=BenevolentContribution.Kind.choices)
+    note = forms.CharField(required=False, max_length=200)
+
+    def __init__(self, *args, item=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.item = item
+        if item is not None and item.scheme_id:
+            self.fields["membership"].queryset = (
+                SchemeMembership.objects.filter(scheme=item.scheme)
+                .select_related("member").order_by("member__name"))
+            self.fields["case"].queryset = (
+                BenevolentCase.objects.filter(scheme=item.scheme)
+                .order_by("-event_date"))
+            if item.suggested_membership_id:
+                self.fields["membership"].initial = item.suggested_membership_id
+            if item.suggested_case_id:
+                self.fields["case"].initial = item.suggested_case_id
+            if item.suggested_kind:
+                self.fields["kind"].initial = item.suggested_kind
+        self._style()
+
+
+class ContributionRuleForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = ContributionRule
+        fields = ["pattern", "match_type", "scheme", "kind", "priority", "active"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["kind"] = forms.ChoiceField(
+            choices=[("", "Let the allocator work it out")]
+                    + list(BenevolentContribution.Kind.choices),
+            required=False, label="Kind of money")
+        self.fields["scheme"].queryset = BenevolentScheme.objects.exclude(
+            status=BenevolentScheme.Status.CLOSED)
+        self._style()
+
+
+class AdjustmentForm(StyledFormMixin, forms.Form):
+    """A penalty, a waiver, a write-off. No money moves."""
+    kind = forms.ChoiceField(choices=MemberAdjustment.Kind.choices)
+    amount = forms.DecimalField(max_digits=12, decimal_places=2,
+                                min_value=Decimal("0.01"),
+                                help_text="Always positive. Whether it adds to or "
+                                          "reduces what the member owes follows from "
+                                          "the kind.")
+    on = forms.DateField(initial=dt.date.today,
+                         widget=forms.DateInput(attrs={"type": "date"}))
+    period_label = forms.CharField(required=False, max_length=10,
+                                   help_text="The dues period this applies to, if any.")
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
+class RefundForm(StyledFormMixin, forms.Form):
+    amount = forms.DecimalField(max_digits=12, decimal_places=2,
+                                min_value=Decimal("0.01"))
+    date = forms.DateField(initial=dt.date.today,
+                           widget=forms.DateInput(attrs={"type": "date"}))
+    method = forms.ChoiceField(choices=Expense.Method.choices,
+                               initial=Expense.Method.CASH)
+    voucher_no = forms.CharField(required=False, max_length=30)
+    reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()

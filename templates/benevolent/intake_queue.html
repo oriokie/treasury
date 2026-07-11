@@ -1,0 +1,56 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Contribution intake · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Contribution intake</h1>
+  <div class="sub">Receipts that are scheme money, waiting to be attached to a member</div></div>
+<div class="btn-row no-print">
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_allocation_test' %}">Test a narration</a>
+  {% if can.manage_benevolent_settings %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_rules' %}">Narration rules</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>The money in this queue is already banked.</strong> Every row is already a receipt, already in the scheme's
+  fund, already in the general ledger, already on the bank reconciliation and already in the board pack. The only thing
+  missing is the answer to <em>whose is it?</em> — so nothing here is lost, and there is no hurry to guess.
+  A system that refused to bank money it could not attribute would produce a fund balance that disagreed with the bank,
+  which is a far worse problem than an unattributed receipt.
+</div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat warn"><div class="lbl">Waiting</div><div class="val mono">{{ open_count }}</div>
+    <div class="foot">{{ CURRENCY }} {{ open_value|floatformat:2|intcomma }} to attribute</div></div>
+  <div class="stat"><div class="lbl">Needs review</div><div class="val mono">{{ counts.REVIEW|default:0 }}</div>
+    <div class="foot">The allocator has suggestions</div></div>
+  <div class="stat"><div class="lbl">Unmatched</div><div class="val mono">{{ counts.UNMATCHED|default:0 }}</div>
+    <div class="foot">No candidate — an honest blank</div></div>
+  <div class="stat brass"><div class="lbl">Possible duplicates</div><div class="val mono">{{ counts.DUPLICATE|default:0 }}</div>
+    <div class="foot">{{ counts.AUTO|default:0 }} allocated automatically</div></div>
+</div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <select class="field--select" name="status"><option value="">Open items</option>
+    {% for v,l in statuses %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Date</th><th class="num">Amount</th><th>Narration</th><th>Paid by</th><th>Scheme</th>
+<th>Best guess</th><th class="num">Confidence</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for i in items %}<tr>
+  <td>{{ i.date|date:"d M y" }}</td>
+  <td class="num mono">{{ i.amount|floatformat:2|intcomma }}</td>
+  <td class="mono u-xs">{{ i.transaction.reference|default:"—"|truncatechars:28 }}</td>
+  <td>{{ i.transaction.payer_name|default:"—"|truncatechars:20 }}
+    <div class="muted u-xs mono">{{ i.transaction.payer_phone }}</div></td>
+  <td class="muted">{{ i.scheme.code|default:"—" }}</td>
+  <td>{% if i.suggested_membership %}{{ i.suggested_membership.member.name }}
+      <div class="muted u-xs">{{ i.suggested_kind|lower }}{% if i.suggested_case %} · {{ i.suggested_case.number }}{% endif %}</div>
+      {% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="num mono">{% if i.confidence %}{{ i.confidence }}%{% else %}—{% endif %}</td>
+  <td><span class="pill {% if i.status == 'AUTO' or i.status == 'RESOLVED' %}pill-green{% elif i.status == 'DUPLICATE' %}pill-brass{% elif i.status == 'UNMATCHED' %}pill-red{% elif i.status == 'REJECTED' %}pill-grey{% else %}pill-amber{% endif %} u-xs">{{ i.get_status_display }}</span></td>
+  <td>{% if i.is_open %}<a class="link" href="{% url 'benevolent_intake_item' i.id %}">Resolve</a>
+      {% else %}<a class="link" href="{% url 'benevolent_intake_item' i.id %}">View</a>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="9" class="empty">Nothing waiting. Every receipt has found its member.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Register a member · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · register a member</h1>
+  <div class="sub">Individually, or as a household — one subscription covering a spouse and dependants</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>The scheme keeps no separate list of people.</strong> Every person here comes from the church roll, and a
+  spouse who is a church member is <em>linked</em> to their record rather than typed in again — so their name and phone
+  live in one place and cannot drift between the roll and the scheme.
+</div>
+
+{% if policy %}
+<p class="help u-mt-0">Under policy v{{ policy.version }}:
+  {% if policy.registration_required %}registration must be approved ({{ policy.get_registration_approval_display|lower }}){% else %}members are covered on enrolment{% endif %}{% if policy.registration_fee %}; joining fee {{ CURRENCY }} {{ policy.registration_fee|floatformat:0 }}{% endif %}{% if policy.waiting_period_days %}; {{ policy.waiting_period_days }}-day waiting period{% endif %}{% if policy.max_household_size %}; a household covers at most {{ policy.max_household_size }} people{% endif %}.</p>
+{% endif %}
+
+<div class="card form-card" style="max-width:660px"><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Register</button>
+    <a class="btn btn-ghost" href="{% url 'benevolent_scheme_detail' scheme.id %}">Cancel</a></div>
+</form>
+</div></div>
+<p class="help" style="max-width:660px">More dependants can be added on the member's page once they are registered.
+  A dependant is covered from the day they are <em>registered</em>, never retrospectively — which is why they go on
+  record before an event, not after one.</p>
+{% endblock %}

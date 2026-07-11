@@ -111,8 +111,9 @@ def contributions_total(scheme=None, membership=None, start=None, end=None,
     return agg["t"] or Decimal(0)
 
 
-# what actually counts against a member's dues — and nothing else does
-DUES_KINDS = [BenevolentContribution.Kind.DUES]
+# What actually counts against a member's dues — and nothing else does. Defined on
+# the model so there is ONE list, not one here and a different one in a report.
+DUES_KINDS = BenevolentContribution.SETTLES_DUES
 
 
 def levy_collected(case) -> Decimal:
@@ -193,16 +194,47 @@ def _dues_rows(membership, as_of=None):
 
 
 def _waived_periods(membership, as_of=None):
-    """The dues periods waived for a member after their own case.
+    """The dues periods a member does not owe for — because they were bereaved, or
+    because they are exempt.
 
-    Many constitutions give a bereaved member a few months' grace on their dues.
-    Implemented here rather than as a manual adjustment because it is a RULE — it
-    must apply consistently and it must be visible in the dues schedule, not
-    remembered by whoever happens to be treasurer that year.
+    Both are RULES, and both belong HERE rather than in the standing engine or the
+    UI, for one reason: `arrears_for()` is the single place in this system that
+    knows what a member owes, and it is called by the register, the eligibility
+    engine and the arrears DEDUCTION on a benefit. If exemptions were applied
+    anywhere else, an exempt member would show as clear on the register and STILL
+    have money docked from their bereavement payout. There must be exactly one
+    answer to "what does this member owe", and this is where it is computed.
     """
     from benevolent.models import BenevolentCase
+    from benevolent.services.standing import live_exemption
+
     as_of = as_of or _dt.date.today()
     out = set()
+
+    # --- exemptions: an excused member owes nothing for the excused period ---
+    for ex in membership.exemptions.all():
+        if not ex.exempt_dues or not ex.is_approved:
+            continue
+        policy = membership.scheme.policy_on(ex.from_date)
+        if policy is None:
+            continue
+        freq = policy.contribution_frequency
+        d = ex.from_date
+        end = min(ex.to_date or as_of, ex.revoked_on or as_of, as_of)
+        while d <= end:
+            out.add(period_label_for(d, freq))
+            d = (d.replace(day=28) + _dt.timedelta(days=7)).replace(day=1)
+
+    # --- an automatic age exemption is an exemption like any other -----------
+    policy_now = membership.scheme.policy_on(as_of)
+    if policy_now is not None and policy_now.exemption_age and membership.date_of_birth:
+        dob = membership.date_of_birth
+        exempt_from = dob.replace(year=dob.year + policy_now.exemption_age)
+        d = max(exempt_from, membership.cover_from)
+        while d <= as_of:
+            out.add(period_label_for(d, policy_now.contribution_frequency))
+            d = (d.replace(day=28) + _dt.timedelta(days=7)).replace(day=1)
+
     cases = membership.cases.filter(
         status__in=[BenevolentCase.Status.APPROVED, BenevolentCase.Status.PARTLY_PAID,
                     BenevolentCase.Status.PAID, BenevolentCase.Status.CLOSED])
@@ -249,7 +281,17 @@ def arrears_for(membership, policy=None, as_of=None) -> Decimal:
     # money the member has given the scheme, and none of them is a subscription.
     paid = contributions_total(membership=membership, start=start, end=end,
                                kinds=DUES_KINDS)
-    return max(Decimal(0), due - paid)
+
+    # Phase 4: the obligations ledger. A penalty charged INCREASES what is owed; a
+    # waiver or a write-off REDUCES it. Neither is money and neither posts — see
+    # models_contrib.MemberAdjustment. Folding them in here, rather than anywhere
+    # else, is what keeps this the ONE function that knows what a member owes: the
+    # register, the eligibility engine, the arrears deduction on a benefit and the
+    # member's own statement all ask it, and they all get the same answer.
+    from benevolent.services.engine import adjustments_total
+    adjustments = adjustments_total(membership, as_of=as_of)
+
+    return max(Decimal(0), due + adjustments - paid)
 
 
 def dues_schedule(membership, policy=None, as_of=None):
@@ -307,11 +349,15 @@ def record_contribution(scheme, *, date, amount, user=None, membership=None,
         if case is not None:
             kind = BenevolentContribution.Kind.LEVY
         elif membership is None:
+            # only a member can owe anything, so money from a non-member is a gift
             kind = BenevolentContribution.Kind.DONATION
         elif policy and policy.contribution_mode in periodic:
             kind = BenevolentContribution.Kind.DUES
         else:
-            kind = BenevolentContribution.Kind.DONATION
+            # an enrolled member giving to a scheme with no dues is contributing
+            # voluntarily — which is not the same as a stranger's donation, and the
+            # member's statement should not call it one
+            kind = BenevolentContribution.Kind.VOLUNTARY
 
     # only DUES carry a dues period; giving one to a levy or a fee would have it
     # settle a subscription it was never paid for
@@ -394,7 +440,16 @@ def raise_case_levy(case, *, amount=None, user=None):
                .select_related("member").order_by("member__name"))
     rows, exempt = [], []
     for m in members:
-        if (policy.bereaved_exempt_own_levy and case.membership_id == m.pk):
+        if policy.bereaved_exempt_own_levy and case.membership_id == m.pk:
+            exempt.append(m)
+            continue
+        # a member formally excused from levies is not on the roster either. Left
+        # out, they would be chased for money the church has already decided in
+        # writing that they do not owe — which is worse than not having the
+        # exemption at all, because now it is on file and being ignored.
+        from benevolent.services.standing import live_exemption
+        ex = live_exemption(m, case.event_date)
+        if ex and ex.exempt_levies:
             exempt.append(m)
             continue
         paid = levy_paid_by(m, case)
@@ -463,7 +518,9 @@ def record_fee(membership, *, kind, amount=None, date=None, user=None,
         channel=channel, note=(note or f"{label} — {membership.number}"),
         reference=f"{scheme.code} {label.upper()}", fund=fund,
         # a fee is not a due, and must never be able to settle one
-        kind=BenevolentContribution.Kind.FEE, period_label="")
+        kind=(BenevolentContribution.Kind.REGISTRATION if kind == "REGISTRATION"
+              else BenevolentContribution.Kind.RENEWAL),
+        period_label="")
 
     if kind == "REGISTRATION":
         membership.registration_fee_paid = True
@@ -482,7 +539,12 @@ def _advance_renewal(membership, policy, on):
     except ValueError:      # 29 Feb
         nxt = base.replace(year=base.year + step, day=28)
     membership.renewed_until = nxt
-    if membership.status == SchemeMembership.Status.EXPIRED:
-        membership.status = SchemeMembership.Status.ACTIVE
-    membership.save(update_fields=["renewed_until", "status"])
+    # Note what this does NOT do any more: it does not "un-expire" the membership.
+    # An overdue renewal was never a lifecycle decision — it was a derived fact —
+    # so paying the renewal simply changes the fact, and standing recomputes from
+    # it. There is no status to put back, which is precisely the point of having
+    # separated the two.
+    membership.save(update_fields=["renewed_until"])
+    from benevolent.services import standing as _standing
+    _standing.refresh(membership)
     return nxt
