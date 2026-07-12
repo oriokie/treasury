@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Notification history · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Notification history</h1>
+  <div class="sub">Every attempt to actually deliver a notification — who, what, when, how, and whether it worked.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_notification_templates' %}">Templates</a></div></div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <select class="field--select" name="scheme"><option value="">All schemes</option>
+    {% for s in schemes %}<option value="{{ s.id }}" {% if f_scheme == s.id|stringformat:"s" %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+  <select class="field--select" name="event"><option value="">All events</option>
+    {% for v,l in events %}<option value="{{ v }}" {% if f_event == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <select class="field--select" name="status"><option value="">All statuses</option>
+    {% for v,l in statuses %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>When</th><th>Event</th><th>Channel</th><th>To</th><th>Recipient</th><th>Status</th><th class="num">Attempts</th><th>Error</th></tr></thead>
+<tbody>{% for n in items %}<tr>
+  <td class="muted u-xs">{{ n.created_at|date:"d M Y H:i" }}</td>
+  <td>{{ n.get_event_display }}</td>
+  <td class="muted u-xs">{{ n.get_channel_display }}</td>
+  <td>{% if n.membership %}{{ n.membership.member.name }}{% elif n.user %}{{ n.user }}{% else %}—{% endif %}</td>
+  <td class="mono u-xs">{{ n.recipient }}</td>
+  <td><span class="pill {% if n.status == 'SENT' %}pill-green{% elif n.status == 'FAILED' %}pill-red{% elif n.status == 'SKIPPED' %}pill-brass{% else %}pill-amber{% endif %} u-xs">{{ n.get_status_display }}</span></td>
+  <td class="num mono">{{ n.attempts }}</td>
+  <td class="muted u-xs">{{ n.last_error|truncatechars:60 }}</td>
+</tr>{% empty %}<tr><td colspan="8" class="empty">Nothing sent yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+{% endblock %}

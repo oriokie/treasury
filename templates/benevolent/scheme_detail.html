@@ -42,6 +42,7 @@
     <form method="post" action="{% url 'benevolent_scheme_action' scheme.id 'close' %}">{% csrf_token %}
       <button class="btn btn-ghost btn-sm">Close</button></form>{% endif %}
     <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_event_types' scheme.id %}">Covered events ({{ event_types|length }})</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_committee_roster' scheme.id %}">Committee</a>
   </div>
   <p class="help u-mt">Suspending stops new cases but keeps taking contributions and paying benefits already
     approved — a suspension is not a reason to renege on a benefit already granted.</p>

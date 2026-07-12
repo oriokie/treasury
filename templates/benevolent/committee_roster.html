@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{{ scheme.name }} committee · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · committee</h1>
+  <div class="sub">Who sits on this scheme's committee, and their seat</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+{% if not has_roster %}
+<div class="alert alert-info u-mb"><strong>No roster configured yet.</strong> Right now, anyone holding the
+  general benevolent-committee right may vote on this scheme's cases. Seat someone below to start a roster —
+  once one exists, only the people on it may vote on {{ scheme.name }}'s cases. A person still needs the general
+  right as well as a seat; a seat alone does not grant it.</div>
+{% else %}
+<div class="alert alert-info u-mb">This scheme has a configured committee. Only the people seated below may vote
+  on its cases — holding the general benevolent-committee right is necessary but no longer sufficient on its own.</div>
+{% endif %}
+
+<div class="table-wrap u-mb"><table class="ledger compact">
+<thead><tr><th>Person</th><th>Role</th><th>Seated since</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for s in seats %}<tr>
+  <td>{{ s.user.get_full_name|default:s.user.username }}</td>
+  <td>{% if s.role == 'CHAIR' %}<span class="pill pill-amber u-xs">{{ s.get_role_display }}</span>{% else %}{{ s.get_role_display }}{% endif %}</td>
+  <td class="muted u-xs">{{ s.added_at|date:"d M Y" }} by {{ s.added_by|default:"—" }}</td>
+  <td>{% if s.active %}<span class="pill pill-green u-xs">Seated</span>
+      {% else %}<span class="pill pill-brass u-xs">Removed {{ s.removed_at|date:"d M Y" }}</span>
+      {% if s.removed_reason %}<div class="muted u-xs">{{ s.removed_reason }}</div>{% endif %}{% endif %}</td>
+  <td>{% if s.active %}
+    <form method="post" action="{% url 'benevolent_committee_seat_action' scheme.id s.id 'role' %}" class="u-inline-flex">{% csrf_token %}
+      <select name="role" class="field--select field-sm">
+        {% for v,l in role_choices %}<option value="{{ v }}" {% if v == s.role %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-ghost btn-sm">Update</button>
+    </form>
+    <form method="post" action="{% url 'benevolent_committee_seat_action' scheme.id s.id 'remove' %}" class="u-inline-flex">{% csrf_token %}
+      <input class="field field-sm" type="text" name="reason" placeholder="Reason (optional)" style="max-width:140px">
+      <button class="btn btn-ghost btn-sm" onclick="return confirm('Remove {{ s.user }} from the committee?')">Remove</button>
+    </form>
+  {% endif %}</td>
+</tr>{% empty %}<tr><td colspan="5" class="empty">Nobody seated yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+
+<div class="card form-card" style="max-width:520px"><div class="hd">Seat someone</div><div class="bd">
+<form method="post">{% csrf_token %}
+  <div class="form-grid">{% for f in form %}<div class="form-row">
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+    {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>{% endfor %}</div>
+  <div class="btn-row u-mt"><button class="btn btn-sm">Seat them</button></div>
+</form>
+</div></div>
+<p class="help u-mt">One Chair per scheme at a time. Where a policy requires the Chair's approval specifically
+  (an "approval level," not just a headcount), a quorum of ordinary members alone will not carry a decision.</p>
+{% endblock %}

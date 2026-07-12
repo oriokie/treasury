@@ -177,3 +177,122 @@ def member_statement(membership, start=None, end=None):
         "cases": cases,
         "benefits_received": sum((c.paid_total for c in cases), Decimal(0)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 8 — the remaining report categories the brief names, none of them
+# recomputing anything: arrears reads the same arrears_for() every screen in
+# the module already reads; committee and household read straight off the
+# Phase 6/3 rosters; audit reads the CaseEvent/MembershipEvent narratives and
+# the override records Phase 6's Overrides & Exceptions screen already
+# assembles. Report components wrap these; they do not duplicate them.
+# ---------------------------------------------------------------------------
+
+def arrears_analysis(scheme=None, as_of=None):
+    """Every active member currently in arrears, oldest-looking first, with a
+    simple ageing band. Not a registry FINANCIAL metric on its own — it is a
+    breakdown of one, `benevolent_arrears` (the total), by member — so the
+    two can never disagree: this function's own total is what the metric
+    reports.
+    """
+    from benevolent.services.contributions import arrears_for
+    as_of = as_of or _dt.date.today()
+    schemes = [scheme] if scheme is not None else list(_live_schemes())
+    rows = []
+    for sch in schemes:
+        policy = sch.policy_on(as_of)
+        if policy is None:
+            continue
+        for m in (sch.memberships.filter(status=SchemeMembership.Status.ACTIVE)
+                 .select_related("member")):
+            owed = arrears_for(m, policy, as_of=as_of)
+            if owed <= 0:
+                continue
+            months = None
+            if policy.contribution_amount:
+                months = int((owed / policy.contribution_amount).to_integral_value())
+            rows.append({
+                "membership": m, "scheme": sch, "owed": owed,
+                "band": ("3+ periods" if months and months >= 3 else
+                         "2 periods" if months == 2 else "1 period"),
+            })
+    rows.sort(key=lambda r: -r["owed"])
+    return rows
+
+
+def arrears_total(scheme=None, as_of=None):
+    """The registry-facing total: the sum arrears_analysis() itself reports,
+    so the KPI figure and the member-level breakdown are definitionally the
+    same number."""
+    return sum((r["owed"] for r in arrears_analysis(scheme, as_of)), Decimal(0))
+
+
+def committee_report(scheme=None):
+    """Every scheme's committee roster (Phase 6), with how many decisions
+    each seat has actually recorded — an activity check, not just a
+    membership list."""
+    from benevolent.models import CaseApproval, CommitteeMember
+    schemes = [scheme] if scheme is not None else list(_live_schemes())
+    rows = []
+    for sch in schemes:
+        seats = (CommitteeMember.objects.filter(scheme=sch, active=True)
+                .select_related("user"))
+        votes_by_user = dict(CaseApproval.objects.filter(case__scheme=sch)
+                             .values_list("user_id").annotate(n=Count("id")))
+        for seat in seats:
+            rows.append({
+                "scheme": sch, "user": seat.user, "role": seat.get_role_display(),
+                "seated_since": seat.added_at, "votes_cast": votes_by_user.get(seat.user_id, 0),
+            })
+    return rows
+
+
+def household_report(scheme=None):
+    """Every household-mode registration, with its dependants — the
+    membership register's household dimension pulled out on its own, so a
+    treasurer can see household size and coverage without opening each
+    member individually."""
+    from benevolent.models import RegistrationType, SchemeDependant
+    schemes = [scheme] if scheme is not None else list(_live_schemes())
+    rows = []
+    for sch in schemes:
+        heads = (sch.memberships
+                .filter(registration_type=RegistrationType.HOUSEHOLD,
+                       status=SchemeMembership.Status.ACTIVE)
+                .select_related("member")
+                .prefetch_related("dependants"))
+        for m in heads:
+            deps = [d for d in m.dependants.all() if d.active]
+            rows.append({
+                "scheme": sch, "membership": m,
+                "household_name": m.household_name or m.member.name,
+                "dependants": deps, "size": 1 + len(deps),
+            })
+    return rows
+
+
+def audit_summary(scheme=None, start=None, end=None):
+    """Every exceptional / override-type decision across the module in the
+    period — the SAME rows `views_committee.OverridesExceptionsView` already
+    assembles for its screen, reused here rather than re-queried with
+    different logic, so the two can never silently disagree about what counts
+    as an override."""
+    from benevolent.models import BenevolentCase, MemberAdjustment, MembershipExemption
+    start = start or (_dt.date.today() - _dt.timedelta(days=90))
+    end = end or _dt.date.today()
+
+    cases = (BenevolentCase.objects.exclude(override_reason="")
+            .filter(approved_at__date__gte=start, approved_at__date__lte=end)
+            .select_related("scheme", "approved_by"))
+    exemptions = (MembershipExemption.objects
+                 .filter(approved_at__isnull=False, from_date__gte=start, from_date__lte=end)
+                 .select_related("membership__member", "membership__scheme", "approved_by"))
+    adjustments = (MemberAdjustment.objects
+                  .filter(approved_at__isnull=False, on__gte=start, on__lte=end)
+                  .select_related("membership__member", "membership__scheme", "approved_by"))
+    if scheme is not None:
+        cases = cases.filter(scheme=scheme)
+        exemptions = exemptions.filter(membership__scheme=scheme)
+        adjustments = adjustments.filter(membership__scheme=scheme)
+    return {"overridden_cases": list(cases), "exemptions": list(exemptions),
+            "adjustments": list(adjustments)}

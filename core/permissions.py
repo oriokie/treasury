@@ -85,9 +85,36 @@ class BenevolentViewMixin(RoleRequiredMixin):
 
 class BenevolentManageMixin(RoleRequiredMixin):
     """Day-to-day scheme administration: enrol members, raise cases, record
-    contributions and payment vouchers."""
+    contributions and payment vouchers. The broad, superset check — see the
+    three role-specific mixins below (Phase 9) for views that only need ONE
+    of these three responsibilities, not all of them."""
     allow_check = staticmethod(roles.can_manage_benevolent)
     permission_message = "You don't have the benevolent-administration right."
+
+
+class BenevolentRegistrationMixin(RoleRequiredMixin):
+    """Registration Officer: enrol, admit, transfer, reinstate members;
+    manage households and exemptions. A holder of the broader
+    `manage_benevolent` right (or a Treasurer/Assistant) satisfies this too —
+    the split only NARROWS who else may reach these views, it never widens
+    who could already reach them."""
+    allow_check = staticmethod(roles.can_register_benevolent_members)
+    permission_message = "You don't have the benevolent registration-officer right."
+
+
+class BenevolentCaseMixin(RoleRequiredMixin):
+    """Case Officer: raise, submit and assess cases, attach documents, set a
+    funding target. Deliberately excludes approving a case — see
+    BenevolentApproveMixin, a separate gate, exactly as it always was."""
+    allow_check = staticmethod(roles.can_manage_benevolent_cases)
+    permission_message = "You don't have the benevolent case-officer right."
+
+
+class BenevolentFinanceMixin(RoleRequiredMixin):
+    """Finance Officer: record contributions, resolve the intake queue,
+    charge or waive dues, process refunds."""
+    allow_check = staticmethod(roles.can_manage_benevolent_finance)
+    permission_message = "You don't have the benevolent finance-officer right."
 
 
 class BenevolentApproveMixin(RoleRequiredMixin):

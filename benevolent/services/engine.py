@@ -337,7 +337,7 @@ def _maybe_learn(item, scheme, kind):
 
 @db_tx.atomic
 def charge(membership, *, kind, amount, reason, on=None, period_label="",
-           case=None, user=None):
+           case=None, user=None, comments=""):
     """Charge a penalty, or make some other charge against a member.
 
     NO ACCOUNTING ENTRY IS MADE, and that is not an omission. A penalty charged is
@@ -352,7 +352,8 @@ def charge(membership, *, kind, amount, reason, on=None, period_label="",
     adj = MemberAdjustment(
         membership=membership, kind=kind, amount=Decimal(amount),
         on=on or _dt.date.today(), period_label=period_label or "",
-        reason=reason, case=case, raised_by=user)
+        reason=reason, comments=comments or "", case=case, raised_by=user,
+        policy=membership.scheme.policy_on(on or _dt.date.today()))
     adj.full_clean(exclude=["approved_by", "case"])
     adj.save()
     _log(membership, f"{adj.get_kind_display()} of {adj.amount} proposed.",
@@ -361,8 +362,33 @@ def charge(membership, *, kind, amount, reason, on=None, period_label="",
 
 
 @db_tx.atomic
+def charge_policy_fee(membership, *, amount, reason, on=None, user=None):
+    """Raise a charge the POLICY computed, not a treasurer's own judgement —
+    a reinstatement fee is what this exists for.
+
+    Auto-approved, in the same spirit as `registry.grant_policy_exemption`: a
+    published, constitution-set fee is not a new decision that needs a second
+    signature the moment it is applied — it is the same decision, applied.
+    Requiring a rubber-stamp approval here would only ever produce a rubber
+    stamp. Marked `automated=True` so a member (or an auditor) can always tell
+    it apart from a penalty a treasurer chose to impose in the moment.
+    """
+    on = on or _dt.date.today()
+    adj = MemberAdjustment(
+        membership=membership, kind=MemberAdjustment.Kind.CHARGE, amount=Decimal(amount),
+        on=on, reason=reason, raised_by=user, approved_by=user,
+        approved_at=timezone.now(), automated=True,
+        policy=membership.scheme.policy_on(on))
+    adj.full_clean(exclude=["case"])
+    adj.save()
+    _log(membership, f"{adj.get_kind_display()} of {adj.amount} charged automatically "
+                     f"under policy — {reason}", reason=reason, user=user)
+    return adj
+
+
+@db_tx.atomic
 def waive(membership, *, amount, reason, on=None, period_label="", user=None,
-          write_off=False):
+          write_off=False, comments=""):
     """Waive dues, or write off a debt.
 
     NO ACCOUNTING ENTRY. A waiver is not an expense: no money left the church. The
@@ -373,7 +399,8 @@ def waive(membership, *, amount, reason, on=None, period_label="", user=None,
         membership,
         kind=(MemberAdjustment.Kind.WRITE_OFF if write_off
               else MemberAdjustment.Kind.WAIVER),
-        amount=amount, reason=reason, on=on, period_label=period_label, user=user)
+        amount=amount, reason=reason, on=on, period_label=period_label, user=user,
+        comments=comments)
 
 
 @db_tx.atomic

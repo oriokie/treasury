@@ -656,10 +656,18 @@ class Command(BaseCommand):
                                        SchemePolicy)
         from benevolent.services import cases as case_svc
         from benevolent.services import contributions as contrib_svc
+        from benevolent.services import notify as notify_svc
         from benevolent.services import schemes as scheme_svc
 
         if BenevolentScheme.objects.exists():
             return
+
+        # Phase 7: installed FIRST, so every registration, renewal and case
+        # decision seeded below (Phases 1-6) actually produces a notification
+        # — the same order a real deployment would follow (templates exist
+        # before the first member ever joins), and what makes the seeded
+        # notification history worth looking at rather than empty.
+        notify_svc.install_default_templates()
 
         fund, _ = Department.objects.get_or_create(
             name="BENEVOLENT", defaults=dict(
@@ -1112,6 +1120,120 @@ class Command(BaseCommand):
             "committee-decided bereaved contribution, a document checklist "
             f"half-satisfied — {sum(c.events.count() for c in [target_case, decided_case, doc_case])} "
             "case-history events logged"))
+
+        self._seed_benevolent_phase6(treasurer, main_scheme)
+
+    # ---- Phase 6: committee management & policy evaluation -----------------
+    def _seed_benevolent_phase6(self, treasurer, main_scheme):
+        """A real committee roster with a Chair, an approval level that
+        actually requires her vote, and a lapsed member reinstated with a
+        fee charged automatically — the bug this phase fixed."""
+        from benevolent.models import CommitteeMember, SchemeMembership, SchemePolicy
+        from benevolent.services import committee as committee_svc
+        from benevolent.services import registry as reg_svc
+        from benevolent.services import schemes as scheme_svc
+
+        if CommitteeMember.objects.filter(scheme=main_scheme).exists():
+            self.stdout.write(self.style.SUCCESS(
+                "Benevolent (Phase 6): committee already seeded, skipping"))
+            return
+
+        assistant = User.objects.filter(groups__name="Assistant").first() or treasurer
+        auditor = User.objects.filter(groups__name="Auditor").first() or treasurer
+        committee_svc.add_member(main_scheme, treasurer,
+                                 role=CommitteeMember.Role.CHAIR, added_by=treasurer)
+        if assistant != treasurer:
+            committee_svc.add_member(main_scheme, assistant,
+                                     role=CommitteeMember.Role.SECRETARY,
+                                     added_by=treasurer)
+        if auditor not in (treasurer, assistant):
+            committee_svc.add_member(main_scheme, auditor,
+                                     role=CommitteeMember.Role.MEMBER, added_by=treasurer)
+
+        policy = main_scheme.current_policy
+        if policy is not None and not policy.committee_requires_chair:
+            v = scheme_svc.new_version_from(
+                policy, effective_from=dt.date.today() - dt.timedelta(days=1),
+                user=treasurer)
+            v.committee_requires_chair = True
+            v.reinstatement_fee = Decimal("300")
+            v.save()
+            scheme_svc.publish_policy(v, user=treasurer)
+
+        # a lapsed member, reinstated — the reinstatement fee should now be
+        # charged automatically, which it silently never was before this phase
+        lapsed = main_scheme.memberships.filter(
+            status=SchemeMembership.Status.SUSPENDED).first()
+        if lapsed is None:
+            candidate = main_scheme.memberships.filter(
+                status=SchemeMembership.Status.ACTIVE).last()
+            if candidate is not None:
+                reg_svc.suspend(candidate, user=treasurer, reason="Demo: lapsed dues.")
+                lapsed = candidate
+        if lapsed is not None:
+            reg_svc.reinstate(lapsed, user=treasurer, reason="Demo: caught up and returned.")
+
+        self.stdout.write(self.style.SUCCESS(
+            "Benevolent (Phase 6): committee seated (Chair + 2), an approval level "
+            "requiring the Chair's vote, and a reinstatement fee charged automatically"))
+
+        self._seed_benevolent_phase7(main_scheme)
+
+    # ---- Phase 7: financial integration & communications -------------------
+    def _seed_benevolent_phase7(self, main_scheme):
+        """Templates were installed at the very start (see _seed_benevolent)
+        so every registration, renewal and case decision seeded since has
+        already produced real notification history — this just gives one
+        member an email address (SchemeMembership.email, scoped to this
+        module, since members.Member has none) so the demo shows the EMAIL
+        channel working too, not only SMS."""
+        from benevolent.models import BenevolentNotification
+
+        m = main_scheme.memberships.filter(status="ACTIVE").first()
+        if m is not None and not m.email:
+            m.email = f"{m.member.name.split()[0].lower()}@example.com"
+            m.save(update_fields=["email"])
+
+        sent = BenevolentNotification.objects.count()
+        self.stdout.write(self.style.SUCCESS(
+            f"Benevolent (Phase 7): {sent} notification(s) logged from the "
+            f"registrations, renewals and case decisions seeded above"))
+
+        self._seed_benevolent_phase9()
+
+    # ---- Phase 9: roles, permissions & UX -----------------------------------
+    def _seed_benevolent_phase9(self):
+        """One demo user per seeded role profile, so the granular permission
+        split (Registration/Case/Finance Officer, Approver, Committee
+        Member, Administrator, Auditor) is something a reviewer can actually
+        log in and see, not just a migration nobody visits."""
+        from accounts.models import Profile
+
+        role_users = {
+            "ben_admin": "Benevolent Administrator (default)",
+            "ben_approver": "Benevolent Approver (default)",
+            "ben_committee": "Benevolent Committee Member (default)",
+            "ben_registrar": "Benevolent Registration Officer (default)",
+            "ben_case_officer": "Benevolent Case Officer (default)",
+            "ben_finance": "Benevolent Finance Officer (default)",
+            "ben_auditor": "Benevolent Auditor (default)",
+        }
+        if User.objects.filter(username="ben_admin").exists():
+            self.stdout.write(self.style.SUCCESS(
+                "Benevolent (Phase 9): role demo users already seeded, skipping"))
+            return
+
+        for username, profile_name in role_users.items():
+            u = User.objects.create_user(username, password=f"{username}123")
+            profile = Profile.objects.filter(name=profile_name).first()
+            if profile is not None:
+                profile.users.add(u)
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Benevolent (Phase 9): {len(role_users)} role demo users seeded "
+            f"(ben_admin, ben_approver, ben_committee, ben_registrar, "
+            f"ben_case_officer, ben_finance, ben_auditor — each password "
+            f"'<username>123')"))
 
     def _print_login(self):
         self.stdout.write(self.style.SUCCESS(

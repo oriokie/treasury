@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import api, views, views_config, views_engine, views_registry
+from . import api, views, views_committee, views_config, views_engine, views_notify, views_registry
 
 urlpatterns = [
     path("", views.BenevolentDashboardView.as_view(), name="benevolent_dashboard"),
@@ -21,6 +21,20 @@ urlpatterns = [
          name="benevolent_scheme_action"),
     path("schemes/<int:pk>/events/", views.EventTypeView.as_view(),
          name="benevolent_event_types"),
+    path("schemes/<int:pk>/committee/", views_committee.CommitteeRosterView.as_view(),
+         name="benevolent_committee_roster"),
+    path("schemes/<int:pk>/committee/<int:seat_id>/<str:action>/",
+         views_committee.CommitteeSeatActionView.as_view(),
+         name="benevolent_committee_seat_action"),
+    path("overrides/", views_committee.OverridesExceptionsView.as_view(),
+         name="benevolent_overrides_exceptions"),
+    path("notifications/templates/", views_notify.NotificationTemplateListView.as_view(),
+         name="benevolent_notification_templates"),
+    path("notifications/templates/<int:pk>/",
+         views_notify.NotificationTemplateEditView.as_view(),
+         name="benevolent_notification_template_edit"),
+    path("notifications/history/", views_notify.NotificationHistoryView.as_view(),
+         name="benevolent_notification_history"),
     path("schemes/<int:pk>/policy/new/", views.PolicyFormView.as_view(),
          name="benevolent_policy_new"),
     path("schemes/<int:pk>/policy/<int:policy_id>/", views.PolicyFormView.as_view(),

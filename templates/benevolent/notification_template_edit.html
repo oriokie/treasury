@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Edit template · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ tpl.get_event_display }} · {{ tpl.get_channel_display }}</h1>
+  <div class="sub">Edited templates take effect on the very next notification — nothing needs republishing or
+    restarting.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_notification_templates' %}">← Templates</a></div></div>
+
+<div class="card form-card" style="max-width:660px"><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+  <div class="form-grid">
+    {% for f in form %}<div class="form-row">
+      <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+    </div>{% endfor %}
+  </div>
+  <div class="btn-row u-mt"><button class="btn">Save template</button></div>
+</form>
+</div></div>
+
+<div class="card u-mt" style="max-width:660px"><div class="hd">Available placeholders</div><div class="bd">
+<p class="help u-mt-0">Used exactly as written, including the braces:</p>
+<p>{% for p in placeholders %}<code>{% templatetag openbrace %}{{ p }}{% templatetag closebrace %}</code>{% if not forloop.last %} {% endif %}{% endfor %}</p>
+<p class="help">A placeholder this event does not provide is left in the message exactly as typed, rather than
+  crashing anything — an odd-looking word in a text a treasurer will notice and fix, not a broken workflow.</p>
+</div></div>
+{% endblock %}

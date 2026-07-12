@@ -86,12 +86,37 @@ class BenevolentSettings(models.Model):
         default=True,
         help_text="Tell staff the moment a case's funding target has been fully "
                   "raised — fires once per case, the first time it happens.")
-    notify_committee_on_pending_vote = models.BooleanField(
+
+    # ---- Member-facing & committee notifications (Phase 7) ------------------
+    # Distinct from the staff-facing notify_on_* toggles above: those tell
+    # TREASURY STAFF something happened. These tell the MEMBER or the
+    # COMMITTEE something happened — a different audience, a different
+    # question ("should this person hear about this at all?"), and off by
+    # default nowhere the brief specifically asked for it, but each
+    # independently switchable so a church can turn on exactly the notices
+    # it wants and no others.
+    notify_member_registration = models.BooleanField(default=True)
+    notify_member_renewal_reminder = models.BooleanField(default=True)
+    notify_member_renewal_confirmed = models.BooleanField(default=True)
+    notify_member_arrears_reminder = models.BooleanField(default=True)
+    notify_member_case_received = models.BooleanField(default=True)
+    notify_member_case_decided = models.BooleanField(default=True)
+    notify_member_payout = models.BooleanField(default=True)
+    notify_member_status_change = models.BooleanField(default=True)
+    notify_committee_vote_needed = models.BooleanField(default=True)
+
+    reminder_min_gap_days = models.PositiveIntegerField(
+        default=14,
+        help_text="However often the automation job runs, do not send the SAME "
+                  "member the SAME reminder (arrears or renewal) more often than "
+                  "this many days apart. A nightly job with no gap would text "
+                  "someone in arrears every single night.")
+    notify_on_committee_pending = models.BooleanField(
         default=True,
-        help_text="Tell committee members when a case is waiting for their decision.")
-    notify_member_on_enrolment = models.BooleanField(default=False)
-    notify_member_on_benefit_paid = models.BooleanField(default=False)
-    notify_member_on_arrears = models.BooleanField(default=False)
+        help_text="Tell TREASURY STAFF when a case is first routed to the committee for "
+                  "a decision - a staff awareness notice, like its siblings above. "
+                  "Distinct from notify_committee_vote_needed below, which tells the "
+                  "COMMITTEE MEMBERS THEMSELVES it is their turn to vote.")
 
     class Channel(models.TextChoices):
         IN_APP = "IN_APP", "In-app only"

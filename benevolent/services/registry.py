@@ -47,18 +47,25 @@ def log(membership, kind, summary, *, user=None, on=None, reason="",
         automated=automated, actor=user)
 
 
-def _notify(membership, event, message):
-    """Tell the member, where the settings say to. Never raises into the caller: a
-    failed notification must not fail a registration."""
-    try:
-        from benevolent.models import BenevolentSettings
-        from core.services.notifications import notify
-        cfg = BenevolentSettings.get()
-        if not getattr(cfg, f"notify_member_on_{event}", False):
-            return
-        notify(f"BENEVOLENT_{event.upper()}", message, link="/benevolent/members/")
-    except Exception:  # noqa: BLE001
-        pass
+# NOTE: the notification this module sends to a MEMBER is
+# benevolent.services.notify.send() (Phase 7) — a templated message actually
+# delivered to the member's phone/email, not the staff in-app alert
+# core.services.notifications.notify() produces. An earlier version of this
+# function claimed ("Tell the member...") to do the former while actually
+# doing the latter, gated by a field that was never wired to anything either
+# — a confirmed bug, fixed by removing it rather than leaving two ways to
+# notify a member, one of which lies about what it does.
+
+
+def _notify_status_change(membership, *, status_note=""):
+    """The one place every lifecycle transition below calls to tell a member
+    their status changed — so the wording, the settings check, and the
+    failure-never-breaks-the-transition guarantee live in one place, not
+    once per function."""
+    from benevolent.services import notify as notify_svc
+    from benevolent.models import NotificationEvent
+    notify_svc.send(NotificationEvent.MEMBERSHIP_STATUS_CHANGED, membership=membership,
+                    extra={"status_note": status_note})
 
 
 # ---------------------------------------------------------------------------
@@ -133,8 +140,10 @@ def register(scheme, member, *, joined_on=None, user=None,
         add_dependant(m, user=user, registered_on=joined_on, **d)
 
     standing_svc.refresh(m, user=user)
-    _notify(m, "enrolment",
-            f"{member.name} has been registered in {scheme.name} ({m.number}).")
+    if not needs_admission:
+        from benevolent.services import notify as notify_svc
+        from benevolent.models import NotificationEvent
+        notify_svc.send(NotificationEvent.REGISTRATION_CONFIRMED, membership=m)
     return m
 
 
@@ -159,6 +168,9 @@ def admit(membership, *, on=None, user=None, reason=""):
         user=user, on=on, reason=reason,
         from_value=SchemeMembership.Status.PENDING, to_value=membership.status)
     standing_svc.refresh(membership, user=user)
+    from benevolent.services import notify as notify_svc
+    from benevolent.models import NotificationEvent
+    notify_svc.send(NotificationEvent.REGISTRATION_CONFIRMED, membership=membership)
     return membership
 
 
@@ -205,6 +217,7 @@ def suspend(membership, *, user=None, reason="", on=None):
     log(membership, MembershipEvent.Kind.SUSPENDED, "Suspended.",
         user=user, on=on, reason=reason, from_value=before, to_value=membership.status)
     standing_svc.refresh(membership, user=user)
+    _notify_status_change(membership, status_note=reason)
     return membership
 
 
@@ -217,7 +230,15 @@ def reinstate(membership, *, on=None, user=None, reason=""):
     `SchemeMembership.cover_from`). Without it, a member could lapse for years,
     rejoin the week a relative fell ill, and claim immediately on the strength of a
     joining date from 2019.
+
+    Where the policy in force charges a reinstatement fee, it is raised
+    automatically as a charge against the member (see
+    `services.eligibility.evaluate_reinstatement` and
+    `services.engine.charge_policy_fee`) — a rule the church published, applied
+    the moment it is triggered, not a fee that depends on a treasurer
+    remembering to type it in by hand.
     """
+    from benevolent.services.eligibility import evaluate_reinstatement
     on = on or _dt.date.today()
     if membership.status == SchemeMembership.Status.DECEASED:
         raise ValidationError(
@@ -230,10 +251,26 @@ def reinstate(membership, *, on=None, user=None, reason=""):
     membership.reinstated_on = on
     membership.save(update_fields=["status", "left_on", "inactive_since",
                                    "reinstated_on"])
+
+    checks = evaluate_reinstatement(membership, on=on)
+    consequences = "; ".join(c.detail for c in checks)
     log(membership, MembershipEvent.Kind.REINSTATED,
         f"Reinstated. Any waiting period runs again from {on:%d %b %Y}.",
-        user=user, on=on, reason=reason, from_value=before, to_value=membership.status)
+        user=user, on=on, reason=(reason + (f" ({consequences})" if consequences else ""))
+        .strip(), from_value=before, to_value=membership.status)
+
+    fee_check = next((c for c in checks if c.code == "reinstatement_fee"), None)
+    if fee_check is not None and not fee_check.passed:
+        policy = membership.scheme.policy_on(on)
+        from benevolent.services import engine as engine_svc
+        engine_svc.charge_policy_fee(
+            membership, amount=policy.reinstatement_fee,
+            reason=f"Reinstatement fee under policy v{policy.version}, "
+                  f"charged automatically on reinstatement ({on:%d %b %Y}).",
+            on=on, user=user)
+
     standing_svc.refresh(membership, user=user)
+    _notify_status_change(membership, status_note="Welcome back.")
     return membership
 
 
@@ -252,6 +289,7 @@ def withdraw(membership, *, on=None, user=None, reason=""):
     log(membership, MembershipEvent.Kind.WITHDRAWN, "Withdrew from the scheme.",
         user=user, on=on, reason=reason, from_value=before, to_value=membership.status)
     standing_svc.refresh(membership, user=user)
+    _notify_status_change(membership, status_note="This confirms your withdrawal.")
     return membership
 
 
@@ -387,6 +425,9 @@ def transfer(membership, to_member, *, on=None, user=None, reason=""):
 
     standing_svc.refresh(membership, user=user)
     standing_svc.refresh(new, user=user)
+    _notify_status_change(
+        new, status_note=f"Membership taken over from {membership.member.name}, "
+                         f"keeping the original joining date.")
     return new
 
 
@@ -416,11 +457,13 @@ def grant_policy_exemption(membership, *, kind, reason, from_date=None, to_date=
     a member (or an auditor) can always see that a policy did this, not a
     person, and can always see why.
     """
+    fd = from_date or _dt.date.today()
     ex = MembershipExemption(
         membership=membership, kind=kind, reason=reason,
-        from_date=from_date or _dt.date.today(), to_date=to_date,
+        from_date=fd, to_date=to_date,
         exempt_dues=exempt_dues, exempt_levies=exempt_levies,
-        granted_by=user, approved_by=user, approved_at=timezone.now())
+        granted_by=user, approved_by=user, approved_at=timezone.now(),
+        policy=membership.scheme.policy_on(fd))
     ex.full_clean()
     ex.save()
     log(membership, MembershipEvent.Kind.EXEMPTED,
@@ -429,12 +472,17 @@ def grant_policy_exemption(membership, *, kind, reason, from_date=None, to_date=
         + " Applied under a published policy, not a discretionary decision.",
         user=user, on=ex.from_date, reason=reason, automated=True)
     standing_svc.refresh(membership, user=user)
+    _notify_status_change(
+        membership,
+        status_note=f"You have been excused from contributions "
+                   f"({ex.get_kind_display().lower()})"
+                   + (f" until {ex.to_date:%d %b %Y}." if ex.to_date else "."))
     return ex
 
 
 @db_tx.atomic
 def grant_exemption(membership, *, kind, reason, from_date=None, to_date=None,
-                    exempt_dues=True, exempt_levies=False, user=None):
+                    exempt_dues=True, exempt_levies=False, user=None, comments=""):
     """Propose that a member be excused from contributing.
 
     Note what this does NOT do: it does not excuse them. An exemption relieves
@@ -451,10 +499,12 @@ def grant_exemption(membership, *, kind, reason, from_date=None, to_date=None,
             "An exemption must record why. An exemption without a recorded reason is "
             "indistinguishable from favouritism.")
 
+    fd = from_date or _dt.date.today()
     ex = MembershipExemption(
-        membership=membership, kind=kind, reason=reason,
-        from_date=from_date or _dt.date.today(), to_date=to_date,
-        exempt_dues=exempt_dues, exempt_levies=exempt_levies, granted_by=user)
+        membership=membership, kind=kind, reason=reason, comments=comments or "",
+        from_date=fd, to_date=to_date,
+        exempt_dues=exempt_dues, exempt_levies=exempt_levies, granted_by=user,
+        policy=membership.scheme.policy_on(fd))
     ex.full_clean(exclude=["approved_by"])
     ex.save()
     log(membership, MembershipEvent.Kind.EXEMPTED,

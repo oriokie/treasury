@@ -674,9 +674,9 @@ class ProfileTests(Phase2Fixture):
 
     def test_the_builtin_library_installs_and_is_idempotent(self):
         n = profile_svc.install_builtins()
-        self.assertEqual(n, 4)
+        self.assertEqual(n, 5)   # Phase 10 added "Emergency relief (fast, fixed amounts)"
         self.assertEqual(profile_svc.install_builtins(), 0)
-        self.assertEqual(PolicyProfile.objects.filter(builtin=True).count(), 4)
+        self.assertEqual(PolicyProfile.objects.filter(builtin=True).count(), 5)
 
     def test_a_builtin_profile_cannot_be_deleted(self):
         profile_svc.install_builtins()

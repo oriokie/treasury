@@ -1,5 +1,327 @@
 # Changelog
 
+## v2.54.0 - Benevolent Phase 10: Production Readiness & Final Review (module complete)
+
+### A severe, previously-invisible performance bug — found and fixed
+
+`_dues_rows()` — underneath `arrears_for()`, called by the eligibility
+engine, the standing engine, every Phase 8 report, the Phase 7 reminder job
+and the dashboard, for every active member — resolved "which policy was in
+force" once per **day** of a member's history instead of once per call. A
+member of a few years' standing cost 700-1000+ database queries to answer
+"what do they owe." Found by writing the test this phase exists to write: a
+measured query-count comparison between a small dataset and a larger one,
+which showed a real dashboard's queries growing from 716 to over 5,000 for
+seventeen extra members. Fixed by resolving a scheme's policy history once
+per call instead of once per day — same rule, same answer, a fraction of the
+cost. The full pre-existing suite — 1,331 tests — passed unchanged after the
+fix, and several phases' worth of arrears-heavy tests ran roughly twice as
+fast as a direct, measured result.
+
+### The Scheme Engine claim, proved rather than asserted
+
+`BenevolentScheme.Kind` (Medical/Education/Emergency alongside Benevolent),
+the Constitution Wizard's very first question, and a working "Medical
+assistance" policy profile with its own event types have all existed since
+Phases 1-2 — genuine Scheme Engine infrastructure, not a rebrand. Nothing had
+ever proved it by actually running a non-bereavement scheme end to end. This
+phase does: a Medical Fund built from the existing profile runs a full
+lifecycle — case raised with no prior membership, assessed against a
+percentage-of-cost cap, committee-approved, paid, and reported through the
+same Phase 8 engine every bereavement scheme uses — using zero new model
+fields, zero new service functions, zero new views. A newly-added "Emergency
+relief" built-in profile (fast, treasurer-only approval; no membership or
+waiting period) proves it a second way.
+
+### Wording that assumed bereavement, fixed
+
+The wizard's "does the member a case is about contribute to their own case"
+section was titled "The bereaved member" — correct for the common case,
+mildly wrong for a hospital bill or a school fees claim. Retitled to "The
+member a case is about" across the wizard, the policy form, and the case
+screen — presentation only; field names were deliberately left alone.
+
+### A dead setting, finally traced and fixed
+
+`notify_committee_on_pending_vote`, flagged as confirmed-dead in Phase 9's
+review, turned out to have a precise cause: its name didn't match the
+`notify_on_<event>` convention the notifier's lookup depends on, so it could
+never have fired for any deployment, ever. Renamed to
+`notify_on_committee_pending` and correctly wired — a staff-facing
+counterpart to Phase 7's member/committee-facing notice, not a duplicate.
+
+### The module is complete
+
+Ten phases, each audited before building, reused before duplicating, and —
+where a real bug turned up, as one did in nearly every phase — named, fixed,
+and tested. `docs/recommendations.md` remains the honest, permanent record
+of what was deliberately left for later and why.
+
+**Tests:** 14 new (397 across all ten phases, all green). Full regression
+clean across the whole application: reports (388), core + accounts (546).
+
+**Deferred, named** (`docs/recommendations.md` #70b): a smaller, related
+inefficiency in the same function (`contributions_total()` called once per
+dues period rather than once per membership) — real, but a different scale
+of problem, and one that touches the arrears engine's core "how much has
+been paid" calculation closely enough to deserve its own careful pass rather
+than a rushed one at the end of a tenth phase.
+
+## v2.53.0 - Benevolent Phase 9: Roles, Permissions & User Experience
+
+### No separate permission system — extended the existing one
+
+`core.rights` already had exactly the mechanism the brief asks for: named
+rights bundled into assignable profiles, layered on the existing role groups.
+This phase adds to it rather than building a second one alongside it.
+
+### The real gap: one coarse right doing three jobs
+
+`manage_benevolent` covered "enrol members, raise cases, record
+contributions" as a single right. Split into three —
+`benevolent_register_members`, `benevolent_manage_cases`,
+`benevolent_manage_finance` — and eighteen views across four files re-pointed
+to the specific mixin their work actually needs.
+
+**Nothing that worked before stops working.** Every new check is the OLD
+coarse check first, the new specific one second — a Treasurer, an Assistant,
+or any existing profile keeps every capability it already had. Proven
+directly: a test builds a pre-Phase-9-style profile and confirms it still
+satisfies all three new checks.
+
+### Seven seeded profiles, matching the brief's named roles
+
+Administrator, Approver ("Treasurer"), Committee Member, Registration
+Officer, Case Officer, Finance Officer, Auditor — seeded the exact way every
+other default profile in this system already is. "Committee Chairperson" is
+deliberately not an eighth profile: chairing is a SEAT on a scheme's
+committee roster (Phase 6), not a different right — a new
+`is_benevolent_committee_chair()` helper answers the one question the UI
+needs without duplicating the roster as a second concept.
+
+### A real bug found while working on the settings page
+
+The settings template referenced three fields Phase 7 had retired (that
+whole section silently rendered *empty*) and was missing roughly half the
+model's actual fields — every Phase 7 notification toggle bar one, and every
+Phase 4 allocation-tuning field — unreachable from the web UI since Phase 4.
+Fixed comprehensively, with a new "Allocation" tab, and regression-guarded
+with a test that walks every actual model field and confirms it appears on
+the page.
+
+### Dashboard: role-aware "your queues"
+
+Each viewer now sees only the operational queues their own role covers —
+computed only when they hold the matching right, so a Registration Officer's
+page load never pays for a committee-vote query it will not show. A
+members'-arrears KPI card was added alongside the existing balance/
+contributions/payouts cards, and a Reports link now connects the module's own
+nav to the nine reports Phase 8 built.
+
+### Confirmed already solid
+
+Search, progressive disclosure on the policy form (already collapsible,
+Phase 2), and accessibility basics (`aria-required` applied centrally to
+every form in the system) were audited and found already correct.
+
+**Tests:** 32 new (377 across all nine phases, all green). Full regression
+clean: accounts (127), core (419).
+
+**Deferred, named** (`docs/recommendations.md` #69): payout-raising sits
+under the Case Officer right rather than a separate Finance gate (a
+defensible boundary, changeable if asked for); no inline explanation when a
+control is hidden by permission (consistent with the rest of the app);
+`notify_committee_on_pending_vote` confirmed as a fourth instance of this
+project's recurring "declared but never wired" shape, found while fixing the
+settings page rather than by deliberately auditing for it.
+
+## v2.52.0 - Benevolent Phase 8: Reporting, Analytics & Dashboards
+
+### The Report Engine already existed — this plugs into it
+
+`core.reporting` is a mature, config-driven engine already running the Board
+Pack, the Income & Expenditure Statement, and every other report in the
+system: a component registry, a report registry, and CSV/XLSX/PDF/DOCX export
+that comes free the moment a report is registered — no per-format code. This
+phase was never about building a second reporting system for this module; it
+was about plugging into the one that already runs everything else.
+
+**Thirteen report components** — one per category the brief names
+(operational dashboard, KPIs, contribution summary, membership, households,
+committee, cases, fund balances, income & expenditure, arrears, benefit
+payments, audit) — composed into **nine ready-to-use reports**, registered
+from `BenevolentConfig.ready()` the same way `benevolent/metrics.py` already
+registers this module's figures with the Financial Metrics Registry.
+
+### No new financial calculation
+
+Every money figure is read straight from the registry (`benevolent_scheme_
+summary`, `_contributions`, `_payouts`, `_fund_balance`, `_commitments` — all
+from Phase 1) or is a **breakdown** of one. Arrears analysis is not a second
+way to compute what a member owes — it is `arrears_for()`, the same function
+every membership screen already calls, listed member by member, with its own
+sum registered as the new `benevolent_arrears` metric, so the KPI card and the
+arrears report can never disagree. The audit report reuses the exact query
+Phase 6's Overrides & Exceptions screen already built, rather than re-deriving
+what counts as an override a second time.
+
+### Historical accuracy, proven not assumed
+
+The case report reads what was actually approved and paid — frozen at
+decision time — never a live re-evaluation. A dedicated test changes a
+scheme's benefit amount *after* a case was paid and confirms the report still
+shows the original, historical figure.
+
+### A real bug caught before it shipped
+
+Early smoke-testing crashed XLSX export: a raw `User` object had been placed
+directly into a report cell instead of its string form — openpyxl cannot
+serialise a model instance. Fixed everywhere it occurred, and closed
+generically with a test that renders every component and asserts every cell
+holds an exportable primitive, so this specific mistake — or its equivalent in
+a future component — can never silently reach production again.
+
+**Tests:** 25 new (345 across the benevolent module, all eight phases, all
+green). Full regression clean: reports (388), core (419).
+
+**Deferred, named** (`docs/recommendations.md` #68): no live scheme-picker
+dropdown (the shared engine's `Filter`/template do not yet render one, and
+building it would mean querying the database at process startup — flagged as
+a `core.reporting` enhancement, not a benevolent-specific workaround); the
+membership/case/payment views cap at 2,000 rows on screen (CSV/XLSX export
+carry no cap); no benevolent-specific AI narrative component (the wider
+system's intelligence layer is general-purpose, and a scoped narrative is a
+natural Designer composition rather than a fixed part of this phase).
+
+## v2.51.0 - Benevolent Phase 7: Financial Integration & Communications
+
+### Financial integration: confirmed, not rebuilt
+
+Expense Voucher, Payment Register, General Ledger, Bank Reconciliation, Chart of
+Accounts, Audit Log — every one of these was already correctly integrated since
+Phase 1, reinforced by Phase 4's statement-import work. Re-verified with a full
+contribution -> case -> payout cycle re-run under this phase's new code and checked
+against the ledger's own accounting-equation check: still balanced. Nothing here
+needed rebuilding, so nothing was.
+
+### The real gap: nothing ever reached a member
+
+Every notification before this phase went to STAFF. Worse than simply missing:
+`registry.py` had a `_notify()` function whose own docstring said *"Tell the member,
+where the settings say to"* — and then messaged treasurers regardless, gated by a
+settings field nothing ever set. A confirmed bug — intent and implementation had
+quietly diverged, for at least four phases.
+
+Fixed by building the pathway that was actually missing: `services/notify.py` renders
+a configurable template and delivers it to the member's own phone or email (or, for
+committee notices, the seated member's own address), through the *existing* SMS and
+email engines — never a parallel channel. The broken `registry._notify()` is gone.
+
+### Configurable templates, notification history, delivery tracking, retries
+
+`NotificationTemplate` — one editable row per event and channel, nine events named
+directly from the brief (registrations, renewals, contribution reminders, case
+notifications, committee approvals, benefit payments, membership status changes),
+each on SMS and email, using the exact `{placeholder}` syntax already established
+elsewhere in the system. `BenevolentNotification` is the permanent delivery record —
+event, recipient, the rendered message frozen at send time, status, attempt count,
+and a direct link to the SMS engine's own delivery log rather than a duplicate.
+Retries are bounded and ride the existing nightly automation schedule; no second job
+was added.
+
+### Contribution reminders: closing a gap that survived three phases
+
+`arrears_reminder_days` and `renewal_reminder_days` have existed since Phase 2,
+editable, frozen into every policy snapshot, and acted on by nothing —
+recommendation #62c named this explicitly, three phases running, and raised it to
+HIGH priority. `send_due_reminders()` closes it: every member currently in arrears,
+or due for renewal within the configured window, gets a reminder, throttled to at
+most one every `reminder_min_gap_days` so a nightly job does not become a nightly
+text message.
+
+**Tests:** 42 new (320 across the benevolent module, all seven phases, all green).
+Full regression clean: cashbook (396), core + members (470).
+
+**Deferred, named** (`docs/recommendations.md` #67): `members.Member` still has no
+email field — member email here is scoped to `SchemeMembership.email` specifically,
+deliberately kept inside this module's boundary; no WhatsApp channel (SMS and email
+cover everything the brief named); notification history has no export yet (a Report
+Engine candidate, like the Overrides & Exceptions screen before it); and a payout
+notification can under-fire on a multi-voucher case, sharing a pre-existing gap in
+the CaseEvent logic it rides on rather than a new one.
+
+## v2.50.0 - Benevolent Phase 6: Policy Evaluation & Committee Management
+
+### This phase was mostly an audit, and that's the point
+
+Almost everything the objective named — a policy evaluation engine, committee
+structures, approval workflows, quorum, overrides, waivers, exemptions, renewals,
+transfers, household inheritance, death processing, inactivity, reinstatements — was
+already built across Phases 1-5. Rather than rebuild any of it, this phase went
+looking for the specific places where the existing machinery fell short of what it
+claimed to do, and fixed exactly those.
+
+### A real gap: the committee had no roster
+
+`can_vote_benevolent` already existed as its own right, correctly separate from the
+treasurer role. What it could not do: say *whose* committee someone is on, in a church
+running more than one scheme, or give a seat a name. **`CommitteeMember`** (per scheme,
+with a role — Chair, Vice-chair, Secretary, Committee treasurer, Member) fills that in,
+additively: a scheme that never seats anyone behaves exactly as before, and
+`record_vote()` only starts enforcing roster membership once a roster actually exists.
+
+### Approval levels: `committee_requires_chair`
+
+A quorum is a headcount; an approval *level* is "and one of them must be this seat" —
+which the old model genuinely could not express. When set, a quorum of ordinary members
+does not carry a decision until the Chair specifically has voted, with a Chair-specific
+error message rather than the generic "quorum not met." Ignored, not an error, on a
+scheme with no Chair seated.
+
+### A real bug: the reinstatement fee was never charged
+
+`SchemePolicy.reinstatement_fee` has existed since Phase 2, editable on every policy
+form, frozen into every snapshot — and read nowhere. Fixed by reusing Phase 4's
+obligations ledger through a new auto-approved charge, mirroring the reasoning Phase 5
+established for its bereavement exemption: a published, constitution-set fee is not a
+new decision needing a second signature the moment it applies.
+
+### The policy engine gets a second business rule
+
+Case eligibility has always produced a transparent list of `Check` objects. Reinstatement
+was decided by two hardcoded lines with no visibility into what the policy actually
+says. `evaluate_reinstatement()` extends the same `Check` shape to a second rule — the
+fee, the waiting-period consequence — logged onto the membership's history, advisory
+only: nothing here blocks a reinstatement, which is an administrative act, not a
+benefit decision.
+
+### Every override now carries a policy reference and comments
+
+`MembershipExemption` and `MemberAdjustment` gained `policy` (the version in force when
+the decision was made) and `comments` (kept distinct from the required `reason`),
+populated automatically, discretionary and automated paths alike.
+
+### Auditability, consolidated
+
+`/benevolent/overrides/` — overridden cases, committee votes, exemptions, charges and
+waivers, all in one filterable, read-only screen, instead of four different places each
+showing part of the picture.
+
+### Confirmed solid, deliberately untouched
+
+Renewals, transfers, household inheritance, member death processing, and inactivity
+calculations were all audited and found to already correctly consult the policy fields
+that govern them. Reused, not rebuilt.
+
+**Tests:** 33 new (278 in the benevolent module, all green). Full regression clean:
+accounts + core (546 tests).
+
+**Deferred, named** (`docs/recommendations.md` #66): a committee seat does not itself
+grant the right to vote — correct behaviour, but worth a roster-screen warning;
+`committee_requires_chair` names only the Chair, not an arbitrary configurable seat; the
+Overrides & Exceptions view has no PDF/Excel export yet (the rest of the module's
+reports do, via the Report Engine).
+
 ## v2.49.0 - Benevolent Phase 5: Bereavement Case Management
 
 ### The case's own narrative

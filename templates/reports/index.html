@@ -23,6 +23,7 @@
   <button type="button" class="tab" data-tab="executive">Executive</button>
   <button type="button" class="tab" data-tab="ledger">General ledger</button>
   <button type="button" class="tab" data-tab="oversight">Oversight</button>
+  <button type="button" class="tab" data-tab="benevolent">Benevolent</button>
 </div>
 
 <section class="tabpane active" data-pane="treasurer"><div class="report-grid">
@@ -90,6 +91,18 @@
 <section class="tabpane" data-pane="oversight"><div class="report-grid">
   <a class="report-card" href="{% url 'report_forecast' %}"><div class="rc-ic">⤴</div><strong>Cash flow forecast</strong><span>Projected cash position over 30 days, a quarter and a year.</span></a>
   <a class="report-card" href="{% url 'report_audit' %}"><div class="rc-ic">⚿</div><strong>Audit log</strong><span>Every change to transactions, expenses &amp; members.</span></a>
+</div></section>
+
+<section class="tabpane" data-pane="benevolent"><div class="report-grid">
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_overview' %}"><div class="rc-ic">◈</div><strong>Overview &amp; KPIs</strong><span>Operational dashboard — headline figures, scheme summary, cases by status.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_contributions' %}"><div class="rc-ic">∑</div><strong>Contribution summary</strong><span>Contributions received, by kind, for the period.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_membership_households' %}"><div class="rc-ic">☺</div><strong>Membership &amp; households</strong><span>The register and its household dimension.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_committee_report' %}"><div class="rc-ic">⛨</div><strong>Committee report</strong><span>Rosters, roles, and how active each seat has been.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_case_report' %}"><div class="rc-ic">✉</div><strong>Case report</strong><span>Every case, its status, what it was approved and paid.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_financial_statement' %}"><div class="rc-ic">⚖</div><strong>Financial statement</strong><span>Fund balances and income &amp; expenditure for the schemes.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_arrears_report' %}"><div class="rc-ic">⇄</div><strong>Arrears analysis</strong><span>Every member currently in arrears, with an ageing band.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_benefit_payments_report' %}"><div class="rc-ic">➶</div><strong>Benefit payments</strong><span>Every payment voucher raised against a case.</span></a>
+  <a class="report-card" href="{% url 'engine_report' 'benevolent_audit_report' %}"><div class="rc-ic">⚿</div><strong>Audit report</strong><span>Case overrides, exemptions, charges &amp; waivers — for board review.</span></a>
 </div></section>
 
 <div class="note u-mt">Fund ledgers and member statements open from the <a class="link" href="{% url 'department_list' %}">Funds</a> and <a class="link" href="{% url 'member_list' %}">Members</a> pages.</div>

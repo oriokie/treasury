@@ -156,9 +156,12 @@ def duplicate(profile, *, name=None, user=None):
 # The built-in library
 # ---------------------------------------------------------------------------
 #
-# Four shapes, which between them cover the great majority of church welfare
-# schemes actually in operation. They are starting points, not prescriptions: a
-# church copies the nearest one and adjusts the amounts.
+# Five shapes, which between them cover the great majority of church welfare
+# schemes actually in operation — bereavement, medical and emergency relief
+# among them, deliberately, as the concrete proof that this is a Scheme
+# Engine and not a bereavement-fund with other labels bolted on. They are
+# starting points, not prescriptions: a church copies the nearest one and
+# adjusts the amounts.
 
 BUILTINS = [
     {
@@ -291,6 +294,35 @@ BUILTINS = [
             {"event": "Hospitalisation", "code": "HOSPITAL", "amount": "0"},
             {"event": "Surgery", "code": "SURGERY", "amount": "0"},
             {"event": "Chronic illness", "code": "CHRONIC", "amount": "0", "max_per_year": 2},
+        ],
+    },
+    {
+        "name": "Emergency relief (fast, fixed amounts)",
+        "kind": "EMERGENCY",
+        "description": (
+            "For a fire, flood, theft or sudden displacement — help that needs to move "
+            "fast, not a claims process. No membership or waiting period (anyone in the "
+            "congregation qualifies the moment disaster strikes), a fixed amount per kind "
+            "of emergency, and treasurer-level approval so a family is not left waiting "
+            "on a committee to convene while their roof is gone."),
+        "config": {
+            "membership_required": False, "waiting_period_days": 0,
+            "arrears_treatment": "IGNORE",
+            "registration_required": False, "registration_approval": "AUTO",
+            "contribution_mode": "VOLUNTARY",
+            "funding_methods": ["DONATION", "FUNDRAISING", "SUBSIDY"],
+            "benefit_mode": "SCHEDULE", "benefit_cap": "30000",
+            "approval_mode": "TREASURER",
+            "inactivity_months": 0, "inactivity_action": "NONE",
+            "inheritance_mode": "NONE",
+            "claim_window_days": 30, "max_claims_per_year": 1,
+            "require_documents": False, "allow_override": True,
+        },
+        "benefit_lines": [
+            {"event": "Fire", "code": "FIRE", "amount": "20000"},
+            {"event": "Flood", "code": "FLOOD", "amount": "15000"},
+            {"event": "Theft or burglary", "code": "THEFT", "amount": "10000"},
+            {"event": "Sudden displacement", "code": "DISPLACED", "amount": "15000"},
         ],
     },
 ]

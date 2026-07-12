@@ -834,3 +834,55 @@ def evaluate_case(case) -> EligibilityResult:
         case.scheme, event_type=case.event_type, event_date=case.event_date,
         membership=case.membership, reported_date=case.reported_date,
         claimed_amount=case.claimed_amount, case=case)
+
+
+# ---------------------------------------------------------------------------
+# A second business rule through the SAME engine (Phase 6)
+# ---------------------------------------------------------------------------
+#
+# Case eligibility is not the only decision a policy governs — reinstating a
+# lapsed member is one too, and until now it was decided by two lines of
+# hardcoded logic in registry.reinstate() that nothing else could see or
+# reuse: a bare "if DECEASED, refuse" with no visibility into what the policy
+# actually says applies (a waiting period on the next claim, a reinstatement
+# fee). This reuses the SAME Check dataclass every case decision already
+# produces, so "what does the policy say about this?" has one answer shape
+# everywhere in the module, not a bespoke one per action.
+#
+# Deliberately advisory, not blocking: reinstating someone is an
+# administrative act (bringing a person's record back to ACTIVE), not a
+# benefit decision, so nothing here stops it — it tells the treasurer, in the
+# same transparent shape as everything else, what the policy will actually DO
+# as a consequence (a fee raised, a waiting period restarting).
+
+def evaluate_reinstatement(membership, *, on=None) -> list:
+    """What the policy in force says about reinstating this membership, right
+    now. Every check is advisory (see module note above) — registry.reinstate
+    reads `fee_due` off this to raise the charge automatically, and logs the
+    waiting-period consequence for anyone reading the membership's history
+    later, but nothing here ever blocks the reinstatement itself."""
+    on = on or _dt.date.today()
+    policy = membership.scheme.policy_on(on)
+    checks = []
+    if policy is None:
+        return [Check("policy", "A policy is in force", False,
+                      "No policy is in force, so none of its reinstatement rules apply.",
+                      blocking=False)]
+
+    fee = Decimal(policy.reinstatement_fee or 0)
+    checks.append(Check(
+        "reinstatement_fee", "Reinstatement fee", fee <= 0,
+        (f"No reinstatement fee under policy v{policy.version}." if fee <= 0
+         else f"Policy v{policy.version} charges a reinstatement fee of {_money(fee)}, "
+              f"raised as a charge against the member the moment they are reinstated."),
+        blocking=False))
+
+    days = policy.reinstatement_waiting_days or 0
+    checks.append(Check(
+        "reinstatement_wait", "Waiting period on the next claim", days <= 0,
+        (f"No extra waiting period under policy v{policy.version}." if days <= 0
+         else f"Policy v{policy.version} restarts a {days}-day waiting period on any "
+              f"claim, counted from the reinstatement date — not the original joining "
+              f"date."),
+        blocking=False))
+    return checks

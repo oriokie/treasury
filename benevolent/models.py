@@ -424,6 +424,7 @@ class SchemePolicy(models.Model):
         "benefit_cap", "benefit_floor", "benefit_rounding",
         # approvals
         "approval_mode", "committee_threshold", "committee_quorum",
+        "committee_requires_chair",
         # bereaved-member rules
         "bereaved_contribution_policy", "bereaved_reduction_percent",
         "bereaved_deduct_own_levy", "bereaved_dues_waiver_months",
@@ -569,6 +570,13 @@ class SchemePolicy(models.Model):
         default=3,
         help_text="How many committee members must record an approval before a benefit is "
                   "authorised.")
+    committee_requires_chair = models.BooleanField(
+        default=False,
+        help_text="An approval level, not just a headcount: when set, the quorum is not "
+                  "reached by any N approvals — one of them must be the Chair's. Only "
+                  "meaningful where the scheme has a committee roster with a Chair seat "
+                  "(see Committee membership); ignored otherwise, since there is no Chair "
+                  "to require.")
 
     class BereavedContributionPolicy(models.TextChoices):
         """The four ways a constitution answers one question: does the member
@@ -899,6 +907,14 @@ class SchemeMembership(models.Model):
     left_on = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=Status.choices,
                               default=Status.ACTIVE, db_index=True)
+    email = models.EmailField(
+        blank=True,
+        help_text="Optional. members.Member has no email field at all (the church "
+                  "tracks members by name and phone) — this is scoped to the "
+                  "benevolent module specifically, for a member who wants email "
+                  "notices about their own scheme membership. Blank means email "
+                  "notifications simply do not fire for them; SMS to their phone "
+                  "still does.")
     notes = models.CharField(max_length=200, blank=True)
 
     # ---- Registration (Phase 2) --------------------------------------------
@@ -1633,4 +1649,7 @@ from benevolent.models_config import (  # noqa: E402,F401
 from benevolent.models_contrib import (  # noqa: E402,F401
     ContributionIntake, ContributionRefund, ContributionRule, MemberAdjustment)
 from benevolent.models_case import CaseEvent  # noqa: E402,F401
+from benevolent.models_committee import CommitteeMember  # noqa: E402,F401
+from benevolent.models_notify import (  # noqa: E402,F401
+    BenevolentNotification, NotificationEvent, NotificationTemplate)
 

@@ -80,3 +80,16 @@ def register_metrics():
                   "this is what has been promised but not yet vouchered, so it neither "
                   "appears in nor contradicts the Statement of Financial Position."),
             lambda scheme=None: _r().approved_unpaid_total(scheme))
+
+    if not metrics.has("benevolent_arrears"):
+        metrics.register(Metric(
+            "benevolent_arrears", "Benevolent members' arrears (total)", "Benevolent",
+            "What members currently owe against their schemes' dues, summed. The SAME "
+            "figure `services.reporting.arrears_analysis` breaks down member by member "
+            "— this is its total, not a separate calculation, so the KPI card and the "
+            "arrears report can never disagree.",
+            "benevolent.services.reporting.arrears_total", inputs="scheme, as_of",
+            notes="A MEMORANDUM figure about members' obligations to their schemes, not "
+                  "a receivable the church itself carries — it does not appear on the "
+                  "Statement of Financial Position."),
+            lambda scheme=None, as_of=None: _r().arrears_total(scheme, as_of))

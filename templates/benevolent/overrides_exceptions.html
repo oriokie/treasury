@@ -1,0 +1,66 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Overrides &amp; exceptions · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Overrides &amp; exceptions</h1>
+  <div class="sub">Every exceptional decision across the module, in one place — what a board or an auditor
+    actually wants, instead of four separate screens each showing part of the picture.</div></div></div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <select class="field--select" name="scheme"><option value="">All schemes</option>
+    {% for s in schemes %}<option value="{{ s.id }}" {% if f_scheme == s.id|stringformat:"s" %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+  <input class="field" type="date" name="since" value="{{ since|date:'Y-m-d' }}">
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="card u-mb"><div class="hd">Cases approved despite failing a check <span class="muted u-xs">— {{ overridden_cases|length }}</span></div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Case</th><th>Scheme</th><th>Approved by</th><th>When</th><th class="num">Amount</th><th>Override reason</th></tr></thead>
+<tbody>{% for c in overridden_cases %}<tr>
+  <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">{{ c.number }}</a></td>
+  <td class="muted">{{ c.scheme.code }}</td>
+  <td>{{ c.approved_by|default:"—" }}</td>
+  <td class="muted u-xs">{{ c.approved_at|date:"d M Y" }}</td>
+  <td class="num mono">{{ c.approved_amount|floatformat:2|intcomma }}</td>
+  <td class="muted">{{ c.override_reason|truncatechars:100 }}</td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">None in this period.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<div class="card u-mb"><div class="hd">Committee votes <span class="muted u-xs">— {{ votes|length }}</span></div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Case</th><th>Scheme</th><th>Voter</th><th>Decision</th><th class="num">Amount</th><th>When</th><th>Note</th></tr></thead>
+<tbody>{% for v in votes %}<tr>
+  <td><a class="link" href="{% url 'benevolent_case_detail' v.case.id %}">{{ v.case.number }}</a></td>
+  <td class="muted">{{ v.case.scheme.code }}</td>
+  <td>{{ v.user }}</td>
+  <td><span class="pill {% if v.decision == 'APPROVE' %}pill-green{% elif v.decision == 'REJECT' %}pill-red{% else %}pill-brass{% endif %} u-xs">{{ v.get_decision_display }}</span></td>
+  <td class="num mono">{% if v.amount %}{{ v.amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="muted u-xs">{{ v.created_at|date:"d M Y H:i" }}</td>
+  <td class="muted">{{ v.note|truncatechars:80 }}</td>
+</tr>{% empty %}<tr><td colspan="7" class="empty">None in this period.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<div class="card u-mb"><div class="hd">Exemptions granted <span class="muted u-xs">— {{ exemptions|length }}</span></div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Member</th><th>Scheme</th><th>Kind</th><th>Approved by</th><th>Policy</th><th>Reason</th></tr></thead>
+<tbody>{% for e in exemptions %}<tr>
+  <td>{{ e.membership.member.name }}</td>
+  <td class="muted">{{ e.membership.scheme.code }}</td>
+  <td>{{ e.get_kind_display }}</td>
+  <td>{{ e.approved_by|default:"—" }}
+    {% if e.granted_by == e.approved_by %}<span class="pill pill-brass u-xs" title="Auto-approved under a published policy">Auto</span>{% endif %}</td>
+  <td class="muted u-xs">{% if e.policy %}v{{ e.policy.version }}{% else %}—{% endif %}</td>
+  <td class="muted">{{ e.reason|truncatechars:90 }}</td>
+</tr>{% empty %}<tr><td colspan="6" class="empty">None in this period.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+
+<div class="card"><div class="hd">Charges &amp; waivers approved <span class="muted u-xs">— {{ adjustments|length }}</span></div><div class="bd">
+<table class="ledger compact"><thead><tr><th>Member</th><th>Scheme</th><th>Kind</th><th class="num">Amount</th><th>Approved by</th><th>Policy</th><th>Reason</th></tr></thead>
+<tbody>{% for a in adjustments %}<tr>
+  <td>{{ a.membership.member.name }}</td>
+  <td class="muted">{{ a.membership.scheme.code }}</td>
+  <td>{{ a.get_kind_display }}</td>
+  <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
+  <td>{{ a.approved_by|default:"—" }}
+    {% if a.automated %}<span class="pill pill-brass u-xs" title="Raised automatically under a published policy">Auto</span>{% endif %}</td>
+  <td class="muted u-xs">{% if a.policy %}v{{ a.policy.version }}{% else %}—{% endif %}</td>
+  <td class="muted">{{ a.reason|truncatechars:90 }}</td>
+</tr>{% empty %}<tr><td colspan="7" class="empty">None in this period.</td></tr>{% endfor %}</tbody></table>
+</div></div>
+{% endblock %}

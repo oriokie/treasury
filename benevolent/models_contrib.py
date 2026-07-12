@@ -179,6 +179,17 @@ class MemberAdjustment(models.Model):
     reason = models.TextField(
         help_text="Why. Required: a charge or a waiver without a recorded reason is "
                   "an unanswerable question at the next audit.")
+    comments = models.TextField(
+        blank=True,
+        help_text="Anything supplementary — not a substitute for the reason above.")
+    policy = models.ForeignKey(
+        "SchemePolicy", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+        help_text="The policy version in force when this was raised.")
+    automated = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Raised by a published policy rule (e.g. a reinstatement fee) "
+                  "rather than a treasurer's own discretionary judgement. A member "
+                  "has a right to know which.")
 
     case = models.ForeignKey("BenevolentCase", null=True, blank=True,
                              on_delete=models.SET_NULL, related_name="adjustments",

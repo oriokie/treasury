@@ -195,11 +195,19 @@ QUESTIONS = [
                         "(days; 0 for no limit)",
         "number", section="The benefit", default="90"),
 
-    # --- Section 6: the bereaved member ----------------------------------
+    # --- Section 6: the member a case is about ----------------------------
+    # Worded scheme-neutrally on purpose (Phase 10): the underlying field
+    # names (bereaved_contribution_policy, etc.) stayed as they were named at
+    # Phase 5 — renaming a data model field is a migration for no functional
+    # gain — but the WIZARD is what a Medical Fund or Education Fund
+    # administrator actually reads, and "the bereaved member" read oddly for
+    # a hospital bill or a school fees claim. The question is the same one
+    # regardless of scheme type: does the person a case is FOR contribute
+    # towards their own claim?
     Question(
         "bereaved_levy", "When the scheme raises a levy for a member's own case, "
                          "does that member contribute to it too?",
-        "choice", section="The bereaved member",
+        "choice", section="The member a case is about",
         depends_on=("funding", ("PER_CASE_LEVY", "HYBRID")),
         options=[
             Option("EXEMPT", "No — automatically exempt",
@@ -212,12 +220,12 @@ QUESTIONS = [
         ]),
     Question(
         "bereaved_reduction", "What percentage of the normal amount, when reduced?",
-        "number", section="The bereaved member", default="50",
+        "number", section="The member a case is about", default="50",
         depends_on=("bereaved_levy", "REDUCED")),
     Question(
         "dues_waiver", "How many months of dues are waived for a member after their own "
                        "case? (0 if none)",
-        "number", section="The bereaved member", default="0",
+        "number", section="The member a case is about", default="0",
         depends_on=("funding", ("FIXED_PERIODIC", "HYBRID"))),
 
     # --- Section 7: approval ---------------------------------------------
@@ -472,18 +480,19 @@ def build_config(answers):
          f"A case must be reported within {_num(answers, 'claim_window', 90)} day(s)."
          if _num(answers, "claim_window", 90) else "No reporting deadline.")
 
-    # --- the bereaved member ---------------------------------------------
+    # --- the member a case is about ---------------------------------------
     if funding in ("PER_CASE_LEVY", "HYBRID"):
         bl = answers.get("bereaved_levy", "EXEMPT")
         policy_map = {"EXEMPT": "EXEMPT", "REDUCED": "REDUCED", "DEDUCT": "CONTRIBUTES",
                       "CONTRIBUTES": "CONTRIBUTES", "COMMITTEE_DECIDES": "COMMITTEE_DECIDES"}
         reasons = {
-            "EXEMPT": "The bereaved member is not levied towards their own benefit.",
-            "REDUCED": f"The bereaved member contributes {_num(answers, 'bereaved_reduction', 50)}% "
-                      f"of the normal amount.",
-            "DEDUCT": "The bereaved member contributes in full, taken out of their benefit.",
-            "CONTRIBUTES": "The bereaved member is levied like anyone else.",
-            "COMMITTEE_DECIDES": "The committee decides the bereaved member's contribution "
+            "EXEMPT": "The member a case is about is not levied towards their own benefit.",
+            "REDUCED": f"The member a case is about contributes "
+                      f"{_num(answers, 'bereaved_reduction', 50)}% of the normal amount.",
+            "DEDUCT": "The member a case is about contributes in full, taken out of "
+                     "their benefit.",
+            "CONTRIBUTES": "The member a case is about is levied like anyone else.",
+            "COMMITTEE_DECIDES": "The committee decides that member's own contribution "
                                  "for each case.",
         }
         set_("bereaved_contribution_policy", policy_map.get(bl, "EXEMPT"), reasons.get(bl, ""))

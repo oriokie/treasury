@@ -92,8 +92,9 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
          ["benefit_mode", "benefit_amount", "benefit_percent", "benefit_cap",
           "benefit_floor", "benefit_rounding"]),
         ("Approval",
-         ["approval_mode", "committee_threshold", "committee_quorum"]),
-        ("The bereaved member",
+         ["approval_mode", "committee_threshold", "committee_quorum",
+          "committee_requires_chair"]),
+        ("The member a case is about",
          ["bereaved_contribution_policy", "bereaved_reduction_percent",
           "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
         ("Inactivity & lapsing",
@@ -131,8 +132,9 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
                  ["benefit_mode", "benefit_amount", "benefit_percent", "benefit_cap",
                   "benefit_floor", "benefit_rounding"]),
                 ("Approval",
-                 ["approval_mode", "committee_threshold", "committee_quorum"]),
-                ("The bereaved member",
+                 ["approval_mode", "committee_threshold", "committee_quorum",
+          "committee_requires_chair"]),
+                ("The member a case is about",
                  ["bereaved_contribution_policy", "bereaved_reduction_percent",
                   "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
                 ("Inactivity & lapsing",
@@ -666,11 +668,12 @@ class HouseholdMemberForm(StyledFormMixin, forms.Form):
 class ExemptionForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = MembershipExemption
-        fields = ["kind", "from_date", "to_date", "reason",
+        fields = ["kind", "from_date", "to_date", "reason", "comments",
                   "exempt_dues", "exempt_levies"]
         widgets = {"from_date": forms.DateInput(attrs={"type": "date"}),
                    "to_date": forms.DateInput(attrs={"type": "date"}),
-                   "reason": forms.Textarea(attrs={"rows": 3})}
+                   "reason": forms.Textarea(attrs={"rows": 3}),
+                   "comments": forms.Textarea(attrs={"rows": 2})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -770,6 +773,9 @@ class AdjustmentForm(StyledFormMixin, forms.Form):
     period_label = forms.CharField(required=False, max_length=10,
                                    help_text="The dues period this applies to, if any.")
     reason = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}))
+    comments = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}),
+                               help_text="Optional. Supplementary context — not a "
+                                         "substitute for the reason above.")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -788,4 +794,63 @@ class RefundForm(StyledFormMixin, forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._style()
+
+
+# ===========================================================================
+# Phase 6 — committee membership
+# ===========================================================================
+
+from django.contrib.auth.models import User
+
+from .models import CommitteeMember
+
+
+class CommitteeMemberForm(StyledFormMixin, forms.Form):
+    user = forms.ModelChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by("first_name", "username"),
+        label="Person",
+        help_text="Only lists active user accounts — they still need the general "
+                  "benevolent-committee right to actually vote once seated here.")
+    role = forms.ChoiceField(choices=CommitteeMember.Role.choices,
+                             initial=CommitteeMember.Role.MEMBER)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
+class CommitteeRoleForm(StyledFormMixin, forms.Form):
+    role = forms.ChoiceField(choices=CommitteeMember.Role.choices)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
+class RemoveSeatForm(StyledFormMixin, forms.Form):
+    reason = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
+# ===========================================================================
+# Phase 7 — notification templates
+# ===========================================================================
+
+from .models import NotificationTemplate
+
+
+class NotificationTemplateForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = NotificationTemplate
+        fields = ["subject", "body", "active"]
+        widgets = {"body": forms.Textarea(attrs={"rows": 4})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.channel != NotificationTemplate.Channel.EMAIL:
+            del self.fields["subject"]
         self._style()

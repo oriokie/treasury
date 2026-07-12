@@ -147,6 +147,8 @@ h1{font-size:1.95rem}h2{font-size:1.4rem}h3{font-size:1.12rem}
 .stat.accent{border-top:3px solid var(--forest)}
 .stat.brass{border-top:3px solid var(--brass)}
 .stat.warn{border-top:3px solid var(--amber)}
+a.stat-link{display:block;text-decoration:none;color:inherit}
+a.stat-link:hover{text-decoration:none}
 
 /* ---------- Tables ---------- */
 .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);

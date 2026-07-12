@@ -114,6 +114,16 @@ class MembershipExemption(models.Model):
     reason = models.TextField(
         help_text="Why. Kept on the permanent record — an exemption without a "
                   "recorded reason is indistinguishable from favouritism.")
+    comments = models.TextField(
+        blank=True,
+        help_text="Anything supplementary — discussion at the meeting that granted "
+                  "it, a minute reference. Not a substitute for the reason above; "
+                  "purely additional context.")
+    policy = models.ForeignKey(
+        "SchemePolicy", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+        help_text="The policy version in force when this was granted — so a later "
+                  "policy change can never retroactively make this exemption look "
+                  "like it was decided under rules that did not yet exist.")
     exempt_dues = models.BooleanField(
         default=True, help_text="Excused from periodic dues.")
     exempt_levies = models.BooleanField(

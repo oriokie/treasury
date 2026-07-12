@@ -42,7 +42,7 @@
 </div></div>
 
 {% if case.bereaved_levy_decision_pending or case.bereaved_levy_waived is not None %}
-<div class="card u-mb"><div class="hd">The bereaved member's own contribution</div><div class="bd">
+<div class="card u-mb"><div class="hd">The member this case is about — their own contribution</div><div class="bd">
 <p class="help u-mt-0">This scheme's policy leaves it to the committee, case by case, rather than deciding it in
   advance — so it needs an explicit answer here.</p>
 {% if case.bereaved_levy_waived is not None %}
@@ -167,16 +167,23 @@
 {% if committee.required %}
 <div class="card u-mb"><div class="hd">Committee decision</div><div class="bd">
   <p class="help u-mt-0">Policy v{{ case.policy.version }} routes this benefit to the committee, so it cannot be
-    authorised by one person — whatever their role. That is the point of having a committee.</p>
+    authorised by one person — whatever their role. That is the point of having a committee.
+    {% if committee.has_roster %}Only the people seated on {{ case.scheme.name }}'s committee may vote.
+    {% else %}This scheme has no committee roster configured — anyone holding the general committee right may vote.{% endif %}</p>
   <p><strong>{{ committee.have }} of {{ committee.quorum }}</strong> approvals recorded
     {% if committee.carried %}<span class="pill pill-green u-xs">Quorum reached</span>
+    {% elif committee.waiting_on_chair %}<span class="pill pill-amber u-xs">Awaiting the Chair</span>
     {% elif committee.blocked %}<span class="pill pill-red u-xs">Refused</span>
     {% else %}<span class="pill pill-amber u-xs">Awaiting the committee</span>{% endif %}
     {% if committee.agreed_amount %} · the quorum agreed on at most {{ CURRENCY }} {{ committee.agreed_amount|floatformat:2|intcomma }}{% endif %}</p>
+  {% if committee.requires_chair %}<p class="help u-mt-0">This policy requires the Chair's own approval, not just a
+    headcount — {% if committee.chair_approved %}the Chair has approved.{% else %}the Chair ({{ committee.chair_seat.user }})
+    has not yet voted.{% endif %}</p>{% endif %}
 
   <table class="ledger compact"><thead><tr><th>Member</th><th>Decision</th><th class="num">Would approve</th><th>Note</th><th>When</th></tr></thead>
   <tbody>{% for v in committee.votes %}<tr>
-    <td>{{ v.user.get_full_name|default:v.user.username }}</td>
+    <td>{{ v.user.get_full_name|default:v.user.username }}
+      {% if committee.chair_seat and v.user_id == committee.chair_seat.user_id %}<span class="pill pill-amber u-xs">Chair</span>{% endif %}</td>
     <td><span class="pill {% if v.decision == 'APPROVE' %}pill-green{% elif v.decision == 'REJECT' %}pill-red{% else %}pill-brass{% endif %} u-xs">{{ v.get_decision_display }}</span></td>
     <td class="num mono">{% if v.amount %}{{ v.amount|floatformat:2|intcomma }}{% else %}<span class="muted">as assessed</span>{% endif %}</td>
     <td class="muted">{{ v.note }}</td>
@@ -234,7 +241,7 @@
 
 <div class="card u-mt"><div class="hd">Everything that has happened on this case</div><div class="bd">
 <p class="help u-mt-0">The audit log tells you what a field was on a given day. This tells you <em>what happened, and
-  why</em> — which is what a treasurer, a board and a bereaved family actually ask for.</p>
+  why</em> — which is what a treasurer, a board and the family or member behind a case actually ask for.</p>
 <table class="ledger compact"><thead><tr><th>Date</th><th>What</th><th>Why</th><th>Who</th></tr></thead>
 <tbody>{% for e in events %}<tr>
   <td>{{ e.on|date:"d M Y" }}</td>

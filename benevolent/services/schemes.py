@@ -245,11 +245,21 @@ def run_automation(scheme=None, as_of=None, only=None, force=False, user=None):
             c["scheme"] = sch
             changes.append(c)
 
+    # Phase 7: the same run that recomputes standing also sends any reminders
+    # that are due, and retries anything that failed to send last time — the
+    # existing nightly cadence does both jobs; no second schedule was needed.
+    from benevolent.services import notify as notify_svc
+    reminders = notify_svc.send_due_reminders(scheme=scheme, as_of=as_of)
+    retried = notify_svc.retry_failed()
+
     summary = (f"{len(changes)} membership standing(s) recomputed across "
-               f"{len(schemes)} scheme(s).")
+               f"{len(schemes)} scheme(s); {reminders['arrears']} arrears and "
+               f"{reminders['renewal']} renewal reminder(s) sent; "
+               f"{retried} failed notification(s) retried.")
     if not force:
         cfg.automation_last_run = timezone.now()
         cfg.automation_last_summary = summary[:255]
         cfg.save(update_fields=["automation_last_run", "automation_last_summary"])
     return {"ran": True, "changed": len(changes), "changes": changes,
-            "summary": summary, "as_of": as_of}
+            "summary": summary, "as_of": as_of, "reminders": reminders,
+            "retried": retried}

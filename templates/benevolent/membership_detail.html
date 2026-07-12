@@ -138,12 +138,13 @@
 <p class="help u-mt-0">A member formally excused from contributing. Recorded, reasoned and approved by a second person —
   because an exemption without a written reason is indistinguishable from favouritism, and one that a single person can
   grant is worse.</p>
-<table class="ledger compact"><thead><tr><th>Kind</th><th>Period</th><th>Excuses</th><th>Reason</th><th>Status</th><th></th></tr></thead>
+<table class="ledger compact"><thead><tr><th>Kind</th><th>Period</th><th>Excuses</th><th>Policy</th><th>Reason</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for e in exemptions %}<tr>
   <td>{{ e.get_kind_display }}</td>
   <td>{{ e.from_date|date:"d M y" }} – {% if e.to_date %}{{ e.to_date|date:"d M y" }}{% else %}<span class="muted">no end</span>{% endif %}</td>
   <td class="muted u-xs">{% if e.exempt_dues %}Dues{% endif %}{% if e.exempt_levies %}{% if e.exempt_dues %} &amp; {% endif %}Levies{% endif %}</td>
-  <td class="muted">{{ e.reason|truncatechars:70 }}</td>
+  <td class="muted u-xs">{% if e.policy %}v{{ e.policy.version }}{% else %}—{% endif %}</td>
+  <td class="muted">{{ e.reason|truncatechars:70 }}{% if e.comments %}<div class="muted u-xs">{{ e.comments|truncatechars:60 }}</div>{% endif %}</td>
   <td>{% if e.revoked_on %}<span class="pill pill-brass u-xs">Ended</span>
       {% elif e.is_approved %}<span class="pill pill-green u-xs">In force</span>
       {% else %}<span class="pill pill-amber u-xs">Awaiting approval</span>{% endif %}</td>
@@ -156,7 +157,7 @@
       <input class="field" type="text" name="reason" placeholder="Why" style="max-width:130px">
       <button class="btn btn-ghost btn-sm">End it</button></form>
     {% endif %}{% endif %}</td>
-</tr>{% empty %}<tr><td colspan="6" class="empty">None.</td></tr>{% endfor %}</tbody></table>
+</tr>{% empty %}<tr><td colspan="7" class="empty">None.</td></tr>{% endfor %}</tbody></table>
 
 {% if can.manage_benevolent and policy.allow_exemptions %}
 <details class="u-mt"><summary class="link" style="cursor:pointer">Propose an exemption</summary>
@@ -217,10 +218,10 @@
 <table class="ledger compact"><thead><tr><th>Date</th><th>Kind</th><th class="num">Amount</th><th class="num">Effect on what they owe</th><th>Why</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for a in adjustments %}<tr>
   <td>{{ a.on|date:"d M y" }}</td>
-  <td>{{ a.get_kind_display }}</td>
+  <td>{{ a.get_kind_display }}{% if a.automated %} <span class="pill pill-brass u-xs" title="Raised automatically under a published policy">Auto</span>{% endif %}</td>
   <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
   <td class="num mono">{% if a.is_effective %}{% if a.signed > 0 %}+{% endif %}{{ a.signed|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}</td>
-  <td class="muted">{{ a.reason|truncatechars:60 }}</td>
+  <td class="muted">{{ a.reason|truncatechars:60 }}{% if a.comments %}<div class="muted u-xs">{{ a.comments|truncatechars:50 }}</div>{% endif %}</td>
   <td>{% if a.reversed_on %}<span class="pill pill-brass u-xs">Reversed</span>
       {% elif a.is_effective %}<span class="pill pill-green u-xs">In force</span>
       {% else %}<span class="pill pill-amber u-xs">Awaiting approval</span>{% endif %}</td>

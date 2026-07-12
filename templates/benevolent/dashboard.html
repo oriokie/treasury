@@ -31,7 +31,30 @@
   <div class="stat brass"><div class="lbl">Approved, not yet paid</div>
     <div class="val mono">{{ CURRENCY }} {{ totals.committed|floatformat:2|intcomma }}</div>
     <div class="foot">{{ totals.members }} member{{ totals.members|pluralize }} · {{ totals.open_cases }} open case{{ totals.open_cases|pluralize }}</div></div>
+  <div class="stat warn"><div class="lbl">Members' arrears</div>
+    <div class="val mono">{{ CURRENCY }} {{ arrears|floatformat:2|intcomma }}</div>
+    <div class="foot"><a class="link" href="{% url 'engine_report' 'benevolent_arrears_report' %}">See who</a></div></div>
 </div>
+
+{% if queues %}
+<div class="card u-mb"><div class="hd">Your queues <span class="muted u-xs">— shown only for what your role covers</span>
+  {% if is_committee_chair %}<span class="pill pill-amber u-xs" title="You chair at least one scheme's committee">Chair</span>{% endif %}</div><div class="bd">
+<div class="grid cols-4">
+  {% if "intake" in queues %}<a class="stat stat-link" href="{% url 'benevolent_intake_queue' %}">
+    <div class="lbl">Intake queue</div><div class="val mono">{{ queues.intake }}</div><div class="foot">Awaiting attribution</div></a>{% endif %}
+  {% if "assessment" in queues %}<a class="stat stat-link" href="{% url 'benevolent_case_list' %}?status=SUBMITTED">
+    <div class="lbl">Awaiting assessment</div><div class="val mono">{{ queues.assessment }}</div><div class="foot">Case Officer</div></a>{% endif %}
+  {% if "approval" in queues %}<a class="stat stat-link" href="{% url 'benevolent_case_list' %}?status=ASSESSED">
+    <div class="lbl">Awaiting approval</div><div class="val mono">{{ queues.approval }}</div><div class="foot">Yours to decide</div></a>{% endif %}
+  {% if "my_votes" in queues %}<a class="stat stat-link" href="{% url 'benevolent_case_list' %}?status=ASSESSED">
+    <div class="lbl">Awaiting your vote</div><div class="val mono">{{ queues.my_votes }}</div><div class="foot">Committee</div></a>{% endif %}
+  {% if "pending_admission" in queues %}<a class="stat stat-link" href="{% url 'benevolent_registry' %}?status=PENDING">
+    <div class="lbl">Pending admission</div><div class="val mono">{{ queues.pending_admission }}</div><div class="foot">Registration</div></a>{% endif %}
+  {% if "notifications_failed" in queues and queues.notifications_failed > 0 %}<a class="stat stat-link" href="{% url 'benevolent_notification_history' %}?status=FAILED">
+    <div class="lbl">Failed notifications</div><div class="val mono">{{ queues.notifications_failed }}</div><div class="foot">Finance / delivery</div></a>{% endif %}
+</div>
+</div></div>
+{% endif %}
 
 <h2 class="u-mt">Schemes</h2>
 <div class="table-wrap"><table class="ledger">

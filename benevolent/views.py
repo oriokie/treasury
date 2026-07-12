@@ -15,7 +15,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 
-from core.permissions import (BenevolentApproveMixin, BenevolentManageMixin,
+from core.permissions import (BenevolentApproveMixin, BenevolentCaseMixin,
+                              BenevolentFinanceMixin, BenevolentRegistrationMixin,
                               BenevolentSetupMixin, BenevolentViewMixin)
 
 from .forms import (ApproveForm, AttachmentForm, BenefitRuleForm, CaseForm,
@@ -65,10 +66,44 @@ class BenevolentDashboardView(BenevolentViewMixin, View):
                   .select_related("scheme", "event_type", "membership__member")
                   .prefetch_related("payouts__expense")
                   .order_by("event_date")[:12])
+
+        # Phase 9: "your queues" — contextual, role-aware counts. Each is only
+        # ever COMPUTED (never just hidden) when the viewer actually holds the
+        # matching right, so a Registration Officer's dashboard load never
+        # pays for a committee-vote query it will not show, and each uses a
+        # single grouped/filtered query rather than a per-case loop.
+        from core import roles
+        queues = {}
+        if roles.can_manage_benevolent_finance(request.user):
+            from benevolent.models import BenevolentNotification, ContributionIntake
+            queues["intake"] = ContributionIntake.objects.filter(
+                status__in=ContributionIntake.OPEN_STATUSES).count()
+            queues["notifications_failed"] = BenevolentNotification.objects.filter(
+                status=BenevolentNotification.Status.FAILED).count()
+        if roles.can_manage_benevolent_cases(request.user):
+            queues["assessment"] = BenevolentCase.objects.filter(
+                status=BenevolentCase.Status.SUBMITTED).count()
+        if roles.can_approve_benevolent(request.user):
+            queues["approval"] = BenevolentCase.objects.filter(
+                status=BenevolentCase.Status.ASSESSED).count()
+        if roles.can_vote_benevolent(request.user):
+            # ASSESSED cases this specific person has not yet voted on — one
+            # query, not one per case.
+            queues["my_votes"] = (
+                BenevolentCase.objects.filter(status=BenevolentCase.Status.ASSESSED)
+                .exclude(committee_approvals__user=request.user).count())
+        if roles.can_register_benevolent_members(request.user):
+            from benevolent.models import SchemeMembership
+            queues["pending_admission"] = SchemeMembership.objects.filter(
+                status=SchemeMembership.Status.PENDING).count()
+
         return render(request, "benevolent/dashboard.html", {
             "rows": rows, "totals": report_svc.totals(rows), "stats": stats,
             "recent": recent, "action": action, "start": start, "end": end,
             "schemes": BenevolentScheme.objects.all(),
+            "arrears": report_svc.arrears_total(as_of=end),
+            "queues": queues,
+            "is_committee_chair": roles.is_benevolent_committee_chair(request.user),
         })
 
 
@@ -316,7 +351,7 @@ class MembershipListView(BenevolentViewMixin, View):
             "statuses": SchemeMembership.Status.choices})
 
 
-class MembershipCreateView(BenevolentManageMixin, View):
+class MembershipCreateView(BenevolentRegistrationMixin, View):
     def get(self, request, pk):
         scheme = get_object_or_404(BenevolentScheme, pk=pk)
         return render(request, "benevolent/membership_form.html",
@@ -430,7 +465,7 @@ class ContributionListView(BenevolentViewMixin, View):
             "f_scheme": f_scheme, "start": start, "end": end})
 
 
-class ContributionCreateView(BenevolentManageMixin, View):
+class ContributionCreateView(BenevolentFinanceMixin, View):
     def get(self, request, pk):
         scheme = get_object_or_404(BenevolentScheme, pk=pk)
         return render(request, "benevolent/contribution_form.html", {
@@ -489,7 +524,7 @@ class CaseListView(BenevolentViewMixin, View):
             "statuses": BenevolentCase.Status.choices})
 
 
-class CaseCreateView(BenevolentManageMixin, View):
+class CaseCreateView(BenevolentCaseMixin, View):
     def get(self, request, pk):
         scheme = get_object_or_404(BenevolentScheme, pk=pk)
         return render(request, "benevolent/case_form.html", {
@@ -558,7 +593,7 @@ class CaseDetailView(BenevolentViewMixin, View):
         })
 
 
-class CaseActionView(BenevolentManageMixin, View):
+class CaseActionView(BenevolentCaseMixin, View):
     """Submit / assess / attach / cancel. Approval and rejection have their own
     view with a stricter permission — a money decision is not administration."""
 
@@ -639,7 +674,7 @@ class CaseDecisionView(BenevolentApproveMixin, View):
         return redirect("benevolent_case_detail", pk=pk)
 
 
-class CasePayoutView(BenevolentManageMixin, View):
+class CasePayoutView(BenevolentCaseMixin, View):
     """Raise the payment voucher. It enters the ordinary expense queue in
     PENDING — this module never approves its own payments."""
 
@@ -666,7 +701,7 @@ class CasePayoutView(BenevolentManageMixin, View):
         return redirect("benevolent_case_detail", pk=pk)
 
 
-class CaseFundingTargetView(BenevolentManageMixin, View):
+class CaseFundingTargetView(BenevolentCaseMixin, View):
     """Set or change what a case is aiming to raise. A fundraising goal, not a
     policy decision — anyone who can administer the scheme can set one."""
 

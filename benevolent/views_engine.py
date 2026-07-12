@@ -8,7 +8,7 @@ from django.db.models import Count, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
-from core.permissions import (BenevolentApproveMixin, BenevolentManageMixin,
+from core.permissions import (BenevolentApproveMixin, BenevolentFinanceMixin,
                               BenevolentSettingsMixin, BenevolentViewMixin)
 
 from .forms import AdjustmentForm, ContributionRuleForm, IntakeResolveForm, RefundForm
@@ -19,7 +19,7 @@ from .services import allocation as alloc_svc
 from .services import engine as engine_svc
 
 
-class IntakeQueueView(BenevolentManageMixin, View):
+class IntakeQueueView(BenevolentFinanceMixin, View):
     """Receipts that are scheme money but are not yet attached to a member.
 
     The banner on this page matters as much as the list: THE MONEY IS ALREADY
@@ -57,7 +57,7 @@ class IntakeQueueView(BenevolentManageMixin, View):
         })
 
 
-class IntakeItemView(BenevolentManageMixin, View):
+class IntakeItemView(BenevolentFinanceMixin, View):
     """One queue item, with everything the allocator thought and why."""
 
     def get(self, request, pk):
@@ -154,7 +154,7 @@ class ContributionRuleView(BenevolentSettingsMixin, View):
                 source="LEARNED", active=False)})
 
 
-class AllocationTestView(BenevolentManageMixin, View):
+class AllocationTestView(BenevolentFinanceMixin, View):
     """Try a narration against the allocator and see exactly what it would do.
 
     Worth its own screen. A treasurer who can ask "what would you do with this?" and
@@ -183,7 +183,7 @@ class AllocationTestView(BenevolentManageMixin, View):
         })
 
 
-class AdjustmentView(BenevolentManageMixin, View):
+class AdjustmentView(BenevolentFinanceMixin, View):
     """Propose a penalty, a waiver or a write-off. No money moves."""
 
     def post(self, request, pk):
@@ -197,7 +197,7 @@ class AdjustmentView(BenevolentManageMixin, View):
             engine_svc.charge(m, kind=d["kind"], amount=d["amount"],
                               reason=d["reason"], on=d["on"],
                               period_label=d.get("period_label") or "",
-                              user=request.user)
+                              comments=d.get("comments") or "", user=request.user)
         except ValidationError as e:
             messages.error(request, "; ".join(e.messages))
         else:
@@ -229,7 +229,7 @@ class AdjustmentDecisionView(BenevolentApproveMixin, View):
         return redirect("benevolent_membership_detail", pk=adj.membership_id)
 
 
-class RefundView(BenevolentManageMixin, View):
+class RefundView(BenevolentFinanceMixin, View):
     """Return money to a member. A payment voucher, like any other."""
 
     def post(self, request, pk):

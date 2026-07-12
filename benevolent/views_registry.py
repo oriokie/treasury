@@ -12,7 +12,7 @@ from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
-from core.permissions import (BenevolentApproveMixin, BenevolentManageMixin,
+from core.permissions import (BenevolentApproveMixin, BenevolentRegistrationMixin,
                               BenevolentViewMixin)
 
 from .forms import (ExemptionForm, HouseholdMemberForm, LifecycleForm,
@@ -50,7 +50,7 @@ class RegistryView(BenevolentViewMixin, View):
         })
 
 
-class RegisterView(BenevolentManageMixin, View):
+class RegisterView(BenevolentRegistrationMixin, View):
     """Register a member — individually or as a household."""
 
     def get(self, request, pk):
@@ -86,7 +86,7 @@ class RegisterView(BenevolentManageMixin, View):
             "scheme": scheme, "form": form, "policy": scheme.policy_on()})
 
 
-class MembershipLifecycleView(BenevolentManageMixin, View):
+class MembershipLifecycleView(BenevolentRegistrationMixin, View):
     """Suspend, reinstate, withdraw, record a death, close, or transfer.
 
     Every one of these is a decision a person makes and is answerable for, so every
@@ -151,7 +151,7 @@ class MembershipLifecycleView(BenevolentManageMixin, View):
         return redirect("benevolent_membership_detail", pk=pk)
 
 
-class HouseholdView(BenevolentManageMixin, View):
+class HouseholdView(BenevolentRegistrationMixin, View):
     """Add or remove a person from a household registration."""
 
     def post(self, request, pk):
@@ -188,7 +188,7 @@ class HouseholdView(BenevolentManageMixin, View):
         return redirect("benevolent_membership_detail", pk=pk)
 
 
-class ExemptionView(BenevolentManageMixin, View):
+class ExemptionView(BenevolentRegistrationMixin, View):
     """Propose an exemption. Approving one is a separate, higher right — it
     relieves a member of an obligation everyone else is carrying."""
 
@@ -203,7 +203,8 @@ class ExemptionView(BenevolentManageMixin, View):
             reg_svc.grant_exemption(
                 m, kind=d["kind"], reason=d["reason"], from_date=d["from_date"],
                 to_date=d.get("to_date"), exempt_dues=d["exempt_dues"],
-                exempt_levies=d["exempt_levies"], user=request.user)
+                exempt_levies=d["exempt_levies"], comments=d.get("comments") or "",
+                user=request.user)
         except ValidationError as e:
             messages.error(request, "; ".join(e.messages))
         else:
@@ -238,7 +239,7 @@ class ExemptionDecisionView(BenevolentApproveMixin, View):
         return redirect("benevolent_membership_detail", pk=ex.membership_id)
 
 
-class StandingRefreshView(BenevolentManageMixin, View):
+class StandingRefreshView(BenevolentRegistrationMixin, View):
     """Recompute a member's standing, on demand, and show the working."""
 
     def post(self, request, pk):

@@ -18,6 +18,7 @@
     <button type="button" class="tab active" data-tab="accounting">Accounting</button>
     <button type="button" class="tab" data-tab="notifications">Notifications</button>
     <button type="button" class="tab" data-tab="automation">Automation</button>
+    <button type="button" class="tab" data-tab="allocation">Allocation</button>
     <button type="button" class="tab" data-tab="defaults">Defaults</button>
   </div>
 </div>
@@ -42,13 +43,18 @@
 
   <section class="tabpane" data-pane="notifications">
     <div class="card"><div class="hd">What the treasury is told</div><div class="bd"><div class="form-grid">
-      {% for f in form %}{% if f.name in 'notify_on_case_submitted notify_on_case_approved notify_on_case_rejected notify_on_payout_raised notify_on_levy_raised notify_committee_on_pending_vote staff_channel' %}
+      {% for f in form %}{% if f.name in 'notify_on_case_submitted notify_on_case_approved notify_on_case_rejected notify_on_payout_raised notify_on_levy_raised notify_on_funding_target_reached notify_on_committee_pending staff_channel' %}
         <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
     </div></div></div>
-    <div class="card u-mt"><div class="hd">What members are told</div><div class="bd"><div class="form-grid">
-      {% for f in form %}{% if f.name in 'notify_member_on_enrolment notify_member_on_benefit_paid notify_member_on_arrears member_channel' %}
+    <div class="card u-mt"><div class="hd">What members and the committee are told</div><div class="bd">
+    <p class="help u-mt-0">Each event below is its own switch, and each has an editable message — see
+      <a class="link" href="{% url 'benevolent_notification_templates' %}">notification templates</a> for the actual
+      wording and placeholders, and <a class="link" href="{% url 'benevolent_notification_history' %}">notification
+      history</a> for what has actually gone out and whether it was delivered.</p>
+    <div class="form-grid">
+      {% for f in form %}{% if f.name in 'notify_member_registration notify_member_renewal_reminder notify_member_renewal_confirmed notify_member_arrears_reminder notify_member_case_received notify_member_case_decided notify_member_payout notify_member_status_change notify_committee_vote_needed member_channel reminder_min_gap_days' %}
         <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
@@ -82,6 +88,22 @@
         Suspension and expulsion are deliberately <strong>never</strong> automated: removing someone from a welfare
         scheme is a decision a person should make and be answerable for. The policy still bars their claims; automation
         just declines to be the one who throws them out.</p>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="allocation">
+    <div class="card"><div class="hd">Intelligent allocation</div><div class="bd">
+      <p class="help u-mt-0">Governs the allocator that attributes an unattended receipt (a bank transfer with no
+        obvious owner) to a member — see the <a class="link" href="{% url 'benevolent_allocation_test' %}">allocation
+        tester</a> to see it reason about a real narration, and the
+        <a class="link" href="{% url 'benevolent_intake_queue' %}">intake queue</a> for what it could not place on its
+        own.</p>
+      <div class="form-grid u-mt">
+      {% for f in form %}{% if f.name in 'auto_allocate auto_allocate_threshold review_threshold fuzzy_name_threshold duplicate_window_days learn_allocation_rules' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
     </div></div>
   </section>
 

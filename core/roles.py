@@ -172,10 +172,49 @@ def can_view_benevolent(user):
 def can_manage_benevolent(user):
     """Enrol members, raise cases, record contributions — day-to-day scheme
     administration. Treasurers and assistants by default; grantable to (say) a
-    welfare secretary who runs the scheme but never touches the bank."""
+    welfare secretary who runs the scheme but never touches the bank.
+
+    Kept exactly as it always was — the SUPERSET of the three role-specific
+    checks below, so nothing that already checks `can_manage_benevolent` (or
+    holds the `manage_benevolent` right) loses any capability. The three
+    functions below are the NEW, finer split (Phase 9): a church that wants
+    "this person only registers members, that person only handles cases" can
+    now say so; a church happy with one broad administrator role keeps using
+    this one, unchanged.
+    """
     from .rights import has_right
     return (is_treasurer(user) or is_assistant(user)
             or has_right(user, "manage_benevolent"))
+
+
+def can_register_benevolent_members(user):
+    """Registration Officer: enrol, admit, transfer, reinstate members, manage
+    households and exemptions. Does NOT, on its own, raise a case or record a
+    contribution — see can_manage_benevolent_cases / can_manage_benevolent_
+    finance for those. `can_manage_benevolent` (the old, broader right) still
+    satisfies this, so an existing administrator keeps every capability they
+    already had."""
+    from .rights import has_right
+    return can_manage_benevolent(user) or has_right(user, "benevolent_register_members")
+
+
+def can_manage_benevolent_cases(user):
+    """Case Officer: raise, submit and assess cases, attach documents, set a
+    funding target. Deliberately does NOT include approving a case (see
+    can_approve_benevolent) — raising a claim and authorising one are kept
+    separate, the same segregation the rest of this module already insists
+    on for money decisions."""
+    from .rights import has_right
+    return can_manage_benevolent(user) or has_right(user, "benevolent_manage_cases")
+
+
+def can_manage_benevolent_finance(user):
+    """Finance Officer: record contributions, resolve the intake queue, charge
+    or waive dues, process refunds. The recording half of the module's money —
+    approving a benefit (can_approve_benevolent) and paying it (the ordinary
+    expense approval) both remain separate gates, exactly as before."""
+    from .rights import has_right
+    return can_manage_benevolent(user) or has_right(user, "benevolent_manage_finance")
 
 
 def can_approve_benevolent(user):
@@ -209,6 +248,31 @@ def can_manage_benevolent_schemes(user):
     narrower than day-to-day administration."""
     from .rights import has_right
     return is_treasurer(user) or has_right(user, "manage_benevolent_schemes")
+
+
+def is_benevolent_committee_chair(user, scheme=None):
+    """Committee Chairperson — deliberately not a separate RIGHT. Holding the
+    chair is a SEAT on a specific scheme's roster (benevolent.CommitteeMember,
+    Phase 6), not a different permission from an ordinary committee member: a
+    chair votes with the same `benevolent_committee` right everyone else on
+    the committee needs, and what makes their vote matter more is
+    `SchemePolicy.committee_requires_chair` (also Phase 6), not a bigger
+    permission. This function exists so the UI (a badge, a dashboard section,
+    a "you are the chair — the committee is waiting on your vote" notice) can
+    ask the one question it actually needs answered, without a second rights
+    concept duplicating what the committee roster already records.
+
+    `scheme=None` asks "chair of ANY committee"; passed a scheme, asks
+    specifically about that one.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    from benevolent.models import CommitteeMember
+    qs = CommitteeMember.objects.filter(
+        user=user, role=CommitteeMember.Role.CHAIR, active=True)
+    if scheme is not None:
+        qs = qs.filter(scheme=scheme)
+    return qs.exists()
 
 
 def can_convert_loans(user):

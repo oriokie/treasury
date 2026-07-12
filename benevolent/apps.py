@@ -16,3 +16,15 @@ class BenevolentConfig(AppConfig):
             register_metrics()
         except Exception:  # noqa: BLE001 — never block startup on the catalogue
             pass
+        # Phase 8: register this module's report components and ready-to-use
+        # reports with the shared Generic Report Engine — the same "plug in by
+        # registration" pattern reports/board_pack_components.py and
+        # reports/intelligence_components.py already use for their own
+        # sections, so benevolent contributes to the report catalogue the
+        # same way any other module would.
+        try:
+            from .report_components import register_components, register_reports
+            register_components()
+            register_reports()
+        except Exception:  # noqa: BLE001 — never block startup on the catalogue
+            pass

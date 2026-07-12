@@ -16,7 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 
-from core.permissions import (BenevolentCommitteeMixin, BenevolentManageMixin,
+from core.permissions import (BenevolentCommitteeMixin, BenevolentRegistrationMixin,
                               BenevolentSettingsMixin, BenevolentSetupMixin,
                               BenevolentViewMixin)
 
@@ -302,7 +302,7 @@ class CaseVoteView(BenevolentCommitteeMixin, View):
 # Registration, renewal, nominees
 # ---------------------------------------------------------------------------
 
-class MembershipAdminView(BenevolentManageMixin, View):
+class MembershipAdminView(BenevolentRegistrationMixin, View):
     """The registration / renewal / nominee actions on one membership."""
 
     def post(self, request, pk, action):

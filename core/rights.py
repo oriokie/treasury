@@ -50,9 +50,18 @@ RIGHTS = [
     ("clear_payments",       "Mark payments cleared",              "Money controls"),
     ("void_payments",        "Void / cancel / reverse payments",   "Money controls"),
     ("view_benevolent",      "View benevolent schemes & cases",    "Money controls"),
-    ("manage_benevolent",    "Enrol members, raise cases, record contributions", "Money controls"),
-    ("approve_benevolent",   "Approve / reject benevolent cases",  "Money controls"),
-    ("benevolent_committee", "Sit on the benevolent committee (vote on cases)", "Money controls"),
+    ("manage_benevolent",    "Benevolent: full day-to-day administration (superset of the "
+                             "three roles below — kept for backward compatibility)", "Money controls"),
+    ("benevolent_register_members", "Benevolent Registration Officer — enrol, admit, "
+                             "transfer, reinstate members", "Money controls"),
+    ("benevolent_manage_cases", "Benevolent Case Officer — raise, submit, assess cases, "
+                             "manage documents", "Money controls"),
+    ("benevolent_manage_finance", "Benevolent Finance Officer — record contributions, "
+                             "fees, adjustments, refunds", "Money controls"),
+    ("approve_benevolent",   "Benevolent Treasurer/Approver — authorise or refuse a case",
+                             "Money controls"),
+    ("benevolent_committee", "Benevolent Committee Member — sit on the committee and vote "
+                             "on cases", "Money controls"),
     ("lock_periods",         "Lock / unlock periods",              "Money controls"),
     # Setup
     ("manage_funds",         "Manage funds & structure",           "Setup"),
@@ -101,7 +110,13 @@ _DATA_ENTRY = {"record_giving", "count_envelopes", "import_statements",
                "view_loans", "manage_loans",
                "view_liabilities", "manage_liabilities",
                "view_payments", "manage_payments", "clear_payments",
-               "view_benevolent", "manage_benevolent"}
+               "view_benevolent", "manage_benevolent",
+               # the three granular roles are folded into the same set as the
+               # coarse manage_benevolent right, so a Treasurer/Assistant loses
+               # nothing by this split — they still hold all three, exactly as
+               # they held the one right that used to cover all three
+               "benevolent_register_members", "benevolent_manage_cases",
+               "benevolent_manage_finance"}
 _SENSITIVE = {"view_member_phone_full", "view_giver_identity", "view_member_statements"}
 _REPORTS = {"view_reports", "export_reports"}
 

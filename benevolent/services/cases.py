@@ -117,14 +117,35 @@ def approval_route(case, policy=None, amount=None):
 
 def committee_state(case, policy=None, amount=None):
     """Where the committee has got to on this case: the votes, the quorum, and
-    whether it is carried. Read-only and safe from a template."""
+    whether it is carried. Read-only and safe from a template.
+
+    Roster-aware (Phase 6): where the scheme has configured a committee roster
+    (`services.committee`), `eligible_voters` lists exactly who may vote and
+    `chair_approved` tracks whether the Chair specifically has weighed in —
+    both None where no roster is configured, meaning "anyone with the general
+    right may vote" as before. `carried` factors in
+    `policy.committee_requires_chair`: a quorum of ordinary members is not
+    enough if the policy says the Chair's own approval is required.
+    """
     from benevolent.models import CaseApproval
+    from benevolent.services import committee as committee_svc
     policy = policy or case.policy or case.scheme.policy_on(case.event_date)
     votes = list(case.committee_approvals.select_related("user"))
     approvals = [v for v in votes if v.decision == CaseApproval.Decision.APPROVE]
     rejections = [v for v in votes if v.decision == CaseApproval.Decision.REJECT]
     quorum = (policy.committee_quorum if policy else 0) or 0
     route = approval_route(case, policy, amount)
+
+    has_roster = committee_svc.has_roster(case.scheme)
+    eligible_voters = list(committee_svc.roster(case.scheme)) if has_roster else None
+    chair_seat = committee_svc.chair(case.scheme) if has_roster else None
+    chair_approved = (any(v.user_id == chair_seat.user_id for v in approvals)
+                      if chair_seat is not None else None)
+    requires_chair = bool(policy and policy.committee_requires_chair and chair_seat)
+
+    quorum_met = quorum > 0 and len(approvals) >= quorum
+    carried = (route == "COMMITTEE" and quorum_met
+              and (chair_approved if requires_chair else True))
     return {
         "required": route == "COMMITTEE",
         "route": route,
@@ -133,8 +154,14 @@ def committee_state(case, policy=None, amount=None):
         "rejections": rejections,
         "quorum": quorum,
         "have": len(approvals),
-        "carried": route == "COMMITTEE" and quorum > 0 and len(approvals) >= quorum,
+        "carried": carried,
         "blocked": route == "COMMITTEE" and quorum > 0 and len(rejections) >= quorum,
+        "has_roster": has_roster,
+        "eligible_voters": eligible_voters,
+        "chair_seat": chair_seat,
+        "chair_approved": chair_approved,
+        "requires_chair": requires_chair,
+        "waiting_on_chair": bool(quorum_met and requires_chair and not chair_approved),
         # where the committee members differed on the figure, the LOWEST approved
         # amount is what carries: a quorum has only truly agreed on the largest
         # sum every one of them was willing to authorise.
@@ -147,12 +174,23 @@ def committee_state(case, policy=None, amount=None):
 def record_vote(case, *, user, decision, amount=None, note=""):
     """One committee member's decision. Re-voting replaces that member's own
     earlier vote (people change their minds after hearing the discussion), and the
-    change is on the audit trail."""
+    change is on the audit trail.
+
+    Where the scheme has configured a committee roster, only a seated, active
+    member of THAT roster may vote — holding the general benevolent-committee
+    right is necessary (enforced at the view) but no longer sufficient once a
+    church has actually named who sits on this specific scheme's committee.
+    """
     from benevolent.models import CaseApproval
+    from benevolent.services import committee as committee_svc
     _require_status(case, [BenevolentCase.Status.ASSESSED], "voted on")
     if approval_route(case) != "COMMITTEE":
         raise ValidationError(
             f"{case.number} does not need a committee decision under the policy in force.")
+    if committee_svc.has_roster(case.scheme) and not committee_svc.is_seated(case.scheme, user):
+        raise ValidationError(
+            f"{user} is not seated on {case.scheme.name}'s committee. Ask whoever "
+            f"manages the roster to add them first.")
     vote, created = CaseApproval.objects.update_or_create(
         case=case, user=user,
         defaults={"decision": decision, "amount": amount, "note": note})
@@ -178,6 +216,11 @@ def submit_case(case, user=None):
     _notify(case, "case_submitted",
             f"Benevolent case {case.number} ({case.scheme.name}) submitted for "
             f"{case.beneficiary_display}.")
+    if case.membership_id:
+        from benevolent.services import notify as notify_svc
+        from benevolent.models import NotificationEvent
+        notify_svc.send(NotificationEvent.CASE_RECEIVED, case=case,
+                        membership=case.membership)
     return case
 
 
@@ -192,6 +235,7 @@ def assess_case(case, user=None):
     """
     _require_status(case, [BenevolentCase.Status.SUBMITTED, BenevolentCase.Status.ASSESSED],
                     "assessed")
+    was_already_assessed = case.status == BenevolentCase.Status.ASSESSED
     result = evaluate_case(case)
     if result.policy is None:
         raise ValidationError(
@@ -211,6 +255,21 @@ def assess_case(case, user=None):
         f"Assessed under policy v{result.policy.version}: "
         + ("eligible, " if result.eligible else "NOT eligible, ")
         + f"entitlement {result.entitlement.amount}.", user=user)
+
+    # Tell the committee ONCE, the first time this case is routed to them —
+    # not on every re-assessment, which would otherwise text a committee
+    # member every time a treasurer attaches a missing document. Two
+    # separate audiences, two separate toggles: _notify_committee tells the
+    # COMMITTEE MEMBERS it is their turn to vote (Phase 7, templated,
+    # per-member); _notify(..., "committee_pending", ...) tells TREASURY
+    # STAFF a case is now waiting on the committee at all (Phase 2's
+    # intent, only actually wired in Phase 10 — see notify_on_committee_
+    # pending's own help text for why it never fired before).
+    if not was_already_assessed and approval_route(case, result.policy) == "COMMITTEE":
+        _notify_committee(case)
+        _notify(case, "committee_pending",
+                f"Benevolent case {case.number} ({case.scheme.name}) is now waiting on "
+                f"the committee.")
     return result
 
 
@@ -349,6 +408,11 @@ def approve_case(case, *, amount=None, user, override_reason="", allow_self_appr
                 f"The committee has rejected {case.number} "
                 f"({len(state['rejections'])} of {state['quorum']} needed to refuse).")
         if not state["carried"]:
+            if state.get("waiting_on_chair"):
+                raise ValidationError(
+                    f"{case.number} has its quorum of {state['quorum']} approvals, but "
+                    f"policy v{case.policy.version} requires the Chair's approval "
+                    f"specifically, and {state['chair_seat'].user} has not yet voted.")
             raise ValidationError(
                 f"{case.number} needs a committee decision under policy "
                 f"v{case.policy.version}: {state['have']} of {state['quorum']} approvals "
@@ -403,6 +467,13 @@ def approve_case(case, *, amount=None, user, override_reason="", allow_self_appr
     _notify(case, "case_approved",
             f"Benevolent case {case.number} approved for {amount} "
             f"({case.beneficiary_display}).")
+    if case.membership_id:
+        from benevolent.services import notify as notify_svc
+        from benevolent.models import NotificationEvent
+        notify_svc.send(NotificationEvent.CASE_DECIDED, case=case,
+                        membership=case.membership,
+                        extra={"decision": "approved",
+                              "amount_clause": f" The approved benefit is {amount}."})
 
     _apply_bereavement_exemption(case, user=user)
     return case
@@ -422,6 +493,12 @@ def reject_case(case, *, reason, user=None):
     log(case, CaseEvent.Kind.REJECTED, "Rejected.", user=user, reason=reason)
     _notify(case, "case_rejected",
             f"Benevolent case {case.number} rejected — {reason[:120]}")
+    if case.membership_id:
+        from benevolent.services import notify as notify_svc
+        from benevolent.models import NotificationEvent
+        notify_svc.send(NotificationEvent.CASE_DECIDED, case=case,
+                        membership=case.membership,
+                        extra={"decision": "not approved", "amount_clause": ""})
     return case
 
 
@@ -542,6 +619,12 @@ def sync_case_from_expense(expense):
                 f"Voucher for {payout.amount} cleared ({expense.get_status_display().lower()}) "
                 f"— case is now {case.get_status_display().lower()}.",
                 automated=True)
+            if case.membership_id:
+                from benevolent.services import notify as notify_svc
+                from benevolent.models import NotificationEvent
+                notify_svc.send(NotificationEvent.PAYOUT_MADE, case=case,
+                                membership=case.membership,
+                                extra={"amount": f"{payout.amount:,.2f}"})
         else:
             log(case, CaseEvent.Kind.PAYOUT_REVERSED,
                 f"Voucher for {payout.amount} {expense.get_status_display().lower()} in the "
@@ -577,3 +660,18 @@ def _notify(case, event, message):
                email=cfg.staff_email())
     except Exception:  # noqa: BLE001
         pass
+
+
+def _notify_committee(case):
+    """Tell every seated, active committee member a decision is needed —
+    where the scheme has a roster (Phase 6). Where it does not, there is no
+    concrete list of who "the committee" even is beyond "anyone holding the
+    general right", and texting every such person church-wide on every case
+    would be worse than texting nobody — so this quietly does nothing until a
+    roster exists, exactly the same additive-only rule Phase 6 established
+    for voting itself."""
+    from benevolent.models import NotificationEvent
+    from benevolent.services import committee as committee_svc
+    from benevolent.services import notify as notify_svc
+    for seat in committee_svc.roster(case.scheme):
+        notify_svc.send(NotificationEvent.COMMITTEE_VOTE_NEEDED, case=case, user=seat.user)

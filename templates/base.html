@@ -93,6 +93,10 @@
           <a href="{% url 'benevolent_membership_list' %}" class="{% if 'benevolent_membership' in request.resolver_match.url_name %}active{% endif %}">Members</a>
           <a href="{% url 'benevolent_contribution_list' %}" class="{% if 'benevolent_contribution' in request.resolver_match.url_name %}active{% endif %}">Contributions</a>
           {% if can.manage_benevolent %}<a href="{% url 'benevolent_intake_queue' %}" class="{% if 'intake' in request.resolver_match.url_name %}active{% endif %}">Intake queue</a>{% endif %}
+          {% if can.view_benevolent %}<a href="{% url 'benevolent_overrides_exceptions' %}" class="{% if 'overrides_exceptions' in request.resolver_match.url_name %}active{% endif %}">Overrides &amp; exceptions</a>{% endif %}
+          {% if can.manage_benevolent_settings %}<a href="{% url 'benevolent_notification_templates' %}" class="{% if 'notification_template' in request.resolver_match.url_name %}active{% endif %}">Notification templates</a>{% endif %}
+          {% if can.view_benevolent %}<a href="{% url 'benevolent_notification_history' %}" class="{% if 'notification_history' in request.resolver_match.url_name %}active{% endif %}">Notification history</a>{% endif %}
+          {% if can.view_reports %}<a href="{% url 'report_library' %}?q=benevolent">Reports</a>{% endif %}
           <a href="{% url 'benevolent_scheme_list' %}" class="{% if 'benevolent_scheme' in request.resolver_match.url_name or 'benevolent_policy' in request.resolver_match.url_name %}active{% endif %}">Schemes &amp; policies</a>
           {% if can.manage_benevolent_schemes %}<a href="{% url 'benevolent_wizard_start' %}" class="{% if 'wizard' in request.resolver_match.url_name %}active{% endif %}">Constitution wizard</a>
           <a href="{% url 'benevolent_profile_list' %}" class="{% if 'profile' in request.resolver_match.url_name %}active{% endif %}">Policy profiles</a>{% endif %}

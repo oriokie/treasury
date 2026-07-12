@@ -148,13 +148,34 @@ def _dues_rows(membership, as_of=None):
     """
     as_of = as_of or _dt.date.today()
     scheme = membership.scheme
-    first = (scheme.policies
-             .filter(status__in=[SchemePolicy.Status.ACTIVE,
-                                 SchemePolicy.Status.SUPERSEDED])
-             .order_by("effective_from").values_list("effective_from", flat=True).first())
-    if first is None:
+
+    # Phase 10: every policy version this scheme has EVER published, fetched
+    # ONCE, and resolved in memory from here on. This used to be
+    # `scheme.policy_on(d)` — a database query — called once per DAY between
+    # a member's cover date and `as_of`. For a member of a few years'
+    # standing that is well over a thousand queries to answer one question,
+    # and `_dues_rows` is called for every member on every arrears
+    # calculation — the dashboard, the eligibility engine, every report in
+    # Phase 8, the reminder job. A measured query-count regression test
+    # (benevolent/test_phase10.py) is what actually caught this; it is
+    # exactly the "verify performance and scalability" a production
+    # readiness review exists to do. The resolution RULE is unchanged — see
+    # BenevolentScheme.policy_on's own docstring for why SUPERSEDED versions
+    # must still resolve for dates inside their own window — only WHERE it
+    # runs (Python, once cached, not the database, repeatedly) has changed.
+    versions = list(scheme.policies.filter(
+        status__in=[SchemePolicy.Status.ACTIVE, SchemePolicy.Status.SUPERSEDED]
+    ).order_by("-effective_from", "-version"))
+    if not versions:
         return []
 
+    def _policy_at(d):
+        for v in versions:                 # already ordered latest-first
+            if v.effective_from <= d and (v.effective_to is None or v.effective_to >= d):
+                return v
+        return None
+
+    first = min(v.effective_from for v in versions)
     start = max(membership.cover_from, first)
     end = min(as_of, membership.left_on or as_of)
     if end < start:
@@ -168,7 +189,7 @@ def _dues_rows(membership, as_of=None):
     rows, seen = [], set()
     d = start
     while d <= end:
-        policy = scheme.policy_on(d)
+        policy = _policy_at(d)
         if policy is None or policy.contribution_mode not in periodic \
                 or not policy.contribution_amount:
             d += _dt.timedelta(days=1)
@@ -586,4 +607,7 @@ def _advance_renewal(membership, policy, on):
     membership.save(update_fields=["renewed_until"])
     from benevolent.services import standing as _standing
     _standing.refresh(membership)
+    from benevolent.services import notify as notify_svc
+    from benevolent.models import NotificationEvent
+    notify_svc.send(NotificationEvent.RENEWAL_CONFIRMED, membership=membership)
     return nxt

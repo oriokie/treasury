@@ -1935,3 +1935,220 @@ for the record rather than left as an open question.
 per-case custom reduced amount. A church wanting that combination sets REDUCED at the
 policy level instead. *Priority: Low* — the brief specified four categorical options,
 not an open-ended override, and this stays inside that scope deliberately.
+
+---
+
+## 66. Benevolent Phase 6 — committee management & policy evaluation; audited, not rebuilt — NEW
+
+Phase 6 was, deliberately, mostly an audit: almost everything the objective named
+(policy evaluation, committee approval, quorum, overrides, waivers, exemptions,
+renewals, transfers, inheritance, death processing, inactivity, reinstatements) already
+existed from Phases 1–5. What shipped: a per-scheme committee roster with roles
+(`CommitteeMember`), an approval level (`committee_requires_chair`), a real bug fix (the
+reinstatement fee, configurable since Phase 2, was never charged), a second business
+rule through the existing policy-evaluation `Check` shape (`evaluate_reinstatement`),
+policy references + comments on every exemption/adjustment, and a consolidated
+Overrides & Exceptions audit view. See `docs/BENEVOLENT_MODULE.md`.
+
+**66a. A committee seat does not itself grant the right to vote.** `CommitteeMember` is
+additive on top of the existing `benevolent_committee` right, not a replacement for it —
+someone can be seated without holding the right (their votes will then be refused at the
+permission layer, not the roster layer), which is correct but easy for a treasurer
+setting up a roster for the first time to trip over. *Priority: Low* — worth a inline
+warning on the roster screen if seating someone who does not hold the general right; not
+done here to keep the change surgical.
+
+**66b. `committee_requires_chair` names only the Chair**, not an arbitrary configurable
+seat. A church wanting "requires the Secretary's approval" instead has no way to express
+that. *Priority: Low* — the brief's "approval levels" language is satisfied by the
+Chair case; genuinely generic role-based requirements are a natural follow-up if asked
+for.
+
+**66c. The consolidated Overrides & Exceptions view has no export.** It's read-only
+HTML; a board that wants to print or archive it currently has to use the browser's own
+print function. *Priority: Low* — consistent with the rest of the module's reports,
+which do have PDF/Excel export via the Report Engine; wiring this screen into that
+engine is a reasonable next step rather than a gap in this phase specifically.
+
+---
+
+## 67. Benevolent Phase 7 — financial integration confirmed; member notifications actually reach members — NEW
+
+Phase 7 confirmed the financial integration (Expense Voucher, Payment Register,
+General Ledger, Bank Reconciliation, Chart of Accounts, Audit Log) was already
+correct since Phase 1/4 — nothing there needed rebuilding. It found and fixed a real
+bug: `registry._notify()`'s docstring promised to tell the member; the implementation
+always messaged staff, gated by a settings field nothing ever set. Built the missing
+member/committee notification pathway — configurable templates, delivery tracking,
+retries, and the contribution reminders that survived three phases doing nothing
+(#62c). See `docs/BENEVOLENT_MODULE.md`.
+
+**67a. `members.Member` has no email field.** Member-facing email in this phase is
+scoped to `SchemeMembership.email` — deliberately, to keep the change inside the
+benevolent module the way every phase before it has. A church wanting a member's
+email tracked once, centrally, for every purpose (not just benevolent notices) needs
+that as a `members` app change. *Priority: Medium* — real, but outside this module's
+boundary; flagging for whoever owns `members` next.
+
+**67b. No WhatsApp channel**, though `core.services.whatsapp` exists (used today only
+for staff error alerts). SMS and email cover every event the brief named. *Priority:
+Low* — natural to add if a church asks, not treated as a gap in what was requested.
+
+**67c. Notification history has no export.** Read-only HTML, same as the Overrides &
+Exceptions screen (#66c). Both are reasonable Report Engine candidates rather than
+one-off exports. *Priority: Low.*
+
+**67d. `PAYOUT_MADE` can under-fire on a case with several payouts.** The notification
+is gated on the SAME `case.status != before` check that already gates the `PAYOUT_PAID`
+CaseEvent (pre-existing since Phase 5, not changed here) — if a case has multiple
+payouts and the overall case status happens not to change when one of the later ones
+clears (e.g. still PARTLY_PAID because another voucher remains pending), no
+notification fires for that payment specifically. *Priority: Medium* — worth fixing
+at the CaseEvent level (which has the identical gap) rather than papering over it only
+for notifications; noted here so it isn't lost.
+
+---
+
+## 68. Benevolent Phase 8 — reporting plugged into the existing engine, not rebuilt — NEW
+
+Phase 8 registered thirteen report components and nine ready-to-use reports
+(overview/KPIs, contributions, membership & households, committee, cases,
+financial statement, arrears, benefit payments, audit) into the existing
+Generic Report Engine (`core.reporting`) — the same engine every other report
+in the system already uses, giving CSV/XLSX/PDF/DOCX export, filters,
+permissions, drill-down and report-library listing for free. One new metric
+(`benevolent_arrears`) and four new reporting-service functions, none of them
+computing a new financial figure. See `docs/BENEVOLENT_MODULE.md`.
+
+**68a. No live scheme-picker dropdown.** The scheme filter is a text box
+accepting a scheme's short code — functional, but less discoverable than a
+dropdown would be. Not built because the engine's `Filter` dataclass has a
+`choices` kind the shared HTML template does not yet render, and populating
+one here would mean querying the database from `AppConfig.ready()` at process
+startup, which this phase deliberately avoided as a fragile pattern to
+introduce. *Priority: Low–Medium* — the right fix is in the shared template
+(`reports/engine_report.html`) and the `Filter`/renderer machinery, benefiting
+every report in the system that wants a live-data dropdown, not just
+benevolent's; worth doing as a `core.reporting` enhancement rather than a
+benevolent-specific workaround.
+
+**68b. The membership/case/benefit-payment report views cap at 2,000 rows.**
+A deliberate, disclosed limit protecting the on-screen/PDF view from a very
+large register; CSV/XLSX export carry no such cap. *Priority: Low* — correct
+behaviour for the datasets any real deployment of this system will have, and
+the cap is stated in the report's own note rather than silently truncating.
+
+**68c. No AI-narrative component scoped to benevolent reports specifically.**
+The wider system's intelligence/narrative layer is general-purpose over the
+whole church's finances; a benevolent-specific narrative (e.g. "arrears rose
+14% this quarter, driven by...") is a natural future composition via the
+Report Designer rather than something built into this phase's fixed report
+set. *Priority: Low.*
+
+---
+
+## 69. Benevolent Phase 9 — granular roles via the existing rights system; a settings-page bug found and fixed — NEW
+
+Phase 9 split the coarse `manage_benevolent` right into three role-specific
+rights (Registration/Case/Finance Officer), re-pointed eighteen views to the
+correct one, seeded seven named profiles matching the brief's role list using
+the exact mechanism every other default profile already uses, and added a
+`is_benevolent_committee_chair()` helper rather than a duplicate "chair"
+right (chairing is a seat, Phase 6, not a permission). Backward compatibility
+is structural, not just tested: every new check is the old coarse check OR
+the new specific one. Also found and fixed a real bug — the settings template
+referenced three fields Phase 7 had retired and was missing roughly half the
+model's actual fields, invisible from the web UI since Phase 4. See
+`docs/BENEVOLENT_MODULE.md`.
+
+**69a. `CasePayoutView` sits under the Case Officer right, not a separate
+Finance gate.** A defensible, documented boundary — a church wanting
+payout-raising restricted to Finance Officers specifically would need a
+further split. *Priority: Low* — easy to change if asked for; not changed
+here because the current boundary (raising a voucher is part of a case's own
+workflow) is at least as defensible as the alternative.
+
+**69b. No inline explanation when a control is hidden by permission.** A
+Registration Officer simply does not see a "raise a case" button, with
+nothing telling them to ask a Case Officer. *Priority: Low* — consistent with
+how every other permission-gated control in the system already behaves;
+worth a general UX pass across the whole app, not a benevolent-specific
+patch.
+
+**69c. `notify_committee_on_pending_vote` is confirmed dead** — a Phase 2
+staff-facing toggle that exists as a real field (now correctly shown on the
+settings page again, per this phase's fix) but is read nowhere in the
+codebase. Distinct from Phase 7's `notify_committee_vote_needed`, which IS
+wired (member/committee-facing, via `services/notify.py`). This is the same
+"declared but never wired" shape found repeatedly across this project
+(arrears/renewal reminders in Phase 4, the reinstatement fee in Phase 6,
+`registry._notify` in Phase 7) — a fourth instance of it, found while fixing
+the settings page rather than by deliberately auditing for it. *Priority:
+Medium* — either wire it (a staff notice when a case first reaches the
+committee, distinct from the member/committee-facing one) or remove it in a
+future pass; left in place and merely re-exposed here, since resolving it
+was outside this phase's scope of roles, permissions and UX.
+
+---
+
+## 70. Benevolent Phase 10 — production readiness review; a severe N+1 found and fixed — NEW
+
+Phase 10 was a systematic self-review rather than new feature work: verified
+integrations, accounting accuracy, permissions, reporting, automation, and
+performance; resolved recommendation #69c (`notify_committee_on_pending_
+vote`, renamed to `notify_on_committee_pending` and correctly wired, via the
+same add -> translate -> remove migration pattern used throughout this
+project); made the Constitution Wizard and Policy Profiles genuinely
+scheme-neutral in wording; and added a fifth built-in profile ("Emergency
+relief") to sit alongside the pre-existing Medical one, so the module's
+reusability as a Scheme Engine is demonstrated with two working, non-
+bereavement archetypes, not merely claimed. See `docs/BENEVOLENT_MODULE.md`.
+
+**70a (RESOLVED, not deferred). A severe N+1 in `contributions._dues_rows()`.**
+Found by a measured query-count regression test comparing a small dataset
+against a larger one on the same dashboard — the kind of test this
+recommendations file has been asking for implicitly every time it flagged a
+correctness bug, finally applied to performance. `scheme.policy_on(d)` was
+being called once per DAY between a member's cover date and the date arrears
+are measured as of, rather than once per call — for a member of a few years'
+standing, upward of a thousand database queries to answer "what does this one
+member owe". `_dues_rows()` is not a peripheral function: the eligibility
+engine, the standing engine, every report in Phase 8, the reminder job in
+Phase 7, and the dashboard all call it, directly or through `arrears_for()`,
+for every active member. Fixed by fetching the scheme's policy versions ONCE
+per call and resolving the date-to-policy mapping in memory — same resolution
+rule, same results (the full pre-existing test suite, 1,331 tests across the
+whole application, passed unchanged), a small fraction of the database cost.
+Confirmed empirically: the dashboard's query count for a 20-member scheme
+dropped from over 5,000 to roughly 400 queries as a direct, measured result
+of this one fix — and the FULL regression suite's wall-clock time roughly
+halved across several phases' worth of tests that exercise arrears
+calculations.
+
+**70b. A smaller, remaining inefficiency in the same function.** After 70a's
+fix, `_dues_rows()` still calls `contributions_total()` once per DUES PERIOD
+per member (roughly 6-12 calls for a multi-year membership) rather than
+fetching a membership's contributions once and grouping them by period in
+Python. Measured at roughly 15 queries per member on a realistic dashboard —
+real, but a different scale of problem than 70a (linear-with-a-modest-
+constant, not linear-with-a-catastrophic-constant), and touches the "how much
+has been paid against each period" calculation at the center of the arrears
+engine, which carries more correctness risk to change than 70a's read-only
+policy resolution did. *Priority: Medium* — worth a dedicated, carefully-
+tested pass rather than a rushed one at the tail of a ninth consecutive
+phase; the query-budget tests added in Phase 10
+(`benevolent/test_phase10.py`) are calibrated to catch a regression toward
+70a's severity while accepting today's known, smaller cost, so this can be
+picked up deliberately without the module regressing silently in the
+meantime.
+
+**70c. Every other item raised across Phases 1-9 (#1-#69) was reviewed for
+whether Phase 10 should act on it further.** None needed re-opening beyond
+#69c (resolved above): each remaining item is still accurately described,
+still correctly prioritised, and still either a deliberate, documented scope
+boundary (e.g. #67a, member email staying out of `members.Member`) or a
+genuine, honestly-deferred enhancement (e.g. #68a, the report engine's
+`Filter` dropdown rendering) rather than an oversight. The module is
+considered feature-complete and production-ready as of v2.54.0, with this
+file remaining the honest record of what was deliberately left for later and
+why.
