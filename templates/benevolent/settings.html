@@ -19,6 +19,7 @@
     <button type="button" class="tab" data-tab="notifications">Notifications</button>
     <button type="button" class="tab" data-tab="automation">Automation</button>
     <button type="button" class="tab" data-tab="allocation">Allocation</button>
+    <button type="button" class="tab" data-tab="public">Public form</button>
     <button type="button" class="tab" data-tab="defaults">Defaults</button>
   </div>
 </div>
@@ -100,6 +101,26 @@
         own.</p>
       <div class="form-grid u-mt">
       {% for f in form %}{% if f.name in 'auto_allocate auto_allocate_threshold review_threshold fuzzy_name_threshold duplicate_window_days learn_allocation_rules' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="public">
+    <div class="card"><div class="hd">Public application form</div><div class="bd">
+      <p class="help u-mt-0">A link people can use to apply with no login. Submissions are held as
+        <strong>unverified applications</strong> for a registration officer to review — an application is not a
+        membership: nobody is covered, owes anything, or can claim, until somebody approves them.</p>
+      {% if cfg.public_form_enabled %}
+      <div class="alert alert-info u-mt"><strong>The form is live at</strong>
+        <a class="link" href="{% url 'benevolent_public_apply' %}">{{ request.scheme }}://{{ request.get_host }}{% url 'benevolent_public_apply' %}</a>
+        — share that link. Applications appear under
+        <a class="link" href="{% url 'benevolent_applications' %}">Applications</a>.</div>
+      {% endif %}
+      <div class="form-grid u-mt">
+      {% for f in form %}{% if f.name in 'public_form_enabled public_form_scheme public_form_intro' %}
         <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}

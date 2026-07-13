@@ -1,0 +1,89 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Register exceptions · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Exceptions</h1>
+  <div class="sub">Where the bank's record and ours disagree</div></div>
+<div class="btn-row no-print">
+  <form method="post" class="u-inline">{% csrf_token %}
+    <input type="hidden" name="account" value="{{ account.id }}">
+    <button class="btn btn-sm" name="recheck" value="1">↻ Check now</button></form>
+  <a class="btn btn-ghost btn-sm" href="{% url 'bank_register' %}?account={{ account.id }}">← Register</a>
+</div></div>
+
+{% if no_account %}<div class="alert alert-warn">No bank account is set up yet.</div>{% else %}
+
+<div class="info-panel">Matching is by the <strong>bank's own reference</strong> — the M-Pesa receipt or the core
+  banking ref. Amount-and-date matching is deliberately <em>not</em> used: two members giving the same amount on the
+  same day is completely ordinary, and guessing there would manufacture exactly the false reconciliation this check
+  exists to prevent.</div>
+
+<div class="grid cols-3 u-mb">
+  <div class="stat warn"><div class="lbl">On the statement, not in our books</div>
+    <div class="val mono">{{ summary.missing_in_ledger }}</div>
+    <div class="foot">Money the bank says moved that we have not recorded.</div></div>
+  <div class="stat brass"><div class="lbl">In our books, not on the statement</div>
+    <div class="val mono">{{ summary.missing_in_bank }}</div>
+    <div class="foot">We assert a bank movement the bank does not.</div></div>
+  <div class="stat"><div class="lbl">Cannot be checked</div>
+    <div class="val mono">{{ unverifiable|length }}</div>
+    <div class="foot">Bank entries with no bank reference at all.</div></div>
+</div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input type="hidden" name="account" value="{{ account.id }}">
+  <select class="field--select" name="kind"><option value="">Both kinds</option>
+    {% for v,l in kinds %}<option value="{{ v }}" {% if f_kind == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <select class="field--select" name="status">
+    {% for v,l in statuses %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    <option value="" {% if not f_status %}selected{% endif %}>All statuses</option></select>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="table-wrap"><table class="ledger">
+<thead><tr><th>Kind</th><th>Date</th><th class="num">Amount</th><th>Reference</th><th>Detail</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for e in exceptions %}<tr>
+  <td><span class="pill {% if e.kind == 'MISSING_IN_LEDGER' %}pill-amber{% else %}pill-red{% endif %} u-xs">{{ e.get_kind_display }}</span></td>
+  <td>{{ e.date|date:"d M y" }}</td>
+  <td class="num mono {% if e.amount < 0 %}row-debit{% endif %}">{{ e.amount|floatformat:2|intcomma }}</td>
+  <td class="mono u-xs">{{ e.ref|truncatechars:18 }}</td>
+  <td class="u-xs">{{ e.detail|default:"—"|truncatechars:48 }}
+    {% if e.transaction %}<div class="muted u-xs">Ledger #{{ e.transaction.id }}{% if e.transaction.department %} · {{ e.transaction.department.name }}{% endif %}</div>{% endif %}</td>
+  <td>{% if e.is_open %}<span class="pill pill-amber u-xs">Open</span>
+      {% else %}<span class="pill pill-green u-xs">{{ e.get_status_display }}</span>
+      <div class="muted u-xs">{{ e.resolution|truncatechars:36 }}</div>{% endif %}</td>
+  <td class="no-print">{% if e.is_open and can_enter_data %}
+    <details><summary class="link u-xs">Explain</summary>
+      <form method="post" class="u-mt">{% csrf_token %}
+        <input type="hidden" name="account" value="{{ account.id }}">
+        <input class="field" type="text" name="resolution" maxlength="255" required
+               placeholder="What is this, and what was done about it?" style="min-width:240px">
+        <div class="btn-row u-mt">
+          <button class="btn btn-sm" name="resolve" value="{{ e.id }}">Resolved</button>
+          <button class="btn btn-ghost btn-sm" name="resolve" value="{{ e.id }}" formnovalidate
+                  onclick="this.form.ignore.value='1'">Accept as-is</button>
+          <input type="hidden" name="ignore" value="">
+        </div>
+      </form></details>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="7" class="empty">
+  {% if f_status == 'OPEN' %}Nothing open — the bank's record and ours agree.{% else %}Nothing here.{% endif %}
+</td></tr>{% endfor %}</tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+
+{% if unverifiable %}
+<div class="card u-mt"><div class="hd">Bank entries that cannot be checked</div><div class="bd">
+<p class="help u-mt-0">These are transactions our books record as BANK, but which carry no bank reference at all — so
+  there is nothing to match them against. This is <strong>not</strong> a discrepancy: we cannot say the bank disagrees,
+  only that we have no way to ask. Almost always a hand-entered transaction. Give it a reference, or check it was
+  really a bank payment and not cash.</p>
+<table class="ledger compact"><thead><tr><th>Date</th><th class="num">Amount</th><th>Fund</th><th>Reference</th><th>Member</th></tr></thead>
+<tbody>{% for t in unverifiable %}<tr>
+  <td>{{ t.date|date:"d M y" }}</td><td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+  <td class="u-xs">{{ t.department.name|default:"—" }}</td>
+  <td class="u-xs">{{ t.reference|default:"—"|truncatechars:28 }}</td>
+  <td class="u-xs">{{ t.member.name|default:"—" }}</td>
+</tr>{% endfor %}</tbody></table>
+</div></div>
+{% endif %}
+{% endif %}
+{% endblock %}

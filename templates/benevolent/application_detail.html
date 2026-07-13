@@ -1,0 +1,70 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}{{ app.full_name }} · Application{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ app.full_name }}</h1>
+  <div class="sub">Applied to {{ app.scheme.name }} on {{ app.submitted_at|date:"d M Y" }}</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_applications' %}">← Applications</a></div></div>
+
+{% if not app.is_pending %}
+<div class="alert {% if app.status == 'APPROVED' %}alert-info{% else %}alert-warn{% endif %} u-mb">
+  <strong>{{ app.get_status_display }}</strong> by {{ app.reviewed_by }} on {{ app.reviewed_at|date:"d M Y" }}.
+  {% if app.review_note %}{{ app.review_note }}{% endif %}
+  {% if app.membership %}<a class="link" href="{% url 'benevolent_membership_detail' app.membership_id %}">Open {{ app.membership.number }}</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid cols-2">
+<div class="card"><div class="hd">What they told us</div><div class="bd">
+<table class="ledger compact"><tbody>
+  <tr><td class="muted">They say they are</td><td><strong>{{ app.get_standing_display }}</strong>
+    <div class="muted u-xs">Their own claim — unverified. That is what this review is for.</div></td></tr>
+  <tr><td class="muted">Phone</td><td class="mono">{{ app.phone }}</td></tr>
+  {% if app.email %}<tr><td class="muted">Email</td><td>{{ app.email }}</td></tr>{% endif %}
+  {% if app.date_of_birth %}<tr><td class="muted">Date of birth</td><td>{{ app.date_of_birth|date:"d M Y" }}</td></tr>{% endif %}
+  {% if app.national_id %}<tr><td class="muted">ID</td><td class="mono">{{ app.national_id }}</td></tr>{% endif %}
+  {% if app.notes %}<tr><td class="muted">Notes</td><td>{{ app.notes|linebreaksbr }}</td></tr>{% endif %}
+</tbody></table>
+</div></div>
+
+<div class="card"><div class="hd">Their household ({{ app.household_size }})</div><div class="bd">
+{% if app.dependants.all %}
+<table class="ledger compact"><thead><tr><th>Name</th><th>Relationship</th><th>Phone</th><th>Born</th></tr></thead>
+<tbody>{% for d in app.dependants.all %}<tr>
+  <td>{{ d.full_name }}</td><td>{{ d.get_relationship_display }}</td>
+  <td class="mono u-xs">{{ d.phone|default:"—" }}</td>
+  <td class="u-xs">{{ d.date_of_birth|date:"d M Y"|default:"—" }}</td>
+</tr>{% endfor %}</tbody></table>
+<p class="help u-mt">Approving registers all of these as dependants, through exactly the same service used at the desk.</p>
+{% else %}<p class="muted">No dependants listed — they will be registered individually.</p>{% endif %}
+</div></div>
+</div>
+
+{% if app.is_pending and can.benevolent_register_members %}
+<div class="card u-mt" style="max-width:720px"><div class="hd">Review</div><div class="bd">
+<form method="post">{% csrf_token %}
+  {% if candidates %}
+  <div class="form-row"><label for="member">Is this someone the church already knows?</label>
+    <select class="field--select" id="member" name="member">
+      <option value="">No — create a new member record from what they typed</option>
+      {% for m in candidates %}<option value="{{ m.id }}">{{ m.name }} · {{ m.phone }}</option>{% endfor %}
+    </select>
+    <div class="help">Matched on the phone number they gave. Linking here means one person, one record — rather
+      than a duplicate for someone already on the roll.</div>
+  </div>
+  {% else %}
+  <p class="help u-mt-0">Nobody on the roll matches that phone or name. Approving will create a new member record.</p>
+  {% endif %}
+
+  <div class="form-row"><label for="note">Note (optional)</label>
+    <input class="field" type="text" id="note" name="note" maxlength="255"
+           placeholder="e.g. Confirmed with the elder; known to the congregation."></div>
+
+  <div class="btn-row u-mt">
+    <button class="btn" name="action" value="approve">Approve &amp; register</button>
+    <button class="btn btn-ghost" name="action" value="reject"
+            onclick="return confirm('Not accept this application?')">Not accepted</button>
+  </div>
+</form>
+</div></div>
+{% endif %}
+{% endblock %}

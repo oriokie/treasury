@@ -1,0 +1,49 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Import into the register · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Import a bank statement into the register</h1>
+  <div class="sub">Safe to repeat. Nothing here posts to the ledger.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'bank_register' %}">← Register</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>This is not the ledger import.</strong> That one turns bank rows into transactions — it allocates money and
+  posts to funds, so importing the same month twice is something to be careful about.
+  <strong>This</strong> import does none of that: it only records what the bank said. Every line is keyed on the bank's
+  own reference, so re-importing an overlapping period — or the same file twice — adds only what is genuinely new.
+  Importing from January every month is a perfectly sensible thing to do here.
+</div>
+
+<div class="card form-card" style="max-width:640px"><div class="bd">
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  {% if accounts|length > 1 %}
+  <div class="form-row"><label for="account">Bank account</label>
+    <select class="field--select" id="account" name="account">
+      {% for a in accounts %}<option value="{{ a.id }}" {% if a.id == account.id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+    </select></div>
+  {% else %}<input type="hidden" name="account" value="{{ account.id }}">{% endif %}
+  <div class="form-row"><label for="file">Statement file</label>
+    <input class="field" type="file" id="file" name="file" accept=".csv,.xls,.xlsx" required>
+    <div class="help">The same file formats the ledger import accepts — .csv, .xls or .xlsx.</div></div>
+  <div class="form-row"><label for="notes">Note (optional)</label>
+    <input class="field" type="text" id="notes" name="notes" maxlength="200" placeholder="e.g. January–March, re-sent by the bank"></div>
+  <div class="btn-row u-mt"><button class="btn">Import</button></div>
+</form>
+</div></div>
+
+{% if recent %}
+<div class="card u-mt" style="max-width:820px"><div class="hd">Recent imports</div><div class="bd">
+<table class="ledger compact"><thead><tr><th>When</th><th>File</th><th>Period</th>
+  <th class="num">New</th><th class="num">Skipped</th><th class="num">Failed</th><th>By</th></tr></thead>
+<tbody>{% for i in recent %}<tr>
+  <td class="u-xs">{{ i.uploaded_at|date:"d M Y H:i" }}</td>
+  <td class="u-xs">{{ i.filename|truncatechars:28 }}</td>
+  <td class="u-xs">{% if i.period_start %}{{ i.period_start|date:"d M y" }} – {{ i.period_end|date:"d M y" }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ i.lines_added }}</td>
+  <td class="num mono muted">{{ i.duplicates_skipped }}</td>
+  <td class="num mono {% if i.rows_failed %}row-debit{% endif %}">{{ i.rows_failed }}</td>
+  <td class="u-xs muted">{{ i.uploaded_by }}</td>
+</tr>{% endfor %}</tbody></table>
+<p class="help u-mt">"Skipped" is the register working correctly — those lines were already held.</p>
+</div></div>
+{% endif %}
+{% endblock %}

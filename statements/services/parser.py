@@ -143,6 +143,11 @@ def _to_decimal(raw):
         return None
 
 
+# A leading four-digit year makes a date unambiguous: it can only be
+# year-month-day. dayfirst must not be applied to it — see _to_date.
+_ISO_DATE = re.compile(r"^\s*(\d{4})-(\d{1,2})-(\d{1,2})")
+
+
 def _to_datetime(raw):
     """Return a datetime if the source cell carried a time, else None."""
     if isinstance(raw, dt.datetime):
@@ -150,7 +155,11 @@ def _to_datetime(raw):
     if not raw:
         return None
     try:
-        parsed = dateparser.parse(str(raw), dayfirst=True)
+        # Same ISO trap as _to_date: a leading four-digit year is unambiguous,
+        # and dayfirst would scramble it. yearfirst tells dateutil so.
+        s = str(raw)
+        iso = bool(_ISO_DATE.match(s))
+        parsed = dateparser.parse(s, dayfirst=not iso, yearfirst=iso)
     except (ValueError, OverflowError):
         return None
     # only treat as a real time if it isn't exactly midnight (date-only sources)
@@ -159,11 +168,27 @@ def _to_datetime(raw):
     return None
 
 
+
 def _to_date(raw):
     if isinstance(raw, (dt.date, dt.datetime)):
         return raw.date() if isinstance(raw, dt.datetime) else raw
     if not raw:
         return None
+
+    # ISO first, and NOT via dayfirst. A leading four-digit year makes the rest
+    # unambiguous — it can only be year-month-day — but dateutil applies
+    # dayfirst to the remaining pair regardless, so "2026-07-01" (1 July) came
+    # back as 7 January. Any bank exporting ISO dates was having its statement
+    # silently misdated by up to eleven months, in the ledger importer as much
+    # as here. dayfirst stays on for everything else, because a Kenyan bank
+    # writing "07/01/2026" does mean 7 January.
+    m = _ISO_DATE.match(str(raw))
+    if m:
+        try:
+            return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+
     try:
         return dateparser.parse(str(raw), dayfirst=True).date()
     except (ValueError, OverflowError):

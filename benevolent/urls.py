@@ -1,7 +1,7 @@
 from django.urls import path
 
 from . import (api, views, views_bulk_import, views_committee, views_config, views_engine,
-              views_notify, views_registry, views_search)
+              views_notify, views_public, views_registry, views_search)
 
 urlpatterns = [
     path("", views.BenevolentDashboardView.as_view(), name="benevolent_dashboard"),
@@ -149,4 +149,12 @@ urlpatterns = [
          name="benevolent_api_scheme"),
     path("api/eligibility/", api.EligibilityAPI.as_view(), name="benevolent_api_eligibility"),
     path("api/cases/<int:pk>/", api.CaseAPI.as_view(), name="benevolent_api_case"),
+
+    # --- Public application form (no login) + its review ---
+    path("apply/", views_public.PublicApplicationView.as_view(),
+         name="benevolent_public_apply"),
+    path("applications/", views_public.ApplicationListView.as_view(),
+         name="benevolent_applications"),
+    path("applications/<int:pk>/", views_public.ApplicationDetailView.as_view(),
+         name="benevolent_application_detail"),
 ]

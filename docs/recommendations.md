@@ -2366,3 +2366,83 @@ that answers for a whole scheme in a fixed number of queries would help the
 dashboard and the arrears report specifically. *Priority: Low-Medium* — the
 current cost is now proportionate, and a batch API is a real design change
 deserving its own pass rather than a tail-end addition to an audit.
+
+---
+
+## 75. Round 3 — reported issues — NEW
+
+The member-search widget had **never displayed a single suggestion**, in any
+form, since it shipped: `query()` resolved to the JSON envelope and
+`renderResults()` tested `.length` on it. Now fixed and guarded by a jsdom
+test. Alternate phone numbers are now searchable everywhere (they never were,
+though the bank matcher always searched them). A contribution can now be
+attributed to a case from the general form — without which a levy recorded
+there was filed as VOLUNTARY, left the member "unpaid" on the levy roster, and
+under a POOLED policy made the benefit itself come out short. Founding balances
+are now frozen once a year is closed. See `docs/BENEVOLENT_MODULE.md`.
+
+**75a. NOT DONE — a running bank statement view (Edwin's item 7).** A ledger of
+imported bank transactions with a running balance, a discrepancy check against
+the bank's own statement, and its own import path. This is a substantial
+feature touching reconciliation, and the existing statement importer already
+does much of the underlying work — it deserves a proper design pass (how a
+"discrepancy" is defined against what the bank asserts, what happens when the
+two disagree, whether it reuses `StatementImport` or needs its own model)
+rather than a rushed version tacked onto a bug-fix round. *Priority: Medium-High
+— genuinely useful, and Edwin asked for it directly.*
+
+**75b. NOT DONE — a public benevolent registration form (Edwin's item 8).** A
+self-service form capturing whether the applicant is a registered member,
+Sabbath-school member or visitor, plus personal details and dependants. The
+public pledge form (`pledges/public_form.html`) is the existing precedent for
+how this app does public, unauthenticated submission, and this should follow it
+— including the question Edwin himself flagged mid-sentence ("Dependants
+(Should we break") about whether dependants are captured on the same form or a
+follow-up. *Priority: Medium — worth its own pass, with that design question
+settled first.*
+
+**75c. Deleting a pledge that already has payments is hidden in the UI**, though
+the view handles it safely (payment links are removed; the contributions stay in
+the ledger). Editing covers re-allocation, which is the actual reported need.
+*Priority: Low.*
+
+---
+
+## 76. Round 4 — the Bank Statement Register and the public application form — RESOLVES #75a, #75b
+
+Both delivered. The register is a separate, read-only layer over the bank's own
+record, with a running balance, reference-based exception checking, and its own
+idempotent import (safe to re-run over any period). The public form is off by
+default, write-only, and produces an unverified application that a registration
+officer turns into a real membership through the ordinary service. See
+`docs/BENEVOLENT_MODULE.md`.
+
+**76a. RESOLVED — a real bug in the SHARED statement parser.** `dayfirst=True`
+scrambled ISO dates: 1 July (`2026-07-01`) was read as 7 January. Any bank
+exporting ISO was having its statement silently misdated by up to eleven months
+— in the LEDGER importer as much as the register. Found while building the
+register; fixed in the shared parser.
+
+**76b. The register's exception check is bounded to the period it covers.** It
+says nothing about a month it holds no statement for — because it cannot. Import
+the missing period and it will. *Not a limitation to remove: the first version
+did not bound it, and flagged the entire ledger history as discrepancies, which
+is precisely how such a report gets ignored.*
+
+**76c. A synthetic dedup key is used for lines with no bank reference at all**
+(bank charges, typically) — date + amount + narration. Two identical such lines
+on one day would collapse into one. The import says so rather than pretending to
+be exact. *Priority: Low* — banks that emit referenceless charge lines rarely
+emit two identical ones in a day, and a treasurer who knows the register is
+doing its best is better served than one who wrongly believes it is exact.
+
+**76d. The public form does not notify the applicant on approval.** Phase 7's
+notification engine could do this (an application has a phone and an email), and
+the templated message would fit the existing `NotificationEvent` pattern. *Priority:
+Medium* — a natural next step, deliberately not bundled into an already-large
+round.
+
+**76e. Applications are not editable by a reviewer before approval.** If an
+applicant fat-fingers a phone number, the reviewer must approve and then correct
+the membership. *Priority: Low-Medium* — correcting after the fact works and is
+fully audited; an inline edit would just be kinder.

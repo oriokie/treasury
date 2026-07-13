@@ -203,14 +203,14 @@ class FormWidgetWiringTests(BugfixFixture):
         self.client.force_login(self.treasurer)
         body = self.client.get(
             reverse("benevolent_register", args=[self.scheme.pk])).content.decode()
-        self.assertIn("benevolent-search.js", body)
+        self.assertIn("member-search.js", body)
         self.assertIn('selectId: "id_member"', body)
 
     def test_the_case_form_wires_the_search_widget_scoped_to_the_scheme(self):
         self.client.force_login(self.treasurer)
         body = self.client.get(
             reverse("benevolent_case_new", args=[self.scheme.pk])).content.decode()
-        self.assertIn("benevolent-search.js", body)
+        self.assertIn("member-search.js", body)
         self.assertIn(f"scheme: {self.scheme.pk}", body)
 
     def test_the_contribution_form_wires_both_search_widgets(self):
@@ -699,7 +699,7 @@ class RegisterIndependentOfChurchRollTests(BugfixFixture):
         hidden <select> silently skips native browser validation — a real
         cause of "the button doesn't seem to do anything" when a required
         field was left empty."""
-        js = open("static/js/benevolent-search.js").read()
+        js = open("static/js/member-search.js").read()
         self.assertIn("select.required = false", js)
         self.assertIn("input.required = true", js)
 

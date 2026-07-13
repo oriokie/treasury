@@ -27,7 +27,14 @@ class MemberListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         group = self.request.GET.get("group")
         source = self.request.GET.get("source")
         if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(phone__icontains=q))
+            # Alternate numbers count. A member who pays from a second line is
+            # still that member — MemberPhone records exactly that, and the
+            # bank-statement matcher has always searched it. This screen did
+            # not, so searching the number a treasurer actually has in front of
+            # them found nobody.
+            qs = qs.filter(
+                Q(name__icontains=q) | Q(phone__icontains=q)
+                | Q(phones__number__icontains=q)).distinct()
         if group:
             qs = qs.filter(group=group)
         if source:
@@ -50,12 +57,55 @@ class MemberDetailView(ReadAccessMixin, DetailView):
     context_object_name = "member"
 
     def get_context_data(self, **kwargs):
+        import datetime as _dt
+        from django.utils.dateparse import parse_date
+
         ctx = super().get_context_data(**kwargs)
-        txns = (Transaction.objects.filter(member=self.object,
-                direction=Transaction.Direction.CREDIT)
-                .select_related("department").order_by("-date"))
+        all_txns = (Transaction.objects.filter(member=self.object,
+                    direction=Transaction.Direction.CREDIT)
+                    .select_related("department").order_by("-date"))
+
+        # A date filter, defaulting to the CURRENT YEAR — deliberately not the
+        # current month, as the ledger and expense LISTS do.
+        #
+        # Those pages default to a month because they are unbounded: without a
+        # bound they scan every row the church has ever recorded, and the
+        # default exists to stop that. This page is already bounded to one
+        # person, so there is no such cost — and the reason someone opens a
+        # member's page is almost always to see what they have given, which a
+        # one-month window would hide most of. Defaulting to a month here would
+        # solve a problem this page does not have, at the price of the answer
+        # the page exists to give.
+        #
+        # A year is the natural period for a member's giving (it is what the
+        # annual member statement covers), the filter takes any range, and
+        # "all time" is one click. The LIFETIME total stays on screen
+        # regardless of the filter, so narrowing the window can never make a
+        # member look like they have given less than they have.
+        today = _dt.date.today()
+        if not self.request.GET:
+            start, end = _dt.date(today.year, 1, 1), today
+            default_applied = True
+        else:
+            start = parse_date(self.request.GET.get("start") or "")
+            end = parse_date(self.request.GET.get("end") or "")
+            default_applied = False
+
+        txns = all_txns
+        if start:
+            txns = txns.filter(date__gte=start)
+        if end:
+            txns = txns.filter(date__lte=end)
+
         ctx["transactions"] = txns[:100]
-        ctx["total_given"] = txns.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+        ctx["shown_count"] = txns.count()
+        ctx["period_given"] = txns.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+        # unfiltered, always: a member's lifetime giving is not a function of
+        # what date range someone happens to be looking at
+        ctx["total_given"] = all_txns.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+        ctx["f_start"] = start.isoformat() if start else ""
+        ctx["f_end"] = end.isoformat() if end else ""
+        ctx["date_default_applied"] = default_applied
         ctx["aliases"] = self.object.aliases.all()
         # Other numbers this member gives from (e.g. after a merge — see
         # members.services.matching.merge_members) — the primary number

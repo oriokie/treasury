@@ -116,11 +116,39 @@ class BudgetView(TreasurerRequiredMixin, View):
         return rows
 
     def get(self, request):
+        from core.models import YearEndClose
+        from reports.services.balances import brought_forward_map
         from .models import Budget
+
         year = int(request.GET.get("year") or _dt.date.today().year)
         budget_objs = {b.department_id: b for b in
                        Budget.objects.filter(year=year).prefetch_related("lines")}
         rows = self._ordered()
+
+        # `opening_balance` is the FOUNDING figure — the brought-forward balance
+        # on the day the church started using this system — and it is NOT
+        # year-scoped. Every later year's opening is DERIVED: founding + all
+        # movement before that year (see reports.services.balances
+        # .brought_forward_map, which is where every balance in the app comes
+        # from). Nothing carries a new value into it at year end, and nothing
+        # should: it is the foundation the whole history is computed from.
+        #
+        # So the budget page was showing, and letting a treasurer EDIT, a
+        # foundation figure while labelling it "opening balance for <year>".
+        # Changing it in July 2026 did not set July's opening — it silently
+        # rewrote the balance of every fund in every year the church has ever
+        # recorded, backwards. That is the distortion Edwin saw.
+        #
+        # Two changes. First, show the DERIVED opening for the selected year
+        # alongside it — that is the number a treasurer actually came here for.
+        # Second, freeze the founding figure once a year has been formally
+        # closed: a close is the church declaring that history final, and
+        # editing its foundation afterwards would rewrite an audited past.
+        opening_for_year = brought_forward_map(
+            [r["d"].id for r in rows], _dt.date(year, 1, 1))
+        founding_locked = YearEndClose.objects.exists()
+        last_close = YearEndClose.objects.order_by("-year").first()
+
         for r in rows:
             b = budget_objs.get(r["d"].id)
             if b is not None:
@@ -130,14 +158,22 @@ class BudgetView(TreasurerRequiredMixin, View):
             else:
                 r["budget"] = None
                 r["from_lines"] = False
+            r["opening_derived"] = opening_for_year.get(r["d"].id, Decimal(0))
         return render(request, self.template_name,
                       {"rows": rows, "year": year,
+                       "founding_locked": founding_locked,
+                       "last_close": last_close,
                        "years": range(_dt.date.today().year + 1, _dt.date.today().year - 5, -1)})
 
     def post(self, request):
+        from core.models import YearEndClose
         from .models import Budget
         year = int(request.POST.get("year") or _dt.date.today().year)
+        # Once a year has been closed, the founding balance is the foundation of
+        # an audited history and may not be edited — see get() above.
+        founding_locked = YearEndClose.objects.exists()
         n = 0
+        openings_changed = 0
         for d in Department.objects.filter(active=True):
             b = request.POST.get(f"budget_{d.id}")
             o = request.POST.get(f"opening_{d.id}")
@@ -153,15 +189,28 @@ class BudgetView(TreasurerRequiredMixin, View):
                     n += 1
                 except (InvalidOperation, AttributeError):
                     pass
-            if o is not None:
+            if o is not None and not founding_locked:
                 try:
-                    d.opening_balance = Decimal(o) if o.strip() else Decimal(0)
-                    changed = True
+                    new_val = Decimal(o) if o.strip() else Decimal(0)
+                    if new_val != (d.opening_balance or Decimal(0)):
+                        d.opening_balance = new_val
+                        changed = True
+                        openings_changed += 1
                 except (InvalidOperation, AttributeError):
                     pass
             if changed:
                 d.save(update_fields=["opening_balance"])
-        messages.success(request, f"Saved budgets and opening balances for {year}.")
+
+        msg = f"Saved {n} budget figure(s) for {year}."
+        if founding_locked:
+            msg += (" Founding balances were NOT changed: a year has been closed, so "
+                    "the history they underpin is final.")
+        elif openings_changed:
+            msg += (f" {openings_changed} FOUNDING balance(s) changed — this is the "
+                    f"brought-forward figure from before the church started using this "
+                    f"system, not an opening for {year}, so it shifts every fund balance "
+                    f"in every period. Only correct it during first-time setup.")
+        messages.success(request, msg)
         return redirect(f"{reverse_lazy('budget')}?year={year}")
 
 

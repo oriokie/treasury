@@ -30,21 +30,75 @@ from core.permissions import BenevolentViewMixin
 
 class MemberSearchView(BenevolentViewMixin, View):
     """Church-wide member typeahead — for registering someone, or crediting
-    a contribution from a donor not (yet) enrolled anywhere."""
+    a contribution from a donor not (yet) enrolled anywhere.
+
+    Searches ALTERNATE phone numbers as well as the primary one. A member who
+    pays from a second line is still that member, and `MemberPhone` has always
+    existed to record exactly that — but this search only ever looked at
+    `Member.phone`, so typing the number a treasurer actually has in front of
+    them (from a bank narration, say) would find nobody.
+
+    Each result also carries a WARNING where one applies (Phase-audit item):
+    somebody already enrolled in the scheme being registered into, or already
+    on record as another member's spouse or dependant, is very often not a new
+    principal member at all — they are the same household reached from the
+    other side. The registrar sees that before they commit, rather than
+    discovering it as an integrity error afterwards or, worse, not at all.
+    """
 
     def get(self, request):
         from core.rights import display_phone
         from members.models import Member
+        from .models import SchemeDependant, SchemeMembership
+
         q = (request.GET.get("q") or "").strip()
+        scheme_id = request.GET.get("scheme")   # optional: enables the enrolment warning
         if len(q) < 2:
             return JsonResponse({"results": []})
+
         qs = (Member.objects.filter(active=True)
-              .filter(Q(name__icontains=q) | Q(phone__icontains=q))
+              .filter(Q(name__icontains=q) | Q(phone__icontains=q)
+                     | Q(phones__number__icontains=q))
+              .distinct()
+              .prefetch_related("phones")
               .order_by("name")[:8])
-        results = [{"id": m.id, "name": m.name,
-                    "phone": display_phone(request.user, m.phone or ""),
-                    "type": m.get_member_type_display() if m.member_type else ""}
-                   for m in qs]
+        members = list(qs)
+        ids = [m.pk for m in members]
+
+        # already enrolled in THIS scheme?
+        enrolled = {}
+        if scheme_id:
+            for sm in (SchemeMembership.objects
+                      .filter(scheme_id=scheme_id, member_id__in=ids)
+                      .exclude(status=SchemeMembership.Status.WITHDRAWN)):
+                enrolled[sm.member_id] = sm
+
+        # already someone else's spouse / dependant?
+        dependant_of = {}
+        for d in (SchemeDependant.objects
+                 .filter(member_id__in=ids, active=True)
+                 .select_related("membership__member", "membership__scheme")):
+            dependant_of.setdefault(d.member_id, d)
+
+        results = []
+        for m in members:
+            warning = ""
+            existing = enrolled.get(m.pk)
+            dep = dependant_of.get(m.pk)
+            if existing:
+                warning = (f"Already enrolled here as {existing.number} "
+                          f"({existing.get_status_display().lower()}).")
+            elif dep:
+                warning = (f"Already registered as {dep.get_relationship_display().lower()} "
+                          f"of {dep.membership.member.name} "
+                          f"({dep.membership.scheme.code} {dep.membership.number}).")
+            results.append({
+                "id": m.id, "name": m.name,
+                "phone": display_phone(request.user, m.receipt_phone or m.phone or ""),
+                "type": m.get_member_type_display() if m.member_type else "",
+                "warning": warning,
+                "blocked": bool(existing),
+            })
         return JsonResponse({"results": results})
 
 

@@ -385,7 +385,17 @@ class SettingsView(TreasurerRequiredMixin, View):
 
 
 class MemberSearchView(DataEntryRequiredMixin, View):
-    """JSON typeahead for contributor name fields (up to 5 suggestions)."""
+    """JSON typeahead for contributor name fields (up to 5 suggestions).
+
+    Searches ALTERNATE phone numbers (`MemberPhone`) as well as the primary
+    one. A member who pays from a second line is still that member — the
+    `MemberPhone` table exists precisely to record that, and
+    `match_or_create_member()` has always matched a bank narration against it.
+    But this search only ever looked at `Member.phone`, so a treasurer typing
+    the very number that appears in the narration in front of them would find
+    nobody, and would be pushed into creating a duplicate for a person the
+    system already knew.
+    """
 
     def get(self, request):
         from django.db.models import Q
@@ -394,11 +404,14 @@ class MemberSearchView(DataEntryRequiredMixin, View):
         if len(q) < 2:
             return JsonResponse({"results": []})
         qs = (Member.objects.filter(active=True)
-              .filter(Q(name__icontains=q) | Q(phone__icontains=q))
+              .filter(Q(name__icontains=q) | Q(phone__icontains=q)
+                     | Q(phones__number__icontains=q))
+              .distinct()
+              .prefetch_related("phones")
               .order_by("name")[:5])
         from core.rights import display_phone
         results = [{"id": m.id, "name": m.name,
-                    "phone": display_phone(request.user, m.phone or ""),
+                    "phone": display_phone(request.user, m.receipt_phone or m.phone or ""),
                     "type": m.get_member_type_display() if m.member_type else ""}
                    for m in qs]
         return JsonResponse({"results": results})

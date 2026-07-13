@@ -63,6 +63,7 @@
         <summary><span class="ic">⛁</span> Banking <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'statement_list' %}" class="{% if request.resolver_match.url_name == 'statement_list' %}active{% endif %}">Statement imports</a>
+          <a href="{% url 'bank_register' %}" class="{% if 'bank_register' in request.resolver_match.url_name %}active{% endif %}">Bank register</a>
           <a href="{% url 'debit_queue' %}" class="{% if request.resolver_match.url_name == 'debit_queue' %}active{% endif %}">Bank debits</a>
           <a href="{% url 'reconciliation_list' %}" class="{% if 'reconciliation' in request.resolver_match.url_name %}active{% endif %}">Bank reconciliation</a>
           <a href="{% url 'payment_register' %}" class="{% if 'payment' in request.resolver_match.url_name %}active{% endif %}">Payment register</a>

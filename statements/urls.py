@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import views, views_register
 from .webhook import CbsEventWebhookView
 
 urlpatterns = [
@@ -20,4 +20,12 @@ urlpatterns = [
     path("reconciliations/auto/run/", views.AutoReconcileRunView.as_view(), name="auto_reconcile_run"),
     path("reconciliations/auto/<int:pk>/confirm/", views.AutoReconcileConfirmView.as_view(), name="auto_reconcile_confirm"),
     path("reconciliations/auto/<int:pk>/reject/", views.AutoReconcileRejectView.as_view(), name="auto_reconcile_reject"),
+
+    # --- Bank Statement Register: a separate, read-only layer ---
+    path("bank-register/", views_register.RegisterView.as_view(),
+         name="bank_register"),
+    path("bank-register/import/", views_register.RegisterImportView.as_view(),
+         name="bank_register_import"),
+    path("bank-register/exceptions/", views_register.RegisterExceptionsView.as_view(),
+         name="bank_register_exceptions"),
 ]

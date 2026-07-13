@@ -506,6 +506,7 @@ class ContributionCreateView(BenevolentFinanceMixin, View):
                 c = contrib_svc.record_contribution(
                     scheme, date=d["date"], amount=d["amount"], user=request.user,
                     membership=d.get("membership"), member=d.get("member"),
+                    case=d.get("case"),
                     channel=d.get("channel"), period_label=d.get("period_label") or None,
                     note=d.get("note") or "")
             except ValidationError as e:

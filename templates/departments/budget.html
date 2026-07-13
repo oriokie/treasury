@@ -17,22 +17,42 @@
   balance. <strong>Annual budget</strong> is the total of the fund's <em>breakdown</em> lines — click “Edit breakdown” to set them. It's used for budget-vs-actual reports.
 </div>
 
+{% if founding_locked %}
+<div class="alert alert-info u-mb">
+  <strong>Founding balances are locked.</strong> {{ last_close.year }} has been formally closed, so the history those
+  figures underpin is final and they can no longer be edited here.
+  <span class="muted">Each fund's <strong>opening balance for {{ year }}</strong> is shown below and is
+  <em>calculated</em> — the founding brought-forward figure plus every receipt, payment and transfer before
+  1 January {{ year }}. Nothing needs to be carried forward by hand at year end; it already is.</span>
+</div>
+{% else %}
+<div class="alert alert-warn u-mb">
+  <strong>The founding balance is a one-time figure, not a yearly one.</strong> It is what each fund held on the day
+  the church started using this system — so changing it does <em>not</em> set an opening for {{ year }}; it shifts
+  every fund balance in <em>every</em> period, backwards and forwards. Set these once during first-time setup, then
+  leave them alone: each year's opening (shown below) is <strong>calculated</strong> from them, and is frozen
+  automatically the first time a year is closed.
+</div>
+{% endif %}
+
 <form method="post"><input type="hidden" name="year" value="{{ year }}">{% csrf_token %}
 <div class="table-wrap"><table class="ledger compact">
-  <thead><tr><th>Fund</th><th>Type</th><th class="num">Opening balance (b/f)</th><th class="num">Annual budget {{ year }}</th><th>Breakdown</th></tr></thead>
+  <thead><tr><th>Fund</th><th>Type</th><th class="num">Opening {{ year }} <span class="muted u-xxs">(derived)</span></th><th class="num">Founding b/f <span class="muted u-xxs">(one-time)</span></th><th class="num">Annual budget {{ year }}</th><th>Breakdown</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
       <td {% if r.child %}class="u-indent-2" class="muted"{% endif %}>{% if r.child %}↳ {% endif %}{{ r.d.name }}</td>
       <td><span class="pill {% if r.d.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.75">{% if r.d.is_trust %}Trust{% else %}Local{% endif %}</span></td>
-      <td class="num"><input name="opening_{{ r.d.id }}" value="{{ r.d.opening_balance|stringformat:'.2f' }}" class="field mono" style="width:130px;text-align:right"></td>
+      <td class="num mono">{{ r.opening_derived|floatformat:2|intcomma }}</td>
+      <td class="num">{% if founding_locked %}<span class="mono muted">{{ r.d.opening_balance|floatformat:2|intcomma }}</span>
+        {% else %}<input name="opening_{{ r.d.id }}" value="{{ r.d.opening_balance|stringformat:'.2f' }}" class="field mono" style="width:130px;text-align:right">{% endif %}</td>
       <td class="num mono">{% if r.budget != None %}{{ r.budget|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}{% if r.from_lines %} <span class="pill pill-blue u-xxs">from breakdown</span>{% endif %}</td>
       <td><a class="link" href="{% url 'budget_lines' r.d.id %}?year={{ year }}">Edit breakdown…</a></td>
     </tr>
   {% endfor %}
   </tbody>
 </table></div>
-<div class="btn-row"><button class="btn">Save budgets &amp; opening balances</button><a class="btn btn-ghost" href="{% url 'department_list' %}">Back to funds</a></div>
+<div class="btn-row"><button class="btn">Save budgets{% if not founding_locked %} &amp; founding balances{% endif %}</button><a class="btn btn-ghost" href="{% url 'department_list' %}">Back to funds</a></div>
 </form>
 <style>.ledger.compact td,.ledger.compact th{padding:.32rem .55rem;font-size:.88rem}</style>
 {% endblock %}

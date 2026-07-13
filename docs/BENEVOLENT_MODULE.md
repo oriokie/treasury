@@ -1924,3 +1924,196 @@ code that claims it:
 
 **Tests:** 18 new. Full regression clean across the whole application — 2,316
 tests.
+
+---
+---
+
+# Round 3 — reported issues
+
+## The headline: the member-search widget had never worked
+
+Not "worked badly" — **never displayed a single suggestion to anybody, in any
+form, since the day it shipped.**
+
+`query()` resolved to the endpoint's JSON envelope `{results: [...]}` and
+handed that whole object to `renderResults()`, which immediately tested
+`results.length` — `undefined` on an object — and hid the box and returned.
+The endpoint was fine. The CSS was fine. The request was even being made and
+answered. The answer was thrown away one line before it could be rendered, on
+every keystroke, in every form that used it.
+
+Nothing in the Django suite could see it: the failure lived entirely in the
+browser. It is now guarded by a jsdom test
+(`tests/js/member_search.test.js`), which was first run against the
+pre-fix code to confirm it actually catches the bug.
+
+The file was also renamed `benevolent-search.js` → `member-search.js`. It was
+never benevolent-specific, and a misleading name is how a second, duplicate
+copy gets written by someone who did not think to look inside a module they
+were not working on. It now serves benevolent, the membership page, and the
+pledge form.
+
+## Alternate phone numbers were invisible to every search screen
+
+`MemberPhone` has always recorded a member's other numbers, and the
+bank-statement matcher has always searched them. The search *screens* did not.
+So a treasurer typing the very number that appears in the narration in front of
+them was told the member did not exist — and pushed into creating a duplicate
+for someone the system already knew. Fixed on the members list, the shared
+typeahead, and the benevolent typeahead.
+
+## Registering someone already covered as a spouse
+
+The search now warns ("already registered as spouse of X"), and — the part
+that actually matters — the server **refuses** it. One person must not end up
+with two memberships in one scheme: counted twice on the roll, levied twice,
+able to claim twice.
+
+## How does a contribution know which case it belongs to?
+
+Three ways, and one of them was broken:
+
+1. **The case's own levy screen** — sets it explicitly. Always worked.
+2. **The bank-statement allocator** — reads the case number out of the
+   narration (weight 55). Always worked.
+3. **The general contribution form** — could not name a case *at all*.
+
+That third gap was doing real damage. `record_contribution()` correctly infers
+`kind = LEVY` from the presence of a case — so with no case, a levy recorded on
+that form was filed as `VOLUNTARY`, attached to nothing. The member stayed
+"unpaid" on the case's levy roster. And under a **POOLED** policy — where the
+benefit *is* whatever the levy collected — the payout itself came out short.
+
+The form now offers the case. Cases that are closed, rejected or cancelled are
+excluded; **draft cases are deliberately included**, because a church starts the
+harambee the moment a death is known, long before the paperwork catches up, and
+refusing to attribute that money would be the system telling a treasurer their
+own practice is invalid.
+
+## Founding balances could silently rewrite the whole history
+
+`Department.opening_balance` is the **founding** brought-forward figure — what a
+fund held on the day the church started using this system. It is *not*
+year-scoped: every later year's opening is **derived** (founding + all movement
+before that year), and year-end close never writes it. The architecture was
+already right.
+
+But the budget page let a treasurer edit it while labelling it "opening balance
+for <year>". Changing it in July did not set July's opening — it silently
+rewrote every fund balance in every year the church had ever recorded,
+backwards. Now: the page shows each fund's **derived** opening for the year
+being budgeted (the number a treasurer actually came for), the founding figure
+is labelled honestly as one-time, and it is **frozen once any year has been
+closed** — a close is the church declaring that history final, and editing its
+foundation afterwards would rewrite an audited past. Enforced server-side, not
+just hidden in the template.
+
+## Also
+
+Pledge form gets the member typeahead. Campaign detail gets search, status
+filter, newest-first ordering (so a fresh import is at the top) and inline
+edit/delete, so a wrongly-allocated import row is correctable from where a
+treasurer actually looks for it. The transfers page gets filters (date, fund
+either side, text) and the current-month default. The member page gets a date
+filter — defaulting to the current **year**, not month, because unlike the
+unbounded list pages this one is already scoped to one person, and a
+one-month window would hide most of what someone opened the page to see. Its
+lifetime total never moves with the filter.
+
+**Tests:** 23 new Django + 16 new jsdom. Full regression clean.
+
+---
+---
+
+# Round 4 — the Bank Statement Register, and the public application form
+
+Both are deliberately **separate layers**. Neither can affect the ledger.
+
+## The Bank Statement Register
+
+A running record of what the **bank** says happened — every line it ever sent,
+kept forever, unjudged. It never posts, allocates, creates a transaction, or
+touches a fund balance. That is not a limitation; it is the entire point. A
+register a treasurer could quietly "correct" would be worthless as a check on
+their own books.
+
+**Why not just reuse the existing statement importer?** Because that one's job
+is the opposite: it turns bank rows *into* ledger transactions — it allocates,
+matches members, and posts. A row it cannot allocate goes to a queue; a row it
+skips as a duplicate leaves no trace. The register keeps everything, asserts
+nothing, and is therefore **safe to re-import over any period, as often as you
+like**. Importing from January every month is a sensible thing to do here; every
+line is deduplicated on the bank's own reference.
+
+**Exceptions** are the two questions asked directly:
+
+* *On the statement, not in our books* — real money the bank says moved, that we
+  have not recorded.
+* *In our books, not on the statement* — we assert a bank movement the bank does
+  not. Rarer and more serious.
+
+Matching is **by bank reference only** — the M-Pesa receipt or the core banking
+ref. Amount-and-date matching is deliberately not attempted: two members giving
+the same amount on the same day is completely ordinary, and guessing there would
+manufacture exactly the false reconciliation this exists to prevent.
+
+Two design decisions worth stating, because both were corrections made *during*
+the build after the first version got them wrong:
+
+1. **The check is bounded to the period the register actually covers.** The
+   first version compared our whole ledger against whatever the register held —
+   so with only July imported, all of June was flagged as "missing from the
+   bank". But the register has no June data; it cannot assert anything about
+   June. That is an absence of evidence, not a discrepancy, and reporting it as
+   one buried the handful of real exceptions under hundreds of false ones. That
+   is exactly how a discrepancy report gets ignored.
+
+2. **A bank transaction carrying no bank reference is "unverifiable", not an
+   exception.** We cannot say the bank disagrees — only that we have no way to
+   ask. Calling it a discrepancy would be an accusation the evidence does not
+   support. It is surfaced separately, where it is actionable.
+
+The bank's own running balance is kept alongside ours. Where they diverge, the
+register is **missing lines the bank included** — the clearest possible signal
+that a statement period was never imported.
+
+### A real bug this uncovered in the shared parser
+
+`dayfirst=True` was scrambling ISO dates. dateutil, told day-comes-first,
+applies that to the `07-01` portion of `2026-07-01` even though a leading
+four-digit year makes the order unambiguous — so **1 July was being read as 7
+January**. Any bank exporting ISO dates was having its statement silently
+misdated by up to eleven months, in the **ledger importer** as much as in the
+register. Fixed in the shared parser; the full statements and giving suites pass
+unchanged.
+
+## The public application form
+
+Off by default. An application is **not a membership**: nobody who submits one
+is covered, owes dues, or can claim, until a registration officer approves them
+— at which point they are registered through exactly the same
+`registry.register()` as anyone enrolled at the desk.
+
+Security follows the public pledge form's model, which was designed for this
+problem:
+
+* **Write-only.** It never reads or exposes member data — no autocomplete, no
+  lookup, no roll. A public form that could search the membership would leak it.
+  The applicant types their own details; a reviewer links them to the real church
+  record afterwards, and is shown phone-matched candidates so one person ends up
+  with one record rather than a duplicate.
+* Honeypot, minimum fill time, per-session throttle.
+* A submission touches no ledger, no fund, no balance, and creates no cover.
+
+The applicant says what they are — **registered member / Sabbath School member /
+visitor** — and that is recorded as their *claim*, unverified. Checking it is
+what the review is for.
+
+Dependants are captured in the three sections a family is actually described in
+— **spouse, children, parents** — rather than one undifferentiated list that
+makes an applicant guess where their mother goes. A dependant's own phone is
+asked for, because a spouse or grown child very often pays from their own line,
+and a number recorded here lets that payment be matched to the family
+automatically instead of landing in an unmatched queue.
+
+**Tests:** 36 new. Full regression clean — 2,436 tests.

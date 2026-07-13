@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Apply to join · {{ SITE_NAME }}</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f4f1e8;margin:0;color:#23271f}
+  .wrap{max-width:620px;margin:0 auto;padding:2rem 1.2rem}
+  .card{background:#fff;border:1px solid #e4ddcb;border-radius:14px;padding:1.6rem;box-shadow:0 6px 24px rgba(20,33,28,.06)}
+  h1{font-family:Georgia,"Times New Roman",serif;font-size:1.5rem;margin:.2rem 0;color:#1f5f4f}
+  h2{font-size:1rem;color:#1f5f4f;margin:1.6rem 0 .4rem;padding-bottom:.3rem;border-bottom:1px solid #eee6d6}
+  .sub{color:#7a7768;margin-bottom:1.2rem}
+  label{display:block;font-weight:600;font-size:.85rem;margin:.9rem 0 .25rem}
+  input,select,textarea{width:100%;padding:.6rem .7rem;border:1px solid #d8d2c0;border-radius:8px;
+    font-size:1rem;box-sizing:border-box;background:#fff;font-family:inherit}
+  .help{font-size:.8rem;color:#7a7768;margin-top:.25rem}
+  .btn{background:#1f5f4f;color:#fff;border:0;border-radius:9px;padding:.75rem 1.3rem;
+    font-size:1rem;font-weight:600;cursor:pointer;width:100%;margin-top:1.5rem}
+  .err{background:#fbeceb;border:1px solid #e6b5b0;color:#8c2f26;padding:.7rem .9rem;
+    border-radius:8px;margin-bottom:1rem;font-size:.9rem}
+  .note{background:#eef5f2;border:1px solid #cfe3db;padding:.8rem .9rem;border-radius:8px;
+    font-size:.85rem;color:#2d4d43;margin-bottom:1.2rem}
+  .hp{position:absolute;left:-9999px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+  .dep{border:1px solid #eee6d6;border-radius:9px;padding:.7rem;margin-bottom:.6rem;background:#fbf9f3}
+  .addbtn{background:none;border:1px dashed #b7ae95;color:#5c5847;border-radius:8px;
+    padding:.45rem .8rem;font-size:.85rem;cursor:pointer;width:auto;margin-top:.2rem}
+  .foot{text-align:center;color:#9a9686;font-size:.78rem;margin-top:1.4rem}
+</style></head><body>
+<div class="wrap"><div class="card">
+  <h1>Apply to join</h1>
+  <div class="sub">{{ SITE_NAME }}</div>
+
+  {% if cfg.public_form_intro %}<div class="note">{{ cfg.public_form_intro|linebreaksbr }}</div>{% endif %}
+
+  <div class="note"><strong>This is an application, not a membership.</strong> Someone from the church will
+    review it and get in touch. You are not covered, and you owe nothing, until they have.</div>
+
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+  <form method="post" id="applyForm">{% csrf_token %}
+    <input type="text" name="website" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+
+    {% if schemes|length > 1 %}
+    <label for="scheme">Which scheme</label>
+    <select id="scheme" name="scheme" required>
+      {% for s in schemes %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+    </select>
+    {% elif schemes %}<input type="hidden" name="scheme" value="{{ schemes.0.id }}">{% endif %}
+
+    <h2>About you</h2>
+    <label for="standing">Are you…</label>
+    <select id="standing" name="standing" required>
+      {% for v,l in standings %}<option value="{{ v }}" {% if form.standing == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+    </select>
+
+    <label for="full_name">Full name</label>
+    <input id="full_name" name="full_name" required maxlength="120" value="{{ form.full_name|default:'' }}">
+
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" required maxlength="32" inputmode="tel" value="{{ form.phone|default:'' }}">
+    <div class="help">The number you would normally pay from.</div>
+
+    <label for="email">Email <span style="font-weight:400;color:#9a9686">(optional)</span></label>
+    <input id="email" name="email" type="email" maxlength="254" value="{{ form.email|default:'' }}">
+
+    <div class="row">
+      <div><label for="date_of_birth">Date of birth <span style="font-weight:400;color:#9a9686">(optional)</span></label>
+        <input id="date_of_birth" name="date_of_birth" type="date" value="{{ form.date_of_birth|default:'' }}"></div>
+      <div><label for="national_id">ID number <span style="font-weight:400;color:#9a9686">(optional)</span></label>
+        <input id="national_id" name="national_id" maxlength="32" value="{{ form.national_id|default:'' }}"></div>
+    </div>
+
+    <h2>Your spouse</h2>
+    <div class="help" style="margin-bottom:.5rem">If you are married. Leave blank if not.</div>
+    <div class="dep">
+      <label>Name</label><input name="spouse_name" maxlength="120">
+      <div class="row" style="margin-top:.4rem">
+        <div><label>Phone <span style="font-weight:400;color:#9a9686">(optional)</span></label>
+          <input name="spouse_phone" maxlength="32" inputmode="tel">
+          <div class="help">If they pay from their own line, this lets us recognise it.</div></div>
+        <div><label>Date of birth <span style="font-weight:400;color:#9a9686">(optional)</span></label>
+          <input name="spouse_dob" type="date"></div>
+      </div>
+    </div>
+
+    <h2>Your children</h2>
+    <div id="children"></div>
+    <button type="button" class="addbtn" onclick="addDep('children','child')">+ Add a child</button>
+
+    <h2>Your parents</h2>
+    <div class="help" style="margin-bottom:.5rem">Parents who depend on you, if the scheme covers them.</div>
+    <div id="parents"></div>
+    <button type="button" class="addbtn" onclick="addDep('parents','parent')">+ Add a parent</button>
+
+    <h2>Anything else</h2>
+    <label for="notes">Notes <span style="font-weight:400;color:#9a9686">(optional)</span></label>
+    <textarea id="notes" name="notes" rows="3" maxlength="2000">{{ form.notes|default:'' }}</textarea>
+
+    <button class="btn" type="submit">Send my application</button>
+  </form>
+  <div class="foot">Your details are used only to process this application.</div>
+</div></div>
+
+<script>
+function addDep(containerId, prefix){
+  var c = document.getElementById(containerId);
+  if (c.querySelectorAll('.dep').length >= 8) return;
+  var d = document.createElement('div');
+  d.className = 'dep';
+  d.innerHTML =
+    '<label>Name</label><input name="' + prefix + '_name" maxlength="120">' +
+    '<div class="row" style="margin-top:.4rem">' +
+      '<div><label>Phone <span style="font-weight:400;color:#9a9686">(optional)</span></label>' +
+        '<input name="' + prefix + '_phone" maxlength="32" inputmode="tel"></div>' +
+      '<div><label>Date of birth <span style="font-weight:400;color:#9a9686">(optional)</span></label>' +
+        '<input name="' + prefix + '_dob" type="date"></div>' +
+    '</div>';
+  c.appendChild(d);
+}
+</script>
+</body></html>

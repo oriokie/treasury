@@ -526,9 +526,54 @@ class TransferListView(ReadAccessMixin, ListView):
     paginate_by = 50
 
     def get_queryset(self):
+        from django.db.models import Q
+        from core.utils import default_to_current_month
         from .models import FundTransfer
-        return FundTransfer.objects.select_related(
-            "source", "destination", "recorded_by").all()
+
+        qs = FundTransfer.objects.select_related(
+            "source", "destination", "recorded_by").order_by("-date", "-id")
+
+        # This page had no filters at all, and no date bound — it loaded every
+        # transfer the church had ever made, on every visit, with no way to
+        # narrow it. Same treatment as the ledger and expense lists: default to
+        # the current month on a bare visit, and honour anything explicitly
+        # asked for (including a deliberate "everything").
+        start, end = default_to_current_month(self.request, from_param="start",
+                                              to_param="end")
+        if start:
+            qs = qs.filter(date__gte=start)
+        if end:
+            qs = qs.filter(date__lte=end)
+
+        fund = self.request.GET.get("fund")
+        if fund:
+            # either side of the transfer — a treasurer asking "what moved in or
+            # out of the Building Fund" does not care which direction it was
+            qs = qs.filter(Q(source_id=fund) | Q(destination_id=fund))
+        q = (self.request.GET.get("q") or "").strip()
+        if q:
+            qs = qs.filter(Q(reason__icontains=q)
+                          | Q(source__name__icontains=q)
+                          | Q(destination__name__icontains=q))
+        return qs
+
+    def get_context_data(self, **kwargs):
+        from django.db.models import Sum
+        from core.utils import default_to_current_month
+        from departments.models import Department
+
+        ctx = super().get_context_data(**kwargs)
+        start, end = default_to_current_month(self.request, from_param="start",
+                                              to_param="end")
+        filters = self.request.GET.copy()
+        filters["start"] = start.isoformat() if start else ""
+        filters["end"] = end.isoformat() if end else ""
+        ctx["filters"] = filters
+        ctx["date_default_applied"] = not self.request.GET
+        ctx["funds"] = Department.objects.filter(active=True).order_by("name")
+        ctx["filtered_total"] = (
+            self.get_queryset().aggregate(t=Sum("amount"))["t"] or 0)
+        return ctx
 
 
 class TransferCreate(DataEntryRequiredMixin, CreateView):

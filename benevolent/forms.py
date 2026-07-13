@@ -361,6 +361,13 @@ class ContributionForm(StyledFormMixin, forms.Form):
                                         required=False)
     member = forms.ModelChoiceField(queryset=Member.objects.none(), required=False,
                                     help_text="For a donation from someone not enrolled.")
+    case = forms.ModelChoiceField(
+        queryset=BenevolentCase.objects.none(), required=False,
+        label="Levy for a case",
+        help_text="Set this if the money is a LEVY towards a particular case. Money "
+                  "attached to a case is a levy by definition — it shows on that case's "
+                  "levy roster, and under a pooled policy it is what the benefit is "
+                  "actually made of.")
     date = forms.DateField(initial=dt.date.today,
                            widget=forms.DateInput(attrs={"type": "date"}))
     amount = forms.DecimalField(max_digits=12, decimal_places=2,
@@ -380,6 +387,19 @@ class ContributionForm(StyledFormMixin, forms.Form):
                 SchemeMembership.objects.filter(
                     scheme=scheme, status__in=SchemeMembership.LIVE_STATUSES)
                 .select_related("member").order_by("member__name"))
+            # Only cases that are definitively NOT collecting are excluded. A
+            # draft or unassessed case is still collecting — a church starts the
+            # harambee the moment a death is known, long before the paperwork
+            # catches up, and refusing to let that money be attributed would be
+            # the system telling a treasurer their own practice is invalid. A
+            # closed, rejected or cancelled case, by contrast, is genuinely
+            # finished, and offering it would only invite a mis-posting.
+            self.fields["case"].queryset = (
+                BenevolentCase.objects.filter(scheme=scheme)
+                .exclude(status__in=[BenevolentCase.Status.CLOSED,
+                                     BenevolentCase.Status.REJECTED,
+                                     BenevolentCase.Status.CANCELLED])
+                .select_related("membership__member").order_by("-event_date"))
         self.fields["member"].queryset = Member.objects.filter(active=True).order_by("name")
         self._style()
 
@@ -388,6 +408,15 @@ class ContributionForm(StyledFormMixin, forms.Form):
         if not cleaned.get("membership") and not cleaned.get("member"):
             raise forms.ValidationError(
                 "Say who contributed — either an enrolled membership or a member.")
+        # A levy is a member standing with a bereaved family. Somebody who is not
+        # enrolled can donate to a case, but they cannot be LEVIED for one, and
+        # recording it as if they had been would put a non-member on the levy
+        # roster of a scheme they do not belong to.
+        if cleaned.get("case") and not cleaned.get("membership"):
+            self.add_error(
+                "case",
+                "A levy is paid by an enrolled member. Choose the membership, or leave "
+                "the case blank to record this as an ordinary donation.")
         return cleaned
 
 
@@ -687,6 +716,30 @@ class RegistrationForm(StyledFormMixin, forms.Form):
             self.add_error("registration_type",
                            "A spouse is being registered, so this is a household "
                            "registration.")
+
+        # A person already covered as somebody else's spouse or dependant is
+        # not a new principal member — they are the same household, reached
+        # from the other side. Registering them again would give one person
+        # two memberships in one scheme: counted twice on the roll, levied
+        # twice, and able to claim twice. `register()` already refuses a
+        # duplicate PRINCIPAL membership; this closes the household side of
+        # the same hole, and says which household, so the registrar can go and
+        # look rather than being told "no" with nowhere to go.
+        member = cleaned.get("member")
+        if member is not None and self.scheme is not None:
+            dep = (SchemeDependant.objects
+                   .filter(member=member, active=True,
+                           membership__scheme=self.scheme)
+                   .select_related("membership__member").first())
+            if dep is not None:
+                self.add_error(
+                    "member",
+                    f"{member.name} is already covered under this scheme as "
+                    f"{dep.get_relationship_display().lower()} of "
+                    f"{dep.membership.member.name} ({dep.membership.number}). "
+                    f"Registering them again would give one person two "
+                    f"memberships. Open that household instead, or remove them "
+                    f"from it first if they are genuinely leaving it.")
         return cleaned
 
     def resolve_member(self):

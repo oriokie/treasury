@@ -13,14 +13,34 @@
 
 {% if campaign.description %}<p class="help u-mb">{{ campaign.description }}</p>{% endif %}
 
+<form method="get" class="filter-bar no-print u-mb">
+  <input class="field" type="text" name="q" value="{{ q }}" placeholder="Member name, phone or note…">
+  <select class="field--select" name="status"><option value="">Any status</option>
+    {% for v,l in statuses %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  <button class="btn btn-sm">Filter</button>
+  {% if q or f_status %}<a class="btn btn-ghost btn-sm" href="?">Clear</a>{% endif %}
+  <span class="muted u-xs" style="margin-left:auto">{{ pledges|length }} shown · newest first, so a fresh import is at the top</span>
+</form>
+
 <div class="ws-table"><table class="ledger compact">
-  <thead><tr><th>Member</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th>Progress</th></tr></thead><tbody>
+  <thead><tr><th>Member</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th>Progress</th><th>Added</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead><tbody>
   {% for p in pledges %}
-    <tr><td><a class="link" href="{% url 'pledge_detail' p.id %}">{{ p.member.name }}</a></td>
+    <tr><td><a class="link" href="{% url 'pledge_detail' p.id %}">{{ p.member.name }}</a>
+        {% if p.note %}<div class="muted u-xs">{{ p.note|truncatechars:40 }}</div>{% endif %}</td>
       <td><span class="pill {% if p.status == 'FULFILLED' %}pill-green{% elif p.status == 'ACTIVE' %}pill-blue{% elif p.status == 'LAPSED' %}pill-red{% elif p.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ p.get_status_display }}</span></td>
       <td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td><td class="num mono">{{ p.paid|floatformat:0|intcomma }}</td><td class="num mono {% if p.outstanding %}row-debit{% endif %}">{{ p.outstanding|floatformat:0|intcomma }}</td>
-      <td style="min-width:110px"><div class="pbar"><span style="width:{{ p.pct_paid }}%"></span></div></td></tr>
-  {% empty %}<tr><td colspan="6"><div class="ws-empty"><div class="we-title">No pledges in this campaign yet</div></div></td></tr>{% endfor %}
+      <td style="min-width:110px"><div class="pbar"><span style="width:{{ p.pct_paid }}%"></span></div></td>
+      <td class="muted u-xs">{{ p.created_at|date:"d M y" }}{% if p.recorded_by %}<div>by {{ p.recorded_by }}</div>{% endif %}</td>
+      {% if can_enter_data %}<td class="u-nowrap">
+        <a class="link u-xs" href="{% url 'pledge_edit' p.id %}">Edit</a>
+        {% if not p.paid %}<form method="post" action="{% url 'pledge_delete' p.id %}" class="u-inline"
+              onsubmit="return confirm('Delete this pledge? Only do this for a row imported in error — a real pledge that was withdrawn should be cancelled, not deleted.');">{% csrf_token %}
+          <button class="btn btn-ghost btn-sm link-danger" style="padding:0 .3rem">Delete</button></form>{% endif %}
+      </td>{% endif %}</tr>
+  {% empty %}<tr><td colspan="8"><div class="ws-empty"><div class="we-title">{% if q or f_status %}Nothing matches that filter{% else %}No pledges in this campaign yet{% endif %}</div></div></td></tr>{% endfor %}
   </tbody></table></div>
+<p class="help">A pledge that has already received a payment cannot be deleted — the money is real and is in the cash book.
+  Correct a wrong <em>allocation</em> by editing the pledge; a pledge genuinely withdrawn should be <strong>cancelled</strong>
+  on its own page, which keeps the record rather than erasing it.</p>
 <style>.pbar{height:7px;background:var(--line);border-radius:4px;overflow:hidden}.pbar span{display:block;height:100%;background:var(--forest,#1f5f4f)}</style>
 {% endblock %}

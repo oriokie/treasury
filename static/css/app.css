@@ -884,6 +884,8 @@ a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px va
 .ac-item{padding:.45rem .7rem;cursor:pointer;font-size:.85rem;line-height:1.35}
 .ac-item:hover,.ac-item.ac-active{background:var(--accent-soft,#eef5f2)}
 .ac-item .muted{font-size:.78rem}
+.ac-item.ac-warn{border-left:3px solid var(--amber,#b8860b)}
+.ac-item .ac-note{font-size:.75rem;color:var(--amber,#8a6d1f);margin-top:.15rem}
 
 /* "Latest Sabbath" dashboard snapshot */
 .sabbath-snap{border-left:3px solid var(--brass)}

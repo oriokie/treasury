@@ -256,3 +256,7 @@ class BankEvent(models.Model):
 
     def __str__(self):
         return f"{self.cbs_transaction_id} {self.event_type} {self.amount} [{self.status}]"
+
+# The Bank Statement Register — a separate, read-only layer. See models_register.
+from statements.models_register import (  # noqa: E402,F401
+    RegisterException, StatementLine, StatementRegisterImport)

@@ -51,7 +51,20 @@
   <div class="u-mt-xs">{% for p in other_phones %}<span class="pill pill-grey mono" style="margin:.15rem" title="{{ p.label }}">{{ p.number|phone_for:user }}{% if p.label %} · {{ p.label }}{% endif %}</span>{% endfor %}</div>
 </div></div>
 {% endif %}
-<div class="card"><div class="hd"><strong>Recent giving</strong><span class="muted">last {{ transactions|length }}</span></div>
+<div class="card"><div class="hd u-between"><strong>Giving</strong>
+  <span class="muted u-xs">{{ CURRENCY }} {{ period_given|floatformat:2|intcomma }} in this period · {{ shown_count }} entr{{ shown_count|pluralize:"y,ies" }}</span></div>
+<div class="bd" style="padding-bottom:0">
+<form method="get" class="filter-bar no-print">
+  <input class="field" type="date" name="start" value="{{ f_start }}" title="From">
+  <input class="field" type="date" name="end" value="{{ f_end }}" title="To">
+  <button class="btn btn-sm">Filter</button>
+  {% if not date_default_applied %}<a class="btn btn-ghost btn-sm" href="?">Reset</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="?start=&amp;end=">All time</a>
+</form>
+{% if date_default_applied %}<p class="help u-mt-0">Showing <strong>this year</strong> by default. The lifetime
+  total above never changes with this filter.</p>{% endif %}
+{% if shown_count > 100 %}<p class="help">Showing the most recent 100 of {{ shown_count }} — narrow the dates to see the rest.</p>{% endif %}
+</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Date</th><th>Fund</th><th>Reference</th><th>Channel</th><th class="num">Amount</th></tr></thead>
   <tbody>

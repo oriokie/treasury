@@ -59,12 +59,35 @@ class CampaignDetailView(ReadAccessMixin, TemplateView):
     template_name = "pledges/campaign_detail.html"
 
     def get_context_data(self, **kwargs):
+        from django.db.models import Q
         ctx = super().get_context_data(**kwargs)
         c = get_object_or_404(PledgeCampaign, pk=kwargs["pk"])
         ctx["campaign"] = c
-        pledges = list(c.pledges.exclude(status=Pledge.Status.CANCELLED)
-                       .select_related("member"))
+
+        # This page is where a treasurer lands after importing pledges into a
+        # campaign, so it has to answer "what did that import actually put in
+        # here, and can I fix a row it got wrong?" It used to answer neither:
+        # no search, no ordering that surfaced a fresh import, and no way to
+        # reach the edit/delete screens that already existed. A wrongly
+        # allocated pledge was visible but not correctable from where anyone
+        # would look for it.
+        qs = (c.pledges.exclude(status=Pledge.Status.CANCELLED)
+              .select_related("member", "recorded_by"))
+        q = (self.request.GET.get("q") or "").strip()
+        if q:
+            qs = qs.filter(Q(member__name__icontains=q)
+                          | Q(member__phone__icontains=q)
+                          | Q(note__icontains=q))
+        status = self.request.GET.get("status")
+        if status:
+            qs = qs.filter(status=status)
+        # newest first: a just-imported batch is what someone is here to check
+        pledges = list(qs.order_by("-created_at", "-id"))
+
         ctx["pledges"] = pledges
+        ctx["q"] = q
+        ctx["f_status"] = status or ""
+        ctx["statuses"] = Pledge.Status.choices
         ctx["fulfilled"] = sum(1 for p in pledges if p.status == Pledge.Status.FULFILLED)
         ctx["lapsed"] = sum(1 for p in pledges if p.status == Pledge.Status.LAPSED)
         return ctx
@@ -931,7 +954,8 @@ class PledgeImportView(TreasurerRequiredMixin, View):
         if skipped:
             parts.append(f"{skipped} row(s) skipped")
         messages.success(request, ", ".join(parts) +
-                         ". Review and approve them on the pledge list.")
+                         ". They are DRAFTS — check them below and edit or delete "
+                         "anything allocated to the wrong member before approving.")
         if forced:
             return redirect("pledge_campaign_detail", pk=forced)
         return redirect(f"{reverse('pledge_list')}?status=DRAFT")
@@ -947,11 +971,17 @@ class PledgeDeleteView(TreasurerRequiredMixin, View):
     def post(self, request, pk):
         p = get_object_or_404(Pledge, pk=pk)
         n = p.payments.count()
+        campaign_id = p.campaign_id
         p.delete()
         msg = "Pledge deleted."
         if n:
             msg += f" {n} matched contribution(s) were unlinked but remain in the ledger."
         messages.success(request, msg)
+        # Deleting is nearly always something done while REVIEWING a campaign's
+        # imported pledges — send the treasurer back to the list they were
+        # working through, not to the global pledge list.
+        if campaign_id:
+            return redirect("pledge_campaign_detail", pk=campaign_id)
         return redirect("pledge_list")
 
 

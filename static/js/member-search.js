@@ -1,4 +1,4 @@
-/* Benevolent member/membership search — upgrades a plain <select> rendered
+/* Member/membership search — upgrades a plain <select> rendered
    from a ModelChoiceField into a type-and-search box, WITHOUT changing what
    the form actually submits: the <select> stays in the DOM (just hidden)
    and still carries the field's real `name`, so no server-side change is
@@ -6,14 +6,15 @@
    text box is purely a friendlier way to reach the same option a giant
    dropdown would have offered.
 
-   One shared implementation, reused across every benevolent form that
-   needs this (register, contribution, case) — previously each such widget
-   elsewhere in the app was a separate, copy-pasted inline <script>, which is
-   exactly the kind of duplication this project's own principles argue
-   against.
+   One shared implementation, reused across every form that needs it —
+   benevolent (register, contribution, case) and pledges so far. It was
+   called `benevolent-search.js` while it was only used there; the name is
+   now the honest one, because nothing about it is benevolent-specific and
+   a misleading name is how a second, duplicate copy gets written by someone
+   who did not think to look inside a module they were not working on.
 
    Usage:
-     BenevolentSearch.enhance({
+     MemberSearch.enhance({
        selectId: "id_member",          // the <select>'s id (Django default: id_<field>)
        searchUrl: "/benevolent/search/members/",
        placeholder: "Start typing a member's name…",
@@ -77,7 +78,17 @@
       Object.keys(opts.params || {}).forEach(function (k) {
         url += "&" + encodeURIComponent(k) + "=" + encodeURIComponent(opts.params[k]);
       });
-      return fetch(url).then(function (r) { return r.ok ? r.json() : { results: [] }; });
+      // Unwrap the envelope HERE, so every caller downstream gets a plain array.
+      // This was a real bug: query() resolved to the whole {results: [...]}
+      // object and it was passed straight into renderResults(), which tests
+      // `results.length` — undefined on an object, so the box was hidden and
+      // the function returned, every single time. The widget never displayed a
+      // single suggestion to anybody; the endpoint was fine and the CSS was
+      // fine, and the request was even being made — the answer was just being
+      // thrown away one line before it could be rendered.
+      return fetch(url)
+        .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+        .then(function (d) { return (d && d.results) || []; });
     }
 
     function renderResults(results) {
@@ -85,15 +96,25 @@
       if (!results.length) { box.style.display = "none"; return; }
       results.forEach(function (r) {
         var item = document.createElement("div");
-        item.className = "ac-item";
+        item.className = "ac-item" + (r.warning ? " ac-warn" : "");
         var label = opts.renderLabel ? opts.renderLabel(r) : r.name;
         var meta = opts.renderMeta ? opts.renderMeta(r) : "";
-        item.innerHTML = label + (meta ? ' <span class="muted">· ' + meta + "</span>" : "");
+        var html = escapeHtml(label);
+        if (meta) html += ' <span class="muted">· ' + escapeHtml(meta) + "</span>";
+        // A candidate who is already enrolled here, or is already on record as
+        // somebody else's spouse or dependant, is very often not a new
+        // principal member at all — the registrar should see that BEFORE they
+        // commit, not discover it afterwards.
+        if (r.warning) {
+          html += '<div class="ac-note">⚠ ' + escapeHtml(r.warning) + "</div>";
+        }
+        item.innerHTML = html;
         var pick = function () {
           select.value = r.id;
           input.value = label;
           lastPicked = label;
           box.style.display = "none";
+          if (opts.onPick) opts.onPick(r);
           select.dispatchEvent(new Event("change", { bubbles: true }));
         };
         item.addEventListener("mousedown", function (e) { e.preventDefault(); pick(); });
@@ -101,6 +122,12 @@
         box.appendChild(item);
       });
       box.style.display = "block";
+    }
+
+    function escapeHtml(s) {
+      var d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
     }
 
     input.addEventListener("input", function () {
@@ -138,5 +165,7 @@
     });
   }
 
-  window.BenevolentSearch = { enhance: enhance };
+  window.MemberSearch = { enhance: enhance };
+  // Kept so nothing that already calls the old name breaks.
+  window.BenevolentSearch = window.MemberSearch;
 })(window);

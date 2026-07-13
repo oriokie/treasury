@@ -4,6 +4,22 @@
 <div class="page-head"><div><h1>Inter-fund transfers</h1><div class="sub">Move money between funds — not income or expenditure</div></div>
 {% if can_enter_data %}<a class="btn" href="{% url 'transfer_create' %}">+ New transfer</a>{% endif %}</div>
 <div class="info-panel">A transfer reduces the source fund and increases the destination fund by the same amount, so total church funds are unchanged. Trust funds can't be transferred — that money is restricted for remittance.</div>
+
+{% if date_default_applied %}
+<div class="alert alert-info u-mb no-print">Showing <strong>this month</strong> by default, to keep the page quick to load.
+  <a class="link" href="?start=&amp;end=">See all time instead</a> — or pick a range below.</div>
+{% endif %}
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input class="field" type="date" name="start" value="{{ filters.start }}" title="From">
+  <input class="field" type="date" name="end" value="{{ filters.end }}" title="To">
+  <select class="field--select" name="fund"><option value="">Any fund (either side)</option>
+    {% for f in funds %}<option value="{{ f.id }}" {% if filters.fund == f.id|stringformat:"s" %}selected{% endif %}>{{ f.name }}</option>{% endfor %}</select>
+  <input class="field" type="text" name="q" value="{{ filters.q|default:'' }}" placeholder="Reason or fund name…">
+  <button class="btn btn-sm">Filter</button>
+  <span class="muted u-xs" style="margin-left:auto">{{ page_obj.paginator.count|default:transfers|length }} transfer{{ page_obj.paginator.count|pluralize }} · {{ CURRENCY }} {{ filtered_total|floatformat:2|intcomma }}</span>
+</form>
+
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Date</th><th>From</th><th>To</th><th>Reason</th><th class="num">Amount</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
   <tbody>

@@ -196,6 +196,26 @@ class BenevolentSettings(models.Model):
         help_text="The policy profile a new scheme starts from. This is a DEFAULT, not "
                   "a live rule: it seeds a draft policy, which then has to be published "
                   "before it governs anything.")
+    # ---- Public application form (self-service registration) ---------------
+    public_form_enabled = models.BooleanField(
+        default=False,
+        help_text="Allow people to apply to join a scheme from a public link, with no "
+                  "login. Submissions are held as UNVERIFIED applications for a "
+                  "registration officer to review — an application is not a "
+                  "membership, is not covered, owes nothing and can claim nothing "
+                  "until somebody approves it. Off by default, deliberately: a public "
+                  "form that could create cover would be a public form that could "
+                  "create liabilities.")
+    public_form_scheme = models.ForeignKey(
+        "BenevolentScheme", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Which scheme the public form applies to. Leave blank and applicants "
+                  "choose from the active schemes themselves.")
+    public_form_intro = models.TextField(
+        blank=True,
+        help_text="Shown at the top of the public form — the church's own words about "
+                  "what the scheme is and what joining means.")
+
     require_wizard_for_new_schemes = models.BooleanField(
         default=False,
         help_text="Send anyone creating a scheme through the Constitution Wizard rather "

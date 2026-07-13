@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Application received · {{ SITE_NAME }}</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f4f1e8;margin:0;color:#23271f}
+  .wrap{max-width:520px;margin:0 auto;padding:3rem 1.2rem}
+  .card{background:#fff;border:1px solid #e4ddcb;border-radius:14px;padding:2rem;text-align:center;
+    box-shadow:0 6px 24px rgba(20,33,28,.06)}
+  h1{font-family:Georgia,"Times New Roman",serif;color:#1f5f4f;font-size:1.4rem}
+  p{color:#5c5847;line-height:1.6}
+  .tick{font-size:2.4rem;color:#1f5f4f}
+</style></head><body>
+<div class="wrap"><div class="card">
+  <div class="tick">✓</div>
+  <h1>Thank you, {{ application.full_name|title }}</h1>
+  <p>Your application to join <strong>{{ application.scheme.name }}</strong> has been received.</p>
+  <p>Someone from the church will review it and get in touch on <strong>{{ application.phone }}</strong>.</p>
+  <p style="font-size:.85rem;color:#9a9686">You are not yet covered, and you owe nothing, until your application
+    has been approved.</p>
+</div></div>
+</body></html>

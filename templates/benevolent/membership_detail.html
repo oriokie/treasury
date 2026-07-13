@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize static %}
 {% block title %}{{ membership.number }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ membership.member.name }}</h1>
@@ -355,4 +355,22 @@
   <td class="muted u-xs">{% if e.automated %}<span class="pill pill-brass u-xs">Automatic</span>{% else %}{{ e.actor|default:"—" }}{% endif %}</td>
 </tr>{% empty %}<tr><td colspan="4" class="empty">Nothing recorded yet.</td></tr>{% endfor %}</tbody></table>
 </div></div>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+// The household "church member" field and the transfer "to member" field were
+// both plain <select>s listing the whole church roll — unusable once a roll runs
+// into the hundreds, and the exact same problem the register form already had.
+["id_member", "id_to_member"].forEach(function(id){
+  if (document.getElementById(id)) {
+    MemberSearch.enhance({
+      selectId: id, searchUrl: "{% url 'benevolent_member_search' %}",
+      placeholder: "Start typing a name or phone…",
+      renderLabel: function(r){ return r.name; },
+      renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+    });
+  }
+});
+</script>
 {% endblock %}

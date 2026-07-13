@@ -37,19 +37,40 @@
   record before an event, not after one.</p>
 {% endblock %}
 {% block scripts %}
-<script src="{% static 'js/benevolent-search.js' %}"></script>
+<script src="{% static 'js/member-search.js' %}"></script>
 <script>
 BenevolentSearch.enhance({
   selectId: "id_member", searchUrl: "{% url 'benevolent_member_search' %}",
-  placeholder: "Start typing the principal member's name…",
+  params: {scheme: {{ scheme.id }}},   // lets the endpoint warn about existing enrolments
+  placeholder: "Start typing the principal member's name or phone…",
   renderLabel: function(r){ return r.name; },
   renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+  onPick: function(r){
+    // Picking someone from the roll means their name/phone already live in one
+    // place — don't ask for them again. Clearing member_name/member_phone also
+    // keeps the form's own "one or the other, not both" rule satisfied.
+    var n = document.getElementById("id_member_name");
+    var p = document.getElementById("id_member_phone");
+    if (n) n.value = "";
+    if (p) { p.value = r.phone || ""; p.readOnly = true; p.title = "From " + r.name + "'s member record."; }
+  },
 });
 BenevolentSearch.enhance({
   selectId: "id_spouse", searchUrl: "{% url 'benevolent_member_search' %}",
-  placeholder: "Start typing the spouse's name (if on the church roll)…",
+  placeholder: "Start typing the spouse's name or phone (if on the church roll)…",
   renderLabel: function(r){ return r.name; },
   renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
 });
+// Typing a free-text name again means they are NOT on the roll — release the
+// phone field so it can be filled in for the new record being created.
+(function(){
+  var n = document.getElementById("id_member_name");
+  var p = document.getElementById("id_member_phone");
+  var s = document.getElementById("id_member");
+  if (n) n.addEventListener("input", function(){
+    if (n.value.trim() && p) { p.readOnly = false; p.title = ""; }
+    if (n.value.trim() && s) s.value = "";
+  });
+})();
 </script>
 {% endblock %}

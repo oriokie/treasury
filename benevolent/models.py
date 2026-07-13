@@ -1669,3 +1669,7 @@ from benevolent.models_committee import CommitteeMember  # noqa: E402,F401
 from benevolent.models_notify import (  # noqa: E402,F401
     BenevolentNotification, NotificationEvent, NotificationTemplate)
 
+
+# The public application form (Round 4). See models_public.
+from benevolent.models_public import (  # noqa: E402,F401
+    ApplicationDependant, BenevolentApplication)

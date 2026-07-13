@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}{% if obj %}Edit{% else %}New{% endif %} pledge · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>{% if obj %}Edit pledge{% else %}New pledge{% endif %}</h1>
@@ -17,4 +18,15 @@
 </div></form>
 <p class="help" style="margin-top:1rem;max-width:640px">An assistant's pledge is saved as a draft for a treasurer to approve. A treasurer's pledge is active immediately. Either way, no money moves until contributions are matched.</p>
 <style>.form-row .field,.form-row select,.form-row input,.form-row textarea{width:100%}</style>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+MemberSearch.enhance({
+  selectId: "id_member", searchUrl: "{% url 'member_search' %}",
+  placeholder: "Start typing a member's name or phone…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+});
+</script>
 {% endblock %}

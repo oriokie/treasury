@@ -1,5 +1,133 @@
 # Changelog
 
+## v2.60.0 - Bank Statement Register, and the public benevolent application form
+
+Both are deliberately SEPARATE LAYERS. Neither can affect the ledger.
+
+### The Bank Statement Register
+
+A running record of what the BANK says happened — every line it ever sent, kept
+forever, unjudged. It never posts, allocates, creates a transaction, or touches
+a fund balance. That is the entire point: a register a treasurer could quietly
+"correct" would be worthless as a check on their own books.
+
+Not a reuse of the existing statement importer, because that one's job is the
+opposite — it turns bank rows INTO transactions. The register asserts nothing,
+and is therefore safe to re-import over any period, as often as you like.
+Importing from January every month is sensible here; every line is deduplicated
+on the bank's own reference.
+
+**Exceptions** answer the two questions directly: money on the statement that is
+not in our books, and bank movements in our books the bank never mentioned.
+Matching is by BANK REFERENCE only (M-Pesa receipt / core banking ref).
+Amount-and-date matching is deliberately not attempted — two members giving the
+same amount on the same day is ordinary, and guessing there would manufacture
+exactly the false reconciliation this exists to prevent.
+
+Two corrections made during the build, both worth stating:
+
+- **The check is bounded to the period the register covers.** The first version
+  compared the whole ledger against whatever was imported — so with only July
+  loaded, all of June was flagged as "missing from the bank." But the register
+  has no June data; that is an absence of evidence, not a discrepancy, and
+  reporting it as one buried the real exceptions under hundreds of false ones.
+- **A bank transaction with no bank reference is "unverifiable", not an
+  exception.** We cannot say the bank disagrees — only that we have no way to
+  ask. Calling that a discrepancy would be an accusation the evidence does not
+  support.
+
+### A real bug this uncovered in the SHARED parser
+
+`dayfirst=True` was scrambling ISO dates — **1 July was being read as 7
+January**. Any bank exporting ISO dates was having its statement silently
+misdated by up to eleven months, in the LEDGER importer as much as anywhere.
+Fixed; the full statements and giving suites pass unchanged.
+
+### The public benevolent application form
+
+Off by default. An application is NOT a membership: nobody is covered, owes
+dues, or can claim until a registration officer approves them — at which point
+they are registered through exactly the same service as anyone enrolled at the
+desk.
+
+Write-only by design: it never reads or exposes member data (no autocomplete, no
+lookup, no roll — a public form that could search the membership would leak it).
+Honeypot, minimum fill time, per-session throttle. The applicant says whether
+they are a registered member, a Sabbath School member, or a visitor — recorded
+as their CLAIM, unverified; checking it is what the review is for.
+
+Dependants are captured in the three sections a family is actually described in
+— **spouse, children, parents** — rather than one undifferentiated list that
+makes an applicant guess where their mother goes. A dependant's own phone is
+asked for, because a spouse or grown child very often pays from their own line.
+
+**Tests:** 36 new. Full regression clean — 2,436 tests.
+
+## v2.59.0 - Reported issues, round 3
+
+### The member-search widget had never worked
+
+Not "worked badly" — it had **never displayed a single suggestion to anybody,
+in any form, since the day it shipped**. `query()` resolved to the endpoint's
+JSON envelope `{results: [...]}` and handed that whole object to
+`renderResults()`, which tested `results.length` — `undefined` on an object —
+and hid the box and returned. The endpoint was fine, the CSS was fine, the
+request was even being made and answered. The answer was thrown away one line
+before it could be rendered.
+
+Nothing in the Django suite could see it — the failure lived entirely in the
+browser. It is now guarded by a jsdom test, which was first run against the
+pre-fix code to confirm it actually catches the bug. The file is also renamed
+`benevolent-search.js` → `member-search.js`: it was never
+benevolent-specific, and it now serves the pledge form and membership page too.
+
+### Alternate phone numbers were invisible to every search screen
+
+`MemberPhone` has always recorded a member's other numbers, and the
+bank-statement matcher has always searched them. The search *screens* did not —
+so a treasurer typing the very number in the narration in front of them was
+told the member did not exist, and pushed into creating a duplicate.
+
+### A levy recorded on the general form belonged to no case
+
+`record_contribution()` correctly infers `kind = LEVY` from the presence of a
+case — but the general contribution form could not name a case at all. So a
+levy entered there was filed as VOLUNTARY, attached to nothing: the member
+stayed "unpaid" on the case's levy roster, and under a POOLED policy — where
+the benefit IS whatever the levy collected — the payout came out short. The
+form now offers the case. Draft cases are deliberately included: a church
+starts the harambee the moment a death is known.
+
+### Founding balances could silently rewrite the entire history
+
+`opening_balance` is the FOUNDING figure, not a yearly one — every later
+year's opening is derived from it, and year-end close never writes it. But the
+budget page let a treasurer edit it while calling it "opening balance for
+<year>". Changing it in July did not set July's opening; it rewrote every fund
+balance in every year, backwards. The page now shows each fund's DERIVED
+opening for the year, labels the founding figure honestly, and freezes it once
+any year has been closed — enforced server-side, not just hidden.
+
+### Also
+
+Registering someone already covered as another member's spouse is now refused
+(one person, two memberships in one scheme = counted twice, levied twice, able
+to claim twice). Pledge form gets the typeahead. Campaign detail gets search,
+filters, newest-first ordering and inline edit/delete so a wrongly-allocated
+import row is fixable where you'd look for it. Transfers page gets filters and
+a current-month default. Member page gets a date filter — defaulting to the
+current YEAR, not month, since unlike the unbounded list pages it is already
+scoped to one person; its lifetime total never moves with the filter.
+
+**Tests:** 23 new Django + 16 new jsdom. Full regression clean.
+
+**Not done, and honestly logged** (`docs/recommendations.md` #75a/#75b): the
+running bank statement with discrepancy checking, and the public benevolent
+registration form. Both are substantial features that deserve a proper design
+pass — the first around how a "discrepancy" is defined when the ledger and the
+bank disagree, the second around the dependants question Edwin himself flagged
+mid-sentence — rather than a rushed version tacked onto a bug-fix round.
+
 ## v2.58.0 - Full-module audit of the Benevolent module
 
 A systematic sweep of every model field, view, permission, report, export

@@ -1,0 +1,68 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Bank statement register · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Bank statement register</h1>
+  <div class="sub">Every line the bank has sent, exactly as the bank sent it — with a running balance.</div></div>
+<div class="btn-row no-print">
+  {% if can_enter_data %}<a class="btn btn-sm" href="{% url 'bank_register_import' %}">⬆ Import statement</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'bank_register_exceptions' %}{% if account %}?account={{ account.id }}{% endif %}">Exceptions{% if summary.open_exceptions %} <span class="pill pill-red u-xs">{{ summary.open_exceptions }}</span>{% endif %}</a>
+</div></div>
+
+{% if no_account %}
+<div class="alert alert-warn">No bank account is set up yet. Add one in settings, then import a statement.</div>
+{% else %}
+
+<div class="info-panel">This register is a <strong>separate layer</strong>. Nothing here posts to the ledger, allocates
+  money or touches a fund balance — it is the <em>bank's</em> record, kept independently so the two can be checked
+  against each other. Importing here is always safe to repeat: a line already held is skipped.</div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Lines held</div><div class="val mono">{{ summary.lines|intcomma }}</div>
+    <div class="foot">{% if summary.first_date %}{{ summary.first_date|date:"d M Y" }} – {{ summary.last_date|date:"d M Y" }}{% endif %}</div></div>
+  <div class="stat accent"><div class="lbl">Credits</div><div class="val mono">{{ summary.credits|floatformat:2|intcomma }}</div></div>
+  <div class="stat brass"><div class="lbl">Debits</div><div class="val mono">{{ summary.debits|floatformat:2|intcomma }}</div></div>
+  <div class="stat {% if summary.open_exceptions %}warn{% endif %}"><div class="lbl">Open exceptions</div>
+    <div class="val mono">{{ summary.open_exceptions }}</div>
+    <div class="foot"><a class="link" href="{% url 'bank_register_exceptions' %}?account={{ account.id }}">Review</a></div></div>
+</div>
+
+{% if summary.drift %}
+<div class="alert alert-warn u-mb"><strong>The register is missing lines.</strong>
+  On {{ summary.drift|length }} line{{ summary.drift|length|pluralize }}, our sum of the register does not reach the
+  balance the bank itself printed — which means the bank included entries this register has never seen. Import the
+  missing statement period.</div>
+{% endif %}
+
+{% if date_default_applied %}
+<div class="alert alert-info u-mb no-print">Showing <strong>this month</strong>. <a class="link" href="?account={{ account.id }}&amp;start=&amp;end=">See everything</a>.</div>
+{% endif %}
+
+<form method="get" class="filter-bar no-print u-mb">
+  {% if accounts|length > 1 %}<select class="field--select" name="account">
+    {% for a in accounts %}<option value="{{ a.id }}" {% if a.id == account.id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}</select>{% else %}
+    <input type="hidden" name="account" value="{{ account.id }}">{% endif %}
+  <input class="field" type="date" name="start" value="{{ start|date:'Y-m-d' }}" title="From">
+  <input class="field" type="date" name="end" value="{{ end|date:'Y-m-d' }}" title="To">
+  <input class="field" type="text" name="q" value="{{ q }}" placeholder="Narration, payer or reference…">
+  <button class="btn btn-sm">Filter</button>
+  <span class="muted u-xs" style="margin-left:auto">Opening {{ CURRENCY }} {{ opening|floatformat:2|intcomma }} · Closing {{ CURRENCY }} {{ closing|floatformat:2|intcomma }}</span>
+</form>
+
+<div class="table-wrap"><table class="ledger compact">
+<thead><tr><th>Date</th><th>Narration</th><th>Payer</th><th>Reference</th>
+  <th class="num">In</th><th class="num">Out</th><th class="num">Running balance</th><th class="num">Bank's own</th></tr></thead>
+<tbody>{% for r in rows %}<tr {% if r.drift %}class="row-mismatch"{% endif %}>
+  <td>{{ r.line.date|date:"d M y" }}</td>
+  <td class="u-xs">{{ r.line.raw_narration|default:"—"|truncatechars:52 }}</td>
+  <td class="u-xs">{{ r.line.payer_name|default:"—"|truncatechars:22 }}
+    {% if r.line.payer_phone %}<div class="muted mono u-xs">{{ r.line.payer_phone }}</div>{% endif %}</td>
+  <td class="mono u-xs">{{ r.line.dedup_key|truncatechars:18 }}</td>
+  <td class="num mono">{% if r.line.credit %}{{ r.line.credit|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num mono">{% if r.line.debit %}{{ r.line.debit|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num mono"><strong>{{ r.running|floatformat:2|intcomma }}</strong></td>
+  <td class="num mono {% if r.drift %}row-debit{% endif %}">{% if r.line.bank_balance is not None %}{{ r.line.bank_balance|floatformat:2|intcomma }}{% if r.drift %}<div class="u-xs">off by {{ r.drift|floatformat:2 }}</div>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="8" class="empty">No statement lines in this window.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+{% endif %}
+{% endblock %}
