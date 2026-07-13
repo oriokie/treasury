@@ -33,7 +33,9 @@ class BulkConfirmationUITests(TestCase):
         t = Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("1234.50"),
             direction="CREDIT", confirmed=True, channel="BANK", allocation_status="AUTO",
             department=self.d, reference="bulkconfirmtest")
-        b = self.c.get("/transactions/").content.decode()
+        # explicit range: this test is about the bulk-confirm checkbox's data
+        # attributes, not the list view's bare-visit current-month default
+        b = self.c.get("/transactions/?date_from=2026-06-01&date_to=2026-06-30").content.decode()
         self.assertIn(f'value="{t.id}"', b)
         self.assertIn('data-amount="1234.50"', b)
         self.assertIn('data-direction="CREDIT"', b)

@@ -73,6 +73,48 @@ def create_case(scheme, *, event_type, event_date, membership=None, dependant=No
     return case
 
 
+def update_case(case, *, event_type=None, event_date=None, membership=None,
+                dependant=None, beneficiary_name=None, reported_date=None,
+                description=None, claimed_amount=None, user=None):
+    """Correct a case's own details — a typo, a wrong claimed amount, the
+    wrong event date — while it is still a DRAFT.
+
+    Restricted to DRAFT on purpose: the moment a case is SUBMITTED it is
+    officially in the queue someone else is looking at, and once ASSESSED its
+    policy_snapshot/eligibility_snapshot are the frozen decision basis this
+    whole module treats as sacrosanct — editing the case's own facts after
+    that point would silently invalidate a decision that still claims to
+    have been made on them. A genuine correction after submission goes
+    through cancel + re-raise, which leaves an honest trail of both, not a
+    silent rewrite of a case someone may already be reviewing.
+
+    Always applies and saves every field passed, rather than trying to
+    detect which ones actually changed: a caller building this from a
+    ModelForm bound with `instance=case` will find `case` already mutated
+    in-place by the form's own validation before this function ever runs
+    (that's what Django's ModelForm._post_clean does) — comparing "old" vs
+    "new" against an object that IS the new value the whole time silently
+    skips the save. A real bug, found by a test that checked the database
+    afterwards rather than trusting a 200/302 status code alone.
+    """
+    _require_status(case, [BenevolentCase.Status.DRAFT], "edited")
+    fields = []
+    for attr, value in (("event_type", event_type), ("event_date", event_date),
+                        ("membership", membership), ("dependant", dependant),
+                        ("beneficiary_name", beneficiary_name),
+                        ("reported_date", reported_date), ("description", description),
+                        ("claimed_amount", claimed_amount)):
+        if value is not None:
+            setattr(case, attr, value)
+            fields.append(attr)
+    if not fields:
+        return case
+    case.full_clean(exclude=["number", "policy_snapshot", "eligibility_snapshot"])
+    case.save(update_fields=fields)
+    log(case, CaseEvent.Kind.NOTE, f"Details corrected: {', '.join(fields)}.", user=user)
+    return case
+
+
 # ---------------------------------------------------------------------------
 # Guards
 # ---------------------------------------------------------------------------
@@ -581,6 +623,32 @@ def record_payout(case, *, amount, date=None, user, payee_name="", method=None,
             f"Payment voucher of {amount} raised on benevolent case {case.number} "
             f"— awaiting approval.")
     return payout
+
+
+@db_tx.atomic
+def fund_from_balance(case, *, user, reason=""):
+    """Record, explicitly and on the case's own audit trail, that the
+    committee is paying this case from the fund's existing balance rather
+    than raising a per-case levy.
+
+    Phase 11. Nothing here changes what was already possible: record_payout()
+    has never required a levy to exist first — a case can always be approved
+    and paid straight from the fund balance, and `ContributionMode.NONE`
+    ("funded from elsewhere") has always been a first-class policy choice.
+    What this adds is a STATED, LOGGED decision rather than an unstated one
+    achieved by simply never visiting the levy screen — the same distinction
+    Phase 6 drew between a policy-driven exemption and one nobody ever
+    decided. A committee reading this case's history later should be able to
+    see that skipping the levy was a considered choice, made with the fund's
+    balance actually in front of them, not an oversight.
+    """
+    balance = case.scheme.balance
+    log(case, CaseEvent.Kind.FUNDED_FROM_BALANCE,
+        f"To be funded from {case.scheme.fund.name}'s existing balance "
+        f"({balance:,.2f}) rather than a per-case levy."
+        + (f" {reason}" if reason else ""),
+        user=user, reason=reason)
+    return case
 
 
 @db_tx.atomic

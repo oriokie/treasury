@@ -1,9 +1,9 @@
-{% extends 'base.html' %}{% load humanize %}
-{% block title %}New case · {{ SITE_NAME }}{% endblock %}
+{% extends 'base.html' %}{% load humanize static %}
+{% block title %}{% if case %}Edit {{ case.number }}{% else %}New case{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ scheme.name }} · new case</h1>
+<div class="page-head"><div><h1>{{ scheme.name }} · {% if case %}edit {{ case.number }}{% else %}new case{% endif %}</h1>
   <div class="sub">The policy in force on the <em>event</em> date decides this claim — not the policy in force today.</div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% if case %}{% url 'benevolent_case_detail' case.id %}{% else %}{% url 'benevolent_scheme_detail' scheme.id %}{% endif %}">← {% if case %}{{ case.number }}{% else %}{{ scheme.name }}{% endif %}</a></div></div>
 
 {% if policy %}
 <div class="alert alert-info u-mb">Policy <strong>v{{ policy.version }}</strong> is currently in force
@@ -24,10 +24,22 @@
       {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
     </div>{% endfor %}
   </div>
-  <div class="btn-row u-mt"><button class="btn">Save as a draft</button>
-    <a class="btn btn-ghost" href="{% url 'benevolent_scheme_detail' scheme.id %}">Cancel</a></div>
+  <div class="btn-row u-mt"><button class="btn">{% if case %}Save changes{% else %}Save as a draft{% endif %}</button>
+    <a class="btn btn-ghost" href="{% if case %}{% url 'benevolent_case_detail' case.id %}{% else %}{% url 'benevolent_scheme_detail' scheme.id %}{% endif %}">Cancel</a></div>
 </form>
 </div></div>
 <p class="help" style="max-width:660px">Saving drafts the case. Submitting it, then assessing it, runs every rule the
   policy carries and freezes the result onto the case as its permanent decision basis.</p>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/benevolent-search.js' %}"></script>
+<script>
+BenevolentSearch.enhance({
+  selectId: "id_membership", searchUrl: "{% url 'benevolent_membership_search' %}",
+  params: {scheme: {{ scheme.id }}},
+  placeholder: "Start typing the member's name this case is for…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.number, r.phone].filter(Boolean).join(" · "); },
+});
+</script>
 {% endblock %}

@@ -9,7 +9,11 @@
 <form method="get" class="filter-bar no-print u-mb">
   <select class="field--select" name="scheme"><option value="">All schemes</option>
     {% for s in schemes %}<option value="{{ s.id }}" {% if f_scheme == s.id|stringformat:"s" %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
-  <input class="field" type="date" name="start" value="{{ start|date:'Y-m-d' }}">
+  <select class="field--select" name="year" title="Pick a year, or use the date range for anything more specific">
+    <option value="">— Year —</option>
+    {% for y in years %}<option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}</option>{% endfor %}
+  </select>
+  <input class="field" type="date" name="start" value="{{ start|date:'Y-m-d' }}" title="Or an exact date range instead of a year">
   <input class="field" type="date" name="end" value="{{ end|date:'Y-m-d' }}">
   <button class="btn btn-sm">Filter</button>
 </form>

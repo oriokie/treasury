@@ -162,6 +162,33 @@ def case_statistics(start=None, end=None, scheme=None):
     }
 
 
+def scheme_standing_snapshot(scheme):
+    """How the scheme's active membership currently stands, grouped by
+    `standing` — the same field the standing engine already computes and
+    caches on every SchemeMembership, just grouped here rather than
+    recalculated. For a scheme funded by per-case levies, the levy roster
+    (`raise_case_levy`) already gives a sharper, case-specific answer to
+    "who has and hasn't paid"; this is the equivalent view for a scheme
+    funded by ongoing dues, where "paid towards THIS case" isn't a
+    meaningful question but "in good standing right now" is.
+    """
+    from benevolent.models import SchemeMembership, Standing
+    qs = (SchemeMembership.objects
+          .filter(scheme=scheme, status=SchemeMembership.Status.ACTIVE)
+          .select_related("member"))
+    groups = {}
+    for m in qs:
+        groups.setdefault(m.standing, []).append(m)
+    good = groups.get(Standing.GOOD, [])
+    arrears = groups.get(Standing.ARREARS, [])
+    grace = groups.get(Standing.GRACE, [])
+    exempt = groups.get(Standing.EXEMPT, [])
+    inactive = groups.get(Standing.INACTIVE, [])
+    return {"total": qs.count(), "good": good, "arrears": arrears, "grace": grace,
+            "exempt": exempt, "inactive": inactive,
+            "not_in_good_standing": arrears + grace + inactive}
+
+
 def member_statement(membership, start=None, end=None):
     """One member's dealings with a scheme: what they put in, what they took out."""
     from benevolent.services.contributions import (arrears_for, contributions_qs,

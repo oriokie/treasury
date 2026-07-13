@@ -7,7 +7,9 @@
 <div class="btn-row no-print">
   {% if can.manage_benevolent and scheme.is_open %}<a class="btn btn-sm" href="{% url 'benevolent_case_new' scheme.id %}">+ New case</a>{% endif %}
   {% if can.manage_benevolent and scheme.accepts_contributions %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_contribute' scheme.id %}">Record contribution</a>
-  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_enrol' scheme.id %}">Enrol member</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_register' scheme.id %}">Enrol member</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import' scheme.id %}">Import roster</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import_contributions' scheme.id %}">Import contribution history</a>{% endif %}
   {% if can.manage_benevolent_schemes %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_edit' scheme.id %}">Edit</a>{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_list' %}">← Schemes</a></div></div>
 

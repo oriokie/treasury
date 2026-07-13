@@ -57,12 +57,12 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             qs = qs.filter(Q(description__icontains=term)
                            | Q(claimant__icontains=term)
                            | Q(voucher_no__icontains=term))
-        for key, lookup in (("start", "date__gte"), ("end", "date__lte")):
-            if g.get(key):
-                try:
-                    qs = qs.filter(**{lookup: dt.date.fromisoformat(g[key])})
-                except ValueError:
-                    pass
+        from core.utils import default_to_current_month
+        start, end = default_to_current_month(self.request, from_param="start", to_param="end")
+        if start:
+            qs = qs.filter(date__gte=start)
+        if end:
+            qs = qs.filter(date__lte=end)
         return qs
 
     def get(self, request, *args, **kwargs):
@@ -143,7 +143,17 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         ctx["exp_types"] = Expense.ExpenditureType.choices
         ctx["categories"] = Expense.Category.choices
         ctx["departments"] = Department.objects.filter(active=True)
-        ctx["filters"] = self.request.GET
+        # As with the ledger (giving.TransactionListView): show what's
+        # ACTUALLY being filtered, including the current-month default
+        # applied on a bare visit, rather than leave the date inputs blank
+        # while secretly narrowing the results.
+        from core.utils import default_to_current_month
+        filters = self.request.GET.copy()
+        start, end = default_to_current_month(self.request, from_param="start", to_param="end")
+        filters["start"] = start.isoformat() if start else ""
+        filters["end"] = end.isoformat() if end else ""
+        ctx["filters"] = filters
+        ctx["date_default_applied"] = not self.request.GET
         ctx["filtered_total"] = self.get_queryset().aggregate(t=Sum("amount"))["t"] or 0
         # status money-bar: totals within the other active filters, ignoring the
         # status filter itself, so the chips always show the whole picture

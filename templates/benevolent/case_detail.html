@@ -4,7 +4,9 @@
 <div class="page-head"><div><h1>{{ case.number }}</h1>
   <div class="sub">{{ case.scheme.name }} · {{ case.event_type.name }} ·
     <span class="pill {% if case.status == 'PAID' or case.status == 'CLOSED' %}pill-green{% elif case.status == 'REJECTED' or case.status == 'CANCELLED' %}pill-red{% elif case.status == 'APPROVED' or case.status == 'PARTLY_PAID' %}pill-blue{% else %}pill-amber{% endif %} u-xs">{{ case.get_status_display }}</span></div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">← Cases</a></div></div>
+<div class="btn-row no-print">
+  {% if can.benevolent_manage_cases or can.manage_benevolent %}{% if case.status == 'DRAFT' %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_edit' case.id %}">Edit</a>{% endif %}{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">← Cases</a></div></div>
 
 <div class="grid cols-4 u-mb">
   <div class="stat"><div class="lbl">Claimed</div><div class="val mono">{% if case.claimed_amount %}{{ case.claimed_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div></div>
@@ -161,6 +163,42 @@
   {% if case.policy.benefit_mode == 'POOLED' %}
   <p class="help">This scheme pays out what the levy collects, so the benefit will rise as more members pay.
     Re-assess the case once collection is complete.</p>{% endif %}
+  {% if can.benevolent_manage_cases and case.status != 'PAID' and case.status != 'CLOSED' %}
+  <details class="u-mt no-print"><summary class="link">Fund this case from the balance instead, without a levy</summary>
+    <div class="u-mt">
+      <p class="help u-mt-0">{{ case.scheme.fund.name }}'s balance right now is
+        <strong>{{ CURRENCY }} {{ fund_balance|floatformat:2|intcomma }}</strong>. A levy is a collection AID, never a
+        requirement — a case can already be approved and paid straight from this balance regardless. This just
+        records that choice, dated and reasoned, on the case's own history, instead of it being an unstated
+        decision reached by simply never opening the levy round above.</p>
+      <form method="post" action="{% url 'benevolent_case_fund_from_balance' case.id %}">{% csrf_token %}
+        <div class="form-row"><label for="fund_balance_reason">Why (optional, but recommended)</label>
+          <input class="field" id="fund_balance_reason" name="reason" maxlength="200"
+                 placeholder="e.g. Committee decided the balance covers it comfortably this quarter."></div>
+        <div class="btn-row u-mt"><button class="btn btn-ghost btn-sm">Record this decision</button></div>
+      </form>
+    </div>
+  </details>
+  {% endif %}
+</div></div>
+{% endif %}
+
+{% if standing_snapshot %}
+<div class="card u-mb"><div class="hd u-between"><span>{{ case.scheme.name }}'s standing right now</span>
+  <a class="btn btn-ghost btn-sm" href="{% url 'engine_report' 'benevolent_arrears_report' %}?scheme={{ case.scheme.code }}">Full arrears report</a></div><div class="bd">
+  <p class="u-mt-0">This scheme is funded by ongoing dues, not a levy raised per case — so there is no
+    "who paid towards this case" roster the way a levy-funded scheme has. Here instead is who currently
+    stands where, across the whole scheme:</p>
+  <div class="grid cols-4 u-mt">
+    <div class="stat"><div class="lbl">Good standing</div><div class="val mono">{{ standing_snapshot.good|length }}</div></div>
+    <div class="stat brass"><div class="lbl">In arrears</div><div class="val mono">{{ standing_snapshot.arrears|length }}</div></div>
+    <div class="stat"><div class="lbl">Exempt</div><div class="val mono">{{ standing_snapshot.exempt|length }}</div></div>
+    <div class="stat"><div class="lbl">Inactive</div><div class="val mono">{{ standing_snapshot.inactive|length }}</div></div>
+  </div>
+  {% if standing_snapshot.not_in_good_standing %}
+  <p class="u-mt"><strong>Not in good standing:</strong>
+    {% for m in standing_snapshot.not_in_good_standing %}<a class="link" href="{% url 'benevolent_membership_detail' m.id %}">{{ m.member.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
 </div></div>
 {% endif %}
 

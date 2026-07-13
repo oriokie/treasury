@@ -777,7 +777,8 @@ a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px va
 .filter-bar .fb-field{display:flex;flex-direction:column;gap:.25rem}
 .filter-bar .fb-field label{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
   color:var(--muted);font-weight:700}
-.filter-bar .field,.filter-bar input,.filter-bar select{margin:0}
+.filter-bar .field,.filter-bar input:not([type=checkbox]),.filter-bar select{margin:0;width:auto;min-width:150px}
+.filter-bar input[type=checkbox]{margin:0 .3rem 0 0}
 .filter-bar .fb-spacer{flex:1 1 auto}
 
 /* KPI grid: responsive auto-fit metric tiles (replaces fixed cols on the dash). */
@@ -867,7 +868,22 @@ a.ws-metric.is-active{border-color:var(--forest);box-shadow:inset 0 0 0 1.5px va
 }
 .print-sign{display:none}
 .u-col-span{grid-column:1/-1}
-.ac-item.ac-active{background:var(--accent-soft)}
+/* Shared name/fund/member "type-ahead" popup used across the app (cash entry,
+   envelope ledger, cashbook, and now benevolent forms). Previously only the
+   .ac-active highlight state lived here — .ac-box/.ac-item themselves were
+   copy-pasted into three separate templates with drifting details (one used
+   position:fixed, the others position:absolute; font sizes differed), and a
+   plain, unstyled <div class="ac-box"> rendered inline in the page instead of
+   floating over it wherever a template's local copy was missing or stale.
+   One definition now; templates using position:fixed for a table-embedded
+   input (e.g. the envelope ledger) still work, since they only need position
+   itself overridden, not the rest of this rule. */
+.ac-box{display:none;position:absolute;z-index:60;left:0;right:0;top:100%;
+  background:var(--paper,#fff);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 8px 24px rgba(20,33,28,.14);max-height:240px;overflow:auto;margin-top:.2rem}
+.ac-item{padding:.45rem .7rem;cursor:pointer;font-size:.85rem;line-height:1.35}
+.ac-item:hover,.ac-item.ac-active{background:var(--accent-soft,#eef5f2)}
+.ac-item .muted{font-size:.78rem}
 
 /* "Latest Sabbath" dashboard snapshot */
 .sabbath-snap{border-left:3px solid var(--brass)}

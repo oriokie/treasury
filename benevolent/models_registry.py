@@ -203,6 +203,7 @@ class MembershipEvent(models.Model):
         EXEMPT_ENDED = "EXEMPT_END", "Exemption ended"
         DEPENDANT_ADDED = "DEP_ADD", "Dependant registered"
         DEPENDANT_REMOVED = "DEP_REM", "Dependant removed"
+        DEPENDANT_DECEASED = "DEP_DEC", "Dependant recorded as deceased"
         STANDING = "STANDING", "Standing changed"
         NOTE = "NOTE", "Note"
 

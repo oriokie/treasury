@@ -11,6 +11,33 @@
   which a human still reads and publishes. That is why profiles can be edited and copied freely, while a published
   policy version can never be changed.</p>
 
+<div class="card u-mt"><div class="hd">Which pattern fits your church?</div><div class="bd">
+<p class="u-mt-0">Every church welfare scheme this module has been built for so far fits one of three shapes.
+  Renewal and a registration fee are separate, independent choices layered on top of whichever shape you pick — not
+  a fourth shape of their own — so a policy can mix and match them freely once you start from the nearest profile
+  below.</p>
+<table class="ledger compact">
+<thead><tr><th>If your church…</th><th>…start from</th></tr></thead>
+<tbody>
+<tr><td>Collects a regular (usually monthly) contribution from every member, and pays a fixed amount when someone is
+  bereaved</td>
+  <td>{% for p in profiles %}{% if p.name == "Monthly dues, fixed benefit" %}<a class="link" href="{% url 'benevolent_profile_detail' p.id %}">Monthly dues, fixed benefit</a>{% endif %}{% endfor %}</td></tr>
+<tr><td>Only asks members to contribute <strong>when a case actually happens</strong> — a per-case amount (e.g.
+  KES 500 each), a fixed lump sum paid to the bereaved, and <strong>whatever the levy collects beyond that stays in
+  the fund</strong> ("the kitty") for next time</td>
+  <td>{% for p in profiles %}{% if p.name == "Per-case levy (harambee)" %}<a class="link" href="{% url 'benevolent_profile_detail' p.id %}">Per-case levy (harambee)</a>{% endif %}{% endfor %}</td></tr>
+<tr><td>Wants both — regular dues <em>and</em> a top-up levy when a case happens</td>
+  <td>{% for p in profiles %}{% if p.name == "Hybrid — monthly dues plus a levy" %}<a class="link" href="{% url 'benevolent_profile_detail' p.id %}">Hybrid — monthly dues plus a levy</a>{% endif %}{% endfor %}</td></tr>
+</tbody></table>
+<p class="help u-mt">A registration fee, and whether renewal is required each year, are both switches on the policy
+  form regardless of which of these you start from — turn either on or off to match your own constitution, they
+  don't determine which row above fits you.</p>
+<p class="help">Not sure any of these fit — a scheme funded from donations alone, with no member contribution at
+  all? Set <strong>Contribution mode</strong> to "No contributions (funded from elsewhere)" on any profile's policy
+  form; the committee can still approve and pay a case straight from the fund's own balance whenever it chooses to,
+  levy or no levy.</p>
+</div></div>
+
 <div class="grid cols-2 u-mt">
 {% for p in profiles %}
   <div class="card"><div class="hd u-between">

@@ -35,7 +35,7 @@
 
 <div class="table-wrap"><table class="ledger">
 <thead><tr><th>Date</th><th class="num">Amount</th><th>Narration</th><th>Paid by</th><th>Scheme</th>
-<th>Best guess</th><th class="num">Confidence</th><th>Status</th><th></th></tr></thead>
+<th>Best guess</th><th>Matched via</th><th class="num">Confidence</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for i in items %}<tr>
   <td>{{ i.date|date:"d M y" }}</td>
   <td class="num mono">{{ i.amount|floatformat:2|intcomma }}</td>
@@ -46,11 +46,12 @@
   <td>{% if i.suggested_membership %}{{ i.suggested_membership.member.name }}
       <div class="muted u-xs">{{ i.suggested_kind|lower }}{% if i.suggested_case %} · {{ i.suggested_case.number }}{% endif %}</div>
       {% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="u-xs">{% with best=i.candidates.0 %}{% if best.signals %}{% for s in best.signals %}{{ s.label }}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}<span class="muted">—</span>{% endif %}{% endwith %}</td>
   <td class="num mono">{% if i.confidence %}{{ i.confidence }}%{% else %}—{% endif %}</td>
   <td><span class="pill {% if i.status == 'AUTO' or i.status == 'RESOLVED' %}pill-green{% elif i.status == 'DUPLICATE' %}pill-brass{% elif i.status == 'UNMATCHED' %}pill-red{% elif i.status == 'REJECTED' %}pill-grey{% else %}pill-amber{% endif %} u-xs">{{ i.get_status_display }}</span></td>
   <td>{% if i.is_open %}<a class="link" href="{% url 'benevolent_intake_item' i.id %}">Resolve</a>
       {% else %}<a class="link" href="{% url 'benevolent_intake_item' i.id %}">View</a>{% endif %}</td>
-</tr>{% empty %}<tr><td colspan="9" class="empty">Nothing waiting. Every receipt has found its member.</td></tr>{% endfor %}</tbody>
+</tr>{% empty %}<tr><td colspan="10" class="empty">Nothing waiting. Every receipt has found its member.</td></tr>{% endfor %}</tbody>
 </table></div>
 {% include 'partials/pagination.html' %}
 {% endblock %}

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize static %}
 {% block title %}Record contribution · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ scheme.name }} · record a contribution</h1>
@@ -26,4 +26,22 @@
     <a class="btn btn-ghost" href="{% url 'benevolent_scheme_detail' scheme.id %}">Cancel</a></div>
 </form>
 </div></div>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/benevolent-search.js' %}"></script>
+<script>
+BenevolentSearch.enhance({
+  selectId: "id_membership", searchUrl: "{% url 'benevolent_membership_search' %}",
+  params: {scheme: {{ scheme.id }}},
+  placeholder: "Start typing an enrolled member's name…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.number, r.phone].filter(Boolean).join(" · "); },
+});
+BenevolentSearch.enhance({
+  selectId: "id_member", searchUrl: "{% url 'benevolent_member_search' %}",
+  placeholder: "…or, for a donation from someone not enrolled, their name…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+});
+</script>
 {% endblock %}

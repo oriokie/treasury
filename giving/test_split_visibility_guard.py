@@ -32,7 +32,9 @@ class SplitButtonVisibilityTests(TestCase):
         t = Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("500"),
             direction="CREDIT", confirmed=True, channel="BANK", allocation_status="AUTO",
             department=self.d, reference="splitvisshown")
-        b = self.c.get("/transactions/").content.decode()
+        # explicit range: this test is about the split link's visibility
+        # rule, not the list view's bare-visit current-month default
+        b = self.c.get("/transactions/?date_from=2026-06-01&date_to=2026-06-30").content.decode()
         self.assertIn(f'/transactions/{t.id}/split/', b)
 
     def test_split_link_hidden_for_manually_receipted_entry(self):

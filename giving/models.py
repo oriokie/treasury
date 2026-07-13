@@ -266,6 +266,15 @@ class Transaction(models.Model):
     bank_receipt = models.CharField(max_length=20, unique=True, null=True, blank=True)
     mpesa_ref = models.CharField(max_length=30, blank=True, db_index=True,
                                  help_text="M-Pesa / channel reference from the statement.")
+    split_of = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="split_children",
+        help_text="Set on every row split_into() creates, pointing at the ORIGINAL "
+                  "entry (which keeps its own id and is never itself split_of anything). "
+                  "The authoritative way to find a split's siblings — see "
+                  "split_siblings() — rather than inferring the relationship from "
+                  "shared reference text, which two different people's unrelated "
+                  "payments can coincidentally share.")
     processed_via_envelope = models.BooleanField(
         default=False, db_index=True,
         help_text="A SYSTEM envelope record exists for this bank entry (it was "
@@ -375,7 +384,15 @@ class Transaction(models.Model):
         the same day, and reference-based matching would wrongly treat them
         as parts of the same split. Used by "send back to review", which
         must never combine two different people's unrelated gifts into one
-        entry just because they typed the same word."""
+        entry just because they typed the same word.
+
+        Checks the real split_of relationship FIRST — see split_siblings()'s
+        own docstring for why that is the authoritative source and text
+        matching is only ever a fallback for data that predates it.
+        """
+        real = self._real_split_siblings()
+        if real is not None:
+            return real
         base = None
         if self.core_ref:
             base = self.core_ref.split("-S")[0]
@@ -390,25 +407,59 @@ class Transaction(models.Model):
             q, channel=self.channel, direction=self.direction,
             is_reversal=False, is_reversed=False).exclude(pk=self.pk)
 
+    def _real_split_siblings(self):
+        """The split_of-based answer, or None if this row has no such link at
+        all (a genuinely unsplit entry, or one created before this field
+        existed) — in which case the caller falls back to text inference.
+        Returns an actual queryset (possibly empty) once a link is found, so
+        an entry that WAS split but no longer has any live siblings still
+        correctly reports "none", rather than falling through to a much
+        less reliable text-based guess.
+        """
+        if self.split_of_id:
+            return (Transaction.objects.filter(
+                        models.Q(pk=self.split_of_id) | models.Q(split_of_id=self.split_of_id))
+                    .exclude(pk=self.pk))
+        if self.split_children.exists():
+            return self.split_children.exclude(pk=self.pk)
+        return None
+
     def split_siblings(self):
         """Other ledger rows that are parts of the SAME split contribution as this one.
 
-        A split offering (e.g. Combined Offering) is posted as several rows that
-        share the payment reference, with the lump sum divided across funds. We
-        group by the strongest shared identifier available: the bank core_ref
-        base (rows X, X-S1, X-S2 …), else the M-Pesa reference, else the plain
-        reference paired with the same date. Returns a queryset EXCLUDING self.
+        Checks the real `split_of` relationship FIRST (see that field's own
+        docstring) — set on every row `split_into()` creates from this phase
+        onward, and completely unambiguous: two rows are siblings because the
+        database says so, not because they happen to look alike.
+
+        Only for a row that predates this field (no split_of link either way)
+        does this fall back to inferring the relationship from shared text —
+        the STRONGEST shared identifier available: the bank core_ref base
+        (rows X, X-S1, X-S2 …), else the M-Pesa reference, else the plain
+        reference paired with the same date — and, critically, only that one
+        (a genuine fallback chain, not a union of all three: seeing that
+        union produce a real false-positive bug once is exactly why it no
+        longer exists). Even the STRONGEST text-based match is still an
+        inference, not a certainty — a full production fix for that
+        remaining, smaller risk is the split_of field itself: every split
+        created from here on is unambiguous, and the population of old,
+        pre-existing splits is a one-off backfill, not a design this
+        function needs to keep working around forever.
+
+        Returns a queryset EXCLUDING self.
         """
-        base = None
+        real = self._real_split_siblings()
+        if real is not None:
+            return real
         if self.core_ref:
             base = self.core_ref.split("-S")[0]
-        q = models.Q(pk__in=[])  # empty
-        if base:
-            q |= models.Q(core_ref=base) | models.Q(core_ref__startswith=f"{base}-S")
-        if self.mpesa_ref:
-            q |= models.Q(mpesa_ref__iexact=self.mpesa_ref, date=self.date)
-        if self.reference:
-            q |= models.Q(reference__iexact=self.reference, date=self.date)
+            q = models.Q(core_ref=base) | models.Q(core_ref__startswith=f"{base}-S")
+        elif self.mpesa_ref:
+            q = models.Q(mpesa_ref__iexact=self.mpesa_ref, date=self.date)
+        elif self.reference:
+            q = models.Q(reference__iexact=self.reference, date=self.date)
+        else:
+            return Transaction.objects.none()
         return Transaction.objects.filter(
             q, channel=self.channel, direction=self.direction,
             is_reversal=False, is_reversed=False).exclude(pk=self.pk)
@@ -561,6 +612,7 @@ class Transaction(models.Model):
                     bank_account_id=getattr(self, "bank_account_id", None),
                     allocation_status=Transaction.Status.MANUAL,
                     core_ref=(f"{self.core_ref}-S{i}" if self.core_ref else None),
+                    split_of=self,
                     raw_narration=f"[Split of #{self.pk}] {self.raw_narration}"[:1000]))
         return out
 

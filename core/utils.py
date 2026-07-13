@@ -41,6 +41,36 @@ def sabbath_week_of(date: dt.date) -> int:
 sabbath_bucket = sabbath_of
 
 
+def default_to_current_month(request, from_param="date_from", to_param="date_to"):
+    """(from_date, to_date) for a list view's date filter, defaulting to the
+    CURRENT MONTH on a genuinely bare visit — an empty query string — rather
+    than silently scanning every row the table has ever held.
+
+    Deliberately keyed on the WHOLE query string being empty, not merely on
+    the two date params being absent: a search for "amount over 1000" or
+    "this member's gifts" with no date bound at all is a deliberate,
+    existing, and heavily-tested request to search ALL TIME for that
+    criterion — narrowing it to the current month the moment any OTHER
+    filter is present would quietly hide exactly what someone was looking
+    for. The default this function applies is for the specific, narrow case
+    of "nothing has been asked yet" — the page just loaded.
+
+    An explicit, deliberate "show everything" (the filter form submitted
+    with both date fields left blank, alongside whatever else was filled in)
+    is respected exactly as before, since at that point the query string is
+    no longer empty and this function does not touch the dates at all.
+    """
+    today = dt.date.today()
+    if not request.GET:
+        return today.replace(day=1), today
+
+    def _d(raw):
+        from django.utils.dateparse import parse_date
+        return parse_date(raw) if raw else None
+
+    return _d(request.GET.get(from_param)), _d(request.GET.get(to_param))
+
+
 def parse_period(request):
     """Read ?start=&end= (or ?year=&month=) query params into a (start, end) date pair.
 

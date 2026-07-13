@@ -55,7 +55,7 @@
       </div>
       <div class="btn-row u-mt">
         {% if membership.status == 'PENDING' %}
-          <button class="btn btn-sm" formaction="{% url 'benevolent_membership_lifecycle' membership.id 'admit' %}">Admit</button>
+          <button class="btn btn-sm" formaction="{% url 'benevolent_membership_admin' membership.id 'admit' %}">Admit</button>
           <button class="btn btn-ghost btn-sm" formaction="{% url 'benevolent_membership_lifecycle' membership.id 'refuse' %}">Refuse</button>
         {% endif %}
         {% if membership.status == 'ACTIVE' %}
@@ -74,6 +74,16 @@
     <p class="help u-mt">Every one of these needs a reason, and every one is logged. Automation can do none of them:
       a member who has stopped paying is <em>inactive</em> — a fact — but taking their cover away is a punishment,
       and a person should decide it.</p>
+    {% endif %}
+
+    {% if can.benevolent_register_members or can.manage_benevolent %}
+    <details class="u-mt"><summary class="link u-xs" style="cursor:pointer">Edit household name, date of birth, or notes</summary>
+      <form method="post" action="{% url 'benevolent_membership_admin' membership.id 'edit' %}" class="u-mt-sm">{% csrf_token %}
+        <div class="form-grid">{% for f in membership_edit_form %}<div class="form-row">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}</div>{% endfor %}</div>
+        <div class="btn-row u-mt-sm"><button class="btn btn-ghost btn-sm">Save changes</button></div>
+      </form>
+    </details>
     {% endif %}
 
     {% if membership.status == 'DECEASED' and can.manage_benevolent %}
@@ -119,10 +129,39 @@
   <td>{% if h.member %}<span class="pill pill-green u-xs">Linked</span>{% else %}<span class="muted u-xs">Not a church member</span>{% endif %}</td>
   <td>{{ h.since|date:"d M Y" }}</td>
   <td>{% if h.dependant and can.manage_benevolent %}
-    <form method="post" action="{% url 'benevolent_household' membership.id %}"
+    {% if not h.dependant.died_on %}
+    <form method="post" action="{% url 'benevolent_household' membership.id %}" class="u-inline"
+          onsubmit="return confirm('Record ' + '{{ h.dependant.display_name|escapejs }}' + ' as deceased? A case can be raised for this afterwards.')">{% csrf_token %}
+      <input type="hidden" name="died_on" value="{% now 'Y-m-d' %}">
+      <button class="btn btn-ghost btn-sm" name="deceased" value="{{ h.dependant.id }}" title="Record as deceased">✝ Deceased</button></form>
+    <form method="post" action="{% url 'benevolent_household' membership.id %}" class="u-inline"
           onsubmit="return confirm('Remove from cover? They stay covered for any event before today — a claim already earned is not taken away.')">{% csrf_token %}
-      <button class="btn btn-ghost btn-sm" name="remove" value="{{ h.dependant.id }}">Remove</button></form>{% endif %}</td>
-</tr>{% endfor %}</tbody></table>
+      <button class="btn btn-ghost btn-sm" name="remove" value="{{ h.dependant.id }}">Remove</button></form>
+    {% else %}
+    <span class="pill pill-brass u-xs">Deceased {{ h.dependant.died_on|date:"d M Y" }}</span>
+    <a class="link u-xs" href="{% url 'benevolent_case_new' membership.scheme.id %}">Raise a case</a>
+    {% endif %}
+  {% endif %}</td>
+</tr>{% if h.dependant and can.manage_benevolent %}<tr class="no-border"><td colspan="5" style="padding-top:0">
+  <details><summary class="link u-xs" style="cursor:pointer">Edit details</summary>
+    <form method="post" action="{% url 'benevolent_household' membership.id %}" class="u-mt-sm">{% csrf_token %}
+      <input type="hidden" name="edit" value="{{ h.dependant.id }}">
+      <div class="form-grid">
+        <div class="form-row"><label>Name</label>
+          <input class="field" type="text" name="name" value="{{ h.dependant.name }}"></div>
+        <div class="form-row"><label>Phone</label>
+          <input class="field" type="text" name="phone" value="{{ h.dependant.phone }}"></div>
+        <div class="form-row"><label>Relationship</label>
+          <select class="field field--select" name="relationship">
+            {% for v, l in relationship_choices %}<option value="{{ v }}" {% if v == h.dependant.relationship %}selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select></div>
+        <div class="form-row"><label>Date of birth</label>
+          <input class="field" type="date" name="date_of_birth" value="{{ h.dependant.date_of_birth|date:'Y-m-d' }}"></div>
+      </div>
+      <div class="btn-row u-mt-sm"><button class="btn btn-ghost btn-sm">Save changes</button></div>
+    </form>
+  </details>
+</td></tr>{% endif %}{% endfor %}</tbody></table>
 
 {% if can.manage_benevolent %}
 <form method="post" action="{% url 'benevolent_household' membership.id %}" class="u-mt">{% csrf_token %}

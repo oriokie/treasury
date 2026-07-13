@@ -64,9 +64,10 @@ class RegisterView(BenevolentRegistrationMixin, View):
         form = RegistrationForm(request.POST, scheme=scheme)
         if form.is_valid():
             d = form.cleaned_data
+            member, how = form.resolve_member()
             try:
                 m = reg_svc.register(
-                    scheme, d["member"], joined_on=d["joined_on"], user=request.user,
+                    scheme, member, joined_on=d["joined_on"], user=request.user,
                     registration_type=d["registration_type"],
                     household_name=d.get("household_name") or "",
                     date_of_birth=d.get("date_of_birth"),
@@ -76,9 +77,10 @@ class RegisterView(BenevolentRegistrationMixin, View):
                 for msg in e.messages:
                     form.add_error(None, msg)
             else:
+                note = " (new record created)" if how == "created" else ""
                 messages.success(
                     request,
-                    f"{m.member.name} registered as {m.number} — "
+                    f"{m.member.name} registered as {m.number}{note} — "
                     f"{m.get_status_display().lower()}, "
                     f"{m.get_standing_display().lower()}.")
                 return redirect("benevolent_membership_detail", pk=m.pk)
@@ -152,10 +154,29 @@ class MembershipLifecycleView(BenevolentRegistrationMixin, View):
 
 
 class HouseholdView(BenevolentRegistrationMixin, View):
-    """Add or remove a person from a household registration."""
+    """Add, edit, or remove a person from a household registration."""
 
     def post(self, request, pk):
         m = get_object_or_404(SchemeMembership, pk=pk)
+        if request.POST.get("deceased"):
+            dep = m.dependants.filter(pk=request.POST["deceased"]).first()
+            if dep:
+                died_on_raw = request.POST.get("died_on") or ""
+                from django.utils.dateparse import parse_date
+                died_on = parse_date(died_on_raw) or dt.date.today()
+                try:
+                    reg_svc.record_dependant_death(
+                        dep, died_on=died_on, user=request.user,
+                        reason=(request.POST.get("reason") or ""))
+                except ValidationError as e:
+                    messages.error(request, "; ".join(e.messages))
+                else:
+                    messages.success(
+                        request,
+                        f"{dep.display_name} recorded as deceased on {died_on:%d %b %Y}. "
+                        f"If this scheme covers them, you can raise a case for it now.")
+            return redirect("benevolent_membership_detail", pk=pk)
+
         if request.POST.get("remove"):
             dep = m.dependants.filter(pk=request.POST["remove"]).first()
             if dep:
@@ -168,6 +189,26 @@ class HouseholdView(BenevolentRegistrationMixin, View):
                              f"earned is not taken away.")
             return redirect("benevolent_membership_detail", pk=pk)
 
+        edit_id = request.POST.get("edit")
+        if edit_id:
+            dep = get_object_or_404(m.dependants, pk=edit_id)
+            form = HouseholdMemberForm(request.POST)
+            if not form.is_valid():
+                messages.error(request, "; ".join(
+                    e for errs in form.errors.values() for e in errs))
+                return redirect("benevolent_membership_detail", pk=pk)
+            d = form.cleaned_data
+            try:
+                dep = reg_svc.update_dependant(
+                    dep, relationship=d["relationship"], member=d.get("member"),
+                    name=d.get("name") or "", phone=d.get("phone") or "",
+                    date_of_birth=d.get("date_of_birth"), user=request.user)
+            except ValidationError as e:
+                messages.error(request, "; ".join(e.messages))
+            else:
+                messages.success(request, f"{dep.display_name}'s details updated.")
+            return redirect("benevolent_membership_detail", pk=pk)
+
         form = HouseholdMemberForm(request.POST)
         if not form.is_valid():
             messages.error(request, "; ".join(
@@ -177,7 +218,8 @@ class HouseholdView(BenevolentRegistrationMixin, View):
         try:
             dep = reg_svc.add_dependant(
                 m, relationship=d["relationship"], member=d.get("member"),
-                name=d.get("name") or "", date_of_birth=d.get("date_of_birth"),
+                name=d.get("name") or "", phone=d.get("phone") or "",
+                date_of_birth=d.get("date_of_birth"),
                 registered_on=d["registered_on"], user=request.user)
         except ValidationError as e:
             messages.error(request, "; ".join(e.messages))

@@ -243,6 +243,11 @@ function rebuildTable(){
 
   // rebuild rows from saved data
   const body = document.getElementById("envBody");
+  // Any .ac-box already moved to document.body by a prior row (see makeRow)
+  // belongs to a <tr> about to be discarded below — clean those up too, or
+  // a column-layout rebuild during a long editing session would leave a
+  // growing pile of orphaned, invisible popups behind in the document.
+  document.querySelectorAll(".ac-box").forEach(b => b.remove());
   body.innerHTML = "";
   if(saved.length){ saved.forEach(s=>body.appendChild(makeRow(cols, s))); }
   else { for(let i=0;i<5;i++) addRow(); }
@@ -476,7 +481,10 @@ function wireRowEvents(tr){
   });
 
   const rm = tr.querySelector(".rm");
-  if(rm) rm.addEventListener("click", ()=>{ tr.remove(); renumber(); updateTotals(); markDirtyAndSave(); });
+  if(rm) rm.addEventListener("click", ()=>{
+    if(tr._acBox) tr._acBox.remove();   // moved to document.body — not cleaned up by tr.remove() alone
+    tr.remove(); renumber(); updateTotals(); markDirtyAndSave();
+  });
   rowTotal(tr);
   validateRow(tr);
 
@@ -493,6 +501,17 @@ function wireRowEvents(tr){
 
   const nameI = tr.querySelector(".cname"), midI = tr.querySelector(".mid"), box = tr.querySelector(".ac-box");
   if(nameI){
+    // The popup is moved to document.body the first time it's needed, not
+    // left as a child of the row. Reason: .content (the page's own main
+    // wrapper, in base.html) runs an entrance animation that touches
+    // `transform` on page load — and per the CSS spec, an element actively
+    // animating `transform` establishes a new containing block for any
+    // position:fixed DESCENDANT, so the popup's "fixed" coordinates were
+    // being resolved relative to .content's own box, not the true viewport,
+    // landing it wherever .content happened to be rather than under the
+    // input. A direct child of <body> has no such ancestor to be trapped by.
+    document.body.appendChild(box);
+    tr._acBox = box;
     let timer = null;
     nameI.addEventListener("input", ()=>{
       midI.value = ""; clearTimeout(timer);
@@ -1134,9 +1153,11 @@ function rebuildHeaderOnly(){
 .xl-grid tr.row-mismatch td,.xl-grid tr.row-dup-receipt td{background:var(--danger-soft,#fbeceb) !important}
 .meta-cell{position:relative}
 .pos-rel{position:relative}
-.ac-box{display:none;position:fixed;z-index:1000;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.12);max-height:200px;overflow:auto}
-.ac-item{padding:.4rem .6rem;cursor:pointer;font-size:.85rem}
-.ac-item:hover{background:var(--accent-soft,#eef5f2)}
+/* This table-embedded search positions its popup by fixed viewport
+   coordinates (computed in JS via getBoundingClientRect), not by floating
+   relative to a wrapping element — everything else about the popup's look
+   comes from the shared .ac-box/.ac-item rule in app.css. */
+.ac-box{position:fixed;z-index:1000}
 .btn-xs{padding:.1rem .4rem;font-size:.8rem}
 
 .entry-toolbar{display:flex;align-items:center;gap:.8rem;padding:.7rem .9rem;margin-bottom:.8rem;

@@ -1577,3 +1577,350 @@ nearly every phase — named it, fixed it, and tested that it stayed fixed.
 `docs/recommendations.md` remains the honest, permanent record of what was
 deliberately left for later and why. Nothing in it is an oversight; it is
 the module telling the truth about its own edges.
+
+---
+---
+
+# Production Fixes & Requested Features (post-Phase 10)
+
+Four real bugs reported from production use, and three features requested
+directly, addressed in one pass rather than deferred to a future phase.
+
+## Bugs
+
+**The "Admit" button on a pending membership's own page produced "Unknown
+action."** Root cause: the button posted to `MembershipLifecycleView`, which
+handles suspend/reinstate/withdraw/deceased/close/refuse/transfer but never
+admit — that action has always lived on a separate view,
+`MembershipAdminView` (registration/renewal/fee actions). A template wiring
+bug, not a missing feature: the button pointed at the wrong URL. Fixed, and
+`MembershipAdminView`'s admit/reinstate actions now also read the reason/date
+fields from the shared lifecycle form they sit inside, which they previously
+silently ignored.
+
+**Marking one bank transaction as a manual receipt could change several
+unrelated ones.** Root cause: `Transaction.split_siblings()` (giving app)
+OR'd together three different ways of finding "the same split contribution's
+other rows" — a bank-assigned core_ref, an M-Pesa reference, and a plain
+reference-plus-date. The last of these is payer-entered free text ("BEN
+DUES", "TITHE"), which different, unrelated people routinely enter
+identically on the same day — and because the match was a union rather than
+a fallback, even a transaction WITH a solid, unique core_ref was still ALSO
+matched against everyone else's payment sharing its narration. Fixed to a
+genuine fallback chain: the strongest identifier available, and only that
+one. The codebase already had a stricter sibling of this function
+(`strict_split_siblings`, used by "send back to review") with exactly this
+reasoning already written down for why the loose match is dangerous — it
+had just never been applied to this one.
+
+**The type-ahead name popup used across the app (cash entry, envelope
+ledger, cashbook, and now benevolent forms) rendered incorrectly.** Root
+cause: its CSS (`.ac-box`/`.ac-item`) was copy-pasted into three separate
+templates with drifting details, and the shared stylesheet carried only an
+orphaned partial rule. Consolidated into one definition in `app.css`; the
+one template that genuinely needs different positioning (the envelope
+ledger's table-embedded search) now overrides only that.
+
+## Features
+
+**Bulk roster import**, for a church bringing a scheme it already runs on
+paper into the system rather than registering members one at a time —
+`/benevolent/schemes/<id>/import/`. Every row becomes an ordinary
+`registry.register()` call, dependants included; "mark paid up" clears
+whatever arrears the import would otherwise show through a visible,
+auto-approved waiver record dated today ("migrated from prior records"),
+never a fabricated payment history. No welcome notification fires for an
+import — a member of several years' standing does not need to be told they
+have just joined.
+
+**Member/membership search for benevolent forms**, replacing plain
+`<select>` dropdowns (unusable once a church roll runs into the hundreds) on
+the register, contribution, and case forms — reusing the same proven
+type-ahead pattern as the rest of the app, through two new endpoints scoped
+correctly for Phase 9's role-specific users (a Registration Officer holds no
+Treasurer/Assistant group membership, so the general, treasury-gated search
+endpoint would have refused them).
+
+**A dependant's own phone**, for allocation matching — the field
+(`SchemeDependant.phone`) has existed since Phase 4, documented for exactly
+this purpose, but neither the household-add screen nor its service function
+ever accepted one. Fixed on both.
+
+**A standing snapshot on a case's own page**, for schemes funded by ongoing
+dues rather than a per-case levy. A levy-funded scheme has always had this —
+`raise_case_levy()`'s roster shows exactly who has and hasn't paid towards a
+specific case. A dues-funded scheme has no equivalent "per case" question,
+but "who currently stands where" is the same underlying need, answered by
+grouping the standing engine's own already-computed field rather than
+introducing a new calculation.
+
+## Bearing on the "Scheme Engine" design question
+
+Edwin separately asked whether the module, as built, can express three
+specific registration/funding patterns (monthly dues with a bereavement
+lump sum; optional annual renewal; a registration-fee-only pattern where
+ongoing giving happens per case, not periodically) and a set of edge cases
+around them (spouse/dependant contribution linking, member death and
+beneficiary handling, deregistration, inactivity, concurrent cases, a
+committee paying from the fund balance without requiring member
+contributions, and phone-based allocation matching). That audit, and the
+phased plan for what it found still genuinely missing, is written up
+separately as the proposed next phase — see the plan delivered alongside
+this update rather than duplicated here.
+
+---
+---
+
+# Phase 11 — Guided Scheme Setup & Allocation Transparency
+
+Implemented as proposed: a plain-language guide connecting Edwin's three
+described funding patterns to the profiles that already implement them; an
+explicit, logged "fund this case from the balance" decision for levy-funded
+schemes (record_payout() never required a levy — this makes skipping one a
+stated choice, not an unstated one); and a "Matched via" column on the
+intake queue surfacing signal data the allocator already froze onto each
+row but never displayed.
+
+## Also in this pass: production fixes and two audited-and-confirmed items
+
+**The Admit button, fixed.** Wired to a view with no admit handler —
+`MembershipAdminView` has always had one, `MembershipLifecycleView` never
+did. A template wiring bug, not a missing feature.
+
+**A real bug in `split_siblings()` (giving app), fixed.** Marking one bank
+transaction as a manual receipt could sweep in unrelated people's payments
+that merely shared a generic reference and date — the function OR'd three
+match conditions instead of falling back through them. Fixed to a true
+fallback: the strongest identifier available, and only that one.
+
+**The autocomplete popup, fixed.** Its CSS was copy-pasted into three
+templates with drifting details; the shared stylesheet held only an
+orphaned fragment. Consolidated into one definition, and used for new
+type-ahead widgets on benevolent's register/contribution/case forms via two
+new endpoints — scoped correctly for Phase 9's scheme-specific roles, which
+the general, Treasurer/Assistant-only search would have silently refused.
+
+**A severe font-loading bug in the budget PNG export, found and fixed.**
+`goal_chart.py`'s font loader depended on a system package
+(`fonts-dejavu-core`) not guaranteed on a server, and its fallback —
+Pillow's fixed-size bitmap default — was catastrophically incompatible with
+the file's 4x print-quality render scale, producing PNGs where the figures
+were technically present but rendered as near-invisible specks. Fixed to
+fall back to reportlab's own bundled TTF fonts, present in every
+environment that can run this application at all.
+
+**Two unbounded-by-default list views, fixed.** `/transactions/` and
+`/expenses/` loaded every row ever recorded on a bare visit; now default to
+the current month, while any other filter (search, amount, member — with
+no date bound) still searches all time exactly as before. A third, more
+severe instance was found while checking "other pages": the envelope list
+was scanning every envelope ever recorded on every visit regardless of the
+month selected, discarding almost all of it in Python — fixed to filter at
+the database level.
+
+**Two items audited and confirmed already correct, proven with new
+regression tests rather than merely re-read:** the Member model's
+additional-phone infrastructure (`MemberPhone`) is fully populated during a
+duplicate merge, and contribution matching already recognises a gift from
+any of a member's known phones, not just their primary one — including the
+"not contributed to campaign" SMS criterion, which inherits this correctly
+because it reads the same `Transaction.member` attribution
+`match_or_create_member()` already gets right.
+
+**A new standalone seed command**, `seed_benevolent_demo`, for benevolent
+test data without running the full demo first — reuses the existing
+seed_demo seed chain rather than duplicating it, filling in the one
+prerequisite (a pool of church members) that chain has always assumed was
+already there.
+
+---
+---
+
+# Production Fixes & Requested Features, Round 2
+
+Eleven items reported directly from production/local testing. Four were real
+bugs (two of them recurrences or deeper instances of issues thought already
+fixed); two were confirmed as already fully built, just not discoverable or
+exposed; the rest were genuine, well-scoped feature gaps.
+
+## The two "still broken" reports — found at their true root cause this time
+
+**"Marking one item as manual receipt still marks the rest."** The previous
+fix (a true fallback chain instead of an OR) was correct as far as it went,
+but not sufficient: `split_into()` never created a real, queryable
+relationship between the parts of a split — `split_siblings()` was always
+*inferring* the relationship from shared reference text, core_ref, or
+mpesa_ref, and even the strongest of those is still an inference, not a
+certainty. Two unrelated CASH gifts (no core_ref, no mpesa_ref) sharing a
+generic reference and date on the same day would still, correctly by the
+old design, be treated as siblings. Fixed properly this time: `Transaction`
+now has a real `split_of` foreign key, set by `split_into()` on every part
+it creates. `split_siblings()` and `strict_split_siblings()` check this
+first and only fall back to text inference for historical rows that predate
+it — which a migration backfills automatically, by parsing the
+`[Split of #N]` tag `split_into()` has always written into `raw_narration`.
+Proven with a test that reconstructs the exact remaining failure mode: a
+genuine split plus an unrelated gift sharing its reference and date, and
+only the genuine split's sibling is found.
+
+**"The envelope ledger popup still appears outside the grid."** A genuinely
+different cause from the CSS-consolidation fix in the previous round: the
+popup used `position:fixed`, positioned correctly in JS via
+`getBoundingClientRect()`, but was left nested inside `.content` — the
+page's main wrapper, which runs a `transform`-animating entrance animation
+on every load. Per the CSS spec, an element animating `transform`
+establishes a new containing block for any `position:fixed` descendant, so
+the popup's "fixed" coordinates were being resolved against `.content`'s own
+box, not the true viewport. Fixed by moving the popup to a direct child of
+`document.body` the first time it's shown — the standard "portal" pattern
+for exactly this — with cleanup on row removal and table rebuild so it
+cannot accumulate orphaned DOM nodes over a long editing session.
+
+## Confirmed already built, made discoverable
+
+**Segregation of duties for case approval** ("a benefit must be approved by
+someone other than the person who raised it") already existed, correctly
+enforced by default — but was hardcoded, with no way for a very small scheme
+(one treasurer, no assistant) to switch it off. Added
+`SchemePolicy.require_different_approver` (defaulting to the existing,
+safer behaviour) so it's now a real setting, not a fixed rule.
+
+**Case-count-based inactivity** ("deactivate a member who hasn't
+contributed to the last N cases") was fully built and correctly wired into
+the standing engine — `missed_case_levies()` already existed, already
+excluded a member's own bereavement from counting against them, already
+handled the exact scenario Edwin named (a levy scheme with no monthly dues,
+where time alone says nothing if there simply haven't been recent cases).
+The gap was narrower than "missing feature": `inactivity_missed_cases` was
+never exposed on the policy form, so nobody could actually turn it on.
+
+**Recording a cash payment** is already fully supported —
+`ContributionForm`/`record_contribution()` have always accepted
+`channel=CASH` alongside bank/M-Pesa.
+
+## New
+
+**The register form no longer requires an existing church-roll member.** A
+benevolent scheme is its own thing, per Edwin's own framing — the form now
+offers "…or type a name" (mirroring the pattern already used for a spouse),
+matching or creating a `members.Member` on the fly. Also fixed, in the same
+pass: a hidden `<select>` silently skips the browser's native "please fill
+this in" validation, which was a real, separate cause of "the button
+doesn't seem to do anything" — the required-field cue now lives on the
+visible search box instead.
+
+**Marking a dependant as deceased** — a dedicated action distinct from
+generic removal (which could mean anything from moving away to a
+correction), logging why, and prompting toward raising a case. The
+household view now keeps a deceased dependant visible with that status
+shown, rather than letting them silently vanish the way a dependant removed
+for any other reason correctly does.
+
+**Bulk import extended to contribution history**, alongside the existing
+roster import, with proper discoverability this time — both are now linked
+directly from the scheme's own page, not only reachable by already being on
+the registration form.
+
+**A year selector on the contributions list** (already paginated), and **a
+member directory report** — every member's own information alongside their
+dependants in one place, filterable to active or inactive only, through the
+existing Report Engine.
+
+**Tests:** 56 new in this round. Full regression clean across the whole
+application — 2,282 tests total across benevolent, giving, cashbook,
+envelopes, members, reports, core and accounts.
+
+---
+---
+
+# Full-Module Audit
+
+A systematic sweep of the whole benevolent module — every model field, every
+view, every permission, every report, every export format, the wizard, the
+notification wiring, accounting integrity, and query counts under load.
+
+## Four real issues found and fixed
+
+### 1. Six enforced policy rules were unreachable from the UI (the serious one)
+
+`arrears_block`, `grace_period_days`, `exemption_age`, `max_household_size`,
+`allow_exemptions` and `allow_transfers` are all **genuinely enforced** — an
+audit probe confirmed each one really does block a transfer, refuse an
+exemption, cap a household, produce GRACE standing, make an owing member
+ineligible, or exempt an older member. But none of them appeared in
+`PolicyForm.GROUPS`, and `grouped()` silently skipped any field not listed
+there, so the template rendered nothing for them.
+
+A treasurer could not configure rules the system was nonetheless enforcing
+against their members. This is the same shape as the settings-page bug found
+in Phase 9 — which is why the fix is not merely "add the six fields" but
+"make `grouped()` structurally incapable of dropping a field again": any
+field not in a group now lands in a visible "Other settings" group. A missing
+field is a five-second fix someone notices; an invisible one is not.
+
+### 2. A duplicate, inferior registration path
+
+`MembershipCreateView` (Phase 1) still rendered its own enrolment form — no
+households, no dependants, no off-roll registration — reachable by URL though
+nothing has linked to it since Phase 3. Two divergent code paths for one job,
+one of them strictly worse, quietly waiting for a stale bookmark to find it.
+Now redirects to the real registration screen; the duplicate form and template
+are deleted.
+
+### 3. The remaining N+1 (recommendation #70b), closed
+
+`arrears_for()` cost ~22 database queries **per member**, and it runs for
+every active member on the dashboard, the arrears report, the overview report
+and every standing recomputation. Three causes, all fixed: `contributions_
+total()` called once per dues PERIOD (now one grouped query for all periods);
+the scheme's policy-window boundary re-queried after `_dues_rows()` had
+already computed it; and `_waived_periods()` re-fetching the same policy
+versions `_dues_rows()` had just loaded.
+
+Now **6 queries per member, flat** — each one a distinct per-member table, not
+a repeated lookup. Dashboard query growth fell from 22.5 to 7.3 per member, a
+68% reduction. Every number is unchanged: the full pre-existing suite passes
+untouched, which is exactly what should happen when only the cost of an answer
+changes, not the answer.
+
+### 4. Two dead functions, one with a false docstring
+
+`periods_between()` claimed to be *"the single definition of 'which periods
+have fallen due', shared by the arrears calculation and the dues schedule"* —
+a claim Phase 10's N+1 rewrite had quietly made false, since `_dues_rows()`
+stopped calling it and nothing else ever did. A dead function asserting it is
+the source of truth for a rule that has since moved is worse than no function:
+it is precisely how a future fix gets made in the wrong place. Removed, with
+the reason recorded where it stood. `refresh_arrears_status()` — a
+"backwards-compatible" shim with no callers anywhere — went with it.
+
+## Confirmed sound under probing
+
+Everything below was tested by actually exercising it, not by re-reading the
+code that claims it:
+
+* **Accounting integrity** — ledger balances; every registry metric agrees
+  with its reporting-service equivalent; no orphaned contributions, payouts,
+  policy-less approved cases, unnumbered memberships or unapproved-but-effective
+  adjustments.
+* **Historical accuracy** — a case assessed under one policy is unmoved by a
+  later, more generous one published before approval. Arrears across a
+  mid-history dues change correctly charge the old rate for old periods and
+  the new rate for new ones.
+* **Edge cases** — zero benefits, over-payouts, two payouts summing past the
+  approved amount, double approval, future-dated events, negative
+  contributions and duplicate enrolments are each correctly refused.
+* **Permissions** — all 22 benevolent pages × 10 roles: no 500s, and every
+  role sees exactly what Phase 9 designed.
+* **Reports** — all 10 reports × 5 formats (HTML/CSV/XLSX/PDF/DOCX) = 50
+  combinations, all working, scheme-filtered and unfiltered.
+* **Notifications** — every event maps to a real settings toggle; every
+  placeholder used in every default template is one that event's context
+  actually provides.
+* **The wizard** — every `depends_on` refers to a real question; every field
+  `build_config()` sets is a real policy field; its own default answers
+  produce a valid policy.
+* **Templates** — every `{% url %}` name in every benevolent template resolves.
+
+**Tests:** 18 new. Full regression clean across the whole application — 2,316
+tests.

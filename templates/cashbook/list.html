@@ -33,6 +33,11 @@
   {% endfor %}
 </div>
 
+{% if date_default_applied %}
+<div class="alert alert-info u-mb no-print">Showing <strong>this month</strong> by default, to keep the page quick to load.
+  <a class="link" href="?start=&amp;end=">See all time instead</a> — or pick a different range in the filters below.</div>
+{% endif %}
+
 <form method="get" class="ws-toolbar">
   <div class="f grow"><label>Search</label><input name="q" value="{{ filters.q }}" class="field" placeholder="Description, claimant, voucher…"></div>
   <div class="f"><label>Status</label><select name="status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>

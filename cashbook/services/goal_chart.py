@@ -59,12 +59,54 @@ def _s(n):
     return round(n * SCALE)
 
 
+# Fallback font family, used only if the system DejaVu fonts above are not
+# installed. This is the actual bug behind a genuine production report:
+# "the PNG isn't showing the figures." The system DejaVu path depends on an
+# OS package (fonts-dejavu-core) that requirements.txt cannot express and a
+# server deployment can easily be missing; when ImageFont.truetype() failed,
+# _font() fell back to Pillow's ImageFont.load_default() — a FIXED-SIZE
+# BITMAP font that ignores the requested size entirely. At this file's 4x
+# print-quality SCALE, every position, padding and row height is computed
+# for a font roughly four times the size load_default() actually draws, so
+# the numbers were technically present in the file but rendered as
+# near-invisible specks inside cells sized for much larger text — "the
+# figures aren't loading" was an accurate description of what it looked
+# like, even though nothing had actually failed to render.
+#
+# reportlab ships its own TTF fonts (Bitstream Vera) inside the wheel, so
+# they are present in EVERY environment that can run this application at
+# all — reportlab is already a hard, non-optional dependency (PDF export).
+# Falling back to a real, scalable vector font here — instead of a bitmap
+# one — means SCALE continues to work correctly even on a server with no
+# system fonts installed, rather than merely failing more gracefully.
+def _vera_font_dir():
+    import reportlab
+    return os.path.join(os.path.dirname(reportlab.__file__), "fonts")
+
+
+_VERA_MAP = {
+    "DejaVuSans-Bold.ttf": "VeraBd.ttf",
+    "DejaVuSans.ttf": "Vera.ttf",
+    # Vera has no monospace member; the regular face is still a real,
+    # scalable font — a table column that is very slightly less evenly
+    # aligned is a minor cosmetic difference, not the invisible-text
+    # failure this fallback exists to avoid.
+    "DejaVuSansMono.ttf": "Vera.ttf",
+}
+
+
 def _font(name, size):
     path = os.path.join(_FONT_DIR, name)
     try:
         return ImageFont.truetype(path, _s(size))
-    except Exception:  # noqa: BLE001 — fonts may not be installed; never crash
-        return ImageFont.load_default()
+    except Exception:  # noqa: BLE001 — the system fonts may not be installed
+        try:
+            vera_path = os.path.join(_vera_font_dir(), _VERA_MAP.get(name, "Vera.ttf"))
+            return ImageFont.truetype(vera_path, _s(size))
+        except Exception:  # noqa: BLE001 — reportlab itself missing/changed;
+            # true last resort. Rendering will look wrong at this file's 4x
+            # SCALE, exactly as before this fix, but never crash the request.
+            return ImageFont.load_default()
 
 
 def _money(v):

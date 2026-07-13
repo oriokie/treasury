@@ -31,7 +31,9 @@ class ClipPopoverHiddenTests(TestCase):
         self.c = Client(); self.c.force_login(self.tr)
 
     def test_popover_has_hidden_attribute(self):
-        b = self.c.get("/expenses/").content.decode()
+        # explicit range: about the popover markup itself, not the list
+        # view's bare-visit current-month default
+        b = self.c.get("/expenses/?start=2026-06-01&end=2026-06-30").content.decode()
         self.assertIn('class="clip-pop" hidden', b)
 
     def test_css_forces_hidden_attribute_to_hide(self):
@@ -39,7 +41,7 @@ class ClipPopoverHiddenTests(TestCase):
         self.assertIn(".clip-pop[hidden]{display:none}", css)
 
     def test_only_one_popover_open_at_a_time_js(self):
-        b = self.c.get("/expenses/").content.decode()
+        b = self.c.get("/expenses/?start=2026-06-01&end=2026-06-30").content.decode()
         # opening one popover closes all others via querySelectorAll('.clip-pop')
         self.assertIn("document.querySelectorAll('.clip-pop').forEach", b)
 

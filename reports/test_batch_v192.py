@@ -35,7 +35,7 @@ class ExpenseIdTests(TestCase):
             description="YYY-newer-id-earlier-date", amount=Decimal("10"),
             category="OTHER", status="APPROVED", recorded_by=self.tr)
         self.assertGreater(b.id, a.id)
-        body = self.c.get("/expenses/").content.decode()
+        body = self.c.get("/expenses/?start=2026-01-01&end=2026-12-31").content.decode()
         # b has the higher id, so it appears before a despite the earlier date
         self.assertLess(body.index("YYY-newer-id-earlier-date"),
                         body.index("ZZZ-older-date-lower-id"))

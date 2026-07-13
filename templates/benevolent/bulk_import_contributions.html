@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Import contributions · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · import contribution history</h1>
+  <div class="sub">Bring years of payment records in at once — each becomes an ordinary receipt, exactly like one entered by hand.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>Every member must already be enrolled.</strong> Import the roster first (<a class="link" href="{% url 'benevolent_bulk_import' scheme.id %}">roster import</a>)
+  if you haven't — a contribution needs a membership to post against, the same as recording one by hand does.
+</div>
+
+<div class="card form-card" style="max-width:720px"><div class="bd">
+<p class="help u-mt-0">Download the template, fill one row per contribution, and upload it here. Each row posts to
+  the ledger immediately — this is real money being receipted, not a draft.</p>
+<div class="btn-row u-mb">
+  <a class="btn btn-ghost btn-sm" href="?template=1">⬇ Download CSV template</a>
+</div>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  <div class="form-row"><label for="file">Contribution history file (.csv)</label>
+    <input type="file" id="file" name="file" accept=".csv" class="field" required></div>
+  <div class="btn-row u-mt"><button class="btn">Import</button></div>
+</form>
+</div></div>
+
+{% if imported is not None %}
+<div class="card u-mt" style="max-width:720px"><div class="hd">Result</div><div class="bd">
+  <p><strong>{{ imported }}</strong> contribution{{ imported|pluralize }} imported, totalling
+    <strong>{{ CURRENCY }} {{ total|floatformat:2 }}</strong>
+    {% if skipped %}, <strong>{{ skipped }}</strong> row{{ skipped|pluralize }} skipped{% endif %}.</p>
+  {% if problems %}
+  <table class="ledger compact"><thead><tr><th>Row</th><th>Name</th><th>Problem</th></tr></thead>
+  <tbody>{% for row_n, name, problem in problems %}<tr>
+    <td class="mono">{{ row_n }}</td><td>{{ name }}</td><td class="muted">{{ problem }}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="help u-mt">Fix these rows in the file and re-upload just those — each row posts independently, so a
+    fixed row can be imported on its own without re-doing anything that already succeeded.</p>
+  {% endif %}
+</div></div>
+{% endif %}
+
+<div class="card u-mt" style="max-width:720px"><div class="hd">Column reference</div><div class="bd">
+<table class="ledger compact"><tbody>
+<tr><td class="mono">member_name</td><td>Required — must already be enrolled in this scheme.</td></tr>
+<tr><td class="mono">member_phone</td><td>Used to match the member.</td></tr>
+<tr><td class="mono">date</td><td>Required. YYYY-MM-DD.</td></tr>
+<tr><td class="mono">amount</td><td>Required.</td></tr>
+<tr><td class="mono">kind</td><td><code>DUES</code>, <code>LEVY</code>, <code>REGISTRATION</code>, <code>RENEWAL</code>, or <code>VOLUNTARY</code>. Left blank, the scheme's own default applies.</td></tr>
+<tr><td class="mono">period_label</td><td>Which dues period this covers (e.g. <code>2026-01</code>), if relevant.</td></tr>
+<tr><td class="mono">channel</td><td><code>CASH</code> or <code>BANK</code>. Defaults to cash.</td></tr>
+<tr><td class="mono">note</td><td>Optional.</td></tr>
+</tbody></table>
+</div></div>
+{% endblock %}

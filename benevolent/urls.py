@@ -1,6 +1,7 @@
 from django.urls import path
 
-from . import api, views, views_committee, views_config, views_engine, views_notify, views_registry
+from . import (api, views, views_bulk_import, views_committee, views_config, views_engine,
+              views_notify, views_registry, views_search)
 
 urlpatterns = [
     path("", views.BenevolentDashboardView.as_view(), name="benevolent_dashboard"),
@@ -35,6 +36,10 @@ urlpatterns = [
          name="benevolent_notification_template_edit"),
     path("notifications/history/", views_notify.NotificationHistoryView.as_view(),
          name="benevolent_notification_history"),
+    path("search/members/", views_search.MemberSearchView.as_view(),
+         name="benevolent_member_search"),
+    path("search/memberships/", views_search.MembershipSearchView.as_view(),
+         name="benevolent_membership_search"),
     path("schemes/<int:pk>/policy/new/", views.PolicyFormView.as_view(),
          name="benevolent_policy_new"),
     path("schemes/<int:pk>/policy/<int:policy_id>/", views.PolicyFormView.as_view(),
@@ -65,6 +70,11 @@ urlpatterns = [
     path("registry/", views_registry.RegistryView.as_view(), name="benevolent_registry"),
     path("schemes/<int:pk>/register/", views_registry.RegisterView.as_view(),
          name="benevolent_register"),
+    path("schemes/<int:pk>/import/", views_bulk_import.BulkMembershipImportView.as_view(),
+         name="benevolent_bulk_import"),
+    path("schemes/<int:pk>/import/contributions/",
+         views_bulk_import.BulkContributionImportView.as_view(),
+         name="benevolent_bulk_import_contributions"),
     path("members/<int:pk>/lifecycle/<str:action>/",
          views_registry.MembershipLifecycleView.as_view(),
          name="benevolent_membership_lifecycle"),
@@ -95,9 +105,13 @@ urlpatterns = [
     path("cases/", views.CaseListView.as_view(), name="benevolent_case_list"),
     path("schemes/<int:pk>/cases/new/", views.CaseCreateView.as_view(),
          name="benevolent_case_new"),
+    path("cases/<int:pk>/edit/", views.CaseUpdateView.as_view(),
+         name="benevolent_case_edit"),
     path("cases/<int:pk>/", views.CaseDetailView.as_view(), name="benevolent_case_detail"),
     path("cases/<int:pk>/payout/", views.CasePayoutView.as_view(),
          name="benevolent_case_payout"),
+    path("cases/<int:pk>/fund-from-balance/", views.FundFromBalanceView.as_view(),
+         name="benevolent_case_fund_from_balance"),
     path("cases/<int:pk>/decide/<str:action>/", views.CaseDecisionView.as_view(),
          name="benevolent_case_decide"),
     path("cases/<int:pk>/funding-target/", views.CaseFundingTargetView.as_view(),

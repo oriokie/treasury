@@ -1,5 +1,259 @@
 # Changelog
 
+## v2.58.0 - Full-module audit of the Benevolent module
+
+A systematic sweep of every model field, view, permission, report, export
+format, the wizard, the notification wiring, accounting integrity, and query
+counts under load.
+
+### Four real issues found and fixed
+
+**Six enforced policy rules were unreachable from the UI.** `arrears_block`,
+`grace_period_days`, `exemption_age`, `max_household_size`,
+`allow_exemptions` and `allow_transfers` are all genuinely enforced — each
+one verified to really block a transfer, refuse an exemption, cap a
+household, produce GRACE standing, make an owing member ineligible, or
+exempt an older member. But none appeared on the policy form, because
+`grouped()` silently skipped any field absent from its GROUPS list. A
+treasurer could not configure rules the system was enforcing against their
+members. The mechanism is fixed as well as the instance: a stray field now
+lands in a visible "Other settings" group instead of vanishing.
+
+**A duplicate, inferior registration path.** Phase 1's enrolment view still
+rendered its own form — no households, no dependants, no off-roll
+registration — reachable by URL though nothing had linked to it since Phase
+3. It now redirects to the real registration screen; the duplicate form is
+deleted.
+
+**The remaining N+1 (recommendation #70b) is closed.** `arrears_for()` cost
+~22 queries per member, and it runs for every active member on the
+dashboard, the arrears report and every standing recomputation. Now 6, flat.
+Dashboard query growth fell 68%. Every number unchanged — the full
+pre-existing suite passed untouched, which is exactly what should happen
+when only the cost of an answer changes.
+
+**Two dead functions, one lying about itself.** `periods_between()` claimed
+in its docstring to be "the single definition of which periods have fallen
+due" — a claim Phase 10's rewrite had quietly made false, since nothing
+called it any more. A dead function asserting it is the source of truth for
+a rule that has moved is how a future fix gets made in the wrong place.
+Removed, along with a compatibility shim that had nothing to be compatible
+with.
+
+### Confirmed sound by being exercised, not re-read
+
+Accounting integrity (ledger balances, metrics agree, no orphans);
+historical accuracy (a decided case is unmoved by a later policy; arrears
+across a mid-history dues change charge the right rate for each period);
+edge cases (zero benefits, over-payouts, double approval, future events,
+negative contributions, duplicate enrolments all correctly refused);
+permissions (22 pages x 10 roles, no 500s, all correct); reports (10
+reports x 5 formats = 50 combinations, all working); notifications (every
+event maps to a real toggle; every placeholder is provided); the wizard;
+and every template URL name.
+
+**Tests:** 18 new. Full regression clean across the whole application —
+2,316 tests.
+
+## v2.57.0 - Production fixes and requested features, round 2
+
+### Two "still broken" reports, fixed at their true root cause
+
+- **Manual receipt still sweeping in unrelated entries.** The previous fix
+  (a true fallback chain) was correct but not sufficient — even the
+  strongest text-based match is still an inference. `Transaction` now has a
+  real `split_of` foreign key, set by `split_into()` on every part it
+  creates; `split_siblings()` checks this FIRST, falling back to text
+  inference only for historical rows, which a migration backfills
+  automatically from the `[Split of #N]` tag already written into every
+  split's narration.
+- **The envelope ledger popup still appearing outside the grid.** A
+  different cause from the earlier CSS fix: `.content` (the page's main
+  wrapper) runs a `transform`-animating entrance animation, which per the
+  CSS spec traps any `position:fixed` descendant's coordinates against its
+  own box instead of the true viewport. Fixed by moving the popup to
+  `document.body` the first time it's shown, with cleanup on row removal
+  and table rebuild.
+
+### Confirmed already built, made discoverable
+
+- **Segregation of duties on case approval** already worked correctly by
+  default; added `require_different_approver` so a very small scheme can
+  actually configure it, rather than it being a fixed rule.
+- **Case-count-based inactivity** (`missed_case_levies()`) was fully built
+  and correctly wired into the standing engine, exactly matching the
+  scenario described — a levy scheme with no monthly dues, where time alone
+  says nothing without recent cases. It was simply never exposed on the
+  policy form.
+- **Cash payment recording** was already fully supported.
+
+### New
+
+- The register form no longer requires an existing church-roll member — a
+  benevolent scheme is its own thing. Also fixed in the same pass: a hidden
+  `<select>` silently skipping native browser validation, a real cause of
+  "the button doesn't do anything."
+- Marking a dependant as deceased, distinct from generic removal, with a
+  clear next-step prompt toward raising a case.
+- Bulk import extended to contribution history, with both import screens
+  now properly linked from the scheme's own page.
+- A year selector on the (already paginated) contributions list.
+- A member directory report — every member with their dependants, one
+  place, filterable to active or inactive only.
+
+**Tests:** 56 new. Full regression clean across the whole application —
+2,282 tests total.
+
+## v2.56.0 - Phase 11 (Guided Setup & Allocation Transparency) plus a wide production-fix pass
+
+### Phase 11, as proposed
+
+A plain-language guide on the policy profile library connecting the three
+funding patterns Edwin described to the profiles that already implement
+them; an explicit, logged "fund this case from the balance" decision for
+levy-funded schemes (record_payout() never actually required a levy — this
+makes skipping one a stated choice); and a "Matched via" column on the
+contribution intake queue, surfacing allocator signal data that was already
+being frozen onto each row but never displayed.
+
+### Four real, confirmed bugs — found and fixed
+
+- **The Admit button** on a pending membership's page produced "Unknown
+  action" — wired to the wrong view.
+- **`split_siblings()` (giving app)** could sweep unrelated people's
+  payments into a manual-receipt mark when they merely shared a generic
+  narration and date — an OR of three match conditions instead of a true
+  fallback through them.
+- **The autocomplete popup's CSS** existed only as drifting, copy-pasted
+  fragments across three templates — consolidated into one definition, now
+  also used for new member-search widgets on benevolent's forms.
+- **A severe font-loading bug in the budget PNG export** — a missing system
+  font package silently fell back to a fixed-size bitmap font incompatible
+  with the file's 4x print-quality render scale, making the figures
+  effectively invisible. Fixed to fall back to reportlab's own bundled
+  fonts, present in every environment that can run this application.
+
+### Two unbounded-by-default list views, fixed — plus a third, worse one found
+
+`/transactions/` and `/expenses/` loaded every row ever recorded on a bare
+visit; both now default to the current month, while any other filter with
+no date bound still searches all time exactly as before (proven against
+the existing test suite, which relies on that). A third, more severe
+instance was found while checking "other pages": the envelope list scanned
+every envelope ever recorded on every visit, discarding almost all of it in
+Python — fixed to filter at the database level.
+
+### Two items audited and proven already correct
+
+Member phone-matching (`MemberPhone`, `merge_members()`,
+`match_or_create_member()`) already recognises a contribution from any of
+a member's known phones, including in the "not contributed to campaign" SMS
+criterion — confirmed with new regression tests rather than left as a
+re-read of the code.
+
+### A new standalone seed command
+
+`seed_benevolent_demo` — benevolent test data without running the full demo
+first, reusing the existing seed chain rather than duplicating it.
+
+**Tests:** 12 (Phase 11) + 24 (bugfixes) + 6 (phone audit) + 3 (envelope
+list) + 5 (transaction date default) + 4 (expense date default) + 2 (PNG
+font fallback) + 8 (seed command) = 64 new. Full regression clean across
+benevolent (444 tests), giving, cashbook, envelopes, members, core, and
+accounts.
+
+## v2.55.0 - Production fixes and requested features
+
+### Four real bugs, found and fixed
+
+- **The "Admit" button produced "Unknown action."** It posted to the wrong
+  view — admit has always lived on `MembershipAdminView`, not
+  `MembershipLifecycleView`. Fixed the wiring; the shared reason/date fields
+  the button sits alongside are now actually honoured by that action too.
+- **Marking one bank transaction as a manual receipt could change several
+  unrelated ones.** `split_siblings()` OR'd three match conditions instead
+  of falling back through them, so a transaction with a solid, unique bank
+  reference was still ALSO matched against anyone else's payment sharing its
+  plain narration and date. Fixed to a true fallback: the strongest
+  identifier available, and only that one.
+- **The type-ahead name popup rendered incorrectly.** Its CSS was
+  copy-pasted into three templates with drifting details; the shared
+  stylesheet held only an orphaned fragment. Consolidated into one
+  definition.
+- **A dependant's own phone — documented since Phase 4 for allocation
+  matching — was never actually settable.** Added to both the household-add
+  form and its service function.
+
+### Three requested features
+
+- **Bulk roster import** for a church bringing an existing scheme into the
+  system — every row an ordinary registration, dependants included, with
+  "mark paid up" clearing arrears through a visible, auto-approved waiver
+  record rather than a fabricated payment history, and no welcome
+  notification for someone who has belonged for years.
+- **Member/membership search** on the register, contribution, and case
+  forms, replacing plain dropdowns, correctly scoped for Phase 9's
+  scheme-specific roles.
+- **A standing snapshot on a case's own page** for dues-funded schemes —
+  the equivalent of the levy roster levy-funded schemes have always had for
+  "who has and hasn't paid."
+
+**Tests:** 27 new, all green. Full regression clean across the whole
+application: benevolent (397), giving + members (288), accounts (127),
+core (419).
+
+## v2.55.0 - Bug fixes and features requested directly (post-Phase-10)
+
+### Two real, production bugs
+
+The **"Admit" button** on a pending membership's page produced "Unknown
+action" — wired to a view with no admit handler; the correct one was
+reachable only via a different URL. Fixed, and the shared reason/date
+fields it sits alongside are now actually honoured rather than silently
+ignored.
+
+**Marking one bank transaction as a manual receipt could change six** —
+`split_siblings()` OR'd three match conditions together instead of falling
+back through them, so a transaction with a solid, unique bank reference was
+*also* matched against anyone else's payment sharing its plain-text
+narration and date. A sibling function had already correctly diagnosed and
+avoided this exact risk in its own docstring; the reasoning had never been
+applied here. Fixed to a true strongest-identifier-first fallback, with
+tests proving both the fix and that it doesn't break the real split-payment
+case it exists to serve.
+
+### A site-wide styling bug
+
+The type-ahead popup's CSS (`.ac-box`/`.ac-item`) was never actually defined
+in the shared stylesheet — three existing screens each carried their own
+copy-pasted, drifting local version. Consolidated into one definition.
+
+### Two new features
+
+**Member/membership search** on benevolent's register, contribution and case
+forms — previously a plain, unusably long `<select>` for any church of
+size. Its own endpoint, gated correctly for Phase 9's scheme-specific roles
+(the general search is Treasurer/Assistant only). One shared, reusable JS
+widget upgrades the existing dropdown in place.
+
+**Bulk roster import** — bring an already-running scheme's existing
+membership, dependants included, into the system at once via CSV, with
+"mark paid up" clearing arrears through a visible, auto-approved,
+explicitly-reasoned waiver rather than a fabricated payment history. A
+related gap closed along the way: a dependant's phone (documented since
+Phase 4 as existing for allocation matching) had no way to actually be set,
+anywhere.
+
+### Confirmed already built, not re-built
+
+The per-case "who contributed, who did not" roster (Phase 4's per-case levy
+screen) and the "members not in good standing" filter (the membership
+registry's standing filter, live since Phase 3) already answer exactly what
+was asked — pointed to directly rather than duplicated.
+
+**Tests:** 26 new. Full regression clean: benevolent (423 across all ten
+phases), giving (237), core + accounts (546), envelopes + cashbook (559).
+
 ## v2.54.0 - Benevolent Phase 10: Production Readiness & Final Review (module complete)
 
 ### A severe, previously-invisible performance bug — found and fixed

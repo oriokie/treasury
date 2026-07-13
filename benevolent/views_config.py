@@ -20,8 +20,8 @@ from core.permissions import (BenevolentCommitteeMixin, BenevolentRegistrationMi
                               BenevolentSettingsMixin, BenevolentSetupMixin,
                               BenevolentViewMixin)
 
-from .forms import (ApplyProfileForm, FeeForm, NomineeForm, PolicyProfileForm,
-                    SaveAsProfileForm, SettingsForm, VoteForm)
+from .forms import (ApplyProfileForm, FeeForm, MembershipEditForm, NomineeForm,
+                    PolicyProfileForm, SaveAsProfileForm, SettingsForm, VoteForm)
 from .models import (BenevolentCase, BenevolentScheme, BenevolentSettings,
                      PolicyProfile, SchemeMembership, SchemePolicy)
 from .services import cases as case_svc
@@ -308,17 +308,26 @@ class MembershipAdminView(BenevolentRegistrationMixin, View):
     def post(self, request, pk, action):
         m = get_object_or_404(
             SchemeMembership.objects.select_related("scheme", "member"), pk=pk)
+        # The "Admit" button lives in the same shared form as suspend/withdraw/
+        # reinstate/close (see membership_detail.html's #lifeform) even though
+        # this view handles it — so it should honour the same date/reason
+        # fields those other actions do, rather than silently ignoring
+        # whatever a treasurer typed into them.
+        from .forms import LifecycleForm
+        lf = LifecycleForm(request.POST)
+        on = lf.cleaned_data["on"] if lf.is_valid() else None
+        reason = lf.cleaned_data["reason"] if lf.is_valid() else ""
         try:
             if action == "admit":
-                scheme_svc.admit(m, user=request.user)
+                scheme_svc.admit(m, user=request.user, on=on, reason=reason)
                 messages.success(
                     request, f"{m.member.name} admitted. Cover — and any waiting period — "
-                             f"runs from today.")
+                             f"runs from {(on or dt.date.today()):%d %b %Y}.")
             elif action == "reinstate":
-                scheme_svc.reinstate(m, user=request.user)
+                scheme_svc.reinstate(m, user=request.user, on=on, reason=reason)
                 messages.success(
                     request, f"{m.member.name} reinstated. Note their waiting period runs "
-                             f"again from today.")
+                             f"again from {(on or dt.date.today()):%d %b %Y}.")
             elif action == "fee":
                 form = FeeForm(request.POST)
                 if not form.is_valid():
@@ -347,6 +356,14 @@ class MembershipAdminView(BenevolentRegistrationMixin, View):
                 n.save()
                 messages.success(request, f"{n.name} recorded as a nominee "
                                           f"({n.share_percent}%).")
+            elif action == "edit":
+                form = MembershipEditForm(request.POST, instance=m)
+                if not form.is_valid():
+                    messages.error(request, "; ".join(
+                        f"{k}: {v[0]}" for k, v in form.errors.items()))
+                    return redirect("benevolent_membership_detail", pk=pk)
+                form.save()
+                messages.success(request, "Membership details updated.")
             else:
                 messages.error(request, "Unknown action.")
         except ValidationError as e:

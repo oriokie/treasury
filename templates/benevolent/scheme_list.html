@@ -4,7 +4,8 @@
 <div class="page-head"><div><h1>Schemes &amp; policies</h1>
   <div class="sub">Each scheme is defined by configuration — a fund and a versioned policy — not by code</div></div>
 <div class="btn-row no-print">
-  {% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>{% endif %}
+  {% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_profile_list' %}">Which pattern fits your church?</a>{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
 
 <div class="table-wrap"><table class="ledger">

@@ -75,7 +75,7 @@ def _notify_status_change(membership, *, status_note=""):
 @db_tx.atomic
 def register(scheme, member, *, joined_on=None, user=None,
              registration_type=RegistrationType.INDIVIDUAL, household_name="",
-             date_of_birth=None, notes="", spouse=None, dependants=None):
+             date_of_birth=None, notes="", spouse=None, dependants=None, notify=True):
     """Register a member — individually, or as a household.
 
     A HOUSEHOLD registration is one subscription covering a principal member, a
@@ -140,7 +140,7 @@ def register(scheme, member, *, joined_on=None, user=None,
         add_dependant(m, user=user, registered_on=joined_on, **d)
 
     standing_svc.refresh(m, user=user)
-    if not needs_admission:
+    if not needs_admission and notify:
         from benevolent.services import notify as notify_svc
         from benevolent.models import NotificationEvent
         notify_svc.send(NotificationEvent.REGISTRATION_CONFIRMED, membership=m)
@@ -148,7 +148,7 @@ def register(scheme, member, *, joined_on=None, user=None,
 
 
 @db_tx.atomic
-def admit(membership, *, on=None, user=None, reason=""):
+def admit(membership, *, on=None, user=None, reason="", notify=True):
     """Formally admit a member whose registration needed approval.
 
     Cover — and therefore any waiting period — runs from THIS date, not from the day
@@ -168,9 +168,10 @@ def admit(membership, *, on=None, user=None, reason=""):
         user=user, on=on, reason=reason,
         from_value=SchemeMembership.Status.PENDING, to_value=membership.status)
     standing_svc.refresh(membership, user=user)
-    from benevolent.services import notify as notify_svc
-    from benevolent.models import NotificationEvent
-    notify_svc.send(NotificationEvent.REGISTRATION_CONFIRMED, membership=membership)
+    if notify:
+        from benevolent.services import notify as notify_svc
+        from benevolent.models import NotificationEvent
+        notify_svc.send(NotificationEvent.REGISTRATION_CONFIRMED, membership=membership)
     return membership
 
 
@@ -555,7 +556,7 @@ def revoke_exemption(exemption, *, user=None, reason="", on=None):
 # ---------------------------------------------------------------------------
 
 @db_tx.atomic
-def add_dependant(membership, *, relationship, member=None, name="",
+def add_dependant(membership, *, relationship, member=None, name="", phone="",
                   date_of_birth=None, registered_on=None, notes="", user=None):
     """Add a spouse or dependant to a registration.
 
@@ -564,6 +565,11 @@ def add_dependant(membership, *, relationship, member=None, name="",
     Linking is strongly preferred and the form leads with it — a spouse who is a
     church member should have ONE record, whose name and phone cannot drift between
     the roll and the scheme.
+
+    `phone` is independent of `member`: even a dependant who IS a linked church
+    member may pay dues from a different, personal number than the one on their
+    Member record, and the allocator matches on whatever number actually shows up
+    in a narration — see SchemeDependant.phone's own docstring.
     """
     registered_on = registered_on or _dt.date.today()
     policy = membership.scheme.policy_on(registered_on)
@@ -583,7 +589,7 @@ def add_dependant(membership, *, relationship, member=None, name="",
                 f"{size}.")
 
     d = SchemeDependant(
-        membership=membership, member=member, name=name or "",
+        membership=membership, member=member, name=name or "", phone=phone or "",
         relationship=relationship, date_of_birth=date_of_birth,
         registered_on=registered_on, notes=notes)
     d.full_clean(exclude=["membership"])
@@ -595,6 +601,40 @@ def add_dependant(membership, *, relationship, member=None, name="",
 
 
 @db_tx.atomic
+def update_dependant(dependant, *, member=None, name="", phone="",
+                     relationship=None, date_of_birth=None, notes="", user=None):
+    """Correct a dependant's own details — a typo in their name, a phone
+    number added after the fact, a relationship mis-recorded at registration.
+
+    Deliberately does NOT touch `registered_on`: that is a coverage date with
+    real eligibility consequences (a dependant is covered from the day they
+    were registered, never retrospectively — see add_dependant's own
+    docstring), so backdating it here would be too easy a way to quietly
+    extend cover. A genuine correction to WHEN someone was registered should
+    go through remove + re-add, which leaves an honest trail of both dates,
+    not a silent overwrite of the one that matters for a claim.
+    """
+    before = (dependant.member_id, dependant.name, dependant.phone,
+             dependant.relationship, dependant.date_of_birth, dependant.notes)
+
+    dependant.member = member
+    dependant.name = name or ""
+    dependant.phone = phone or ""
+    if relationship:
+        dependant.relationship = relationship
+    dependant.date_of_birth = date_of_birth
+    dependant.notes = notes or ""
+    dependant.full_clean(exclude=["membership"])
+    dependant.save()
+
+    after = (dependant.member_id, dependant.name, dependant.phone,
+            dependant.relationship, dependant.date_of_birth, dependant.notes)
+    if before != after:
+        log(dependant.membership, MembershipEvent.Kind.NOTE,
+            f"{dependant.display_name}'s details corrected.", user=user)
+    return dependant
+
+
 def remove_dependant(dependant, *, on=None, user=None, reason=""):
     """Remove a dependant from cover.
 
@@ -613,12 +653,44 @@ def remove_dependant(dependant, *, on=None, user=None, reason=""):
     return dependant
 
 
+def record_dependant_death(dependant, *, died_on, user=None, reason=""):
+    """Record that a dependant has died — separate from remove_dependant()
+    for the same reason record_death() (above) is separate from withdraw():
+    a dependant's death is very often the event a case gets raised FOR, not
+    an administrative change to tidy up. `removed_on` is ALSO set (they are
+    no longer an active dependant going forward) but `died_on` records
+    specifically why, distinct from moving away, ageing out, or a
+    correction — a treasurer or auditor reading the record later should
+    never have to guess which one this was.
+
+    The dependant record itself is never deleted. `BenevolentCase.dependant`
+    keeps pointing at it regardless of `active`, so a case already raised —
+    or one raised after this call — still correctly shows who it was for.
+    """
+    if dependant.died_on:
+        raise ValidationError(f"{dependant.display_name} is already recorded as deceased.")
+    dependant.active = False
+    dependant.removed_on = died_on
+    dependant.died_on = died_on
+    dependant.save(update_fields=["active", "removed_on", "died_on"])
+    log(dependant.membership, MembershipEvent.Kind.DEPENDANT_DECEASED,
+        f"{dependant.display_name} recorded as deceased on {died_on:%d %b %Y}.",
+        user=user, on=died_on, reason=reason)
+    return dependant
+
+
 def household_members(membership):
-    """Everyone one registration covers, principal first."""
+    """Everyone one registration covers, principal first — plus anyone
+    recently recorded as deceased, who should stay visible (with that
+    status shown) rather than silently vanish the way a dependant removed
+    for any OTHER reason correctly does."""
+    from django.db.models import Q
     rows = [{"person": membership.member, "role": "Principal member",
              "member": membership.member, "since": membership.cover_from,
              "dependant": None}]
-    for d in membership.dependants.filter(active=True).order_by("relationship", "name"):
+    living_or_deceased = Q(active=True) | Q(died_on__isnull=False)
+    for d in membership.dependants.filter(living_or_deceased).order_by(
+            "relationship", "name"):
         rows.append({"person": d.member or d, "role": d.get_relationship_display(),
                      "member": d.member, "since": d.registered_on, "dependant": d})
     return rows

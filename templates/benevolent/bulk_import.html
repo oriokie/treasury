@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Import roster · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · import an existing roster</h1>
+  <div class="sub">Bring members you already run this scheme for into the system at once — dependants included.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>"Mark paid up" clears arrears honestly, not silently.</strong> Ticking it doesn't fabricate a payment
+  history the system doesn't have — it records a visible, auto-approved waiver, dated today, explaining that the
+  member's prior payments predate this system and were not itemised. Nothing about their real financial history is
+  invented; a treasurer or auditor can always see exactly why the balance shows what it shows.
+</div>
+
+<div class="card form-card" style="max-width:720px"><div class="bd">
+<p class="help u-mt-0">Download the template, fill one row per member (up to 3 dependants per row — more can be
+  added afterwards from the member's own page), and upload it here.</p>
+<div class="btn-row u-mb">
+  <a class="btn btn-ghost btn-sm" href="?template=1">⬇ Download CSV template</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import_contributions' scheme.id %}">Import contribution history instead →</a>
+</div>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  <div class="form-row"><label for="file">Roster file (.csv)</label>
+    <input type="file" id="file" name="file" accept=".csv" class="field" required></div>
+  <div class="btn-row u-mt"><button class="btn">Import</button></div>
+</form>
+</div></div>
+
+{% if imported is not None %}
+<div class="card u-mt" style="max-width:720px"><div class="hd">Result</div><div class="bd">
+  <p><strong>{{ imported }}</strong> membership{{ imported|pluralize }} imported
+    {% if skipped %}, <strong>{{ skipped }}</strong> row{{ skipped|pluralize }} skipped{% endif %}.</p>
+  {% if problems %}
+  <table class="ledger compact"><thead><tr><th>Row</th><th>Name</th><th>Problem</th></tr></thead>
+  <tbody>{% for row_n, name, problem in problems %}<tr>
+    <td class="mono">{{ row_n }}</td><td>{{ name }}</td><td class="muted">{{ problem }}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="help u-mt">Fix these rows in the file and re-upload just those — importing is safe to repeat; anyone
+    already enrolled is reported as a problem row rather than re-imported.</p>
+  {% endif %}
+</div></div>
+{% endif %}
+
+<div class="card u-mt" style="max-width:720px"><div class="hd">Column reference</div><div class="bd">
+<table class="ledger compact"><tbody>
+<tr><td class="mono">name</td><td>Required.</td></tr>
+<tr><td class="mono">phone</td><td>Used to match an existing church member, or create one.</td></tr>
+<tr><td class="mono">joined_on</td><td>YYYY-MM-DD. Left blank, defaults to today.</td></tr>
+<tr><td class="mono">registration_type</td><td><code>INDIVIDUAL</code> or <code>HOUSEHOLD</code>.</td></tr>
+<tr><td class="mono">household_name</td><td>Only for a household registration.</td></tr>
+<tr><td class="mono">mark_paid_up</td><td><code>1</code> to clear any arrears the import would otherwise show, with a visible waiver record; blank or <code>0</code> to leave arrears showing normally.</td></tr>
+{% for i in dep_slots %}
+<tr><td class="mono">dependant{{ i }}_name</td><td>Blank if this slot is unused.</td></tr>
+<tr><td class="mono">dependant{{ i }}_relationship</td><td><code>SPOUSE</code>, <code>CHILD</code>, <code>PARENT</code>, <code>SIBLING</code>, or <code>OTHER</code>.</td></tr>
+<tr><td class="mono">dependant{{ i }}_phone</td><td>Optional — lets a spouse or grown child's own payments be matched automatically.</td></tr>
+{% endfor %}
+</tbody></table>
+</div></div>
+{% endblock %}

@@ -1,9 +1,11 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Register a member · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ scheme.name }} · register a member</h1>
   <div class="sub">Individually, or as a household — one subscription covering a spouse and dependants</div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import' scheme.id %}">Import an existing roster instead →</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
 
 <div class="alert alert-info u-mb">
   <strong>The scheme keeps no separate list of people.</strong> Every person here comes from the church roll, and a
@@ -33,4 +35,21 @@
 <p class="help" style="max-width:660px">More dependants can be added on the member's page once they are registered.
   A dependant is covered from the day they are <em>registered</em>, never retrospectively — which is why they go on
   record before an event, not after one.</p>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/benevolent-search.js' %}"></script>
+<script>
+BenevolentSearch.enhance({
+  selectId: "id_member", searchUrl: "{% url 'benevolent_member_search' %}",
+  placeholder: "Start typing the principal member's name…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+});
+BenevolentSearch.enhance({
+  selectId: "id_spouse", searchUrl: "{% url 'benevolent_member_search' %}",
+  placeholder: "Start typing the spouse's name (if on the church roll)…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+});
+</script>
 {% endblock %}

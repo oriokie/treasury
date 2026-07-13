@@ -37,6 +37,7 @@ class CaseEvent(models.Model):
         FUNDING_REACHED = "FUND_MET", "Funding target reached"
         BEREAVED_DECISION = "BER_DEC", "Bereaved member's contribution decided"
         EXEMPTION_GRANTED = "EXEMPTED", "Bereavement exemption granted"
+        FUNDED_FROM_BALANCE = "FUNDED_BAL", "Funded from the fund balance, not a levy"
         NOTE = "NOTE", "Note"
 
     case = models.ForeignKey("BenevolentCase", on_delete=models.CASCADE,

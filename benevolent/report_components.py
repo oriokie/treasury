@@ -64,6 +64,8 @@ def _scheme_filter_value(filters):
 
 
 SCHEME_FILTER = Filter("scheme", "Scheme code (e.g. BEN) — blank for all", kind="text")
+ACTIVE_FILTER = Filter("active", "1 = active only, 0 = inactive only, blank = everyone",
+                       kind="text")
 
 
 # ===========================================================================
@@ -258,6 +260,59 @@ class BenevolentHouseholdComponent(ComponentSection):
             url=f"/benevolent/members/{r['membership'].pk}/") for r in rows_data]
         return SectionData(key=self.key, title=self.title, columns=columns, rows=rows,
                            note=f"{len(rows)} household registration(s).")
+
+
+class BenevolentMemberDirectoryComponent(ComponentSection):
+    key = "benevolent_member_directory"
+    title = "Member directory"
+    declared_metrics = ()
+
+    def render(self, ctx, filters):
+        from benevolent.models import SchemeMembership
+        scheme = _scheme_filter_value(filters)
+        active_filter = (filters.get("active") or "").strip()
+
+        qs = (SchemeMembership.objects.select_related("member")
+              .prefetch_related("dependants"))
+        if scheme is not None:
+            qs = qs.filter(scheme=scheme)
+        else:
+            qs = qs.select_related("scheme")
+        if active_filter == "1":
+            qs = qs.filter(status=SchemeMembership.Status.ACTIVE)
+        elif active_filter == "0":
+            qs = qs.exclude(status=SchemeMembership.Status.ACTIVE)
+        qs = qs.order_by("scheme__name", "member__name")
+
+        columns = [
+            Column("member", "Member", drilldown=True), Column("scheme", "Scheme"),
+            Column("number", "Number"), Column("phone", "Phone"),
+            Column("status", "Status"), Column("standing", "Standing"),
+            Column("joined_on", "Joined"), Column("dependant_count", "Dependants", numeric=True),
+            Column("dependants", "Dependant details"),
+        ]
+        rows = []
+        for m in qs[:2000]:
+            deps = [d for d in m.dependants.all() if d.active or d.died_on]
+            dep_text = "; ".join(
+                f"{d.display_name} ({d.get_relationship_display()}"
+                f"{', deceased' if d.died_on else ''})" for d in deps) or "—"
+            rows.append(Row(cells={
+                "member": m.member.name, "scheme": m.scheme.code, "number": m.number,
+                "phone": m.member.phone or "",
+                "status": m.get_status_display(), "standing": m.get_standing_display(),
+                "joined_on": m.joined_on, "dependant_count": len(deps),
+                "dependants": dep_text,
+            }, url=f"/benevolent/members/{m.pk}/"))
+        note = f"{qs.count()} membership(s)"
+        if active_filter == "1":
+            note += " — active only"
+        elif active_filter == "0":
+            note += " — inactive/suspended/withdrawn/deceased/closed/pending only"
+        if qs.count() > 2000:
+            note += " (showing the first 2,000 — export for the rest)"
+        return SectionData(key=self.key, title=self.title, columns=columns, rows=rows,
+                           note=note + ".")
 
 
 # ===========================================================================
@@ -500,6 +555,8 @@ def register_components():
         ("benevolent_contribution_summary", BenevolentContributionSummaryComponent,
          "Benevolent: contribution summary"),
         ("benevolent_membership", BenevolentMembershipComponent, "Benevolent: membership"),
+        ("benevolent_member_directory", BenevolentMemberDirectoryComponent,
+         "Benevolent: member directory (with dependants)"),
         ("benevolent_households", BenevolentHouseholdComponent, "Benevolent: households"),
         ("benevolent_committee", BenevolentCommitteeComponent, "Benevolent: committee"),
         ("benevolent_cases", BenevolentCaseReportComponent, "Benevolent: cases"),
@@ -549,6 +606,14 @@ def register_reports():
         category="Benevolent", permission=_can_view_benevolent,
         filters=[SCHEME_FILTER], period_from_request=False,
         sections=[BenevolentMembershipComponent(), BenevolentHouseholdComponent()]))
+
+    registry.register(Report(
+        key="benevolent_member_directory_report", title="Benevolent: Member Directory",
+        description="Every member's own information alongside their dependants, in one "
+                    "place — filterable to active or inactive members only.",
+        category="Benevolent", permission=_can_view_benevolent,
+        filters=[SCHEME_FILTER, ACTIVE_FILTER], period_from_request=False,
+        sections=[BenevolentMemberDirectoryComponent()]))
 
     registry.register(Report(
         key="benevolent_committee_report", title="Benevolent: Committee Report",

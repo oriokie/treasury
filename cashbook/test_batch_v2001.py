@@ -58,7 +58,9 @@ class BankChargeNoReceiptTests(TestCase):
         self.assertIn(self.normal.id, qs.values_list("id", flat=True))
 
     def test_no_receipt_pill_absent_for_bank_charge_in_list(self):
-        b = self.c.get("/expenses/").content.decode()
+        # explicit range: this test is about the "no receipt" pill's
+        # visibility rule, not the list view's bare-visit current-month default
+        b = self.c.get("/expenses/?start=2026-06-01&end=2026-06-30").content.decode()
         # find the row segments and check the pill only appears for the normal expense
         self.assertIn("no receipt", b)  # present for the normal expense
         charge_idx = b.find("M-Pesa charge")

@@ -118,6 +118,8 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         export = request.GET.get("export")
         if export == "trust-pending-receipt":
             return self._trust_pending_receipt_export(request)
+        if export == "trust-pending-receipt-pdf":
+            return self._trust_pending_receipt_pdf(request)
         if export in ("csv", "xlsx"):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
@@ -195,49 +197,26 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         (e.g. a purely local split) is not a trust-receipting concern and is
         excluded, matching the export's purpose."""
         from reports.exports import xlsx_response
-        from departments.models import Department
         from core.models import SiteConfig
+        from giving.services.pending_receipt import HEADER, pending_receipt_rows
 
-        # Deliberately not pre-filtered to fund_type=TRUST: a mixed split's
-        # local sibling must still be fetched so its amount can be added back
-        # into the combined total. Scoped to non-capital-receipt confirmed
-        # credits, the same broad scope _receipted_q() already assumes.
-        qs = (Transaction.objects.confirmed_credits()
-              .filter(excluded_from_income=False)
-              .select_related("department", "member")
-              .order_by("date", "id"))
-
-        def _is_receipted(t):
-            # mirrors reports.services.balances._receipted_q()'s conditions,
-            # applied per-transaction so a group's receipted status can be
-            # judged member-by-member
-            return (t.channel == Transaction.Channel.ENVELOPE
-                    or t.manual_receipt or t.processed_via_envelope)
-
-        header = ["Date", "Phone", "Member", "Amount", "Fund", "Reference", "M-Pesa Reference"]
-        rows = []
-        for members in _group_split_siblings(list(qs)):
-            has_trust = any(t.department_id and t.department.fund_type == Department.FundType.TRUST
-                            for t in members)
-            if not has_trust:
-                continue
-            if all(_is_receipted(t) for t in members):
-                continue
-            first = members[0]
-            phone = first.payer_phone or (first.member.receipt_phone if first.member_id else "") or ""
-            member_name = first.member.name if first.member_id else (first.payer_name or "")
-            total = sum((t.amount for t in members), Decimal(0))
-            # a split group's siblings all share the same payment reference, so
-            # the first row's mpesa_ref applies to the whole combined line too
-            mpesa_ref = next((t.mpesa_ref for t in members if t.mpesa_ref), "")
-            rows.append([first.date.isoformat(), phone, member_name, float(total),
-                        _combined_fund_label(members),
-                        first.reference or first.mpesa_ref or first.core_ref or "",
-                        mpesa_ref])
-
-        return xlsx_response("trust_fund_pending_receipt.xlsx", header, rows,
+        rows = [[d.isoformat(), phone, name, float(amount), fund, ref, mpesa]
+               for d, phone, name, amount, fund, ref, mpesa in pending_receipt_rows()]
+        return xlsx_response("trust_fund_pending_receipt.xlsx", HEADER, rows,
                              title="Trust fund items pending receipt",
                              church=SiteConfig.get().church_name)
+
+    def _trust_pending_receipt_pdf(self, request):
+        """The same data as a PDF — for printing, or for a copy someone
+        wants outside a spreadsheet (e.g. via the Telegram bot's /pending
+        pdf route)."""
+        from django.http import HttpResponse
+        from core.models import SiteConfig
+        from giving.services.pending_receipt import pending_receipt_pdf_bytes
+        pdf = pending_receipt_pdf_bytes(church=SiteConfig.get().church_name)
+        resp = HttpResponse(pdf, content_type="application/pdf")
+        resp["Content-Disposition"] = 'attachment; filename="trust_fund_pending_receipt.pdf"'
+        return resp
 
     def get_queryset(self):
         order = ("date", "id") if self.request.GET.get("sort") == "oldest" else ("-date", "-id")
@@ -275,9 +254,8 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         date_to = self.request.GET.get("date_to")
         # parse defensively: an invalid date string would otherwise raise and
         # break the page; ignore anything that isn't a real YYYY-MM-DD date.
-        from django.utils.dateparse import parse_date
-        df = parse_date(date_from) if date_from else None
-        dtv = parse_date(date_to) if date_to else None
+        from core.utils import default_to_current_month
+        df, dtv = default_to_current_month(self.request)
         if df:
             qs = qs.filter(date__gte=df)
         if dtv:
@@ -322,7 +300,17 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         ctx["channels"] = Transaction.Channel.choices
         ctx["statuses"] = Transaction.Status.choices
         ctx["directions"] = Transaction.Direction.choices
-        ctx["filters"] = self.request.GET
+        # The date inputs must show what's ACTUALLY being filtered on, including
+        # the current-month default applied on a bare visit (see
+        # default_to_current_month) — not stay blank while secretly filtering,
+        # which would look like "all data" is showing when it isn't.
+        from core.utils import default_to_current_month
+        filters = self.request.GET.copy()
+        df, dtv = default_to_current_month(self.request)
+        filters["date_from"] = df.isoformat() if df else ""
+        filters["date_to"] = dtv.isoformat() if dtv else ""
+        ctx["filters"] = filters
+        ctx["date_default_applied"] = not self.request.GET
         ctx["unallocated_count"] = Transaction.objects.active().filter(
             department__isnull=True, excluded_from_income=False).count()
         ctx["noflund_total"] = Transaction.objects.active().filter(

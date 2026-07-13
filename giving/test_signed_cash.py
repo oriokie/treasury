@@ -116,7 +116,14 @@ class SignedCashDefinitionTests(_PairSeed):
 class RunningBalanceTests(_PairSeed):
     def _page(self, extra=""):
         self.client.force_login(self.tr)
-        r = self.client.get(reverse("transaction_list") + f"?{extra}")
+        # An explicit, wide date range: this class is testing running-balance
+        # ARITHMETIC over its June-2026 fixtures, not the list view's
+        # current-month default — that default only ever applies to a
+        # genuinely bare visit (no query string at all), which an empty
+        # `extra` would otherwise be.
+        base = "date_from=2026-01-01&date_to=2026-12-31"
+        qs = f"{base}&{extra}" if extra else base
+        r = self.client.get(reverse("transaction_list") + f"?{qs}")
         self.assertEqual(r.status_code, 200)
         return r
 

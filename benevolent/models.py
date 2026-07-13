@@ -443,7 +443,7 @@ class SchemePolicy(models.Model):
         "refund_contributions_on_exit", "refund_percent",
         # claims
         "claim_window_days", "max_claims_per_year", "max_benefit_per_year",
-        "require_documents", "allow_override",
+        "require_documents", "require_different_approver", "allow_override",
     ]
 
     scheme = models.ForeignKey(BenevolentScheme, on_delete=models.PROTECT,
@@ -721,6 +721,16 @@ class SchemePolicy(models.Model):
         help_text="Maximum total benefit one membership may receive per calendar year. 0 = no limit.")
     require_documents = models.BooleanField(
         default=False, help_text="Every case must have a supporting document attached.")
+    require_different_approver = models.BooleanField(
+        default=True,
+        help_text="A benefit must be approved by someone other than the person who "
+                  "raised the case — segregation of duties for a money decision. "
+                  "Switch this off only for a scheme small enough that the same "
+                  "person genuinely has to do both (e.g. a single treasurer with no "
+                  "assistant); the recommended, safer default is to leave it on. "
+                  "Never applies where approval is routed to the committee — a "
+                  "committee decision already requires more than one person by its "
+                  "own quorum, regardless of this setting.")
     allow_override = models.BooleanField(
         default=True,
         help_text="An approver may pay a case that fails an eligibility check, provided "
@@ -1125,6 +1135,12 @@ class SchemeDependant(models.Model):
                                      help_text="When this dependant was registered on the scheme.")
     active = models.BooleanField(default=True, db_index=True)
     removed_on = models.DateField(null=True, blank=True)
+    died_on = models.DateField(
+        null=True, blank=True,
+        help_text="Set only when this dependant is recorded as deceased — distinct "
+                  "from removed_on, which is set for ANY reason a dependant leaves "
+                  "cover (moved away, aged out, a correction). A case can still be "
+                  "raised for them after this; see BenevolentCase.dependant.")
     notes = models.CharField(max_length=200, blank=True)
     history = HistoricalRecords()
 

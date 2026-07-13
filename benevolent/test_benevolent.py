@@ -625,12 +625,17 @@ class UrlRoutingTests(SchemeFixture):
         self.client.force_login(self.treasurer)
 
     def test_sibling_routes_are_not_shadowed_by_the_action_verb(self):
-        for name in ("benevolent_event_types", "benevolent_enrol",
-                     "benevolent_contribute"):
+        # benevolent_enrol now redirects (302) to the full registration
+        # screen rather than rendering its own retired form — the point of
+        # this test is that the route RESOLVES rather than 404/405-ing,
+        # which a redirect satisfies exactly as well as a render did.
+        for name, expected in (("benevolent_event_types", (200,)),
+                               ("benevolent_enrol", (200, 302)),
+                               ("benevolent_contribute", (200,))):
             url = reverse(name, args=[self.scheme.pk])
             r = self.client.get(url)
-            self.assertEqual(r.status_code, 200,
-                             f"{name} ({url}) should render, not 405/404")
+            self.assertIn(r.status_code, expected,
+                          f"{name} ({url}) should resolve, not 405/404")
 
     def test_the_action_verb_still_routes(self):
         r = self.client.post(

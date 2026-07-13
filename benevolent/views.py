@@ -20,10 +20,11 @@ from core.permissions import (BenevolentApproveMixin, BenevolentCaseMixin,
                               BenevolentSetupMixin, BenevolentViewMixin)
 
 from .forms import (ApproveForm, AttachmentForm, BenefitRuleForm, CaseForm,
-                    ContributionForm, DependantForm, EventTypeForm, MembershipForm,
+                    ContributionForm, DependantForm, EventTypeForm,
                     PayoutForm, PolicyForm, RejectForm, SchemeForm)
 from .models import (BenevolentCase, BenevolentContribution, BenevolentEventType,
-                     BenevolentScheme, SchemeBenefitRule, SchemeMembership, SchemePolicy)
+                     BenevolentScheme, SchemeBenefitRule, SchemeDependant,
+                     SchemeMembership, SchemePolicy)
 from .services import cases as case_svc
 from .services import contributions as contrib_svc
 from .services import reporting as report_svc
@@ -33,8 +34,20 @@ from .services.eligibility import evaluate, evaluate_case
 
 def _period(request):
     """The date window every screen shares. Defaults to the current year, which
-    is the natural period for a welfare scheme's annual caps and dues."""
+    is the natural period for a welfare scheme's annual caps and dues.
+
+    A `?year=YYYY` takes priority over explicit `start`/`end` when present —
+    the friendly way most of this module's screens let someone pick a period,
+    without needing to type two ISO dates by hand.
+    """
     today = dt.date.today()
+    year_raw = request.GET.get("year")
+    if year_raw:
+        try:
+            y = int(year_raw)
+            return dt.date(y, 1, 1), dt.date(y, 12, 31)
+        except ValueError:
+            pass
     try:
         start = dt.date.fromisoformat(request.GET.get("start") or "")
     except ValueError:
@@ -352,28 +365,28 @@ class MembershipListView(BenevolentViewMixin, View):
 
 
 class MembershipCreateView(BenevolentRegistrationMixin, View):
+    """RETIRED — redirects to the full registration screen.
+
+    This was Phase 1's enrolment form. Phase 3 built `RegisterView`
+    (`benevolent_register`), which does everything this did and more:
+    households, dependants, a spouse, date of birth, and (since the last
+    round) registering someone who is not on the church roll at all. Nothing
+    in the UI has linked here since; the URL survived only because it was
+    still routed, which means a bookmark or an old link could still reach a
+    strictly WORSE registration form than the one every other route leads to
+    — a second, divergent code path for the same job, quietly waiting to be
+    stumbled into.
+
+    Kept as a redirect rather than deleted: an old bookmark should land on
+    the right screen, not a 404. The duplicate FORM (`MembershipForm`) and
+    its template are gone.
+    """
+
     def get(self, request, pk):
-        scheme = get_object_or_404(BenevolentScheme, pk=pk)
-        return render(request, "benevolent/membership_form.html",
-                      {"scheme": scheme, "form": MembershipForm(scheme=scheme)})
+        return redirect("benevolent_register", pk=pk)
 
     def post(self, request, pk):
-        scheme = get_object_or_404(BenevolentScheme, pk=pk)
-        form = MembershipForm(request.POST, scheme=scheme)
-        if form.is_valid():
-            try:
-                m = scheme_svc.enrol(
-                    scheme, form.cleaned_data["member"],
-                    joined_on=form.cleaned_data["joined_on"], user=request.user,
-                    notes=form.cleaned_data.get("notes") or "")
-            except ValidationError as e:
-                for msg in e.messages:
-                    form.add_error(None, msg)
-            else:
-                messages.success(request, f"{m.member.name} enrolled as {m.number}.")
-                return redirect("benevolent_membership_detail", pk=m.pk)
-        return render(request, "benevolent/membership_form.html",
-                      {"scheme": scheme, "form": form})
+        return redirect("benevolent_register", pk=pk)
 
 
 class MembershipDetailView(BenevolentViewMixin, View):
@@ -381,8 +394,8 @@ class MembershipDetailView(BenevolentViewMixin, View):
         m = get_object_or_404(
             SchemeMembership.objects.select_related("scheme", "member"), pk=pk)
         from .forms import (AdjustmentForm, ExemptionForm, FeeForm,
-                            HouseholdMemberForm, LifecycleForm, NomineeForm,
-                            RefundForm, TransferForm)
+                            HouseholdMemberForm, LifecycleForm, MembershipEditForm,
+                            NomineeForm, RefundForm, TransferForm)
         from .services import registry as reg_svc
         from .services import standing as standing_svc
         policy = m.scheme.policy_on()
@@ -407,6 +420,8 @@ class MembershipDetailView(BenevolentViewMixin, View):
             "facts": result.facts,
             "household": reg_svc.household_members(m),
             "household_form": HouseholdMemberForm(),
+            "relationship_choices": SchemeDependant.Relationship.choices,
+            "membership_edit_form": MembershipEditForm(instance=m),
             "exemptions": m.exemptions.select_related("granted_by", "approved_by"),
             "exemption_form": ExemptionForm(),
             "transfer_form": TransferForm(),
@@ -457,12 +472,22 @@ class ContributionListView(BenevolentViewMixin, View):
         qs = contrib_svc.contributions_qs(scheme=scheme, start=start, end=end) \
             .select_related("scheme", "membership__member", "transaction")
         page = Paginator(qs, 50).get_page(request.GET.get("page"))
+        this_year = dt.date.today().year
+        earliest = (contrib_svc.contributions_qs()
+                   .order_by("transaction__date")
+                   .values_list("transaction__date", flat=True).first())
+        first_year = earliest.year if earliest else this_year
+        years = list(range(this_year, first_year - 1, -1))
         return render(request, "benevolent/contribution_list.html", {
             "page_obj": page, "contributions": page.object_list,
             "total": contrib_svc.contributions_total(scheme=scheme, start=start, end=end),
             "schemes": BenevolentScheme.objects.exclude(
                 status=BenevolentScheme.Status.DRAFT),
-            "f_scheme": f_scheme, "start": start, "end": end})
+            "f_scheme": f_scheme, "start": start, "end": end,
+            "years": years,
+            "selected_year": (start.year if start.year == end.year
+                              and start == dt.date(start.year, 1, 1)
+                              and end == dt.date(end.year, 12, 31) else None)})
 
 
 class ContributionCreateView(BenevolentFinanceMixin, View):
@@ -555,6 +580,50 @@ class CaseCreateView(BenevolentCaseMixin, View):
             "scheme": scheme, "form": form, "policy": scheme.current_policy})
 
 
+class CaseUpdateView(BenevolentCaseMixin, View):
+    """Correct a case's own details — DRAFT only; see update_case's own
+    docstring for why. A real CRUD gap: create and cancel both existed, but
+    nothing let a Case Officer fix a typo before submitting."""
+
+    def get(self, request, pk):
+        case = get_object_or_404(BenevolentCase.objects.select_related("scheme"), pk=pk)
+        if case.status != BenevolentCase.Status.DRAFT:
+            messages.error(request, f"{case.number} is "
+                                    f"{case.get_status_display().lower()} — only a draft "
+                                    f"case can be edited. Cancel and re-raise it instead.")
+            return redirect("benevolent_case_detail", pk=pk)
+        return render(request, "benevolent/case_form.html", {
+            "scheme": case.scheme, "case": case,
+            "form": CaseForm(scheme=case.scheme, instance=case),
+            "policy": case.scheme.current_policy})
+
+    def post(self, request, pk):
+        case = get_object_or_404(BenevolentCase.objects.select_related("scheme"), pk=pk)
+        if case.status != BenevolentCase.Status.DRAFT:
+            messages.error(request, f"{case.number} is no longer a draft.")
+            return redirect("benevolent_case_detail", pk=pk)
+        form = CaseForm(request.POST, scheme=case.scheme, instance=case)
+        if form.is_valid():
+            d = form.cleaned_data
+            try:
+                case_svc.update_case(
+                    case, event_type=d["event_type"], event_date=d["event_date"],
+                    membership=d.get("membership"), dependant=d.get("dependant"),
+                    beneficiary_name=d.get("beneficiary_name") or "",
+                    reported_date=d.get("reported_date"),
+                    description=d.get("description") or "",
+                    claimed_amount=d.get("claimed_amount"), user=request.user)
+            except ValidationError as e:
+                for msg in e.messages:
+                    form.add_error(None, msg)
+            else:
+                messages.success(request, f"{case.number} updated.")
+                return redirect("benevolent_case_detail", pk=case.pk)
+        return render(request, "benevolent/case_form.html", {
+            "scheme": case.scheme, "case": case, "form": form,
+            "policy": case.scheme.current_policy})
+
+
 class CaseDetailView(BenevolentViewMixin, View):
     def get(self, request, pk):
         case = get_object_or_404(
@@ -571,6 +640,7 @@ class CaseDetailView(BenevolentViewMixin, View):
         from .forms import BereavedDecisionForm, FundingTargetForm, VoteForm
         from .services.eligibility import missing_required_documents
         committee = case_svc.committee_state(case)
+        levy = contrib_svc.levy_summary(case)
         return render(request, "benevolent/case_detail.html", {
             "case": case, "preview": preview,
             "snapshot": case.eligibility_snapshot or {},
@@ -583,7 +653,14 @@ class CaseDetailView(BenevolentViewMixin, View):
             "vote_form": VoteForm(initial={"amount": case.assessed_amount}),
             "my_vote": next((v for v in committee["votes"]
                              if v.user_id == request.user.pk), None),
-            "levy": contrib_svc.levy_summary(case),
+            "levy": levy,
+            "fund_balance": case.scheme.balance,
+            # a scheme funded by ongoing dues has no per-case levy roster to
+            # show "who has and hasn't paid" — this is the equivalent view
+            # for that case, computed only when there's no levy roster
+            # already answering the same question more sharply
+            "standing_snapshot": (report_svc.scheme_standing_snapshot(case.scheme)
+                                  if levy is None else None),
             # ---- Phase 5 ----
             "funding_target_form": FundingTargetForm(
                 initial={"amount": case.funding_target or case.assessed_amount}),
@@ -654,7 +731,8 @@ class CaseDecisionView(BenevolentApproveMixin, View):
                     return redirect("benevolent_case_detail", pk=pk)
                 case_svc.approve_case(
                     case, amount=form.cleaned_data["amount"], user=request.user,
-                    override_reason=form.cleaned_data.get("override_reason") or "")
+                    override_reason=form.cleaned_data.get("override_reason") or "",
+                    allow_self_approval=not case.policy.require_different_approver)
                 messages.success(
                     request, f"{case.number} approved for {case.approved_amount}. Raise a "
                              f"payment voucher to pay it — the voucher still needs the "
@@ -698,6 +776,28 @@ class CasePayoutView(BenevolentCaseMixin, View):
             messages.success(
                 request, f"Payment voucher for {payout.amount} raised on {case.number}. "
                          f"It is pending approval in the expenses queue like any other claim.")
+        return redirect("benevolent_case_detail", pk=pk)
+
+
+class FundFromBalanceView(BenevolentCaseMixin, View):
+    """Phase 11: the explicit, logged choice to pay a case from the fund's
+    existing balance rather than raising a per-case levy. Does not itself
+    move any money or change the case's status — record_payout() has never
+    required a levy — it only puts a stated, dated decision on the case's
+    own history, made with the balance actually shown at the moment of
+    deciding."""
+
+    def post(self, request, pk):
+        case = get_object_or_404(BenevolentCase, pk=pk)
+        reason = (request.POST.get("reason") or "").strip()
+        try:
+            case_svc.fund_from_balance(case, user=request.user, reason=reason)
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        else:
+            messages.success(
+                request, f"Recorded: {case.number} will be funded from "
+                         f"{case.scheme.fund.name}'s balance, not a levy.")
         return redirect("benevolent_case_detail", pk=pk)
 
 

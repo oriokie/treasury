@@ -39,26 +39,22 @@ def period_label_for(date, frequency):
     return f"{date.year}-{date.month:02d}"      # MONTHLY (the default)
 
 
-def periods_between(start, end, frequency):
-    """Every dues period from `start` to `end` inclusive, as (label, first_day)
-    pairs in order. The single definition of 'which periods have fallen due',
-    shared by the arrears calculation and the dues schedule.
-
-    The date is carried alongside the label because arrears must resolve the
-    policy that was in force during EACH period, not just the current one.
-    """
-    if end < start:
-        return []
-    out, seen = [], set()
-    d = start
-    while d <= end:
-        lbl = period_label_for(d, frequency)
-        if lbl not in seen:
-            seen.add(lbl)
-            out.append((lbl, d))
-        # step by a day: cheap, exact, and immune to month-length edge cases
-        d += _dt.timedelta(days=1)
-    return out
+# NOTE: `periods_between(start, end, frequency)` was removed here.
+#
+# Its docstring claimed to be "the single definition of 'which periods have
+# fallen due', shared by the arrears calculation and the dues schedule" — and
+# that claim had quietly become false. Phase 10's N+1 fix rewrote `_dues_rows()`
+# to resolve the policy in force for each DAY as it steps, because the dues
+# FREQUENCY itself can change between policy versions; a function taking a
+# single fixed `frequency` argument structurally cannot express that, so
+# `_dues_rows()` stopped calling it and nothing else ever did.
+#
+# Deleted rather than left in place: a dead function asserting it is the single
+# source of truth for a rule that has since moved is worse than no function at
+# all — it is precisely how a future change gets made in the wrong place, and
+# nobody notices because the code they edited was never running.
+#
+# The rule now lives in exactly one place: `_dues_rows()` below.
 
 
 # ---------------------------------------------------------------------------
@@ -168,6 +164,11 @@ def _dues_rows(membership, as_of=None):
     ).order_by("-effective_from", "-version"))
     if not versions:
         return []
+    # _waived_periods (called below, in this same pass) needs to resolve the
+    # policy in force on an exemption's start date — the same versions we have
+    # just fetched. Stashed here so it resolves in memory rather than issuing a
+    # second, identical query against the same rows.
+    membership._policy_versions = versions
 
     def _policy_at(d):
         for v in versions:                 # already ordered latest-first
@@ -176,6 +177,10 @@ def _dues_rows(membership, as_of=None):
         return None
 
     first = min(v.effective_from for v in versions)
+    # The caller (arrears_for) needs this same boundary and used to re-query the
+    # database for it — the identical value this function has already computed in
+    # memory. Stashed on the membership instance so it is fetched once, not twice.
+    membership._dues_window_start = first
     start = max(membership.cover_from, first)
     end = min(as_of, membership.left_on or as_of)
     if end < start:
@@ -204,12 +209,39 @@ def _dues_rows(membership, as_of=None):
 
     # dues waived after the member's own case (a bereaved-member rule)
     waived = _waived_periods(membership, as_of)
+
+    # What has actually been PAID against each of these periods — fetched ONCE,
+    # grouped by period, rather than one query per period.
+    #
+    # This is recommendation #70b, closed. Phase 10 fixed the catastrophic N+1
+    # here (policy_on() was being queried once per DAY of membership history);
+    # this is the smaller one it deliberately left, honestly logged rather than
+    # rushed: `contributions_total()` was still being called once per dues
+    # PERIOD, so a member with three years of monthly dues cost ~36 queries to
+    # answer "what do they owe" — and arrears_for() runs for every active member
+    # on the dashboard, the arrears report and every standing recomputation.
+    # Measured at ~22 queries per member on the dashboard before this change.
+    #
+    # The RULE is unchanged: `_effective_q()` still defines which contributions
+    # count (the same definition core.metrics uses for fund receipts), and
+    # DUES_KINDS still defines which kinds settle dues. Only the number of round
+    # trips has changed — a single grouped aggregate instead of one query per
+    # period. `contributions_total()` remains the single definition of the sum
+    # and is still what every other caller uses; this is that same query, asked
+    # once for every period at once.
+    paid_by_period = dict(
+        BenevolentContribution.objects
+        .filter(membership=membership, kind__in=DUES_KINDS)
+        .filter(_effective_q())
+        .values_list("period_label")
+        .annotate(total=Sum("transaction__amount"))
+    )
+
     for r in rows:
         r["waived"] = r["period"] in waived
         if r["waived"]:
             r["due"] = Decimal(0)
-        r["paid"] = contributions_total(membership=membership,
-                                        period_label=r["period"], kinds=DUES_KINDS)
+        r["paid"] = paid_by_period.get(r["period"]) or Decimal(0)
         r["outstanding"] = max(Decimal(0), r["due"] - r["paid"])
     return rows
 
@@ -232,11 +264,24 @@ def _waived_periods(membership, as_of=None):
     as_of = as_of or _dt.date.today()
     out = set()
 
+    def _policy_on(d):
+        """The policy in force on `d` — resolved against the version list
+        `_dues_rows` has already fetched, where this is called as part of that
+        pass (the overwhelmingly common case), and by query otherwise. Same
+        resolution rule either way: see BenevolentScheme.policy_on."""
+        cached = getattr(membership, "_policy_versions", None)
+        if cached is None:
+            return membership.scheme.policy_on(d)
+        for v in cached:               # already ordered latest-first
+            if v.effective_from <= d and (v.effective_to is None or v.effective_to >= d):
+                return v
+        return None
+
     # --- exemptions: an excused member owes nothing for the excused period ---
     for ex in membership.exemptions.all():
         if not ex.exempt_dues or not ex.is_approved:
             continue
-        policy = membership.scheme.policy_on(ex.from_date)
+        policy = _policy_on(ex.from_date)
         if policy is None:
             continue
         freq = policy.contribution_frequency
@@ -247,7 +292,7 @@ def _waived_periods(membership, as_of=None):
             d = (d.replace(day=28) + _dt.timedelta(days=7)).replace(day=1)
 
     # --- an automatic age exemption is an exemption like any other -----------
-    policy_now = membership.scheme.policy_on(as_of)
+    policy_now = _policy_on(as_of)
     if policy_now is not None and policy_now.exemption_age and membership.date_of_birth:
         dob = membership.date_of_birth
         exempt_from = dob.replace(year=dob.year + policy_now.exemption_age)
@@ -260,7 +305,7 @@ def _waived_periods(membership, as_of=None):
         status__in=[BenevolentCase.Status.APPROVED, BenevolentCase.Status.PARTLY_PAID,
                     BenevolentCase.Status.PAID, BenevolentCase.Status.CLOSED])
     for case in cases:
-        policy = case.policy or membership.scheme.policy_on(case.event_date)
+        policy = case.policy or _policy_on(case.event_date)
         if policy is None or not policy.bereaved_dues_waiver_months:
             continue
         freq = policy.contribution_frequency
@@ -291,11 +336,19 @@ def arrears_for(membership, policy=None, as_of=None) -> Decimal:
     if not rows:
         return Decimal(0)
     due = sum((r["due"] for r in rows), Decimal(0))
-    scheme = membership.scheme
-    first = (scheme.policies
-             .filter(status__in=[SchemePolicy.Status.ACTIVE,
-                                 SchemePolicy.Status.SUPERSEDED])
-             .order_by("effective_from").values_list("effective_from", flat=True).first())
+    # _dues_rows just fetched every policy version and computed this boundary;
+    # re-querying the database for the same value here was a second round trip
+    # for an answer already in memory. It always sets this before returning a
+    # non-empty rows list, so the fallback below is belt-and-braces, not a
+    # path this actually takes.
+    first = getattr(membership, "_dues_window_start", None)
+    if first is None:
+        scheme = membership.scheme
+        first = (scheme.policies
+                 .filter(status__in=[SchemePolicy.Status.ACTIVE,
+                                     SchemePolicy.Status.SUPERSEDED])
+                 .order_by("effective_from")
+                 .values_list("effective_from", flat=True).first())
     start = max(membership.cover_from, first)
     end = min(as_of, membership.left_on or as_of)
     # Only DUES pay off dues. A levy, a registration fee and a donation are all

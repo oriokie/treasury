@@ -179,9 +179,9 @@ def enrol(scheme, member, *, joined_on=None, user=None, notes="", date_of_birth=
         date_of_birth=date_of_birth, household_name=household_name, **kw)
 
 
-def admit(membership, *, on=None, user=None, reason=""):
+def admit(membership, *, on=None, user=None, reason="", notify=True):
     from benevolent.services import registry
-    return registry.admit(membership, on=on, user=user, reason=reason)
+    return registry.admit(membership, on=on, user=user, reason=reason, notify=notify)
 
 
 def reinstate(membership, *, on=None, user=None, reason=""):
@@ -198,11 +198,12 @@ def withdraw_membership(membership, *, on=None, user=None, reason=""):
 # Automation
 # ---------------------------------------------------------------------------
 
-def refresh_arrears_status(scheme, as_of=None):
-    """Backwards-compatible entry point. Recomputes standing, and returns how many
-    memberships changed."""
-    from benevolent.services import standing as standing_svc
-    return len(standing_svc.refresh_scheme(scheme, as_of=as_of))
+# NOTE: `refresh_arrears_status(scheme, as_of)` was removed here. It was a
+# backwards-compatibility shim around `standing.refresh_scheme()` from the
+# Phase 3 rewrite — but nothing has ever called it, in this module or outside
+# it. A compatibility shim with no callers is not compatibility; it is just an
+# extra name for the same thing, and a second place a future reader might
+# reasonably (and wrongly) go looking for the arrears logic.
 
 
 def run_automation(scheme=None, as_of=None, only=None, force=False, user=None):

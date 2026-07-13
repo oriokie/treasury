@@ -2152,3 +2152,217 @@ genuine, honestly-deferred enhancement (e.g. #68a, the report engine's
 considered feature-complete and production-ready as of v2.54.0, with this
 file remaining the honest record of what was deliberately left for later and
 why.
+
+---
+
+## 71. Bug fixes and features requested directly by Edwin (post-Phase-10) — NEW
+
+Four real, production-affecting bugs found and fixed, plus two features:
+
+**71a (FIXED). The "Admit" button on a pending membership's own page produced
+"Unknown action".** Wired to `MembershipLifecycleView`, which never had an
+admit branch — the correct handler (`MembershipAdminView`) was reachable only
+via a different URL. Fixed by pointing the button at the right view, and
+made `MembershipAdminView`'s admit/reinstate actions honour the reason/date
+fields the shared form actually submits (previously silently ignored).
+
+**71b (FIXED, severe). `giving.Transaction.split_siblings()` OR'd three match
+conditions instead of falling back through them**, so marking ONE bank entry
+as a manual receipt could sweep in every OTHER transaction that happened to
+share its plain-text reference and date — completely unrelated people's
+payments, six of them in the reported case. `strict_split_siblings()`
+(used by "send back to review") had already correctly diagnosed and avoided
+this exact risk in its own docstring; the same reasoning had never been
+applied to the sibling function `mark_manual_receipt()` actually uses. Fixed
+to a true fallback: the strongest identifier available, and only that one.
+Regression-guarded with tests proving both the fix (unrelated transactions
+are no longer swept in) and that it doesn't break the real case it exists to
+serve (a true split, and a cash entry with no bank identifier at all).
+
+**71c (FIXED). The `.ac-box`/`.ac-item` type-ahead popup CSS was never
+actually defined in the shared stylesheet** — only its `.ac-active`
+highlight state was. Three existing screens (cash entry, envelope ledger,
+cashbook) each carried their own copy-pasted, slightly-drifting local
+definition; a fourth use of the class anywhere else would have rendered as
+an unstyled, inline `<div>` instead of a floating dropdown. Consolidated
+into one definition in `app.css`; the three existing local copies removed.
+
+**71d (NEW). Member/membership type-ahead search for benevolent's
+register/contribution/case forms**, which previously rendered a
+`ModelChoiceField` as a plain `<select>` — for a large church, an
+unusably long dropdown. Built as its own endpoint
+(`benevolent/views_search.py`), not a reuse of `core.views.MemberSearchView`:
+that one is gated to Treasurer/Assistant only, which would 403 for exactly
+the Phase 9 scheme-specific roles (Registration/Case/Finance Officer) this
+was meant to help. One shared, reusable JS widget
+(`static/js/benevolent-search.js`) upgrades the existing `<select>` in place
+— it stays in the DOM and still submits normally, so no server-side form
+change was needed to accept it.
+
+**71e (NEW). Bulk roster import** (`benevolent/views_bulk_import.py`) — a
+CSV upload bringing an existing, already-running scheme's membership
+(dependants included) into the system at once, rather than one-at-a-time
+registration. "Mark paid up" clears whatever arrears the import would
+otherwise show through a visible, auto-approved waiver record
+(`services/engine.waive_on_import`) explicitly dated and reasoned as a
+migration — never a fabricated payment history. Reuses `registry.register()`
+for every row, so an imported membership behaves identically to one entered
+by hand afterwards. A genuine small gap found and closed along the way:
+`SchemeDependant.phone` — documented since Phase 4 as existing specifically
+for allocation matching — had no way to actually be SET, through bulk import
+or the ordinary household form; `add_dependant()` never accepted it.
+
+**71f (CONFIRMED, not built). "Who contributed to a case, who did not, who
+is not in good standing" already exists.** The per-case levy roster
+(`case_levy.html`, reachable from "Open the levy round" on the case detail
+page) has shown exactly this — member, levied, paid, outstanding, a receipt
+button per row — since Phase 4. The membership registry's standing filter
+(`/benevolent/registry/?standing=ARREARS`) already answers "not in good
+standing" church-wide. No new code needed; the answer was a discoverability
+one, addressed by pointing to both screens directly.
+
+---
+
+## 71. Production fixes and requested features (post-Phase 10) — NEW
+
+Four real bugs from production use fixed: the Admit button wired to the
+wrong view ("Unknown action"); `split_siblings()` sweeping unrelated
+transactions into a manual-receipt mark via a loose OR-matched fallback
+instead of a true one; the shared autocomplete popup's CSS existing only as
+copy-pasted, drifting fragments in three templates; and a dependant's phone
+— documented since Phase 4 for allocation matching — never actually
+settable through the UI or its own service function. Three features added:
+bulk roster import with an honest, visible "migrated as paid up" waiver
+rather than a fabricated payment history; member/membership search widgets
+correctly scoped to Phase 9's roles; and a standing snapshot on a case's own
+page for dues-funded schemes, mirroring what the levy roster already gives
+levy-funded ones. See `docs/BENEVOLENT_MODULE.md`.
+
+**71a. The bulk import's dependant slots are capped at 3 per CSV row.** A
+household needing more can have them added afterwards from the member's own
+page — not a limitation of the underlying `dependants=[...]` mechanism
+(which accepts any number), only of the fixed-column CSV format chosen for
+simplicity. *Priority: Low.*
+
+**71b. No inline "why can't I see this button" messaging** was added to the
+newly-permission-scoped search endpoints, consistent with recommendation
+#69b's note that this is a whole-app pattern, not specific to this work.
+
+---
+
+## 72. Benevolent Phase 11 — guided setup, allocation transparency, and a wide production-fix pass — NEW
+
+Phase 11 shipped as proposed (guided pattern guide, explicit fund-from-balance
+decision, "matched via" transparency), plus a wide pass through bugs Edwin
+reported directly from production and two adjacent items he asked to be
+verified. See `docs/BENEVOLENT_MODULE.md` for the full account. Of note:
+
+**72a. RESOLVED — the Admit button, `split_siblings()`, the autocomplete
+popup CSS, and the budget PNG font fallback were all real, confirmed bugs**,
+each with a regression test proving the fix. None were benevolent-specific
+except the Admit button; `split_siblings()`, the popup CSS, and the PNG font
+loader are shared, whole-application infrastructure this review happened to
+surface while working through Edwin's list.
+
+**72b. RESOLVED — unbounded-by-default list views.** `/transactions/`,
+`/expenses/`, and (found while checking "other pages," more severe than
+either named page) the envelope list all now bound their default query
+instead of scanning every row ever recorded. Other list views were spot
+-checked (pledges, envelope batches) and found already reasonably scoped;
+a full audit of every list view in the application was judged out of
+proportion for this pass and not attempted.
+
+**72c. CONFIRMED, not a gap — member phone matching.** `MemberPhone`,
+`merge_members()`, and `match_or_create_member()` already do exactly what
+was asked; proven with new regression tests rather than left as a re-read
+of the code.
+
+**72d. The three-pattern guide is a plain-language explanation layered onto
+the existing wizard and profile system, not a new guided flow with its own
+state machine.** A more elaborate "quick start wizard" that walks someone
+through the three patterns interactively (rather than reading a table and
+clicking through to a profile) is a reasonable enhancement if the current,
+lighter-weight version proves insufficient in practice. *Priority: Low —
+revisit only if real usage shows the current guide isn't enough.*
+
+---
+
+## 73. Production fixes and requested features, round 2 — NEW
+
+Eleven items from direct production/local testing. Two were recurrences of
+issues thought fixed in #71 (found at a deeper, truer root cause this
+time — a real `split_of` relational link on `Transaction`, and a
+containing-block CSS trap on the envelope ledger popup, not the earlier
+CSS-consolidation or matching-fallback fixes, which were correct as far as
+they went but not sufficient). Two were confirmed already fully built —
+segregation of duties on case approval, and case-count-based inactivity —
+just not configurable or discoverable. The rest were genuine features: an
+independent (not-necessarily-a-church-member) registration path, marking a
+dependant deceased, bulk contribution import, a year selector, and a member
+directory report. See `docs/BENEVOLENT_MODULE.md`.
+
+**73a. The historical-split backfill migration is a one-time, best-effort
+pass.** It correctly links every split that still has its
+`[Split of #N]` tag in `raw_narration` intact; a row whose narration was
+since hand-edited to remove that tag would not be backfilled and would fall
+back to the (still-improved, but not certain) text-inference path. *Priority:
+Low* — narration edits after the fact are rare, and the fallback remains
+strictly safer than the pre-#71 behaviour regardless.
+
+**73b. "Cases" bulk import was named but not built in this round** — only
+roster and contribution history. A historical case import (cases already
+decided before the church adopted this system) needs its own careful design
+around what state such a case should land in, which this round did not have
+time to give the same rigour as everything else. *Priority: Medium* —
+worth a dedicated pass rather than a rushed version tacked onto this one.
+
+**73c. The member directory report's phone column is shown unmasked**,
+consistent with every other screen in the benevolent module (none of which
+mask phone numbers today) but worth a deliberate decision if this module
+ever adopts phone masking elsewhere. *Priority: Low.*
+
+---
+
+## 74. Full-module audit of the benevolent module — NEW
+
+A systematic sweep: every model field, view, permission, report, export format,
+the wizard, notification wiring, accounting integrity, and query counts under
+load. Four real issues found and fixed; everything else confirmed sound by
+being exercised rather than re-read. See `docs/BENEVOLENT_MODULE.md`.
+
+**74a. RESOLVED — six enforced policy rules were unreachable from the UI.**
+`arrears_block`, `grace_period_days`, `exemption_age`, `max_household_size`,
+`allow_exemptions`, `allow_transfers` — each verified to genuinely block,
+cap or exempt as designed, but none rendered on the policy form because
+`PolicyForm.grouped()` silently skipped any field absent from `GROUPS`. The
+mechanism is fixed too, not just the instance: a stray field now lands in a
+visible "Other settings" group rather than vanishing.
+
+**74b. RESOLVED — recommendation #70b (the remaining N+1) is closed.**
+`arrears_for()` went from ~22 queries per member to 6, flat. Same numbers;
+the full pre-existing suite passed untouched.
+
+**74c. RESOLVED — a duplicate registration path and two dead functions
+removed.** `MembershipCreateView` was a strictly-inferior second enrolment
+form reachable only by URL; it now redirects. `periods_between()` (whose
+docstring falsely claimed to be the single definition of dues periods) and
+`refresh_arrears_status()` (a compatibility shim with no callers) are gone.
+
+**74d. The wizard sets 26 of the policy's ~54 fields, by design** — it is a
+starting point, not a complete editor, and the policy form (now complete)
+is where the remainder are refined. Worth revisiting only if churches report
+that the wizard's output needs too much hand-editing to be useful. *Priority:
+Low.*
+
+**74e. 15 of the module's 26 models are not registered in Django admin.**
+Every one has a proper first-class UI screen, and admin is a fallback rather
+than the interface, so this is a design choice rather than a gap — noted so a
+future reader does not mistake it for an oversight. *Priority: Low.*
+
+**74f. `arrears_for()`'s remaining 6 queries per member are irreducible
+without a batch-oriented rewrite** (exemptions, cases, adjustments and
+contributions are each genuinely per-member data). A `arrears_for_many()`
+that answers for a whole scheme in a fixed number of queries would help the
+dashboard and the arrears report specifically. *Priority: Low-Medium* — the
+current cost is now proportionate, and a batch API is a real design change
+deserving its own pass rather than a tail-end addition to an audit.

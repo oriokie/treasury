@@ -386,6 +386,35 @@ def charge_policy_fee(membership, *, amount, reason, on=None, user=None):
     return adj
 
 
+def waive_on_import(membership, *, amount, reason, on=None, user=None):
+    """Clear whatever a membership would otherwise show as owing, as part of
+    bringing an EXISTING roster into the system — never a treasurer's own,
+    in-the-moment forgiveness decision, so (like charge_policy_fee above) a
+    second person's rubber stamp would add nothing. Marked `automated=True`
+    for the same reason: an auditor can always tell a migration write-off
+    apart from a discretionary waiver someone chose to grant.
+
+    Deliberately its own function rather than a plain call to waive() with
+    a bypassed approval: waive()/charge() enforce that a discretionary
+    adjustment is approved by someone OTHER than who raised it, which is
+    the right rule for a real waiver decision and the wrong one for a
+    mechanical consequence of "this person's history predates this system."
+    """
+    if amount <= 0:
+        return None
+    on = on or _dt.date.today()
+    adj = MemberAdjustment(
+        membership=membership, kind=MemberAdjustment.Kind.WAIVER, amount=Decimal(amount),
+        on=on, reason=reason, raised_by=user, approved_by=user,
+        approved_at=timezone.now(), automated=True,
+        policy=membership.scheme.policy_on(on))
+    adj.full_clean(exclude=["case"])
+    adj.save()
+    _log(membership, f"{adj.get_kind_display()} of {adj.amount} cleared automatically on "
+                     f"import — {reason}", reason=reason, user=user)
+    return adj
+
+
 @db_tx.atomic
 def waive(membership, *, amount, reason, on=None, period_label="", user=None,
           write_off=False, comments=""):

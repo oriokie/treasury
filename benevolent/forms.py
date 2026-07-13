@@ -77,11 +77,12 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
     GROUPS = [
         ("Membership & eligibility",
          ["membership_required", "waiting_period_days", "min_contributions",
-          "arrears_treatment", "max_arrears_allowed"]),
+          "arrears_treatment", "max_arrears_allowed", "arrears_block",
+          "grace_period_days"]),
         ("Registration",
          ["registration_required", "registration_approval", "registration_fee",
           "registration_fee_refundable", "require_registration_form",
-          "require_id_document", "min_age", "max_age"]),
+          "require_id_document", "min_age", "max_age", "exemption_age"]),
         ("Renewals",
          ["renewal_required", "renewal_period", "renewal_fee", "renewal_month",
           "renewal_grace_days", "lapse_on_non_renewal"]),
@@ -93,22 +94,23 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
           "benefit_floor", "benefit_rounding"]),
         ("Approval",
          ["approval_mode", "committee_threshold", "committee_quorum",
-          "committee_requires_chair"]),
+          "committee_requires_chair", "require_different_approver"]),
         ("The member a case is about",
          ["bereaved_contribution_policy", "bereaved_reduction_percent",
           "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
         ("Inactivity & lapsing",
-         ["inactivity_months", "inactivity_action", "reinstatement_fee",
-          "reinstatement_waiting_days"]),
+         ["inactivity_months", "inactivity_missed_cases", "inactivity_action",
+          "reinstatement_fee", "reinstatement_waiting_days"]),
         ("Household & dependants",
          ["household_mode", "max_dependants", "dependant_age_limit",
-          "spouse_auto_covered"]),
+          "max_household_size", "spouse_auto_covered"]),
         ("On a member's death",
          ["inheritance_mode", "transfer_membership_on_death",
           "refund_contributions_on_exit", "refund_percent"]),
         ("Claims",
          ["claim_window_days", "max_claims_per_year", "max_benefit_per_year",
-          "require_documents", "allow_override"]),
+          "require_documents", "allow_override", "allow_exemptions",
+          "allow_transfers"]),
     ]
 
     class Meta:
@@ -117,11 +119,12 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
             f for _g, fs in [
                 ("Membership & eligibility",
                  ["membership_required", "waiting_period_days", "min_contributions",
-                  "arrears_treatment", "max_arrears_allowed"]),
+                  "arrears_treatment", "max_arrears_allowed", "arrears_block",
+                  "grace_period_days"]),
                 ("Registration",
                  ["registration_required", "registration_approval", "registration_fee",
                   "registration_fee_refundable", "require_registration_form",
-                  "require_id_document", "min_age", "max_age"]),
+                  "require_id_document", "min_age", "max_age", "exemption_age"]),
                 ("Renewals",
                  ["renewal_required", "renewal_period", "renewal_fee", "renewal_month",
                   "renewal_grace_days", "lapse_on_non_renewal"]),
@@ -133,22 +136,23 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
                   "benefit_floor", "benefit_rounding"]),
                 ("Approval",
                  ["approval_mode", "committee_threshold", "committee_quorum",
-          "committee_requires_chair"]),
+          "committee_requires_chair", "require_different_approver"]),
                 ("The member a case is about",
                  ["bereaved_contribution_policy", "bereaved_reduction_percent",
                   "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
                 ("Inactivity & lapsing",
-                 ["inactivity_months", "inactivity_action", "reinstatement_fee",
-                  "reinstatement_waiting_days"]),
+                 ["inactivity_months", "inactivity_missed_cases", "inactivity_action",
+                  "reinstatement_fee", "reinstatement_waiting_days"]),
                 ("Household & dependants",
                  ["household_mode", "max_dependants", "dependant_age_limit",
-                  "spouse_auto_covered"]),
+                  "max_household_size", "spouse_auto_covered"]),
                 ("On a member's death",
                  ["inheritance_mode", "transfer_membership_on_death",
                   "refund_contributions_on_exit", "refund_percent"]),
                 ("Claims",
                  ["claim_window_days", "max_claims_per_year", "max_benefit_per_year",
-                  "require_documents", "allow_override"]),
+                  "require_documents", "allow_override", "allow_exemptions",
+                  "allow_transfers"]),
             ] for f in fs
         ] + ["notes"]
         widgets = {
@@ -174,12 +178,34 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
 
     def grouped(self):
         """[(group, [bound fields])] so the template renders a constitution, not a
-        wall of 54 inputs."""
+        wall of 54 inputs.
+
+        Any field on the form but NOT listed in GROUPS is appended to a final
+        "Other settings" group rather than silently disappearing. That silent
+        disappearance was a real, shipped bug: six genuinely-enforced policy
+        rules (arrears_block, grace_period_days, exemption_age,
+        max_household_size, allow_exemptions, allow_transfers) were absent
+        from GROUPS, so `grouped()` skipped them, so the template never
+        rendered them, so no treasurer could ever configure a rule the
+        eligibility engine was nonetheless enforcing against them. Exactly the
+        same shape as the settings-page bug found in Phase 9.
+
+        A missing field is now visible rather than invisible — which is the
+        point: a field in an oddly-named group is a five-second fix a person
+        will notice, whereas a field that renders nowhere is invisible until
+        someone reads the source.
+        """
         out = []
+        placed = set()
         for name, keys in self.GROUPS:
             fields = [self[k] for k in keys if k in self.fields]
+            placed.update(k for k in keys if k in self.fields)
             if fields:
                 out.append((name, fields))
+        leftover = [self[k] for k in self.fields if k not in placed
+                    and k != "effective_from"]   # rendered separately by the template
+        if leftover:
+            out.append(("Other settings", leftover))
         return out
 
     def clean_funding_methods(self):
@@ -270,20 +296,13 @@ class BenefitRuleForm(StyledFormMixin, forms.ModelForm):
         self._style()
 
 
-class MembershipForm(StyledFormMixin, forms.ModelForm):
-    class Meta:
-        model = SchemeMembership
-        fields = ["member", "joined_on", "notes"]
-        widgets = {"joined_on": forms.DateInput(attrs={"type": "date"})}
-
-    def __init__(self, *args, scheme=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.scheme = scheme
-        self.fields["joined_on"].initial = dt.date.today()
-        self.fields["joined_on"].help_text = (
-            "Cover starts counting from this date — any waiting period runs from here.")
-        self.fields["member"].queryset = Member.objects.filter(active=True).order_by("name")
-        self._style()
+# NOTE: MembershipForm was removed here. It was Phase 1's simple enrolment
+# form (member + joined_on + notes), superseded by Phase 3's RegistrationForm
+# — which does everything it did plus households, dependants, a spouse, date
+# of birth, and registering someone who is not on the church roll at all.
+# The view that rendered it (MembershipCreateView) now redirects to the full
+# registration screen, so nothing reaches this form any more; keeping it
+# would have left a second, divergent way to do exactly one job.
 
 
 class DependantForm(StyledFormMixin, forms.ModelForm):
@@ -546,6 +565,24 @@ class VoteForm(StyledFormMixin, forms.Form):
         self._style()
 
 
+class MembershipEditForm(StyledFormMixin, forms.ModelForm):
+    """Correct a membership's own basic details — a typo in the household
+    name, a date of birth added later, a note. Deliberately excludes
+    `member` (change WHO this is via Transfer, a deliberate act with its
+    own trail), `joined_on`/`registered_on` (accounting-significant dates),
+    and `status` (that is what the lifecycle actions are for)."""
+
+    class Meta:
+        model = SchemeMembership
+        fields = ["household_name", "date_of_birth", "notes"]
+        widgets = {"date_of_birth": forms.DateInput(attrs={"type": "date"}),
+                  "notes": forms.Textarea(attrs={"rows": 2})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._style()
+
+
 class NomineeForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = SchemeNominee
@@ -588,8 +625,16 @@ class RegistrationForm(StyledFormMixin, forms.Form):
     different kind of thing. A second form would invite a second code path.
     """
     member = forms.ModelChoiceField(
-        queryset=Member.objects.none(), label="Principal member",
-        help_text="From the church roll. The scheme keeps no separate list of people.")
+        queryset=Member.objects.none(), required=False, label="Principal member",
+        help_text="If they are on the church roll, link them here — one person, one "
+                  "record, everywhere in the system.")
+    member_name = forms.CharField(
+        required=False, max_length=120, label="…or the person's name",
+        help_text="A benevolent scheme is its own thing — someone can be registered "
+                  "into one without first needing to exist anywhere else in the "
+                  "system. Only if they are not on the church roll.")
+    member_phone = forms.CharField(
+        required=False, max_length=20, label="Phone (for the new record above)")
     registration_type = forms.ChoiceField(
         choices=RegistrationType.choices, initial=RegistrationType.INDIVIDUAL,
         label="Register as")
@@ -623,6 +668,16 @@ class RegistrationForm(StyledFormMixin, forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+        if cleaned.get("member") and cleaned.get("member_name"):
+            self.add_error("member_name",
+                           "Link the person to their member record, or type a name — "
+                           "not both.")
+        if not cleaned.get("member") and not cleaned.get("member_name"):
+            self.add_error("member",
+                           "Pick someone from the church roll, or type a name below.")
+        if cleaned.get("member_phone") and not cleaned.get("member_name"):
+            self.add_error("member_name",
+                           "A phone was given but no name to go with it.")
         if cleaned.get("spouse") and cleaned.get("spouse_name"):
             self.add_error("spouse_name",
                            "Link the spouse to their member record, or type a name — "
@@ -633,6 +688,19 @@ class RegistrationForm(StyledFormMixin, forms.Form):
                            "A spouse is being registered, so this is a household "
                            "registration.")
         return cleaned
+
+    def resolve_member(self):
+        """The Member this registration is actually for — the one picked
+        from the roll, or one matched/created on the fly from the free-text
+        name. Call only after is_valid() — mirrors match_or_create_member's
+        own (member, how) return shape so a caller can tell the two paths
+        apart if it wants to."""
+        if self.cleaned_data.get("member"):
+            return self.cleaned_data["member"], "existing"
+        from members.services.matching import match_or_create_member
+        member, how = match_or_create_member(
+            self.cleaned_data["member_name"], self.cleaned_data.get("member_phone"))
+        return member, how
 
 
 class HouseholdMemberForm(StyledFormMixin, forms.Form):
@@ -646,6 +714,11 @@ class HouseholdMemberForm(StyledFormMixin, forms.Form):
         help_text="For someone not on the church roll (a young child, a parent in the "
                   "village).")
     relationship = forms.ChoiceField(choices=SchemeDependant.Relationship.choices)
+    phone = forms.CharField(
+        required=False, max_length=20,
+        help_text="Optional. A spouse or grown child very often pays dues from their "
+                  "OWN phone — recording it here lets that payment be matched "
+                  "automatically instead of landing in the unmatched queue.")
     date_of_birth = forms.DateField(required=False,
                                     widget=forms.DateInput(attrs={"type": "date"}))
     registered_on = forms.DateField(initial=dt.date.today,

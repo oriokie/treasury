@@ -767,6 +767,154 @@ class MarkProcessedClearsQueueTests(TestCase):
         self.assertNotIn(h1.id, self._review_queue_ids())
         self.assertNotIn(h2.id, self._review_queue_ids())
 
+    def test_a_generic_shared_reference_does_not_sweep_in_unrelated_people(self):
+        """The real bug reported in production: marking ONE transaction as a
+        manual receipt changed SIX — every transaction that happened to share
+        its plain-text reference and date, none of them actually related.
+        `split_siblings()` used to OR three match conditions together, so a
+        transaction WITH a solid, unique core_ref was still ALSO matched
+        against anyone else's payment carrying the same generic narration
+        ("BEN DUES", "TITHE") on the same day. Fixed to a true fallback:
+        the strongest identifier available, and ONLY that one."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        same_day = dt.date(2026, 6, 3)
+        # six DIFFERENT members' bank transactions, same generic narration,
+        # same day — a completely ordinary occurrence, not a split
+        mine = Transaction.objects.create(
+            amount=Decimal("200"), department=self.local, date=same_day,
+            channel="BANK", direction="CREDIT", reference="BEN DUES",
+            core_ref="UNIQUE-REF-1", confirmed=True, allocation_status="REVIEW")
+        others = [
+            Transaction.objects.create(
+                amount=Decimal("200"), department=self.local, date=same_day,
+                channel="BANK", direction="CREDIT", reference="BEN DUES",
+                core_ref=f"UNIQUE-REF-{i}", confirmed=True, allocation_status="REVIEW")
+            for i in range(2, 7)]
+
+        n = mine.mark_manual_receipt(cascade_split=True)
+        self.assertEqual(n, 1, "only the one transaction actually marked should change")
+
+        mine.refresh_from_db()
+        self.assertTrue(mine.manual_receipt)
+        for other in others:
+            other.refresh_from_db()
+            self.assertFalse(
+                other.manual_receipt,
+                f"{other.core_ref} shares a narration and date with {mine.core_ref} but "
+                f"is a different person's payment — it must not have been touched")
+            self.assertEqual(other.allocation_status, "REVIEW")   # left in the queue
+
+    def test_a_true_split_by_core_ref_is_still_detected(self):
+        """The fix must not break the real case it exists to serve: two rows
+        of the SAME split bank transaction (shared core_ref base) are still
+        correctly recognised as siblings, even though they also happen to
+        share reference text and date (as split rows always do)."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        common = dict(date=dt.date(2026, 6, 4), channel="BANK", direction="CREDIT",
+                      reference="COMBINED", confirmed=True)
+        h1 = Transaction.objects.create(amount=Decimal("500"), core_ref="XY9", **common)
+        h2 = Transaction.objects.create(amount=Decimal("500"), core_ref="XY9-S1", **common)
+        siblings = list(h1.split_siblings())
+        self.assertEqual(siblings, [h2])
+
+    def test_cash_entries_with_no_bank_identifier_still_fall_back_to_reference(self):
+        """A cash entry has no core_ref or mpesa_ref at all, so the reference+
+        date fallback still has to work for it — that is the one legitimate
+        reason the fallback exists at all."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        common = dict(date=dt.date(2026, 6, 5), channel="CASH", direction="CREDIT",
+                      reference="LOOSE OFFERING", confirmed=True)
+        h1 = Transaction.objects.create(amount=Decimal("300"), **common)
+        h2 = Transaction.objects.create(amount=Decimal("200"), **common)
+        self.assertEqual(list(h1.split_siblings()), [h2])
+
+    def test_a_genuine_split_is_found_via_the_real_link_not_text_inference(self):
+        """The robust fix: split_into() now records an explicit, unambiguous
+        relationship (split_of), so genuine siblings are found even when
+        they share NOTHING in their text fields with anything else — and,
+        the point of this test, EVEN WHEN their reference/date happens to
+        coincide with some unrelated third transaction (proving the real
+        link is what's actually being used, not a lucky text match)."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        original = Transaction.objects.create(
+            date=dt.date(2026, 6, 6), channel="BANK", direction="CREDIT",
+            amount=Decimal("1000"), reference="COMBINED OFFERING", confirmed=True)
+        parts = original.split_into([
+            (self.local, Decimal("600"), None), (self.trust, Decimal("400"), None)])
+        child = parts[1]
+        self.assertEqual(child.split_of_id, original.pk)
+        siblings = set(child.split_siblings().values_list("pk", flat=True))
+        self.assertEqual(siblings, {original.pk})
+
+    def test_two_unrelated_cash_gifts_sharing_a_reference_are_not_split_siblings_of_a_real_split(self):
+        """The scenario that would have reproduced the original bug even
+        after the first fix: an UNRELATED cash gift happens to share its
+        reference text and date with one part of a genuine split. Because
+        the genuine split now has a real split_of link, that link — not
+        the coincidental text match — is what decides its siblings, so the
+        unrelated gift is correctly left out."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        original = Transaction.objects.create(
+            date=dt.date(2026, 6, 7), channel="CASH", direction="CREDIT",
+            amount=Decimal("1000"), reference="OFFERING", confirmed=True)
+        parts = original.split_into([
+            (self.local, Decimal("600"), None), (self.trust, Decimal("400"), None)])
+
+        # a completely unrelated person's cash gift, same reference, same date
+        unrelated = Transaction.objects.create(
+            date=dt.date(2026, 6, 7), channel="CASH", direction="CREDIT",
+            amount=Decimal("50"), reference="OFFERING", confirmed=True)
+
+        siblings = set(original.split_siblings().values_list("pk", flat=True))
+        self.assertIn(parts[1].pk, siblings)
+        self.assertNotIn(unrelated.pk, siblings)
+
+        n = original.mark_manual_receipt(cascade_split=True)
+        self.assertEqual(n, 2)   # only the genuine two-part split
+        unrelated.refresh_from_db()
+        self.assertFalse(unrelated.manual_receipt)
+
+    def test_historical_splits_are_backfilled_with_the_real_link(self):
+        """The migration that ships this fix backfills split_of for every
+        EXISTING split by parsing the "[Split of #N]" tag split_into() has
+        always written — proven directly against the migration's own logic
+        here, rather than only against new data."""
+        import datetime as dt
+        import importlib
+        from decimal import Decimal
+        from django.apps import apps as django_apps
+        from giving.models import Transaction
+
+        original = Transaction.objects.create(
+            date=dt.date(2026, 6, 8), channel="BANK", direction="CREDIT",
+            amount=Decimal("800"), reference="HIST", confirmed=True)
+        parts = original.split_into([
+            (self.local, Decimal("500"), None), (self.trust, Decimal("300"), None)])
+        child = parts[1]
+        # simulate "this row predates the migration": clear the link the
+        # ORM just set, exactly as a pre-existing production row would have
+        Transaction.objects.filter(pk=child.pk).update(split_of=None)
+        child.refresh_from_db()
+        self.assertIsNone(child.split_of_id)
+        self.assertTrue(child.raw_narration.startswith(f"[Split of #{original.pk}]"))
+
+        migration_module = importlib.import_module(
+            "giving.migrations.0024_backfill_split_of")
+        migration_module.forwards(django_apps, None)
+
+        child.refresh_from_db()
+        self.assertEqual(child.split_of_id, original.pk)
+
     def test_bulk_import_removes_from_queue(self):
         import datetime as dt
         from decimal import Decimal

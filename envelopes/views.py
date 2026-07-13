@@ -43,7 +43,19 @@ class EnvelopeListView(ReadAccessMixin, View):
             year, month = today.year, today.month
 
         saturdays = _saturdays_of_month(year, month)
-        envs = (Envelope.objects.select_related("member")
+        # A real, separate bug found while reviewing "does any page load
+        # unbounded data" (per Edwin's request): this queryset carried NO
+        # date filter at all — every envelope ever recorded was fetched and
+        # then discarded in Python for every visit to this page, regardless
+        # of which month was actually being viewed. sabbath_of() rolls a
+        # Sun-Fri date FORWARD to its Saturday, so an envelope dated the
+        # Sunday before this month's first Saturday can still belong to it —
+        # the safe lower bound is 6 days before that first Saturday, not the
+        # 1st of the calendar month.
+        range_start = saturdays[0] - dt.timedelta(days=6) if saturdays else dt.date(year, month, 1)
+        range_end = saturdays[-1] if saturdays else dt.date(year, month, 1)
+        envs = (Envelope.objects.filter(date__gte=range_start, date__lte=range_end)
+                .select_related("member")
                 .prefetch_related("lines__department"))
         groups = {s: [] for s in saturdays}
         other = []

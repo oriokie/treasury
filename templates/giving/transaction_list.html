@@ -14,11 +14,17 @@
   {% if sum_review %}<div class="ws-metric is-warn"><span class="wm-l">In review</span><span class="wm-v">{{ sum_review }}</span></div>{% endif %}
 </div>
 
+{% if date_default_applied %}
+<div class="alert alert-info u-mb no-print">Showing <strong>this month</strong> by default, to keep the page quick to load.
+  <a class="link" href="?date_from=&amp;date_to=">See all time instead</a> — or pick a different range in the filters below.</div>
+{% endif %}
+
 <nav class="tx-quicktabs no-print" aria-label="Quick filters">
   <a href="{% url 'transaction_list' %}" class="tx-qtab{% if not filters.status and not filters.department %} active{% endif %}">All</a>
   <a href="{% url 'transaction_list' %}?status=REVIEW" class="tx-qtab{% if filters.status == 'REVIEW' %} active{% endif %}">Needs review{% if sum_review %} <span class="tx-qtab-badge">{{ sum_review }}</span>{% endif %}</a>
   <a href="{% url 'transaction_list' %}?department=none" class="tx-qtab{% if filters.department == 'none' %} active{% endif %}">Unallocated{% if unallocated_count %} <span class="tx-qtab-badge">{{ unallocated_count }}</span>{% endif %}</a>
-  {% if not cash_only %}<a href="{% url 'transaction_list' %}?export=trust-pending-receipt" class="tx-qtab" title="Trust fund credits with no formal receipt yet — downloads an Excel file">⤓ Trust pending receipt</a>{% endif %}
+  {% if not cash_only %}<a href="{% url 'transaction_list' %}?export=trust-pending-receipt" class="tx-qtab" title="Trust fund credits with no formal receipt yet — downloads an Excel file">⤓ Trust pending receipt</a>
+  <a href="{% url 'transaction_list' %}?export=trust-pending-receipt-pdf" class="tx-qtab" title="The same list as a printable PDF">⤓ (PDF)</a>{% endif %}
 </nav>
 <style>
 .tx-quicktabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:.7rem 0 .9rem;border-bottom:1px solid var(--line);padding-bottom:.6rem}
