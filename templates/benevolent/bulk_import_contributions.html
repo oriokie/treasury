@@ -13,6 +13,10 @@
 <div class="card form-card" style="max-width:720px"><div class="bd">
 <p class="help u-mt-0">Download the template, fill one row per contribution, and upload it here. Each row posts to
   the ledger immediately — this is real money being receipted, not a draft.</p>
+<p class="help"><strong>Importing a case levy?</strong> Put the case number in the <code>case_number</code> column and
+  the money lands on that case's levy roster. You can upload the <em>whole</em> roster — everyone who was levied,
+  paid or not: leave the amount blank for anyone who did not contribute, and they will simply show as unpaid, which is
+  what not having paid already means.</p>
 <div class="btn-row u-mb">
   <a class="btn btn-ghost btn-sm" href="?template=1">⬇ Download CSV template</a>
 </div>
@@ -28,6 +32,12 @@
   <p><strong>{{ imported }}</strong> contribution{{ imported|pluralize }} imported, totalling
     <strong>{{ CURRENCY }} {{ total|floatformat:2 }}</strong>
     {% if skipped %}, <strong>{{ skipped }}</strong> row{{ skipped|pluralize }} skipped{% endif %}.</p>
+  {% if not_contributed %}
+  <p class="help"><strong>{{ not_contributed }} row(s) had no amount.</strong> Those members are recorded as
+    <em>not having contributed</em> — which is what an absent payment already means. They will show as unpaid on the
+    case's levy roster. Nothing was written for them, because a zero-value receipt would put money in the ledger that
+    nobody gave.</p>
+  {% endif %}
   {% if problems %}
   <table class="ledger compact"><thead><tr><th>Row</th><th>Name</th><th>Problem</th></tr></thead>
   <tbody>{% for row_n, name, problem in problems %}<tr>
@@ -45,6 +55,7 @@
 <tr><td class="mono">member_phone</td><td>Used to match the member.</td></tr>
 <tr><td class="mono">date</td><td>Required. YYYY-MM-DD.</td></tr>
 <tr><td class="mono">amount</td><td>Required.</td></tr>
+<tr><td class="mono">case_number</td><td>The case this is a <strong>levy</strong> towards, e.g. <code>BEN-2026-0003</code>. Money attached to a case is a levy by definition — it appears on that case's levy roster, and under a pooled policy it is what the benefit is made of. Leave blank for ordinary dues.</td></tr>
 <tr><td class="mono">kind</td><td><code>DUES</code>, <code>LEVY</code>, <code>REGISTRATION</code>, <code>RENEWAL</code>, or <code>VOLUNTARY</code>. Left blank, the scheme's own default applies.</td></tr>
 <tr><td class="mono">period_label</td><td>Which dues period this covers (e.g. <code>2026-01</code>), if relevant.</td></tr>
 <tr><td class="mono">channel</td><td><code>CASH</code> or <code>BANK</code>. Defaults to cash.</td></tr>

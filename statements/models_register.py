@@ -192,12 +192,24 @@ class RegisterException(models.Model):
     class Meta:
         ordering = ["-date", "-id"]
         constraints = [
+            # No `condition` here, deliberately. MariaDB does not support
+            # conditional unique constraints — it silently declines to create
+            # them (Django warns W036) — so on Edwin's production database these
+            # were not enforced at all, and a duplicate exception could be
+            # written for the same line.
+            #
+            # The conditions were never needed. All three of SQLite, PostgreSQL
+            # and MariaDB treat NULLs as DISTINCT in a unique index, so an
+            # unconditional constraint permits any number of rows with
+            # line=NULL (every MISSING_IN_BANK exception) while still enforcing
+            # one row per (account, kind, line) where line IS set — which is
+            # exactly what the condition was trying to express, and now actually
+            # exists on every backend rather than only on the one nobody runs in
+            # production.
             models.UniqueConstraint(fields=["account", "kind", "line"],
-                                    name="uniq_exception_per_line",
-                                    condition=models.Q(line__isnull=False)),
+                                    name="uniq_exception_per_line"),
             models.UniqueConstraint(fields=["account", "kind", "transaction"],
-                                    name="uniq_exception_per_txn",
-                                    condition=models.Q(transaction__isnull=False)),
+                                    name="uniq_exception_per_txn"),
         ]
 
     def __str__(self):

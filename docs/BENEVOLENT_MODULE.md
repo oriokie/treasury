@@ -2117,3 +2117,92 @@ and a number recorded here lets that payment be matched to the family
 automatically instead of landing in an unmatched queue.
 
 **Tests:** 36 new. Full regression clean — 2,436 tests.
+
+---
+---
+
+# Round 5 — reported issues
+
+## The serious one: the register's matching was crying wolf (item 4)
+
+Reported: *"Many entries being detected as not in our books, but when searching
+I found them."*
+
+Two bugs, both mine:
+
+1. **The date window was being used for MATCHING, not just for reporting.** A
+   bank reference is unique *forever* — if any transaction carries it, the line
+   IS in our books, whatever date it happens to be recorded under. But the match
+   index was built only from transactions inside the reporting window, so a
+   payment the bank value-dated 1 July that the treasurer entered on 30 June
+   (when the SMS arrived) fell outside it, and its statement line was flagged as
+   missing. Value date and entry date differing by a day or two is completely
+   ordinary.
+
+2. **Transactions were not scoped to the account being checked**, so a church
+   with two bank accounts had every transaction of the second flagged as missing
+   from the first — where it was never supposed to be.
+
+The date window's job is to decide **what we report on**, never **what
+matches**. A reconciliation that cries wolf is worse than none, because every
+false positive teaches a treasurer to stop reading it.
+
+## The MariaDB constraint warning was a real production hole (item 1)
+
+MariaDB does not create conditional unique constraints — it silently declines
+(W036). So on the production database they were **not enforced at all**, and a
+duplicate exception could be written. The conditions were never needed: SQLite,
+PostgreSQL and MariaDB all treat NULLs as *distinct* in a unique index, so an
+unconditional constraint permits any number of `line=NULL` rows while still
+enforcing one row per `(account, kind, line)` where `line` is set — which is
+what the condition was trying to say, and now actually exists on every backend
+rather than only on the one nobody runs in production.
+
+## "Trust pending receipt" was named after its own bug (item 5)
+
+The list was Trust-only, so LCB money a church receipts exactly as it receipts
+trust money simply never appeared — which is why it was called *Trust* pending
+receipt. Renamed to **Pending receipt**, and it now covers the whole receiptable
+set: every Trust fund **plus the LCB family** (the funds configured in Settings,
+**plus their subgroups**).
+
+Worse, `_is_receiptable_fund()` — which drives the Sabbath-confirm scope —
+matched LCB **by name only**, so a church that had carefully configured its LCB
+funds in Settings found that setting silently ignored, and two screens could
+disagree about which funds counted. There is now one canonical definition,
+`departments.models.receiptable_fund_ids()`, and both use it. Old export URLs
+still work: renaming a URL a user has bookmarked is not a rename, it is a
+breakage.
+
+## Allocation & categories moved, and a duplicate retired (item 6)
+
+Now its own page, reachable from the allocation rules — where it belongs, rather
+than sitting in Settings → Channels among bank accounts and opening balances
+that have nothing to do with allocation. Both it and the development-group
+patterns page are linked from `/rules/`; patterns is gone from the sidebar.
+
+**And yes — the duplicate was real.** The "extra dev-group prefixes" setting
+built exactly the regex a `DevGroupPattern` of kind NUMBERED builds, but could
+not be labelled, ordered, disabled or audited. Two places to configure one
+behaviour, neither able to see the other. Retired — but not by silently
+discarding what a church had configured: migration `giving.0025` turns any
+existing prefixes into real, visible, editable patterns on the page built for
+the job.
+
+## Also
+
+The register downloads to CSV and Excel, with the opening and closing balances
+included — a register exported without them cannot be checked by anyone (item
+3). Contribution import already handled a full case roster, paid and unpaid
+(item 2); confirmed with tests rather than assumed, since a blank amount
+correctly records *no* contribution: "did not contribute" is the absence of a
+payment, and writing a zero-value receipt to say so would put money in the
+ledger nobody gave.
+
+A latent **date-boundary flake** was also found and fixed: a test captured
+`TODAY` at module import, so a long suite crossing midnight dated its payouts
+into a day the report window excluded, producing a `None` total and an
+`AttributeError`. It only ever surfaced because these runs are long enough to
+cross midnight.
+
+**Tests:** 26 new. Full regression clean — 2,547 tests.

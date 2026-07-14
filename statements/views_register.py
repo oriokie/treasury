@@ -49,6 +49,10 @@ class RegisterView(ReadAccessMixin, View):
                     or ql in (r["line"].dedup_key or "").lower()
                     or ql in (r["line"].reference or "").lower()]
 
+        export = request.GET.get("export")
+        if export in ("csv", "xlsx"):
+            return self._export(account, rows, data, export, start, end)
+
         page = Paginator(rows, 100).get_page(request.GET.get("page"))
         return render(request, self.template_name, {
             "account": account,
@@ -61,6 +65,49 @@ class RegisterView(ReadAccessMixin, View):
             "start": start, "end": end, "q": q,
             "date_default_applied": not request.GET,
         })
+
+    def _export(self, account, rows, data, fmt, start, end):
+        """Download the register — the whole filtered window, not just the page
+        being looked at, because someone exporting a statement wants the
+        statement, not a screenshot of it."""
+        from reports.exports import csv_response, xlsx_response
+
+        header = ["Date", "Narration", "Payer", "Phone", "Reference",
+                  "In", "Out", "Running balance", "Bank's own balance", "Drift"]
+        out = []
+        for r in rows:
+            ln = r["line"]
+            out.append([
+                ln.date.isoformat(),
+                ln.raw_narration or "",
+                ln.payer_name or "",
+                ln.payer_phone or "",
+                ln.dedup_key,
+                ln.credit or "",
+                ln.debit or "",
+                r["running"],
+                ln.bank_balance if ln.bank_balance is not None else "",
+                r["drift"] if r["drift"] else "",
+            ])
+        # the opening balance is part of the statement, not decoration — a
+        # register exported without it cannot be checked by anyone
+        out.insert(0, [start.isoformat() if start else "", "OPENING BALANCE", "", "", "",
+                       "", "", data["opening"], "", ""])
+        out.append(["", "CLOSING BALANCE", "", "", "", "", "", data["closing"], "", ""])
+
+        span = ""
+        if start and end:
+            span = f"_{start:%Y%m%d}-{end:%Y%m%d}"
+        stem = f"bank_register_{account.name.replace(' ', '_')}{span}"
+
+        if fmt == "csv":
+            return csv_response(f"{stem}.csv", header, out)
+        from core.models import SiteConfig
+        return xlsx_response(
+            f"{stem}.xlsx", header, out,
+            title=f"Bank statement register — {account.name}"
+                  + (f" ({start:%d %b %Y} – {end:%d %b %Y})" if start and end else ""),
+            church=SiteConfig.get().church_name)
 
 
 class RegisterImportView(DataEntryRequiredMixin, View):

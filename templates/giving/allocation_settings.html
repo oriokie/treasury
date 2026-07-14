@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Allocation &amp; categories · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Allocation &amp; categories</h1>
+  <div class="sub">How a bank narration becomes a fund — and the categories money is filed under</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'rule_list' %}">← Allocation rules</a></div></div>
+
+<div class="info-panel">These settings sit alongside the <a class="link" href="{% url 'rule_list' %}">allocation rules</a>
+  and the <a class="link" href="{% url 'dev_patterns' %}">development-group patterns</a>, because they do the same job:
+  they decide where an incoming gift is booked. They used to live in Settings → Channels, among bank accounts and
+  opening balances that have nothing to do with allocation.</div>
+
+<div class="grid cols-2">
+  <div class="card"><div class="hd">Numbered fund families</div><div class="bd">
+    <form method="post">{% csrf_token %}
+      <div class="form-grid">
+      {% for f in form %}{% if f.name == 'numbered_fund_families' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      {% for f in form %}{% if f.name == 'dev_group_builder_apply' %}
+        <div class="form-row"><div class="check-row">{{ f }}
+          <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      <div class="btn-row u-mt"><button class="btn">Save</button></div>
+    </form>
+  </div></div>
+
+  <div class="card"><div class="hd">Related pages</div><div class="bd">
+    <p class="help u-mt-0">Everything else that decides where money lands.</p>
+    <div class="btn-row" style="flex-direction:column;align-items:stretch;gap:.5rem">
+      <a class="btn btn-ghost btn-sm" href="{% url 'rule_list' %}">Allocation rules — narration → fund</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'dev_patterns' %}">Development-group patterns</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'expense_categories' %}">Expense categories</a>
+    </div>
+    <hr class="u-divider">
+    <p class="help"><strong>Development-group prefixes moved.</strong> The old "extra dev-group prefixes" box lived
+      here and built exactly the regex a development-group pattern builds — but with no label, no ordering, no
+      on/off switch and no audit trail. Anything a church had configured was turned into a real pattern; manage them
+      on the <a class="link" href="{% url 'dev_patterns' %}">patterns page</a>, which is built for the job.</p>
+  </div></div>
+</div>
+{% endblock %}

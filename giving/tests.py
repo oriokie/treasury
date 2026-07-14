@@ -503,10 +503,20 @@ class RuleDeleteAndConfigTests(TestCase):
         self.assertFalse(AllocationRule.objects.filter(id=self.rule.id).exists())
 
     def test_configurable_dev_prefix(self):
+        """The capability survives; its home moved.
+
+        `SiteConfig.dev_group_extra_prefixes` built exactly the regex a
+        DevGroupPattern of kind NUMBERED builds — but with no label, no
+        ordering, no on/off switch and no audit trail. Two places to configure
+        one behaviour, neither able to see the other. It was retired into real
+        patterns (migration giving.0025), which is where a treasurer manages
+        such things now."""
         import datetime as dt
-        from core.models import SiteConfig
+        from giving.models import DevGroupPattern
         from giving.services.allocation import allocate
-        cfg = SiteConfig.get(); cfg.dev_group_extra_prefixes = "project, phase"; cfg.save()
+        DevGroupPattern.objects.create(
+            label="project + number", pattern=r"(?:project)0*(\d+)",
+            kind=DevGroupPattern.Kind.NUMBERED, enabled=True, sort_order=500)
         r, status = allocate("project7", dt.date(2026, 5, 2))
         self.assertEqual(r, "DEV_GROUP_7")
 

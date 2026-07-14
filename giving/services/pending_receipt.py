@@ -1,21 +1,35 @@
-"""Trust-fund-credits-pending-receipt — the data behind the transaction
-list's "Trust pending receipt" quick filter, extracted into its own
-function so the web export (Excel or PDF) and the Telegram bot route pull
-from exactly the same query, never two slightly different ones.
+"""Credits pending receipt — the data behind the transaction list's
+"Pending receipt" quick filter, extracted into its own function so the web
+export (Excel or PDF) and the Telegram bot route pull from exactly the same
+query, never two slightly different ones.
+
+Scope is the RECEIPTABLE funds: every Trust fund **and the whole Local Church
+Budget family** — the LCB funds a church has configured in Settings, plus their
+subgroups.
+
+That is the same "Trust + LCB" the Sabbath-confirm scope setting names, and it
+is now literally the same code (`departments.models.receiptable_fund_ids`).
+This list used to be Trust-only, so LCB money a church receipts exactly the way
+it receipts trust money simply never appeared here — which is why it was called
+"Trust pending receipt", a name that described the bug rather than the intent.
 """
 from decimal import Decimal
 
 
 def pending_receipt_rows():
-    """[(date_iso, phone, member_name, amount, fund_label, reference,
-    mpesa_ref), ...] — trust fund credits not yet formally receipted. See
-    giving.views._trust_pending_receipt_export's own docstring for exactly
-    what "pending" and "combined" mean here; this function is that same
-    logic, just callable from more than one place now.
+    """[(date, phone, member_name, amount, fund_label, reference, mpesa_ref), ...]
+    — receiptable-fund credits not yet formally receipted.
+
+    "Receiptable" means Trust funds AND the LCB family, per
+    `departments.models.receiptable_fund_ids()`. A split contribution qualifies
+    if ANY of its parts landed in a receiptable fund — the whole gift is one
+    receipt, so receipting half of it is not a thing.
     """
-    from departments.models import Department
+    from departments.models import receiptable_fund_ids
     from giving.models import Transaction
     from giving.views import _combined_fund_label, _group_split_siblings
+
+    receiptable = receiptable_fund_ids()
 
     qs = (Transaction.objects.confirmed_credits()
           .filter(excluded_from_income=False)
@@ -28,9 +42,7 @@ def pending_receipt_rows():
 
     rows = []
     for members in _group_split_siblings(list(qs)):
-        has_trust = any(t.department_id and t.department.fund_type == Department.FundType.TRUST
-                        for t in members)
-        if not has_trust:
+        if not any(t.department_id in receiptable for t in members):
             continue
         if all(_is_receipted(t) for t in members):
             continue
@@ -69,7 +81,7 @@ def pending_receipt_pdf_bytes(church=""):
         canvas.saveState()
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#666666"))
-        canvas.drawString(14 * mm, 10 * mm, "Trust fund items pending receipt")
+        canvas.drawString(14 * mm, 10 * mm, "Items pending receipt")
         canvas.drawRightString(landscape(A4)[0] - 14 * mm, 10 * mm, f"Page {doc.page}")
         if church:
             canvas.drawCentredString(landscape(A4)[0] / 2, 10 * mm, church)
@@ -80,8 +92,8 @@ def pending_receipt_pdf_bytes(church=""):
     styles = getSampleStyleSheet()
     title_style = styles["Heading1"]
     title_style.textColor = primary
-    flow = [Paragraph("Trust fund items pending receipt", title_style),
-           Paragraph(f"{len(rows)} item(s) not yet formally receipted.", styles["Normal"]),
+    flow = [Paragraph("Items pending receipt", title_style),
+           Paragraph(f"{len(rows)} item(s) in a receiptable fund (Trust or Local Church Budget) not yet formally receipted.", styles["Normal"]),
            Spacer(1, 6 * mm)]
 
     table_data = [HEADER]

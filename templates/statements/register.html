@@ -5,6 +5,8 @@
   <div class="sub">Every line the bank has sent, exactly as the bank sent it — with a running balance.</div></div>
 <div class="btn-row no-print">
   {% if can_enter_data %}<a class="btn btn-sm" href="{% url 'bank_register_import' %}">⬆ Import statement</a>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}export=xlsx">⤓ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}{% if request.GET %}&amp;{% endif %}export=csv">⤓ CSV</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'bank_register_exceptions' %}{% if account %}?account={{ account.id }}{% endif %}">Exceptions{% if summary.open_exceptions %} <span class="pill pill-red u-xs">{{ summary.open_exceptions }}</span>{% endif %}</a>
 </div></div>
 

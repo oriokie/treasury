@@ -398,7 +398,16 @@ class HistoricalAccuracyTests(Phase8Fixture):
         case_svc.record_payout(case, amount=Decimal("5000"), user=self.clerk)
 
         from core.reporting.context import ReportContext
-        ctx = ReportContext.for_period(start=TODAY - dt.timedelta(days=30), end=TODAY)
+        # The window is deliberately widened by a day at each end. `TODAY` is
+        # captured when this module is IMPORTED, but the payouts above are dated
+        # when they are CREATED — so a long suite that happens to cross midnight
+        # dated them into a "tomorrow" the window did not include, leaving zero
+        # rows, a None total, and an AttributeError. This test is about which
+        # vouchers count towards the total, not about what time of day it runs.
+        today = dt.date.today()
+        ctx = ReportContext.for_period(start=today - dt.timedelta(days=31),
+                                       end=today + dt.timedelta(days=1))
         data = BenevolentBenefitPaymentsComponent().render(ctx, {})
+        self.assertIsNotNone(data.total, "no payouts fell inside the report window")
         self.assertEqual(data.total.cells["amount"], Decimal("10000"))   # not 15000
         self.assertEqual(len(data.rows), 2)                              # but both shown

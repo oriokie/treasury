@@ -19,16 +19,18 @@ from statements.services.parser import read_rows
 
 def _is_receiptable_fund(dept):
     """True for funds we normally turn into envelope receipts: any Trust fund and
-    the Local Church Budget (LCB) family. Used to decide which late-imported contributions
-    enter the Sabbath confirmations queue."""
+    the Local Church Budget (LCB) family.
+
+    Delegates to `departments.models.receiptable_fund_ids()` — the single
+    definition of "Trust + LCB", shared with the transaction list's pending-receipt
+    view. This used to match LCB by NAME alone, which meant a church that had
+    carefully configured its LCB funds in Settings found that setting ignored
+    here, and two screens could disagree about which funds counted.
+    """
     if dept is None:
         return False
-    if getattr(dept, "is_trust", False):
-        return True
-    name = (dept.name or "").upper()
-    parent = (dept.parent.name or "").upper() if getattr(dept, "parent_id", None) else ""
-    return "LCB" in name or "LOCAL CHURCH BUDGET" in name \
-        or "LCB" in parent or "LOCAL CHURCH BUDGET" in parent
+    from departments.models import receiptable_fund_ids
+    return dept.id in receiptable_fund_ids()
 
 
 def _development_fund():

@@ -290,17 +290,13 @@
 
 
     <div class="card u-mt"><div class="hd">Allocation &amp; categories</div><div class="bd">
-      <div class="form-grid">
-      {% for f in form %}{% if f.name == 'dev_group_extra_prefixes' or f.name == 'numbered_fund_families' %}
-        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
-      {% endif %}{% endfor %}
-      </div>
-      {% for f in form %}{% if f.name == 'dev_group_builder_apply' %}
-        <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
-      {% endif %}{% endfor %}
-      <a class="btn btn-ghost btn-sm" href="{% url 'expense_categories' %}" class="u-mt-sm">Manage expense categories</a>
-      <a class="btn btn-ghost btn-sm" href="{% url 'dev_patterns' %}">Development-group patterns</a>
-      <hr class="u-divider">
+      <p class="help u-mt-0">These moved to their own page, next to the allocation rules and development-group
+        patterns they belong with — rather than sitting here among bank accounts and opening balances that have
+        nothing to do with allocation.</p>
+      <a class="btn btn-ghost btn-sm" href="{% url 'allocation_settings' %}">Open Allocation &amp; categories →</a>
+    </div></div>
+
+    <div class="card u-mt"><div class="hd">Local Church Budget &amp; Sabbath close</div><div class="bd">
       <div class="section-title">Local Church Budget (LCB) funds</div>
       <p class="help">Choose which funds make up the Local Church Budget. Reports (the Monthly Treasurer's Report, LCB trend and LCB expenditure) use exactly these funds and their sub-accounts. Leave all unticked to fall back to matching funds named “LCB” or “Local Church Budget”.</p>
       {% for f in form %}{% if f.name == 'lcb_departments' %}

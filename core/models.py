@@ -259,10 +259,6 @@ class SiteConfig(models.Model):
                   "is overdue, or a budget is exceeded (requires email to be configured).")
 
     # --- Allocation tuning ---
-    dev_group_extra_prefixes = models.CharField(max_length=200, blank=True,
-        help_text="Extra words (comma-separated) that mean a development group in "
-                  "bank references, e.g. 'project, phase'. The common 'grp/devgroup' "
-                  "spellings are always recognised.")
     dev_group_builder_apply = models.BooleanField(default=False,
         help_text="Allow the development-group builder to actually create groups and "
                   "reassign members in the system. Off = the builder only produces a "

@@ -116,10 +116,13 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 
     def get(self, request, *args, **kwargs):
         export = request.GET.get("export")
-        if export == "trust-pending-receipt":
-            return self._trust_pending_receipt_export(request)
-        if export == "trust-pending-receipt-pdf":
-            return self._trust_pending_receipt_pdf(request)
+        # The old "trust-" keys still work: a bookmark, and the Telegram bot's
+        # /pending route, both point at them. Renaming a URL a user has saved is
+        # not a rename, it is a breakage.
+        if export in ("pending-receipt", "trust-pending-receipt"):
+            return self._pending_receipt_export(request)
+        if export in ("pending-receipt-pdf", "trust-pending-receipt-pdf"):
+            return self._pending_receipt_pdf(request)
         if export in ("csv", "xlsx"):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
@@ -182,31 +185,37 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             return csv_response("transactions.csv", header, rows)
         return super().get(request, *args, **kwargs)
 
-    def _trust_pending_receipt_export(self, request):
-        """Trust fund credits not yet formally receipted — Date, Phone, Member,
-        Amount, Fund, Reference. A split contribution (one lump sum divided
-        across several funds, e.g. Combined Offering = 50% trust + 50% local)
-        is posted as several ledger rows sharing a payment reference; here
-        they're recombined into one row with the FULL original amount (not
-        just the trust-side share) and the split fund's own name, rather than
-        shown as separate partial lines — a giver who contributed 40 to
-        "Combined Offering" gets one receipt for 40, not one for the 20 that
-        happened to land in a trust account. A group is included whenever ANY
-        of its siblings is a trust-fund credit, even though some siblings may
-        themselves be local funds; a group with no trust component at all
-        (e.g. a purely local split) is not a trust-receipting concern and is
-        excluded, matching the export's purpose."""
+    def _pending_receipt_export(self, request):
+        """Credits in a RECEIPTABLE fund not yet formally receipted — Date,
+        Phone, Member, Amount, Fund, Reference.
+
+        "Receiptable" is Trust funds AND the Local Church Budget family (the LCB
+        funds configured in Settings, plus their subgroups) — the same "Trust +
+        LCB" the Sabbath-confirm scope names, and now the same code behind it
+        (`departments.models.receiptable_fund_ids`). This list was Trust-only,
+        so LCB money a church receipts exactly as it receipts trust money never
+        appeared — which is why it was called "Trust pending receipt", a name
+        that described the bug rather than the intent.
+
+        A split contribution (one lump sum divided across several funds, e.g.
+        Combined Offering = 50% trust + 50% local) is posted as several ledger
+        rows sharing a payment reference; here they're recombined into one row
+        with the FULL original amount and the split fund's own name. A giver who
+        contributed 40 to "Combined Offering" gets one receipt for 40, not one
+        for the 20 that happened to land in a trust account. A group qualifies
+        whenever ANY of its parts landed in a receiptable fund — the whole gift
+        is one receipt, so receipting half of it is not a thing."""
         from reports.exports import xlsx_response
         from core.models import SiteConfig
         from giving.services.pending_receipt import HEADER, pending_receipt_rows
 
         rows = [[d.isoformat(), phone, name, float(amount), fund, ref, mpesa]
                for d, phone, name, amount, fund, ref, mpesa in pending_receipt_rows()]
-        return xlsx_response("trust_fund_pending_receipt.xlsx", HEADER, rows,
-                             title="Trust fund items pending receipt",
+        return xlsx_response("pending_receipt.xlsx", HEADER, rows,
+                             title="Items pending receipt",
                              church=SiteConfig.get().church_name)
 
-    def _trust_pending_receipt_pdf(self, request):
+    def _pending_receipt_pdf(self, request):
         """The same data as a PDF — for printing, or for a copy someone
         wants outside a spreadsheet (e.g. via the Telegram bot's /pending
         pdf route)."""
@@ -215,7 +224,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         from giving.services.pending_receipt import pending_receipt_pdf_bytes
         pdf = pending_receipt_pdf_bytes(church=SiteConfig.get().church_name)
         resp = HttpResponse(pdf, content_type="application/pdf")
-        resp["Content-Disposition"] = 'attachment; filename="trust_fund_pending_receipt.pdf"'
+        resp["Content-Disposition"] = 'attachment; filename="pending_receipt.pdf"'
         return resp
 
     def get_queryset(self):
@@ -2290,3 +2299,40 @@ class RuleArchiveExpiredView(TreasurerRequiredMixin, View):
             r.archive(); n += 1
         messages.success(request, f"Archived {n} expired rule{'s' if n != 1 else ''}.")
         return redirect("rule_list")
+
+
+class AllocationSettingsView(TreasurerRequiredMixin, View):
+    """Allocation & categories — its own page.
+
+    Moved out of Settings → Channels, where it sat as a card among bank
+    accounts and opening balances that have nothing to do with it. Allocation is
+    a *rules* concern: it belongs next to the allocation rules and the
+    development-group patterns a treasurer manages, not buried in a settings tab
+    they open once a year.
+
+    The old dev-group "extra prefixes" field is gone from here. It built exactly
+    the regex a DevGroupPattern of kind NUMBERED builds, but could not be
+    labelled, ordered, disabled or audited — two places to configure one
+    behaviour, neither able to see the other. Migration `giving.0025` turned
+    whatever any church had configured into real patterns on the
+    Development-group patterns page, which is where such things now live.
+    """
+    template_name = "giving/allocation_settings.html"
+
+    def get(self, request):
+        from core.forms import SiteConfigForm
+        from core.models import SiteConfig
+        return render(request, self.template_name,
+                      {"form": SiteConfigForm(instance=SiteConfig.get())})
+
+    def post(self, request):
+        from core.forms import SiteConfigForm
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        form = SiteConfigForm(request.POST, request.FILES, instance=cfg)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Allocation settings saved.")
+            return redirect("allocation_settings")
+        messages.error(request, "Check the form.")
+        return render(request, self.template_name, {"form": form})

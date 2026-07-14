@@ -29,11 +29,21 @@ class NavReorgTests(TestCase):
         self.assertIn("Trust remittance", banking)
         self.assertNotIn("Trust remittance", reports)
 
-    def test_rules_and_patterns_in_funds_setup(self):
+    def test_allocation_rules_in_funds_setup(self):
         body = self.c.get("/").content.decode()
         funds = body.split('data-grp="funds"')[1].split("</details>")[0]
         self.assertIn("Allocation rules", funds)
-        self.assertIn("Development-group patterns", funds)
+
+    def test_development_group_patterns_moved_off_the_sidebar(self):
+        """It is reached from the Allocation rules page now — where its two
+        siblings (the rules themselves, and Allocation & categories) also live.
+        A sidebar entry for every configuration page a treasurer visits twice a
+        year is how a sidebar stops being navigable."""
+        body = self.c.get("/").content.decode()
+        self.assertNotIn("Development-group patterns", body)
+        rules = self.c.get("/rules/").content.decode()
+        self.assertIn("/dev-patterns/", rules)
+        self.assertIn("/allocation-settings/", rules)
 
     def test_all_moved_links_resolve(self):
         for path in ["/", "/reports/remittance-dashboard/".replace("-dashboard", "")

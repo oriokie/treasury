@@ -1,5 +1,64 @@
 # Changelog
 
+## v2.61.0 - Reported issues, round 5
+
+### The serious one: the register's matching was crying wolf
+
+*"Many entries being detected as not in our books, but when searching I found
+them."* Two bugs, both mine:
+
+- **The date window was used for MATCHING, not just reporting.** A bank
+  reference is unique FOREVER — if any transaction carries it, the line IS in
+  our books, whatever date it was recorded under. But the match index was built
+  only from transactions inside the reporting window, so a payment the bank
+  value-dated 1 July that the treasurer entered on 30 June (when the SMS
+  arrived) fell outside it, and its statement line was flagged as missing.
+- **Transactions were not scoped to the account being checked**, so a church
+  with two accounts had every transaction of the second flagged as missing from
+  the first.
+
+A reconciliation that cries wolf is worse than none — every false positive
+teaches a treasurer to stop reading it.
+
+### The MariaDB warning was a real production hole
+
+MariaDB does not create conditional unique constraints — it silently declines.
+So on the production database they were **not enforced at all**, and duplicate
+exceptions could be written. The conditions were never needed: NULLs are
+distinct in a unique index on every backend, so an unconditional constraint says
+exactly the same thing and actually exists.
+
+### "Trust pending receipt" was named after its own bug
+
+The list was Trust-only, so LCB money a church receipts exactly as it receipts
+trust money never appeared. Renamed to **Pending receipt**, now covering Trust
+**plus the LCB family** — the funds configured in Settings, **plus their
+subgroups**. And `_is_receiptable_fund()` (which drives the Sabbath-confirm
+scope) matched LCB **by name only**, so a church that had configured its LCB
+funds found that setting silently ignored. One canonical definition now, shared
+by both. Old export URLs still work.
+
+### Allocation & categories moved — and a duplicate retired
+
+Its own page, linked from the allocation rules, where it belongs. Dev-patterns
+also linked from there and removed from the sidebar.
+
+And yes, the duplicate was real: the "extra dev-group prefixes" setting built
+exactly the regex a DevGroupPattern of kind NUMBERED builds, but with no label,
+ordering, on/off switch or audit trail. Retired — with a migration that turns
+anything a church had configured into real, visible patterns rather than
+silently discarding it.
+
+### Also
+
+The register downloads to CSV and Excel, with opening and closing balances
+included. Contribution import already handled a full case roster, paid and
+unpaid — confirmed with tests rather than assumed. A latent date-boundary flake
+was found and fixed (a test captured TODAY at import, so a suite crossing
+midnight produced a None total and an AttributeError).
+
+**Tests:** 26 new. Full regression clean — 2,547 tests.
+
 ## v2.60.0 - Bank Statement Register, and the public benevolent application form
 
 Both are deliberately SEPARATE LAYERS. Neither can affect the ledger.

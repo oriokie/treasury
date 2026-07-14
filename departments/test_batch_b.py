@@ -70,9 +70,19 @@ class BatchBTests(TestCase):
         rule.refresh_from_db()
         self.assertEqual(rule.department_id, d2.id)
 
-    def test_settings_exposes_allocation(self):
+    def test_settings_points_at_the_allocation_page(self):
+        """Allocation & categories moved to its own page, next to the allocation
+        rules and dev-group patterns it belongs with — rather than sitting in
+        Settings → Channels among bank accounts and opening balances that have
+        nothing to do with allocation. Settings still names it, and links there."""
         b = self.c.get("/settings/").content.decode()
-        # the allocation-rules card was removed; the dev-group / numbered-fund
-        # families card remains
         self.assertIn("Allocation &amp; categories", b)
-        self.assertIn("Dev group extra prefixes", b)
+        self.assertIn("/allocation-settings/", b)
+
+    def test_the_duplicate_dev_prefix_field_is_gone(self):
+        """It built exactly the regex a DevGroupPattern of kind NUMBERED builds,
+        but could not be labelled, ordered, disabled or audited. Migration
+        giving.0025 turned anything configured into real patterns."""
+        b = self.c.get("/settings/").content.decode()
+        self.assertNotIn("Dev group extra prefixes", b)
+        self.assertEqual(self.c.get("/allocation-settings/").status_code, 200)

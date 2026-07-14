@@ -2446,3 +2446,33 @@ round.
 applicant fat-fingers a phone number, the reviewer must approve and then correct
 the membership. *Priority: Low-Medium* — correcting after the fact works and is
 fully audited; an inline edit would just be kinder.
+
+---
+
+## 77. Round 5 — reported issues — NEW
+
+**77a. RESOLVED — the register's exception matching was crying wolf.** The date
+window was used for MATCHING, not just reporting, so a transaction recorded on a
+different date than the bank value-dated it was invisible to the match index and
+its statement line wrongly flagged. Transactions were also not scoped to the
+account being checked. A bank reference is unique forever; matching is now
+global, and the window only decides what is reported.
+
+**77b. RESOLVED — MariaDB was not enforcing the register's unique constraints
+at all.** Conditional unique constraints are silently not created on MariaDB
+(W036), so duplicate exceptions were possible in production. The conditions were
+never needed — NULLs are distinct in a unique index on every backend.
+
+**77c. RESOLVED — "Trust pending receipt" now covers Trust + the LCB family**
+(configured funds plus subgroups), and `_is_receiptable_fund` now honours the
+LCB setting rather than guessing from names. One canonical definition,
+`departments.models.receiptable_fund_ids()`, shared with the Sabbath-confirm
+scope.
+
+**77d. RESOLVED — the duplicate dev-group prefix setting is retired**, its
+contents migrated into real `DevGroupPattern` rows.
+
+**77e. The register's exception check runs on demand, not on a schedule.** It
+re-checks automatically after every import (which is when the picture changes),
+and there is a "Check now" button. A nightly job would also be reasonable if a
+church wants the exception count fresh on the dashboard. *Priority: Low.*

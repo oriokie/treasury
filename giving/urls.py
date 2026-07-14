@@ -32,6 +32,8 @@ urlpatterns = [
     path("rules/archive-expired/", views.RuleArchiveExpiredView.as_view(), name="rule_archive_expired"),
     path("rules/<int:pk>/archive/", views.RuleArchiveView.as_view(), name="rule_archive"),
     path("dev-patterns/", views.DevPatternListView.as_view(), name="dev_patterns"),
+    path("allocation-settings/", views.AllocationSettingsView.as_view(),
+         name="allocation_settings"),
     path("dev-patterns/<int:pk>/toggle/", views.DevPatternToggle.as_view(), name="dev_pattern_toggle"),
     path("dev-patterns/<int:pk>/delete/", views.DevPatternDelete.as_view(), name="dev_pattern_delete"),
     path("rules/import/", views.RuleImportView.as_view(), name="rule_import"),

@@ -82,14 +82,14 @@ class TransactionsPageQuickTabsTests(TestCase):
     def test_trust_pending_link_appears_exactly_once(self):
         c = Client(); c.force_login(self.tr)
         b = c.get("/transactions/").content.decode()
-        self.assertEqual(b.count("Trust pending receipt"), 1)
+        self.assertEqual(b.count("Pending receipt"), 1)
 
     def test_trust_pending_link_visible_to_auditor_too(self):
         # read-only export — an auditor legitimately needs this for oversight,
         # same access level as the page itself (ReadAccessMixin)
         c = Client(); c.force_login(self.au)
         b = c.get("/transactions/").content.decode()
-        self.assertEqual(b.count("Trust pending receipt"), 1)
+        self.assertEqual(b.count("Pending receipt"), 1)
         r = c.get("/transactions/?export=trust-pending-receipt")
         self.assertEqual(r.status_code, 200)
 
@@ -101,7 +101,7 @@ class TransactionsPageQuickTabsTests(TestCase):
     def test_cash_only_page_hides_trust_pending_tab(self):
         c = Client(); c.force_login(self.tr)
         b = c.get("/cash/").content.decode()
-        self.assertNotIn("Trust pending receipt", b)
+        self.assertNotIn("Pending receipt", b)
         self.assertIn("tx-quicktabs", b)
 
     def test_existing_filter_form_still_works(self):

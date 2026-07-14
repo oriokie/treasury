@@ -142,12 +142,12 @@ def allocate(reference, date=None):
             if dept:
                 return dept, "AUTO"
 
-    # church-configured extra prefixes (e.g. "project", "phase")
-    extra = _extra_dev_prefixes()
-    if extra:
-        m2 = re.search(r"(?:%s)0*(\d+)" % "|".join(extra), s)
-        if m2 and 1 <= int(m2.group(1)) <= 99:
-            return f"DEV_GROUP_{int(m2.group(1))}", "AUTO"
+    # NOTE: the old "extra dev-group prefixes" setting was read here. It built
+    # exactly the regex a DevGroupPattern of kind NUMBERED builds, but could not
+    # be labelled, ordered, disabled or audited — two places to configure one
+    # behaviour, neither able to see the other. Migration 0025 turned anything a
+    # church had configured into real patterns, which _dev_patterns() above
+    # already reads. There is now one place.
 
     exact = list(AllocationRule.objects.filter(reference=s, archived=False).select_related(
         "department", "split_fund"))
@@ -192,22 +192,6 @@ def allocate(reference, date=None):
         return "DEV_GROUP_NA", "AUTO"
 
     return "UNALLOCATED", "REVIEW"
-
-
-def _extra_dev_prefixes():
-    """Normalised extra dev-group prefixes from SiteConfig, or []. Cheap + tolerant."""
-    try:
-        from core.models import SiteConfig
-        raw = SiteConfig.get().dev_group_extra_prefixes or ""
-    except Exception:
-        from core.utils import log_exception as _lx; _lx('giving/services/allocation.py')
-        return []
-    out = []
-    for part in raw.split(","):
-        p = re.sub(r"[^a-z0-9]", "", part.strip().lower())
-        if p:
-            out.append(re.escape(p))
-    return out
 
 
 def _numbered_fund_families():

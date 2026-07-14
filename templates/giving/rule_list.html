@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="page-head"><div><h1>Allocation rules</h1><div class="sub">References the importer maps to funds automatically</div></div><div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'rule_import' %}">⬆ Import rules</a>{% if is_treasurer and expired_count %}<form method="post" action="{% url 'rule_archive_expired' %}" class="u-inline" onsubmit="return confirm('Archive all {{ expired_count }} expired rule(s)? They stay on record but stop allocating new giving.');">{% csrf_token %}<button class="btn btn-sm">🗄 Archive {{ expired_count }} expired</button></form>{% endif %}</div></div>
+<div class="page-head"><div><h1>Allocation rules</h1><div class="sub">References the importer maps to funds automatically</div></div><div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'dev_patterns' %}">Development-group patterns</a><a class="btn btn-ghost btn-sm" href="{% url 'allocation_settings' %}">Allocation &amp; categories</a><a class="btn btn-ghost btn-sm" href="{% url 'rule_import' %}">⬆ Import rules</a>{% if is_treasurer and expired_count %}<form method="post" action="{% url 'rule_archive_expired' %}" class="u-inline" onsubmit="return confirm('Archive all {{ expired_count }} expired rule(s)? They stay on record but stop allocating new giving.');">{% csrf_token %}<button class="btn btn-sm">🗄 Archive {{ expired_count }} expired</button></form>{% endif %}</div></div>
 
 <div class="seg u-mb" role="tablist">
   <a class="{% if view == 'active' %}on{% endif %}" href="?view=active">Active</a>

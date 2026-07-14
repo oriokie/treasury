@@ -242,30 +242,58 @@ def recheck(account, *, start=None, end=None):
                     account=account, status=RegisterException.Status.OPEN).count(),
                 "covered_from": None, "covered_to": None}
 
-    # never look outside what the register actually holds
+    # never REPORT outside what the register actually holds
     start = max(start, covered["start"]) if start else covered["start"]
     end = min(end, covered["end"]) if end else covered["end"]
 
-    lines = StatementLine.objects.filter(account=account, date__gte=start, date__lte=end)
-    txns = Transaction.objects.filter(
-        channel=Transaction.Channel.BANK, is_reversal=False, is_reversed=False,
-        date__gte=start, date__lte=end)
+    # Transactions belonging to THIS account. A church with two accounts must
+    # not have every transaction of the second flagged as missing from the
+    # first — they were never supposed to be there. A transaction with no
+    # account recorded is included, because it might be this one's and we
+    # cannot rule it out; excluding it would hide a real discrepancy.
+    account_txns = Transaction.objects.filter(
+        channel=Transaction.Channel.BANK, is_reversal=False
+    ).filter(Q(bank_account=account) | Q(bank_account__isnull=True))
 
-    # index the ledger by every bank reference it carries
+    # --- the match index: GLOBAL, and deliberately so -----------------------
+    #
+    # A bank reference is unique FOREVER. If any transaction anywhere carries
+    # it, the statement line IS in our books — whatever date it happens to be
+    # recorded under.
+    #
+    # This was a real bug, and exactly the one reported: the index used to be
+    # built only from transactions INSIDE the reporting window, so a payment
+    # the bank value-dated 1 July but the treasurer entered on 30 June (when
+    # they saw the SMS) fell outside it — and its statement line was flagged as
+    # "not in our books" even though it plainly was. Value-date and entry-date
+    # differing by a day or two is completely ordinary; a reconciliation that
+    # cannot survive it is worse than none, because every false positive
+    # teaches a treasurer to stop reading the report.
+    #
+    # The date window's job is to decide what we REPORT ON, not what MATCHES.
     ledger_by_key = {}
-    for t in txns.only("id", "date", "amount", "direction", "mpesa_ref",
-                       "core_ref", "bank_receipt", "reference"):
+    for t in account_txns.only("id", "date", "amount", "direction", "mpesa_ref",
+                               "core_ref", "bank_receipt", "reference"):
         for k in _txn_keys(t):
             ledger_by_key.setdefault(k, []).append(t)
 
-    line_keys = set()
+    # every reference the register holds for this account, ever — same reasoning
+    register_keys = set()
+    for m, c, r in (StatementLine.objects.filter(account=account)
+                    .values_list("mpesa_ref", "core_ref", "receipt")):
+        for v in (m, c, r):
+            if v:
+                register_keys.add(v.upper())
+
+    # what we report on: only the window
+    lines = StatementLine.objects.filter(account=account, date__gte=start, date__lte=end)
+    txns = account_txns.filter(date__gte=start, date__lte=end, is_reversed=False)
+
     found, opened, closed = 0, 0, 0
 
     # --- side 1: on the statement, not in our books -------------------------
     for ln in lines:
-        keys = {k for k in (ln.mpesa_ref, ln.core_ref, ln.receipt) if k}
-        keys = {k.upper() for k in keys}
-        line_keys |= keys
+        keys = {k.upper() for k in (ln.mpesa_ref, ln.core_ref, ln.receipt) if k}
         matched = any(k in ledger_by_key for k in keys)
         if matched:
             closed += _close_if_open(account, RegisterException.Kind.MISSING_IN_LEDGER,
@@ -289,7 +317,7 @@ def recheck(account, *, start=None, end=None):
             # checked against the bank at all. That is itself worth knowing,
             # but it is not a discrepancy — see `unverifiable()`.
             continue
-        if keys & line_keys:
+        if keys & register_keys:
             closed += _close_if_open(account, RegisterException.Kind.MISSING_IN_BANK,
                                      transaction=t)
             continue

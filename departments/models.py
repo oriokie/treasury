@@ -379,6 +379,57 @@ def lcb_fund():
             or qs.filter(name__icontains="LCB").first())
 
 
+def lcb_fund_ids():
+    """Every fund in the LCB FAMILY: the funds a church has configured in
+    Settings under "Local Church Budget (LCB) funds", **plus their subgroups**.
+
+    The configured list is authoritative. Only where a church has configured
+    nothing does this fall back to matching on the name — which is a guess, and
+    was previously the ONLY thing some callers did, so a church that had
+    carefully listed its LCB funds in Settings found that setting quietly
+    ignored and its funds matched (or missed) by whether somebody had spelt
+    "LCB" into the name.
+    """
+    try:
+        from core.models import SiteConfig
+        chosen = set(SiteConfig.get().lcb_departments.values_list("id", flat=True))
+    except Exception:  # noqa: BLE001 — config/table may not be ready
+        chosen = set()
+
+    if chosen:
+        # subgroups belong to their parent's family — LCB money that lands in an
+        # LCB subgroup is still LCB money, and a treasurer who listed the parent
+        # should not have to list every child
+        subs = set(Department.objects
+                   .filter(parent_id__in=chosen)
+                   .values_list("id", flat=True))
+        return chosen | subs
+
+    # legacy fallback: no LCB funds configured, so guess from the name
+    from django.db.models import Q
+    named = Department.objects.filter(
+        Q(name__icontains="LCB") | Q(name__icontains="Local Church Budget")
+        | Q(parent__name__icontains="LCB")
+        | Q(parent__name__icontains="Local Church Budget"))
+    return set(named.values_list("id", flat=True))
+
+
+def receiptable_fund_ids():
+    """The funds a church normally turns into a formal receipt: every TRUST
+    fund, plus the whole LCB family.
+
+    This is the single definition of "Trust + LCB" — the same phrase the
+    Sabbath-confirm scope setting uses, and now the same code behind it. It
+    previously existed only as a private, name-matching helper inside the
+    statement importer, so two different screens could (and did) disagree about
+    which funds counted.
+    """
+    trust = set(Department.objects
+                .filter(fund_type=Department.FundType.TRUST)
+                .values_list("id", flat=True))
+    return trust | lcb_fund_ids()
+
+
 class DepartmentLeadership(models.Model):
     """Links a user (with the Leader role) to a department they lead. A leader
     may lead more than one department; each gets a row. Leaders get a read-only,

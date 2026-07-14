@@ -38,8 +38,14 @@ class TrustPendingReceiptExportTests(TestCase):
 
     def test_button_present_on_transactions_page(self):
         b = self.c.get("/transactions/").content.decode()
-        self.assertIn("Trust pending receipt", b)
-        self.assertIn("export=trust-pending-receipt", b)
+        self.assertIn("Pending receipt", b)
+        self.assertIn("export=pending-receipt", b)
+
+    def test_the_old_export_key_still_works(self):
+        """Renaming a URL a treasurer has bookmarked — or that the Telegram
+        bot's /pending route points at — is not a rename, it is a breakage."""
+        self.assertEqual(
+            self.c.get("/transactions/?export=trust-pending-receipt").status_code, 200)
 
     def test_export_returns_xlsx(self):
         r = self.c.get("/transactions/?export=trust-pending-receipt")

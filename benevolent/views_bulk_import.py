@@ -197,11 +197,13 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
         resp["Content-Disposition"] = 'attachment; filename="benevolent_contributions_template.csv"'
         w = _csv.writer(resp)
         w.writerow(["member_name", "member_phone", "date", "amount", "kind",
-                   "period_label", "channel", "note"])
+                   "case_number", "period_label", "channel", "note"])
         w.writerow(["Mary Wanjiru", "0722111222", "2026-01-15", "100", "DUES",
-                   "2026-01", "CASH", "January dues"])
+                   "", "2026-01", "CASH", "January dues"])
         w.writerow(["Peter Otieno", "0700888999", "2026-02-10", "500", "LEVY",
-                   "", "BANK", "Levy for BEN-2026-0003"])
+                   "BEN-2026-0003", "", "BANK", "Levy towards the Otieno bereavement"])
+        w.writerow(["John Kamau", "0711222333", "", "", "", "BEN-2026-0003", "", "",
+                   "Did not contribute — leave the amount blank"])
         return resp
 
     def post(self, request, pk):
@@ -223,10 +225,25 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
             return redirect("benevolent_bulk_import_contributions", pk=pk)
 
         imported, skipped, problems = 0, 0, []
+        # A row with a blank amount means "this member did NOT contribute". That
+        # is recorded by the ABSENCE of a contribution — the levy roster derives
+        # "unpaid" from having no payment, and always has. Writing a zero-value
+        # contribution to say so would be worse than useless: it would put a
+        # receipt in the ledger for money nobody gave.
+        #
+        # So such rows are counted and reported, not imported. A treasurer can
+        # therefore upload a full case roster — everyone who was levied, paid or
+        # not — and the import will do the right thing with both halves, and say
+        # exactly what it did.
+        not_contributed = 0
         total = Decimal("0")
         for i, row in enumerate(reader, start=2):
             name = (row.get("member_name") or "").strip()
             if not name:
+                continue
+            amount_raw = (row.get("amount") or "").strip()
+            if not amount_raw or amount_raw in ("0", "0.0", "0.00"):
+                not_contributed += 1
                 continue
             try:
                 with db_tx.atomic():
@@ -240,6 +257,10 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
                 problems.append((i, name, str(e)))
 
         summary = f"{imported} contribution(s) imported, totalling {total:,.2f}."
+        if not_contributed:
+            summary += (f" {not_contributed} row(s) had no amount — they are recorded as "
+                        f"NOT having contributed, which is what an absent payment already "
+                        f"means. They will show as unpaid on the levy roster.")
         if skipped:
             summary += f" {skipped} row(s) skipped — see below."
             messages.warning(request, summary)
@@ -248,10 +269,13 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
         return render(request, self.template_name, {
             "scheme": scheme, "imported": imported, "skipped": skipped,
             "problems": problems, "total": total,
+            "not_contributed": not_contributed,
         })
 
     def _import_row(self, scheme, row, *, user):
         from members.services.matching import match_or_create_member
+        from .models import BenevolentCase
+
         name = row["member_name"].strip()
         phone = (row.get("phone") or row.get("member_phone") or "").strip()
         member, _how = match_or_create_member(name, phone)
@@ -265,9 +289,23 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
                 f"{member.name} is not enrolled in {scheme.name} — import the roster "
                 f"first, or check the name/phone.")
 
+        # Which CASE is this a levy towards? Without this the money lands on no
+        # case's roster at all, is inferred as VOLUNTARY rather than LEVY, and —
+        # under a pooled policy, where the benefit IS whatever the levy collected
+        # — makes the payout come out short. The manual contribution form had
+        # exactly this gap; the bulk import had it too.
+        case = None
+        case_no = (row.get("case_number") or "").strip()
+        if case_no:
+            case = BenevolentCase.objects.filter(
+                scheme=scheme, number__iexact=case_no).first()
+            if case is None:
+                raise ValidationError(
+                    f"No case numbered '{case_no}' in {scheme.name}.")
+
         date_raw = (row.get("date") or "").strip()
         if not date_raw:
-            raise ValidationError("A date is required.")
+            raise ValidationError("A date is required for a contribution.")
         date = BulkMembershipImportView._parse_date(date_raw)
 
         amount_raw = (row.get("amount") or "").strip()
@@ -283,6 +321,7 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
 
         contrib_svc.record_contribution(
             scheme, date=date, amount=amount, user=user, membership=membership,
-            member=member, channel=channel, period_label=(row.get("period_label") or None),
+            member=member, case=case, channel=channel,
+            period_label=(row.get("period_label") or None),
             note=(row.get("note") or "").strip(), kind=kind)
         return amount
