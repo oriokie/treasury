@@ -1,5 +1,53 @@
 # Changelog
 
+## v2.64.0 - The debit bug: one root cause, three symptoms
+
+The bank file you sent answered all three reports at once.
+
+### Your bank exports NO DEBIT COLUMN
+
+    Posting Date | Value Date | Core Ref | Channel REF | Narration |
+    Credit Amount | Running Balance
+
+That is the entire header. A cheque payment appears as **Credit Amount = 0.00**,
+with the **running balance dropping** by the amount paid.
+
+The parser had a guard — "nothing moved on this row" — that threw away any row
+with no credit and no debit. Every debit on your statements hit it. On one month,
+that silently discarded **eight cheques worth 3,061,850**.
+
+That single bug caused all three symptoms:
+
+1. **Debits never imported** — discarded before anything saw them.
+2. **The balance never reconciled** — of course not; the rows that made it fall
+   were missing. "Which usually means a row is missing" was exactly right.
+3. **Cheques never cleared** — the auto-clearing machinery has been built, tested
+   and wired into the debit queue all along. The queue was permanently empty.
+
+### The fix
+
+The balance column is the bank's own arithmetic. Where it disagrees with a zero in
+the credit column, the balance is telling the truth. A movement is now derived from
+the change in the running balance where a file states no debit — and only there. A
+file with a proper debit column is untouched.
+
+**Against your real statement: all 8 debits recovered, and it reconciles to the
+bank's own closing balance to the penny.**
+
+### Cheque auto-clearing
+
+All 8 cheques on your statement now clear automatically, each linked to the debit
+that cleared it. A cheque NUMBER match is exact — the bank issues each number once
+and prints it in the narration — so it needs no confirmation.
+
+Two deliberate refusals: a number matching with the **wrong amount** is not cleared
+(that is a cheque altered or partly paid, and wants your eyes), and an
+**amount-only** match is never auto-applied (two cheques for the same amount are
+ordinary, and guessing would clear the wrong one).
+
+**Tests:** 13 new, written against your file's exact shape. Affected suites clean:
+statements, cashbook, giving — 795 tests.
+
 ## v2.63.0 - Reported issues, round 7
 
 Built partly from the church's own files — a working benevolent scheme, and the

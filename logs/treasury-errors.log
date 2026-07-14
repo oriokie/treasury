@@ -6940,3 +6940,8 @@ RuntimeError: assistant off
 2026-07-14 14:47:07,286 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
 2026-07-14 14:47:07,293 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
 2026-07-14 14:47:07,294 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-14 17:58:12,806 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views.py", line 3543, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off

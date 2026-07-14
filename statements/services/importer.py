@@ -452,6 +452,27 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     import_obj.status = StatementImport.Status.DONE
     import_obj.save()
 
+    # Clear the cheques the bank has now shown as debited.
+    #
+    # `clear_for_bank_debit` / `suggest_instrument_for_debit` have existed, been
+    # tested, and been wired into the debit review queue all along — but the queue
+    # was permanently empty, because a bank exporting no debit column had every
+    # debit row silently discarded by the parser. The machinery had nothing to act
+    # on. It does now.
+    #
+    # A cheque NUMBER match is exact and needs no confirmation; anything less than
+    # that is left for the debit queue and a person. Best-effort: a failure here
+    # must never lose an import that has already posted.
+    try:
+        from cashbook.services.payments import auto_clear_cheques_for_debits
+        debits = list(Transaction.objects.filter(
+            statement_import=import_obj, direction=Transaction.Direction.DEBIT))
+        if debits:
+            auto_clear_cheques_for_debits(debits, import_obj.uploaded_by)
+    except Exception:  # noqa: BLE001
+        from core.utils import log_exception
+        log_exception("statements/services/importer.py: auto-clear cheques")
+
     # offer/apply pledge matches for the confirmed contributions just imported
     # (respects SiteConfig.pledge_match_mode; best-effort, never breaks import)
     try:

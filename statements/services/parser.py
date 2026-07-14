@@ -261,6 +261,10 @@ def read_rows(path_or_bytes, filename):
         raise ValueError("Could not detect statement columns from the header row.")
 
     parsed = []
+    prev_balance = None
+    has_debit_col = "debit" in mapping
+    has_balance_col = "balance" in mapping
+
     for row in raw[hdr_idx + 1:]:
         def cell(field):
             i = mapping.get(field)
@@ -270,6 +274,7 @@ def read_rows(path_or_bytes, filename):
         credit = _to_decimal(cell("credit"))
         debit = _to_decimal(cell("debit"))
         amount = _to_decimal(cell("amount"))
+        balance = _to_decimal(cell("balance"))
 
         if credit is None and debit is None and amount is not None:
             # single signed amount column
@@ -277,6 +282,41 @@ def read_rows(path_or_bytes, filename):
                 debit, amount = abs(amount), None
             else:
                 credit = amount
+
+        # --- DERIVE A DEBIT FROM THE RUNNING BALANCE -------------------------
+        #
+        # Some banks export NO DEBIT COLUMN AT ALL. A real statement in front of
+        # me has:  Posting Date | Value Date | Core Ref | Channel REF |
+        # Narration | Credit Amount | Running Balance  — and a cheque payment
+        # appears as "Credit Amount = 0.00" with the running balance DROPPING by
+        # the amount paid.
+        #
+        # Every one of those rows was being thrown away by the "nothing moved on
+        # this row" guard below. On a single month's statement that silently
+        # discarded eight cheques worth 3,061,850 — and, because no debit ever
+        # reached the ledger, the debit review queue stayed permanently empty and
+        # the cheque auto-clearing that has been built and tested all along had
+        # nothing whatever to act on. One bug, three symptoms.
+        #
+        # The balance column is the bank's own arithmetic. Where it disagrees with
+        # a zero in the credit column, it is the balance that is telling the truth.
+        #
+        # Deliberately conservative: this only fills in a movement the file does
+        # not otherwise state. A row whose credit column carries a real figure is
+        # taken exactly as given, and a file that has a proper debit column is not
+        # touched at all.
+        if (not has_debit_col and has_balance_col
+                and (debit is None or debit == 0)
+                and (credit is None or credit == 0)
+                and balance is not None and prev_balance is not None):
+            delta = balance - prev_balance
+            if delta < 0:
+                debit = -delta
+            elif delta > 0:
+                credit = delta
+
+        if balance is not None:
+            prev_balance = balance
 
         if (credit is None or credit == 0) and (debit is None or debit == 0):
             continue  # nothing moved on this row
@@ -313,7 +353,7 @@ def read_rows(path_or_bytes, filename):
         rcpt = (narr["receipt"] or _real(cell("receipt")) or "").upper().strip()
         parsed.append({
             "date": date,
-            "balance": _to_decimal(cell("balance")),   # running balance after this row
+            "balance": balance,   # the bank's own running balance after this row
             "occurred_at": occurred_at,
             "credit": credit or None,
             "debit": debit or None,

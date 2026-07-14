@@ -2593,3 +2593,25 @@ Edwin whether he wants it per-scheme or whether the church-level view suffices.*
 **79i. Historical case import is still not built** (see #73b). The workbook shows
 7,442 contribution rows across ~50 cases — a church adopting this system with that
 history behind it would want them in. *Priority: Medium.*
+
+---
+
+## 80. Round 8 — the debit bug, at its root — NEW
+
+**80a. RESOLVED — the bank exports no debit column.** A debit is Credit Amount =
+0.00 with the running balance dropping. The parser's "nothing moved on this row"
+guard discarded every one — 3,061,850 on a single month's statement. Movements are
+now derived from the balance delta where a file states no debit. This one bug
+caused all three reported symptoms: debits not importing, the register not
+reconciling, and cheques never clearing (the auto-clear machinery was built and
+wired, but its queue was permanently empty).
+
+**80b. RESOLVED — cheque auto-clearing.** A cheque number match is exact and now
+clears automatically, linked to the debit that cleared it. A wrong-amount match, or
+an amount-only match, deliberately stays a suggestion.
+
+**80c. The very first row of a no-debit-column file cannot have its movement
+derived**, since there is no prior balance to compare against. If a statement
+opened on a debit, it would still be missed. In practice a statement's first row is
+a brought-forward or a credit, and the reconciliation check would immediately show
+the discrepancy. *Priority: Low — detectable, and the balance check surfaces it.*

@@ -2503,3 +2503,70 @@ captured it only when the beneficiary happened to be a registered dependant, and
 dropped it otherwise. Now a field, and on the statement.
 
 **Tests:** 44 new. Full regression clean — 2,600+ tests.
+
+---
+---
+
+# Round 8 — one bug, three symptoms
+
+Edwin sent the actual bank file. It answered all three reports at once.
+
+## The bank exports no debit column
+
+    Posting Date | Value Date | Core Ref | Channel REF | Narration |
+    Credit Amount | Running Balance
+
+That is the whole header. **There is no debit column.** A cheque payment appears
+as **Credit Amount = 0.00**, with the **running balance dropping** by the amount
+paid:
+
+    CB0408755260701 | SYBINSE... | HENRY CHQ No.000412 | 0.00 | 4,227,950.03
+                                              (the balance fell 15,500)
+
+The parser had a guard — *"nothing moved on this row"* — that discarded any row
+with no credit and no debit. Every debit on this bank's statements hit it. On a
+single month, that silently threw away **eight cheques worth 3,061,850**.
+
+And that one bug produced all three of the reported symptoms:
+
+1. **Debits never imported** — the rows were discarded before anything saw them.
+2. **The register's balance never reconciled** — of course it did not; the rows
+   that made it fall were missing. *"which usually means a row is missing"* was
+   exactly right.
+3. **Cheques never cleared** — `clear_for_bank_debit` and
+   `suggest_instrument_for_debit` have been built, tested and wired into the debit
+   review queue all along. The queue was permanently empty, so the machinery had
+   nothing whatever to act on.
+
+## The fix
+
+The balance column is the bank's own arithmetic. Where it disagrees with a zero in
+the credit column, **it is the balance that is telling the truth**. So where a file
+has no debit column, a movement is derived from the change in the running balance.
+
+Deliberately conservative: it only fills in a movement the file does not otherwise
+state. A row whose credit column carries a real figure is taken exactly as given,
+and a file that has a proper debit column is not touched at all.
+
+Against the real statement: **all 8 debits recovered, and the file reconciles to
+the bank's own closing balance to the penny** — 2,035,728.03, difference 0.00.
+
+## Cheque auto-clearing
+
+Now that debits arrive, the cheques clear themselves. A cheque **number** match is
+exact — the bank issues each number once, prints it in the narration, and it is
+the same number on the stub — so it needs no human confirmation. All 8 cheques on
+the real statement cleared automatically and are linked to the debit that cleared
+them; that link *is* the reconciliation trail.
+
+Two deliberate refusals:
+
+* **A number that matches with the wrong amount is not cleared.** That is a cheque
+  altered, partly paid, or misread, and it wants somebody's eyes on it rather than
+  a silent tick.
+* **An amount-only match is never auto-applied.** Two cheques for the same amount
+  are perfectly ordinary, and guessing between them would clear the wrong one. It
+  stays a suggestion in the debit queue, exactly as it always was.
+
+**Tests:** 13 new, written against the real file's exact shape. Affected suites
+run clean: statements, cashbook, giving (795 tests).

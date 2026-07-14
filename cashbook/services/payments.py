@@ -199,6 +199,62 @@ def clear_for_bank_debit(txn, user, expenses=None):
     return cleared
 
 
+def auto_clear_cheques_for_debits(txns, user):
+    """Clear outstanding cheques the bank has now shown as debited.
+
+    Called from the statement importer, over the DEBIT transactions it has just
+    posted. A cheque number is exact — the bank issues each one once, prints it
+    in the narration, and it is the same number written on the cheque stub — so a
+    number match is not a guess and does not need a human to confirm it.
+
+    The amount must agree as well. A number that matches with a DIFFERENT amount
+    is a cheque that was altered, or partly paid, or misread — and that wants
+    somebody's eyes on it, not a silent tick. It is left outstanding and shows up
+    in the debit queue, where the existing suggestion machinery will offer it.
+
+    An amount-only match is never auto-applied: two cheques for the same amount
+    are perfectly ordinary, and guessing between them would clear the wrong one.
+    """
+    from cashbook.models import PaymentInstrument
+
+    outstanding = list(
+        PaymentInstrument.objects
+        .filter(status__in=PaymentInstrument.OUTSTANDING_STATES,
+                bank_transaction__isnull=True)
+        .exclude(instrument_number=""))
+    if not outstanding:
+        return []
+
+    cleared = []
+    for txn in txns:
+        if txn.direction != "DEBIT":
+            continue
+        narration = (txn.raw_narration or txn.reference or "").upper()
+        if not narration:
+            continue
+        for inst in outstanding:
+            num = (inst.instrument_number or "").strip()
+            if not num:
+                continue
+            # match the number with and without its leading zeros — a bank prints
+            # "CHQ No.000412" while a cheque book may be recorded as "412"
+            variants = {num.upper(), num.lstrip("0").upper()}
+            if not any(v and v in narration for v in variants):
+                continue
+            if inst.amount != txn.amount:
+                # the number matches but the money does not — leave it for a human
+                continue
+            apply_event(inst, "CLEAR", user=user, on=txn.date,
+                        comment=f"Cleared automatically: the bank's statement shows "
+                                f"this cheque debited on {txn.date:%d %b %Y}.")
+            inst.bank_transaction = txn
+            inst.save(update_fields=["bank_transaction"])
+            cleared.append(inst)
+            outstanding.remove(inst)
+            break
+    return cleared
+
+
 def suggest_instrument_for_debit(txn):
     """A cheap match suggestion for the debit queue: an outstanding instrument
     whose number appears in the debit's narration, else a unique
