@@ -90,6 +90,12 @@ class StatementImport(models.Model):
     failed = models.IntegerField(default=0)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     error_detail = models.TextField(blank=True)
+    reversals_skipped = models.IntegerField(
+        default=0,
+        help_text="Rows the bank posted in error and then reversed. Not imported: a "
+                  "reversed pair is a non-event, and posting either half would put "
+                  "income in the books that was never received. They remain on the "
+                  "bank statement register, which records what the bank said.")
 
     PURGE_WINDOW_DAYS = 7
 

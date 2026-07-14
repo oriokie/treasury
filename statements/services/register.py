@@ -5,6 +5,7 @@ importer uses, so the register reads a bank file exactly as the rest of the app
 does. Nothing here posts, allocates, or touches a fund.
 """
 import datetime as _dt
+import re as _re
 from decimal import Decimal
 
 from django.db import models, transaction as db_tx
@@ -26,20 +27,136 @@ def dedup_key(row):
     receipt column. These are identifiers the BANK assigned; the church did not
     choose them and cannot collide with them.
 
-    A line with none of the three — some banks emit a bare "monthly charge" row
-    with no reference at all — gets a synthetic key built from the date, signed
-    amount and narration. That is weaker (two identical charges on one day would
-    collapse into one), and it is why `import_file()` reports such rows: a
-    treasurer should know the register is doing its best rather than believing
-    it is being exact.
+    **A debit carries its direction in the key.** A bank reversing its own
+    mistake issues the DEBIT under the SAME reference as the credit it is
+    undoing — so keying purely on the reference deduplicated the reversal away
+    as a "duplicate", losing the line entirely and leaving the register showing
+    money the bank had already taken back. Credit keys are deliberately
+    unchanged, so an existing register goes on deduplicating exactly as it did.
+
+    A line with none of the three references — some banks emit a bare "monthly
+    charge" row with no reference at all — gets a synthetic key built from the
+    date, signed amount and narration. That is weaker (two identical charges on
+    one day would collapse into one), and it is why `import_file()` reports such
+    rows: a treasurer should know the register is doing its best rather than
+    believing it is being exact.
     """
+    is_debit = bool(row.get("debit"))
     for key in ("mpesa_ref", "core_ref", "receipt"):
         v = (row.get(key) or "").strip().upper()
         if v:
-            return v[:80]
+            return (f"{v}|D" if is_debit else v)[:80]
     amt = (row.get("credit") or Decimal(0)) - (row.get("debit") or Decimal(0))
     narr = (row.get("raw_narration") or "")[:40]
     return f"SYN|{row['date']:%Y%m%d}|{amt}|{narr}"[:80]
+
+
+_CHEQUE_RE = _re.compile(
+    r"\b(?:CHQ|CHEQUE|CHK|CK)\b[.\s#:-]*(?:NO|NUM|NUMBER)?\b[.\s#:-]*0*(\d{3,10})\b",
+    _re.I)
+_BARE_NUMBER_RE = _re.compile(r"\b0*(\d{5,10})\b")
+
+
+def cheque_number(line):
+    """The cheque number a bank statement's debit narration refers to, or "".
+
+    Banks write it several ways — "CHQ 000456", "CHEQUE NO. 456", "CHQ.456" —
+    and pad it with zeros inconsistently between the statement and the cheque
+    book. Leading zeros are stripped on both sides so "000456" and "456" are the
+    same cheque, which they are.
+    """
+    text = (line.raw_narration or line.reference or "")
+    m = _CHEQUE_RE.search(text)
+    if m:
+        return m.group(1).lstrip("0") or "0"
+    return ""
+
+
+def _instrument_keys(line):
+    """Every payment-register key a statement DEBIT might correspond to.
+
+    Chiefly the cheque number. Falls back to any bare 5-10 digit number in the
+    narration, because some banks print the cheque number without saying that is
+    what it is — and a number that long, on a debit, is nearly always an
+    instrument number rather than an amount or a date.
+    """
+    out = set()
+    n = cheque_number(line)
+    if n:
+        out.add(n)
+        return out
+    text = (line.raw_narration or line.reference or "")
+    for m in _BARE_NUMBER_RE.finditer(text):
+        out.add(m.group(1).lstrip("0") or "0")
+    return out
+
+
+_REVERSAL_WORDS = _re.compile(
+    r"\b(REVERSAL|REVERSED|REVERSE|RVSL|RVRSL|CONTRA|"
+    r"ERROR\s*CORRECTION|CORRECTION|WRONG\s*(?:CREDIT|DEBIT|POSTING)|"
+    r"CANCELLED\s*TRANSACTION)\b", _re.I)
+
+
+def looks_like_reversal(text):
+    """Does this narration say the bank is undoing something?
+
+    A keyword is REQUIRED — an amount-and-direction match alone is not enough to
+    pair two entries as a reversal. A church that receives a 5,000 gift on Monday
+    and pays a 5,000 supplier on Tuesday has two perfectly real movements, and
+    silently erasing both because they happen to cancel out would be far worse
+    than leaving a genuine reversal unrecognised.
+    """
+    return bool(_REVERSAL_WORDS.search(text or ""))
+
+
+def _reversal_pairs(lines):
+    """Pairs of statement lines where one reverses the other.
+
+    A bank credits the church by mistake and takes it back; or debits in error
+    and refunds it. The pair is a NON-EVENT: no money was really received or
+    paid, and treating either half as real puts income in the books that never
+    existed.
+
+    Two lines pair when they are opposite in direction, equal in amount, within
+    a few days of each other, and at least one of them SAYS it is a reversal —
+    or they share a bank reference, which is the bank telling us the same thing
+    more precisely.
+    """
+    by_amount = {}
+    for ln in lines:
+        by_amount.setdefault(abs(ln.signed_amount), []).append(ln)
+
+    pairs = []
+    used = set()
+    for amount, group in by_amount.items():
+        if amount == 0:
+            continue
+        for a in group:
+            if a.pk in used:
+                continue
+            for b in group:
+                if b.pk in used or b.pk == a.pk:
+                    continue
+                if (a.credit or 0) and not (b.debit or 0):
+                    continue
+                if (a.debit or 0) and not (b.credit or 0):
+                    continue
+                if abs((a.date - b.date).days) > 7:
+                    continue
+                # the reversal debit carries the same bank reference as the credit
+                # it undoes — compare the reference itself, not the direction-tagged key
+                same_ref = bool(a.dedup_key
+                                and a.dedup_key.split("|")[0] == b.dedup_key.split("|")[0]
+                                and not a.dedup_key.startswith("SYN|"))
+                says_so = (looks_like_reversal(a.raw_narration)
+                           or looks_like_reversal(b.raw_narration))
+                if not (same_ref or says_so):
+                    continue
+                pairs.append((a, b))
+                used.add(a.pk)
+                used.add(b.pk)
+                break
+    return pairs
 
 
 def _txn_keys(txn):
@@ -340,6 +457,18 @@ def recheck(account, *, start=None, end=None):
         for k in _txn_keys(t):
             ledger_by_key.setdefault(k, []).append(t)
 
+    # The payments register: every cheque/EFT the church has issued, by its
+    # number. This is what a statement DEBIT is matched against — a cheque
+    # leaving the bank should correspond to a cheque we wrote.
+    from cashbook.models import PaymentInstrument
+    payment_keys = set()
+    for num in (PaymentInstrument.objects
+                .exclude(instrument_number="")
+                .values_list("instrument_number", flat=True)):
+        n = (num or "").strip().lstrip("0")
+        if n:
+            payment_keys.add(n)
+
     # every reference the register holds for this account, ever — same reasoning
     register_keys = set()
     for m, c, r in (StatementLine.objects.filter(account=account)
@@ -360,22 +489,66 @@ def recheck(account, *, start=None, end=None):
 
     found, opened, closed = 0, 0, 0
 
+    # A reversed pair is a NON-EVENT — the bank made an entry in error and undid
+    # it. Neither half should be chased: there is nothing for our books to have
+    # recorded, because nothing really happened. They stay in the register (the
+    # bank did send them, and the register's whole contract is to say what the
+    # bank said) and they net out in the running balance, exactly as they do on
+    # the real statement.
+    reversed_ids = set()
+    for a, b in _reversal_pairs(list(lines)):
+        reversed_ids.add(a.pk)
+        reversed_ids.add(b.pk)
+
     # --- side 1: on the statement, not in our books -------------------------
     for ln in lines:
+        if ln.pk in reversed_ids:
+            closed += _close_if_open(account, RegisterException.Kind.MISSING_IN_LEDGER,
+                                     line=ln)
+            continue
         keys = {k.upper() for k in (ln.mpesa_ref, ln.core_ref, ln.receipt) if k}
         matched = any(k in ledger_by_key for k in keys)
+
+        # A DEBIT usually carries no bank reference at all. M-Pesa gives every
+        # CREDIT a receipt code, which is why the credit side worked from the
+        # start — but the debits a church actually makes are cheques, standing
+        # orders and bank charges, and the statement identifies those by a cheque
+        # number in the narration, or by nothing whatever.
+        #
+        # So the whole debit side was falling through the "no reference, cannot
+        # say" branch below and never being checked at all. That is the reported
+        # bug, and it mattered: the credits are gifts arriving, which are pleasant
+        # to get wrong; the debits are money LEAVING, which is not.
+        if not matched and ln.debit:
+            inst_keys = _instrument_keys(ln)
+            if inst_keys & payment_keys:
+                matched = True
+
         if matched:
             closed += _close_if_open(account, RegisterException.Kind.MISSING_IN_LEDGER,
                                      line=ln)
             found += 1
             continue
-        if not keys:
-            # no bank reference at all — we cannot honestly assert either way
+
+        if not keys and not ln.debit:
+            # A CREDIT with no reference: we genuinely cannot say. It could be a
+            # cash deposit somebody made at the counter. Saying nothing is more
+            # honest than guessing.
             continue
+
+        # A DEBIT reaches here whether or not it had a reference — and it is
+        # flagged either way. Money left the account and our books do not know
+        # about it; that is exactly what a treasurer needs to see, and staying
+        # silent because the bank did not print a reference would hide the most
+        # important thing this check can tell them.
+        detail = (ln.raw_narration or ln.reference or "")[:255]
+        if ln.debit and not keys:
+            detail = (detail + "  [no bank reference — match this by hand]")[:255]
         _, created = _raise_exception(
             account, RegisterException.Kind.MISSING_IN_LEDGER, line=ln,
-            date=ln.date, amount=ln.signed_amount, ref=sorted(keys)[0],
-            detail=(ln.raw_narration or ln.reference or "")[:255])
+            date=ln.date, amount=ln.signed_amount,
+            ref=(sorted(keys)[0] if keys else (cheque_number(ln) or "")),
+            detail=detail)
         opened += int(created)
 
     # --- side 2: in our books, not on the statement -------------------------

@@ -33,11 +33,25 @@ class GoalTablePngTests(TestCase):
         self.assertGreater(len(data), 0)
         import io
         from PIL import Image
+        from cashbook.services.goal_chart import SCALE
         img = Image.open(io.BytesIO(data))
         self.assertEqual(img.format, "PNG")
-        # v2.43: rendered at 4x logical size for print quality — see
-        # reports/test_high_dpi_images_v243.py for the dedicated coverage
-        self.assertEqual(img.width, 1180 * 4)
+        # Rendered at 4x logical size for print quality.
+        #
+        # This used to assert `img.width == 1180 * 4` — and that 1180 WAS the bug
+        # reported: a phone scales a 1180px-wide image to fit a ~380px viewport,
+        # about a third, and every piece of text in it shrinks by the same third.
+        # The complaint was "the fonts are too small"; the cause was that the
+        # image was a desktop table being shrunk.
+        #
+        # So this now asserts the requirement rather than the old number: narrow
+        # enough that a phone does not have to shrink it into illegibility.
+        logical_width = img.width // SCALE
+        self.assertLessEqual(
+            logical_width, 800,
+            "a wider image is scaled down further on a phone, taking the text with "
+            "it — the width IS the font-size problem")
+        self.assertEqual(img.width, logical_width * SCALE)
 
     def test_empty_group_rows_still_renders(self):
         from cashbook.services.goal_chart import build_group_goals_png

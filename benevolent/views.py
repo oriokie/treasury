@@ -844,3 +844,31 @@ class CaseBereavedDecisionView(BenevolentApproveMixin, View):
         else:
             messages.success(request, "The committee's decision is recorded.")
         return redirect("benevolent_case_detail", pk=pk)
+
+
+class CaseStatementView(BenevolentViewMixin, View):
+    """The WhatsApp update — who contributed to this case, and who did not.
+
+    A benevolent scheme runs on the plain fact that everybody can see who stood
+    with the bereaved family. The treasurer was assembling this by hand, from a
+    spreadsheet, after every single case. The system holds every fact in it.
+    """
+    template_name = "benevolent/case_statement.html"
+
+    def get(self, request, pk):
+        from benevolent.services import statement as stmt_svc
+        from core.models import SiteConfig
+        case = get_object_or_404(
+            BenevolentCase.objects.select_related("scheme", "membership__member"), pk=pk)
+        data = stmt_svc.case_statement(case)
+        text = stmt_svc.as_text(data, currency=SiteConfig.get().currency_symbol)
+
+        if request.GET.get("format") == "txt":
+            from django.http import HttpResponse
+            resp = HttpResponse(text, content_type="text/plain; charset=utf-8")
+            resp["Content-Disposition"] = (
+                f'attachment; filename="{case.number}_statement.txt"')
+            return resp
+
+        return render(request, self.template_name,
+                      {"case": case, "d": data, "text": text})

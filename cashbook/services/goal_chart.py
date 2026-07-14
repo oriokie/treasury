@@ -126,14 +126,29 @@ def build_budget_items_png(*, dept_name, year, rows, tot_budget, tot_actual,
     the on-screen table exactly, using the same server-side rendering
     approach as build_group_goals_png (Pillow, not a browser screenshot),
     so it looks identical wherever it's downloaded."""
-    W = 1180
-    pad = 40
-    header_h = 96
-    col_head_h = 44
+    # --- sized for a PHONE, deliberately -----------------------------------
+    #
+    # This was 1180px wide with 14pt text. On a phone that image is scaled to fit
+    # a ~380px viewport — about a third — so the "14pt" text actually rendered at
+    # roughly 4.5pt. It was not that the fonts were small; it was that the image
+    # was a desktop table being shrunk to a third of its size, and everything in
+    # it with it.
+    #
+    # What matters is the RATIO of text size to image width, because that is what
+    # survives the scaling. It was 14/1180 ≈ 1.2%. It is now ~2.8%, which is
+    # legible on a phone held at arm's length — the test that actually counts.
+    #
+    # The "Used" progress bar is gone. A bar is a picture of a number, and a
+    # picture of a number does not survive being scaled to a third of its size.
+    # The percentage itself does, and says the same thing.
+    W = 760
+    pad = 22
+    header_h = 84
+    col_head_h = 40
     row_h = 46
     total_row_h = 50
-    footer_h = 34
-    cell_pad = 14
+    footer_h = 28
+    cell_pad = 10
     n = len(rows)
     table_h = col_head_h + max(n, 1) * row_h + total_row_h
     H = header_h + table_h + footer_h
@@ -141,31 +156,29 @@ def build_budget_items_png(*, dept_name, year, rows, tot_budget, tot_actual,
     img = Image.new("RGB", (_s(W), _s(H)), PAPER)
     d = ImageDraw.Draw(img)
 
-    f_title = _font("DejaVuSans-Bold.ttf", 24)
-    f_sub = _font("DejaVuSans.ttf", 14)
-    f_colhead = _font("DejaVuSans-Bold.ttf", 13)
-    f_cell = _font("DejaVuSansMono.ttf", 14)
-    f_name = _font("DejaVuSans-Bold.ttf", 14)
-    f_note = _font("DejaVuSans.ttf", 12)
-    f_pct = _font("DejaVuSans-Bold.ttf", 12)
-    f_foot = _font("DejaVuSans.ttf", 11)
+    f_title = _font("DejaVuSans-Bold.ttf", 26)
+    f_sub = _font("DejaVuSans.ttf", 15)
+    f_colhead = _font("DejaVuSans-Bold.ttf", 17)
+    f_cell = _font("DejaVuSansMono.ttf", 19)
+    f_name = _font("DejaVuSans-Bold.ttf", 19)
+    f_note = _font("DejaVuSans.ttf", 14)
+    f_pct = _font("DejaVuSans-Bold.ttf", 18)
+    f_foot = _font("DejaVuSans.ttf", 13)
 
-    y = 26
+    y = 14
     if church_name:
         d.text((_s(pad), _s(y)), church_name, font=f_sub, fill=MUTED)
         y += 20
-    d.text((_s(pad), _s(y)), f"Budget vs Actual by Item — {dept_name} {year}",
-           font=f_title, fill=FOREST_DEEP)
+    d.text((_s(pad), _s(y)), f"{dept_name} {year}", font=f_title, fill=FOREST_DEEP)
     y += 32
-    d.text((_s(pad), _s(y)), "Each budget item's spend so far this year, against its allotted budget",
-           font=f_sub, fill=MUTED)
+    d.text((_s(pad), _s(y)), "Budget vs actual, by item", font=f_sub, fill=MUTED)
 
     table_x0, table_x1 = pad, W - pad
     table_w = table_x1 - table_x0
 
-    # column layout: Budget item (flexible) | Budget | Actual | Variance | Used
-    col_used_w = 190
-    col_num_w = 170
+    # column layout: Budget item (flexible) | Budget | Actual | Variance | %
+    col_used_w = 68
+    col_num_w = 132
     col_item_w = table_w - col_used_w - 3 * col_num_w
     col_x = [table_x0]
     for cw in (col_item_w, col_num_w, col_num_w, col_num_w, col_used_w):
@@ -181,12 +194,11 @@ def build_budget_items_png(*, dept_name, year, rows, tot_budget, tot_actual,
 
     top = header_h
     d.rectangle([_s(table_x0), _s(top), _s(table_x1), _s(top + col_head_h)], fill=FOREST_SOFT)
-    headers = ["Budget item", "Budget", "Actual", "Variance", "Used"]
-    hy = _s(top + (col_head_h - 14) / 2)
+    headers = ["Item", "Budget", "Actual", "Variance", "%"]
+    hy = _s(top + (col_head_h - 18) / 2)
     d.text((_s(col_x[0] + cell_pad), hy), headers[0], font=f_colhead, fill=FOREST_DEEP)
-    for i in range(1, 4):
+    for i in range(1, 5):
         right_text(i, hy, headers[i], f_colhead, FOREST_DEEP)
-    d.text((_s(col_x[4] + cell_pad), hy), headers[4], font=f_colhead, fill=FOREST_DEEP)
     d.line([(_s(table_x0), _s(top + col_head_h)), (_s(table_x1), _s(top + col_head_h))],
           fill=LINE_STRONG, width=_s(2))
 
@@ -208,28 +220,23 @@ def build_budget_items_png(*, dept_name, year, rows, tot_budget, tot_actual,
 
         name = r["name"]
         extra = " · ".join(x for x in (r.get("category") or "", r.get("note") or "") if x)
-        d.text((_s(col_x[0] + cell_pad), cy), name, font=f_name, fill=INK)
+        # name on its own line, detail beneath it — a narrow image has no room to
+        # run them side by side, and truncating the name would be worse
         if extra:
-            name_w = d.textlength(name, font=f_name)
-            d.text((_s(col_x[0] + cell_pad + 6) + name_w, cy + _s(2)), f"· {extra}", font=f_note, fill=MUTED)
+            d.text((_s(col_x[0] + cell_pad), _s(ry + 6)), name, font=f_name, fill=INK)
+            d.text((_s(col_x[0] + cell_pad), _s(ry + 26)), extra[:34], font=f_note, fill=MUTED)
+        else:
+            d.text((_s(col_x[0] + cell_pad), cy), name, font=f_name, fill=INK)
         right_text(1, cy, _money(budget), f_cell, INK)
         right_text(2, cy, _money(actual), f_cell, INK)
         right_text(3, cy, _money(variance), f_cell, (196, 60, 51) if variance < 0 else INK)
 
-        # "Used" column: progress bar + percentage, mirroring the on-screen
-        # <div class="progress"> bar next to the "N%" text
-        bar_x0 = _s(col_x[4] + cell_pad)
-        bar_x1 = _s(col_x[5]) - _s(55)
-        bar_y0 = _s(ry + row_h / 2) - _s(6)
-        bar_y1 = bar_y0 + _s(12)
-        d.rounded_rectangle([bar_x0, bar_y0, bar_x1, bar_y1], radius=_s(6), fill=FOREST_SOFT)
-        clipped_pct = min(pct, 100)
-        fill_w = int((bar_x1 - bar_x0) * clipped_pct / 100) if clipped_pct else 0
-        if fill_w > 0:
-            color = (196, 60, 51) if pct > 100 else FOREST
-            d.rounded_rectangle([bar_x0, bar_y0, bar_x0 + max(fill_w, _s(10)), bar_y1],
-                                radius=_s(6), fill=color)
-        d.text((bar_x1 + _s(8), _s(ry + row_h / 2) - _s(7)), f"{pct}%", font=f_pct, fill=MUTED)
+        # The percentage, plainly. The progress bar that used to be here was a
+        # picture of this same number — and a picture of a number does not
+        # survive being scaled to a third of its size on a phone. The number
+        # does, and says the same thing.
+        right_text(4, cy, f"{pct}%", f_pct,
+                   (196, 60, 51) if pct > 100 else MUTED)
 
         ry += row_h
         d.line([(_s(table_x0), _s(ry)), (_s(table_x1), _s(ry))], fill=LINE, width=_s(1))
@@ -268,14 +275,16 @@ def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
     a progress-bar chart — so the downloaded image reads exactly like the
     table a treasurer already sees on screen, for printing or sharing
     verbatim."""
-    W = 1180
-    pad = 40
-    header_h = 96          # title + subtitle block
-    col_head_h = 44         # table column-header row
+    # Sized for a phone — see build_budget_items_png above for why the ratio of
+    # text size to image width is the thing that matters, not the point size.
+    W = 760
+    pad = 22
+    header_h = 84
+    col_head_h = 40
     row_h = 46
     total_row_h = 50
-    footer_h = 34
-    cell_pad = 14
+    footer_h = 28
+    cell_pad = 10
     n = max(len(group_rows), 1) if group_rows else 0
     table_h = col_head_h + n * row_h + total_row_h
     H = header_h + table_h + footer_h
@@ -283,14 +292,14 @@ def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
     img = Image.new("RGB", (_s(W), _s(H)), PAPER)
     d = ImageDraw.Draw(img)
 
-    f_title = _font("DejaVuSans-Bold.ttf", 24)
-    f_sub = _font("DejaVuSans.ttf", 14)
-    f_colhead = _font("DejaVuSans-Bold.ttf", 13)
-    f_cell = _font("DejaVuSansMono.ttf", 14)
-    f_name = _font("DejaVuSans-Bold.ttf", 14)
-    f_pill = _font("DejaVuSans-Bold.ttf", 11)
-    f_pct = _font("DejaVuSans-Bold.ttf", 12)
-    f_foot = _font("DejaVuSans.ttf", 11)
+    f_title = _font("DejaVuSans-Bold.ttf", 26)
+    f_sub = _font("DejaVuSans.ttf", 15)
+    f_colhead = _font("DejaVuSans-Bold.ttf", 17)
+    f_cell = _font("DejaVuSansMono.ttf", 19)
+    f_name = _font("DejaVuSans-Bold.ttf", 19)
+    f_pill = _font("DejaVuSans-Bold.ttf", 14)
+    f_pct = _font("DejaVuSans-Bold.ttf", 18)
+    f_foot = _font("DejaVuSans.ttf", 13)
 
     # ---- header ----
     y = 26
@@ -306,9 +315,9 @@ def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
     table_x0, table_x1 = pad, W - pad
     table_w = table_x1 - table_x0
 
-    # column layout: Group (flexible) | Goal | Collected | To go | Progress
-    col_progress_w = 200
-    col_num_w = 170
+    # column layout: Group (flexible) | Goal | Collected | To go | %
+    col_progress_w = 68
+    col_num_w = 132
     col_group_w = table_w - col_progress_w - 3 * col_num_w
     col_x = [table_x0]
     for cw in (col_group_w, col_num_w, col_num_w, col_num_w, col_progress_w):
@@ -326,7 +335,7 @@ def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
     top = header_h
     # ---- column header row ----
     d.rectangle([_s(table_x0), _s(top), _s(table_x1), _s(top + col_head_h)], fill=FOREST_SOFT)
-    headers = ["Group", "Goal", f"Collected {year}", "To go", "Progress"]
+    headers = ["Group", "Goal", f"Collected {year}", "To go", "%"]
     hy = _s(top + (col_head_h - 14) / 2)
     d.text((_s(col_x[0] + cell_pad), hy), headers[0], font=f_colhead, fill=FOREST_DEEP)
     for i in range(1, 4):
@@ -361,22 +370,11 @@ def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
             d.rounded_rectangle([px0, py0, px1, py1], radius=_s(10), fill=GREEN_SOFT)
             d.text((px0 + _s(8), py0 + _s(4)), label, font=f_pill, fill=GREEN)
 
-        # progress column: small track + fill + percentage, mirroring the
-        # on-screen <div class="progress"> bar and the "N%" text beside it
-        bar_x0 = _s(col_x[4] + cell_pad)
-        bar_x1 = _s(col_x[5]) - _s(60)
-        bar_y0 = _s(ry + row_h / 2) - _s(6)
-        bar_y1 = bar_y0 + _s(12)
-        d.rounded_rectangle([bar_x0, bar_y0, bar_x1, bar_y1], radius=_s(6), fill=FOREST_SOFT)
-        if goal > 0:
-            fill_w = int((bar_x1 - bar_x0) * min(collected / goal, 1.0))
-        else:
-            fill_w = 0
-        if fill_w > 0:
-            color = GREEN if (collected > goal and goal > 0) else FOREST
-            d.rounded_rectangle([bar_x0, bar_y0, bar_x0 + max(fill_w, _s(10)), bar_y1],
-                                radius=_s(6), fill=color)
-        d.text((bar_x1 + _s(8), _s(ry + row_h / 2) - _s(7)), f"{pct}%", font=f_pct, fill=MUTED)
+        # The percentage, plainly — the progress bar that used to be here was a
+        # picture of this same number, and a picture of a number does not survive
+        # being scaled to a third of its size on a phone.
+        right_text(4, cy, f"{pct}%", f_pct,
+                   GREEN if (goal > 0 and collected >= goal) else MUTED)
 
         ry += row_h
         d.line([(_s(table_x0), _s(ry)), (_s(table_x1), _s(ry))], fill=LINE, width=_s(1))

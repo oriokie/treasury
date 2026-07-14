@@ -35,8 +35,16 @@ class GoalChartHighDpiTests(TestCase):
                                "short": Decimal("18000")})
         img = Image.open(io.BytesIO(data))
         self.assertEqual(img.format, "PNG")
-        # previously 1180 wide; must now be meaningfully larger (4x logical)
-        self.assertGreaterEqual(img.width, 1180 * 3)
+        # What this test is really about is the 4x PRINT SCALE, not any particular
+        # pixel width. It used to assert `img.width >= 1180 * 3`, which only held
+        # because the logical width happened to be 1180 — and that width was
+        # itself the reported bug (a desktop-wide table, shrunk to a third on a
+        # phone, taking every font with it). The image is now sized for a phone;
+        # the scale factor it is rendered at is unchanged, and that is what this
+        # asserts.
+        from cashbook.services.goal_chart import SCALE
+        self.assertGreaterEqual(SCALE, 3)
+        self.assertEqual(img.width % SCALE, 0)
 
     def test_group_goals_png_has_300_dpi_metadata(self):
         from cashbook.services.goal_chart import build_group_goals_png
@@ -58,7 +66,9 @@ class GoalChartHighDpiTests(TestCase):
             tot_budget=Decimal("1000"), tot_actual=Decimal("500"),
             tot_variance=Decimal("500"))
         img = Image.open(io.BytesIO(data))
-        self.assertGreaterEqual(img.width, 1180 * 3)
+        from cashbook.services.goal_chart import SCALE
+        self.assertGreaterEqual(SCALE, 3)
+        self.assertEqual(img.width % SCALE, 0)
         self.assertGreaterEqual(round(img.info.get("dpi", (0, 0))[0]), 299)
 
     def test_empty_tables_still_render_without_error(self):

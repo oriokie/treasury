@@ -1,5 +1,67 @@
 # Changelog
 
+## v2.63.0 - Reported issues, round 7
+
+Built partly from the church's own files — a working benevolent scheme, and the
+WhatsApp update a treasurer produces by hand after every case. That document IS
+the specification for item 6.
+
+### The register's DEBIT side never worked
+
+M-Pesa gives every CREDIT a receipt code — which is why the credit side worked
+from day one. But the debits a church actually makes are cheques, standing orders
+and bank charges, and a bank identifies those by a cheque number in the narration,
+or by nothing at all. So every debit fell through the "no reference, cannot say"
+branch and was never checked.
+
+The credits are gifts arriving, which are pleasant to get wrong. The debits are
+money LEAVING, which is not. Debits are now matched by cheque number against the
+payments register, and an unmatched debit is ALWAYS flagged — money leaving the
+account with no record behind it is the single most important thing this check
+exists to find.
+
+### Reversals
+
+A bank credits the church by mistake and takes it back. Nothing was really
+received — but the importer was posting it as INCOME, so a church's books showed
+a gift it never received. Transaction has carried the reversal machinery all
+along, unused. Both halves are now skipped on import; the register keeps both
+lines, because its whole contract is to say what the bank said.
+
+A narration keyword is required to pair. A 5,000 gift on Monday and a 5,000
+supplier payment on Tuesday are two real movements, and erasing both because they
+cancel out would be far worse than missing a reversal.
+
+### The case statement — for WhatsApp
+
+Who contributed, who did not, who newly registered, and the money. Built to the
+document the church already produces by hand. The bereaved member is never on the
+defaulters list: publishing their name as somebody who failed to contribute to
+their own bereavement would be grotesque. Also on Telegram (`/case`).
+
+### The registry on Telegram
+
+`/member NAME` — standing, arrears, dependants. The most common question anybody
+asks a treasurer at church, and until now it needed a laptop. Plus `/benevolent`
+and `/arrears`.
+
+### The budget PNGs on a phone
+
+The fonts were not small. The IMAGE was 1180px wide — a desktop table — and a
+phone scales that to a third, taking every font with it. Now sized for a phone:
+the same text lands at ~9.5pt instead of ~4.5pt. The progress bar is gone — a bar
+is a picture of a number, and a picture of a number does not survive being scaled
+to a third of its size.
+
+### Also
+
+The founding balance was still editable on the department form (the budget page
+was locked; this was the other way in). `docs/FIRST_TIME_SETUP.md` is the setup
+guide. And the beneficiary's RELATIONSHIP — "Father to Grace Nyaboke" — is now
+captured; it is the line that tells a congregation whose loss this is.
+
+**Tests:** 44 new. Full regression clean — 2,600+ tests.
+
 ## v2.62.0 - Reported issues, round 6
 
 ### The matching bug, at the root this time

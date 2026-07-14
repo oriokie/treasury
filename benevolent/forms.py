@@ -328,6 +328,7 @@ class CaseForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = BenevolentCase
         fields = ["membership", "event_type", "dependant", "beneficiary_name",
+                  "beneficiary_relationship",
                   "event_date", "reported_date", "claimed_amount", "description"]
         widgets = {"event_date": forms.DateInput(attrs={"type": "date"}),
                    "reported_date": forms.DateInput(attrs={"type": "date"}),

@@ -138,6 +138,8 @@ urlpatterns = [
          name="benevolent_wizard"),
     path("cases/<int:pk>/vote/", views_config.CaseVoteView.as_view(),
          name="benevolent_case_vote"),
+    path("cases/<int:pk>/statement/", views.CaseStatementView.as_view(),
+         name="benevolent_case_statement"),
     path("cases/<int:pk>/levy/", views_config.CaseLevyView.as_view(),
          name="benevolent_case_levy"),
     path("members/<int:pk>/admin/<str:action>/",

@@ -21,6 +21,39 @@ class DepartmentForm(StyledFormMixin, forms.ModelForm):
         self.fields["parent"].queryset = qs
         self.fields["parent"].required = False
         self.fields["parent"].empty_label = "— none (top-level fund) —"
+
+        # `opening_balance` is the FOUNDING figure — what this fund held on the
+        # day the church started using this system. It is NOT a yearly opening:
+        # every later year's opening is DERIVED from it (founding + all movement
+        # before that year), and year-end close never writes it.
+        #
+        # So editing it does not adjust "the opening" — it silently rewrites the
+        # balance of this fund in EVERY year the church has ever recorded,
+        # backwards. The budget page was locked against this; this form was the
+        # other way in, and had the same hole.
+        #
+        # Once a year has been formally closed, the history it underpins is final
+        # and the field is read-only. Before that, during first-time setup, it is
+        # editable — but says plainly what it is.
+        from core.models import YearEndClose
+        locked = YearEndClose.objects.exists()
+        f = self.fields["opening_balance"]
+        f.label = "Founding balance (brought forward at first use)"
+        if locked:
+            last = YearEndClose.objects.order_by("-year").first()
+            f.disabled = True
+            f.help_text = (
+                f"Locked: {last.year} has been closed, so the history this figure "
+                f"underpins is final. Each year's opening balance is calculated "
+                f"from it — nothing is carried forward by hand.")
+        else:
+            f.help_text = (
+                "What this fund held on the day the church started using this "
+                "system — a ONE-TIME figure, not a yearly one. Every later year's "
+                "opening is calculated from it, so changing it shifts this fund's "
+                "balance in every period. Set it during first-time setup and then "
+                "leave it alone; it locks automatically the first time a year is "
+                "closed.")
         self._style()
 
 

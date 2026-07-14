@@ -133,6 +133,48 @@ def verify_running_balance(rows):
                   f"across {len(have)} rows.")
 
 
+def _reversal_row_pairs(rows):
+    """Indices of parsed rows that form a reversal pair — the bank's own error,
+    undone. Same rule as `statements.services.register._reversal_pairs`: opposite
+    direction, equal amount, within a week, and a narration that SAYS so (or a
+    shared bank reference, which is the bank saying it more precisely).
+
+    A keyword is required. A church that receives a 5,000 gift on Monday and pays
+    a 5,000 supplier on Tuesday has two perfectly real movements, and silently
+    erasing both because they cancel out would be far worse than leaving a genuine
+    reversal unrecognised.
+    """
+    from statements.services.register import looks_like_reversal
+
+    def _amt(r):
+        return (r.get("credit") or Decimal(0)) - (r.get("debit") or Decimal(0))
+
+    out = set()
+    used = set()
+    for i, a in enumerate(rows):
+        if i in used or not _amt(a):
+            continue
+        for j, b in enumerate(rows):
+            if j in used or j == i:
+                continue
+            if _amt(a) != -_amt(b):
+                continue
+            if a.get("date") and b.get("date") and abs((a["date"] - b["date"]).days) > 7:
+                continue
+            same_ref = bool(a.get("mpesa_ref")
+                            and a.get("mpesa_ref") == b.get("mpesa_ref"))
+            says_so = (looks_like_reversal(a.get("raw_narration"))
+                       or looks_like_reversal(b.get("raw_narration")))
+            if not (same_ref or says_so):
+                continue
+            out.add(i)
+            out.add(j)
+            used.add(i)
+            used.add(j)
+            break
+    return out
+
+
 def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_account=None,
                force_sabbath=None):
     import_obj.status = StatementImport.Status.PROCESSING
@@ -149,10 +191,26 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     import_obj.total_rows = len(rows)
     import_obj.save(update_fields=["total_rows"])
 
-    imported = dup = queued = failed = 0
+    imported = dup = queued = failed = reversals_skipped = 0
     row_errors = []
     from core.models import SiteConfig
     from statements.models import BankAccount
+
+    # A bank entry made in ERROR and then undone is a NON-EVENT. The bank credits
+    # the church by mistake and takes it back; nothing was really received.
+    #
+    # This was being posted as REAL: the credit became income allocated to a fund,
+    # and the reversing debit was posted separately — so a church's books showed a
+    # gift it never received, and its income was overstated by the amount of the
+    # bank's own mistake.
+    #
+    # Transaction has carried `is_reversed` / `is_reversal` all along, and every
+    # report already excludes both (`TransactionQuerySet.active`,
+    # `.confirmed_credits`). Nothing was setting them from a statement. Now the
+    # importer pairs the rows up front and marks them, so the cash movement is
+    # still recorded honestly — the money did leave and come back — while the
+    # income never appears at all.
+    reversal_rows = _reversal_row_pairs(rows)
     cfg = SiteConfig.get()
     require_confirm = cfg.require_import_confirmation
     bank_account = bank_account or import_obj.bank_account or BankAccount.get_default()
@@ -160,7 +218,13 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
         import_obj.bank_account = bank_account
         import_obj.save(update_fields=["bank_account"])
 
-    for row in rows:
+    for _row_index, row in enumerate(rows):
+        if _row_index in reversal_rows:
+            # the bank's own mistake, undone — no money was really received or
+            # paid, so nothing is posted. It IS still on the bank register, which
+            # records what the bank said rather than what was true.
+            reversals_skipped += 1
+            continue
         core_ref = (row["core_ref"] or "").strip() or None
         receipt = (row["receipt"] or "").strip() or None
 
@@ -384,6 +448,7 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     import_obj.duplicates_skipped = dup
     import_obj.queued_for_review = queued
     import_obj.failed = failed
+    import_obj.reversals_skipped = reversals_skipped
     import_obj.status = StatementImport.Status.DONE
     import_obj.save()
 

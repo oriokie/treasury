@@ -155,6 +155,7 @@
 
 {% if levy %}
 <div class="card u-mb"><div class="hd u-between"><span>Levy for this case</span>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_statement' case.id %}">WhatsApp statement</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_levy' case.id %}">Open the levy round</a></div><div class="bd">
   <p>{{ CURRENCY }} {{ levy.collected|floatformat:2|intcomma }} collected of
      {{ CURRENCY }} {{ levy.expected|floatformat:2|intcomma }} expected

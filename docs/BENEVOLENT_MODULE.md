@@ -2384,3 +2384,122 @@ millimetre grid with a red cross where each field will land, onto one *spoiled*
 leaf, so a treasurer can measure the offsets and correct them. Once.
 
 **Tests:** 33 new. Full regression clean.
+
+---
+---
+
+# Round 7 — reported issues, and the church's own workbook
+
+Edwin sent the real thing: a working benevolent scheme
+(`BENEVOLENT_2023_Case_50.xlsx`) and the WhatsApp update a treasurer produces by
+hand after every case (`CASE_68.docx`). Item 6 is built to that document exactly,
+because **that document is the specification** — it is what the congregation
+already expects to read.
+
+## The debit side of the bank register never worked (item 3)
+
+M-Pesa gives every **credit** a receipt code — which is why the credit side
+worked from the first day. But the **debits** a church actually makes are
+cheques, standing orders and bank charges, and a bank identifies those by a
+cheque number in the narration, or by nothing at all.
+
+So every debit was falling through the "no reference, cannot say" branch and
+never being checked. The credits are gifts arriving, which are pleasant to get
+wrong. The debits are money *leaving*, which is not.
+
+Debits are now matched by **cheque number against the payments register** — a
+cheque leaving the bank should correspond to a cheque we wrote — and an unmatched
+debit is **always** flagged, reference or no reference. Money leaving the account
+with no record behind it is the single most important thing this check exists to
+find; staying silent because the bank did not print a reference hid exactly that.
+
+## Reversals (item 4)
+
+A bank credits the church by mistake and takes it back. Nothing was really
+received — but **the importer was posting it as income**, and posting the
+reversing debit separately, so a church's books showed a gift it never received
+and its income was overstated by the amount of the bank's own mistake.
+
+`Transaction` has carried `is_reversed` / `is_reversal` all along, and every
+report already excludes both. Nothing was setting them from a statement. The
+importer now pairs the rows up front and skips them, and the **register keeps
+both lines** — its whole contract is to say what the bank said, and they net out
+in the running balance exactly as they do on the real statement.
+
+A narration keyword is **required** to pair. A church that receives 5,000 on
+Monday and pays a 5,000 supplier on Tuesday has two perfectly real movements, and
+silently erasing both because they cancel out would be far worse than leaving a
+genuine reversal unrecognised.
+
+One further bug this exposed: a bank reversing its own mistake issues the debit
+under the **same reference** as the credit it is undoing — so the register was
+deduplicating it away as a "duplicate", losing the line entirely and showing money
+the bank had already taken back.
+
+## The case statement (item 6)
+
+Built to `CASE_68.docx`, line for line: the summary, then who newly registered,
+who contributed, and who did not.
+
+That last list is the point of the whole exercise. A benevolent scheme runs on
+the plain fact that everybody can see who stood with the bereaved family. The
+treasurer was assembling it by hand, from a spreadsheet, after every single case.
+The system already held every fact in it.
+
+Membership is counted **as the case saw it** — everyone on the roll on the day it
+happened. Somebody who joined afterwards was never asked to contribute and is not
+a defaulter. **The bereaved member is never on the defaulters list**: publishing
+their name as somebody who failed to contribute to their own bereavement would be
+grotesque.
+
+Plain text, no markdown, no emoji — WhatsApp mangles all of it, and a treasurer
+pasting a broken table into a congregation group at 10pm is not a problem worth
+creating.
+
+## The registry, on Telegram (item 5)
+
+`/member NAME` — standing, arrears, dependants. The single most common thing a
+treasurer or an elder is asked at church, and until now it needed a laptop.
+`/case [NUMBER]` — the WhatsApp statement, from the same function the web page
+uses, so the bot and the page can never tell a treasurer two different stories.
+Over ~3,500 characters it arrives as a file rather than a truncated message,
+because truncating would cut names off the list — the one thing on the statement
+nobody may quietly drop. `/benevolent` and `/arrears` complete the set.
+
+## The budget PNGs on a phone (item 2)
+
+The fonts were not small. The **image** was 1180px wide — a desktop table — and a
+phone scales that to fit a ~380px viewport, about a third. So "14pt" text actually
+rendered at roughly 4.5pt, along with everything else in it.
+
+What matters is the **ratio** of text size to image width, because that is what
+survives the scaling. It was 1.2%. It is now ~2.5%, and the same text lands at
+~9.5pt on a phone instead of ~4.5pt.
+
+The progress bar is gone. A bar is a picture of a number, and a picture of a
+number does not survive being scaled to a third of its size. The number does, and
+says the same thing.
+
+## Founding balances, and first-time setup (item 1)
+
+The budget page was locked against editing a founding balance after a year-end
+close. **The department edit form was the other way in**, and had the same hole.
+Same lock, same reasoning.
+
+`docs/FIRST_TIME_SETUP.md` is the setup guide, and is blunt about the two things
+worth being slow over: the founding balances, and the first year-end close. Both
+are one-way doors.
+
+## What the workbook showed was missing (item 7)
+
+The model covers the church's real workbook almost completely — member numbers,
+spouses, deregistration, contacts, per-case collections and expenses and
+balances, registration fees, family details. One real gap:
+
+**The beneficiary's *relationship*.** The church's own report records *"Mzee Harun
+Kanyi — Father to Grace Nyaboke"*. That line tells the congregation *whose* loss
+this is, which is the whole reason anybody is being asked to contribute. We
+captured it only when the beneficiary happened to be a registered dependant, and
+dropped it otherwise. Now a field, and on the statement.
+
+**Tests:** 44 new. Full regression clean — 2,600+ tests.

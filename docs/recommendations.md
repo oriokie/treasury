@@ -2549,3 +2549,47 @@ done without a physical leaf to measure.*
 bank reference**, with no filters at all. At a church's scale this is trivial; on
 a very large history it is more rows than strictly needed. Correctness demanded
 it. *Priority: Low.*
+
+---
+
+## 79. Round 7 — reported issues, informed by the church's own workbook — NEW
+
+**79a. RESOLVED — the register's DEBIT side never worked.** M-Pesa gives credits a
+receipt code; the debits a church makes (cheques, standing orders, bank charges)
+carry a cheque number or nothing at all, so every one fell through the "no
+reference" branch and was never checked. Debits are now matched by cheque number
+against the payments register, and an unmatched debit is always flagged.
+
+**79b. RESOLVED — bank reversals.** The importer was posting a
+credited-in-error-then-reversed pair as real income. Both halves are now skipped
+(the machinery to do so has existed on Transaction all along, unused), while the
+register keeps both lines. Also fixed: the reversal debit shares the credit's
+reference and was being deduplicated away entirely.
+
+**79c. RESOLVED — the case statement** (`/benevolent/cases/<id>/statement/`), built
+to CASE_68.docx, plus a Telegram route.
+
+**79d. RESOLVED — the Telegram registry** (`/member`, `/case`, `/benevolent`,
+`/arrears`).
+
+**79e. RESOLVED — the budget PNGs on a phone.** The image was a desktop-width table
+being scaled to a third, taking every font with it. Now sized for a phone; the
+progress bar is gone.
+
+**79f. RESOLVED — the founding balance was still editable on the department form**,
+and there is now a first-time setup guide.
+
+**79g. RESOLVED — the beneficiary's relationship** ("Father to Grace Nyaboke") is
+now captured and appears on the case statement.
+
+**79h. NOT DONE — the workbook's TRESURY sheet tracks WHERE the scheme's money
+physically is** (bank vs M-Pesa float) and the deposits/withdrawals between them.
+The scheme's fund BALANCE is tracked correctly; its cash LOCATION is not, per
+scheme. The main app models cash location at the whole-church level (petty cash,
+bank accounts, transfers), and a scheme-level M-Pesa float would be a real
+feature, not a bug fix. *Priority: Medium — worth its own pass, and worth asking
+Edwin whether he wants it per-scheme or whether the church-level view suffices.*
+
+**79i. Historical case import is still not built** (see #73b). The workbook shows
+7,442 contribution rows across ~50 cases — a church adopting this system with that
+history behind it would want them in. *Priority: Medium.*

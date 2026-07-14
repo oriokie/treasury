@@ -1,0 +1,61 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}{{ case.number }} statement · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ case.number }} — statement</h1>
+  <div class="sub">The update to post in the congregation's WhatsApp group</div></div>
+<div class="btn-row no-print">
+  <button class="btn btn-sm" id="copyBtn">⧉ Copy for WhatsApp</button>
+  <a class="btn btn-ghost btn-sm" href="?format=txt">⤓ .txt</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_detail' case.id %}">← Case</a>
+</div></div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat"><div class="lbl">Registered</div><div class="val mono">{{ d.registered }}</div>
+    <div class="foot">on the roll when it happened</div></div>
+  <div class="stat accent"><div class="lbl">Contributed</div><div class="val mono">{{ d.n_contributed }}</div></div>
+  <div class="stat brass"><div class="lbl">Did not</div><div class="val mono">{{ d.n_defaulted }}</div></div>
+  <div class="stat"><div class="lbl">Surplus</div><div class="val mono">{{ CURRENCY }} {{ d.surplus|floatformat:0|intcomma }}</div></div>
+</div>
+
+<div class="info-panel">Membership is counted <strong>as the case saw it</strong> — everyone who was on the roll on
+  {{ case.event_date|date:"d M Y" }}. Somebody who joined afterwards was never asked to contribute to this case, so
+  they are not on its defaulters list. The bereaved member is not on it either: they are the reason for it.</div>
+
+<div class="card"><div class="hd u-between"><span>Ready to paste</span>
+  <span class="muted u-xs">Plain text — WhatsApp mangles anything fancier</span></div><div class="bd">
+  <textarea id="stmt" class="field mono" rows="20"
+            style="width:100%;font-size:.82rem;line-height:1.5">{{ text }}</textarea>
+</div></div>
+
+<div class="grid cols-3 u-mt">
+  <div class="card"><div class="hd">Contributed ({{ d.n_contributed }})</div><div class="bd">
+    <ol class="u-xs" style="padding-left:1.2rem;margin:0">
+    {% for m in d.contributed %}<li>{{ m.member.name|title }}
+      <span class="muted mono">{{ CURRENCY }} {{ d.paid_by|get_item:m.pk|floatformat:0 }}</span></li>
+    {% empty %}<li class="muted">Nobody yet.</li>{% endfor %}</ol>
+  </div></div>
+  <div class="card"><div class="hd">Did not contribute ({{ d.n_defaulted }})</div><div class="bd">
+    <ol class="u-xs" style="padding-left:1.2rem;margin:0">
+    {% for m in d.defaulted %}<li>{{ m.member.name|title }}</li>
+    {% empty %}<li class="muted">Everybody contributed.</li>{% endfor %}</ol>
+  </div></div>
+  <div class="card"><div class="hd">New registrations ({{ d.n_new_regs }})</div><div class="bd">
+    <ol class="u-xs" style="padding-left:1.2rem;margin:0">
+    {% for m in d.new_regs %}<li>{{ m.member.name|title }}</li>
+    {% empty %}<li class="muted">None since the last case.</li>{% endfor %}</ol>
+  </div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById("copyBtn").addEventListener("click", function(){
+  var ta = document.getElementById("stmt");
+  ta.select(); ta.setSelectionRange(0, 999999);
+  navigator.clipboard.writeText(ta.value).then(function(){
+    var b = document.getElementById("copyBtn");
+    var was = b.textContent; b.textContent = "✓ Copied";
+    setTimeout(function(){ b.textContent = was; }, 1600);
+  });
+});
+</script>
+{% endblock %}

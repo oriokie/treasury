@@ -103,6 +103,10 @@ HELP = (
     "• /summary — collections, expenses, surplus this month\n"
     "• /trust — trust collected / remitted / outstanding\n"
     "• /pending — the pending-receipt list, as a PDF\n"
+    "• /member NAME — standing, arrears and dependants\n"
+    "• /case [NUMBER] — a case's WhatsApp statement (blank lists open cases)\n"
+    "• /benevolent — how every scheme stands\n"
+    "• /arrears [SCHEME] — who owes, worst first\n"
     "• /balance — all fund balances (or /balance • /balance &lt;fund&gt; — closing balance of a fundlt;fund• /balance &lt;fund&gt; — closing balance of a fundgt; for one)\n"
     "• /today — today's collections\n"
     "• Or just type a question, e.g. <i>how much tithe in May?</i>\n\n"
@@ -168,6 +172,152 @@ def _do_pending(chat_id):
                     f"{_money(total)} — bank gifts into a Trust or Local Church "
                     f"Budget fund with no receipt issued yet."),
     }
+
+
+def _do_member(arg):
+    """Look a member up — where they stand, what they owe, who they cover.
+
+    The single most common thing a treasurer or an elder is asked at church, and
+    until now it needed a laptop.
+    """
+    from benevolent.models import SchemeMembership
+    from benevolent.services import contributions as contrib_svc
+    from django.db.models import Q
+
+    if not arg:
+        return ("Who? Send <code>/member NAME</code> or <code>/member PHONE</code> — "
+                "e.g. <code>/member Grace</code>.")
+
+    qs = (SchemeMembership.objects
+          .filter(Q(member__name__icontains=arg)
+                  | Q(member__phone__icontains=arg)
+                  | Q(member__phones__number__icontains=arg)
+                  | Q(number__icontains=arg))
+          .select_related("member", "scheme")
+          .prefetch_related("dependants")
+          .distinct()[:4])
+    if not qs:
+        return f"Nobody matching <b>{arg}</b> is enrolled in a scheme."
+
+    out = []
+    for m in qs:
+        owed = contrib_svc.arrears_for(m)
+        deps = [d for d in m.dependants.all() if d.active]
+        block = [
+            f"<b>{m.member.name}</b>  <code>{m.number}</code>",
+            f"{m.scheme.name} · {m.get_status_display()} · <b>{m.get_standing_display()}</b>",
+            f"Joined {m.joined_on:%d %b %Y}",
+        ]
+        if m.member.phone:
+            block.append(f"Phone {m.member.phone}")
+        block.append(f"Owing: <b>{_money(owed)}</b>" if owed > 0 else "Owing: nothing")
+        if deps:
+            block.append("Covers: " + ", ".join(
+                f"{d.display_name} ({d.get_relationship_display().lower()})"
+                for d in deps[:6]))
+        out.append("\n".join(block))
+    return "\n\n".join(out)
+
+
+def _do_case(chat_id, arg):
+    """A case's WhatsApp statement — who contributed, who did not.
+
+    The same text the web page produces, from the same function, so the bot and
+    the page can never tell a treasurer two different stories.
+    """
+    from benevolent.models import BenevolentCase
+    from benevolent.services import statement as stmt_svc
+    from core.models import SiteConfig
+
+    if not arg:
+        open_cases = (BenevolentCase.objects
+                      .exclude(status__in=["CLOSED", "REJECTED", "CANCELLED"])
+                      .select_related("membership__member")
+                      .order_by("-event_date")[:6])
+        if not open_cases:
+            return {"chat_id": chat_id, "text": "No open cases."}
+        lines = ["<b>Open cases</b> — send <code>/case NUMBER</code> for the statement:"]
+        for c in open_cases:
+            who = c.beneficiary_name or (
+                c.membership.member.name if c.membership_id else "—")
+            lines.append(f"• <code>{c.number}</code> — {who} ({c.event_date:%d %b})")
+        return {"chat_id": chat_id, "text": "\n".join(lines)}
+
+    case = (BenevolentCase.objects
+            .filter(number__icontains=arg)
+            .select_related("scheme", "membership__member").first())
+    if case is None:
+        return {"chat_id": chat_id,
+                "text": f"No case matching <b>{arg}</b>. Send <code>/case</code> to list them."}
+
+    data = stmt_svc.case_statement(case)
+    text = stmt_svc.as_text(data, currency=SiteConfig.get().currency_symbol)
+    # Telegram messages cap at 4096 characters, and a 200-member scheme's
+    # defaulters list will pass that. Send the summary as a message and the full
+    # thing as a file the treasurer can open and copy from.
+    if len(text) > 3500:
+        return {
+            "chat_id": chat_id,
+            "document": text.encode("utf-8"),
+            "filename": f"{case.number}_statement.txt",
+            "caption": (f"<b>{case.number}</b>\n"
+                        f"{data['n_contributed']} contributed · "
+                        f"{data['n_defaulted']} did not · "
+                        f"surplus {_money(data['surplus'])}\n"
+                        f"Open the file and copy it into WhatsApp."),
+        }
+    return {"chat_id": chat_id, "text": f"<pre>{text}</pre>"}
+
+
+def _do_benevolent():
+    """How every scheme stands, right now."""
+    from benevolent.models import BenevolentScheme, SchemeMembership
+    from benevolent.services import reporting as report_svc
+
+    schemes = BenevolentScheme.objects.filter(status="ACTIVE")
+    if not schemes:
+        return "No active benevolent scheme."
+    out = []
+    for s in schemes:
+        snap = report_svc.scheme_standing_snapshot(s)
+        open_cases = s.cases.exclude(
+            status__in=["CLOSED", "REJECTED", "CANCELLED"]).count()
+        out.append(
+            f"<b>{s.name}</b>\n"
+            f"Balance: <b>{_money(s.balance)}</b>\n"
+            f"Members: {snap['total']} "
+            f"({len(snap['good'])} good, {len(snap['arrears'])} in arrears)\n"
+            f"Open cases: {open_cases}")
+    return "\n\n".join(out)
+
+
+def _do_arrears(arg):
+    """Who owes, worst first — the list an elder actually needs on a Sabbath."""
+    from benevolent.models import BenevolentScheme, SchemeMembership
+    from benevolent.services import contributions as contrib_svc
+
+    qs = SchemeMembership.objects.filter(status="ACTIVE").select_related(
+        "member", "scheme")
+    if arg:
+        qs = qs.filter(scheme__code__iexact=arg)
+        if not qs.exists():
+            return f"No active scheme with code <b>{arg}</b>."
+
+    rows = []
+    for m in qs[:400]:
+        owed = contrib_svc.arrears_for(m)
+        if owed > 0:
+            rows.append((owed, m))
+    if not rows:
+        return "Nobody is in arrears. "
+    rows.sort(reverse=True, key=lambda r: r[0])
+    total = sum(r[0] for r in rows)
+    lines = [f"<b>{len(rows)} member(s) in arrears</b> — {_money(total)} in total\n"]
+    for owed, m in rows[:20]:
+        lines.append(f"• {m.member.name} — <b>{_money(owed)}</b>")
+    if len(rows) > 20:
+        lines.append(f"…and {len(rows) - 20} more.")
+    return "\n".join(lines)
 
 
 def _do_today():
@@ -668,6 +818,14 @@ def handle_update(update):
         return [{"chat_id": chat_id, "text": _do_trust()}]
     if low in ("/pending", "/receipt", "/receipts"):
         return [_do_pending(chat_id)]
+    if low.startswith("/member"):
+        return [{"chat_id": chat_id, "text": _do_member(text[7:].strip())}]
+    if low.startswith("/case"):
+        return [_do_case(chat_id, text[5:].strip())]
+    if low in ("/benevolent", "/ben", "/scheme"):
+        return [{"chat_id": chat_id, "text": _do_benevolent()}]
+    if low.startswith("/arrears"):
+        return [{"chat_id": chat_id, "text": _do_arrears(text[8:].strip())}]
     if low == "/today":
         return [{"chat_id": chat_id, "text": _do_today()}]
     if low.startswith("/balance"):

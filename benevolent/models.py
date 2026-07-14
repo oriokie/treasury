@@ -1322,6 +1322,14 @@ class BenevolentCase(models.Model):
     # (which covers a non-member claim, where the policy allows one).
     dependant = models.ForeignKey(SchemeDependant, null=True, blank=True,
                                   on_delete=models.SET_NULL, related_name="cases")
+    beneficiary_relationship = models.CharField(
+        max_length=80, blank=True,
+        help_text="How the beneficiary relates to the member — 'Father to Grace', "
+                  "'Husband to Zipporah'. Filled in automatically when the "
+                  "beneficiary is a registered dependant; typed here when they are "
+                  "not. This is the line the congregation actually reads on the "
+                  "case statement, and a church's own records have always carried "
+                  "it.")
     beneficiary_name = models.CharField(
         max_length=120, blank=True,
         help_text="Who the benefit is for, if not the member themselves.")
