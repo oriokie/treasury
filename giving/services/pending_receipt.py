@@ -3,9 +3,15 @@
 export (Excel or PDF) and the Telegram bot route pull from exactly the same
 query, never two slightly different ones.
 
-Scope is the RECEIPTABLE funds: every Trust fund **and the whole Local Church
-Budget family** — the LCB funds a church has configured in Settings, plus their
-subgroups.
+Scope is BANK/M-Pesa credits into a RECEIPTABLE fund: every Trust fund **and the
+whole Local Church Budget family** — the LCB funds a church has configured in
+Settings, plus their subgroups.
+
+**Cash is deliberately excluded.** A pending receipt is a gift that arrived
+through the bank *without* a receipt and still needs one issued. Cash is
+receipted at the point of counting — it goes onto an envelope at the table, it
+does not arrive silently and wait to be chased. Listing it here asked a
+treasurer to chase a receipt for money that was never going to have one.
 
 That is the same "Trust + LCB" the Sabbath-confirm scope setting names, and it
 is now literally the same code (`departments.models.receiptable_fund_ids`).
@@ -32,7 +38,8 @@ def pending_receipt_rows():
     receiptable = receiptable_fund_ids()
 
     qs = (Transaction.objects.confirmed_credits()
-          .filter(excluded_from_income=False)
+          .filter(excluded_from_income=False,
+                  channel=Transaction.Channel.BANK)
           .select_related("department", "member")
           .order_by("date", "id"))
 

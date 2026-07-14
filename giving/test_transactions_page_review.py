@@ -58,12 +58,28 @@ class TrustPendingReceiptMpesaColumnTests(TestCase):
         row = next(r for r in rows if r and r[5] == "txpage-ref")
         self.assertEqual(row[6], "QZZ1234AB")
 
-    def test_mpesa_reference_blank_when_not_applicable(self):
+    def test_a_cash_gift_is_NOT_pending_receipt(self):
+        """This used to assert the opposite — that a cash gift appears here with
+        a blank M-Pesa reference. That was the bug: cash is receipted at the
+        point of counting (it goes onto an envelope at the table), so it never
+        arrives silently and waits to be chased. Listing it asked a treasurer to
+        chase a receipt for money that was never going to have one."""
         Transaction.objects.create(date=dt.date(2026, 6, 11), amount=Decimal("500"),
             direction="CREDIT", confirmed=True, channel="CASH",
             allocation_status="MANUAL", department=self.trust, reference="cash-ref")
-        rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
-        row = next(r for r in rows if r and r[5] == "cash-ref")
+        rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
+        self.assertFalse([r for r in rows if r and r[5] == "cash-ref"],
+                         "a cash gift should not be listed as pending receipt")
+
+    def test_mpesa_reference_blank_when_the_bank_gift_has_none(self):
+        """The case this test was really written for: a BANK credit that carries
+        no M-Pesa reference (a direct transfer, say) still belongs on the list —
+        with that column simply empty."""
+        Transaction.objects.create(date=dt.date(2026, 6, 12), amount=Decimal("900"),
+            direction="CREDIT", confirmed=True, channel="BANK",
+            allocation_status="MANUAL", department=self.trust, reference="eft-ref")
+        rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
+        row = next(r for r in rows if r and r[5] == "eft-ref")
         self.assertIn(row[6], ("", None))
 
 

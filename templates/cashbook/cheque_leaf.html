@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>{% if calibrate %}Cheque calibration sheet{% else %}Cheque {{ c.instrument_number }}{% endif %}</title>
+<style>
+  /* The page IS the cheque leaf. Nothing is drawn that the leaf does not need —
+     the leaf already carries its own borders, labels and background. Anything we
+     print on top of those would ruin it. */
+  @page { size: {{ cfg.cheque_width_mm }}mm {{ cfg.cheque_height_mm }}mm; margin: 0; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: {{ cfg.cheque_width_mm }}mm;
+    height: {{ cfg.cheque_height_mm }}mm;
+    position: relative;
+    font-family: "DejaVu Sans", Arial, sans-serif;
+    font-size: {{ cfg.cheque_font_pt }}pt;
+    color: #000;
+  }
+  .f { position: absolute; white-space: nowrap; }
+  .amt { font-weight: 700; }
+
+  /* Screen-only chrome. None of this ever prints. */
+  .screen-only { font-family: system-ui, sans-serif; }
+  @media screen {
+    body { border: 1px dashed #bbb; margin: 24px auto; background: #fffdf7; }
+    .toolbar { position: fixed; top: 0; left: 0; right: 0; background: #1f5f4f;
+      color: #fff; padding: .6rem 1rem; font-size: .85rem; z-index: 99;
+      display: flex; gap: 1rem; align-items: center; }
+    .toolbar a, .toolbar button { color: #fff; background: rgba(255,255,255,.18);
+      border: 0; padding: .35rem .7rem; border-radius: 6px; cursor: pointer;
+      text-decoration: none; font-size: .82rem; }
+    body { margin-top: 70px; }
+  }
+  @media print { .toolbar { display: none !important; } body { border: 0; margin: 0; } }
+
+  /* Calibration marks — printed ONCE, onto a spoiled leaf, to find the offsets. */
+  .cal-grid { position: absolute; inset: 0; }
+  .cal-grid .v { position: absolute; top: 0; bottom: 0; width: .2mm; background: #bbb; }
+  .cal-grid .h { position: absolute; left: 0; right: 0; height: .2mm; background: #bbb; }
+  .cal-grid .lbl { position: absolute; font-size: 5pt; color: #666; }
+  .cal-mark { position: absolute; font-size: 6pt; color: #b00; font-weight: 700; }
+  .cal-cross { position: absolute; width: 4mm; height: 4mm; }
+  .cal-cross:before, .cal-cross:after { content: ""; position: absolute; background: #b00; }
+  .cal-cross:before { left: 0; right: 0; top: 1.9mm; height: .2mm; }
+  .cal-cross:after { top: 0; bottom: 0; left: 1.9mm; width: .2mm; }
+</style></head>
+<body>
+
+<div class="toolbar screen-only">
+  {% if calibrate %}
+    <strong>Calibration sheet</strong>
+    <span>Print this onto a <em>spoiled</em> cheque leaf. Each red cross is where a field will land.</span>
+  {% else %}
+    <strong>Cheque leaf</strong>
+    <span>Feed a real cheque through the printer. Nothing but the values will print.</span>
+  {% endif %}
+  <button onclick="window.print()">⎙ Print</button>
+  {% if not calibrate %}<a href="?mode=calibrate">Calibrate first →</a>{% endif %}
+  <a href="?">Plain-paper advice</a>
+</div>
+
+{% if calibrate %}
+  <div class="cal-grid">
+    {% for x in "0123456789"|make_list %}
+      <div class="v" style="left:{{ forloop.counter0 }}0mm"></div>
+      <div class="lbl" style="left:{{ forloop.counter0 }}0.5mm;top:.5mm">{{ forloop.counter0 }}0</div>
+    {% endfor %}
+    {% for y in "01234567"|make_list %}
+      <div class="h" style="top:{{ forloop.counter0 }}0mm"></div>
+      <div class="lbl" style="left:.5mm;top:{{ forloop.counter0 }}0.5mm">{{ forloop.counter0 }}0</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% with ox=cfg.cheque_offset_x_mm oy=cfg.cheque_offset_y_mm %}
+
+<div class="f" style="left:calc({{ cfg.cheque_date_x_mm }}mm + {{ ox }}mm);
+                      top:calc({{ cfg.cheque_date_y_mm }}mm + {{ oy }}mm)">
+  {% if calibrate %}<span class="cal-cross"></span><span class="cal-mark" style="left:5mm">DATE</span>{% else %}{{ date_str }}{% endif %}
+</div>
+
+<div class="f" style="left:calc({{ cfg.cheque_payee_x_mm }}mm + {{ ox }}mm);
+                      top:calc({{ cfg.cheque_payee_y_mm }}mm + {{ oy }}mm)">
+  {% if calibrate %}<span class="cal-cross"></span><span class="cal-mark" style="left:5mm">PAYEE</span>{% else %}{{ c.payee }}{% endif %}
+</div>
+
+<div class="f" style="left:calc({{ cfg.cheque_words1_x_mm }}mm + {{ ox }}mm);
+                      top:calc({{ cfg.cheque_words1_y_mm }}mm + {{ oy }}mm)">
+  {% if calibrate %}<span class="cal-cross"></span><span class="cal-mark" style="left:5mm">AMOUNT IN WORDS (line 1)</span>{% else %}{{ words1 }}{% endif %}
+</div>
+
+{% if calibrate or words2 %}
+<div class="f" style="left:calc({{ cfg.cheque_words2_x_mm }}mm + {{ ox }}mm);
+                      top:calc({{ cfg.cheque_words2_y_mm }}mm + {{ oy }}mm)">
+  {% if calibrate %}<span class="cal-cross"></span><span class="cal-mark" style="left:5mm">…line 2</span>{% else %}{{ words2 }}{% endif %}
+</div>
+{% endif %}
+
+<div class="f amt" style="left:calc({{ cfg.cheque_amount_x_mm }}mm + {{ ox }}mm);
+                          top:calc({{ cfg.cheque_amount_y_mm }}mm + {{ oy }}mm)">
+  {% if calibrate %}<span class="cal-cross"></span><span class="cal-mark" style="left:5mm">FIGURES</span>{% else %}**{{ c.amount|floatformat:2 }}{% endif %}
+</div>
+
+{% if cfg.cheque_ac_payee_only and not calibrate %}
+<div class="f" style="left:calc(12mm + {{ ox }}mm); top:calc(6mm + {{ oy }}mm);
+                      font-size:{{ cfg.cheque_font_pt }}pt; transform:rotate(-12deg)">
+  A/C PAYEE ONLY
+</div>
+{% endif %}
+
+{% endwith %}
+</body></html>

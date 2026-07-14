@@ -76,7 +76,8 @@
         {% else %}<span class="pill pill-amber u-xs">{{ c.get_status_display }}</span>{% endif %}</td>
     {% if can_enter_data %}<td class="u-nowrap u-right">
       {% if c.is_locked %}
-        <a class="link" href="{% url 'payment_print' c.id %}" target="_blank">Print</a>
+        <a class="link" href="{% url 'payment_print' c.id %}" target="_blank">Advice</a>{% if c.method == 'CHEQUE' %}
+        · <a class="link" href="{% url 'payment_print' c.id %}?mode=leaf" target="_blank" title="Print onto the real cheque leaf">On cheque</a>{% endif %}
         {% if can_void %} · <form method="post" class="u-inline pay-act" data-verb="reverse" data-need-date="1">{% csrf_token %}<input type="hidden" name="action" value="reverse"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link link-danger">Reverse</button></form>{% endif %}
       {% else %}
         {% if c.status == 'DRAFT' and can_approve %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="approve"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Approve</button></form> · {% endif %}
@@ -84,7 +85,7 @@
         {% if c.status == 'APPROVED' or c.status == 'PREPARED' %}<form method="post" class="u-inline pay-act" data-verb="issue" data-need-date="1">{% csrf_token %}<input type="hidden" name="action" value="issue"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Issue</button></form> · {% endif %}
         {% if c.status == 'ISSUED' or c.status == 'OUTSTANDING' %}<form method="post" class="u-inline pay-act" data-verb="present" data-need-date="1">{% csrf_token %}<input type="hidden" name="action" value="present"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link">Present</button></form> · {% endif %}
         {% if c.is_outstanding and can_clear %}<form method="post" class="u-inline pay-act" data-verb="clear" data-need-date="1" data-date-label="Bank clearance date (from the statement)">{% csrf_token %}<input type="hidden" name="action" value="clear"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link"><strong>Clear</strong></button></form> · {% endif %}
-        {% if c.method == 'CHEQUE' %}<a class="link" href="{% url 'payment_print' c.id %}" target="_blank">Print</a> · {% endif %}
+        {% if c.method == 'CHEQUE' %}<a class="link" href="{% url 'payment_print' c.id %}?mode=leaf" target="_blank" title="Print onto the real cheque leaf">Print cheque</a> · {% endif %}
         {% if can_void %}
           {% if c.is_outstanding %}<form method="post" class="u-inline pay-act" data-verb="reissue" data-need-number="1">{% csrf_token %}<input type="hidden" name="action" value="reissue"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link" title="Cancel this instrument (lost / stale / spoilt) and open a replacement draft">Re-issue</button></form> · {% endif %}
           <form method="post" class="u-inline pay-act" data-verb="cancel" data-need-comment="1" onsubmit="return confirm('Cancel this payment instrument?')">{% csrf_token %}<input type="hidden" name="action" value="cancel"><input type="hidden" name="pk" value="{{ c.id }}"><button class="link link-danger">Cancel</button></form> ·

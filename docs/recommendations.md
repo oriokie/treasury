@@ -2476,3 +2476,76 @@ contents migrated into real `DevGroupPattern` rows.
 re-checks automatically after every import (which is when the picture changes),
 and there is a "Check now" button. A nightly job would also be reasonable if a
 church wants the exception count fresh on the dashboard. *Priority: Low.*
+
+---
+
+## 77. Round 5 — reported issues — NEW
+
+**77a. RESOLVED — the register's matching was producing false positives.** The
+date window was used for MATCHING rather than only for reporting, so a payment
+the bank value-dated 1 July but recorded on 30 June was flagged as "not in our
+books". A bank reference is unique forever; matching is now global, and the date
+window only bounds what is reported. Transactions are also now scoped to the
+account being checked. This was the reported symptom and it was my bug.
+
+**77b. RESOLVED — MariaDB silently did not create the register's conditional
+unique constraints**, so they were unenforced in production. The conditions were
+unnecessary (NULLs are distinct in a unique index on every supported backend) and
+are gone.
+
+**77c. RESOLVED — pending receipt now includes the LCB family**, and
+`receiptable_fund_ids()` is the single definition of "Trust + LCB", honouring the
+funds configured in Settings (plus subgroups) rather than guessing from names.
+The importer's Sabbath-confirm scope and the transaction list now share it.
+
+**77d. RESOLVED — the dev-group prefix setting was a genuine duplicate** of the
+development-group patterns page and is retired, with existing values migrated
+into real patterns.
+
+**77e. The bank register's exception check is O(all bank transactions)** on each
+run, because the match index is global by design. Fine at a church's scale (tens
+of thousands of rows), and correctness demanded it — but if a very large history
+ever makes the recheck slow, the index could be built incrementally rather than
+rebuilt. *Priority: Low.*
+
+**77f. The register has no "ignore this whole period" control.** A church that
+genuinely cannot obtain an old statement must resolve its exceptions one by one.
+*Priority: Low.*
+
+---
+
+## 78. Round 6 — reported issues — NEW
+
+**78a. RESOLVED — the register's matching, at the root this time.** The match
+index was filtered by channel, bank account and reversal status — all of them OUR
+classifications, any of which could hide a transaction carrying the bank's own
+reference (manual receipt detaches the row from its fund; a split part can be
+zero-valued; an account tag may be missing or wrong). For "did we ever record this
+bank line?", the only thing that answers it is the bank's reference. Three rounds
+on one function, because I kept fixing the symptom in front of me rather than
+asking what the question needs to know.
+
+**78b. RESOLVED — the register's opening balance.** Derived from the bank's own
+balance column where there is one; asked for only where there is not.
+
+**78c. RESOLVED — pending receipt excludes cash**, and has a Telegram route
+(`/pending`) serving the same PDF from the same query.
+
+**78d. RESOLVED — a petty-cash cheque now tops up the float on issue** (and
+reverses on cancel), the payee is captured separately from the claimant, and the
+duplicate disbursement form is retired in favour of the expense form.
+
+**78e. RESOLVED — cheques can be printed onto the real leaf**, with a calibration
+sheet, because leaves differ by bank and a spoiled numbered leaf is not free.
+
+**78f. The cheque leaf defaults (180×80mm and the field positions) are a starting
+point, not a standard.** They are almost certainly wrong for some banks by a few
+millimetres. That is why the calibration sheet exists and why every position is
+configurable — but a church that prints without calibrating first will waste a
+leaf. *Priority: Low — the workflow tells them to calibrate; nothing more can be
+done without a physical leaf to measure.*
+
+**78g. The register's match index is now built from EVERY transaction carrying a
+bank reference**, with no filters at all. At a church's scale this is trivial; on
+a very large history it is more rows than strictly needed. Correctness demanded
+it. *Priority: Low.*

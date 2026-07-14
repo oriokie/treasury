@@ -28,6 +28,21 @@
     <div class="foot"><a class="link" href="{% url 'bank_register_exceptions' %}?account={{ account.id }}">Review</a></div></div>
 </div>
 
+{% if needs_opening %}
+<div class="alert alert-warn u-mb no-print">
+  <strong>The running balance starts from zero.</strong> Your statements carry no running-balance column, so the
+  register cannot tell what this account already held before its first line — and every balance below is out by that
+  amount. Say what it was:
+  <form method="post" class="filter-bar u-mt">{% csrf_token %}
+    <input type="hidden" name="account" value="{{ account.id }}">
+    <input class="field mono" type="text" name="register_opening_balance" placeholder="e.g. 50000.00" style="max-width:160px">
+    <input class="field" type="date" name="register_opening_date" title="…as at (usually the day before your first statement line)">
+    <button class="btn btn-sm">Save opening balance</button>
+  </form>
+  <div class="help u-mt">Usually the closing balance on your last statement before the register begins.</div>
+</div>
+{% endif %}
+
 {% if summary.drift %}
 <div class="alert alert-warn u-mb"><strong>The register is missing lines.</strong>
   On {{ summary.drift|length }} line{{ summary.drift|length|pluralize }}, our sum of the register does not reach the

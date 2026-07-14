@@ -46,12 +46,32 @@ def _txn_keys(txn):
     """Every bank identifier a ledger transaction carries. A transaction and a
     statement line are the same event if they share ANY of these — because each
     of them is a value the BANK issued, and the bank does not issue the same
-    receipt twice."""
+    receipt twice.
+
+    Splits are the fiddly part, and there are two kinds:
+
+      * Split through the UI (`Transaction.split_into`): parts share the
+        parent's `mpesa_ref` and carry `REF-S1`-style core_refs, and each part
+        points at the parent through `split_of`.
+      * Split by the IMPORTER (a split-fund like Combined Offering): parts share
+        the parent's `mpesa_ref` and carry `REF-S1` core_refs, but have NO
+        `split_of` link — they are siblings created side by side, with no
+        parent row at all.
+
+    So both the "-S" suffix and the split_of link are followed. A part can also
+    legitimately be zero-valued (a split fund with a 0% component), which is why
+    nothing here looks at the amount: a zero-value part still carries the bank's
+    reference, and still proves we recorded the line.
+    """
     out = set()
-    for v in (txn.mpesa_ref, txn.core_ref, txn.bank_receipt):
+    refs = [txn.mpesa_ref, txn.core_ref, txn.bank_receipt]
+    parent = getattr(txn, "split_of", None)
+    if parent is not None:
+        refs += [parent.mpesa_ref, parent.core_ref, parent.bank_receipt]
+    for v in refs:
         v = (v or "").strip().upper()
         if v:
-            # a split child carries "XY9-S1"; the bank only ever knew "XY9"
+            # a split part carries "XY9-S1"; the bank only ever knew "XY9"
             out.add(v.split("-S")[0])
             out.add(v)
     return out
@@ -164,17 +184,52 @@ def running(account, *, start=None, end=None, opening=None):
 
 
 def _opening_before(account, start):
-    """What the account held immediately before `start`."""
-    if not start:
-        return Decimal(0)
-    prior = (StatementLine.objects.filter(account=account, date__lt=start)
-             .order_by("-date", "-occurred_at", "-id").first())
-    if prior is not None and prior.bank_balance is not None:
-        # the bank told us; believe the bank
-        return prior.bank_balance
-    agg = (StatementLine.objects.filter(account=account, date__lt=start)
-           .aggregate(c=Sum("credit"), d=Sum("debit")))
-    return (agg["c"] or Decimal(0)) - (agg["d"] or Decimal(0))
+    """What the account held immediately before `start`.
+
+    Three sources, in order of how much they deserve to be believed:
+
+    1. **The bank's own running balance on the last line before `start`.** The
+       bank has told us; nothing we compute beats that.
+
+    2. **The bank's own balance on the FIRST line the register holds, minus that
+       line's own movement.** Even when the register starts mid-history, the very
+       first line's balance column tells us what the account held immediately
+       before it — so the opening is derivable, without anyone typing anything.
+       This is the case that made a register starting in July show balances out
+       by whatever was already in the account: it summed forward from zero
+       instead of asking the bank.
+
+    3. **`BankAccount.register_opening_balance`** — a figure a treasurer states,
+       for statements that carry no balance column at all. Last, because a typed
+       number is the only one of the three that can be wrong.
+    """
+    lines = StatementLine.objects.filter(account=account)
+
+    if start:
+        prior = (lines.filter(date__lt=start)
+                 .order_by("-date", "-occurred_at", "-id").first())
+        if prior is not None and prior.bank_balance is not None:
+            return prior.bank_balance   # (1) the bank told us
+
+    # (2) derive from the first line the register holds — the bank told us there too
+    first = lines.order_by("date", "occurred_at", "id").first()
+    base = Decimal(0)
+    base_date = None
+    if first is not None and first.bank_balance is not None:
+        base = first.bank_balance - first.signed_amount
+        base_date = first.date
+    elif account.register_opening_balance is not None:
+        # (3) the treasurer stated it
+        base = account.register_opening_balance
+        base_date = account.register_opening_date or (first.date if first else None)
+
+    if not start or base_date is None:
+        return base
+
+    # accumulate everything between the base point and the window we are showing
+    between = lines.filter(date__gte=base_date, date__lt=start)
+    agg = between.aggregate(c=Sum("credit"), d=Sum("debit"))
+    return base + (agg["c"] or Decimal(0)) - (agg["d"] or Decimal(0))
 
 
 def balance_drift(account):
@@ -246,34 +301,42 @@ def recheck(account, *, start=None, end=None):
     start = max(start, covered["start"]) if start else covered["start"]
     end = min(end, covered["end"]) if end else covered["end"]
 
-    # Transactions belonging to THIS account. A church with two accounts must
-    # not have every transaction of the second flagged as missing from the
-    # first — they were never supposed to be there. A transaction with no
-    # account recorded is included, because it might be this one's and we
-    # cannot rule it out; excluding it would hide a real discrepancy.
-    account_txns = Transaction.objects.filter(
-        channel=Transaction.Channel.BANK, is_reversal=False
-    ).filter(Q(bank_account=account) | Q(bank_account__isnull=True))
-
-    # --- the match index: GLOBAL, and deliberately so -----------------------
+    # --- the match index: EVERY transaction carrying a bank reference --------
     #
-    # A bank reference is unique FOREVER. If any transaction anywhere carries
-    # it, the statement line IS in our books — whatever date it happens to be
-    # recorded under.
+    # No channel filter. No account filter. No date filter. No amount filter.
     #
-    # This was a real bug, and exactly the one reported: the index used to be
-    # built only from transactions INSIDE the reporting window, so a payment
-    # the bank value-dated 1 July but the treasurer entered on 30 June (when
-    # they saw the SMS) fell outside it — and its statement line was flagged as
-    # "not in our books" even though it plainly was. Value-date and entry-date
-    # differing by a day or two is completely ordinary; a reconciliation that
-    # cannot survive it is worse than none, because every false positive
-    # teaches a treasurer to stop reading the report.
+    # The question this side answers is narrow: "did we ever record this bank
+    # line?" The only thing that can answer it is whether the bank's own
+    # reference appears anywhere in our ledger. Everything else —
+    # channel, bank_account, amount, excluded_from_income, is_reversed — is a
+    # classification WE made after the fact, and every one of them turned out to
+    # be capable of hiding a transaction that plainly carried the reference:
     #
-    # The date window's job is to decide what we REPORT ON, not what MATCHES.
+    #   * Marking a gift as a manual receipt sets excluded_from_income and
+    #     detaches it from its fund (giving.models.mark_manual_receipt). It is
+    #     still the same bank line.
+    #   * A split part can be zero-valued, and the importer creates split parts
+    #     without a split_of link — they share the parent's mpesa_ref and carry
+    #     "REF-S1" core_refs.
+    #   * A transaction may carry no bank_account at all (a webhook entry), or
+    #     one that was tagged later.
+    #
+    # A bank reference is unique forever and was issued by the BANK. If it is in
+    # the ledger, we recorded that line — whatever we subsequently did to the
+    # row. Reported: "I can get the references under M-Pesa ref in the
+    # transactions. Yet being detected as missing." Exactly so, and this is why.
+    #
+    # The account and channel filters still belong on the OTHER direction below,
+    # where the question really is about our own bank entries.
     ledger_by_key = {}
-    for t in account_txns.only("id", "date", "amount", "direction", "mpesa_ref",
-                               "core_ref", "bank_receipt", "reference"):
+    for t in (Transaction.objects
+              .exclude(Q(mpesa_ref="") & Q(core_ref__isnull=True)
+                       & Q(bank_receipt__isnull=True))
+              .select_related("split_of")
+              .only("id", "date", "amount", "direction", "mpesa_ref",
+                    "core_ref", "bank_receipt", "reference",
+                    "split_of__mpesa_ref", "split_of__core_ref",
+                    "split_of__bank_receipt")):
         for k in _txn_keys(t):
             ledger_by_key.setdefault(k, []).append(t)
 
@@ -285,9 +348,15 @@ def recheck(account, *, start=None, end=None):
             if v:
                 register_keys.add(v.upper())
 
-    # what we report on: only the window
+    # What we REPORT on. Here the account and channel filters do belong: the
+    # question is "which of OUR bank entries, on THIS account, has the bank
+    # never mentioned?"
+    account_txns = Transaction.objects.filter(
+        channel=Transaction.Channel.BANK, is_reversal=False, is_reversed=False
+    ).filter(Q(bank_account=account) | Q(bank_account__isnull=True))
+
     lines = StatementLine.objects.filter(account=account, date__gte=start, date__lte=end)
-    txns = account_txns.filter(date__gte=start, date__lte=end, is_reversed=False)
+    txns = account_txns.filter(date__gte=start, date__lte=end)
 
     found, opened, closed = 0, 0, 0
 

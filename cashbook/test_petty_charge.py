@@ -17,7 +17,11 @@ from core.models import SiteConfig
 class PettyChargeTests(TestCase):
     def setUp(self):
         cfg = SiteConfig.get()
-        cfg.require_expense_approval = False; cfg.enforce_petty_float = False; cfg.save()
+        cfg.require_expense_approval = False; cfg.enforce_petty_float = False
+        # The retired disbursement form bypassed the fund-balance check
+        # entirely; the expense form (correctly) enforces it. This test is
+        # about the petty-cash charge mechanics, not about overspend.
+        cfg.enforce_fund_balance = False; cfg.save()
         u = User.objects.create_user("pcc", password="x", is_superuser=True)
         u.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
         self.c = Client(); self.c.force_login(u)
@@ -25,12 +29,17 @@ class PettyChargeTests(TestCase):
                                               category="OFFERING", show_in_expenses=True)
 
     def test_disburse_with_charge_links_and_reduces_float(self):
+        """The separate "record a disbursement" form is retired — it wrote the
+        same Expense the expense form writes, but could not attach a receipt,
+        set an expenditure type or a budget line. The capability is unchanged;
+        it just lives in one form now, which is what this proves."""
         on = dt.date(2026, 6, 15)
         b0 = _petty_balance_asof(on)
-        self.c.post("/petty-cash/disburse/", {
+        self.c.post("/expenses/new/", {
             "date": "2026-06-15", "description": "Tape", "amount": "200",
             "department": str(self.fund.id), "category": "MATERIALS",
-            "method": "MPESA", "voucher_no": "PC1", "charge": "30"})
+            "method": "MPESA", "voucher_no": "PC1", "charge": "30",
+            "paid_from_petty_cash": "on", "expenditure_type": "RECURRENT"})
         main = Expense.objects.get(description="Tape", paid_from_petty_cash=True)
         charge = Expense.objects.get(charge_for=main)
         self.assertTrue(charge.paid_from_petty_cash)
@@ -40,9 +49,11 @@ class PettyChargeTests(TestCase):
         self.assertEqual(b0 - _petty_balance_asof(on), Decimal("230.00"))
 
     def test_disburse_no_charge(self):
-        self.c.post("/petty-cash/disburse/", {
+        self.c.post("/expenses/new/", {
             "date": "2026-06-15", "description": "Pens", "amount": "100",
-            "department": str(self.fund.id), "category": "MATERIALS", "method": "CASH"})
+            "department": str(self.fund.id), "category": "MATERIALS",
+            "method": "CASH", "paid_from_petty_cash": "on",
+            "expenditure_type": "RECURRENT"})
         main = Expense.objects.get(description="Pens", paid_from_petty_cash=True)
         self.assertEqual(main.charges.count(), 0)
 

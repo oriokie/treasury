@@ -180,9 +180,17 @@ class PettyCashTests(TestCase):
     def setUp(self):
         from django.contrib.auth.models import User
         from departments.models import Department
+        from core.models import SiteConfig
         self.u = User.objects.create_superuser("pc", password="x")
         self.fund = Department.objects.create(name="LCB", fund_type=Department.FundType.LOCAL)
         self.client.login(username="pc", password="x")
+        # The retired disbursement form bypassed the fund-balance check entirely;
+        # the expense form (correctly) enforces it. These tests are about the
+        # petty-cash float, not about overspend.
+        cfg = SiteConfig.get()
+        cfg.enforce_fund_balance = False
+        cfg.require_expense_approval = False
+        cfg.save()
 
     def test_topup_increases_float(self):
         import datetime as dt
@@ -204,9 +212,14 @@ class PettyCashTests(TestCase):
             {"date": str(dt.date.today()), "amount": "5000"})
         before = {r["department"].id: r["closing"]
                   for r in balances.department_summary(None, None, consolidated=False)}
-        self.client.post(reverse("petty_cash_disburse"),
+        # The separate disbursement form is retired: a disbursement IS an
+        # expense paid from the float, so it is recorded on the expense form.
+        # The accounting is identical, which is what this test proves.
+        self.client.post(reverse("expense_create"),
             {"date": str(dt.date.today()), "description": "Tea", "amount": "650",
-             "category": "REFRESHMENTS", "department": self.fund.id})
+             "category": "REFRESHMENTS", "department": self.fund.id,
+             "method": "CASH", "paid_from_petty_cash": "on",
+             "expenditure_type": "RECURRENT"})
         # float drops by the disbursement
         self.assertEqual(_petty_balance_asof(dt.date.today()), Decimal("4350"))
         # the ministry fund is charged the cost (so fund balances stay correct)

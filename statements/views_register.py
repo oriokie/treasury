@@ -53,6 +53,17 @@ class RegisterView(ReadAccessMixin, View):
         if export in ("csv", "xlsx"):
             return self._export(account, rows, data, export, start, end)
 
+        # Can the opening balance be derived from the bank's own figures? If the
+        # statements carry a running-balance column we already know the opening
+        # and nobody needs to type one — so we only ASK when we genuinely cannot
+        # work it out, rather than demanding a number the bank has already given
+        # us and which a person could only get wrong.
+        first_line = (StatementLine.objects.filter(account=account)
+                      .order_by("date", "occurred_at", "id").first())
+        needs_opening = (first_line is not None
+                         and first_line.bank_balance is None
+                         and account.register_opening_balance is None)
+
         page = Paginator(rows, 100).get_page(request.GET.get("page"))
         return render(request, self.template_name, {
             "account": account,
@@ -63,8 +74,30 @@ class RegisterView(ReadAccessMixin, View):
             "row_count": len(rows),
             "summary": reg_svc.summary(account),
             "start": start, "end": end, "q": q,
+            "needs_opening": needs_opening,
             "date_default_applied": not request.GET,
         })
+
+    def post(self, request):
+        """Set the register's opening balance."""
+        account = _account(request)
+        if account is None:
+            return redirect("bank_register")
+        raw = (request.POST.get("register_opening_balance") or "").strip()
+        raw_date = (request.POST.get("register_opening_date") or "").strip()
+        from decimal import InvalidOperation
+        from django.utils.dateparse import parse_date
+        try:
+            account.register_opening_balance = Decimal(raw) if raw else None
+        except InvalidOperation:
+            messages.error(request, "That opening balance isn't a number.")
+            return redirect(f"/bank-register/?account={account.pk}")
+        account.register_opening_date = parse_date(raw_date) if raw_date else None
+        account.save(update_fields=["register_opening_balance",
+                                    "register_opening_date"])
+        messages.success(
+            request, "Opening balance saved. The running balance now starts from it.")
+        return redirect(f"/bank-register/?account={account.pk}")
 
     def _export(self, account, rows, data, fmt, start, end):
         """Download the register — the whole filtered window, not just the page

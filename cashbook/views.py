@@ -222,6 +222,13 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
 
     def get_initial(self):
         initial = super().get_initial()
+        # `?petty=1` — how the petty cash page now sends someone here. The old
+        # separate "record a disbursement" form wrote exactly this Expense with
+        # paid_from_petty_cash=True; retiring it left this form to do the job, so
+        # the link that used to open that one opens this, ready.
+        if self.request.GET.get("petty"):
+            initial["paid_from_petty_cash"] = True
+            initial["method"] = Expense.Method.CASH
         kind, obj = self._settle_target()
         if obj:
             initial.update({
@@ -315,7 +322,9 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
             bank_id = self.request.POST.get("payment_bank_account") or ""
             inst = PaymentInstrument(
                 method=method, instrument_number=ref,
-                payee=(exp.claimant or exp.department.name)[:160],
+                # the payee is who the money goes TO; the claimant is who asked
+                # for it. They are often the same person, and often not.
+                payee=(exp.payee or exp.claimant or exp.department.name)[:160],
                 amount=exp.amount, date_issued=issued,
                 status=PaymentInstrument.Status.ISSUED,
                 source_kind=PaymentInstrument.SourceKind.EXPENSE,
@@ -725,7 +734,7 @@ class RecurringGenerate(DataEntryRequiredMixin, View):
 # (top-ups less petty disbursements) reconciled against the cash in the box; the
 # ministry funds carry the actual cost, so fund balances stay correct.
 from django.views.generic import TemplateView
-from .forms import PettyCashTopUpForm, PettyCashDisbursementForm
+from .forms import PettyCashTopUpForm
 from .models import PettyCashTopUp as PettyTopUp
 
 
@@ -818,7 +827,7 @@ class PettyCashView(ReadAccessMixin, TemplateView):
             "closing": running, "balance_now": balance_now,
             "float_target": cfg.petty_cash_float,
             "to_topup": max(cfg.petty_cash_float - balance_now, Decimal(0)) if cfg.petty_cash_float else Decimal(0),
-            "topup_form": PettyCashTopUpForm(), "disb_form": PettyCashDisbursementForm(),
+            "topup_form": PettyCashTopUpForm(),
         })
         return ctx
 
@@ -839,47 +848,24 @@ class PettyCashTopUp(DataEntryRequiredMixin, View):
 
 
 class PettyCashDisburse(DataEntryRequiredMixin, View):
+    """RETIRED — redirects to the expense form.
+
+    This wrote an ordinary `Expense` with `paid_from_petty_cash=True` — exactly
+    what the expense form writes when that box is ticked. Two forms for one row,
+    and the lesser one at that: it could not attach a receipt, could not set an
+    expenditure type or a budget line, and had its own approval shortcut. A
+    treasurer who used it ended up with a voucher that looked different from
+    every other voucher in the book.
+
+    Kept as a redirect rather than deleted so an old bookmark still lands
+    somewhere useful. The form and its template are gone.
+    """
+
+    def get(self, request):
+        return redirect(f"{reverse_lazy('expense_create')}?petty=1")
+
     def post(self, request):
-        form = PettyCashDisbursementForm(request.POST)
-        if form.is_valid():
-            cd = form.cleaned_data
-            if _block_if_locked(request, cd["date"]):
-                return redirect("petty_cash")
-            from core.models import SiteConfig
-            if SiteConfig.get().enforce_petty_float:
-                bal = _petty_balance_asof(cd["date"])
-                need = cd["amount"] + (cd.get("charge") or 0)
-                if need > bal:
-                    messages.error(request,
-                        f"Insufficient petty cash float — {bal:,.2f} on hand, "
-                        f"{need:,.2f} requested. Top up the float first.")
-                    return redirect("petty_cash")
-            method = cd.get("method") or Expense.Method.CASH
-            exp = Expense.objects.create(
-                date=cd["date"], sabbath_week=sabbath_week_of(cd["date"]),
-                department=cd["department"], description=cd["description"], amount=cd["amount"],
-                category=cd["category"], claimant=cd["claimant"], method=method,
-                voucher_no=cd.get("voucher_no") or "",
-                paid_from_petty_cash=True, status=Expense.Status.PAID, paid_date=cd["date"],
-                recorded_by=request.user, approved_by=request.user)
-            # optional M-Pesa / bank charge (float held on M-Pesa/bank) -> linked,
-            # also paid from petty cash so it reduces the float too
-            charge = cd.get("charge")
-            if charge and charge > 0:
-                ref = exp.voucher_no or f"exp #{exp.id}"
-                Expense.objects.create(
-                    date=cd["date"], sabbath_week=exp.sabbath_week, department=cd["department"],
-                    description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
-                    amount=charge, category=Expense.Category.BANK_CHARGE, method=method,
-                    voucher_no=exp.voucher_no, paid_from_petty_cash=True, charge_for=exp,
-                    status=Expense.Status.PAID, paid_date=cd["date"],
-                    recorded_by=request.user, approved_by=request.user)
-            extra = f" (+ {charge:,.2f} charge)" if charge and charge > 0 else ""
-            messages.success(request, f"Petty cash disbursement of {cd['amount']:,.2f}{extra} "
-                                      f"charged to {cd['department'].name}.")
-        else:
-            messages.error(request, "Could not record the disbursement: " + form.errors.as_text())
-        return redirect("petty_cash")
+        return redirect(f"{reverse_lazy('expense_create')}?petty=1")
 
 
 # ==================== Expense detail + receipt attachments ====================
@@ -3095,7 +3081,7 @@ class ChequeRegisterView(PaymentViewMixin, View):
                 continue
             PaymentInstrument.objects.create(
                 method="CHEQUE", instrument_number=e.voucher_no[:40],
-                payee=e.claimant or e.description[:160], amount=e.amount,
+                payee=(e.payee or e.claimant or e.description)[:160], amount=e.amount,
                 date_issued=e.paid_date or e.date, status="OUTSTANDING",
                 source_kind="EXPENSE", expense=e, recorded_by=user)
             have.add(e.voucher_no)
@@ -3362,11 +3348,45 @@ def _amount_in_words(amount):
 
 
 class ChequePrintView(ReadAccessMixin, View):
-    """Print-friendly cheque: payee, amount in figures and words, date,
-    signatories. Method-agnostic but most useful for cheques."""
+    """Two quite different things, and it matters which you want.
+
+    **The advice/voucher** (default): a facsimile on plain paper. A record of the
+    payment, for the file and for the payee. Prints a whole document.
+
+    **The leaf** (`?mode=leaf`): ink ONLY where the values go, positioned in
+    millimetres, to be fed through the printer on a real, pre-printed bank cheque.
+    No borders, no labels, no headings — the leaf already has all of that, and
+    printing our own on top of it would ruin it.
+
+    Cheque leaves differ between banks by a few millimetres, and a numbered leaf
+    spoiled by a bad guess is not free. So the layout is not guessed: it is
+    configured, and `?mode=calibrate` prints a measuring sheet onto one spoiled
+    leaf so a treasurer can read off where the marks actually land and correct it.
+    Once.
+    """
+
     def get(self, request, pk):
+        from core.models import SiteConfig
         from .models import PaymentInstrument
         inst = get_object_or_404(PaymentInstrument, pk=pk)
+        mode = request.GET.get("mode") or "advice"
+        cfg = SiteConfig.get()
+
+        if mode in ("leaf", "calibrate"):
+            words = _amount_in_words(inst.amount)
+            # the words often need two lines on a narrow leaf; split on a word
+            # boundary near the middle rather than letting it run off the edge
+            w1, w2 = words, ""
+            if len(words) > 46:
+                cut = words.rfind(" ", 0, 46)
+                if cut > 0:
+                    w1, w2 = words[:cut], words[cut + 1:]
+            return render(request, "cashbook/cheque_leaf.html", {
+                "c": inst, "cfg": cfg, "calibrate": (mode == "calibrate"),
+                "words1": w1, "words2": w2,
+                "date_str": (inst.date_issued or dt.date.today()).strftime("%d %m %Y"),
+            })
+
         return render(request, "cashbook/payment_print.html", {
             "c": inst, "amount_words": _amount_in_words(inst.amount)})
 

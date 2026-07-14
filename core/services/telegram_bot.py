@@ -18,6 +18,7 @@ import datetime as dt
 import json
 import urllib.request
 import urllib.parse
+import uuid
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
@@ -56,12 +57,52 @@ def send_message(chat_id, text, cfg=None):
         return False, str(exc)[:120]
 
 
+def send_document(chat_id, filename, content, caption="", cfg=None):
+    """Send a file. Telegram's sendDocument is multipart/form-data, not the
+    urlencoded form sendMessage uses, so this builds the body by hand rather
+    than pulling in a dependency for one endpoint."""
+    cfg = cfg or _cfg()
+    token = cfg.telegram_bot_token
+    if not token:
+        return False, "No bot token configured."
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+
+    boundary = "----treasury" + uuid.uuid4().hex
+    parts = []
+
+    def _field(name, value):
+        parts.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n"
+            f"{value}\r\n".encode())
+
+    _field("chat_id", str(chat_id))
+    if caption:
+        _field("caption", caption[:1000])
+        _field("parse_mode", "HTML")
+    parts.append(
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; "
+        f"filename=\"{filename}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        .encode())
+    parts.append(content)
+    parts.append(f"\r\n--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+
+    try:
+        req = urllib.request.Request(url, data=body)
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return (r.status == 200), None
+    except Exception as exc:  # noqa
+        return False, str(exc)[:120]
+
+
 # ----------------------------------------------------------------------------- commands
 HELP = (
     "<b>Treasury bot</b>\n"
     "Queries:\n"
     "• /summary — collections, expenses, surplus this month\n"
     "• /trust — trust collected / remitted / outstanding\n"
+    "• /pending — the pending-receipt list, as a PDF\n"
     "• /balance — all fund balances (or /balance • /balance &lt;fund&gt; — closing balance of a fundlt;fund• /balance &lt;fund&gt; — closing balance of a fundgt; for one)\n"
     "• /today — today's collections\n"
     "• Or just type a question, e.g. <i>how much tithe in May?</i>\n\n"
@@ -100,6 +141,33 @@ def _do_trust():
     out = sum((r["to_remit"] for r in rows), Decimal(0))
     return (f"<b>Trust funds</b>\nCollected: {_money(coll)}\n"
             f"Remitted: {_money(rem)}\nOutstanding: {_money(out)}")
+
+
+def _do_pending(chat_id):
+    """The pending-receipt list, as the same PDF the transactions page serves.
+
+    One function, one query: `giving.services.pending_receipt` is the single
+    source, so the bot and the web page can never show a treasurer two
+    different answers to the same question.
+    """
+    from core.models import SiteConfig
+    from giving.services.pending_receipt import (pending_receipt_pdf_bytes,
+                                                 pending_receipt_rows)
+    rows = pending_receipt_rows()
+    if not rows:
+        return {"chat_id": chat_id,
+                "text": "Nothing pending receipt — every bank gift into a "
+                        "receiptable fund has been receipted."}
+    total = sum((r[3] for r in rows), Decimal(0))
+    pdf = pending_receipt_pdf_bytes(church=SiteConfig.get().church_name)
+    return {
+        "chat_id": chat_id,
+        "document": pdf,
+        "filename": "pending_receipt.pdf",
+        "caption": (f"<b>Items pending receipt</b>\n{len(rows)} item(s), "
+                    f"{_money(total)} — bank gifts into a Trust or Local Church "
+                    f"Budget fund with no receipt issued yet."),
+    }
 
 
 def _do_today():
@@ -598,6 +666,8 @@ def handle_update(update):
         return [{"chat_id": chat_id, "text": _do_summary()}]
     if low == "/trust":
         return [{"chat_id": chat_id, "text": _do_trust()}]
+    if low in ("/pending", "/receipt", "/receipts"):
+        return [_do_pending(chat_id)]
     if low == "/today":
         return [{"chat_id": chat_id, "text": _do_today()}]
     if low.startswith("/balance"):
@@ -621,6 +691,10 @@ def process_and_reply(update):
     cfg = _cfg()
     sent = 0
     for r in handle_update(update):
-        ok, _ = send_message(r["chat_id"], r["text"], cfg)
+        if r.get("document") is not None:
+            ok, _ = send_document(r["chat_id"], r.get("filename", "file.pdf"),
+                                  r["document"], r.get("caption", ""), cfg)
+        else:
+            ok, _ = send_message(r["chat_id"], r["text"], cfg)
         sent += 1 if ok else 0
     return sent

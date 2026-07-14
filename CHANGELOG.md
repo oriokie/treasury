@@ -1,5 +1,132 @@
 # Changelog
 
+## v2.62.0 - Reported issues, round 6
+
+### The matching bug, at the root this time
+
+"I can get the references under M-Pesa ref in the transactions. Yet being
+detected as missing... affects transactions indicated as manual receipt, and the
+amount may be zero. Check how split funds are matched."
+
+Every clue was the same root cause, and it was mine. I was filtering the match
+index by **channel**, **bank account** and **reversal status** — all of them
+classifications WE make after the fact, any of which can hide a transaction that
+plainly carries the bank's own reference. Marking a gift as a manual receipt
+detaches it from its fund. A split part can be zero-valued, and importer-created
+parts have no split link at all. An account tag may be missing or wrong.
+
+For "did we ever record this bank line?", the only thing that can answer it is
+whether the bank's reference is in our ledger. Nothing else. The account and
+channel filters belong on the *other* direction — "which of our own bank entries
+has the bank never mentioned?" — and now live only there.
+
+Three rounds on one function, because I kept fixing the symptom in front of me
+rather than asking what the question actually needs to know.
+
+### The register's opening balance
+
+A register starting mid-year summed forward from zero, so its closing balance was
+out by whatever the account already held. It now derives the opening from the
+bank's own balance column — the bank has already told us, and its figure beats
+anything typed. It only asks where a statement carries no balance column at all.
+
+### Pending receipt excludes cash — and reaches Telegram
+
+Cash is receipted at the point of counting; it goes onto an envelope at the
+table. Listing it asked a treasurer to chase a receipt for money that was never
+going to have one. `/pending` on Telegram now returns the same PDF the web page
+serves, from the same query.
+
+### Petty cash, cheques, and the payee
+
+A cheque cashed for petty cash is **two movements**: money leaves the bank, money
+arrives in the tin. Record only one and the books stop adding up. Write it in the
+payments register with source "Petty cash replenishment" and the float rises when
+it is issued — and falls again if it is cancelled, because a cheque never cashed
+never became notes in the tin.
+
+The **payee** is now captured separately from the claimant: the member who
+requested a purchase and the supplier the cheque is written to are often
+different people.
+
+The separate **"record a disbursement" form is retired**. It wrote exactly the
+Expense the expense form writes with "paid from the petty cash float" ticked —
+but could not attach a receipt, set an expenditure type or a budget line, and had
+its own approval shortcut. One form, one approval trail, one place a voucher can
+be found.
+
+### Printing onto a real cheque
+
+The old print was a facsimile on plain paper (still there — it is a useful
+advice). Printing onto an actual leaf means ink at exact millimetre positions on
+paper that already carries its own borders and labels.
+
+**Cheque leaves differ between banks, and a spoiled numbered leaf is not free.**
+So nothing is guessed: `?mode=leaf` prints only the values, the layout is
+configurable, and `?mode=calibrate` prints a millimetre grid with a cross where
+each field will land — onto one *spoiled* leaf, so the offsets can be measured
+and corrected. Once.
+
+**Tests:** 33 new. Full regression clean.
+
+## v2.61.0 - Reported issues, round 5
+
+### The register was crying wolf (the serious one)
+
+"Many entries being detected as not in our books, but when searching I found
+them." Two bugs, both mine:
+
+- **The date window was used for MATCHING, not just reporting.** A bank
+  reference is unique FOREVER — if any transaction carries it, the line IS in
+  our books, whatever date it was recorded under. But the match index was built
+  only from transactions inside the reporting window, so a payment the bank
+  value-dated 1 July that the treasurer entered on 30 June (when the SMS
+  arrived) fell outside it and was flagged as missing. Value date and entry date
+  differing by a day or two is completely ordinary; a reconciliation that cannot
+  survive that is worse than none, because every false positive teaches a
+  treasurer to stop reading the report.
+- **Transactions were not scoped to the account being checked**, so with two
+  bank accounts every transaction of the second was flagged as missing from the
+  first.
+
+### Constraints that were silently absent in production
+
+MariaDB does not create conditional unique constraints — it declines quietly
+(W036) — so the register's duplicate guards were **not enforced at all** on the
+production database. The conditions were never needed (NULLs are distinct in a
+unique index on every supported backend) and are gone. The constraints now
+actually exist where it matters.
+
+### Pending receipt: renamed, and it now includes LCB
+
+It was Trust-only, so LCB money a church receipts exactly as it receipts trust
+money never appeared — which is why it was called "Trust pending receipt", a name
+that described the bug rather than the intent. Worse, the receiptable check
+matched LCB **by name**, ignoring the LCB funds configured in Settings entirely.
+There is now one canonical definition, honouring the configured funds and their
+subgroups, shared with the Sabbath-confirm scope. Old export URLs still work.
+
+### Allocation & categories moved out; a duplicate retired
+
+Now its own page, next to the rules and patterns it belongs with, reachable from
+`/rules/`. The patterns page is out of the sidebar.
+
+You asked whether the dev-group prefix setting duplicated the patterns page. **It
+did** — it built precisely the regex a NUMBERED pattern builds, but could not be
+labelled, ordered, disabled or audited. Retired, with existing values migrated
+into real patterns rather than discarded.
+
+### Also
+
+The register downloads (CSV/Excel, with opening and closing balances). The
+case-roster contribution import verified end to end — paid and unpaid — where
+"did not contribute" is recorded by the ABSENCE of a payment, because writing a
+zero-value contribution would put a receipt in the ledger for money nobody gave.
+And a latent flaky test fixed: it captured TODAY at import and asserted against a
+window ending "today", so a suite crossing midnight failed.
+
+**Tests:** 26 new. Full regression clean — 2,500+ tests.
+
 ## v2.61.0 - Reported issues, round 5
 
 ### The serious one: the register's matching was crying wolf

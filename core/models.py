@@ -273,6 +273,58 @@ class SiteConfig(models.Model):
                   "= CAMP_{n}' also catches EXPENCE7 and EXPENSES7. Patterns match "
                   "the lowercased reference with punctuation removed; an invalid "
                   "pattern is ignored. Only applies when that fund exists.")
+    # ---- Cheque printing (onto the actual bank leaf) -----------------------
+    #
+    # Printing onto a real cheque means putting ink at exact millimetre positions
+    # on a pre-printed leaf. Every bank's leaf differs — by a few millimetres, and
+    # sometimes more — and there is no single layout that is right for all of
+    # them. Guessing would waste numbered cheque leaves, which are neither free
+    # nor replaceable.
+    #
+    # So nothing here is guessed. The defaults are a common Kenyan CTS size and a
+    # sensible starting layout; a treasurer prints the CALIBRATION SHEET onto one
+    # spoiled leaf, reads off where the marks actually landed, and adjusts. Once.
+    cheque_width_mm = models.DecimalField(
+        max_digits=6, decimal_places=1, default=Decimal("180.0"),
+        help_text="Width of your bank's cheque leaf, in millimetres. Measure one.")
+    cheque_height_mm = models.DecimalField(
+        max_digits=6, decimal_places=1, default=Decimal("80.0"),
+        help_text="Height of the leaf, in millimetres.")
+    cheque_offset_x_mm = models.DecimalField(
+        max_digits=6, decimal_places=1, default=Decimal("0.0"),
+        help_text="Nudge EVERYTHING right (+) or left (−) by this many millimetres. "
+                  "Use this to correct how your printer grips the paper, rather than "
+                  "moving every field one at a time.")
+    cheque_offset_y_mm = models.DecimalField(
+        max_digits=6, decimal_places=1, default=Decimal("0.0"),
+        help_text="Nudge everything down (+) or up (−).")
+    cheque_date_x_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                           default=Decimal("120.0"))
+    cheque_date_y_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                           default=Decimal("14.0"))
+    cheque_payee_x_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                            default=Decimal("22.0"))
+    cheque_payee_y_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                            default=Decimal("28.0"))
+    cheque_words1_x_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                             default=Decimal("22.0"))
+    cheque_words1_y_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                             default=Decimal("39.0"))
+    cheque_words2_x_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                             default=Decimal("10.0"))
+    cheque_words2_y_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                             default=Decimal("48.0"))
+    cheque_amount_x_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                             default=Decimal("132.0"))
+    cheque_amount_y_mm = models.DecimalField(max_digits=6, decimal_places=1,
+                                             default=Decimal("48.0"))
+    cheque_font_pt = models.PositiveSmallIntegerField(
+        default=11, help_text="Point size of the printed text.")
+    cheque_ac_payee_only = models.BooleanField(
+        default=True,
+        help_text="Also print “A/C PAYEE ONLY” between the crossing lines. Most "
+                  "church cheques are crossed; untick if yours are pre-crossed.")
+
     lcb_departments = models.ManyToManyField("departments.Department", blank=True,
         related_name="+",
         help_text="The Local Church Budget fund and its sub-accounts. When set, "

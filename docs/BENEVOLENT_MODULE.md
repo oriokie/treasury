@@ -2206,3 +2206,181 @@ into a day the report window excluded, producing a `None` total and an
 cross midnight.
 
 **Tests:** 26 new. Full regression clean — 2,547 tests.
+
+---
+---
+
+# Round 5 — reported issues
+
+## The serious one: the register was crying wolf (item 4)
+
+*"Many entries being detected as not in our books, but when searching I found
+them."* Two bugs, both mine, and the first one bad:
+
+**1. The date window was being used for MATCHING, not just for reporting.** A
+bank reference is unique *forever* — if any transaction carries it, the line
+**is** in our books, whatever date it happens to be recorded under. But the
+match index was built only from transactions inside the reporting window. So a
+payment the bank value-dated 1 July, which the treasurer entered on 30 June when
+the SMS arrived, fell outside it — and its statement line was flagged as
+"not in our books" even though it plainly was.
+
+Value date and entry date differing by a day or two is completely ordinary. A
+reconciliation that cannot survive that is worse than none, because **every
+false positive teaches a treasurer to stop reading the report.** The date window
+now decides what we *report on*; it never decides what *matches*.
+
+**2. Transactions were not scoped to the account being checked.** With two bank
+accounts, every transaction of the second was flagged as missing from the first
+— where it was never supposed to be.
+
+## Constraints that were silently absent in production (item 1)
+
+MariaDB does not create conditional unique constraints. It declines, quietly
+(Django warns W036) — so on the production database the register's duplicate
+guards **were not enforced at all**, and a duplicate exception could be written.
+
+The conditions were never needed: SQLite, PostgreSQL and MariaDB all treat NULLs
+as *distinct* in a unique index, so an unconditional constraint permits any
+number of rows with `line=NULL` while still enforcing one row per
+`(account, kind, line)` where line is set. That is exactly what the condition was
+trying to express — and it now actually exists on every backend, rather than only
+on the one nobody runs in production.
+
+## Pending receipt: renamed, and it now includes LCB (item 5)
+
+It was Trust-only, so LCB money a church receipts exactly as it receipts trust
+money simply never appeared. It was called "Trust pending receipt" — a name that
+described the bug rather than the intent.
+
+Worse: `_is_receiptable_fund()` matched LCB **by name**, ignoring the LCB funds a
+church had configured in Settings entirely. A church that had carefully listed
+them found that setting silently disregarded, and its funds matched (or missed)
+by whether somebody had spelt "LCB" into a name.
+
+There is now one canonical definition — `departments.models.receiptable_fund_ids()`
+— which honours the configured funds **and their subgroups**, and which the
+Sabbath-confirm scope and the pending-receipt list now literally share. Old
+export URLs still work: renaming a URL a user has bookmarked is not a rename, it
+is a breakage.
+
+## Allocation & categories, and a duplicate retired (item 6)
+
+Moved to its own page, next to the allocation rules and development-group
+patterns it belongs with — rather than sitting in Settings → Channels among bank
+accounts and opening balances that have nothing to do with allocation. Buttons on
+`/rules/` reach both; the patterns page is out of the sidebar.
+
+**Edwin asked whether the dev-group prefix setting duplicated the patterns page.
+It did.** It built precisely the regex a `DevGroupPattern` of kind NUMBERED
+builds — but could not be labelled, ordered, disabled or audited. Two places to
+configure one behaviour, neither able to see the other. It is retired; a
+migration turned whatever any church had configured into real, visible patterns
+rather than silently discarding it.
+
+## Also
+
+The register downloads (CSV and Excel, with opening and closing balances — a
+register exported without them cannot be checked by anyone). The case-roster
+contribution import was verified end to end: a treasurer can upload the whole
+roster for a case, paid **and** unpaid, and "did not contribute" is recorded by
+the *absence* of a payment — writing a zero-value contribution to say so would
+put a receipt in the ledger for money nobody gave.
+
+**A latent test bug fixed too:** one Phase 8 test captured `TODAY` at module
+import and asserted against a window ending "today" — so a long suite crossing
+midnight dated its payouts into a tomorrow the window excluded, leaving zero rows
+and an AttributeError. It was flaky, not wrong, but a flaky test is a test nobody
+trusts.
+
+**Tests:** 26 new. Full regression clean — 2,500+ tests.
+
+---
+---
+
+# Round 6 — reported issues
+
+## The matching bug, third time, and finally at the root (item 3)
+
+*"I can get the references under M-Pesa ref in the transactions. Yet being
+detected as missing in the reference UAVAM5CG31. Realized it affects
+transactions which have indicated as manual receipt, and the amount may be zero.
+Check how split funds are also matched."*
+
+Every one of those clues was the same root cause, and it was mine. I was building
+the match index with filters on **channel**, **bank account** and **reversal
+status** — all of which are classifications *we* make after the fact, and any of
+which can hide a transaction that plainly carries the bank's own reference:
+
+* **Manual receipt** sets `excluded_from_income` and detaches the row from its
+  fund. It is still the same bank line.
+* **A split part can be zero-valued**, and importer-created split parts have no
+  `split_of` link at all — they share the parent's `mpesa_ref` and carry
+  `REF-S1` core_refs.
+* **A transaction may carry no bank account**, or one tagged later.
+* **A human may have reclassified the channel.**
+
+For the question *"did we ever record this bank line?"*, the only thing that can
+answer it is whether the bank's reference appears in our ledger. Nothing else.
+The account and channel filters still belong on the *other* direction — "which of
+our own bank entries has the bank never mentioned?" — which is where they now
+live, and only there.
+
+That is three rounds on one function. Each fix was right and each was
+insufficient, because I kept correcting the symptom in front of me rather than
+asking what the question actually needs to know. It needs to know one thing.
+
+## The register's opening balance (item 2)
+
+A register that starts mid-year summed forward from zero, so its closing balance
+was out by whatever the account already held. Now it derives the opening from the
+bank's own balance column on the very first line — the bank has already told us,
+and its figure beats anything typed. Only where a statement carries no balance
+column at all does the page ask, and then it asks once.
+
+## Pending receipt excludes cash (item 1)
+
+Cash is receipted at the point of counting — it goes onto an envelope at the
+table. It does not arrive silently and wait to be chased. Listing it asked a
+treasurer to chase a receipt for money that was never going to have one.
+
+The list also has a Telegram route now: `/pending` returns the same PDF the
+transactions page serves, from the same single query — so the bot and the web
+page can never give a treasurer two different answers to one question.
+
+## Petty cash and cheques (items 4, 5, 6)
+
+**A cheque cashed for petty cash is two movements**, not one: money leaves the
+bank, and money arrives in the tin. Record only the cheque and the float is
+understated; record only the top-up and the bank is overstated. They are now one
+action: write the cheque in the payments register with source *"Petty cash
+replenishment"*, and the float rises automatically when it is issued — and falls
+again if it is cancelled, because a cheque that was never cashed never became
+notes in the tin.
+
+**The payee is now distinct from the claimant.** The member who requested a
+purchase and the supplier the cheque is written to are often different people.
+`PaymentInstrument` always had a payee; the expense giving rise to it never
+captured one, so the cheque had to be filled in from scratch.
+
+**The separate "record a disbursement" form is retired.** It wrote exactly the
+`Expense` the expense form writes with *"paid from the petty cash float"* ticked
+— but could not attach a receipt, set an expenditure type or a budget line, and
+had its own approval shortcut. A treasurer who used it ended up with a voucher
+that looked different from every other voucher in the book. One form, one
+approval trail, one place a voucher can be found.
+
+## Printing onto a real cheque (item 7)
+
+The existing print was a *facsimile* on plain paper — a payment advice, which is
+still there and still useful. Printing onto an actual bank leaf is a different
+problem: ink must land at exact millimetre positions on paper that already has
+its own borders and labels, and printing ours on top of them would ruin it.
+
+**Cheque leaves differ between banks, and a numbered leaf spoiled by a bad guess
+is not free.** So nothing is guessed. `?mode=leaf` prints only the values,
+absolutely positioned; the layout is configurable; and `?mode=calibrate` prints a
+millimetre grid with a red cross where each field will land, onto one *spoiled*
+leaf, so a treasurer can measure the offsets and correct them. Once.
+
+**Tests:** 33 new. Full regression clean.

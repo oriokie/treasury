@@ -16,8 +16,8 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
         model = Expense
         fields = ["date", "department", "description", "amount", "category",
                   "expenditure_type", "capitalized_asset",
-                  "claimant", "method", "voucher_no", "paid_from_petty_cash",
-                  "budget_line"]
+                  "claimant", "payee", "method", "voucher_no",
+                  "paid_from_petty_cash", "budget_line"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
     def __init__(self, *args, **kwargs):
@@ -132,37 +132,13 @@ class PettyCashTopUpForm(StyledFormMixin, forms.Form):
         self._style()
 
 
-class PettyCashDisbursementForm(StyledFormMixin, forms.Form):
-    """Record a small payment made out of petty cash."""
-    date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
-    description = forms.CharField(max_length=200)
-    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
-    department = forms.ModelChoiceField(queryset=None, label="Charge to fund / ministry")
-    category = forms.ChoiceField(choices=[])
-    method = forms.ChoiceField(choices=[], required=False,
-                               label="Paid by", initial="CASH")
-    claimant = forms.CharField(max_length=120, required=False)
-    voucher_no = forms.CharField(max_length=30, required=False, label="Voucher no")
-    charge = forms.DecimalField(
-        required=False, min_value=0, label="Transaction charge (M-Pesa / bank)",
-        help_text="If the float is held on M-Pesa/bank: any withdrawal/transfer charge. "
-                  "It's recorded as a linked bank-charge disbursement and also reduces the float.")
+# NOTE: PettyCashDisbursementForm was removed here. It wrote an ordinary
+# Expense with paid_from_petty_cash=True — exactly what ExpenseForm writes
+# when that box is ticked — but could not attach a receipt, set an
+# expenditure type or a budget line, and had its own approval shortcut. Two
+# forms for one row, and the lesser one at that. The petty cash page now
+# links to the expense form with ?petty=1.
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        from cashbook.models import Expense
-        import datetime as _dt
-        self.fields["category"].choices = [
-            c for c in Expense.Category.choices if c[0] != Expense.Category.REMITTANCE]
-        self.fields["category"].initial = Expense.Category.OTHER
-        self.fields["method"].choices = Expense.Method.choices
-        from departments.models import Department
-        self.fields["department"].queryset = Department.objects.filter(
-            active=True, is_trust=False).select_related("parent").order_by("name")
-        for f in ("category", "department", "method"):
-            self.fields[f].widget.attrs.update({"class": "field--select"})
-        self.fields["date"].initial = _dt.date.today()
-        self._style()
 
 
 class PayableForm(StyledFormMixin, forms.Form):

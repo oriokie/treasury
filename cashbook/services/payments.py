@@ -88,10 +88,55 @@ def apply_event(inst, event, user=None, *, on=None, comment="",
                                   or f"debit #{bank_transaction.pk}")
     inst.save(update_fields=fields)
 
+    # A petty-cash cheque is TWO movements, not one: money leaves the bank, and
+    # money arrives in the tin. Both must be recorded or the books do not add up
+    # — record only the cheque and the float is understated; record only the
+    # top-up and the bank is overstated.
+    #
+    # So the top-up is created HERE, when the cheque is issued (which is when the
+    # treasurer walks it to the bank and brings the notes back), rather than left
+    # for someone to remember to enter separately. A hand that enters one half and
+    # forgets the other is exactly what this exists to prevent.
+    if event == "ISSUE" and inst.source_kind == PaymentInstrument.SourceKind.PETTY_CASH:
+        _replenish_petty_cash(inst, user, on)
+    if event in ("CANCEL", "VOID", "REVERSE", "REJECT") \
+            and inst.source_kind == PaymentInstrument.SourceKind.PETTY_CASH:
+        _unreplenish_petty_cash(inst)
+
     return PaymentEvent.objects.create(
         payment=inst, event=event, from_status=from_status,
         to_status=new_status, on=on, user=user,
         reference=reference[:120], comment=comment[:200])
+
+
+def _replenish_petty_cash(inst, user, on):
+    """Put the cash from an issued petty-cash cheque into the float.
+
+    Idempotent: re-marking a cheque as issued must not top the float up twice.
+    Cancelling or voiding it removes the top-up again — see
+    `_unreplenish_petty_cash`, called from the same state machine.
+    """
+    from cashbook.models import PettyCashTopUp
+    if PettyCashTopUp.objects.filter(instrument=inst).exists():
+        return
+    PettyCashTopUp.objects.create(
+        date=on, amount=inst.amount, instrument=inst,
+        note=(f"Petty cash replenished by "
+              f"{inst.get_method_display().lower()}"
+              + (f" {inst.instrument_number}" if inst.instrument_number else "")
+              + ".")[:200],
+        recorded_by=user)
+
+
+def _unreplenish_petty_cash(inst):
+    """The cheque did not happen after all — take the cash back out of the float.
+
+    A cancelled or voided cheque never became notes in the tin, so a float that
+    still counts it is a float that will not reconcile against the money actually
+    there.
+    """
+    from cashbook.models import PettyCashTopUp
+    PettyCashTopUp.objects.filter(instrument=inst).delete()
 
 
 @db_tx.atomic

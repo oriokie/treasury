@@ -14,6 +14,34 @@ class BankAccount(models.Model):
     name = models.CharField(max_length=80)
     bank_name = models.CharField(max_length=80, blank=True)
     account_number = models.CharField(max_length=40, blank=True)
+
+    # --- the Bank Statement Register's starting point ------------------------
+    #
+    # The register's running balance has to start SOMEWHERE. A church that begins
+    # keeping the register in July cannot have its closing balance agree with the
+    # bank unless something says what the account held before the first line the
+    # register holds — otherwise it starts from zero and every balance it shows is
+    # out by whatever was already in the account.
+    #
+    # Usually nothing needs typing here: most statements carry the bank's own
+    # running-balance column, and `services.register.running()` derives the
+    # opening from the very first line (its balance, minus its own movement),
+    # because the bank has already told us and the bank's figure beats ours. This
+    # field is for the case where the statement carries no balance column at all —
+    # then somebody has to say.
+    register_opening_balance = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Register opening balance",
+        help_text="What this account held immediately BEFORE the register's first "
+                  "statement line — e.g. the closing balance on 31 December, if you "
+                  "start the register in January. Leave blank when your statements "
+                  "carry a running-balance column: the opening is then read from the "
+                  "bank's own figure, which is better than anything typed here.")
+    register_opening_date = models.DateField(
+        null=True, blank=True, verbose_name="…as at",
+        help_text="The date that opening balance applies to. Lines on or after it "
+                  "accumulate on top of it.")
+
     kind = models.CharField(max_length=12, choices=Kind.choices, default=Kind.CURRENT)
     is_default = models.BooleanField(default=False)
     active = models.BooleanField(default=True)

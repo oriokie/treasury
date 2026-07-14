@@ -109,7 +109,16 @@ class Expense(models.Model):
         "assets.FixedAsset", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="source_expenses",
         help_text="If capital: the fixed asset this expenditure created or improved.")
-    claimant = models.CharField(max_length=120, blank=True)
+    claimant = models.CharField(
+        max_length=120, blank=True,
+        help_text="Who incurred or requested this — the person the church is "
+                  "answerable to for the claim.")
+    payee = models.CharField(
+        max_length=160, blank=True,
+        help_text="Who the money is actually PAID TO, if that is not the claimant — "
+                  "a supplier's name on a cheque, say, where the claimant is the "
+                  "member who requested the purchase. Left blank, the claimant is "
+                  "the payee.")
     method = models.CharField(max_length=8, choices=Method.choices, default=Method.CASH)
     voucher_no = models.CharField(max_length=30, blank=True)
     paid_from_petty_cash = models.BooleanField(default=False,
@@ -455,6 +464,24 @@ class PettyCashTopUp(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2,
         validators=[MinValueValidator(Decimal("0.01"))])
     note = models.CharField(max_length=200, blank=True)
+
+    # The cheque (or transfer) that put this cash in the tin, where there was one.
+    #
+    # A church almost never tops up petty cash from thin air: somebody writes a
+    # cheque payable to CASH, walks it to the bank, and brings the notes back.
+    # Those are TWO movements — money leaves the bank, and money arrives in the
+    # tin — and they must both be recorded or the books will not add up. Recording
+    # only the top-up leaves the bank overstated; recording only the cheque leaves
+    # the float understated.
+    #
+    # Linking them means the cheque is issued once, in the payments register where
+    # every other cheque lives, and the float rises automatically when it is
+    # issued. See `services.petty_cash.replenish_from_instrument`.
+    instrument = models.OneToOneField(
+        "cashbook.PaymentInstrument", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="petty_topup",
+        help_text="The cheque or transfer that funded this top-up, if any.")
+
     recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
                                     related_name="petty_topups")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1039,6 +1066,7 @@ class PaymentInstrument(models.Model):
         REFUND = "REFUND", "Refund"
         TRANSFER = "TRANSFER", "Fund transfer"
         SUPPLIER = "SUPPLIER", "Supplier payment"
+        PETTY_CASH = "PETTY_CASH", "Petty cash replenishment"
         MANUAL = "MANUAL", "Manual / standalone"
 
     # states still outstanding at the bank (not yet cleared, not cancelled)
