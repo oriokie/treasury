@@ -2892,3 +2892,38 @@ sortable table. Default sort is by name (name/date/amount/fund toggles via
 highlighted on every row it appears on, with a page-level count of how many
 names repeat. Wired into the ledger's quick-tabs nav. Tests:
 `giving/test_pending_receipt_view.py` (10).
+
+---
+
+## 93. Pending receipt: sort + duplicate highlighting extended to Excel/PDF/Telegram — RESOLVED
+
+Extends #92. `pending_receipt_rows()` now sorts by name (order-insensitive via
+`members.models.name_key`) as its own default, and a new
+`duplicate_name_flags(rows)` is the single shared definition of "this name
+repeats" — used by the on-page view, the Excel export, and the PDF export
+(shared by the web download and the Telegram bot's /pending command, which
+already called the same `pending_receipt_pdf_bytes()`). Excel: duplicate rows
+get a light-brass fill (`reports.exports.xlsx_response` gained an optional
+`row_highlight` param, backward-compatible — defaults to None, unused by its
+other 13 callers) plus a "⚠ repeats" text marker on the name cell so it
+survives print/no-color. PDF: same highlight + marker, plus a summary count.
+`PendingReceiptView` refactored to call the same shared helper rather than
+re-deriving duplicates itself. Tests:
+`giving/test_trust_pending_receipt.py` (+5, including a functional Telegram
+bot test confirming `_do_pending` returns the sorted/highlighted PDF),
+`giving/test_pending_receipt_view.py` (10, updated for the new default order).
+Regression: cashbook/reports export suites (22), broader giving suite (100)
+all pass.
+
+## 94. Ledger page: Pending receipt downloads consolidated to one page — RESOLVED
+
+The ⤓ Excel / ⤓ PDF quick-tabs were removed from the main ledger page's
+quick-filter bar (`templates/giving/transaction_list.html`) — they were
+redundant with the same two buttons already on the dedicated
+`/transactions/pending-receipt/` page. The ledger page's "Pending receipt" tab
+now links only to that page. The export URLs and query parameters
+(`?export=pending-receipt`, `?export=pending-receipt-pdf`) are byte-for-byte
+unchanged, so the Telegram bot's route and any bookmark keep working. Test
+`test_button_present_on_transactions_page` updated to assert the new
+(intentional) linking behaviour; a new test confirms the downloads are present
+on the pending-receipt page itself.

@@ -24,7 +24,14 @@ from decimal import Decimal
 
 def pending_receipt_rows():
     """[(date, phone, member_name, amount, fund_label, reference, mpesa_ref), ...]
-    — receiptable-fund credits not yet formally receipted.
+    — receiptable-fund credits not yet formally receipted, sorted by NAME
+    (order-insensitively — "RUTH MOMANYI" and "MOMANYI RUTH" sort together, via
+    `members.models.name_key`, the same key the rest of the system already uses
+    to recognise the same person recorded two different ways) so the same
+    giver's entries sit together wherever this list is read: the on-page view,
+    the Excel and PDF downloads, and the PDF the Telegram bot sends. One
+    function, one sort — nobody reading any of these four surfaces sees a
+    different order or a different idea of "the same name" from the others.
 
     "Receiptable" means Trust funds AND the LCB family, per
     `departments.models.receiptable_fund_ids()`. A split contribution qualifies
@@ -34,6 +41,7 @@ def pending_receipt_rows():
     from departments.models import receiptable_fund_ids
     from giving.models import Transaction
     from giving.views import _combined_fund_label, _group_split_siblings
+    from members.models import name_key
 
     receiptable = receiptable_fund_ids()
 
@@ -61,7 +69,26 @@ def pending_receipt_rows():
         rows.append((first.date, phone, member_name, total,
                      _combined_fund_label(members),
                      first.reference or first.mpesa_ref or first.core_ref or "", mpesa_ref))
+
+    rows.sort(key=lambda r: (name_key(r[2]) or "~", r[0]))
     return rows
+
+
+def duplicate_name_flags(rows):
+    """A list of booleans, one per row in `rows` (as returned by
+    `pending_receipt_rows`), True wherever that row's name (by its
+    order-insensitive key) appears on more than one row.
+
+    Kept as ONE function so the on-page table, the Excel highlight and the PDF
+    highlight can never disagree about what counts as a duplicate — each calls
+    this rather than re-deriving its own notion of "the same name".
+    """
+    from collections import Counter
+    from members.models import name_key
+
+    keys = [name_key(r[2]) for r in rows]
+    counts = Counter(k for k in keys if k)
+    return [bool(k) and counts[k] > 1 for k in keys]
 
 
 HEADER = ["Date", "Phone", "Member", "Amount", "Fund", "Reference", "M-Pesa Reference"]
@@ -71,7 +98,14 @@ def pending_receipt_pdf_bytes(church=""):
     """The same rows as an A4 PDF table — ReportLab, matching the style
     core.reporting.renderers.PdfRenderer already established for every
     other in-app PDF export (same fonts, same footer convention), rather
-    than inventing a second PDF style for this one report."""
+    than inventing a second PDF style for this one report.
+
+    Sorted by name (see pending_receipt_rows), and a name that repeats is
+    shaded AND marked with a "⚠ repeats" label — shading alone would be
+    invisible on a black-and-white printout, and this is a PDF people print or
+    forward, not just view on a screen. This is the exact PDF the Telegram
+    bot's /pending command sends too — one function, so the highlight shows up
+    wherever the PDF is read."""
     import io
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -80,9 +114,11 @@ def pending_receipt_pdf_bytes(church=""):
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     rows = pending_receipt_rows()
+    dup_flags = duplicate_name_flags(rows)
     buf = io.BytesIO()
     primary = colors.HexColor("#1f5f4f")
     brass = colors.HexColor("#b08d57")
+    dup_fill = colors.HexColor("#f2e6d0")   # a light brass tint — visible in grayscale too
 
     def _footer(canvas, doc):
         canvas.saveState()
@@ -100,20 +136,27 @@ def pending_receipt_pdf_bytes(church=""):
     title_style = styles["Heading1"]
     title_style.textColor = primary
     flow = [Paragraph("Items pending receipt", title_style),
-           Paragraph(f"{len(rows)} item(s) in a receiptable fund (Trust or Local Church Budget) not yet formally receipted.", styles["Normal"]),
-           Spacer(1, 6 * mm)]
+           Paragraph(f"{len(rows)} item(s) in a receiptable fund (Trust or Local Church Budget) not yet formally receipted.", styles["Normal"])]
+    if any(dup_flags):
+        from members.models import name_key
+        n_dup = len({name_key(r[2]) for r, f in zip(rows, dup_flags) if f})
+        flow.append(Paragraph(
+            f"{n_dup} name(s) — shaded below, marked \u26a0 repeats — appear more than once.",
+            styles["Normal"]))
+    flow.append(Spacer(1, 6 * mm))
 
     table_data = [HEADER]
     total = Decimal(0)
-    for date, phone, name, amount, fund, ref, mpesa in rows:
+    for (date, phone, name, amount, fund, ref, mpesa), is_dup in zip(rows, dup_flags):
         total += amount
-        table_data.append([date.strftime("%d %b %Y"), phone, name,
+        shown_name = f"{name} \u26a0 repeats" if is_dup else name
+        table_data.append([date.strftime("%d %b %Y"), phone, shown_name,
                            f"{amount:,.2f}", fund, ref, mpesa])
     table_data.append(["", "", "TOTAL", f"{total:,.2f}", "", "", ""])
 
     t = Table(table_data, repeatRows=1,
              colWidths=[22*mm, 28*mm, 45*mm, 24*mm, 35*mm, 30*mm, 30*mm])
-    t.setStyle(TableStyle([
+    style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), primary),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -124,7 +167,13 @@ def pending_receipt_pdf_bytes(church=""):
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("LINEABOVE", (0, -1), (-1, -1), 1, brass),
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
+    ]
+    # duplicate-name rows override the zebra-stripe background (table row i is
+    # data row i-1, since row 0 is the header)
+    for i, is_dup in enumerate(dup_flags, start=1):
+        if is_dup:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), dup_fill))
+    t.setStyle(TableStyle(style_cmds))
     flow.append(t)
     doc.build(flow, onFirstPage=_footer, onLaterPages=_footer)
     return buf.getvalue()

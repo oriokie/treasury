@@ -1,5 +1,37 @@
 # Changelog
 
+## v2.74.0 - Pending receipt: one sort, one highlight, everywhere
+
+The name-sorted, duplicate-highlighted view added for the pending-receipt page
+now applies everywhere that list is read — the Excel download, the PDF
+download, and the PDF the Telegram bot's /pending command sends. Previously
+only the on-screen page had this; the downloads were still date-ordered with no
+way to spot a repeated name.
+
+### One function decides the order and the duplicates
+
+`pending_receipt_rows()` now returns its rows sorted by name (order-insensitive
+— "Ruth Momanyi" and "Momanyi Ruth" sort together), and a new
+`duplicate_name_flags()` is the one place that decides which names repeat. The
+on-page view, the Excel export, and the PDF export (web and Telegram) all call
+these same two functions, so none of them can quietly show a different order or
+a different idea of "duplicate" from the others.
+
+- **Excel**: repeated-name rows get a light brass highlight, and the name cell
+  is marked "⚠ repeats" so it survives being printed or read without color.
+- **PDF** (web and Telegram): the same highlight and marker, plus a summary
+  line up top counting how many names repeat.
+
+### Pending receipt has one home
+
+The ⤓ Excel and ⤓ PDF download links have been removed from the ledger page's
+quick-filter bar — they now live only on the Pending receipt page itself
+(Ledger → Pending receipt → the download buttons are right there), so there is
+one place to find them rather than three. The download URLs and their
+parameters are completely unchanged, so nothing that already points at them —
+a bookmark, the Telegram bot's /pending route — is affected.
+# Changelog
+
 ## v2.73.0 - A typed reference could look like a receipt; pending receipt gets its own page
 
 ### A payment reference could accidentally look like a bank receipt

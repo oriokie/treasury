@@ -13,9 +13,14 @@ def csv_response(filename, header, rows):
     return resp
 
 
-def xlsx_response(filename, header, rows, title=None, church=None):
+def xlsx_response(filename, header, rows, title=None, church=None, row_highlight=None):
     """A styled .xlsx with an optional title/church header, bold column headers
-    and a frozen header row."""
+    and a frozen header row.
+
+    `row_highlight`, if given, is a list of booleans the same length as `rows`;
+    a True row gets a light brass fill instead of the normal zebra stripe —
+    generic enough for any export that wants to flag rows (e.g. pending
+    receipt's repeated-name warning), so a highlight need never be built twice."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
@@ -38,13 +43,17 @@ def xlsx_response(filename, header, rows, title=None, church=None):
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="1F5F4F")
         cell.alignment = Alignment(horizontal="center")
+    highlight_fill = PatternFill("solid", fgColor="F2E6D0")   # light brass tint
     rr = head_row
-    for row in rows:
+    for i, row in enumerate(rows):
         rr += 1
+        is_highlighted = bool(row_highlight and i < len(row_highlight) and row_highlight[i])
         for c, v in enumerate(row, start=1):
             cell = ws.cell(row=rr, column=c, value=v)
             if isinstance(v, (int, float)) and c > 1:
                 cell.number_format = "#,##0.00"
+            if is_highlighted:
+                cell.fill = highlight_fill
     for c, h in enumerate(header, start=1):
         ws.column_dimensions[get_column_letter(c)].width = max(12, len(str(h)) + 2)
     ws.freeze_panes = ws.cell(row=head_row + 1, column=1)

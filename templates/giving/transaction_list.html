@@ -23,9 +23,7 @@
   <a href="{% url 'transaction_list' %}" class="tx-qtab{% if not filters.status and not filters.department %} active{% endif %}">All</a>
   <a href="{% url 'transaction_list' %}?status=REVIEW" class="tx-qtab{% if filters.status == 'REVIEW' %} active{% endif %}">Needs review{% if sum_review %} <span class="tx-qtab-badge">{{ sum_review }}</span>{% endif %}</a>
   <a href="{% url 'transaction_list' %}?department=none" class="tx-qtab{% if filters.department == 'none' %} active{% endif %}">Unallocated{% if unallocated_count %} <span class="tx-qtab-badge">{{ unallocated_count }}</span>{% endif %}</a>
-  {% if not cash_only %}<a href="{% url 'pending_receipt_view' %}" class="tx-qtab{% if request.resolver_match.url_name == 'pending_receipt_view' %} active{% endif %}" title="Credits in a receiptable fund — Trust, and the Local Church Budget family — with no formal receipt yet.">Pending receipt</a>
-  <a href="{% url 'transaction_list' %}?export=pending-receipt" class="tx-qtab" title="Download as Excel">⤓ Excel</a>
-  <a href="{% url 'transaction_list' %}?export=pending-receipt-pdf" class="tx-qtab" title="Download as PDF">⤓ PDF</a>{% endif %}
+  {% if not cash_only %}<a href="{% url 'pending_receipt_view' %}" class="tx-qtab{% if request.resolver_match.url_name == 'pending_receipt_view' %} active{% endif %}" title="Credits in a receiptable fund — Trust, and the Local Church Budget family — with no formal receipt yet.">Pending receipt</a>{% endif %}
 </nav>
 <style>
 .tx-quicktabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:.7rem 0 .9rem;border-bottom:1px solid var(--line);padding-bottom:.6rem}

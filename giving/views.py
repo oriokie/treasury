@@ -204,16 +204,27 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         contributed 40 to "Combined Offering" gets one receipt for 40, not one
         for the 20 that happened to land in a trust account. A group qualifies
         whenever ANY of its parts landed in a receiptable fund — the whole gift
-        is one receipt, so receipting half of it is not a thing."""
+        is one receipt, so receipting half of it is not a thing.
+
+        Sorted by name and a repeated name highlighted — same as the on-page
+        view and the PDF (including the one the Telegram bot sends): one
+        function decides the order and the duplicates, so none of these three
+        can quietly disagree."""
         from reports.exports import xlsx_response
         from core.models import SiteConfig
-        from giving.services.pending_receipt import HEADER, pending_receipt_rows
+        from giving.services.pending_receipt import (HEADER, duplicate_name_flags,
+                                                     pending_receipt_rows)
 
-        rows = [[d.isoformat(), phone, name, float(amount), fund, ref, mpesa]
-               for d, phone, name, amount, fund, ref, mpesa in pending_receipt_rows()]
+        pr_rows = pending_receipt_rows()
+        dup_flags = duplicate_name_flags(pr_rows)
+        rows = [[d.isoformat(), phone, f"{name} \u26a0 repeats" if is_dup else name,
+                float(amount), fund, ref, mpesa]
+               for (d, phone, name, amount, fund, ref, mpesa), is_dup
+               in zip(pr_rows, dup_flags)]
         return xlsx_response("pending_receipt.xlsx", HEADER, rows,
                              title="Items pending receipt",
-                             church=SiteConfig.get().church_name)
+                             church=SiteConfig.get().church_name,
+                             row_highlight=dup_flags)
 
     def _pending_receipt_pdf(self, request):
         """The same data as a PDF — for printing, or for a copy someone
@@ -389,34 +400,36 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 class PendingReceiptView(ReadAccessMixin, View):
     """Credits pending receipt, on screen — not just as a download.
 
-    Same data as the "Pending receipt" Excel/PDF export (both keep working
-    unchanged, at their existing URLs, since a bookmark and the Telegram bot's
-    /pending route point at them). This is for the moment a treasurer just wants
-    to LOOK: sorted by name so the same giver's entries sit together, with any
-    name that appears more than once highlighted — someone paying twice for the
-    same thing, or a name recorded two slightly different ways, is exactly the
-    kind of thing that's obvious at a glance and easy to miss reading top to
-    bottom by date.
-
-    "Same name" is judged the same way the system already judges it for member
-    matching (`members.models.name_key` — order-insensitive, so "RUTH MOMANYI"
-    and "MOMANYI RUTH" are recognised as the same), not a raw string compare.
+    Same data, same order and the same idea of "duplicate" as the Excel/PDF
+    downloads and the PDF the Telegram bot sends (`pending_receipt_rows` /
+    `duplicate_name_flags` in giving.services.pending_receipt — one function
+    each, read by all four surfaces, so none of them can quietly disagree).
+    Sorted by name by default so the same giver's entries sit together, with
+    any name that appears more than once highlighted — someone paying twice
+    for the same thing, or a name recorded two slightly different ways, is
+    exactly the kind of thing that's obvious at a glance and easy to miss
+    reading top to bottom by date. "Same name" is order-insensitive
+    (`members.models.name_key`), the same test the system already uses for
+    member matching.
     """
     template_name = "giving/pending_receipt.html"
 
     def get(self, request):
         from members.models import name_key
-        from giving.services.pending_receipt import pending_receipt_rows
+        from giving.services.pending_receipt import (duplicate_name_flags,
+                                                     pending_receipt_rows)
 
-        raw_rows = pending_receipt_rows()
+        raw_rows = pending_receipt_rows()          # already name-sorted
+        dup_flags = duplicate_name_flags(raw_rows)
         sort = request.GET.get("sort") or "name"
 
         rows = []
-        for date, phone, name, amount, fund, reference, mpesa_ref in raw_rows:
+        for (date, phone, name, amount, fund, reference, mpesa_ref), is_dup \
+                in zip(raw_rows, dup_flags):
             rows.append({
                 "date": date, "phone": phone, "name": name, "amount": amount,
                 "fund": fund, "reference": reference, "mpesa_ref": mpesa_ref,
-                "name_key": name_key(name or ""),
+                "name_key": name_key(name or ""), "is_duplicate_name": is_dup,
             })
 
         if sort == "date":
@@ -426,19 +439,12 @@ class PendingReceiptView(ReadAccessMixin, View):
         elif sort == "fund":
             rows.sort(key=lambda r: (r["fund"] or "", r["name_key"]))
         else:
-            sort = "name"
-            rows.sort(key=lambda r: (r["name_key"] or "~", r["date"]))
-
-        # a name (by its normalised key) that appears on more than one row is
-        # flagged for every row it appears on, so each occurrence is visible
-        # regardless of where the sort put it.
-        from collections import Counter
-        key_counts = Counter(r["name_key"] for r in rows if r["name_key"])
-        for r in rows:
-            r["is_duplicate_name"] = bool(r["name_key"]) and key_counts[r["name_key"]] > 1
+            sort = "name"   # rows are already in this order; re-sort is a no-op,
+                            # kept explicit so a stable sort always holds even if
+                            # pending_receipt_rows' own order ever changes
 
         total = sum((r["amount"] for r in rows), Decimal(0))
-        duplicate_names = sum(1 for c in key_counts.values() if c > 1)
+        duplicate_names = len({r["name_key"] for r in rows if r["is_duplicate_name"]})
 
         return render(request, self.template_name, {
             "rows": rows, "sort": sort, "total": total,

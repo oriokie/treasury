@@ -37,9 +37,17 @@ class TrustPendingReceiptExportTests(TestCase):
         return list(wb.active.iter_rows(values_only=True))
 
     def test_button_present_on_transactions_page(self):
+        """The ledger page links to the Pending receipt PAGE (not directly to
+        a download) — the Excel/PDF downloads live on that page itself, so
+        there is one place to find them, not three."""
         b = self.c.get("/transactions/").content.decode()
         self.assertIn("Pending receipt", b)
+        self.assertIn("/transactions/pending-receipt/", b)
+
+    def test_downloads_are_on_the_pending_receipt_page(self):
+        b = self.c.get("/transactions/pending-receipt/").content.decode()
         self.assertIn("export=pending-receipt", b)
+        self.assertIn("export=pending-receipt-pdf", b)
 
     def test_the_old_export_key_still_works(self):
         """Renaming a URL a treasurer has bookmarked — or that the Telegram
@@ -132,3 +140,72 @@ class TrustPendingReceiptExportTests(TestCase):
         header_row = next(r for r in rows if r and r[0] == "Date")
         self.assertEqual(list(header_row), ["Date", "Phone", "Member", "Amount",
                                             "Fund", "Reference", "M-Pesa Reference"])
+
+    def test_excel_export_sorted_by_name(self):
+        Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("100"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust1, payer_name="ZEBRA WANJIRU", reference="z-ref",
+            core_ref="ZREF1")
+        Transaction.objects.create(date=dt.date(2026, 6, 11), amount=Decimal("200"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust1, payer_name="ALPHA OTIENO", reference="a-ref",
+            core_ref="AREF1")
+        rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
+        names = [r[2] for r in rows if r and r[0] != "Date" and r[2] not in
+                (None, "SDA Church", "Items pending receipt")]
+        self.assertEqual(names, sorted(names, key=lambda n: n.upper()))
+
+    def test_excel_export_marks_duplicate_names(self):
+        Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("100"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust1, payer_name="REPEAT PERSON", reference="r1",
+            core_ref="RREF1")
+        Transaction.objects.create(date=dt.date(2026, 6, 12), amount=Decimal("150"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust1, payer_name="REPEAT PERSON", reference="r2",
+            core_ref="RREF2")
+        b = self.c.get("/transactions/?export=trust-pending-receipt")
+        rows = self._rows(b)
+        dupe_rows = [r for r in rows if r and r[2] and "REPEAT PERSON" in str(r[2])]
+        self.assertEqual(len(dupe_rows), 2)
+        self.assertTrue(all("repeats" in str(r[2]) for r in dupe_rows))
+
+
+class PendingReceiptPdfTests(TestCase):
+    def setUp(self):
+        self.tr = _tr()
+        self.trust = Department.objects.create(name="PDFTrust1", fund_type="TRUST",
+            category="OFFERING")
+
+    def test_pdf_highlights_and_sorts(self):
+        from giving.services.pending_receipt import pending_receipt_pdf_bytes
+        Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("100"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust, payer_name="TWICE GIVEN", reference="t1",
+            core_ref="TREF1")
+        Transaction.objects.create(date=dt.date(2026, 6, 12), amount=Decimal("150"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust, payer_name="TWICE GIVEN", reference="t2",
+            core_ref="TREF2")
+        pdf = pending_receipt_pdf_bytes(church="Test Church")
+        self.assertTrue(pdf.startswith(b"%PDF"))
+        self.assertGreater(len(pdf), 500)
+
+    def test_telegram_bot_sends_the_same_sorted_highlighted_pdf(self):
+        """The Telegram /pending command must produce the SAME PDF the web
+        download serves — same function, same data, so a repeated name is
+        highlighted there too, not just on the website."""
+        from core.services.telegram_bot import _do_pending
+        Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("100"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust, payer_name="TWICE GIVEN", reference="t1",
+            core_ref="TGREF1")
+        Transaction.objects.create(date=dt.date(2026, 6, 12), amount=Decimal("150"),
+            direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
+            department=self.trust, payer_name="TWICE GIVEN", reference="t2",
+            core_ref="TGREF2")
+        result = _do_pending(chat_id=12345)
+        self.assertIn("document", result)
+        self.assertTrue(result["document"].startswith(b"%PDF"))
+        self.assertEqual(result["filename"], "pending_receipt.pdf")
+        self.assertIn("2 item", result["caption"])
