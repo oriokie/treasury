@@ -4,6 +4,8 @@ from . import views
 urlpatterns = [
     path("queue/sabbath/", views.SabbathConfirmQueueView.as_view(), name="sabbath_queue"),
     path("transactions/", views.TransactionListView.as_view(), name="transaction_list"),
+    path("transactions/pending-receipt/", views.PendingReceiptView.as_view(),
+         name="pending_receipt_view"),
     path("transactions/<int:pk>/reverse/", views.TransactionReverseView.as_view(), name="transaction_reverse"),
     path("transactions/<int:pk>/history/", views.TransactionHistoryView.as_view(), name="transaction_history"),
     path("transactions/<int:pk>/send-to-review/", views.TransactionSendToReviewView.as_view(), name="transaction_send_to_review"),

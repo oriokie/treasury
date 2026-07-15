@@ -1,5 +1,68 @@
 # Changelog
 
+## v2.73.0 - A typed reference could look like a receipt; pending receipt gets its own page
+
+### A payment reference could accidentally look like a bank receipt
+
+A paybill narration's typed reference (e.g. "expenses12") is free text the PAYER
+wrote to say what the money was for — never the bank's own transaction receipt.
+But it can accidentally be 10 characters with both a letter and a digit, exactly
+the shape a genuine M-Pesa receipt has. When the same reference text was used on
+two different payments (the same giver, paying twice for the same thing), both
+were assigned the same false "receipt" — and since a genuine receipt is treated
+as globally unique, the second payment was silently dropped as a duplicate of the
+first. Real example: two payments from Joseph Ngwato, 11 days apart, for
+different amounts, both referencing "expenses12" — the second (250.00,
+UGDGTBSPCN) never made it into the register.
+
+Fixed at the root: the receipt search now excludes the typed reference text
+before looking for a genuine receipt, so it can never mistake one for the other.
+Verified against the real 878-row statement that triggered this: every row now
+gets a unique key, and the previously-dropped payment imports correctly.
+
+### Pending receipt is now a page, not just a download
+
+"Pending receipt" was previously an Excel/PDF export only — download it, then
+scroll to spot anything odd. It's now also a page on its own
+(Ledger → Pending receipt), sorted by name by default so the same giver's
+entries sit together, with any name that appears more than once highlighted —
+the same person twice, or one name recorded two slightly different ways, both
+jump out rather than requiring a careful read top to bottom. "Same name" is
+judged the same way the system already judges it for member matching
+(order-insensitive), not a raw text compare. The Excel and PDF downloads are
+unchanged, at their same links, so nothing that depends on them — including the
+Telegram bot's /pending route — is affected.
+# Changelog
+
+## v2.72.1 - Fixed: the dedup-key migration could look stuck on a real production table
+
+The migration that normalises register keys (v2.72.0) was fine on a demo-sized
+database and genuinely risky on a real one: it ran inside ONE uncommitted
+transaction with no progress output and two full-table passes per account. On a
+production table with years of history, that is indistinguishable from "stuck"
+even when it is technically still working, and holding one huge transaction open
+risks long lock waits against any concurrent write.
+
+Rewritten to be safe at real scale:
+  - no longer wrapped in one transaction — each small batch (500 rows) commits
+    on its own, so a kill-and-restart loses at most one batch, not the whole run;
+  - prints progress per account as it goes, so it is visible rather than silent;
+  - fetches only the columns it needs, and commits in smaller batches, so no
+    single UPDATE statement is enormous;
+  - is idempotent and resumable: an already-correct row is skipped with no
+    write, so re-running after an interruption only does the remaining work.
+
+Tested against a synthetic 56,000-line register: killed deliberately partway
+through (3,500 lines done), confirmed no data lost and nothing marked applied,
+then re-run to completion — it resumed and finished with all keys correct and
+unique.
+
+If your migration is currently stuck: it has not committed anything (it never
+reached the end of an all-or-nothing transaction), so it is safe to stop it and
+deploy this version — it will start from scratch on the same table and this time
+show its progress.
+# Changelog
+
 ## v2.72.0 - Debits no longer duplicate on re-import; undo a same-day register upload
 
 ### Debits stopped duplicating on the second import

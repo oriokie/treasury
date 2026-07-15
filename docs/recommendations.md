@@ -2843,3 +2843,52 @@ pointing at the removed lines; touches no ledger/expense/envelope. Guarded by
 statements/0015 adds purged_at/purged_by. Wired into RegisterImportView.post
 (purge param) with an Undo button per recent-import row. Tests:
 statements/test_register_purge.py::RegisterPurgeTests + RegisterPurgeViewTests (6).
+
+---
+
+## 90. Migration 0014 (normalize register dedup keys) stuck on production — RESOLVED
+
+The original version ran inside one uncommitted transaction (default `atomic`)
+with no progress output and two full-table passes per account per StatementLine
+— fine on the demo DB, risky on a real production table (indistinguishable from
+hung, and holds a long-lived transaction/lock against concurrent writes).
+Rewritten: `atomic = False` at the Migration class level; each 500-row batch
+commits in its own `transaction.atomic()`; `.only()` on the read query;
+`bulk_update(..., batch_size=200)`; `print()` progress per account. Verified
+against a synthetic 56,105-row single-account register: killed deliberately
+after 3,500 rows (confirmed not marked applied, zero rows lost), re-run resumed
+and completed the remaining 52,605 with zero key mismatches and all keys unique.
+Recovery: since the original never committed (atomic=True means no partial
+writes), it was safe to overwrite migration 0014 in place — no new migration
+number needed, nothing to roll back. All 166 statements tests pass on top of
+the rewritten migration.
+
+---
+
+## 91. Parser: typed reference text mistaken for a genuine bank receipt — RESOLVED
+
+Root cause: `MPESA_RCPT` searched the whole narration for any 10-char alnum
+token with a letter and a digit; a paybill reference like "expenses12" happened
+to match that shape and was extracted as the "receipt" instead of the real
+Channel REF. Since the receipt is treated as globally unique for dedup, two
+genuinely different payments sharing the same typed reference collapsed into
+one — the second silently dropped. Fix: `parse_narration` now masks the
+`#`-delimited reference text out of the search before looking for a receipt
+(only for that shape — the other narration shape, where the whole second
+segment IS the receipt-bearing text, e.g. the SFI40 M-Pesa sweep, is
+untouched). Verified on the real 878-row statement that surfaced this
+(UGDGTBSPCN row): all 878 rows now get unique dedup keys; previously one was
+dropped. Tests: `statements/test_dedup_shared_coreref.py::FalsePositiveReceiptTests`
+(4). All 170 statements tests pass.
+
+## 92. Pending receipt: on-page view, sorted by name with duplicates highlighted — RESOLVED
+
+New `PendingReceiptView` (`/transactions/pending-receipt/`) renders the same
+data as the existing Excel/PDF export (both untouched, at their existing URLs —
+a bookmark and the Telegram bot's /pending route point at them) as an on-screen,
+sortable table. Default sort is by name (name/date/amount/fund toggles via
+`?sort=`); a payer name that recurs — judged via `members.models.name_key`
+(order-insensitive, matching the system's own member-matching logic) — is
+highlighted on every row it appears on, with a page-level count of how many
+names repeat. Wired into the ledger's quick-tabs nav. Tests:
+`giving/test_pending_receipt_view.py` (10).

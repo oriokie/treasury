@@ -78,15 +78,37 @@ def parse_narration(narration):
 
     if "~" in text:
         parts = [p.strip() for p in text.split("~")]
-        # prefer the genuine 10-char M-Pesa receipt anywhere in the narration;
-        # fall back to the first segment only when there isn't one.
-        rc = MPESA_RCPT.search(text.upper())
+        second = parts[1] if len(parts) > 1 else ""
+
+        # A paybill narration's reference (the free text after '#', e.g.
+        # "expenses12", "Development200") is something the PAYER typed to say
+        # what the money is for — never the bank's own transaction receipt. But
+        # it can accidentally be 10 characters with both a letter and a digit
+        # ("expenses12" is exactly that), which is indistinguishable from a
+        # genuine receipt by shape alone. Two different payments that happen to
+        # share the same typed reference would then get the SAME "receipt",
+        # and since a genuine receipt is treated as globally unique for
+        # deduplication, the second payment would be wrongly dropped as a
+        # duplicate of the first — real money the register would then deny ever
+        # arrived. So the reference text is masked out of the search BEFORE
+        # looking for a receipt, and only for this specific shape (paybill#ref):
+        # the OTHER narration shape below, where the whole second segment is
+        # used as-is, is exactly the shape a genuine receipt can live inside
+        # (e.g. "UATKR5A7M8 SDAKAHAWAW 25471****36"), so it is never masked.
+        search_text = text
+        if "#" in second:
+            hashref = second.split("#", 1)[1]
+            if hashref.strip():
+                search_text = search_text.replace(hashref, " ", 1)
+
+        # prefer the genuine 10-char M-Pesa receipt anywhere in the (masked)
+        # narration; fall back to the first segment only when there isn't one.
+        rc = MPESA_RCPT.search(search_text.upper())
         out["receipt"] = rc.group(1) if rc else parts[0]
         phone_match = PHONE_SEG.search(text)
         if phone_match:
             out["phone"] = phone_match.group(1)
 
-        second = parts[1] if len(parts) > 1 else ""
         if "#" in second:
             # Shape A: paybill#reference
             out["reference"] = second.split("#", 1)[1]

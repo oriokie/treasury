@@ -386,6 +386,66 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         return balances
 
 
+class PendingReceiptView(ReadAccessMixin, View):
+    """Credits pending receipt, on screen — not just as a download.
+
+    Same data as the "Pending receipt" Excel/PDF export (both keep working
+    unchanged, at their existing URLs, since a bookmark and the Telegram bot's
+    /pending route point at them). This is for the moment a treasurer just wants
+    to LOOK: sorted by name so the same giver's entries sit together, with any
+    name that appears more than once highlighted — someone paying twice for the
+    same thing, or a name recorded two slightly different ways, is exactly the
+    kind of thing that's obvious at a glance and easy to miss reading top to
+    bottom by date.
+
+    "Same name" is judged the same way the system already judges it for member
+    matching (`members.models.name_key` — order-insensitive, so "RUTH MOMANYI"
+    and "MOMANYI RUTH" are recognised as the same), not a raw string compare.
+    """
+    template_name = "giving/pending_receipt.html"
+
+    def get(self, request):
+        from members.models import name_key
+        from giving.services.pending_receipt import pending_receipt_rows
+
+        raw_rows = pending_receipt_rows()
+        sort = request.GET.get("sort") or "name"
+
+        rows = []
+        for date, phone, name, amount, fund, reference, mpesa_ref in raw_rows:
+            rows.append({
+                "date": date, "phone": phone, "name": name, "amount": amount,
+                "fund": fund, "reference": reference, "mpesa_ref": mpesa_ref,
+                "name_key": name_key(name or ""),
+            })
+
+        if sort == "date":
+            rows.sort(key=lambda r: (r["date"], r["name_key"]))
+        elif sort == "amount":
+            rows.sort(key=lambda r: -r["amount"])
+        elif sort == "fund":
+            rows.sort(key=lambda r: (r["fund"] or "", r["name_key"]))
+        else:
+            sort = "name"
+            rows.sort(key=lambda r: (r["name_key"] or "~", r["date"]))
+
+        # a name (by its normalised key) that appears on more than one row is
+        # flagged for every row it appears on, so each occurrence is visible
+        # regardless of where the sort put it.
+        from collections import Counter
+        key_counts = Counter(r["name_key"] for r in rows if r["name_key"])
+        for r in rows:
+            r["is_duplicate_name"] = bool(r["name_key"]) and key_counts[r["name_key"]] > 1
+
+        total = sum((r["amount"] for r in rows), Decimal(0))
+        duplicate_names = sum(1 for c in key_counts.values() if c > 1)
+
+        return render(request, self.template_name, {
+            "rows": rows, "sort": sort, "total": total,
+            "count": len(rows), "duplicate_names": duplicate_names,
+        })
+
+
 class ReviewQueueView(ReadAccessMixin, ListView):
     template_name = "giving/queue.html"
     context_object_name = "items"

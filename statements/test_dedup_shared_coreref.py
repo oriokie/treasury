@@ -177,3 +177,78 @@ class LedgerImportTests(TestCase):
         self.assertEqual([o for _, o in second],
                          ["duplicate", "duplicate", "duplicate"])
         self.assertEqual(Transaction.objects.count(), before)
+
+
+class FalsePositiveReceiptTests(TestCase):
+    """A paybill narration's typed reference ("expenses12", "Development200")
+    can accidentally be 10 characters with both a letter and a digit — shaped
+    exactly like a genuine M-Pesa receipt. Two DIFFERENT payments that happen to
+    share the same typed reference (the same payer, paying twice for the same
+    fund) must not collide: their GENUINE identifiers — different Channel REF,
+    different Core Ref, different date, different amount — are what make them
+    distinct, and the false "receipt" must not override that.
+
+    Real example: JOSEPH NGWATO paid 200 on 11 Jul (Channel REF UGBGTBHRZS) and
+    250 on 13 Jul (Channel REF UGDGTBSPCN), both referencing "expenses12". The
+    second payment was silently dropped as a "duplicate" of the first.
+    """
+    NARR_1 = ("UGBGTBHRZS~441211# expenses12~254795422548~MPESAC2B_400222~"
+             "JOSEPH NGWATO  ")
+    NARR_2 = ("UGDGTBSPCN~441211# expenses12~254795422548~MPESAC2B_400222~"
+             "JOSEPH NGWATO  ")
+
+    def test_parser_does_not_extract_the_reference_as_a_receipt(self):
+        from statements.services.parser import parse_narration
+        r1 = parse_narration(self.NARR_1)
+        r2 = parse_narration(self.NARR_2)
+        # the reference text itself must never be returned as the receipt
+        self.assertNotEqual(r1["receipt"].upper(), "EXPENSES12")
+        self.assertNotEqual(r2["receipt"].upper(), "EXPENSES12")
+        # and the two genuinely different payments get different receipts
+        self.assertNotEqual(r1["receipt"], r2["receipt"])
+        self.assertEqual(r1["receipt"], "UGBGTBHRZS")
+        self.assertEqual(r2["receipt"], "UGDGTBSPCN")
+        # the reference itself is still extracted correctly
+        self.assertEqual(r1["reference"].strip(), "expenses12")
+
+    def test_genuine_receipt_inside_the_reference_free_segment_still_works(self):
+        """The masking must be narrow: it must not break the OTHER narration
+        shape, where the whole second segment (no '#') legitimately contains
+        the real receipt (the SFI40 M-Pesa sweep case)."""
+        from statements.services.parser import parse_narration
+        r = parse_narration(
+            "558357:MBANKING~UATKR5A7M8 SDAKAHAWAW 25471****36~E CHANNELS~ENOV3")
+        self.assertEqual(r["receipt"], "UATKR5A7M8")
+
+    def test_tithe_reference_still_extracts_the_real_receipt(self):
+        from statements.services.parser import parse_narration
+        r = parse_narration(
+            "UER2Q5NF2W~441211#tithe~254790301470~MPESAC2B_400222~KEVIN OGEGA")
+        self.assertEqual(r["receipt"], "UER2Q5NF2W")
+        self.assertEqual(r["reference"], "tithe")
+
+    def test_two_distinct_payments_both_import(self):
+        from statements.services.ingest import ingest_event
+        from statements.services.parser import parse_narration
+        r1 = parse_narration(self.NARR_1)
+        r2 = parse_narration(self.NARR_2)
+        account = BankAccount.objects.create(name="M", is_default=True, active=True)
+
+        t1, o1 = ingest_event(
+            date=dt.date(2026, 7, 11), amount=Decimal("200"),
+            direction=Transaction.Direction.CREDIT, reference=r1["reference"],
+            phone=r1["phone"], name=r1["name"], raw_narration=self.NARR_1,
+            core_ref="CB0749194260711", bank_receipt=r1["receipt"],
+            mpesa_ref="UGBGTBHRZS", bank_account=account)
+        t2, o2 = ingest_event(
+            date=dt.date(2026, 7, 13), amount=Decimal("250"),
+            direction=Transaction.Direction.CREDIT, reference=r2["reference"],
+            phone=r2["phone"], name=r2["name"], raw_narration=self.NARR_2,
+            core_ref="CB1118627260713", bank_receipt=r2["receipt"],
+            mpesa_ref="UGDGTBSPCN", bank_account=account)
+
+        self.assertEqual(o1, "created")
+        self.assertEqual(o2, "created",
+                         "the second, genuinely different payment was dropped "
+                         "as a false duplicate of the first")
+        self.assertEqual(Transaction.objects.count(), 2)

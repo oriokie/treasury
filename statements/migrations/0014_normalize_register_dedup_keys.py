@@ -12,14 +12,36 @@ This migration recomputes each line's key from its own stored fields using the
 current formula, so the register self-heals: after it runs, a re-import matches
 on the current key directly. `import_file` also checks the legacy form as a
 belt-and-braces for any register that has not run this yet.
+
+**Written to survive a real production table, not just a demo-sized one.**
+The first version of this migration ran inside ONE uncommitted transaction with
+no progress output and two full-table passes per account — on a production
+MySQL table with years of history, that is indistinguishable from "stuck" even
+when it is technically still working, and a single giant transaction risks long
+lock waits against any concurrent write. This version:
+  - is NOT wrapped in one transaction (`atomic = False`); each small batch
+    commits on its own, so progress is real and a kill-and-restart loses at
+    most one batch, not the whole run;
+  - fetches only the columns it needs (`.only(...)`), not full rows;
+  - commits in small batches (500 rows) with a small `bulk_update` batch_size,
+    so no single UPDATE statement is enormous;
+  - prints progress every batch, so it is visible rather than silent;
+  - is idempotent and resumable: a row whose key is already current is skipped
+    with no query, so re-running after an interruption is cheap.
 """
 import re
 from decimal import Decimal
 
-from django.db import migrations
+from django.db import migrations, transaction
 
 
 _MPESA_RECEIPT_RE = re.compile(r"^(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{10}$")
+
+# how many lines to read, compute and commit as one unit. Small enough that a
+# single UPDATE statement stays modest and a lock is held only briefly; large
+# enough that a table of tens of thousands of rows finishes in a reasonable
+# number of round trips.
+BATCH = 500
 
 
 def _is_mpesa_receipt(v):
@@ -53,37 +75,66 @@ def _current_key(line):
 
 def forwards(apps, schema_editor):
     StatementLine = apps.get_model("statements", "StatementLine")
-    # normalise per account, tracking keys already taken so a rewrite never
-    # collides with an existing row (account, dedup_key is UNIQUE). A line whose
-    # normalised key is already taken by another row is a genuine duplicate that
-    # the old bare-reference key had merged/aliased — leave it on its old key
-    # rather than crash; it will simply not re-match, and a treasurer's recheck
-    # surfaces it. In practice the only collisions are lines that were already
-    # the same movement.
-    accounts = StatementLine.objects.values_list("account_id", flat=True).distinct()
-    for account_id in accounts:
+    db_alias = schema_editor.connection.alias
+    fields = ("id", "account_id", "date", "credit", "debit", "receipt",
+             "mpesa_ref", "core_ref", "raw_narration", "dedup_key")
+
+    accounts = list(
+        StatementLine.objects.using(db_alias)
+        .order_by("account_id").values_list("account_id", flat=True).distinct())
+    total_accounts = len(accounts)
+    print(f"\n  normalize_register_dedup_keys: {total_accounts} account(s) to check")
+
+    grand_updated = 0
+    for a_i, account_id in enumerate(accounts, start=1):
+        # keys already in use for THIS account, so a rewrite never collides with
+        # an existing row ((account, dedup_key) is UNIQUE). Only the key column
+        # is fetched — this is one lightweight query, not a full row scan.
         taken = set(
-            StatementLine.objects.filter(account_id=account_id)
+            StatementLine.objects.using(db_alias)
+            .filter(account_id=account_id)
             .values_list("dedup_key", flat=True))
-        to_update = []
-        lines = (StatementLine.objects.filter(account_id=account_id)
-                 .order_by("id").iterator(chunk_size=1000))
-        for line in lines:
+
+        qs = (StatementLine.objects.using(db_alias)
+              .filter(account_id=account_id)
+              .only(*fields).order_by("id"))
+
+        batch, account_updated, account_total = [], 0, 0
+        for line in qs.iterator(chunk_size=BATCH):
+            account_total += 1
             new_key = _current_key(line)
             if new_key == line.dedup_key:
-                continue
+                continue                       # already current — no write needed
             if new_key in taken:
-                # would collide — leave this line's key as-is
+                # a genuine duplicate the OLD key had merged — leave it on its
+                # old key rather than collide; a treasurer's recheck surfaces it.
                 continue
             taken.discard(line.dedup_key)
             taken.add(new_key)
             line.dedup_key = new_key
-            to_update.append(line)
-            if len(to_update) >= 1000:
-                StatementLine.objects.bulk_update(to_update, ["dedup_key"])
-                to_update = []
-        if to_update:
-            StatementLine.objects.bulk_update(to_update, ["dedup_key"])
+            batch.append(line)
+            if len(batch) >= BATCH:
+                account_updated += _flush(StatementLine, db_alias, batch)
+                batch = []
+        if batch:
+            account_updated += _flush(StatementLine, db_alias, batch)
+
+        grand_updated += account_updated
+        print(f"  account {account_id}: {account_total} line(s) checked, "
+              f"{account_updated} rewritten "
+              f"[{a_i}/{total_accounts} accounts done]")
+
+    print(f"  normalize_register_dedup_keys: done, {grand_updated} line(s) "
+         f"rewritten in total\n")
+
+
+def _flush(StatementLine, db_alias, batch):
+    """Commit one small batch on its own — never inside one migration-wide
+    transaction — so progress is real and a kill loses at most this batch."""
+    with transaction.atomic(using=db_alias):
+        StatementLine.objects.using(db_alias).bulk_update(
+            batch, ["dedup_key"], batch_size=200)
+    return len(batch)
 
 
 def backwards(apps, schema_editor):
@@ -93,5 +144,9 @@ def backwards(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    # NOT wrapped in one transaction — see the module docstring. Each batch in
+    # forwards() commits itself via _flush(), which is what makes this safe to
+    # interrupt and resume on a large production table.
+    atomic = False
     dependencies = [("statements", "0013_reversals_skipped")]
     operations = [migrations.RunPython(forwards, backwards)]

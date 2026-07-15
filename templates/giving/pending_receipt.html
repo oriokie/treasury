@@ -1,0 +1,60 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Pending receipt · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Pending receipt</h1>
+    <div class="ws-sub">Bank credits into a Trust or Local Church Budget fund with no formal receipt issued yet</div></div>
+  <div class="ws-actions">
+    <a class="btn btn-ghost btn-sm" href="{% url 'transaction_list' %}?export=pending-receipt">⤓ Excel</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'transaction_list' %}?export=pending-receipt-pdf">⤓ PDF</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'transaction_list' %}">← Back to ledger</a>
+  </div>
+</div>
+
+<div class="ws-summary">
+  <div class="ws-metric is-primary"><span class="wm-l">Items</span><span class="wm-v">{{ count|intcomma }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">KES</span>{{ total|floatformat:0|intcomma }}</span></div>
+  {% if duplicate_names %}<div class="ws-metric is-warn"><span class="wm-l">Names appearing more than once</span><span class="wm-v">{{ duplicate_names }}</span></div>{% endif %}
+</div>
+
+{% if duplicate_names %}
+<div class="alert alert-info u-mb no-print">{{ duplicate_names }} name{{ duplicate_names|pluralize }} appear{{ duplicate_names|pluralize:"s," }} more than once below, highlighted in <span class="prv-dupe-swatch">amber</span> — the same giver more than once, or one name recorded two slightly different ways. Worth a look before receipting.</div>
+{% endif %}
+
+<nav class="tx-quicktabs no-print" aria-label="Sort">
+  <a href="?sort=name" class="tx-qtab{% if sort == 'name' %} active{% endif %}">Name</a>
+  <a href="?sort=date" class="tx-qtab{% if sort == 'date' %} active{% endif %}">Date</a>
+  <a href="?sort=amount" class="tx-qtab{% if sort == 'amount' %} active{% endif %}">Amount</a>
+  <a href="?sort=fund" class="tx-qtab{% if sort == 'fund' %} active{% endif %}">Fund</a>
+</nav>
+
+<div class="ws-table sticky">
+<table class="ledger">
+<thead><tr><th>Name</th><th>Phone</th><th>Date</th><th>Fund</th><th>Reference</th><th>M-Pesa ref</th><th class="num">Amount</th></tr></thead>
+<tbody>
+{% for r in rows %}
+<tr class="{% if r.is_duplicate_name %}prv-dupe-row{% endif %}">
+  <td>{{ r.name|default:"—" }}{% if r.is_duplicate_name %} <span class="prv-dupe-badge" title="This name appears on more than one pending-receipt row">⚠ repeats</span>{% endif %}</td>
+  <td class="mono u-xs">{{ r.phone|default:"—" }}</td>
+  <td>{{ r.date|date:"d M Y" }}</td>
+  <td class="u-xs">{{ r.fund }}</td>
+  <td class="mono u-xs">{{ r.reference|default:"—" }}</td>
+  <td class="mono u-xs">{{ r.mpesa_ref|default:"—" }}</td>
+  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+</tr>
+{% empty %}
+<tr><td colspan="7" class="empty">Nothing pending receipt right now.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<style>
+.prv-dupe-row{background:rgba(176,141,87,.12)}
+.prv-dupe-row:hover{background:rgba(176,141,87,.2)}
+.prv-dupe-badge{display:inline-block;font-size:.72rem;font-weight:600;color:#8a6a2f;
+  background:rgba(176,141,87,.22);border-radius:999px;padding:.05rem .5rem;margin-left:.35rem;white-space:nowrap}
+.prv-dupe-swatch{display:inline-block;width:.75rem;height:.75rem;border-radius:3px;
+  background:rgba(176,141,87,.45);vertical-align:middle}
+</style>
+{% endblock %}
