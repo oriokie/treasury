@@ -6,6 +6,7 @@ file import can never drift apart in how they recognise a donation."""
 from decimal import Decimal
 
 from django.db import transaction as db_tx
+from django.db.models import Q
 
 from giving.models import Transaction, SplitFund
 from giving.services.allocation import allocate
@@ -34,13 +35,32 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
     bank_receipt = (bank_receipt or "").strip().upper() or None
     mpesa_ref = (mpesa_ref or "").strip().upper() or None
 
+    # A genuine 10-char M-Pesa receipt is unique PER PAYMENT; a bank
+    # channel/core reference can be shared across a batch of distinct payments
+    # (see statements.services.importer for the worked example). So a unique,
+    # unseen bank_receipt is a new payment even under a shared core_ref/mpesa_ref.
+    from statements.services.register import _is_mpesa_receipt
+    receipt_is_unique = (
+        _is_mpesa_receipt(bank_receipt)
+        and not Transaction.objects.filter(bank_receipt=bank_receipt).exists())
+
     # database-level dedup (the bank re-delivers until it gets a 2XX)
-    if core_ref and Transaction.objects.filter(core_ref=core_ref).exists():
-        return None, "duplicate"
     if bank_receipt and Transaction.objects.filter(bank_receipt=bank_receipt).exists():
         return None, "duplicate"
-    if mpesa_ref and Transaction.objects.filter(mpesa_ref=mpesa_ref).exists():
+    if (not receipt_is_unique) and core_ref and \
+            Transaction.objects.filter(core_ref=core_ref).exists():
         return None, "duplicate"
+    if (not receipt_is_unique) and mpesa_ref and \
+            Transaction.objects.filter(mpesa_ref=mpesa_ref).exists():
+        return None, "duplicate"
+
+    # avoid the core_ref UNIQUE collision when a batch shares one core_ref
+    if core_ref and Transaction.objects.filter(
+            Q(core_ref=core_ref) | Q(core_ref__startswith=f"{core_ref}-S")).exists():
+        n = 1
+        while Transaction.objects.filter(core_ref=f"{core_ref}-S{n}").exists():
+            n += 1
+        core_ref = f"{core_ref}-S{n}"
 
     is_credit = direction == Transaction.Direction.CREDIT
     member = dept = dev_group = split_fund = None

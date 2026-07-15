@@ -265,6 +265,13 @@ class BenevolentEventType(models.Model):
         default=True,
         help_text="Whether this event can be claimed for a registered dependant "
                   "rather than the member themselves.")
+    triggers_on_death = models.BooleanField(
+        default=False,
+        help_text="This is the event a death is claimed under. When a member or a "
+                  "registered dependant is recorded as deceased, the scheme can "
+                  "auto-open a draft case under this event type (see the module "
+                  "settings). Mark exactly one event type per scheme — the "
+                  "bereavement/funeral one.")
     requires_document = models.BooleanField(
         default=False,
         help_text="A supporting document (burial permit, medical report…) must be "
@@ -818,6 +825,28 @@ class SchemePolicy(models.Model):
         if event_type is None:
             return None
         return self.benefit_rules.filter(event_type=event_type, active=True).first()
+
+    def fixed_benefit_for(self, event_type):
+        """The benefit this policy FIXES for an event, if it fixes one — else None.
+
+        "Fixes" means the amount is a constitutional figure the treasurer must not
+        retype, not something derived from what a family claims or from the levy
+        pool. That is true under FIXED (one amount for every event) and SCHEDULE
+        (an amount per event type); it is deliberately NOT true under PERCENTAGE
+        (depends on the claimed cost), DISCRETIONARY (a cap, not a fixed figure),
+        POOLED or PER_MEMBER_MULTIPLE (the entitlement moves as levy money comes
+        in). Used to pre-fill and lock the claimed-amount field on the case form,
+        and to default the funding target. Reuses rule_for() so the schedule
+        override still wins over the policy default — no second calculation path.
+        """
+        mode = self.benefit_mode
+        rule = self.rule_for(event_type)
+        if mode == self.BenefitMode.FIXED:
+            return (rule.amount if (rule is not None and rule.amount)
+                    else self.benefit_amount) or None
+        if mode == self.BenefitMode.SCHEDULE:
+            return (rule.amount if rule is not None else None) or None
+        return None
 
 
 class SchemeBenefitRule(models.Model):

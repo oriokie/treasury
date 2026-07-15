@@ -3,7 +3,9 @@
 {% block content %}
 <div class="page-head"><div><h1>Benevolent cases</h1>
   <div class="sub">Every claim, its policy decision and what has been paid</div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a>
+  <a class="btn btn-ghost btn-sm" href="{% querystring export='xlsx' %}">⬇ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="{% querystring export='csv' %}">⬇ CSV</a></div></div>
 
 <form method="get" class="filter-bar no-print u-mb">
   <input class="field" name="q" value="{{ q }}" placeholder="Case no, member, beneficiary…" style="max-width:240px">

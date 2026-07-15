@@ -18,6 +18,7 @@
     <button type="button" class="tab active" data-tab="accounting">Accounting</button>
     <button type="button" class="tab" data-tab="notifications">Notifications</button>
     <button type="button" class="tab" data-tab="automation">Automation</button>
+    <button type="button" class="tab" data-tab="cases">Cases</button>
     <button type="button" class="tab" data-tab="allocation">Allocation</button>
     <button type="button" class="tab" data-tab="public">Public form</button>
     <button type="button" class="tab" data-tab="defaults">Defaults</button>
@@ -89,6 +90,25 @@
         Suspension and expulsion are deliberately <strong>never</strong> automated: removing someone from a welfare
         scheme is a decision a person should make and be answerable for. The policy still bars their claims; automation
         just declines to be the one who throws them out.</p>
+    </div></div>
+  </section>
+
+  <section class="tabpane" data-pane="cases">
+    <div class="card"><div class="hd">When a death is recorded</div><div class="bd">
+      <p class="help u-mt-0">A benevolent scheme exists <em>for</em> the death of a member or their family, so
+        the case a death entitles the family to can be opened the moment the death is recorded — pre-filled with the
+        event type, the beneficiary, the relationship and the policy's fixed benefit, and left as a draft for a
+        treasurer to review and submit. It is <strong>never</strong> auto-submitted or auto-paid.</p>
+      <div class="form-grid u-mt">
+      {% for f in form %}{% if f.name in 'auto_open_case_on_death case_beneficiary_default' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <p class="help u-mt">For a draft to open automatically, the scheme must have exactly one event type marked as
+        the one deaths are claimed under (edit an event type on the scheme to set this). If none is marked, a death is
+        still recorded and a note explains that no case was opened — nothing is guessed.</p>
     </div></div>
   </section>
 

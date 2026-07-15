@@ -20,21 +20,37 @@ from statements.models_register import (RegisterException, StatementLine,
 # Identity: what makes a bank line, and a transaction, the SAME thing
 # ---------------------------------------------------------------------------
 
+_MPESA_RECEIPT_RE = _re.compile(r"^(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{10}$")
+
+
+def _is_mpesa_receipt(v):
+    """A genuine 10-char M-Pesa receipt (letters AND digits) — the ONE handle on
+    a payment that is unique per transaction, unlike a bank channel/batch ref."""
+    return bool(v and _MPESA_RECEIPT_RE.match(v))
+
+
 def dedup_key(row):
     """The bank's own unique identifier for a line.
 
-    Precedence: M-Pesa receipt, then core banking reference, then the plain
-    receipt column. These are identifiers the BANK assigned; the church did not
-    choose them and cannot collide with them.
+    **Precedence puts the narration's M-Pesa receipt first.** A single bank
+    channel or core-banking reference can legitimately be shared across several
+    genuinely-distinct payments — a mobile-banking sweep that batches three
+    contributions carries ONE `Channel REF` / `Core Ref` for all three, while
+    each payment has its own unique 10-char M-Pesa receipt buried in the
+    narration (e.g. UATKR5A7M8, UATKR5A7N9, UATKR5AIDQ under one
+    SFI40DCBA1EA1F6DABA9). Keying on the channel/core ref first collapsed those
+    three real payments into one and silently dropped two — money the register
+    denied ever arrived. So when the parsed narration receipt IS a genuine
+    M-Pesa receipt, it is the key; the channel and core refs are the fallback
+    for lines that have no such receipt (cheques, bank charges).
 
     **A debit carries its direction in the key.** A bank reversing its own
     mistake issues the DEBIT under the SAME reference as the credit it is
     undoing — so keying purely on the reference deduplicated the reversal away
     as a "duplicate", losing the line entirely and leaving the register showing
-    money the bank had already taken back. Credit keys are deliberately
-    unchanged, so an existing register goes on deduplicating exactly as it did.
+    money the bank had already taken back.
 
-    A line with none of the three references — some banks emit a bare "monthly
+    A line with none of these references — some banks emit a bare "monthly
     charge" row with no reference at all — gets a synthetic key built from the
     date, signed amount and narration. That is weaker (two identical charges on
     one day would collapse into one), and it is why `import_file()` reports such
@@ -42,6 +58,13 @@ def dedup_key(row):
     believing it is being exact.
     """
     is_debit = bool(row.get("debit"))
+
+    # 1) the unique per-payment M-Pesa receipt from the narration wins outright
+    rcpt = (row.get("receipt") or "").strip().upper()
+    if _is_mpesa_receipt(rcpt):
+        return (f"{rcpt}|D" if is_debit else rcpt)[:80]
+
+    # 2) otherwise the bank's channel / core references, then the receipt column
     for key in ("mpesa_ref", "core_ref", "receipt"):
         v = (row.get(key) or "").strip().upper()
         if v:

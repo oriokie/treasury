@@ -355,6 +355,15 @@ class MembershipListView(BenevolentViewMixin, View):
             qs = qs.filter(scheme_id=f_scheme)
         if f_status:
             qs = qs.filter(status=f_status)
+        export = request.GET.get("export")
+        if export in ("xlsx", "csv"):
+            from benevolent.exports import export_response, membership_rows
+            from core.models import SiteConfig
+            header, rows = membership_rows(qs, user=request.user)
+            return export_response(
+                export, filename="benevolent-members",
+                title="Benevolent — memberships", header=header, rows=rows,
+                church=SiteConfig.get().church_name)
         page = Paginator(qs, 50).get_page(request.GET.get("page"))
         return render(request, "benevolent/membership_list.html", {
             "page_obj": page, "memberships": page.object_list, "q": q,
@@ -471,6 +480,15 @@ class ContributionListView(BenevolentViewMixin, View):
         scheme = BenevolentScheme.objects.filter(pk=f_scheme).first() if f_scheme else None
         qs = contrib_svc.contributions_qs(scheme=scheme, start=start, end=end) \
             .select_related("scheme", "membership__member", "transaction")
+        export = request.GET.get("export")
+        if export in ("xlsx", "csv"):
+            from benevolent.exports import contribution_rows, export_response
+            from core.models import SiteConfig
+            header, rows = contribution_rows(qs, user=request.user)
+            return export_response(
+                export, filename="benevolent-contributions",
+                title="Benevolent — contributions", header=header, rows=rows,
+                church=SiteConfig.get().church_name)
         page = Paginator(qs, 50).get_page(request.GET.get("page"))
         this_year = dt.date.today().year
         earliest = (contrib_svc.contributions_qs()
@@ -541,6 +559,15 @@ class CaseListView(BenevolentViewMixin, View):
             qs = qs.filter(scheme_id=f_scheme)
         if f_status:
             qs = qs.filter(status=f_status)
+        export = request.GET.get("export")
+        if export in ("xlsx", "csv"):
+            from benevolent.exports import case_rows, export_response
+            from core.models import SiteConfig
+            header, rows = case_rows(qs, user=request.user)
+            return export_response(
+                export, filename="benevolent-cases",
+                title="Benevolent — cases", header=header, rows=rows,
+                church=SiteConfig.get().church_name)
         page = Paginator(qs, 50).get_page(request.GET.get("page"))
         return render(request, "benevolent/case_list.html", {
             "page_obj": page, "cases": page.object_list, "q": q,
@@ -553,8 +580,24 @@ class CaseListView(BenevolentViewMixin, View):
 class CaseCreateView(BenevolentCaseMixin, View):
     def get(self, request, pk):
         scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        # A "raise case" link from a death record passes ?dependant= or
+        # ?membership=; either way the form opens pre-filled with everything the
+        # scheme already knows, so nothing correct has to be retyped.
+        membership = dependant = None
+        dep_id = request.GET.get("dependant")
+        mem_id = request.GET.get("membership")
+        if dep_id:
+            dependant = SchemeDependant.objects.filter(
+                pk=dep_id, membership__scheme=scheme).select_related(
+                "membership__member").first()
+        if mem_id and not dependant:
+            membership = SchemeMembership.objects.filter(
+                pk=mem_id, scheme=scheme).select_related("member").first()
+        initial = case_svc.derive_case_defaults(
+            scheme, membership=membership, dependant=dependant)
         return render(request, "benevolent/case_form.html", {
-            "scheme": scheme, "form": CaseForm(scheme=scheme),
+            "scheme": scheme,
+            "form": CaseForm(scheme=scheme, initial=initial),
             "policy": scheme.current_policy})
 
     def post(self, request, pk):
@@ -575,6 +618,11 @@ class CaseCreateView(BenevolentCaseMixin, View):
                 for msg in e.messages:
                     form.add_error(None, msg)
             else:
+                # persist the derived relationship (create_case doesn't take it)
+                rel = d.get("beneficiary_relationship")
+                if rel and not case.beneficiary_relationship:
+                    case.beneficiary_relationship = rel
+                    case.save(update_fields=["beneficiary_relationship"])
                 messages.success(request, f"Case {case.number} drafted.")
                 return redirect("benevolent_case_detail", pk=case.pk)
         return render(request, "benevolent/case_form.html", {

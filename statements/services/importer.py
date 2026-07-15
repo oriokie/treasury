@@ -7,6 +7,7 @@ import datetime as dt
 from decimal import Decimal
 
 from django.db import transaction as db_tx
+from django.db.models import Q
 
 from core.utils import sabbath_week_of
 from departments.models import Department, DevelopmentGroup
@@ -193,6 +194,13 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
 
     imported = dup = queued = failed = reversals_skipped = 0
     row_errors = []
+    # core_ref is UNIQUE on Transaction, but a bank can share one core_ref across
+    # several distinct receipts in one batch (see the dedup note below). These
+    # track the bare core_refs already used within THIS file so later rows in the
+    # same batch get a "-S" suffix instead of colliding.
+    from collections import defaultdict
+    _core_refs_this_file = set()
+    _core_ref_seq = defaultdict(lambda: 1)
     from core.models import SiteConfig
     from statements.models import BankAccount
 
@@ -228,20 +236,53 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
         core_ref = (row["core_ref"] or "").strip() or None
         receipt = (row["receipt"] or "").strip() or None
 
+        # A genuine 10-char M-Pesa receipt from the narration is unique PER
+        # PAYMENT. A bank channel/core reference is not always: a mobile-banking
+        # sweep can batch several distinct contributions under ONE Core Ref and
+        # ONE Channel REF (e.g. three payments of 10, 11 and 9 all stamped
+        # S90288428260130 / SFI40DCBA1EA1F6DABA9, distinguished only by their
+        # receipts UATKR5A7M8 / UATKR5A7N9 / UATKR5AIDQ). So when this row's
+        # receipt is a real M-Pesa receipt we have NOT seen, it is a new payment
+        # — a shared core_ref/mpesa_ref must not dedup it away and lose the money.
+        from statements.services.register import _is_mpesa_receipt
+        _up = lambda v: (v or "").strip().upper() or None
+        receipt_is_unique = (
+            _is_mpesa_receipt(_up(receipt))
+            and not Transaction.objects.filter(bank_receipt=_up(receipt)).exists())
+
         # database-level dedup. Check core_ref and bank_receipt (both unique),
         # and also mpesa_ref — the same M-Pesa receipt must never appear twice
         # even if one row carries a core_ref and another doesn't (e.g. a STKPUSH
-        # placeholder vs the real bank reference for the same payment).
-        if core_ref and Transaction.objects.filter(core_ref=core_ref).exists():
+        # placeholder vs the real bank reference for the same payment). But a
+        # unique, unseen narration receipt trumps a shared core_ref/mpesa_ref.
+        if receipt and Transaction.objects.filter(bank_receipt=_up(receipt)).exists():
             dup += 1
             continue
-        if receipt and Transaction.objects.filter(bank_receipt=receipt).exists():
+        if (not receipt_is_unique) and core_ref and \
+                Transaction.objects.filter(core_ref=core_ref).exists():
             dup += 1
             continue
         mref_dedup = (row.get("mpesa_ref") or "").strip().upper() or None
-        if mref_dedup and Transaction.objects.filter(mpesa_ref=mref_dedup).exists():
+        if (not receipt_is_unique) and mref_dedup and \
+                Transaction.objects.filter(mpesa_ref=mref_dedup).exists():
             dup += 1
             continue
+
+        # core_ref is UNIQUE on Transaction. If a batch shares one core_ref
+        # across several unique receipts, only the first row may store the bare
+        # value; the rest must not collide. The unique bank_receipt still
+        # identifies each payment, and _txn_keys() still matches the register on
+        # the shared core_ref via the "-S" convention. Both this-file and
+        # already-imported collisions are covered.
+        if core_ref and (
+                core_ref in _core_refs_this_file
+                or Transaction.objects.filter(
+                    Q(core_ref=core_ref) | Q(core_ref__startswith=f"{core_ref}-S")
+                ).exists()):
+            core_ref = f"{core_ref}-S{_core_ref_seq[core_ref]}"
+            _core_ref_seq[row['core_ref'].strip().upper()] += 1
+        elif core_ref:
+            _core_refs_this_file.add(core_ref)
 
         try:
             with db_tx.atomic():

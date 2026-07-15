@@ -47,6 +47,29 @@ def log(membership, kind, summary, *, user=None, on=None, reason="",
         automated=automated, actor=user)
 
 
+def _maybe_open_death_case(*, scheme, event_date, membership=None,
+                           dependant=None, user=None):
+    """Open a draft case for a recorded death, if the module settings say to.
+
+    Both this module's death-recording functions (record_death,
+    record_dependant_death) go through here. The setting's OFF value skips it
+    entirely; ON_RECORD and ALWAYS both open one from this path (the register IS
+    the record). ALWAYS additionally has a post_save signal for deaths recorded
+    OUTSIDE this service — that signal calls the same case service, and the case
+    service is idempotent, so a death recorded through the register never opens
+    two cases.
+    """
+    from benevolent.models import BenevolentSettings
+    from benevolent.services import cases as cases_svc
+
+    mode = BenevolentSettings.get().auto_open_case_on_death
+    if mode == BenevolentSettings.DeathCaseMode.OFF:
+        return None
+    return cases_svc.open_case_for_death(
+        scheme=scheme, membership=membership, dependant=dependant,
+        event_date=event_date, user=user)
+
+
 # NOTE: the notification this module sends to a MEMBER is
 # benevolent.services.notify.send() (Phase 7) — a templated message actually
 # delivered to the member's phone/email, not the staff in-app alert
@@ -328,6 +351,9 @@ def record_death(membership, *, died_on, user=None, reason=""):
             f"Transfer it to them to keep the joining date of "
             f"{membership.joined_on:%d %b %Y}.",
             user=user, on=died_on)
+
+    _maybe_open_death_case(scheme=membership.scheme, membership=membership,
+                           event_date=died_on, user=user)
     return membership
 
 
@@ -676,6 +702,8 @@ def record_dependant_death(dependant, *, died_on, user=None, reason=""):
     log(dependant.membership, MembershipEvent.Kind.DEPENDANT_DECEASED,
         f"{dependant.display_name} recorded as deceased on {died_on:%d %b %Y}.",
         user=user, on=died_on, reason=reason)
+    _maybe_open_death_case(scheme=dependant.membership.scheme,
+                           dependant=dependant, event_date=died_on, user=user)
     return dependant
 
 

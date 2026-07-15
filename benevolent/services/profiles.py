@@ -105,15 +105,31 @@ def apply_profile(profile, scheme, *, effective_from=None, user=None):
                    + (f"\n\n{profile.description}" if profile.description else ""))
     draft.save()
 
+    death_marked = scheme.event_types.filter(triggers_on_death=True).exists()
     for line in (profile.benefit_lines or []):
         code = (line.get("code") or line.get("event") or "").strip().upper().replace("-", "_")
         name = line.get("event") or code.replace("_", " ").title()
         if not code:
             continue
-        event, _ = BenevolentEventType.objects.get_or_create(
+        # Mark the first bereavement/funeral event as the one deaths are claimed
+        # under, so a scheme built from a profile can auto-open death cases with
+        # no extra setup. Only the FIRST — a schedule may carry several
+        # bereavement tiers (member, spouse, child), and exactly one should be
+        # the trigger; a treasurer can move the mark afterwards.
+        looks_like_death = any(
+            w in code.lower() or w in name.lower()
+            for w in ("death", "bereav", "funeral", "burial"))
+        mark_this = looks_like_death and not death_marked
+        event, created = BenevolentEventType.objects.get_or_create(
             scheme=scheme, code=code[:20],
             defaults={"name": name[:80],
-                      "requires_document": bool(line.get("requires_document"))})
+                      "requires_document": bool(line.get("requires_document")),
+                      "triggers_on_death": mark_this})
+        if mark_this:
+            death_marked = True
+            if not created and not event.triggers_on_death:
+                event.triggers_on_death = True
+                event.save(update_fields=["triggers_on_death"])
         SchemeBenefitRule.objects.get_or_create(
             policy=draft, event_type=event,
             defaults={

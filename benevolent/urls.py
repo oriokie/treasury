@@ -40,6 +40,8 @@ urlpatterns = [
          name="benevolent_member_search"),
     path("search/memberships/", views_search.MembershipSearchView.as_view(),
          name="benevolent_membership_search"),
+    path("search/dependants/", views_search.DependantSearchView.as_view(),
+         name="benevolent_dependant_search"),
     path("schemes/<int:pk>/policy/new/", views.PolicyFormView.as_view(),
          name="benevolent_policy_new"),
     path("schemes/<int:pk>/policy/<int:policy_id>/", views.PolicyFormView.as_view(),

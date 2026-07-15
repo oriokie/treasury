@@ -147,8 +147,15 @@
     <form method="post" action="{% url 'benevolent_household' membership.id %}" class="u-mt-sm">{% csrf_token %}
       <input type="hidden" name="edit" value="{{ h.dependant.id }}">
       <div class="form-grid">
-        <div class="form-row"><label>Name</label>
-          <input class="field" type="text" name="name" value="{{ h.dependant.name }}"></div>
+        <div class="form-row"><label>Church member</label>
+          <select class="field field--select dep-member-link" name="member" id="dep-member-{{ h.dependant.id }}">
+            <option value="">— not on the church roll —</option>
+            {% if h.dependant.member_id %}<option value="{{ h.dependant.member_id }}" selected>{{ h.dependant.member.name }}</option>{% endif %}
+          </select>
+          <div class="help">Link them where the church knows them, so their details live in one place. Start typing to search.</div></div>
+        <div class="form-row"><label>…or a name</label>
+          <input class="field" type="text" name="name" value="{{ h.dependant.name }}">
+          <div class="help">Only needed for someone not on the roll (a young child, a parent in the village).</div></div>
         <div class="form-row"><label>Phone</label>
           <input class="field" type="text" name="phone" value="{{ h.dependant.phone }}"></div>
         <div class="form-row"><label>Relationship</label>
@@ -371,6 +378,17 @@
       renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
     });
   }
+});
+// Each dependant's inline "Edit details" form now carries a member link so a
+// dependant first captured as a plain name can be upgraded to a linked church
+// member (and so editing a LINKED dependant no longer silently unlinks them).
+document.querySelectorAll(".dep-member-link").forEach(function(sel){
+  MemberSearch.enhance({
+    selectId: sel.id, searchUrl: "{% url 'benevolent_member_search' %}",
+    placeholder: "Start typing a name or phone…",
+    renderLabel: function(r){ return r.name; },
+    renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+  });
 });
 </script>
 {% endblock %}

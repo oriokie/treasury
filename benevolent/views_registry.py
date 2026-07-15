@@ -15,7 +15,7 @@ from django.views import View
 from core.permissions import (BenevolentApproveMixin, BenevolentRegistrationMixin,
                               BenevolentViewMixin)
 
-from .forms import (ExemptionForm, HouseholdMemberForm, LifecycleForm,
+from .forms import (DependantEditForm, ExemptionForm, HouseholdMemberForm, LifecycleForm,
                     RegistrationForm, TransferForm)
 from .models import (BenevolentScheme, MembershipEvent, MembershipExemption,
                      RegistrationType, SchemeDependant, SchemeMembership, Standing)
@@ -34,6 +34,15 @@ class RegistryView(BenevolentViewMixin, View):
             standing=request.GET.get("standing") or None,
             status=request.GET.get("status") or None,
             q=(request.GET.get("q") or "").strip())
+        export = request.GET.get("export")
+        if export in ("xlsx", "csv"):
+            from benevolent.exports import export_response, registry_rows
+            from core.models import SiteConfig
+            header, rows = registry_rows(qs, user=request.user)
+            return export_response(
+                export, filename="benevolent-registry",
+                title="Benevolent — register", header=header, rows=rows,
+                church=SiteConfig.get().church_name)
         page = Paginator(qs, 50).get_page(request.GET.get("page"))
         return render(request, "benevolent/registry.html", {
             "page_obj": page, "memberships": page.object_list,
@@ -192,7 +201,7 @@ class HouseholdView(BenevolentRegistrationMixin, View):
         edit_id = request.POST.get("edit")
         if edit_id:
             dep = get_object_or_404(m.dependants, pk=edit_id)
-            form = HouseholdMemberForm(request.POST)
+            form = DependantEditForm(request.POST)
             if not form.is_valid():
                 messages.error(request, "; ".join(
                     e for errs in form.errors.values() for e in errs))

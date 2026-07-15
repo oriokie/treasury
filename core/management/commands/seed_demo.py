@@ -690,7 +690,8 @@ class Command(BaseCommand):
                            ("Bereavement — parent", "BER_PARENT"),
                            ("Hospitalisation", "HOSPITAL")]:
             events[code] = BenevolentEventType.objects.create(
-                scheme=scheme, name=name, code=code, requires_document=False)
+                scheme=scheme, name=name, code=code, requires_document=False,
+                triggers_on_death=(code == "BER_MEMBER"))
 
         policy = SchemePolicy.objects.create(
             scheme=scheme, effective_from=dt.date(sab.year, 1, 1),

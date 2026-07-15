@@ -2615,3 +2615,126 @@ derived**, since there is no prior balance to compare against. If a statement
 opened on a debit, it would still be missed. In practice a statement's first row is
 a brought-forward or a credit, and the reconciliation check would immediately show
 the discrepancy. *Priority: Low — detectable, and the balance check surfaces it.*
+
+---
+
+## 81. Round 9 — reported issues and one architectural rethink — NEW
+
+Nine items reported from live use of the benevolent module. Item 1 is not a bug
+but a rethink of case creation; items 6/7/8 are one concept (an obligations
+ledger) approached from three angles. Being packaged and shipped one item at a
+time this round, not held to the end.
+
+**81d. RESOLVED — the merge crash, and the silent orphaning behind it.**
+`ProtectedError at /members/duplicates/merge-all/`. Root cause: `merge_members`
+repointed exactly one of the eleven relations pointing at Member (Transaction).
+Two of the other ten are PROTECT (SchemeMembership, Pledge) — those raised the
+500. Five are SET_NULL (Envelope, EnvelopeBatchRow, SchemeDependant,
+BenevolentApplication.matched_member, Lender) — those were the quieter and worse
+problem: a "successful" merge silently cut envelopes, loans, dependant links and
+applications loose from the person they belonged to. Three are CASCADE and folded
+by hand (alias, phone, duplicate flag).
+
+Rewritten to walk Django's relation graph: every FK/O2O is repointed
+automatically, so a relation added in future is handled without anyone
+remembering to. Where repointing would breach a per-member uniqueness rule — both
+records registered in the *same* scheme, `UniqueConstraint(scheme, member)` — the
+merge now refuses *before writing anything*, with a reason a treasurer can act on
+("Both records have a scheme membership for the same scheme … withdraw or transfer
+one first"). Membership in *different* schemes repoints cleanly. The bulk-merge
+run skips a conflicted pair and completes the rest rather than aborting. New:
+`members/services/matching.py::merge_conflicts` (read-only pre-flight) and
+`MemberMergeConflict`. Tests: `members/test_merge_round9.py` (9), including a
+relation-graph guard that fails the day a twelfth FK is added and forgotten.
+
+**81c. RESOLVED — the member list showed only the first 50.** "All members are
+not viewable" on `/benevolent/members/`. The view paginated correctly and passed
+`page_obj`, but `partials/pagination.html` gated its controls on `is_paginated` —
+a flag only Django's ListView sets. Eleven modules build their Paginator by hand,
+so on 26 pages the Prev/Next controls silently rendered nothing and everyone past
+member 50 was unreachable. The partial now derives visibility from `page_obj`
+itself (`num_pages > 1`), fixing all 26 at once and still honouring the flag where
+a ListView sets it. Tests: `benevolent/test_pagination_round9.py` (5).
+
+**81a. RESOLVED — case creation rethought.** A benevolent scheme exists FOR the
+death of a member or their family, so a recorded death now auto-opens a DRAFT
+case, pre-filled from what the scheme already knows: the event type (marked
+`triggers_on_death` on exactly one event type per scheme), the beneficiary, the
+relationship the database already holds, and the policy's fixed benefit as both
+claimed amount and funding target. It is only ever a draft — never auto-submitted
+or auto-paid. Both behaviours are settings, not hardcoded: `auto_open_case_on_death`
+(off / on-record / always, default on-record) and `case_beneficiary_default`
+(derive / blank, default derive). The case FORM was also reversed: dependant-first,
+with the member derived from the dependant, the relationship auto-filled, and the
+claimed amount pre-filled and LOCKED whenever the policy fixes it — so a treasurer
+never retypes a figure the constitution already sets. New:
+`SchemePolicy.fixed_benefit_for()`, `cases.derive_case_defaults()`,
+`cases.open_case_for_death()`, and the ALWAYS-mode death signals. Migration 0024.
+
+**81b. RESOLVED — dependants linked to their member, with typeahead.** The
+household add-form already had a member-link typeahead; the inline EDIT form did
+not, and worse, it posted through a form that required `registration_on` (which
+the edit form correctly omits) so editing a dependant silently did nothing — and
+`update_dependant` set `member=None` unconditionally, so a successful edit would
+have UNLINKED a linked dependant. Fixed with a dedicated `DependantEditForm` (no
+registered_on) and a member-link typeahead on every dependant edit row, so a
+dependant first captured as a plain name can be upgraded to a linked church
+member. The case form's beneficiary field is a new dependant+member typeahead
+(`DependantSearchView`, `benevolent_dependant_search`).
+
+**81e. RESOLVED — every benevolent table exports to Excel/CSV.** The register,
+memberships, contributions and cases had no download at all, while the rest of
+the app has long had xlsx/csv. Added ⬇ Excel / ⬇ CSV on all four list pages,
+reusing the one styled-workbook helper (`reports.exports.xlsx_response`) so the
+format matches everything else, and carrying the page's current filters into the
+download (a filtered view exports exactly what it shows). No figure is recomputed:
+amounts come straight off the same rows the page renders. New `benevolent/exports.py`
+(row builders + dispatch); `?export=xlsx|csv` on the four list views. Tests:
+`benevolent/test_exports_round9.py` (7).
+
+**81f–81i: pending** — see the round-9 working list (the obligations engine,
+items 6/7/8, and the gap/settings pass, item 9).
+
+**81j. NEW — standalone seed_benevolent_demo does not seed the ben_* role users.**
+`benevolent/test_seed_command.py::test_creates_the_seven_role_specific_demo_users`
+expects ben_admin/ben_approver/etc. from the standalone command, but those are
+created by `_seed_benevolent_phase9`, which the standalone command's cascade does
+not reach the same way the full seed_demo does. Pre-existing (unrelated to round
+9); the standalone command should call `_seed_benevolent_phase9()` at the end.
+*Priority: Low — demo tooling only, no production impact.* Case-creation
+rethink (auto-open on death, dependant-first, derived relationship, policy-fixed
+claim, funding-target default); dependant linking + typeahead on the case form;
+member list pagination; per-table Excel exports; registration/contribution
+auto-matching against obligations; overpayment and multi-case-arrears review
+queue with treasurer assignment; single-open-case auto-allocation; and a
+gap/settings pass. The identity-confidence guard (an obligation-amount match must
+NOT raise a name-only match past the auto-allocate threshold — a hundred members
+owe exactly 500) travels with the matching items.
+
+---
+
+## 82. Bank register / importer — shared bank reference across distinct payments — RESOLVED
+
+A production statement carried three genuinely-distinct M-Pesa payments (10, 11,
+9) all stamped with the SAME Core Ref (S90288428260130) AND the same Channel REF
+(SFI40DCBA1EA1F6DABA9). The only unique identifier was the 10-char M-Pesa receipt
+buried in each narration (UATKR5A7M8 / UATKR5A7N9 / UATKR5AIDQ). Dedup keyed on
+the shared Core Ref / Channel REF first, so two of the three real payments were
+silently dropped — money the register denied ever arrived.
+
+**Root cause.** A mobile-banking sweep can batch several payments under one bank
+reference. Both `Transaction.core_ref` and `bank_receipt` are `unique=True`, but
+`core_ref`/`mpesa_ref` are populated from bank columns that are NOT unique per
+payment, while the genuinely-unique narration receipt landed in `bank_receipt` —
+and dedup precedence checked the shared columns first.
+
+**Fix (three code paths, one principle).** A genuine 10-char M-Pesa receipt is
+unique per payment and now wins: `statements.services.register.dedup_key` keys on
+it first; `statements.services.importer.run_import` and
+`statements.services.ingest.ingest_event` treat a unique, unseen `bank_receipt`
+as a new payment even under a shared `core_ref`/`mpesa_ref`, and suffix the shared
+`core_ref` ("-S1", "-S2") to avoid the UNIQUE collision — the same "-S" convention
+`_txn_keys()` already follows, so register↔ledger reconciliation still ties out.
+Re-import remains idempotent (verified on the real 1,165-row file: first import
+adds all three, re-import adds zero). New helper `_is_mpesa_receipt`. Tests:
+`statements/test_dedup_shared_coreref.py` (5). No migration.

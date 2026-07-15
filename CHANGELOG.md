@@ -1,5 +1,142 @@
 # Changelog
 
+## v2.69.0 - The bank stamped three different payments with one reference
+
+A statement carried three real M-Pesa payments — 10, 11 and 9 shillings — that
+the bank had all stamped with the SAME Core Ref (S90288428260130) and the same
+Channel REF (SFI40DCBA1EA1F6DABA9). A mobile-banking sweep had batched them under
+one bank reference; the only thing telling them apart was the unique 10-char
+receipt inside each narration (UATKR5A7M8, UATKR5A7N9, UATKR5AIDQ).
+
+Deduplication keyed on that shared reference first, so it collapsed the three
+into one and dropped two — money the register then denied had ever arrived.
+
+### The unique receipt now wins
+
+A genuine 10-character M-Pesa receipt is unique per payment; a bank channel or
+core reference is not. So the narration receipt is now the identifier of record.
+Where a batch shares one Core Ref across distinct receipts, the shared value is
+stored bare once and suffixed ("-S1", "-S2") for the rest — the same convention
+split transactions already use, so the register still reconciles to the ledger.
+
+Fixed on all three paths that take money in: the bank register, the statement
+importer, and the live M-Pesa webhook. Re-importing the same file still adds
+nothing — verified on the real 1,165-row statement: the first import brings in all
+three payments, a second brings in none.
+# Changelog
+
+## v2.68.0 - Every benevolent table now downloads to Excel or CSV
+
+The register, the memberships, the contributions and the cases had no export at
+all — while the rest of the app has had spreadsheet downloads for a long time. So
+a welfare secretary who wanted the membership list in Excel had to retype it.
+
+Each list page now carries ⬇ Excel and ⬇ CSV buttons. The download respects
+whatever filters the page has applied — a members list filtered to ACTIVE, a
+contributions list for one period — so you get exactly what is on screen, not the
+whole table. The format is the same styled workbook (church header, title, frozen
+bold column headers) the reports already use, because it is the same helper.
+
+No financial figure is recomputed for the export: a contribution's amount is its
+transaction's amount, a case's figures are the case's own, straight off the rows
+the page shows — so an export can never disagree with the screen it came from.
+
+Round 9, item 5 of 9.
+
+# Changelog
+
+## v2.67.0 - A death opens the case; the case form stops asking what it already knows
+
+A benevolent scheme exists FOR the death of a member or their family. So the
+moment a death is recorded, the case that death entitles the family to is now
+already there — a draft, pre-filled with everything the scheme knows — instead of
+waiting for someone to remember to type it at the worst moment of a family's year.
+
+### Recording a death auto-opens a draft case
+
+Filled in from what the register already holds: the event type (the one marked as
+the bereavement event), the beneficiary, the relationship, and the policy's fixed
+benefit as both the claimed amount and the funding target. It is ALWAYS just a
+draft — never auto-submitted, never auto-paid; a treasurer still reviews and
+submits it. Two new settings, because how aggressively to do this is a church's
+own call: auto_open_case_on_death (off / on-record / always) and
+case_beneficiary_default (derive from who died / leave blank).
+
+### The case form was backwards; now it is dependant-first
+
+It used to ask for the member, then the dependant, then the relationship — three
+things the database already holds or can derive. Now you pick the beneficiary
+(a dependant, or the member) and the member fills in from their record, the
+relationship fills in from the register, and the claimed amount is pre-filled and
+LOCKED whenever the policy fixes it. Nothing correct has to be retyped, so nothing
+correct can be mistyped.
+
+### Two bugs fixed along the way
+
+Editing a dependant silently did nothing (the edit form required a field it never
+showed) and, had it worked, would have UNLINKED a linked dependant from their
+member record. Both fixed, and every dependant edit row now carries a member-link
+typeahead — so a dependant first captured as a plain name can be upgraded to a
+linked church member.
+
+Round 9, items 1 & 2 of 9. Migration 0024.
+
+# Changelog
+
+## v2.66.0 - The member list stopped at 50
+
+"All members are not viewable" on /benevolent/members/. The view paginated
+correctly and handed the template a `page_obj` — but `partials/pagination.html`
+only showed its Prev/Next controls when `is_paginated` was set, and that flag is
+set automatically only by Django's ListView.
+
+Eleven modules across the app build their Paginator by hand. On all 26 pages that
+include this partial, the controls rendered nothing — so a congregation larger
+than one page left every member past number 50 stranded, with no way to reach
+page 2.
+
+The partial now decides for itself: it shows the controls whenever `page_obj`
+reports more than one page. One template, 26 pages fixed, and the two ListViews
+that do set the flag are unaffected.
+
+Round 9, item 3 of 9.
+
+# Changelog
+
+## v2.65.0 - The member merge repointed 1 relation of 11
+
+`ProtectedError at /members/duplicates/merge-all/` was the visible half of a
+deeper bug. `merge_members` moved a member's Transactions onto the surviving
+record and nothing else — but eleven relations point at Member.
+
+### What actually happened at merge time
+
+- **Two PROTECT relations** (SchemeMembership, Pledge) blocked the delete — that
+  was your 500.
+- **Five SET_NULL relations** (Envelope, EnvelopeBatchRow, SchemeDependant,
+  BenevolentApplication, Lender) did NOT block anything. On the merges that did
+  go through, they were silently cut loose — a benevolent dependant, a loan, a
+  giving envelope, quietly detached from the person it belonged to.
+- Three CASCADE relations (alias, phone, duplicate flag) are folded by hand.
+
+### The fix walks the relation graph
+
+Every FK/O2O pointing at Member is now repointed automatically, so a relation
+added in a future release is carried without anyone remembering to update the
+merge. Where repointing would breach a per-member uniqueness rule — both people
+registered in the SAME scheme — the merge refuses BEFORE writing anything, with
+a reason: "Both records have a scheme membership for the same scheme … withdraw
+or transfer one first." Membership in different schemes repoints cleanly.
+
+Bulk merge now skips a conflicted pair and finishes the rest instead of the
+whole run dying on one bad pair. New `merge_conflicts()` pre-flight (read-only,
+safe to show on a confirmation page) and a `MemberMergeConflict` carrying
+treasurer-readable reasons.
+
+Round 9, item 4 of 9 — shipped on its own so you can deploy the merge fix now.
+
+# Changelog
+
 ## v2.64.0 - The debit bug: one root cause, three symptoms
 
 The bank file you sent answered all three reports at once.

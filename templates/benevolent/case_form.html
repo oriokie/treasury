@@ -18,8 +18,9 @@
 <form method="post">{% csrf_token %}
   {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
   <div class="form-grid">
-    {% for f in form %}<div class="form-row">
+    {% for f in form %}<div class="form-row"{% if f.name == 'membership' %} id="row-membership"{% endif %}>
       <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+      {% if f.name == 'membership' %}<div class="help" id="derived-member" style="display:none"></div>{% endif %}
       {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
       {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
     </div>{% endfor %}
@@ -34,12 +35,58 @@
 {% block scripts %}
 <script src="{% static 'js/member-search.js' %}"></script>
 <script>
-BenevolentSearch.enhance({
-  selectId: "id_membership", searchUrl: "{% url 'benevolent_membership_search' %}",
-  params: {scheme: {{ scheme.id }}},
-  placeholder: "Start typing the member's name this case is for…",
-  renderLabel: function(r){ return r.name; },
-  renderMeta: function(r){ return [r.number, r.phone].filter(Boolean).join(" · "); },
-});
+(function () {
+  var membershipSelect = document.getElementById("id_membership");
+  var relField = document.getElementById("id_beneficiary_relationship");
+  var nameField = document.getElementById("id_beneficiary_name");
+  var derivedNote = document.getElementById("derived-member");
+
+  // Ensure the derived member option exists in the (hidden) membership <select>,
+  // then select it — this is what the form actually submits.
+  function selectMembership(id, name) {
+    if (!membershipSelect || !id) return;
+    var found = false;
+    for (var i = 0; i < membershipSelect.options.length; i++) {
+      if (String(membershipSelect.options[i].value) === String(id)) { found = true; break; }
+    }
+    if (!found) {
+      var opt = document.createElement("option");
+      opt.value = id; opt.textContent = name || ("#" + id);
+      membershipSelect.appendChild(opt);
+    }
+    membershipSelect.value = id;
+    if (derivedNote) {
+      derivedNote.style.display = "block";
+      derivedNote.innerHTML = "Member: <strong>" + (name || "") + "</strong> (filled in from the beneficiary — you don't need to type it).";
+    }
+  }
+
+  // Dependant-first typeahead: picking a beneficiary derives the member and the
+  // relationship the register already holds, so nothing correct is retyped.
+  MemberSearch.enhance({
+    selectId: "id_dependant",
+    searchUrl: "{% url 'benevolent_dependant_search' %}",
+    params: { scheme: {{ scheme.id }} },
+    placeholder: "Start typing the person this case is for (a dependant, or the member)…",
+    renderLabel: function (r) { return r.name; },
+    renderMeta: function (r) { return r.meta || ""; },
+    onPick: function (r) {
+      // For a dependant, r.id is the dependant pk (goes into id_dependant).
+      // For the member's own event, r.id is "" — no dependant, membership only.
+      selectMembership(r.membership_id, r.member_name);
+      if (relField && r.relationship_line) relField.value = r.relationship_line;
+      if (nameField && !nameField.value) nameField.value = r.name;
+    }
+  });
+
+  // If the form opened pre-filled (from a death record), show the derived member.
+  if (membershipSelect && membershipSelect.value) {
+    var cur = membershipSelect.options[membershipSelect.selectedIndex];
+    if (cur && derivedNote) {
+      derivedNote.style.display = "block";
+      derivedNote.innerHTML = "Member: <strong>" + cur.textContent + "</strong> (filled in from the beneficiary — you don't need to type it).";
+    }
+  }
+})();
 </script>
 {% endblock %}

@@ -189,6 +189,45 @@ class BenevolentSettings(models.Model):
         help_text="Propose a narration rule after a treasurer has allocated the same "
                   "unrecognised narration by hand a few times.")
 
+    # ---- Case creation on a death ------------------------------------------
+    # A benevolent scheme exists FOR the death of a member or their family. So
+    # the moment a death is recorded, the case it entitles the family to should
+    # already be there — filled in with everything the system already knows —
+    # rather than waiting for someone to remember to type it, at the worst
+    # moment of a family's year. How aggressively to do that is a judgement call
+    # a church makes for itself, so it is configuration, not a hardcoded rule.
+    class DeathCaseMode(models.TextChoices):
+        OFF = "OFF", "Do not auto-open — the treasurer raises every case by hand"
+        ON_RECORD = "ON_RECORD", ("Open a draft case when a death is recorded "
+                                  "through the register (tied to who recorded it)")
+        ALWAYS = "ALWAYS", ("Open a draft case whenever a death is recorded "
+                            "anywhere in the system")
+
+    auto_open_case_on_death = models.CharField(
+        max_length=10, choices=DeathCaseMode.choices,
+        default=DeathCaseMode.ON_RECORD,
+        help_text="Whether recording a death should auto-open a draft benevolent "
+                  "case. The draft is filled from what the scheme already knows "
+                  "(event type, beneficiary, relationship, the policy's fixed "
+                  "benefit) and left for the treasurer to review and submit — it "
+                  "is never auto-submitted or auto-paid. Recommended: open on "
+                  "record, so every death the register knows about surfaces as a "
+                  "case nobody has to remember to raise.")
+
+    class BeneficiaryDefault(models.TextChoices):
+        DERIVE = "DERIVE", ("Derive from who died — the member, or the dependant "
+                            "and their relationship")
+        BLANK = "BLANK", "Leave the beneficiary blank for the treasurer to choose"
+
+    case_beneficiary_default = models.CharField(
+        max_length=8, choices=BeneficiaryDefault.choices,
+        default=BeneficiaryDefault.DERIVE,
+        help_text="On an auto-opened or new case, who the benefit is presumed for. "
+                  "Deriving it means a dependant's death pre-selects that "
+                  "dependant (and fills the relationship the database already "
+                  "holds), and a member's own death names the member. The "
+                  "treasurer can always change it before submitting.")
+
     # ---- Defaults for new schemes ------------------------------------------
     default_profile = models.ForeignKey(
         "PolicyProfile", null=True, blank=True, on_delete=models.SET_NULL,

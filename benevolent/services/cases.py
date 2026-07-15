@@ -73,6 +73,152 @@ def create_case(scheme, *, event_type, event_date, membership=None, dependant=No
     return case
 
 
+# ---------------------------------------------------------------------------
+# A death opens a case (Round 9, item 1)
+# ---------------------------------------------------------------------------
+
+def death_event_type(scheme):
+    """The event type a death is claimed under for this scheme.
+
+    Prefers the one explicitly marked `triggers_on_death`. Falls back to a
+    single obvious bereavement/funeral event by name, so a scheme configured
+    before this field existed still works without a migration of its data —
+    but only when the guess is UNambiguous. If two event types look like
+    death events and none is marked, we return None rather than pick wrong.
+    """
+    marked = list(scheme.event_types.filter(
+        triggers_on_death=True, active=True))
+    if len(marked) == 1:
+        return marked[0]
+    if marked:
+        return None     # more than one marked — ambiguous, make them choose
+    guessed = [e for e in scheme.event_types.filter(active=True)
+               if any(w in e.name.lower() or w in (e.code or "").lower()
+                      for w in ("death", "bereav", "funeral", "burial"))]
+    return guessed[0] if len(guessed) == 1 else None
+
+
+def derive_case_defaults(scheme, *, membership=None, dependant=None,
+                         event_type=None):
+    """Everything the scheme already knows about a case, so a treasurer is never
+    asked to retype it — and so cannot introduce a discrepancy by mistyping.
+
+    Returns a dict of suggested field values. Pure and side-effect free: the
+    form uses it for initial values, and open_case_for_death() uses it to fill
+    a draft. Honours the `case_beneficiary_default` setting for whether the
+    beneficiary is derived or left blank.
+    """
+    from benevolent.models import BenevolentSettings
+
+    settings = BenevolentSettings.get()
+    derive = (settings.case_beneficiary_default ==
+              BenevolentSettings.BeneficiaryDefault.DERIVE)
+
+    event_type = event_type or death_event_type(scheme)
+    if dependant is not None and membership is None:
+        membership = dependant.membership          # member picked from dependant
+
+    out = {
+        "membership": membership,
+        "event_type": event_type,
+        "dependant": None,
+        "beneficiary_name": "",
+        "beneficiary_relationship": "",
+        "claimed_amount": None,
+        "funding_target": None,
+        "claimed_is_fixed": False,
+    }
+
+    if derive:
+        if dependant is not None:
+            out["dependant"] = dependant
+            out["beneficiary_name"] = dependant.display_name
+            rel = dependant.get_relationship_display()
+            member_name = (membership.member.name if membership else "").strip()
+            out["beneficiary_relationship"] = (
+                f"{rel} to {member_name}" if member_name else rel)
+        elif membership is not None:
+            # the member's OWN death — they are the beneficiary
+            out["beneficiary_name"] = membership.member.name
+            out["beneficiary_relationship"] = "Member"
+
+    # the policy's fixed benefit, where it fixes one, is the claimed amount —
+    # a constitutional figure, not something to retype
+    policy = scheme.current_policy
+    if policy and event_type is not None:
+        fixed = policy.fixed_benefit_for(event_type)
+        if fixed:
+            out["claimed_amount"] = fixed
+            out["funding_target"] = fixed
+            out["claimed_is_fixed"] = True
+
+    return out
+
+
+@db_tx.atomic
+def open_case_for_death(*, scheme, membership=None, dependant=None,
+                        event_date, user=None, reason="auto"):
+    """Open a DRAFT case for a recorded death, pre-filled from what the scheme
+    already knows. Returns the case, or None if it could not be opened cleanly
+    (no death event type configured, or a duplicate open case already exists).
+
+    Deliberately conservative:
+    - never opens a second case for the same death (idempotent)
+    - only ever creates a DRAFT — never submits, assesses, approves or pays
+    - if the scheme has no unambiguous death event type, returns None and logs
+      a note on the membership rather than guessing
+    """
+    from benevolent.models import BenevolentSettings, MembershipEvent
+    from benevolent.services import registry as registry_svc
+
+    if dependant is not None and membership is None:
+        membership = dependant.membership
+
+    defaults = derive_case_defaults(
+        scheme, membership=membership, dependant=dependant)
+    event_type = defaults["event_type"]
+
+    if event_type is None:
+        if membership is not None:
+            registry_svc.log(
+                membership, MembershipEvent.Kind.NOTE,
+                "A death was recorded, but no single event type on this scheme is "
+                "marked as the one deaths are claimed under, so no case was opened "
+                "automatically. Mark the bereavement event type in the scheme's "
+                "settings, or raise the case by hand.",
+                user=user, on=event_date, automated=True)
+        return None
+
+    # idempotency: don't open a second draft for the same person + event
+    existing = BenevolentCase.objects.filter(
+        scheme=scheme, event_type=event_type,
+        status__in=BenevolentCase.OPEN_STATUSES)
+    if dependant is not None:
+        existing = existing.filter(dependant=dependant)
+    elif membership is not None:
+        existing = existing.filter(membership=membership, dependant__isnull=True)
+    if existing.exists():
+        return None
+
+    case = create_case(
+        scheme, event_type=event_type, event_date=event_date,
+        membership=defaults["membership"], dependant=defaults["dependant"],
+        beneficiary_name=defaults["beneficiary_name"],
+        description="Auto-opened when the death was recorded. Review and submit.",
+        claimed_amount=defaults["claimed_amount"],
+        funding_target=defaults["funding_target"], user=user)
+
+    if defaults["beneficiary_relationship"] and not case.beneficiary_relationship:
+        case.beneficiary_relationship = defaults["beneficiary_relationship"]
+        case.save(update_fields=["beneficiary_relationship"])
+
+    log(case, CaseEvent.Kind.NOTE,
+        "Draft opened automatically from the recorded death. Nothing has been "
+        "submitted or paid — a treasurer still reviews and submits it.",
+        user=user, on=event_date, automated=True)
+    return case
+
+
 def update_case(case, *, event_type=None, event_date=None, membership=None,
                 dependant=None, beneficiary_name=None, reported_date=None,
                 description=None, claimed_amount=None, user=None):

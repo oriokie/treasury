@@ -12,7 +12,7 @@ from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerR
 from giving.models import Transaction
 from .forms import MemberForm
 from .models import Member, PossibleDuplicate
-from .services.matching import merge_members
+from .services.matching import MemberMergeConflict, merge_members
 
 
 class MemberListView(PrefPaginationMixin, ReadAccessMixin, ListView):
@@ -184,6 +184,7 @@ class BulkMergeView(DataEntryRequiredMixin, View):
 
     def post(self, request):
         merged = 0
+        blocked = []
         for d in PossibleDuplicate.objects.filter(resolved=False).select_related("member"):
             cands = list(Member.objects.filter(
                 name_key=d.member.name_key).exclude(pk=d.member.pk))
@@ -193,14 +194,25 @@ class BulkMergeView(DataEntryRequiredMixin, View):
                 if (keep.source == Member.Source.AUTO_BANK
                         and absorb.source != Member.Source.AUTO_BANK):
                     keep, absorb = absorb, keep
-                merge_members(keep, absorb)
+                try:
+                    merge_members(keep, absorb)
+                except MemberMergeConflict as exc:
+                    # one unmergeable pair must not abort the whole run, and
+                    # must not leave a half-merged record behind
+                    blocked.append(f"{absorb.name}: {exc.reasons[0]}")
+                    continue
                 merged += 1
         if merged:
             messages.success(request, f"Merged {merged} unambiguous duplicate(s). "
                              "Any remaining ones have more than one candidate and "
                              "need a manual choice.")
-        else:
+        elif not blocked:
             messages.info(request, "No unambiguous duplicates to merge.")
+        for reason in blocked[:5]:
+            messages.warning(request, f"Not merged — {reason}")
+        if len(blocked) > 5:
+            messages.warning(request, f"…and {len(blocked) - 5} more that need "
+                                      "the same attention.")
         return redirect("member_duplicates")
 
 
@@ -211,7 +223,12 @@ class MergeMembersView(DataEntryRequiredMixin, View):
         if keep.pk == absorb.pk:
             messages.error(request, "Choose two different members.")
             return redirect("member_duplicates")
-        merge_members(keep, absorb)
+        try:
+            merge_members(keep, absorb)
+        except MemberMergeConflict as exc:
+            for reason in exc.reasons:
+                messages.error(request, reason)
+            return redirect("member_duplicates")
         messages.success(request, f"Merged into {keep.name}.")
         return redirect("member_duplicates")
 

@@ -1,4 +1,14 @@
-{% if is_paginated %}
+{% comment %}
+  Show pagination whenever there is more than one page.
+
+  Historically this gated on `is_paginated`, which only Django's ListView sets
+  automatically. Eleven modules build their Paginator by hand and pass `page_obj`
+  without `is_paginated`, so the controls silently rendered nothing on 26 pages —
+  including the benevolent member list, where a large congregation meant most
+  members were simply unreachable. Deriving visibility from `page_obj` itself
+  fixes every hand-rolled paginator at once and still works for ListViews.
+{% endcomment %}
+{% if page_obj and page_obj.paginator.num_pages > 1 %}
 <div class="pagination">
   {% if page_obj.has_previous %}<a href="{% querystring page=page_obj.previous_page_number %}">‹ Prev</a>{% endif %}
   <span class="current">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>

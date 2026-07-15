@@ -52,3 +52,48 @@ def _expense_deleted(sender, instance, **kwargs):
             case.refresh_status()
     except Exception:  # noqa: BLE001
         pass
+
+
+# ---------------------------------------------------------------------------
+# ALWAYS mode: a death recorded ANYWHERE opens a draft case (Round 9, item 1)
+#
+# The two register services (record_death, record_dependant_death) already open
+# a case on the ON_RECORD and ALWAYS settings. These signals catch the remaining
+# ALWAYS case: a died_on written by something OTHER than those services — the
+# admin, a data import, a future screen. They call the SAME idempotent case
+# service, so a death recorded through the register never produces two cases.
+# ---------------------------------------------------------------------------
+
+def _auto_open_enabled_for_anywhere():
+    from benevolent.models import BenevolentSettings
+    return (BenevolentSettings.get().auto_open_case_on_death ==
+            BenevolentSettings.DeathCaseMode.ALWAYS)
+
+
+@receiver(post_save, sender="benevolent.SchemeMembership")
+def _membership_death_anywhere(sender, instance, created, **kwargs):
+    if created or not instance.died_on:
+        return
+    if not _auto_open_enabled_for_anywhere():
+        return
+    try:
+        from benevolent.services.cases import open_case_for_death
+        open_case_for_death(scheme=instance.scheme, membership=instance,
+                            event_date=instance.died_on, user=None)
+    except Exception:  # noqa: BLE001 — never break a save
+        pass
+
+
+@receiver(post_save, sender="benevolent.SchemeDependant")
+def _dependant_death_anywhere(sender, instance, created, **kwargs):
+    if created or not instance.died_on:
+        return
+    if not _auto_open_enabled_for_anywhere():
+        return
+    try:
+        from benevolent.services.cases import open_case_for_death
+        open_case_for_death(scheme=instance.membership.scheme,
+                            dependant=instance, event_date=instance.died_on,
+                            user=None)
+    except Exception:  # noqa: BLE001
+        pass

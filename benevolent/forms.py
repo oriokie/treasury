@@ -44,6 +44,7 @@ class EventTypeForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = BenevolentEventType
         fields = ["name", "code", "description", "covers_dependants",
+                  "triggers_on_death",
                   "requires_document", "sort_order", "active"]
 
     def __init__(self, *args, **kwargs):
@@ -319,6 +320,23 @@ class DependantForm(StyledFormMixin, forms.ModelForm):
 
 
 class CaseForm(StyledFormMixin, forms.ModelForm):
+    """Raising a case, rethought (Round 9, item 1).
+
+    The old form asked for the member first, then the dependant, then the
+    relationship — three things the database already holds or can derive:
+
+      * the relationship is stored on the dependant record;
+      * the member is derivable from the dependant (a dependant belongs to one
+        membership);
+      * the claimed amount, under a fixed or scheduled policy, is a
+        constitutional figure, not a number to retype.
+
+    Asking a treasurer to re-enter what the system already knows is asking them
+    to introduce a discrepancy. So: dependant first (with the member derived and
+    shown), relationship derived and read-only where known, and the claimed
+    amount pre-filled and locked whenever the policy fixes it.
+    """
+
     funding_target = forms.DecimalField(
         max_digits=12, decimal_places=2, required=False, min_value=Decimal("0.01"),
         help_text="Optional. What this case is aiming to raise or receive — a "
@@ -327,7 +345,11 @@ class CaseForm(StyledFormMixin, forms.ModelForm):
 
     class Meta:
         model = BenevolentCase
-        fields = ["membership", "event_type", "dependant", "beneficiary_name",
+        # Order matters: this is the order the template renders them, and the
+        # dependant now leads. `membership` still exists (a case can be for the
+        # member's own event, with no dependant) but follows, pre-filled from
+        # the dependant when one is chosen.
+        fields = ["dependant", "membership", "event_type", "beneficiary_name",
                   "beneficiary_relationship",
                   "event_date", "reported_date", "claimed_amount", "description"]
         widgets = {"event_date": forms.DateInput(attrs={"type": "date"}),
@@ -337,24 +359,75 @@ class CaseForm(StyledFormMixin, forms.ModelForm):
     def __init__(self, *args, scheme=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.scheme = scheme or (self.instance.scheme if self.instance.pk else None)
+        # The form has no scheme field (the view owns it), but the model's clean()
+        # checks membership/event_type/dependant all belong to the case's scheme —
+        # and that check runs during this form's _post_clean. Without the scheme on
+        # the instance it reads as None and every membership looks "different", so
+        # set it here before validation ever runs.
+        if self.scheme is not None and not self.instance.scheme_id:
+            self.instance.scheme = self.scheme
+        self.policy = self.scheme.current_policy if self.scheme else None
         if self.scheme is not None:
             self.fields["membership"].queryset = (
                 SchemeMembership.objects.filter(
                     scheme=self.scheme, status__in=SchemeMembership.LIVE_STATUSES)
                 .select_related("member").order_by("member__name"))
             self.fields["event_type"].queryset = self.scheme.event_types.filter(active=True)
-            # dependants are narrowed to the chosen membership in the view/JS; the
-            # model's clean() is the backstop that actually enforces it
             self.fields["dependant"].queryset = SchemeDependant.objects.filter(
                 membership__scheme=self.scheme, active=True).select_related("membership")
+
         self.fields["membership"].required = False
+        self.fields["membership"].help_text = (
+            "The enrolled member this case is for. Filled in automatically when you "
+            "pick a dependant; set it directly for the member's own event.")
         self.fields["dependant"].required = False
+        self.fields["dependant"].label = "Who is the beneficiary?"
+        self.fields["dependant"].help_text = (
+            "Pick the registered dependant this case is for — the member and "
+            "relationship fill in from their record. Leave blank if the case is "
+            "for the member themselves.")
+        self.fields["beneficiary_relationship"].required = False
         self.fields["event_date"].initial = dt.date.today()
         self.fields["reported_date"].initial = dt.date.today()
-        self.fields["claimed_amount"].help_text = (
-            "The cost incurred / amount requested. Used by percentage and discretionary "
-            "policies; ignored by fixed and scheduled ones.")
+
+        # Lock the claimed amount when the policy fixes the benefit. The initial
+        # value is supplied by the view from cases.derive_case_defaults(); here
+        # we just make the field reflect that it is not the treasurer's to edit.
+        self._claimed_is_fixed = bool(self.initial.get("claimed_is_fixed"))
+        if self._claimed_is_fixed:
+            self.fields["claimed_amount"].disabled = True
+            self.fields["claimed_amount"].help_text = (
+                "Fixed by the scheme's policy for this event — shown for confirmation, "
+                "not edited here. Change it on the policy if the constitution changed.")
+        else:
+            self.fields["claimed_amount"].help_text = (
+                "The cost incurred / amount requested. Used by percentage and "
+                "discretionary policies; ignored by fixed and scheduled ones.")
         self._style()
+
+    def clean(self):
+        cleaned = super().clean()
+        dependant = cleaned.get("dependant")
+        # Derive the member from the dependant — the treasurer never types it.
+        if dependant is not None:
+            cleaned["membership"] = dependant.membership
+            if not cleaned.get("beneficiary_name"):
+                cleaned["beneficiary_name"] = dependant.display_name
+            if not cleaned.get("beneficiary_relationship"):
+                member_name = dependant.membership.member.name
+                cleaned["beneficiary_relationship"] = (
+                    f"{dependant.get_relationship_display()} to {member_name}")
+
+        # A disabled field submits nothing, so Django drops it from cleaned_data;
+        # restore the policy-fixed figure so it is actually saved. Recompute
+        # whether it is fixed from the policy + chosen event here (self.initial's
+        # claimed_is_fixed is only present on an UNbound form).
+        et = cleaned.get("event_type")
+        fixed = (self.policy.fixed_benefit_for(et)
+                 if (self.policy is not None and et) else None)
+        if fixed:
+            cleaned["claimed_amount"] = fixed
+        return cleaned
 
 
 class ContributionForm(StyledFormMixin, forms.Form):
@@ -790,6 +863,23 @@ class HouseholdMemberForm(StyledFormMixin, forms.Form):
             raise forms.ValidationError(
                 "Link them to their member record, or give a name.")
         return cleaned
+
+
+class DependantEditForm(HouseholdMemberForm):
+    """Editing an existing dependant, as distinct from adding one.
+
+    `registered_on` is deliberately NOT part of this form — editing a
+    dependant must never touch their coverage date (a dependant is covered
+    from the day they were registered, never retrospectively; see
+    add_dependant's docstring). The parent form makes registered_on required,
+    which meant the inline edit form — which correctly omits that field — could
+    never validate and silently did nothing. Dropping the requirement here is
+    what makes editing a dependant actually save.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.pop("registered_on", None)
 
 
 class ExemptionForm(StyledFormMixin, forms.ModelForm):

@@ -123,3 +123,67 @@ class MembershipSearchView(BenevolentViewMixin, View):
                     "standing": m.get_standing_display()}
                    for m in qs]
         return JsonResponse({"results": results})
+
+
+class DependantSearchView(BenevolentViewMixin, View):
+    """Scheme-scoped beneficiary typeahead for the case form.
+
+    A benevolent case is nearly always FOR a specific person — a registered
+    dependant, or the member themselves. This search returns both: registered
+    dependants (matched on their own name or the member who covers them) AND the
+    members themselves (so "the case is for the member's own death" is one pick,
+    not a separate control). Each result carries the derived member and
+    relationship, so the form can fill them in and the treasurer never retypes
+    what the register already holds.
+    """
+
+    def get(self, request):
+        from core.rights import display_phone
+        from .models import SchemeDependant, SchemeMembership
+
+        scheme_id = request.GET.get("scheme")
+        q = (request.GET.get("q") or "").strip()
+        if not scheme_id or len(q) < 2:
+            return JsonResponse({"results": []})
+
+        results = []
+
+        # registered dependants — matched on their name OR the member's name
+        deps = (SchemeDependant.objects
+                .filter(membership__scheme_id=scheme_id, active=True)
+                .filter(Q(name__icontains=q) | Q(member__name__icontains=q)
+                       | Q(membership__member__name__icontains=q)
+                       | Q(membership__number__icontains=q))
+                .select_related("member", "membership__member")
+                .order_by("membership__member__name", "name")[:8])
+        for d in deps:
+            member = d.membership.member
+            results.append({
+                "id": d.id, "kind": "dependant",
+                "name": d.display_name,
+                "membership_id": d.membership_id,
+                "member_name": member.name,
+                "relationship": d.get_relationship_display(),
+                "relationship_line": f"{d.get_relationship_display()} to {member.name}",
+                "meta": f"{d.get_relationship_display()} · {member.name} "
+                        f"({d.membership.number})",
+            })
+
+        # the members themselves — for the member's own event
+        mems = (SchemeMembership.objects
+                .filter(scheme_id=scheme_id, status=SchemeMembership.Status.ACTIVE)
+                .filter(Q(member__name__icontains=q) | Q(number__icontains=q))
+                .select_related("member").order_by("member__name")[:8])
+        for m in mems:
+            results.append({
+                "id": "", "kind": "member",
+                "name": m.member.name,
+                "membership_id": m.id,
+                "member_name": m.member.name,
+                "relationship": "Member",
+                "relationship_line": "Member",
+                "meta": f"The member · {m.number} · "
+                        f"{display_phone(request.user, m.member.phone or '')}".strip(" ·"),
+            })
+
+        return JsonResponse({"results": results})

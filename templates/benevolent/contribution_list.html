@@ -4,7 +4,9 @@
 <div class="page-head"><div><h1>Scheme contributions</h1>
   <div class="sub">Every contribution is an ordinary receipt into the scheme's fund — the same money the cash book,
     bank reconciliation and giving statements already see</div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a>
+  <a class="btn btn-ghost btn-sm" href="{% querystring export='xlsx' %}">⬇ Excel</a>
+  <a class="btn btn-ghost btn-sm" href="{% querystring export='csv' %}">⬇ CSV</a></div></div>
 
 <form method="get" class="filter-bar no-print u-mb">
   <select class="field--select" name="scheme"><option value="">All schemes</option>
