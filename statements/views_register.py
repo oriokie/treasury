@@ -166,6 +166,26 @@ class RegisterImportView(DataEntryRequiredMixin, View):
 
     def post(self, request):
         account = _account(request)
+
+        # purge a same-day register upload (a wrong file / wrong account)
+        purge_id = request.POST.get("purge")
+        if purge_id:
+            imp = get_object_or_404(StatementRegisterImport, pk=purge_id)
+            try:
+                result = reg_svc.purge_import(imp, user=request.user)
+                messages.success(
+                    request,
+                    f"Upload undone — {result['lines_removed']} line(s) removed"
+                    + (f", {result['exceptions_removed']} exception(s) cleared"
+                       if result['exceptions_removed'] else "") + ".")
+                # the exception picture changed; re-check
+                if imp.account_id:
+                    reg_svc.recheck(imp.account)
+            except ValidationError as e:
+                messages.error(request, "; ".join(e.messages))
+            back = f"?account={imp.account_id}" if imp.account_id else ""
+            return redirect(f"/bank-register/import/{back}")
+
         f = request.FILES.get("file")
         if account is None:
             messages.error(request, "Add a bank account first.")

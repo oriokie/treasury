@@ -33,7 +33,7 @@
 {% if recent %}
 <div class="card u-mt" style="max-width:820px"><div class="hd">Recent imports</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>When</th><th>File</th><th>Period</th>
-  <th class="num">New</th><th class="num">Skipped</th><th class="num">Failed</th><th>By</th></tr></thead>
+  <th class="num">New</th><th class="num">Skipped</th><th class="num">Failed</th><th>By</th><th></th></tr></thead>
 <tbody>{% for i in recent %}<tr>
   <td class="u-xs">{{ i.uploaded_at|date:"d M Y H:i" }}</td>
   <td class="u-xs">{{ i.filename|truncatechars:28 }}</td>
@@ -42,8 +42,14 @@
   <td class="num mono muted">{{ i.duplicates_skipped }}</td>
   <td class="num mono {% if i.rows_failed %}row-debit{% endif %}">{{ i.rows_failed }}</td>
   <td class="u-xs muted">{{ i.uploaded_by }}</td>
+  <td class="no-print">{% if i.is_purged %}<span class="pill u-xs">Purged</span>
+    {% elif i.can_purge %}<form method="post" class="u-inline">{% csrf_token %}
+      <input type="hidden" name="purge" value="{{ i.id }}">
+      <button class="btn btn-ghost btn-sm" onclick="return confirm('Undo this upload? The {{ i.lines_added }} line(s) it added will be removed. Only allowed today.')">Undo</button>
+    </form>{% endif %}</td>
 </tr>{% endfor %}</tbody></table>
-<p class="help u-mt">"Skipped" is the register working correctly — those lines were already held.</p>
+<p class="help u-mt">"Skipped" is the register working correctly — those lines were already held.
+  "Undo" removes only the lines an upload added, and only on the day it was made — for a wrong file or the wrong account.</p>
 </div></div>
 {% endif %}
 {% endblock %}

@@ -90,6 +90,43 @@ def dedup_key(row):
     return f"SYN|{row['date']:%Y%m%d}|{amt}|{narr}"[:80]
 
 
+def dedup_key_legacy(row):
+    """The dedup key AS IT WAS before amount+narration were folded in (up to
+    v2.68). A register imported under that scheme stored bare-reference keys —
+    `SYBINSE…|D` for a debit, `SYBINSE…` for a credit — so when the current
+    `dedup_key` began producing `ref|amount|narr|D`, the SAME line no longer
+    matched its stored key and re-imported as a duplicate (debits especially,
+    since they lean on the reference key rather than a unique M-Pesa receipt).
+
+    `import_file` checks this legacy form too, so a line already in the register
+    under the old key is recognised and skipped rather than duplicated. A
+    one-off migration also rewrites stored keys to the current form; this helper
+    covers the window before/without that migration, and any register still
+    carrying old keys.
+    """
+    is_debit = bool(row.get("debit"))
+    rcpt = (row.get("receipt") or "").strip().upper()
+    if _is_mpesa_receipt(rcpt):
+        return (f"{rcpt}|D" if is_debit else rcpt)[:80]
+    for key in ("mpesa_ref", "core_ref", "receipt"):
+        v = (row.get(key) or "").strip().upper()
+        if v:
+            return (f"{v}|D" if is_debit else v)[:80]
+    amt = (row.get("credit") or Decimal(0)) - (row.get("debit") or Decimal(0))
+    narr = (row.get("raw_narration") or "")[:40]
+    return f"SYN|{row['date']:%Y%m%d}|{amt}|{narr}"[:80]
+
+
+def dedup_keys(row):
+    """Every key form a line might be stored under — the current one first, then
+    the legacy one. `import_file` treats a line as already present if ANY of
+    these matches a stored key, so an upgrade of the key formula never causes a
+    re-import to duplicate what is already there."""
+    current = dedup_key(row)
+    legacy = dedup_key_legacy(row)
+    return [current] if current == legacy else [current, legacy]
+
+
 _CHEQUE_RE = _re.compile(
     r"\b(?:CHQ|CHEQUE|CHK|CK)\b[.\s#:-]*(?:NO|NUM|NUMBER)?\b[.\s#:-]*0*(\d{3,10})\b",
     _re.I)
@@ -265,10 +302,14 @@ def import_file(account, *, path_or_bytes, filename, user, notes=""):
 
     for row in rows:
         try:
-            key = dedup_key(row)
+            keys = dedup_keys(row)          # current form, plus legacy if different
+            key = keys[0]                   # the CURRENT key is what we store
             if key.startswith("SYN|"):
                 synthetic += 1
-            if key in existing or key in seen_this_file:
+            # a line already in the register under EITHER key form is a duplicate:
+            # this is what stops an upgrade of the key formula re-importing debits
+            # that were stored under the old bare-reference key.
+            if any(k in existing for k in keys) or key in seen_this_file:
                 dupes += 1
                 continue
             seen_this_file.add(key)
@@ -685,6 +726,48 @@ def resolve(exception, *, user, resolution, ignore=False):
     exception.resolution = resolution[:255]
     exception.save(update_fields=["status", "resolved_by", "resolved_at", "resolution"])
     return exception
+
+
+@db_tx.atomic
+def purge_import(imp, *, user):
+    """Undo a register upload made the same day — a wrong file, the wrong
+    account. Removes every StatementLine the import added and closes any
+    exceptions that referenced those lines (a MISSING_IN_LEDGER exception whose
+    bank line no longer exists would otherwise dangle open forever).
+
+    Only the LINES this upload actually added are removed: a line that was a
+    duplicate skipped by this import (already present from an earlier one) is
+    left, because it does not belong to this import. The register is the bank's
+    own record and purely additive, so this asserts nothing about the money and
+    touches no ledger transaction, expense or envelope — unlike the ledger's own
+    statement purge.
+    """
+    from django.core.exceptions import ValidationError
+    if imp.is_purged:
+        raise ValidationError("This upload has already been purged.")
+    if not imp.can_purge:
+        raise ValidationError(
+            "A register upload can only be purged on the day it was made — after "
+            "that, reconciliation and exception work may rely on its lines, and "
+            "re-importing brings back anything still on the statement.")
+
+    lines = StatementLine.objects.filter(imported_in=imp)
+    line_ids = list(lines.values_list("id", flat=True))
+
+    # close (delete) exceptions attached to these lines — their bank line is
+    # about to vanish, so an open exception pointing at it is meaningless. A
+    # MISSING_IN_BANK exception (which points at a Transaction, not a line) is
+    # untouched: it is about our books, which this purge does not alter.
+    exc_removed = RegisterException.objects.filter(
+        account=imp.account, line_id__in=line_ids).delete()[0] if line_ids else 0
+
+    removed = lines.count()
+    lines.delete()
+
+    imp.purged_at = timezone.now()
+    imp.purged_by = user
+    imp.save(update_fields=["purged_at", "purged_by"])
+    return {"lines_removed": removed, "exceptions_removed": exc_removed}
 
 
 def summary(account):

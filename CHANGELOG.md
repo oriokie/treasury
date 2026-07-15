@@ -1,5 +1,35 @@
 # Changelog
 
+## v2.72.0 - Debits no longer duplicate on re-import; undo a same-day register upload
+
+### Debits stopped duplicating on the second import
+
+When the register's duplicate-detection key changed (v2.69, so a bank could share
+one reference across several distinct movements), lines ALREADY in the register
+still carried the old keys. On the next import the new formula produced a
+different key for the same line, so it did not match and was added again — debits
+especially, because they lean on the bank reference rather than a unique M-Pesa
+receipt, so nearly every re-imported cheque or charge duplicated.
+
+The register now recognises a line under either key form, so a re-import matches
+what is already there regardless of which version stored it. A one-off migration
+also rewrites existing register keys to the current form, so the register
+self-heals on upgrade. Verified: a register full of old-format debit keys
+re-imports and adds nothing.
+
+### Undo a register upload made the same day
+
+Upload the wrong file, or to the wrong account? Each row in "Recent imports" on
+the bank-register import page now has an Undo button on the day it was made. It
+removes only the lines that upload added (a line that was skipped as a duplicate
+belongs to an earlier import and stays) and clears any exceptions that pointed at
+the removed lines. It touches no ledger transaction, expense or envelope — the
+register is the bank's own record, so undoing a mis-upload asserts nothing about
+the money. After the day of upload the button is gone, because reconciliation
+work may rely on the lines and re-importing brings back anything still on the
+statement.
+# Changelog
+
 ## v2.71.0 - Take bank-register exceptions to the books, safely
 
 The bank-register exceptions page — where the bank's record and ours disagree —

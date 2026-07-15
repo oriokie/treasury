@@ -2817,3 +2817,29 @@ Deposit treatment decision (#86): counted cash already sits in the fund (income
 recognised at counting), so a deposit is NOT a new receipt. The is_banking entry
 reconciles the bank credit without re-recognising income or touching a fund —
 the simplest correct option (no separate undeposited-cash asset dimension).
+
+---
+
+## 88. Register debits duplicating on re-import (key-format upgrade) — RESOLVED
+
+Root cause: v2.69 folded amount+narration into dedup_key so a bank sharing one
+reference across distinct movements stays distinct. Lines already in the register
+kept OLD bare-reference keys; the new formula produced a different key for the
+same line, so re-import added it again — debits most visibly (they rely on the
+reference key, not a unique M-Pesa receipt). Fix: `dedup_key_legacy` reproduces
+the pre-v2.69 key; `dedup_keys` returns current + legacy; `import_file` treats a
+line as present if EITHER matches a stored key. Data migration
+statements/0014 rewrites stored keys to the current form (collision-safe:
+skips a rewrite that would hit the (account,dedup_key) unique constraint). Tests:
+statements/test_register_purge.py::LegacyKeyReimportTests (3). All 166 statements
+tests pass.
+
+## 89. Purge a same-day register upload — RESOLVED
+
+New `register.purge_import(imp, user)` removes only the StatementLines an upload
+added (leaves duplicates that belong to earlier imports) and deletes exceptions
+pointing at the removed lines; touches no ledger/expense/envelope. Guarded by
+`StatementRegisterImport.can_purge` (upload day only) + `is_purged`. Migration
+statements/0015 adds purged_at/purged_by. Wired into RegisterImportView.post
+(purge param) with an Undo button per recent-import row. Tests:
+statements/test_register_purge.py::RegisterPurgeTests + RegisterPurgeViewTests (6).

@@ -52,12 +52,34 @@ class StatementRegisterImport(models.Model):
     period_start = models.DateField(null=True, blank=True)
     period_end = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    purged_at = models.DateTimeField(null=True, blank=True,
+        help_text="When this upload was undone. A register import may be purged "
+                  "on the DAY it was uploaded — a wrong file, the wrong account — "
+                  "removing the lines it added. After that day it stays: the "
+                  "register is additive and other work may rely on its lines.")
+    purged_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="+")
 
     class Meta:
         ordering = ["-uploaded_at"]
 
     def __str__(self):
         return f"{self.filename} ({self.lines_added} new lines)"
+
+    @property
+    def is_purged(self):
+        return self.purged_at is not None
+
+    @property
+    def can_purge(self):
+        """Only on the day of upload. The register is the bank's own record and
+        purely additive, so undoing a same-day mis-upload is safe; after that a
+        treasurer's reconciliation and exception work may reference its lines,
+        and re-importing brings back anything genuinely still on the statement."""
+        if self.is_purged:
+            return False
+        from django.utils import timezone
+        return self.uploaded_at.date() == timezone.now().date()
 
 
 class StatementLine(models.Model):
