@@ -39,9 +39,47 @@
   <button class="btn btn-sm">Filter</button>
 </form>
 
+{% if can_enter_data and f_status == 'OPEN' %}
+<form method="post" id="bulkForm">{% csrf_token %}
+<input type="hidden" name="account" value="{{ account.id }}">
+<input type="hidden" name="bulk_take" value="1">
+<div class="card no-print u-mb"><div class="bd" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:end">
+  <div class="form-row" style="margin:0">
+    <label for="bulk_disposition" class="u-xs">Take selected to the books as…</label>
+    <select class="field--select" name="bulk_disposition" id="bulk_disposition"
+            onchange="document.getElementById('bulkFundWrap').style.display = this.value==='BANK_CHARGE' ? '' : 'none';">
+      <option value="">— choose —</option>
+      {% for v,l in dispositions.items %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="form-row" id="bulkFundWrap" style="margin:0;display:none">
+    <label for="bulk_department" class="u-xs">Fund (for bank charges)</label>
+    <select class="field--select" name="bulk_department" id="bulk_department">
+      <option value="">— fund —</option>
+      {% for f in funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="form-row" style="margin:0;flex:1;min-width:180px">
+    <label for="bulk_note" class="u-xs">Note (optional)</label>
+    <input class="field" type="text" name="bulk_note" id="bulk_note" maxlength="255"
+           placeholder="e.g. April Sabbath banking">
+  </div>
+  <button class="btn btn-sm" onclick="return confirmBulk()">Apply to selected</button>
+</div>
+<div class="help u-xs" style="padding:0 1rem 1rem">
+  <strong>New movement</strong> creates a review-queue entry (real new money).
+  <strong>Banking</strong> reconciles a deposit of cash already receipted — no income, no fund.
+  <strong>Already booked</strong> just closes it (no entry). <strong>Bank charge</strong> posts an expense.
+  Items the chosen action does not fit are skipped and listed.
+</div></div>
+{% endif %}
+
 <div class="table-wrap"><table class="ledger">
-<thead><tr><th>Kind</th><th>Date</th><th class="num">Amount</th><th>Reference</th><th>Detail</th><th>Status</th><th></th></tr></thead>
-<tbody>{% for e in exceptions %}<tr>
+<thead><tr>
+  {% if can_enter_data and f_status == 'OPEN' %}<th class="no-print"><input type="checkbox" onclick="toggleAll(this)"></th>{% endif %}
+  <th>Kind</th><th>Date</th><th class="num">Amount</th><th>Reference</th><th>Detail</th><th>Status</th><th></th></tr></thead>
+<tbody>{% for row in rows %}{% with e=row.exc %}<tr>
+  {% if can_enter_data and f_status == 'OPEN' %}<td class="no-print">{% if e.is_open and row.dispositions %}<input type="checkbox" name="selected" value="{{ e.id }}" form="bulkForm" class="bulkChk">{% endif %}</td>{% endif %}
   <td><span class="pill {% if e.kind == 'MISSING_IN_LEDGER' %}pill-amber{% else %}pill-red{% endif %} u-xs">{{ e.get_kind_display }}</span></td>
   <td>{{ e.date|date:"d M y" }}</td>
   <td class="num mono {% if e.amount < 0 %}row-debit{% endif %}">{{ e.amount|floatformat:2|intcomma }}</td>
@@ -52,6 +90,28 @@
       {% else %}<span class="pill pill-green u-xs">{{ e.get_status_display }}</span>
       <div class="muted u-xs">{{ e.resolution|truncatechars:36 }}</div>{% endif %}</td>
   <td class="no-print">{% if e.is_open and can_enter_data %}
+    {% if row.dispositions %}
+    <details><summary class="link u-xs">Take to books</summary>
+      <form method="post" class="u-mt">{% csrf_token %}
+        <input type="hidden" name="account" value="{{ account.id }}">
+        <input type="hidden" name="take_to_books" value="{{ e.id }}">
+        <select class="field--select" name="disposition" required
+                onchange="this.parentNode.querySelector('.fundWrap').style.display = this.value==='BANK_CHARGE' ? '' : 'none';">
+          <option value="">— what is this? —</option>
+          {% for d,dl in row.dispositions %}<option value="{{ d }}">{{ dl }}</option>{% endfor %}
+        </select>
+        <span class="fundWrap" style="display:none">
+          <select class="field--select" name="department">
+            <option value="">— fund —</option>
+            {% for f in funds %}<option value="{{ f.id }}">{{ f.name }}</option>{% endfor %}
+          </select>
+        </span>
+        <input class="field u-mt" type="text" name="note" maxlength="255"
+               placeholder="Optional note" style="min-width:220px">
+        <div class="btn-row u-mt"><button class="btn btn-sm">Post</button></div>
+      </form>
+    </details>
+    {% endif %}
     <details><summary class="link u-xs">Explain</summary>
       <form method="post" class="u-mt">{% csrf_token %}
         <input type="hidden" name="account" value="{{ account.id }}">
@@ -64,10 +124,22 @@
           <input type="hidden" name="ignore" value="">
         </div>
       </form></details>{% endif %}</td>
-</tr>{% empty %}<tr><td colspan="7" class="empty">
+</tr>{% endwith %}{% empty %}<tr><td colspan="8" class="empty">
   {% if f_status == 'OPEN' %}Nothing open — the bank's record and ours agree.{% else %}Nothing here.{% endif %}
 </td></tr>{% endfor %}</tbody>
 </table></div>
+{% if can_enter_data and f_status == 'OPEN' %}</form>
+<script>
+function toggleAll(src){document.querySelectorAll('.bulkChk').forEach(c=>c.checked=src.checked);}
+function confirmBulk(){
+  var d=document.getElementById('bulk_disposition').value;
+  var n=document.querySelectorAll('.bulkChk:checked').length;
+  if(!d){alert('Choose what to do with the selected exceptions.');return false;}
+  if(n===0){alert('Select at least one exception.');return false;}
+  return confirm('Apply this action to '+n+' selected exception(s)? Items the action does not fit will be skipped and listed.');
+}
+</script>
+{% endif %}
 {% include 'partials/pagination.html' %}
 
 {% if unverifiable %}

@@ -3,12 +3,14 @@ import datetime as _dt
 from decimal import Decimal
 
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin
+from core.roles import can_enter_data
 from core.utils import default_to_current_month
 
 from .models import BankAccount
@@ -224,15 +226,26 @@ class RegisterExceptionsView(ReadAccessMixin, View):
             qs = qs.filter(status=f_status)
 
         page = Paginator(qs, 50).get_page(request.GET.get("page"))
+        from departments.models import Department
+        from statements.services import exceptions_intake as ei
+        # precompute which dispositions fit each exception, for the per-row UI
+        rows = []
+        for exc in page.object_list:
+            rows.append({"exc": exc,
+                         "dispositions": [(d, ei.DISPOSITIONS[d])
+                                          for d in ei.applicable_dispositions(exc)]})
         return render(request, self.template_name, {
             "account": account,
             "accounts": BankAccount.objects.all(),
             "page_obj": page, "exceptions": page.object_list,
+            "rows": rows,
             "kinds": RegisterException.Kind.choices,
             "statuses": RegisterException.Status.choices,
             "f_kind": f_kind, "f_status": f_status,
             "summary": reg_svc.summary(account),
             "unverifiable": reg_svc.unverifiable(account)[:50],
+            "funds": Department.objects.filter(active=True).order_by("name"),
+            "dispositions": ei.DISPOSITIONS,
         })
 
     def post(self, request):
@@ -259,4 +272,86 @@ class RegisterExceptionsView(ReadAccessMixin, View):
                 reg_svc.resolve(exc, user=request.user, resolution=reason,
                                 ignore=bool(request.POST.get("ignore")))
                 messages.success(request, "Exception closed.")
+            return redirect(f"/bank-register/exceptions/?account={account.pk}")
+
+        # take a SINGLE exception to the books with a chosen disposition
+        take_id = request.POST.get("take_to_books")
+        if take_id:
+            return self._take_single(request, account, take_id)
+
+        # bulk: one disposition applied to several selected exceptions
+        if request.POST.get("bulk_take"):
+            return self._bulk_take(request, account)
+
+        return redirect(f"/bank-register/exceptions/?account={account.pk}")
+
+    def _take_single(self, request, account, take_id):
+        if not can_enter_data(request.user):
+            messages.error(request, "You do not have permission to take entries to "
+                                    "the books.")
+            return redirect(f"/bank-register/exceptions/?account={account.pk}")
+        from statements.services import exceptions_intake as ei
+        from departments.models import Department
+        exc = get_object_or_404(RegisterException, pk=take_id, account=account)
+        disposition = request.POST.get("disposition") or ""
+        note = (request.POST.get("note") or "").strip()
+        dept = None
+        if request.POST.get("department"):
+            dept = Department.objects.filter(pk=request.POST["department"]).first()
+        linked = request.POST.getlist("linked_transaction_ids")
+        try:
+            result = ei.take_to_books(
+                exc, disposition=disposition, user=request.user, account=account,
+                note=note, department=dept, linked_transaction_ids=linked)
+            messages.success(request, result["message"])
+        except ei.DispositionNotApplicable as e:
+            messages.error(request, "; ".join(e.messages))
+        except ValidationError as e:
+            messages.error(request, "; ".join(e.messages))
+        return redirect(f"/bank-register/exceptions/?account={account.pk}")
+
+    def _bulk_take(self, request, account):
+        if not can_enter_data(request.user):
+            messages.error(request, "You do not have permission to take entries to "
+                                    "the books.")
+            return redirect(f"/bank-register/exceptions/?account={account.pk}")
+        from statements.services import exceptions_intake as ei
+        from departments.models import Department
+        ids = request.POST.getlist("selected")
+        disposition = request.POST.get("bulk_disposition") or ""
+        note = (request.POST.get("bulk_note") or "").strip()
+        dept = None
+        if request.POST.get("bulk_department"):
+            dept = Department.objects.filter(pk=request.POST["bulk_department"]).first()
+        if not ids:
+            messages.error(request, "Select at least one exception to act on.")
+            return redirect(f"/bank-register/exceptions/?account={account.pk}")
+        if disposition not in ei.DISPOSITIONS:
+            messages.error(request, "Choose what to do with the selected exceptions.")
+            return redirect(f"/bank-register/exceptions/?account={account.pk}")
+        if disposition == ei.BANK_CHARGE and dept is None:
+            messages.error(request, "Choose the fund the bank charges should be "
+                                    "posted to.")
+            return redirect(f"/bank-register/exceptions/?account={account.pk}")
+
+        exceptions = list(RegisterException.objects.filter(
+            pk__in=ids, account=account))
+        outcome = ei.bulk_take_to_books(
+            exceptions, disposition=disposition, user=request.user,
+            account=account, note=note, department=dept)
+
+        done, skipped = outcome["done"], outcome["skipped"]
+        if done:
+            messages.success(
+                request, f"{len(done)} exception(s) taken to the books as "
+                         f"'{ei.DISPOSITIONS[disposition].split(' — ')[0]}'.")
+        if skipped:
+            detail = "; ".join(
+                f"{e.date} {e.amount:,.2f} — {reason}" for e, reason in skipped[:10])
+            more = "" if len(skipped) <= 10 else f" (+{len(skipped)-10} more)"
+            messages.warning(
+                request, f"{len(skipped)} skipped because the disposition did not "
+                         f"fit: {detail}{more}.")
+        if not done and not skipped:
+            messages.info(request, "Nothing to do.")
         return redirect(f"/bank-register/exceptions/?account={account.pk}")

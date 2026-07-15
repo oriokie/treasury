@@ -201,6 +201,8 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
     from collections import defaultdict
     _core_refs_this_file = set()
     _core_ref_seq = defaultdict(lambda: 1)
+    _line_keys_this_file = set()
+    _receipts_this_file = set()
     from core.models import SiteConfig
     from statements.models import BankAccount
 
@@ -236,53 +238,86 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
         core_ref = (row["core_ref"] or "").strip() or None
         receipt = (row["receipt"] or "").strip() or None
 
-        # A genuine 10-char M-Pesa receipt from the narration is unique PER
-        # PAYMENT. A bank channel/core reference is not always: a mobile-banking
-        # sweep can batch several distinct contributions under ONE Core Ref and
-        # ONE Channel REF (e.g. three payments of 10, 11 and 9 all stamped
-        # S90288428260130 / SFI40DCBA1EA1F6DABA9, distinguished only by their
-        # receipts UATKR5A7M8 / UATKR5A7N9 / UATKR5AIDQ). So when this row's
-        # receipt is a real M-Pesa receipt we have NOT seen, it is a new payment
-        # — a shared core_ref/mpesa_ref must not dedup it away and lose the money.
-        from statements.services.register import _is_mpesa_receipt
+        # The register's dedup_key is the single source of truth for "is this the
+        # SAME bank line?". It already handles the two ways a bank shares one
+        # reference across distinct movements: a mobile-banking sweep batching
+        # several payments (told apart by their unique M-Pesa receipts), and a
+        # journal batching several charges under one reference (told apart by
+        # amount + narration — stamp duty 250, excise 300, cheque-book 1,500 all
+        # under CB0170485260413). Deduping on that key, rather than on the bare
+        # core_ref, is what stops those distinct lines collapsing into one and
+        # silently dropping money.
+        from statements.services.register import dedup_key, _is_mpesa_receipt
         _up = lambda v: (v or "").strip().upper() or None
-        receipt_is_unique = (
-            _is_mpesa_receipt(_up(receipt))
-            and not Transaction.objects.filter(bank_receipt=_up(receipt)).exists())
+        line_key = dedup_key(row)
 
-        # database-level dedup. Check core_ref and bank_receipt (both unique),
-        # and also mpesa_ref — the same M-Pesa receipt must never appear twice
-        # even if one row carries a core_ref and another doesn't (e.g. a STKPUSH
-        # placeholder vs the real bank reference for the same payment). But a
-        # unique, unseen narration receipt trumps a shared core_ref/mpesa_ref.
-        if receipt and Transaction.objects.filter(bank_receipt=_up(receipt)).exists():
-            dup += 1
-            continue
-        if (not receipt_is_unique) and core_ref and \
-                Transaction.objects.filter(core_ref=core_ref).exists():
-            dup += 1
-            continue
-        mref_dedup = (row.get("mpesa_ref") or "").strip().upper() or None
-        if (not receipt_is_unique) and mref_dedup and \
-                Transaction.objects.filter(mpesa_ref=mref_dedup).exists():
+        if line_key in _line_keys_this_file:
             dup += 1
             continue
 
-        # core_ref is UNIQUE on Transaction. If a batch shares one core_ref
-        # across several unique receipts, only the first row may store the bare
-        # value; the rest must not collide. The unique bank_receipt still
-        # identifies each payment, and _txn_keys() still matches the register on
-        # the shared core_ref via the "-S" convention. Both this-file and
-        # already-imported collisions are covered.
+        # already imported in a PRIOR run? A line is the same as one already on
+        # the books when it carries the same unique identifier. Check, in order:
+        #   - a genuine M-Pesa receipt (globally unique) on bank_receipt;
+        #   - a non-M-Pesa receipt column value on bank_receipt;
+        #   - the core_ref base PLUS the signed amount — this is what tells a
+        #     re-imported charge (same ref, same amount) apart from a sibling
+        #     charge in the same batch (same ref, different amount).
+        _amt = (row.get("credit") or Decimal(0)) - (row.get("debit") or Decimal(0))
+        already = False
+        rcpt_up = _up(receipt)
+        mref_up = _up(row.get("mpesa_ref"))
+        # A mpesa_ref is a SHARED channel-batch ref (not a per-payment id) when
+        # the narration carries its OWN distinct unique receipt — that is exactly
+        # the SFI40… case, where mpesa_ref repeats across the batch. In that case
+        # we must not dedup on mpesa_ref. Otherwise mpesa_ref is the payment's own
+        # receipt and a repeat of it (anywhere) is a duplicate.
+        mref_is_shared = bool(mref_up and rcpt_up and mref_up != rcpt_up
+                              and _is_mpesa_receipt(rcpt_up))
+        if rcpt_up:
+            already = Transaction.objects.filter(bank_receipt=rcpt_up).exists()
+        if not already and rcpt_up and _is_mpesa_receipt(rcpt_up):
+            already = Transaction.objects.filter(mpesa_ref__iexact=rcpt_up).exists()
+        if not already and mref_up and not mref_is_shared:
+            already = (Transaction.objects.filter(bank_receipt=mref_up).exists()
+                       or Transaction.objects.filter(mpesa_ref__iexact=mref_up).exists())
+        if not already and core_ref:
+            base = core_ref.strip().upper()
+            already = Transaction.objects.filter(
+                Q(core_ref__iexact=base) | Q(core_ref__istartswith=f"{base}-S"),
+                amount=abs(_amt),
+                direction=(Transaction.Direction.DEBIT if _amt < 0
+                           else Transaction.Direction.CREDIT),
+            ).exists()
+        if already:
+            dup += 1
+            continue
+        _line_keys_this_file.add(line_key)
+
+        # core_ref and bank_receipt are UNIQUE columns. When a batch shares one
+        # core_ref across several distinct lines, only the first stores it bare;
+        # the rest are suffixed ("-S1", "-S2"), the same convention _txn_keys()
+        # follows so the register still reconciles to the ledger on the shared
+        # reference.
         if core_ref and (
                 core_ref in _core_refs_this_file
                 or Transaction.objects.filter(
                     Q(core_ref=core_ref) | Q(core_ref__startswith=f"{core_ref}-S")
                 ).exists()):
-            core_ref = f"{core_ref}-S{_core_ref_seq[core_ref]}"
-            _core_ref_seq[row['core_ref'].strip().upper()] += 1
+            base = core_ref
+            core_ref = f"{base}-S{_core_ref_seq[base]}"
+            _core_ref_seq[base] += 1
         elif core_ref:
             _core_refs_this_file.add(core_ref)
+
+        # bank_receipt is also UNIQUE. A non-M-Pesa receipt column value can also
+        # repeat across a batch; drop it rather than collide (the suffixed
+        # core_ref and the register key still identify the line).
+        if receipt and _up(receipt) in _receipts_this_file:
+            receipt = None
+        elif receipt and Transaction.objects.filter(bank_receipt=_up(receipt)).exists():
+            receipt = None
+        elif receipt:
+            _receipts_this_file.add(_up(receipt))
 
         try:
             with db_tx.atomic():

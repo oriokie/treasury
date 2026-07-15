@@ -63,7 +63,33 @@
 </div></div>
 
 {% if item.is_open %}
-<div class="card"><div class="hd">Attribute it</div><div class="bd">
+{% if obligation_member and obligations %}
+<div class="card u-mb"><div class="hd">Apply it to what {{ obligation_member.member.name }} owes</div><div class="bd">
+<p class="help u-mt-0">This member has outstanding obligations. Applying the payment settles them in order —
+  registration first, then case levies oldest-first — splitting one payment across several where it covers more than
+  one. Tick specific ones to pay only those, or leave all ticked to pay in order.</p>
+<form method="post">{% csrf_token %}
+  <input type="hidden" name="obligation_membership" value="{{ obligation_member.id }}">
+  <table class="ledger compact"><thead><tr><th></th><th>Obligation</th><th>Detail</th><th class="num">Outstanding</th></tr></thead>
+  <tbody>
+  {% for o in obligations %}<tr>
+    <td><input type="checkbox" name="targets" value="{{ o.key }}" checked></td>
+    <td>{{ o.label }}</td>
+    <td class="muted u-xs">{{ o.detail }}</td>
+    <td class="num mono">{{ CURRENCY }} {{ o.outstanding|floatformat:2|intcomma }}</td>
+  </tr>{% endfor %}
+  </tbody></table>
+  <div class="btn-row u-mt">
+    <button class="btn" name="apply_obligations" value="1">Apply {{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }} to these</button>
+  </div>
+  <p class="help u-mt">The receipt is already banked; this splits it across the obligations and records each as the right
+    kind (a levy stays a levy, a fee a fee) so nothing silently clears a member's dues. Any amount above what is owed is
+    recorded as a voluntary contribution.</p>
+</form>
+</div></div>
+{% endif %}
+
+<div class="card"><div class="hd">Or attribute it as a single contribution</div><div class="bd">
 <form method="post">{% csrf_token %}
   {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
   <div class="form-grid">

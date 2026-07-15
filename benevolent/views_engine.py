@@ -64,9 +64,27 @@ class IntakeItemView(BenevolentFinanceMixin, View):
         item = get_object_or_404(
             ContributionIntake.objects.select_related(
                 "transaction", "scheme", "duplicate_of__transaction"), pk=pk)
+        # If a member is suggested (or the treasurer passed ?member=), show what
+        # they owe so the payment can be applied across obligations (item 7).
+        from benevolent.models import SchemeMembership
+        from benevolent.services import obligations as ob_svc
+        mem_id = request.GET.get("member") or item.suggested_membership_id
+        obligation_member = None
+        obligations = []
+        if mem_id and item.scheme:
+            obligation_member = SchemeMembership.objects.filter(
+                pk=mem_id, scheme=item.scheme).select_related("member").first()
+            if obligation_member:
+                obligations = [
+                    {"key": ob_svc.obligation_key(o), "label": o.label,
+                     "outstanding": o.outstanding, "detail": o.detail}
+                    for o in ob_svc.obligations_for(
+                        obligation_member, as_of=item.date)]
         return render(request, "benevolent/intake_item.html", {
             "item": item, "form": IntakeResolveForm(item=item),
             "candidates": item.candidates or [],
+            "obligation_member": obligation_member,
+            "obligations": obligations,
         })
 
     def post(self, request, pk):
@@ -84,6 +102,31 @@ class IntakeItemView(BenevolentFinanceMixin, View):
                     "about whether the church received it.")
             except ValidationError as e:
                 messages.error(request, "; ".join(e.messages))
+            return redirect("benevolent_intake_queue")
+
+        # Apply the payment to a member's obligations (Round 9, item 7): split
+        # it across registration + case levies oldest-first, or across the
+        # specific obligations the treasurer ticked.
+        if request.POST.get("apply_obligations"):
+            from benevolent.models import SchemeMembership
+            mem_id = request.POST.get("obligation_membership")
+            membership = SchemeMembership.objects.filter(
+                pk=mem_id, scheme=item.scheme).first() if mem_id else None
+            if membership is None:
+                messages.error(request, "Choose the member whose obligations "
+                                        "this payment settles.")
+                return redirect("benevolent_intake_item", pk=pk)
+            targets = request.POST.getlist("targets") or None
+            try:
+                contributions = engine_svc.resolve_to_obligations(
+                    item, membership=membership, user=request.user,
+                    targets=targets, note=(request.POST.get("note") or ""))
+            except ValidationError as e:
+                messages.error(request, "; ".join(e.messages))
+                return redirect("benevolent_intake_item", pk=pk)
+            messages.success(
+                request, f"{item.amount} applied across {len(contributions)} "
+                         f"obligation(s) for {membership.member.name}, oldest first.")
             return redirect("benevolent_intake_queue")
 
         form = IntakeResolveForm(request.POST, item=item)

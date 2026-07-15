@@ -1,5 +1,103 @@
 # Changelog
 
+## v2.71.0 - Take bank-register exceptions to the books, safely
+
+The bank-register exceptions page — where the bank's record and ours disagree —
+now lets a treasurer take entries to the books, one at a time or in bulk. The
+point was never a single "create transaction" button: a raw bank credit or debit
+is not always new money, and posting it blindly would corrupt balances. So the
+treasurer says WHAT KIND of thing each exception is, and each kind hits the books
+differently.
+
+### Four dispositions
+
+**Genuine new movement** — a receipt or payment the books have simply never seen.
+Creates a review-queue entry (credit or debit) for normal allocation. The only
+disposition that adds money.
+
+**Banking of cash already receipted** — the bank credit that is the other leg of
+Sabbath cash counted and already in the fund, then deposited. Reconciles the bank
+line and counts toward the bank position, but is NOT income and belongs to no
+fund — recognising it again on deposit would double-count the offering.
+
+**Already in our books elsewhere** — an expense already recorded, one withdrawal
+that paid several expenses, a hand-entered receipt. Closes the exception with a
+link and creates nothing.
+
+**Bank charge** — stamp duty, ledger fees, cheque-book charges nobody recorded.
+Posts an expense in the bank-charge category against a chosen fund.
+
+### Bulk, with honest skipping
+
+Select several exceptions and apply one disposition. Items the disposition does
+not fit — a debit cannot be banking, a credit cannot be a bank charge, a
+"missing in bank" exception is not taken to the books at all — are skipped and
+listed with the reason, never silently dropped and never fatal to the batch.
+
+### How deposits are treated
+
+This answers a standing question: when already-receipted cash is banked, the bank
+shows a credit, but the income and the fund balance were recognised when the cash
+was counted. A new "banking" entry (is_banking) reconciles that credit on the
+bank side without recognising income a second time or touching any fund — so the
+bank position is right and the offering is counted exactly once.
+# Changelog
+
+## v2.70.0 - Obligations engine: one payment settles what a member owes, oldest first
+
+A member owes the scheme things in a definite order — registration first, then a
+levy for each open case, oldest case first — and a payment should walk down that
+list settling each in turn. Until now the allocator attached a payment as one
+flat contribution and a treasurer sorted out the rest by hand. This release makes
+the obligations the system's own idea.
+
+### What a member owes, in order (item 6)
+
+A single service, benevolent.services.obligations, answers "what does this member
+owe, and in what priority?" and everything reads it: the auto-allocator, the
+review queue and the member's statement. Registration and renewal fees come
+first, then one levy per open case ordered oldest-event-first (the family
+bereaved three months ago has waited longest), then dues arrears.
+
+### One payment, several obligations (item 7)
+
+A payment that covers more than one obligation is split across them — clearing
+two or three cases in arrears in a single receipt. The split divides the
+TRANSACTION, never the contribution, so a levy is recorded as a levy and a fee as
+a fee and nothing silently pays off a member's dues. Anything above what is owed
+is recorded as a voluntary contribution. A treasurer can apply a queued payment
+to a member's obligations from the intake screen, ticking specific ones or taking
+them oldest-first.
+
+### Auto-allocation where it is unambiguous (item 8)
+
+When a scheme has exactly one open case and an identified member pays the levy
+amount, it is attached to that case automatically — there is only one thing it
+can be. If that member has already paid their levy, the payment goes to review
+instead of being posted twice.
+
+### The guard
+
+Auto-allocation now gates on IDENTITY confidence alone. An amount that matches
+what a member owes corroborates the money's purpose but says nothing about who
+paid — a hundred members owe exactly 500 — so it can no longer lift a name-only
+guess over the threshold and post to the wrong person.
+
+All four behaviours are settings, off or on per the church's constitution:
+apportion to obligations, auto-allocate a single open case, review overpayments,
+review multi-obligation payments.
+
+### Bank register: distinct charges under one reference (continued)
+
+The duplicate-reference fix now also covers a bank journal that batches several
+DISTINCT charges under one reference — stamp duty, excise and a cheque-book fee
+all under Core Ref CB0170485260413 / Channel REF CB0170485_13042026, with no
+M-Pesa receipt. These are told apart by amount and narration; keying on the bare
+reference collapsed the three into one. Verified on the real 1,377-row statement:
+all three charges import, and a re-import adds nothing.
+
+# Changelog
+
 ## v2.69.0 - The bank stamped three different payments with one reference
 
 A statement carried three real M-Pesa payments — 10, 11 and 9 shillings — that

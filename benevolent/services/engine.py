@@ -194,11 +194,29 @@ def intake(transaction, *, scheme=None, user=None):
             membership=membership, case=case, amount=transaction.amount,
             date=transaction.date)
 
-    can_auto = (cfg.auto_allocate
-                and best is not None
-                and result.confidence >= (cfg.auto_allocate_threshold or 85)
-                and not result.is_ambiguous
-                and not problems)
+    identity_ok = (cfg.auto_allocate
+                   and best is not None
+                   # the auto gate checks IDENTITY confidence, not total score: an
+                   # amount matching what this member owes corroborates the money's
+                   # purpose but says nothing about WHO paid (a hundred members owe
+                   # exactly 500), so it must not lift a name-only guess over the
+                   # threshold and post to the wrong person automatically.
+                   and result.identity_confidence >= (cfg.auto_allocate_threshold or 85)
+                   and not result.is_ambiguous)
+
+    # Obligation apportionment (items 6/7/8) runs on IDENTITY alone. The
+    # allocator may have flagged "a levy has to say which case" because it could
+    # not pin the case from the narration — but the obligations engine pins it
+    # itself (the single open case, or the oldest owed), so that particular
+    # problem is not a blocker here; the engine decides the case and kind, and
+    # validates each part as it applies it.
+    if identity_ok:
+        obligation_outcome = _maybe_auto_apply_obligations(
+            item, membership, best, result, cfg)
+        if obligation_outcome is not None:
+            return obligation_outcome
+
+    can_auto = identity_ok and not problems
 
     if can_auto:
         contribution = _attach(
@@ -260,6 +278,43 @@ def resolve(item, *, membership=None, case=None, kind=None, user, note="",
 
 
 @db_tx.atomic
+def resolve_to_obligations(item, *, membership, user, targets=None, note=""):
+    """A treasurer applies a queued payment to a member's obligations (item 7).
+
+    Splits the payment across what the member owes — registration first, then
+    case levies oldest-first — or across the specific obligations the treasurer
+    chose (`targets`, keys from obligations.obligation_key). Handles the payment
+    that clears two or three cases in arrears in one go. The receipt does not
+    move; it is already banked.
+    """
+    from benevolent.services import obligations as ob_svc
+
+    if not item.is_open:
+        raise ValidationError(f"{item} is already {item.get_status_display().lower()}.")
+    if membership is None:
+        raise ValidationError("Choose the member whose obligations this settles.")
+    if item.scheme is None:
+        raise ValidationError("This receipt has no scheme.")
+    if membership.scheme_id != item.scheme_id:
+        raise ValidationError("That member belongs to a different scheme.")
+
+    contributions = ob_svc.apply_payment_to_obligations(
+        item.transaction, membership, user=user, targets=targets, note=note)
+
+    item.status = ContributionIntake.Status.RESOLVED
+    item.contribution = contributions[0] if contributions else None
+    item.suggested_membership_id = membership.pk
+    item.resolved_by = user
+    item.resolved_at = timezone.now()
+    if note:
+        item.note = note[:200]
+    elif len(contributions) > 1:
+        item.note = f"Applied across {len(contributions)} obligations (oldest first)."
+    item.save()
+    return contributions
+
+
+@db_tx.atomic
 def reject(item, *, user, note=""):
     """Not scheme money after all.
 
@@ -276,6 +331,94 @@ def reject(item, *, user, note=""):
     item.resolved_by = user
     item.resolved_at = timezone.now()
     item.note = (note or "Not scheme money.")[:200]
+    item.save()
+    return item
+
+
+def _maybe_auto_apply_obligations(item, membership, best, result, cfg):
+    """Items 6/7/8: apply a confidently-identified member's payment to what they
+    owe, splitting it across obligations. Returns a resolved ContributionIntake,
+    or None to fall through to the ordinary single-contribution attach.
+
+    Rules, all constitution-driven (settings):
+      * apportion_to_obligations off      → fall through (one flat contribution)
+      * member owes nothing               → fall through (voluntary / donation)
+      * payment > everything owed         → review, if review_overpayments
+      * payment spans >1 obligation       → review, if review_multi_obligation
+      * single open case, amount = levy,
+        member already paid their levy     → review (would post twice)
+    """
+    if not cfg.apportion_to_obligations:
+        return None
+    if membership is None:
+        return None
+
+    from benevolent.services import obligations as ob_svc
+    from benevolent.models import BenevolentCase
+
+    txn = item.transaction
+    obligations = ob_svc.obligations_for(membership, as_of=txn.date)
+
+    # A single open case the member has ALREADY fully paid: a second payment of
+    # the levy amount is a probable duplicate/overpayment — never post it twice.
+    open_cases = list(BenevolentCase.objects.filter(
+        scheme=item.scheme, status__in=BenevolentCase.OPEN_STATUSES))
+    if (cfg.auto_allocate_single_open_case and len(open_cases) == 1):
+        the_case = open_cases[0]
+        already_paid = contrib_svc.levy_paid_by(membership, the_case)
+        levy_ob = next((o for o in obligations
+                        if o.case and o.case.pk == the_case.pk), None)
+        if levy_ob is None and already_paid > 0:
+            # nothing left to owe on the one open case, but money arrived: judge it
+            item.status = ContributionIntake.Status.REVIEW
+            item.suggested_membership_id = membership.pk
+            item.suggested_case_id = the_case.pk
+            item.note = (f"{membership.member.name} has already paid the levy for "
+                         f"{the_case.number}. This looks like a repeat or an "
+                         f"overpayment — please confirm.")[:200]
+            item.save()
+            return item
+
+    if not obligations:
+        return None      # owes nothing settleable → ordinary voluntary/donation
+
+    allocations, leftover = ob_svc.plan_allocation(
+        membership, txn.amount, as_of=txn.date)
+
+    if leftover > 0 and cfg.review_overpayments:
+        item.status = ContributionIntake.Status.REVIEW
+        item.suggested_membership_id = membership.pk
+        item.note = (f"{membership.member.name} paid {txn.amount}, which is more "
+                     f"than the {txn.amount - leftover} they owe. Confirm the "
+                     f"extra {leftover} is a voluntary gift.")[:200]
+        item.save()
+        return item
+
+    if len(allocations) > 1 and cfg.review_multi_obligation_payments:
+        item.status = ContributionIntake.Status.REVIEW
+        item.suggested_membership_id = membership.pk
+        item.note = (f"{membership.member.name}'s payment covers "
+                     f"{len(allocations)} obligations. Confirm the split.")[:200]
+        item.save()
+        return item
+
+    if not allocations:
+        return None
+
+    contributions = ob_svc.apply_payment_to_obligations(
+        txn, membership, user=None, as_of=txn.date)
+    for c in contributions:
+        c.allocated_automatically = True
+        c.allocation_confidence = result.confidence
+        c.save(update_fields=["allocated_automatically", "allocation_confidence"])
+
+    item.status = ContributionIntake.Status.AUTO
+    item.contribution = contributions[0]
+    item.suggested_membership_id = membership.pk
+    item.resolved_at = timezone.now()
+    if len(contributions) > 1:
+        item.note = (f"Applied across {len(contributions)} obligations "
+                     f"(oldest first).")[:200]
     item.save()
     return item
 

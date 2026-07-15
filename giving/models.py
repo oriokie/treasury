@@ -315,6 +315,16 @@ class Transaction(models.Model):
         help_text="A capital receipt (e.g. asset-disposal proceeds) — real cash in "
                   "the fund, but not operating income, so it is kept out of the "
                   "Income & Expenditure statement (only the gain/loss is shown there).")
+    is_banking = models.BooleanField(default=False, db_index=True,
+        help_text="A banking/deposit entry: the bank credit that is the OTHER LEG "
+                  "of cash already receipted (e.g. Sabbath cash counted, then "
+                  "deposited). It reconciles the bank statement line so the "
+                  "register matches, but it is NOT income and belongs to NO fund "
+                  "— the income and the fund balance were recognised when the cash "
+                  "was counted, and recognising them again on deposit would "
+                  "double-count. Always department=None, excluded_from_income=True. "
+                  "It counts toward the bank position (the money really is at the "
+                  "bank) but nowhere else.")
 
     # Campaign fallback allocation (e.g. camp-meeting expense contributions
     # matched to a group when the normal rules miss). Kept on the row so the

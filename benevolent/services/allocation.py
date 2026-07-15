@@ -111,6 +111,18 @@ class Signal:
         return asdict(self)
 
 
+# Signal codes that establish WHO the payer is. Everything else — chiefly the
+# amount matching an obligation — CORROBORATES what the money is for, but says
+# nothing about identity: a hundred members owe the same 500, so an amount match
+# must never, on its own, turn "not sure who" into a confident auto-allocation.
+# The auto-allocate threshold is checked against the identity score alone.
+_IDENTITY_SIGNALS = {
+    "membership_number", "case_number", "household_id",
+    "member_phone", "member_alt_phone", "spouse_phone", "dependant_phone",
+    "name_exact", "name_fuzzy",
+}
+
+
 @dataclass
 class Candidate:
     """One possible answer, with everything that argued for it."""
@@ -130,6 +142,17 @@ class Candidate:
         confidence — which is the intended shape: no single medium signal can
         reach the auto threshold alone."""
         return min(CEILING, sum(s.weight for s in self.signals))
+
+    @property
+    def identity_score(self):
+        """The score from IDENTITY evidence only — who the payer is, ignoring
+        obligation-amount corroboration. This is what the auto-allocate gate
+        checks: an amount that matches what this member owes is real support for
+        the money's PURPOSE, but a hundred members owe exactly 500, so it must
+        not be what lifts a name-only guess over the threshold and posts money to
+        the wrong person automatically."""
+        return min(CEILING, sum(s.weight for s in self.signals
+                                if s.code in _IDENTITY_SIGNALS))
 
     def as_dict(self):
         return {
@@ -158,6 +181,13 @@ class AllocationResult:
     @property
     def confidence(self):
         return self.best.score if self.best else 0
+
+    @property
+    def identity_confidence(self):
+        """The best candidate's IDENTITY score — what the auto-allocate gate
+        should use, so an obligation-amount match cannot on its own push a
+        name-only guess over the threshold (a hundred members owe the same 500)."""
+        return self.best.identity_score if self.best else 0
 
     @property
     def runner_up(self):

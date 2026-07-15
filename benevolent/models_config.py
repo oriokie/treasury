@@ -189,6 +189,36 @@ class BenevolentSettings(models.Model):
         help_text="Propose a narration rule after a treasurer has allocated the same "
                   "unrecognised narration by hand a few times.")
 
+    # ---- Obligation allocation (Round 9, items 6/7/8) -----------------------
+    apportion_to_obligations = models.BooleanField(
+        default=True,
+        help_text="When an identified member pays, apply the money to what they "
+                  "owe — registration first, then case levies oldest-first — "
+                  "splitting one payment across several obligations where it "
+                  "covers more than one (e.g. clearing two cases in arrears at "
+                  "once). With this off, a payment is recorded as a single "
+                  "contribution and a treasurer allocates it by hand.")
+    auto_allocate_single_open_case = models.BooleanField(
+        default=True,
+        help_text="When a scheme has exactly ONE open case and an identified "
+                  "member pays the levy amount, attach it to that case "
+                  "automatically — there is only one thing it can be. If that "
+                  "member has ALREADY paid their levy for the case, the payment "
+                  "goes to the review queue instead of being posted twice.")
+    review_overpayments = models.BooleanField(
+        default=True,
+        help_text="Send a payment that is larger than everything the member owes "
+                  "to the review queue, so a treasurer decides whether the extra "
+                  "is a genuine voluntary gift or a misread amount, rather than "
+                  "it being auto-posted as a voluntary contribution.")
+    review_multi_obligation_payments = models.BooleanField(
+        default=False,
+        help_text="Send a payment that would be split across MORE THAN ONE "
+                  "obligation (e.g. two cases in arrears) to the review queue for "
+                  "a treasurer to confirm the split, rather than applying it "
+                  "automatically. Off by default — the oldest-first split is "
+                  "usually exactly right — but some treasurers prefer to confirm.")
+
     # ---- Case creation on a death ------------------------------------------
     # A benevolent scheme exists FOR the death of a member or their family. So
     # the moment a death is recorded, the case it entitles the family to should

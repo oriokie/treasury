@@ -51,13 +51,20 @@ class DedupKeyTests(TestCase):
         self.assertNotIn(SHARED_CORE, keys)
         self.assertNotIn(SHARED_CHANNEL, keys)
 
-    def test_no_narration_receipt_falls_back_to_core_ref(self):
-        """A cheque / bank-charge line with no M-Pesa receipt still keys on the
-        core ref, exactly as before — the fix only changes the receipt case."""
+    def test_no_narration_receipt_folds_in_amount_and_narration(self):
+        """A cheque / bank-charge line with no M-Pesa receipt keys on the core
+        ref PLUS amount and narration, so distinct charges under one reference
+        stay distinct while a true re-import (same everything) still collapses."""
         row = {"date": dt.date(2026, 1, 30), "credit": None,
                "debit": Decimal("250.00"), "core_ref": "CB00123", "mpesa_ref": "",
                "receipt": "", "raw_narration": "MONTHLY CHARGE"}
-        self.assertEqual(dedup_key(row), "CB00123|D")
+        key = dedup_key(row)
+        self.assertTrue(key.startswith("CB00123"))
+        self.assertTrue(key.endswith("|D"))          # debit direction preserved
+        self.assertIn("250", key)                     # amount folded in
+        # a second charge under the same ref but a different amount differs
+        row2 = dict(row, debit=Decimal("300.00"), raw_narration="OTHER CHARGE")
+        self.assertNotEqual(dedup_key(row2), key)
 
     def test_mpesa_receipt_detector(self):
         self.assertTrue(_is_mpesa_receipt("UATKR5A7M8"))    # 10 char, letters+digits
@@ -65,6 +72,65 @@ class DedupKeyTests(TestCase):
         self.assertFalse(_is_mpesa_receipt("ABCDEFGHIJ"))    # no digit
         self.assertFalse(_is_mpesa_receipt("1234567890"))    # no letter
         self.assertFalse(_is_mpesa_receipt("SHORT"))
+
+
+class BankChargeBatchTests(TestCase):
+    """A journal batching several DISTINCT charges under one reference — stamp
+    duty, excise and a cheque-book fee all under Core Ref CB0170485260413 /
+    Channel REF CB0170485_13042026, with NO M-Pesa receipt. Keying on the bare
+    reference collapsed the three into one; the amount + narration disambiguate."""
+
+    CHARGES = [
+        ("STAMP DUTY STAMP DUTY", Decimal("250.00")),
+        ("EXCISE EXCISE", Decimal("300.00")),
+        ("160738: 1 100 LEAF CHEQUE BK FOR RANGE 401 TO 500", Decimal("1500.00")),
+    ]
+    CORE = "CB0170485260413"
+    CHANNEL = "CB0170485_13042026"
+
+    def _row(self, narr, debit):
+        return {"date": dt.date(2026, 4, 13), "credit": None, "debit": debit,
+                "core_ref": self.CORE, "mpesa_ref": self.CHANNEL,
+                "receipt": "", "raw_narration": narr}
+
+    def test_distinct_charges_under_one_reference_get_distinct_keys(self):
+        keys = {dedup_key(self._row(n, d)) for n, d in self.CHARGES}
+        self.assertEqual(len(keys), 3, "three charges collapsed to fewer keys")
+
+    def test_same_charge_keys_stably_for_reimport(self):
+        row = self._row(self.CHARGES[0][0], self.CHARGES[0][1])
+        self.assertEqual(dedup_key(row), dedup_key(row))
+
+
+class ImporterBankChargeTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("t_bc", password="x")
+        self.account = BankAccount.get_default()
+
+    def test_all_three_charges_import_and_reimport_is_idempotent(self):
+        from statements.services.ingest import ingest_event
+        charges = [("STAMP DUTY", Decimal("250")),
+                   ("EXCISE", Decimal("300")),
+                   ("CHEQUE BOOK", Decimal("1500"))]
+
+        def do_import():
+            out = []
+            for narr, amt in charges:
+                txn, outcome = ingest_event(
+                    date=dt.date(2026, 4, 13), amount=amt,
+                    direction=Transaction.Direction.DEBIT,
+                    reference=narr, phone="", name="", raw_narration=narr,
+                    core_ref="CB0170485260413", bank_receipt=None,
+                    mpesa_ref="CB0170485_13042026", bank_account=self.account)
+                out.append(outcome)
+            return out
+
+        first = do_import()
+        self.assertEqual(first, ["created", "created", "created"])
+        before = Transaction.objects.count()
+        second = do_import()
+        self.assertEqual(second, ["duplicate", "duplicate", "duplicate"])
+        self.assertEqual(Transaction.objects.count(), before)
 
 
 class LedgerImportTests(TestCase):

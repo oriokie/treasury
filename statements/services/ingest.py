@@ -35,24 +35,29 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
     bank_receipt = (bank_receipt or "").strip().upper() or None
     mpesa_ref = (mpesa_ref or "").strip().upper() or None
 
-    # A genuine 10-char M-Pesa receipt is unique PER PAYMENT; a bank
-    # channel/core reference can be shared across a batch of distinct payments
-    # (see statements.services.importer for the worked example). So a unique,
-    # unseen bank_receipt is a new payment even under a shared core_ref/mpesa_ref.
     from statements.services.register import _is_mpesa_receipt
-    receipt_is_unique = (
-        _is_mpesa_receipt(bank_receipt)
-        and not Transaction.objects.filter(bank_receipt=bank_receipt).exists())
 
-    # database-level dedup (the bank re-delivers until it gets a 2XX)
+    # database-level dedup (the bank re-delivers until it gets a 2XX).
+    #
+    # A bank can share ONE reference across several genuinely-distinct movements:
+    #   - a mobile-banking sweep batching payments, told apart by their unique
+    #     M-Pesa receipts (on bank_receipt);
+    #   - a journal batching charges, told apart by amount + direction (stamp
+    #     duty 250, excise 300, cheque book 1,500 under one CB0170485260413).
+    # So an unseen unique receipt is always new; and a core_ref match only counts
+    # as a duplicate when the AMOUNT and DIRECTION also match — otherwise it is a
+    # sibling line in the same batch and must not be dropped.
     if bank_receipt and Transaction.objects.filter(bank_receipt=bank_receipt).exists():
         return None, "duplicate"
-    if (not receipt_is_unique) and core_ref and \
-            Transaction.objects.filter(core_ref=core_ref).exists():
-        return None, "duplicate"
-    if (not receipt_is_unique) and mpesa_ref and \
-            Transaction.objects.filter(mpesa_ref=mpesa_ref).exists():
-        return None, "duplicate"
+
+    receipt_is_unique = _is_mpesa_receipt(bank_receipt)
+    if not receipt_is_unique and core_ref:
+        base = core_ref
+        if Transaction.objects.filter(
+                Q(core_ref__iexact=base) | Q(core_ref__istartswith=f"{base}-S"),
+                amount=abs(amount),
+                direction=direction).exists():
+            return None, "duplicate"
 
     # avoid the core_ref UNIQUE collision when a batch shares one core_ref
     if core_ref and Transaction.objects.filter(

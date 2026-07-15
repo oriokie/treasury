@@ -41,35 +41,51 @@ def dedup_key(row):
     SFI40DCBA1EA1F6DABA9). Keying on the channel/core ref first collapsed those
     three real payments into one and silently dropped two — money the register
     denied ever arrived. So when the parsed narration receipt IS a genuine
-    M-Pesa receipt, it is the key; the channel and core refs are the fallback
-    for lines that have no such receipt (cheques, bank charges).
+    M-Pesa receipt, it is the key.
+
+    **A shared bank reference on charges is disambiguated by amount + narration.**
+    A bank also batches several DISTINCT charges under one reference — a single
+    journal carrying stamp duty (250), excise (300) and a cheque-book fee (1,500)
+    all under Core Ref CB0170485260413 / Channel REF CB0170485_13042026, told
+    apart only by their amounts and narrations. Keying on the bare reference
+    collapsed those three real charges into one. So for lines with no unique
+    M-Pesa receipt, the signed amount and a narration fingerprint are folded into
+    the key: a genuine re-import (same reference AND same amount AND same
+    narration) still deduplicates, but three different charges under one reference
+    stay three lines.
 
     **A debit carries its direction in the key.** A bank reversing its own
     mistake issues the DEBIT under the SAME reference as the credit it is
-    undoing — so keying purely on the reference deduplicated the reversal away
-    as a "duplicate", losing the line entirely and leaving the register showing
-    money the bank had already taken back.
+    undoing — so the reversal must not deduplicate the original away. Direction
+    is part of the key, and because amount is now folded in too, a reversal (same
+    reference, opposite direction, matching amount) stays distinct.
 
-    A line with none of these references — some banks emit a bare "monthly
-    charge" row with no reference at all — gets a synthetic key built from the
-    date, signed amount and narration. That is weaker (two identical charges on
-    one day would collapse into one), and it is why `import_file()` reports such
-    rows: a treasurer should know the register is doing its best rather than
-    believing it is being exact.
+    A line with no reference at all — some banks emit a bare "monthly charge" row
+    — gets a synthetic key from the date, signed amount and narration, and
+    `import_file()` reports the count so a treasurer knows the register is doing
+    its best rather than being exact.
     """
     is_debit = bool(row.get("debit"))
+    amt = (row.get("credit") or Decimal(0)) - (row.get("debit") or Decimal(0))
 
-    # 1) the unique per-payment M-Pesa receipt from the narration wins outright
+    # 1) the unique per-payment M-Pesa receipt from the narration wins outright.
+    # It IS globally unique, so it needs no amount/narration disambiguation.
     rcpt = (row.get("receipt") or "").strip().upper()
     if _is_mpesa_receipt(rcpt):
         return (f"{rcpt}|D" if is_debit else rcpt)[:80]
 
-    # 2) otherwise the bank's channel / core references, then the receipt column
+    # 2) otherwise the bank's channel / core references (or the receipt column),
+    # disambiguated by the signed amount and a short narration fingerprint so a
+    # batch of distinct charges under ONE reference stays distinct while a true
+    # re-import of the same line still collapses.
+    narr_fp = _re.sub(r"\s+", " ", (row.get("raw_narration") or "").strip().upper())[:24]
     for key in ("mpesa_ref", "core_ref", "receipt"):
         v = (row.get(key) or "").strip().upper()
         if v:
-            return (f"{v}|D" if is_debit else v)[:80]
-    amt = (row.get("credit") or Decimal(0)) - (row.get("debit") or Decimal(0))
+            base = f"{v}|{amt}|{narr_fp}"
+            return (f"{base}|D" if is_debit else base)[:80]
+
+    # 3) no reference at all
     narr = (row.get("raw_narration") or "")[:40]
     return f"SYN|{row['date']:%Y%m%d}|{amt}|{narr}"[:80]
 

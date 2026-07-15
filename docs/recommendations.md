@@ -2738,3 +2738,82 @@ as a new payment even under a shared `core_ref`/`mpesa_ref`, and suffix the shar
 Re-import remains idempotent (verified on the real 1,165-row file: first import
 adds all three, re-import adds zero). New helper `_is_mpesa_receipt`. Tests:
 `statements/test_dedup_shared_coreref.py` (5). No migration.
+
+---
+
+## 83. Round 9 items 6/7/8 — obligations engine — RESOLVED
+
+A member owes the scheme things in a definite priority order, and a payment
+should settle them in that order. Implemented as `benevolent/services/obligations.py`
+(the single ordered list — registration, renewal, case levies oldest-first, dues
+arrears), with `apply_payment_to_obligations` splitting the TRANSACTION across
+obligations (never the contribution, since BenevolentContribution.amount is a
+property reading transaction.amount). Auto-allocation (item 8) attaches an
+identified member's exact-levy payment to the single open case, sending
+already-paid repeats to review. Treasurer review-queue assignment (item 7) via
+`engine.resolve_to_obligations` + obligations panel on intake_item.html. The
+guard: auto-allocation gates on `AllocationResult.identity_confidence` (identity
+signals only) not total score, so an obligation-amount match cannot push a
+name-only guess over the auto threshold. Settings (migration 0025):
+apportion_to_obligations, auto_allocate_single_open_case, review_overpayments,
+review_multi_obligation_payments. Tests: `benevolent/test_obligations_round9.py`
+(13). Phase 7 (42) and Phase 8 (25) regression pass.
+
+## 84. Bank register — distinct charges under one shared reference — RESOLVED
+
+Extends #82. A bank journal batches several DISTINCT charges (stamp duty 250,
+excise 300, cheque-book 1,500) under ONE Core Ref CB0170485260413 / Channel REF
+CB0170485_13042026 with NO M-Pesa receipt. `dedup_key` now folds signed amount +
+narration fingerprint into the key for non-M-Pesa-receipt lines, so distinct
+charges stay distinct while a true re-import (same ref, amount, narration)
+collapses. Importer/ingest dedup rewritten to match: unique M-Pesa receipt wins;
+otherwise core_ref base + amount + direction, with shared core_refs suffixed
+"-S1"/"-S2". Preserved `test_dedup_by_mpesa_ref` (same receipt, different
+core_ref must still dedup — mpesa_ref is deduped unless it is a shared channel
+ref). Tests: `statements/test_dedup_shared_coreref.py` (8). All 140 statements
+tests pass.
+
+## 85. Bank-register exceptions — bulk actions + take-to-books — RESOLVED
+
+Edwin's request on /bank-register/exceptions/: (a) bulk action on the page;
+(b) "take entries to our books" that must NOT double-count when the item was
+already treated as an expense, was a deposit (cash already receipted), or was one
+withdrawal covering several expenses; (c) genuine records that SHOULD hit the
+books go to the review queue (debits/credits). Design: three dispositions per
+exception — "already in books elsewhere" (link + close, no posting), "banking of
+already-receipted cash" (contra/transfer, no income), "genuine new movement"
+(route to review queue). See session notes. Priority: High.
+
+## 86. Deposit treatment — cash banking reconciles without re-recognising income — RESOLVED
+
+When Sabbath cash already receipted as CASH income is deposited, the bank shows a
+CREDIT. Posting it as income double-counts (the offering is already in the fund).
+Correct treatment: the deposit is a TRANSFER from undeposited-cash to bank, not a
+receipt — cash decreases, bank increases, income unchanged. Needs a banking/contra
+concept so the register reconciles the credit without re-recognising income. See
+session notes. Priority: High.
+
+---
+
+## 87. Register exceptions take-to-books + deposit treatment — build notes (RESOLVED, ref #85/#86)
+
+New service `statements/services/exceptions_intake.py` with four dispositions:
+NEW_MOVEMENT (review-queue credit/debit — the only one that adds money), BANKING
+(is_banking credit: reconciles the bank line, counts to bank position, NOT income,
+NO fund), ALREADY_BOOKED (link + close, no posting), BANK_CHARGE (posts an Expense
+in BANK_CHARGE category + linked bank DEBIT). `bulk_take_to_books` applies one
+disposition to many, skipping non-fitting items with a reason (debit≠banking,
+credit≠charge, MISSING_IN_BANK not applicable). `applicable_dispositions` drives
+the per-row UI. New `Transaction.is_banking` field (migration giving/0026);
+already excluded from income (excluded_from_income=True) and from
+pending_receipts_total; still counts in bank_position (money really is at bank).
+View: RegisterExceptionsView gains _take_single/_bulk_take (guarded by
+can_enter_data). Template: select-all + per-row select, bulk action bar, per-row
+"Take to books" disposition form. Tests: `statements/test_exceptions_intake.py`
+(17). Regression: treasury_metrics (22), position_reports (4), expense/transfer
+(14) all pass.
+
+Deposit treatment decision (#86): counted cash already sits in the fund (income
+recognised at counting), so a deposit is NOT a new receipt. The is_banking entry
+reconciles the bank credit without re-recognising income or touching a fund —
+the simplest correct option (no separate undeposited-cash asset dimension).
