@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}{{ case.number }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ case.number }}</h1>
+<div class="page-head"><div><h1>{{ case.number }}{% if case.external_reference %} <span class="muted" style="font-size:.6em;font-weight:500" title="Old workbook/paper reference">({{ case.external_reference }})</span>{% endif %}</h1>
   <div class="sub">{{ case.scheme.name }} · {{ case.event_type.name }} ·
     <span class="pill {% if case.status == 'PAID' or case.status == 'CLOSED' %}pill-green{% elif case.status == 'REJECTED' or case.status == 'CANCELLED' %}pill-red{% elif case.status == 'APPROVED' or case.status == 'PARTLY_PAID' %}pill-blue{% else %}pill-amber{% endif %} u-xs">{{ case.get_status_display }}</span></div></div>
 <div class="btn-row no-print">

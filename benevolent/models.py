@@ -1337,6 +1337,14 @@ class BenevolentCase(models.Model):
 
     number = models.CharField(max_length=24, unique=True, editable=False,
                               help_text="Permanent case reference; assigned once, never reused.")
+    external_reference = models.CharField(
+        max_length=40, blank=True,
+        help_text="A pre-existing reference for this case from before it was on this "
+                  "system — a paper file number, a spreadsheet row, a minute-book "
+                  "entry. Purely for a treasurer to cross-check against old records; "
+                  "the system's own `number` above is what everything internally "
+                  "refers to. Set once, on import, and not otherwise editable through "
+                  "the case form.")
     scheme = models.ForeignKey(BenevolentScheme, on_delete=models.PROTECT,
                                related_name="cases")
     membership = models.ForeignKey(
@@ -1452,7 +1460,8 @@ class BenevolentCase(models.Model):
     class Meta:
         ordering = ["-event_date", "-id"]
         indexes = [models.Index(fields=["scheme", "status"]),
-                   models.Index(fields=["status", "event_date"])]
+                   models.Index(fields=["status", "event_date"]),
+                   models.Index(fields=["scheme", "external_reference"])]
 
     def __str__(self):
         return f"{self.number} · {self.beneficiary_display}"
@@ -1619,10 +1628,33 @@ class BenevolentPayout(models.Model):
         "cashbook.Expense", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="benevolent_payout",
         help_text="The voucher that carries the money. Authoritative for amount, "
-                  "approval and payment.")
+                  "approval and payment. Blank for a historical payout — see below.")
     payee_name = models.CharField(max_length=120, blank=True,
                                   help_text="Who was actually paid (may be a third party).")
     note = models.CharField(max_length=200, blank=True)
+
+    # ---- historical payouts (case import) ---------------------------------
+    # Money that left the church BEFORE this system existed has no matching
+    # cashbook.Expense to point at — that Expense would assert a payment is
+    # happening TODAY, and approving/paying it for real would either duplicate
+    # a disbursement that already occurred, or fabricate a backdated ledger
+    # entry the real bank statement was never going to show. So a historical
+    # payout carries its OWN amount and date directly, and is never wired to
+    # the live expense-approval workflow. It still counts against the case's
+    # `paid_total` (so a treasurer can't later raise a NEW voucher for money
+    # already paid historically) but is INVISIBLE to the fund's actual balance,
+    # which is computed purely from real ledger Transactions/Expenses and has
+    # never read this model — recording history here cannot corrupt live
+    # accounting.
+    is_historical = models.BooleanField(
+        default=False,
+        help_text="A payment recorded from the church's pre-system records, not "
+                  "raised through the live expense workflow. See historical_amount.")
+    historical_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Only used when is_historical is True (no linked Expense).")
+    historical_date = models.DateField(null=True, blank=True)
+
     created_by = models.ForeignKey("auth.User", null=True, blank=True,
                                    on_delete=models.SET_NULL,
                                    related_name="benevolent_payouts_created")
@@ -1637,30 +1669,42 @@ class BenevolentPayout(models.Model):
 
     @property
     def amount(self):
+        if self.is_historical:
+            return self.historical_amount or Decimal(0)
         e = self.expense
         return e.amount if e else Decimal(0)
 
     @property
     def date(self):
+        if self.is_historical:
+            return self.historical_date
         e = self.expense
         return e.date if e else None
 
     @property
     def status(self):
+        if self.is_historical:
+            return "Historical"
         e = self.expense
         return e.get_status_display() if e else "—"
 
     @property
     def effective(self):
-        """Whether the voucher counts against the scheme's fund. Mirrors exactly
-        the condition the balance engine uses (APPROVED or PAID), so a payout is
-        never counted here that the fund balance doesn't also feel."""
+        """Whether the voucher counts against the CASE's paid_total. A historical
+        payout always counts — it is an asserted fact of what already happened,
+        not something awaiting approval — but note this is the case-level view
+        only; the scheme's actual fund balance is computed independently from
+        real ledger rows and never reads this property (see the class docstring)."""
+        if self.is_historical:
+            return bool(self.historical_amount and self.historical_amount > 0)
         from cashbook.models import Expense
         e = self.expense
         return bool(e and e.status in (Expense.Status.APPROVED, Expense.Status.PAID))
 
     @property
     def is_rejected(self):
+        if self.is_historical:
+            return False
         from cashbook.models import Expense
         e = self.expense
         return bool(e and e.status == Expense.Status.REJECTED)

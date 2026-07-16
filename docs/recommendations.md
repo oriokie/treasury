@@ -2309,12 +2309,7 @@ back to the (still-improved, but not certain) text-inference path. *Priority:
 Low* — narration edits after the fact are rare, and the fallback remains
 strictly safer than the pre-#71 behaviour regardless.
 
-**73b. "Cases" bulk import was named but not built in this round** — only
-roster and contribution history. A historical case import (cases already
-decided before the church adopted this system) needs its own careful design
-around what state such a case should land in, which this round did not have
-time to give the same rigour as everything else. *Priority: Medium* —
-worth a dedicated pass rather than a rushed version tacked onto this one.
+**73b. RESOLVED — historical case import**, see item 95.
 
 **73c. The member directory report's phone column is shown unmasked**,
 consistent with every other screen in the benevolent module (none of which
@@ -2590,9 +2585,7 @@ bank accounts, transfers), and a scheme-level M-Pesa float would be a real
 feature, not a bug fix. *Priority: Medium — worth its own pass, and worth asking
 Edwin whether he wants it per-scheme or whether the church-level view suffices.*
 
-**79i. Historical case import is still not built** (see #73b). The workbook shows
-7,442 contribution rows across ~50 cases — a church adopting this system with that
-history behind it would want them in. *Priority: Medium.*
+**79i. RESOLVED — historical case import**, see item 95.
 
 ---
 
@@ -2927,3 +2920,82 @@ unchanged, so the Telegram bot's route and any bookmark keep working. Test
 `test_button_present_on_transactions_page` updated to assert the new
 (intentional) linking behaviour; a new test confirms the downloads are present
 on the pending-receipt page itself.
+
+---
+
+## 95. Historical case import — RESOLVED (ref #73b, #79i)
+
+Cases already decided BEFORE this system existed can now be brought in at their
+known outcome, at scale — the workbook's ~7,442 contribution rows across ~50
+cases are the motivating example.
+
+**Design decision, the core of what "needs its own careful design" (per #73b)
+meant:** a historical case lands DIRECTLY at its outcome, never re-derived
+through submit → assess → approve. Re-running it through today's workflow would
+judge a decades-old decision against today's eligibility rules and policy
+version, and would fire "your case was approved" notifications for something
+that happened years ago. New `benevolent/services/cases.py::import_historical_case()`
+sets status/approved_amount directly, trusting the church's own record —
+exactly the same principle `waive_on_import` already established for historical
+dues arrears. `IMPORTABLE_STATUSES` excludes the working states SUBMITTED/
+ASSESSED (a historical record is never genuinely "still being assessed" years
+later).
+
+**Historical payouts never touch the live ledger.** A paid amount creates a
+`BenevolentPayout` marked `is_historical=True` with its own `historical_amount`/
+`historical_date` — NOT a live `cashbook.Expense`, which would assert money is
+leaving the church today and could be double-paid through the ordinary
+approval workflow. Verified: no Expense is created, and the scheme's real fund
+balance (computed purely from ledger rows, never from this model) is provably
+untouched.
+
+**PARTLY_PAID vs CLOSED is a real distinction, documented and tested:**
+PARTLY_PAID means the scheme still owes the remainder today (counts in
+`reporting.approved_unpaid_total()`); CLOSED means the case is finished
+regardless of what was actually paid. Import as the wrong one and a historical
+case either falsely shows as a live commitment or falsely disappears from one.
+
+**Two bugs found and fixed while building this** (both regression-tested):
+1. A historical case left OPEN (DRAFT/APPROVED/PARTLY_PAID) whose event predates
+   the scheme's oldest policy record could not have a levy raised against it —
+   `raise_case_levy()`'s fallback (`case.policy or scheme.policy_on(event_date)`)
+   resolved to None and hard-failed. Fixed: an ongoing historical case is given
+   a policy to work from (the one in force on the event date if there is one,
+   else the current policy) — deliberately NOT a fabricated
+   policy_snapshot/eligibility_snapshot/assessed_amount, since this case was
+   never actually assessed through the engine.
+2. The case list search matched the system number, member name and beneficiary
+   name, but not `external_reference` — defeating the entire point of recording
+   an old workbook reference. Fixed, plus the reference is now shown under the
+   case number on both the list and detail pages, and included in the case
+   export (which also gained a "Paid" column it never had).
+
+**Tied to the existing contribution importer**: `BulkContributionImportView`'s
+`case_number` lookup now falls back to `external_reference`, so a treasurer can
+use the SAME reference from their old workbook in both the case-import CSV and
+the contribution-import CSV, without needing to look up newly-issued case
+numbers in between.
+
+New: `BenevolentCase.external_reference` (indexed, not DB-unique — MariaDB does
+not reliably enforce conditional uniqueness per #77b, so duplicate detection is
+application-level, matching the roster import's own pattern). New:
+`CaseEvent.Kind.IMPORTED`. New view `BulkCaseImportView`
+(`benevolent_bulk_import_cases`), gated on the Approve right (a bulk row can set
+a case straight to an approved/paid state with a money figure attached — that
+is a money decision, even though of a decision already made in the past).
+Migration 0026. Tests: `benevolent/test_historical_case_import.py` (30).
+
+## 96. Settings page: four obligations-engine settings unreachable from the UI — RESOLVED
+
+Found while reviewing the module (running the existing settings-completeness
+regression test, which exists specifically to catch this shape of bug — see
+#74a for the first occurrence). `apportion_to_obligations`,
+`auto_allocate_single_open_case`, `review_overpayments` and
+`review_multi_obligation_payments` were added to `BenevolentSettings` when the
+obligations engine shipped (recommendation #83) but never added to
+`templates/benevolent/settings.html`'s hardcoded per-tab field allowlist — the
+exact same "a field not named in the list silently vanishes" pattern #74a
+found and fixed for the policy form. A treasurer had no way to see or change
+any of the obligations engine's behaviour since it shipped. Fixed: a new
+"Applying a payment to what a member owes" card on the Allocation tab. All 38
+`test_phase9` tests (including the completeness guard) now pass.

@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Import cases · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · import case history</h1>
+  <div class="sub">Bring cases already decided before this system existed straight to their known outcome.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="alert alert-info u-mb">
+  <strong>A case lands at its outcome, not at the start of a decision.</strong> This does not re-run a historical
+  case through submit → assess → approve — that would judge a decades-old case against today's eligibility rules
+  and policy, and send "your case was approved" notifications for something that happened years ago. Instead, each
+  row records what the church's own records already show: approved amount, whether (and how much) was paid, and the
+  final status. A paid amount is recorded as a marked <em>historical</em> payout, not a live payment voucher — so
+  nothing here creates a pending expense that someone could accidentally approve and pay a second time.
+</div>
+
+<div class="card form-card" style="max-width:760px"><div class="bd">
+<p class="help u-mt-0">Download the template, fill one row per case, and upload it here. Afterwards, use
+  <a class="link" href="{% url 'benevolent_bulk_import_contributions' scheme.id %}">Import contribution history</a>
+  for the levy payments towards these cases — put the SAME reference you use in the
+  <code>external_reference</code> column here into that file's <code>case_number</code> column, and it will find
+  the right case without you needing to look up the newly-issued case numbers first.</p>
+<div class="btn-row u-mb">
+  <a class="btn btn-ghost btn-sm" href="?template=1">⬇ Download CSV template</a>
+</div>
+<form method="post" enctype="multipart/form-data">{% csrf_token %}
+  <div class="form-row"><label for="file">Case history file (.csv)</label>
+    <input type="file" id="file" name="file" accept=".csv" class="field" required></div>
+  <div class="btn-row u-mt"><button class="btn">Import</button></div>
+</form>
+</div></div>
+
+{% if imported is not None %}
+<div class="card u-mt" style="max-width:760px"><div class="hd">Result</div><div class="bd">
+  <p><strong>{{ imported }}</strong> case{{ imported|pluralize }} imported
+    {% if total_paid %}, <strong>{{ CURRENCY }} {{ total_paid|floatformat:2 }}</strong> recorded as historically paid across them{% endif %}
+    {% if skipped %}, <strong>{{ skipped }}</strong> row{{ skipped|pluralize }} skipped{% endif %}.</p>
+  {% if problems %}
+  <table class="ledger compact"><thead><tr><th>Row</th><th>Reference</th><th>Problem</th></tr></thead>
+  <tbody>{% for row_n, label, problem in problems %}<tr>
+    <td class="mono">{{ row_n }}</td><td>{{ label }}</td><td class="muted">{{ problem }}</td>
+  </tr>{% endfor %}</tbody></table>
+  <p class="help u-mt">Fix these rows in the file and re-upload just those — each row imports independently, so a
+    fixed row can go in on its own without re-doing anything that already succeeded.</p>
+  {% endif %}
+</div></div>
+{% endif %}
+
+<div class="card u-mt" style="max-width:760px"><div class="hd">Column reference</div><div class="bd">
+<table class="ledger compact"><tbody>
+<tr><td class="mono">external_reference</td><td>Optional — the case's old paper/workbook reference. Kept for cross-checking, and matched by the contribution importer's <code>case_number</code> column so you can reuse it there.</td></tr>
+<tr><td class="mono">member_name / member_phone</td><td>The claiming member — must already be enrolled (import the roster first). Leave BOTH blank for a non-member claim, if the scheme allows one.</td></tr>
+<tr><td class="mono">event_type_code</td><td>Required — must match a code already set up under Schemes &amp; policies → event types.</td></tr>
+<tr><td class="mono">event_date</td><td>Required. YYYY-MM-DD. When the event happened.</td></tr>
+<tr><td class="mono">reported_date</td><td>Optional — when the church was told. Defaults to event_date.</td></tr>
+<tr><td class="mono">beneficiary_name / beneficiary_relationship</td><td>Optional — who the benefit was actually for, and how they relate to the member, if not the member themselves (e.g. "Father to Grace").</td></tr>
+<tr><td class="mono">status</td><td>One of: {% for v,l in statuses %}<code>{{ v }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}. Defaults to <code>CLOSED</code>. Use <code>DRAFT</code> only for a case genuinely never decided. <strong>PARTLY_PAID vs CLOSED matters for what happens next</strong>: PARTLY_PAID means the scheme still owes the remainder today and it will show up as a live commitment — use it only if there's a real live balance outstanding. CLOSED means the case is finished, full amount paid or not — use it for anything that's simply done.</td></tr>
+<tr><td class="mono">claimed_amount</td><td>Optional — what was originally requested.</td></tr>
+<tr><td class="mono">approved_amount</td><td>Required if status is APPROVED, PARTLY_PAID or PAID, or if a paid_amount is given.</td></tr>
+<tr><td class="mono">paid_amount / paid_date</td><td>Optional — what was actually paid out, and when. Cannot exceed approved_amount.</td></tr>
+<tr><td class="mono">payee_name</td><td>Optional — who received the payment, if different from the beneficiary.</td></tr>
+<tr><td class="mono">description</td><td>Optional free text.</td></tr>
+</tbody></table>
+</div></div>
+{% endblock %}

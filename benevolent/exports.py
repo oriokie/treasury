@@ -90,21 +90,23 @@ def contribution_rows(qs, *, user):
 
 
 def case_rows(qs, *, user):
-    header = ["Number", "Scheme", "Member", "Beneficiary", "Relationship",
+    header = ["Number", "Old reference", "Scheme", "Member", "Beneficiary", "Relationship",
               "Event", "Event date", "Reported", "Status",
-              "Claimed", "Approved", "Funding target"]
+              "Claimed", "Approved", "Paid", "Funding target"]
     rows = []
     for c in qs.select_related("scheme", "event_type", "membership__member"):
         member = (c.membership.member.name
                   if c.membership_id and c.membership.member_id else "")
         rows.append([
-            c.number, c.scheme.name if c.scheme_id else "", member,
+            c.number, c.external_reference or "",
+            c.scheme.name if c.scheme_id else "", member,
             c.beneficiary_display, c.beneficiary_relationship or "",
             c.event_type.name if c.event_type_id else "",
             _fmt_date(c.event_date), _fmt_date(c.reported_date),
             c.get_status_display(),
             float(c.claimed_amount) if c.claimed_amount is not None else "",
             float(c.approved_amount) if c.approved_amount is not None else "",
+            float(c.paid_total) if c.paid_total else "",
             float(c.funding_target) if c.funding_target is not None else "",
         ])
     return header, rows

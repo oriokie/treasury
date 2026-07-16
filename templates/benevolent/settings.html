@@ -126,6 +126,19 @@
       {% endif %}{% endfor %}
       </div>
     </div></div>
+
+    <div class="card u-mt"><div class="hd">Applying a payment to what a member owes</div><div class="bd">
+      <p class="help u-mt-0">Once a payer is identified, this governs WHAT the money settles — registration first,
+        then case levies oldest-first, splitting one payment across several obligations where it covers more than
+        one. Identity and obligation are separate questions: an amount that matches what someone owes never counts
+        towards recognising WHO they are, only what the payment is for, once identity is already confident.</p>
+      <div class="form-grid u-mt">
+      {% for f in form %}{% if f.name in 'apportion_to_obligations auto_allocate_single_open_case review_overpayments review_multi_obligation_payments' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endif %}{% endfor %}
+      </div>
+    </div></div>
   </section>
 
   <section class="tabpane" data-pane="public">

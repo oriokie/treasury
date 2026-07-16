@@ -23,9 +23,11 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
-from core.permissions import BenevolentFinanceMixin, BenevolentRegistrationMixin
+from core.permissions import (BenevolentApproveMixin, BenevolentFinanceMixin,
+                              BenevolentRegistrationMixin)
 
-from .models import BenevolentScheme, RegistrationType, SchemeDependant, SchemeMembership
+from .models import BenevolentCase, BenevolentScheme, RegistrationType, SchemeDependant, SchemeMembership
+from .services import cases as cases_svc
 from .services import contributions as contrib_svc
 from .services import engine as engine_svc
 from .services import registry as reg_svc
@@ -274,7 +276,6 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
 
     def _import_row(self, scheme, row, *, user):
         from members.services.matching import match_or_create_member
-        from .models import BenevolentCase
 
         name = row["member_name"].strip()
         phone = (row.get("phone") or row.get("member_phone") or "").strip()
@@ -294,14 +295,23 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
         # under a pooled policy, where the benefit IS whatever the levy collected
         # — makes the payout come out short. The manual contribution form had
         # exactly this gap; the bulk import had it too.
+        #
+        # Matches EITHER the system-assigned number (BENC-2026-0003) or, for a
+        # case brought in via the historical case import, the SAME workbook
+        # reference used there — a treasurer importing years of history should
+        # not have to look up newly-issued numbers to cross-reference their own
+        # spreadsheet's case column between the two upload files.
         case = None
         case_no = (row.get("case_number") or "").strip()
         if case_no:
             case = BenevolentCase.objects.filter(
                 scheme=scheme, number__iexact=case_no).first()
             if case is None:
+                case = BenevolentCase.objects.filter(
+                    scheme=scheme, external_reference__iexact=case_no).first()
+            if case is None:
                 raise ValidationError(
-                    f"No case numbered '{case_no}' in {scheme.name}.")
+                    f"No case numbered or referenced '{case_no}' in {scheme.name}.")
 
         date_raw = (row.get("date") or "").strip()
         if not date_raw:
@@ -325,3 +335,181 @@ class BulkContributionImportView(BenevolentFinanceMixin, View):
             period_label=(row.get("period_label") or None),
             note=(row.get("note") or "").strip(), kind=kind)
         return amount
+
+
+class BulkCaseImportView(BenevolentApproveMixin, View):
+    """Bring cases already decided BEFORE this system existed straight to
+    their known outcome, at scale — a church's workbook naming the cases it
+    has already paid out or closed over the years, not new claims awaiting a
+    decision.
+
+    Every row becomes an ordinary `cases.import_historical_case()` call — the
+    one place a historical case is created, so numbering, the audit log entry,
+    and the historical-payout handling are never something a bulk path gets
+    to skip. See that function's own docstring for why a case lands directly
+    at its outcome rather than being re-decided through submit/assess/approve
+    (today's eligibility rules and policy version would apply to a decision
+    the church already made under whatever was in force at the time), and why
+    a paid amount is recorded as a marked historical payout rather than a live
+    cashbook.Expense (which would assert money is leaving the church today).
+
+    Gated on the Approve right, not the ordinarily-narrower Case-Officer or
+    Finance-Officer rights: a bulk row can set a case straight to APPROVED,
+    PARTLY_PAID or PAID with an approved amount attached — that is a money
+    decision, even though it is a decision already made in the past that this
+    tool is only recording.
+    """
+    template_name = "benevolent/bulk_import_cases.html"
+
+    def get(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        if request.GET.get("template"):
+            return self._template_csv()
+        return render(request, self.template_name, {
+            "scheme": scheme,
+            "statuses": [(s.value, s.label) for s in cases_svc.IMPORTABLE_STATUSES],
+        })
+
+    def _template_csv(self):
+        resp = HttpResponse(content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="benevolent_cases_template.csv"'
+        w = _csv.writer(resp)
+        w.writerow(["external_reference", "member_name", "member_phone",
+                   "event_type_code", "event_date", "reported_date",
+                   "beneficiary_name", "beneficiary_relationship", "status",
+                   "claimed_amount", "approved_amount", "paid_amount",
+                   "paid_date", "payee_name", "description"])
+        w.writerow(["2019/014", "Mary Wanjiru", "0722111222", "BER", "2019-03-04",
+                   "2019-03-05", "", "", "CLOSED", "50000", "50000", "50000",
+                   "2019-03-10", "Wanjiru Family", "Bereavement of spouse"])
+        w.writerow(["2020/031", "Peter Otieno", "0700888999", "HOSP", "2020-07-19",
+                   "2020-07-20", "", "", "PAID", "12000", "10000", "10000",
+                   "2020-07-25", "", "Hospital admission, partially assessed down"])
+        w.writerow(["", "John Kamau", "0711222333", "SCHOOL", "2021-01-10", "",
+                   "", "", "DRAFT", "8000", "", "", "", "",
+                   "Reported but never decided — genuinely still open"])
+        return resp
+
+    def post(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        f = request.FILES.get("file")
+        if not f:
+            messages.error(request, "Choose a CSV file — download the template if you "
+                                    "don't have one yet.")
+            return redirect("benevolent_bulk_import_cases", pk=pk)
+        try:
+            text = _io.TextIOWrapper(f.file, encoding="utf-8-sig")
+            reader = list(_csv.DictReader(text))
+        except Exception:
+            messages.error(request, "Could not read that file — download the template "
+                                    "and use its columns.")
+            return redirect("benevolent_bulk_import_cases", pk=pk)
+        if not reader:
+            messages.warning(request, "No rows found in that file.")
+            return redirect("benevolent_bulk_import_cases", pk=pk)
+
+        imported, skipped, problems = 0, 0, []
+        total_paid = Decimal("0")
+        for i, row in enumerate(reader, start=2):   # row 1 is the header
+            ext_ref = (row.get("external_reference") or "").strip()
+            name = (row.get("member_name") or "").strip()
+            label = ext_ref or name or f"row {i}"
+            if not name and not (row.get("beneficiary_name") or "").strip():
+                continue   # a genuinely blank row
+            try:
+                with db_tx.atomic():
+                    case, paid = self._import_row(scheme, row, user=request.user)
+                imported += 1
+                total_paid += paid
+            except ValidationError as e:
+                skipped += 1
+                problems.append((i, label, "; ".join(e.messages)))
+            except Exception as e:  # noqa: BLE001 — one bad row must not sink the batch
+                skipped += 1
+                problems.append((i, label, str(e)))
+
+        summary = f"{imported} case(s) imported."
+        if total_paid:
+            summary += f" {total_paid:,.2f} recorded as historically paid across them."
+        if skipped:
+            summary += f" {skipped} row(s) skipped — see below."
+            messages.warning(request, summary)
+        else:
+            messages.success(request, summary)
+        return render(request, self.template_name, {
+            "scheme": scheme,
+            "statuses": [(s.value, s.label) for s in cases_svc.IMPORTABLE_STATUSES],
+            "imported": imported, "skipped": skipped, "problems": problems,
+            "total_paid": total_paid,
+        })
+
+    def _import_row(self, scheme, row, *, user):
+        from members.services.matching import match_or_create_member
+        from .models import BenevolentEventType
+
+        name = (row.get("member_name") or "").strip()
+        membership = None
+        if name:
+            phone = (row.get("member_phone") or "").strip()
+            member, _how = match_or_create_member(name, phone)
+            membership = (SchemeMembership.objects
+                         .filter(scheme=scheme, member=member)
+                         .exclude(status=SchemeMembership.Status.WITHDRAWN)
+                         .order_by("-joined_on").first())
+            if membership is None:
+                raise ValidationError(
+                    f"{member.name} is not enrolled in {scheme.name} — import the "
+                    f"roster first, or check the name/phone. Leave member_name blank "
+                    f"for a non-member claim, if the scheme allows one.")
+
+        code = (row.get("event_type_code") or "").strip()
+        if not code:
+            raise ValidationError("event_type_code is required.")
+        event_type = BenevolentEventType.objects.filter(scheme=scheme, code__iexact=code).first()
+        if event_type is None:
+            raise ValidationError(
+                f"No event type coded '{code}' in {scheme.name}. Check "
+                f"Schemes & policies → event types for the codes in use.")
+
+        event_raw = (row.get("event_date") or "").strip()
+        if not event_raw:
+            raise ValidationError("event_date is required.")
+        event_date = BulkMembershipImportView._parse_date(event_raw)
+        reported_raw = (row.get("reported_date") or "").strip()
+        reported_date = (BulkMembershipImportView._parse_date(reported_raw)
+                         if reported_raw else event_date)
+
+        status_raw = (row.get("status") or "CLOSED").strip().upper()
+        try:
+            status = BenevolentCase.Status(status_raw)
+        except ValueError:
+            raise ValidationError(
+                f"'{status_raw}' is not a status — use one of: "
+                + ", ".join(s.value for s in cases_svc.IMPORTABLE_STATUSES))
+
+        def _dec(key):
+            raw = (row.get(key) or "").strip()
+            if not raw:
+                return None
+            try:
+                return Decimal(raw)
+            except Exception:
+                raise ValidationError(f"Could not read {key} '{raw}' as an amount.")
+
+        paid_raw = (row.get("paid_date") or "").strip()
+        paid_date = BulkMembershipImportView._parse_date(paid_raw) if paid_raw else None
+        paid_amount = _dec("paid_amount")
+
+        case = cases_svc.import_historical_case(
+            scheme, event_type=event_type, event_date=event_date,
+            membership=membership,
+            beneficiary_name=(row.get("beneficiary_name") or "").strip(),
+            beneficiary_relationship=(row.get("beneficiary_relationship") or "").strip(),
+            reported_date=reported_date,
+            description=(row.get("description") or "").strip(),
+            external_reference=(row.get("external_reference") or "").strip(),
+            status=status, claimed_amount=_dec("claimed_amount"),
+            approved_amount=_dec("approved_amount"), paid_amount=paid_amount,
+            paid_date=paid_date, payee_name=(row.get("payee_name") or "").strip(),
+            user=user)
+        return case, (paid_amount or Decimal("0"))

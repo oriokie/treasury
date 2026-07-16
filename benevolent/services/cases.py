@@ -74,6 +74,166 @@ def create_case(scheme, *, event_type, event_date, membership=None, dependant=No
 
 
 # ---------------------------------------------------------------------------
+# Historical case import — bringing pre-system cases in at their own,
+# already-known outcome, not re-deciding them through today's workflow
+# ---------------------------------------------------------------------------
+
+# Statuses a historical case may land in directly. Deliberately excludes
+# SUBMITTED and ASSESSED: those are WORKING states meant to be brief stops on
+# the way to a decision, not places a case is expected to sit — a historical
+# record importing as "still being assessed" years later is never actually
+# true; the church knows what happened to it. Import as DRAFT if truly
+# undecided, or straight to the outcome the church's own records show.
+IMPORTABLE_STATUSES = [
+    BenevolentCase.Status.DRAFT, BenevolentCase.Status.APPROVED,
+    BenevolentCase.Status.PARTLY_PAID, BenevolentCase.Status.PAID,
+    BenevolentCase.Status.CLOSED, BenevolentCase.Status.REJECTED,
+    BenevolentCase.Status.CANCELLED,
+]
+
+
+@db_tx.atomic
+def import_historical_case(scheme, *, event_type, event_date, membership=None,
+                           dependant=None, beneficiary_name="",
+                           beneficiary_relationship="", reported_date=None,
+                           description="", external_reference="",
+                           status=BenevolentCase.Status.CLOSED,
+                           claimed_amount=None, approved_amount=None,
+                           paid_amount=None, paid_date=None, payee_name="",
+                           user=None, reason=""):
+    """Bring a case that was already decided BEFORE this system existed
+    straight to its known outcome — never re-derived through submit → assess
+    → approve → pay, which would apply TODAY's eligibility rules and policy
+    version to a decision the church already made under whatever rules were
+    actually in force at the time, and would fire "your case was approved"
+    notifications for something that happened years ago.
+
+    So this sets the outcome directly, exactly as `waive_on_import` clears
+    historical dues arrears directly rather than re-deriving them: the
+    church's own record of what happened IS the fact, trusted rather than
+    re-decided. What it does NOT do is silently invent a fact — every field
+    left blank stays blank (no assessed_amount is fabricated, no approver is
+    invented), and the one CaseEvent this writes says plainly that the case
+    was imported, by whom, and why.
+
+    PARTLY_PAID vs CLOSED matters for what happens NEXT, not just what
+    happened: PARTLY_PAID means the scheme still owes the remainder TODAY —
+    it counts in `reporting.approved_unpaid_total()`, the "must still find the
+    cash for this" figure, and a treasurer could raise a further voucher
+    against it. CLOSED means the case is DONE regardless of what was actually
+    paid — nothing more is owed, whether because it was fully settled or
+    because the church decided a partial payment was the end of it. Import a
+    case that genuinely still has a live balance outstanding as PARTLY_PAID;
+    import a case that is simply finished, paid in full or not, as CLOSED.
+
+    A historical PAID/PARTLY_PAID case creates a `BenevolentPayout` marked
+    `is_historical=True` — carrying its own amount and date rather than a live
+    `cashbook.Expense` — because that Expense would assert money is leaving the
+    church TODAY. Approving and paying a fresh voucher for a benefit paid out
+    years ago would either duplicate a real disbursement or fabricate a
+    backdated ledger entry the actual bank statement never shows. See
+    `BenevolentPayout`'s own docstring for why this is safe: the scheme's real
+    fund balance is computed purely from live ledger rows and never reads this
+    model, so recording history here cannot corrupt current accounting.
+
+    `external_reference` is an old paper/workbook case number — kept for
+    cross-checking, never used internally; `number` (system-assigned, from
+    `event_date`'s year) is what the rest of the app refers to.
+    """
+    if status not in IMPORTABLE_STATUSES:
+        raise ValidationError(
+            f"A historical case cannot import directly into "
+            f"'{BenevolentCase.Status(status).label}' — that is a working state on "
+            f"the way to a decision, not an outcome. Import as Draft if truly "
+            f"undecided, or as whatever the church's records show it became.")
+    if status in (BenevolentCase.Status.APPROVED, BenevolentCase.Status.PARTLY_PAID,
+                 BenevolentCase.Status.PAID) and approved_amount is None:
+        raise ValidationError(
+            f"A case imported as '{BenevolentCase.Status(status).label}' needs an "
+            f"approved amount — that status means a benefit was authorised.")
+    if paid_amount and approved_amount is None:
+        raise ValidationError(
+            "A paid amount needs an approved amount too — you cannot have paid "
+            "out more than was authorised, and there is no ceiling to check "
+            "against without one.")
+    if paid_amount and approved_amount and paid_amount > approved_amount:
+        raise ValidationError(
+            f"The paid amount ({paid_amount}) cannot exceed the approved amount "
+            f"({approved_amount}).")
+    if external_reference:
+        clash = BenevolentCase.objects.filter(
+            scheme=scheme, external_reference=external_reference).first()
+        if clash:
+            raise ValidationError(
+                f"'{external_reference}' was already imported as {clash.number}.")
+
+    case = create_case(
+        scheme, event_type=event_type, event_date=event_date,
+        membership=membership, dependant=dependant,
+        beneficiary_name=beneficiary_name, reported_date=reported_date,
+        description=description, claimed_amount=claimed_amount, user=user)
+
+    case.external_reference = external_reference[:40]
+    if beneficiary_relationship and not case.beneficiary_relationship:
+        case.beneficiary_relationship = beneficiary_relationship[:80]
+    case.approved_amount = approved_amount
+    case.status = status
+    # A case landing in an ONGOING status (DRAFT/APPROVED/PARTLY_PAID) may
+    # still have a levy round raised against it in future — raise_case_levy()
+    # falls back to `case.policy or scheme.policy_on(case.event_date)`, and for
+    # a historical case whose event predates the scheme's OLDEST policy record
+    # (the scheme may only have started tracking policy versions well after
+    # the event itself happened), scheme.policy_on(event_date) is None and
+    # that fallback chain hard-fails with "no policy in force" — blocking the
+    # very collection this case was left open to receive. So an ongoing case
+    # is given a policy to work from: the one that WAS in force on the event
+    # date if there is one (most historically accurate), or the CURRENT
+    # policy if there is not (since a levy raised today naturally runs on
+    # today's terms). Deliberately NOT policy_snapshot/eligibility_snapshot —
+    # those specifically mean "the frozen result of a real assessment," and
+    # this case was never assessed through the engine; leaving them blank is
+    # honest about that, exactly as claimed_amount/assessed_amount are left
+    # blank rather than fabricated.
+    if status in (BenevolentCase.Status.DRAFT, BenevolentCase.Status.APPROVED,
+                 BenevolentCase.Status.PARTLY_PAID):
+        case.policy = scheme.policy_on(event_date) or scheme.current_policy
+    if status not in (BenevolentCase.Status.DRAFT,):
+        case.assessed_by = user
+        case.assessed_at = timezone.now()
+    if status in (BenevolentCase.Status.APPROVED, BenevolentCase.Status.PARTLY_PAID,
+                 BenevolentCase.Status.PAID, BenevolentCase.Status.CLOSED):
+        case.approved_by = user
+        case.approved_at = timezone.now()
+    if status in (BenevolentCase.Status.CLOSED, BenevolentCase.Status.REJECTED,
+                 BenevolentCase.Status.CANCELLED):
+        case.closed_at = timezone.now()
+    if status == BenevolentCase.Status.REJECTED:
+        case.rejection_reason = reason or "Imported from historical records."
+        case.rejected_by = user
+    case.full_clean(exclude=["number", "policy_snapshot", "eligibility_snapshot"])
+    case.save()
+
+    payout = None
+    if paid_amount and paid_amount > 0:
+        payout = BenevolentPayout.objects.create(
+            case=case, is_historical=True, historical_amount=Decimal(paid_amount),
+            historical_date=paid_date or event_date,
+            payee_name=(payee_name or case.beneficiary_display)[:120],
+            note="Historical payout, imported.", created_by=user)
+        case.refresh_status()
+
+    detail = (f"Imported from historical records as {case.get_status_display()}"
+             + (f" ({external_reference})" if external_reference else "") + ".")
+    if paid_amount:
+        detail += f" {paid_amount} recorded as historically paid."
+    log(case, CaseEvent.Kind.IMPORTED, detail, user=user,
+        on=paid_date or reported_date or event_date,
+        reason=reason or "Migrated from the church's existing records — prior "
+                        "decision predates this system.", automated=(user is None))
+    return case
+
+
+# ---------------------------------------------------------------------------
 # A death opens a case (Round 9, item 1)
 # ---------------------------------------------------------------------------
 

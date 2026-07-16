@@ -1,5 +1,50 @@
 # Changelog
 
+## v2.75.0 - Historical case import, and a module review
+
+### Bring cases already decided years ago straight to their outcome
+
+The recommendation tracker has flagged this since the very first review round:
+a church adopting this system has real history behind it — Edwin's own
+workbook has 7,442 contribution rows across roughly 50 cases. There was a way
+to import a roster and a contribution history, but no way to bring the CASES
+themselves in.
+
+A historical case lands directly at its known outcome — never re-run through
+submit → assess → approve, which would judge a decades-old decision against
+today's eligibility rules, and would send "your case was approved"
+notifications for something that happened years ago. A paid amount is recorded
+as a marked historical payout, never a live expense voucher, so nothing here
+can be double-paid through the ordinary approval workflow and the scheme's
+real fund balance — computed purely from the ledger — is provably untouched.
+
+Bulk CSV import (Schemes → a scheme → Import case history), with an old
+paper/workbook reference kept for cross-checking — and the existing
+contribution importer now finds a case by that same reference, so the same
+column from Edwin's workbook works in both upload files without needing to
+look up newly-issued case numbers in between.
+
+### Two bugs found while building it
+
+A historical case left open (still awaiting the rest of its funding) whose
+event predated the scheme's oldest policy record could not have a new levy
+raised against it — blocking the very collection it was left open to receive.
+Fixed. And the case search never matched the old workbook reference just
+added — the entire point of recording one — so it's now searchable, shown on
+the case list and detail pages, and included in the case export (which also
+gained a "Paid" column it never had).
+
+### A module review turned up a live settings bug
+
+Running the module's own regression suite surfaced a real, current bug: the
+four settings added when the obligations engine shipped (v2.70.0) — whether a
+payment applies to what a member owes, single-open-case auto-allocation,
+overpayment review, multi-obligation review — were never wired into the
+settings page. A treasurer has had no way to see or change any of that
+behaviour since it shipped. Fixed; a regression test now guards against this
+exact class of bug recurring, as it once did before (recommendation #74a).
+# Changelog
+
 ## v2.74.0 - Pending receipt: one sort, one highlight, everywhere
 
 The name-sorted, duplicate-highlighted view added for the pending-receipt page

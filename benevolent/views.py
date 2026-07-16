@@ -553,6 +553,7 @@ class CaseListView(BenevolentViewMixin, View):
               .prefetch_related("payouts__expense"))
         if q:
             qs = qs.filter(Q(number__icontains=q)
+                           | Q(external_reference__icontains=q)
                            | Q(membership__member__name__icontains=q)
                            | Q(beneficiary_name__icontains=q))
         if f_scheme:

@@ -20,7 +20,7 @@
 <thead><tr><th>Case</th><th>Scheme</th><th>Claimant</th><th>Beneficiary</th><th>Event</th><th>Event date</th>
 <th class="num">Approved</th><th class="num">Paid</th><th>Policy</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for c in cases %}<tr>
-  <td class="mono">{{ c.number }}</td>
+  <td class="mono">{{ c.number }}{% if c.external_reference %}<div class="muted u-xs" title="Old workbook/paper reference">{{ c.external_reference }}</div>{% endif %}</td>
   <td class="muted">{{ c.scheme.code }}</td>
   <td>{{ c.claimant_display }}</td>
   <td>{{ c.beneficiary_display }}</td>
