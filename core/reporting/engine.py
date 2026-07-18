@@ -217,7 +217,13 @@ class Report:
             if not section.visible_to(request.user):
                 continue
             data = section.build(ctx, filters)
-            if data is not None:
+            if data is None:
+                continue
+            # a section may render as one SectionData or several (a KPI band +
+            # chart + table); flatten either into the ordered section list
+            if isinstance(data, (list, tuple)):
+                sections.extend(d for d in data if d is not None)
+            else:
                 sections.append(data)
         return RenderedReport(report=self, context=ctx, filters=filters,
                               sections=sections)

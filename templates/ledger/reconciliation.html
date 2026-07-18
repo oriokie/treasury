@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Ledger reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head no-print"><div class="ws-titles"><h1>Ledger reconciliation</h1>
+<div class="ws-head no-print"><div class="ws-titles"><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>Ledger reconciliation</h1>
   <div class="ws-sub">Proof the general ledger ties exactly to the fund reports</div></div>
   <div class="toolbar"><a class="btn btn-sm btn-ghost" href="?export=xlsx">⬇ Excel</a> <button class="btn btn-sm" onclick="window.print()">⎙ PDF</button></div></div>
 

@@ -1,7 +1,23 @@
 {% extends 'base.html' %}{% load humanize static %}
 {% block title %}Executive dashboard · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Executive dashboard</h1><div class="sub">{{ CHURCH_NAME }} · live financial overview</div></div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Executive · {{ CHURCH_NAME|default:SITE_NAME }}</div>
+      <h1>Executive dashboard</h1>
+      <div class="desc">Live financial overview for the board — collections, position, participation and trends.</div>
+      <div class="period">As at {% now "d M Y, H:i" %}</div>
+    </div>
+    <div class="mast-actions no-print">
+      <span class="export-seg">
+        <span class="seg-lbl">Board copy</span>
+        <button type="button" onclick="window.print()" title="Print this dashboard for the board">Print</button>
+      </span>
+    </div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
 
 <div class="exec-cards">
   {% for c in cards %}
@@ -44,7 +60,7 @@ function loadInsights(){
 {% endif %}
 
 <section class="exec-section">
-  <h2 class="exec-h2">Performance this year</h2>
+  <h2 class="sec-h">Performance this year</h2>
   <div class="insight-tiles">
     {% for t in insights.tiles %}
     <div class="insight-tile {% if t.tone == 'warn' %}it-warn{% endif %}">
@@ -72,7 +88,7 @@ function loadInsights(){
 </section>
 
 <section class="exec-section">
-  <h2 class="exec-h2">Giving breakdown</h2>
+  <h2 class="sec-h">Giving breakdown</h2>
   <div class="exec-twocol">
     <div class="card"><div class="hd">Income by channel (YTD)</div><div class="bd">
       {% with cm=insights.channel_mix %}
@@ -106,7 +122,7 @@ function loadInsights(){
 
 {% if facts %}
 <section class="exec-section">
-  <h2 class="exec-h2">At a glance</h2>
+  <h2 class="sec-h">At a glance</h2>
   <div class="card"><div class="bd">
     <div class="grid-3">
     {% for f in facts %}
@@ -120,7 +136,7 @@ function loadInsights(){
 {% endif %}
 
 <section class="exec-section">
-  <h2 class="exec-h2">Cash position &amp; forecast</h2>
+  <h2 class="sec-h">Cash position &amp; forecast</h2>
   <div class="card"><div class="hd u-between">Cash flow forecast <a class="link u-xs" href="{% url 'report_forecast' %}">Full forecast →</a></div><div class="bd">
     <div class="grid-3">
       {% for label, h in forecast.items %}
@@ -152,7 +168,7 @@ function loadInsights(){
 </section>
 
 <section class="exec-section">
-  <h2 class="exec-h2">Trends</h2>
+  <h2 class="sec-h">Trends</h2>
   <div class="chart-grid">
     <div class="card"><div class="hd">Giving trend (12 months)</div><div class="bd"><div class="chart-box"><canvas id="givingTrend"></canvas></div></div></div>
     <div class="card"><div class="hd">Receipts vs expenses by month (this year)</div><div class="bd"><div class="chart-box"><canvas id="receiptsVsExpensesYear"></canvas></div></div></div>
@@ -168,11 +184,16 @@ function loadInsights(){
 <script>
 (function(){
   var D = JSON.parse(document.getElementById("chartData").textContent);
-  var FOREST="#1f5f4f", BRASS="#b07d2c", SOFT="rgba(31,95,79,.15)";
+  var css = getComputedStyle(document.documentElement);
+  var FOREST=(css.getPropertyValue('--forest')||'#1f5f4f').trim();
+  var BRASS=(css.getPropertyValue('--brass')||'#b07d2c').trim();
+  var DANGER=(css.getPropertyValue('--danger')||'#a23b32').trim();
+  var MUTED=(css.getPropertyValue('--muted')||'#677770').trim();
+  var SOFT="rgba(31,95,79,.15)";
   var money = function(v){ return "KES " + Number(v).toLocaleString(); };
   if (typeof Chart === "undefined") return;
   Chart.defaults.font.family = "'Public Sans', system-ui, sans-serif";
-  Chart.defaults.color = "#6b6b6b";
+  Chart.defaults.color = MUTED;
   var noLegend = {plugins:{legend:{display:false}}, maintainAspectRatio:false,
     scales:{y:{ticks:{callback:function(v){return Number(v).toLocaleString();}}}}};
   function mk(id, key, cfg){
@@ -198,7 +219,7 @@ function loadInsights(){
       new Chart(el, {type:"bar",
         data:{labels:d.labels,datasets:[
           {label:"Receipts",data:d.receipts,backgroundColor:FOREST},
-          {label:"Expenses",data:d.expenses,backgroundColor:"#c0532b"}]},
+          {label:"Expenses",data:d.expenses,backgroundColor:DANGER}]},
         options:{maintainAspectRatio:false,plugins:{legend:{position:"bottom"}}}});
     }catch(e){ /* never let one chart break the page */ }
   })();
@@ -208,7 +229,7 @@ function loadInsights(){
   mk("monthlyIncome","monthly_income",function(d){return {type:"bar",
     data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:FOREST}]},options:noLegend};});
   mk("monthlyExpense","monthly_expenses",function(d){return {type:"bar",
-    data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:"#c0532b"}]},options:noLegend};});
+    data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:DANGER}]},options:noLegend};});
   mk("trustBalances","trust_balances",function(d){return {type:"doughnut",
     data:{labels:d.labels,datasets:[{data:d.values,
       backgroundColor:[FOREST,BRASS,"#3d7d6a","#d09a4e","#7aa399","#9c6b1f"]}]},
@@ -220,20 +241,20 @@ function loadInsights(){
 /* ---- Section rhythm ---- */
 .exec-section{margin:1.8rem 0}
 .exec-section:first-of-type{margin-top:1.2rem}
-.exec-h2{font-size:.98rem;font-weight:700;color:var(--forest-deep);margin:0 0 .7rem;
-  padding-bottom:.4rem;border-bottom:2px solid var(--forest-soft);letter-spacing:.01em}
 
-/* ---- Top KPI cards ---- */
+/* ---- Top KPI cards: same voice as the app's .stat tiles ---- */
 .exec-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:1.2rem}
-.exec-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem;
+.exec-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+  border-top:3px solid var(--forest);padding:.85rem 1rem;
   text-decoration:none;color:inherit;display:block;transition:box-shadow .12s,transform .12s}
-a.exec-card:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
-.exec-card.tone-warn{border-color:var(--brass)}
-.ec-label{font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
-.ec-val{font-size:1.45rem;font-weight:700;font-family:var(--mono,monospace);margin-top:.25rem}
-.ec-cur{font-size:.7rem;color:var(--muted)}
+a.exec-card:hover{box-shadow:var(--shadow-md);transform:translateY(-2px)}
+.exec-card.tone-warn{border-top-color:var(--brass)}
+.ec-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700}
+.ec-val{font-size:1.4rem;font-weight:600;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;margin-top:.25rem;color:var(--ink)}
+.ec-cur{font-size:.7rem;color:var(--muted);font-weight:600;margin-right:.15rem}
 .ec-sub{font-size:.78rem;color:var(--muted);margin-top:.2rem}
-.tone-warn .ec-val{color:var(--brass)}
+.tone-warn .ec-val{color:var(--amber)}
 
 /* ---- AI insights ---- */
 .ai-card{border:1px solid var(--brass)}
@@ -285,7 +306,7 @@ a.exec-card:hover{box-shadow:var(--shadow-sm);transform:translateY(-1px)}
 
 /* ---- Charts ---- */
 .chart-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem}
-.chart-grid .bd{padding:1rem;height:200px}
-.chart-box{position:relative;height:200px;width:100%}
+.chart-grid .bd{padding:1rem}
+@media print{.ai-card{display:none!important}.chart-grid{grid-template-columns:1fr 1fr}}
 </style>
 {% endblock %}

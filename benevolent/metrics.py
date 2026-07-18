@@ -81,6 +81,21 @@ def register_metrics():
                   "appears in nor contradicts the Statement of Financial Position."),
             lambda scheme=None: _r().approved_unpaid_total(scheme))
 
+    if not metrics.has("benevolent_reserved_commitments"):
+        metrics.register(Metric(
+            "benevolent_reserved_commitments",
+            "Benevolent reserved commitments (open cases)", "Benevolent",
+            "A prudent reserve against open cases still in the pipeline (draft, "
+            "submitted, assessed), valued at their assessed/claimed amount or the "
+            "policy benefit. Money already spoken for by cases the scheme is "
+            "committed to considering.",
+            "benevolent.services.reporting.reserved_commitments_total",
+            inputs="scheme, as_of",
+            notes="A MEMORANDUM figure — a forward reserve, not a balance-sheet "
+                  "liability. It does not appear on the Statement of Financial "
+                  "Position; it informs 'what could I safely commit to a new case'."),
+            lambda scheme=None, as_of=None: _r().reserved_commitments_total(scheme, as_of))
+
     if not metrics.has("benevolent_arrears"):
         metrics.register(Metric(
             "benevolent_arrears", "Benevolent members' arrears (total)", "Benevolent",

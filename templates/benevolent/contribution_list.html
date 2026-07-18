@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Scheme contributions · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Scheme contributions</h1>
+<div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Scheme contributions</h1>
   <div class="sub">Every contribution is an ordinary receipt into the scheme's fund — the same money the cash book,
     bank reconciliation and giving statements already see</div></div>
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a>
@@ -21,17 +21,29 @@
 </form>
 
 <div class="table-wrap"><table class="ledger">
-<thead><tr><th>Date</th><th>Scheme</th><th>Member</th><th>Period</th><th>Channel</th><th class="num">Amount</th></tr></thead>
-<tbody>{% for c in contributions %}<tr>
+<thead><tr><th>Date</th><th>Scheme</th><th>Member</th><th>Paid by</th><th>Period</th><th>Channel</th><th class="num">Amount</th><th></th></tr></thead>
+<tbody>{% for c in contributions %}<tr{% if c.reversed_at %} class="is-reversed"{% endif %}>
   <td>{{ c.date|date:"d M y" }}</td>
   <td class="muted">{{ c.scheme.code }}</td>
   <td>{% if c.membership %}<a class="link" href="{% url 'benevolent_membership_detail' c.membership.id %}">{{ c.membership.member.name }}</a>{% else %}<span class="muted">Donation</span>{% endif %}</td>
+  <td class="u-xs">{% if c.payer_type != 'SELF' %}<span class="pill pill-brass">{{ c.get_payer_type_display }}</span>{% if c.payer_name %} {{ c.payer_name }}{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="mono">{{ c.period_label|default:"—" }}</td>
   <td class="muted u-xs">{{ c.transaction.get_channel_display }}</td>
-  <td class="num mono">{{ c.amount|floatformat:2|intcomma }}</td>
-</tr>{% empty %}<tr><td colspan="6" class="empty">No contributions.</td></tr>{% endfor %}</tbody>
-<tfoot><tr class="total-row"><td colspan="5"><strong>Total (period)</strong></td>
-  <td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td></tr></tfoot>
+  <td class="num mono">{% if c.reversed_at %}<s>{{ c.amount|floatformat:2|intcomma }}</s>{% else %}{{ c.amount|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num u-xs no-print">
+    {% if c.reversed_at %}<span class="muted" title="{{ c.reversal_reason }}">reversed</span>
+    {% elif can.benevolent_manage_finance or can.manage_benevolent %}
+      <a class="link u-xs" href="{% url 'benevolent_contribution_correct' c.id %}">Correct</a>
+      <form method="post" action="{% url 'benevolent_contribution_reverse' c.id %}" style="display:inline"
+            onsubmit="var r=prompt('Reason for reversing this contribution?'); if(!r){return false;} this.reason.value=r; return true;">
+        {% csrf_token %}<input type="hidden" name="reason">
+        <button class="linkbtn u-xs" type="submit">Reverse</button>
+      </form>
+    {% endif %}
+  </td>
+</tr>{% empty %}<tr><td colspan="8" class="empty">No contributions.</td></tr>{% endfor %}</tbody>
+<tfoot><tr class="total-row"><td colspan="6"><strong>Total (period)</strong></td>
+  <td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td><td></td></tr></tfoot>
 </table></div>
 {% include 'partials/pagination.html' %}
 {% endblock %}

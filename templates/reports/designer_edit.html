@@ -1,11 +1,19 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}{% if definition %}Edit {{ definition.title }}{% else %}New report{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{% if definition %}Edit: {{ definition.title }}{% else %}New report{% endif %}</h1>
-<div class="sub">Click a component to add it, fill in its fields, drag to reorder. No JSON to write.</div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'designer_list' %}">← All reports</a>
-{% if definition and definition.enabled %}<a class="btn btn-ghost btn-sm" href="{% url 'engine_report' definition.engine_key %}">Preview</a>{% endif %}
-</div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Report designer · {{ SITE_NAME }}</div>
+      <h1>{% if definition %}Edit: {{ definition.title }}{% else %}New report{% endif %}</h1>
+      <div class="desc">Click a component to add it, fill in its fields, drag to reorder. Headings and text blocks are yours to write — no JSON needed.</div>
+    </div>
+    <div class="mast-actions no-print">
+      <a class="btn btn-ghost btn-sm" href="{% url 'designer_list' %}">← All designed reports</a>
+    </div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
 
 <form method="post" id="designer-form" class="u-mb">{% csrf_token %}
 <div class="ds-layout">
@@ -57,7 +65,10 @@
     </details>
 
     <div class="btn-row u-mt"><button class="btn">Save</button>
-      {% if definition %}<a class="btn btn-ghost" href="{% url 'engine_report' definition.engine_key %}">Preview</a>{% endif %}</div>
+      <button class="btn btn-ghost" type="submit" formaction="{% url 'designer_preview' %}"
+              formtarget="_blank" formnovalidate
+              title="Open the report as it currently stands in a new tab — nothing is saved">Preview without saving</button>
+      {% if definition and definition.enabled %}<a class="btn btn-ghost" href="{% url 'engine_report' definition.engine_key %}" target="_blank">Open saved report</a>{% endif %}</div>
   </div>
 
   <div class="ds-palette">
@@ -263,7 +274,13 @@
     input.addEventListener("input", commit);
     input.addEventListener("change", commit);
     var label = field.label + (field.required ? " *" : "");
-    return labeledField(label, input, "ds-param-fld");
+    var fld = labeledField(label, input, "ds-param-fld");
+    if(field.kind === "textarea"){
+      var hint = el("span", "help u-xs",
+        "Blank line = new paragraph. Merge fields: {period_start} {period_end} {church} {today}");
+      fld.appendChild(hint);
+    }
+    return fld;
   }
 
   function toggleField(section, key, labelText){

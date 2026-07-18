@@ -1,11 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Benevolent · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Benevolent schemes</h1>
-  <div class="sub">Member welfare schemes — contributions in, benefits out, all through the church's own funds</div></div>
-<div class="btn-row no-print">
-  {% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>{% endif %}
-  <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">All cases</a></div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Benevolent · {{ SITE_NAME }}</div>
+      <h1>Benevolent schemes</h1>
+      <div class="desc">Member welfare schemes — contributions in, benefits out, all through the church's own funds</div>
+    </div>
+    <div class="rpt-actions no-print">{% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>{% endif %} <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">All cases</a></div>
+  </div>
+  <div class="rule"></div>
+</div>
 
 <form method="get" class="filter-bar no-print u-mb">
   <input class="field" type="date" name="start" value="{{ start|date:'Y-m-d' }}">

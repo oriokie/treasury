@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Chart of accounts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Chart of accounts</h1><div class="sub">Assets · Liabilities · Equity · Income · Expenses</div></div>
+<div class="page-head"><div><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>Chart of accounts</h1><div class="sub">Assets · Liabilities · Equity · Income · Expenses</div></div>
 <div class="btn-row">{% if is_treasurer %}<a class="btn" href="{% url 'account_create' %}">+ New account</a>
 <form method="post" action="{% url 'ledger_rebuild' %}" class="u-inline">{% csrf_token %}<button class="btn btn-ghost btn-sm">⟳ Rebuild ledger</button></form>{% endif %}</div></div>
 {% if not ready %}<div class="info-panel">The chart of accounts hasn't been built yet. {% if is_treasurer %}Click <strong>Rebuild ledger</strong> to create the built-in accounts and post the general ledger from existing records.{% endif %}</div>{% endif %}

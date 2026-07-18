@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Import · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Import result</h1><div class="sub">{{ imp.filename }} · {{ imp.uploaded_at|date:"d M Y H:i" }}</div></div>
+<div class="page-head"><div><div class="eyebrow">Banking · {{ SITE_NAME }}</div><h1>Import result</h1><div class="sub">{{ imp.filename }} · {{ imp.uploaded_at|date:"d M Y H:i" }}</div></div>
 <a class="btn btn-ghost" href="{% url 'statement_list' %}">← All imports</a></div>
 <div class="u-mb"><span class="pill {% if imp.status == 'DONE' %}pill-green{% elif imp.status == 'FAILED' %}pill-red{% else %}pill-amber{% endif %}" style="font-size:.9rem">{{ imp.get_status_display }}</span></div>
 {% if imp.error_detail %}<div class="flash error">{{ imp.error_detail }}</div>{% endif %}

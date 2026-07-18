@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Fund position · {{ scheme.name }}{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles"><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div>
+  <h1>{{ scheme.name }} · Fund position</h1>
+  <div class="ws-sub">Where the fund's cash stands once every promise already made is honoured, and
+    whether it is sustainable at the current run-rate.</div>
+</div>
+<div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+{% if position.is_negative %}
+<div class="alert alert-error u-mb"><strong>The fund balance is negative.</strong> {{ scheme.fund.name }} is
+  overdrawn at {{ position.balance|floatformat:2|intcomma }}. No further benefit should be paid until money is moved in.</div>
+{% elif position.is_depleted %}
+<div class="alert alert-error u-mb"><strong>The fund cannot cover its approvals.</strong> Benefits already approved
+  but not yet paid exceed the balance — the cash still has to be found.</div>
+{% elif position.is_overcommitted %}
+<div class="alert alert-warn u-mb"><strong>The fund is fully committed.</strong> Approvals plus live vouchers use up
+  the whole balance; a new case cannot be paid without more coming in.</div>
+{% endif %}
+
+<div class="card u-mb" style="max-width:640px"><div class="hd"><h3>What the cash is spoken for</h3></div>
+<table class="ledger">
+  <tbody>
+    <tr><td>Fund balance now</td><td class="num mono"><strong>{{ position.balance|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td class="muted">less approved, not yet paid</td><td class="num mono muted">({{ position.approved_unpaid|floatformat:2|intcomma }})</td></tr>
+    <tr class="subtotal"><td>Available after approvals</td><td class="num mono {% if position.available_after_approved < 0 %}neg{% endif %}">{{ position.available_after_approved|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="muted">less vouchers awaiting approval</td><td class="num mono muted">({{ position.committed_unapproved|floatformat:2|intcomma }})</td></tr>
+    <tr class="subtotal"><td>Uncommitted cash</td><td class="num mono {% if position.available_after_committed < 0 %}neg{% endif %}">{{ position.available_after_committed|floatformat:2|intcomma }}</td></tr>
+    {% if position.reserved_open_cases %}
+    <tr><td class="muted">less reserve for open cases</td><td class="num mono muted">({{ position.reserved_open_cases|floatformat:2|intcomma }})</td></tr>
+    <tr class="total-row"><td><strong>Free to commit to a new case</strong></td><td class="num mono {% if position.available_after_reserved < 0 %}neg{% endif %}"><strong>{{ position.available_after_reserved|floatformat:2|intcomma }}</strong></td></tr>
+    {% endif %}
+  </tbody>
+</table>
+<div class="bd"><p class="help u-mt-0">Approved-but-unpaid and the open-case reserve are memorandum figures — promises the
+  fund must honour, not balance-sheet liabilities. The balance itself already reflects every voucher that has been approved.</p></div>
+</div>
+
+<div class="card"><div class="hd"><h3>Cash forecast — next {{ months }} months</h3></div>
+{% if forecast.runs_dry %}
+<div class="bd"><div class="alert alert-warn u-mt-0">At the current run-rate the fund runs dry around <strong>{{ forecast.first_dry_month }}</strong>.
+  A levy, a transfer in, or fewer commitments would change this.</div></div>
+{% endif %}
+<table class="ledger">
+  <thead><tr><th>Month</th><th class="num">Opening</th><th class="num">In</th><th class="num">Out</th><th class="num">Closing</th></tr></thead>
+  <tbody>
+    {% for m in forecast.months %}
+    <tr {% if m.negative %}class="is-danger"{% endif %}>
+      <td class="mono">{{ m.month }}</td>
+      <td class="num mono">{{ m.opening|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ m.inflow|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ m.outflow|floatformat:0|intcomma }}</td>
+      <td class="num mono {% if m.negative %}neg{% endif %}">{{ m.closing|floatformat:0|intcomma }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="bd"><p class="help u-mt-0">{{ forecast.basis }}</p></div>
+</div>
+{% endblock %}

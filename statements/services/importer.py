@@ -402,6 +402,24 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                                 dept = cdept
                                 status = (Transaction.Status.AUTO if cstatus == "AUTO"
                                           else Transaction.Status.REVIEW)
+
+                        # detect_scheme's own "sole owner of this fund" fallback
+                        # (see benevolent.services.allocation.detect_scheme) never
+                        # got a real chance above — it needs the FUND, which
+                        # ordinary allocation has only just now worked out. A
+                        # church typing "MSAMARIA" as an ordinary fund reference
+                        # (giving.AllocationRule, never a benevolent
+                        # ContributionRule) got the fund right, but the money
+                        # silently never reached the benevolent intake queue: no
+                        # ContributionRule pattern matched, and the sole-scheme
+                        # fallback was structurally unreachable with fund=None on
+                        # the only attempt. Retried here, now the fund is known.
+                        if ben_scheme is None and dept is not None:
+                            try:
+                                ben_scheme, _bk2, _bs2 = detect_scheme(
+                                    row["reference"], fund=dept)
+                            except Exception:  # noqa: BLE001 — never break an import
+                                pass
                 else:
                     status = Transaction.Status.REVIEW
 

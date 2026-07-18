@@ -503,13 +503,18 @@ class PledgeSuggestionActionView(TreasurerRequiredMixin, View):
 #   * Spam defences: only ACTIVE campaigns are selectable; a honeypot field; a
 #     minimum render-to-submit time; a simple per-session/IP throttle; and a hard
 #     amount ceiling. Approval is always manual.
+from django.contrib.auth.decorators import login_not_required
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
 import time
 
 
 @method_decorator(csrf_protect, name="dispatch")
+@method_decorator(login_not_required, name="dispatch")
 class PublicPledgeView(View):
+    # Deliberately public (P1-1 exempt): a member-facing pledge form, gated by
+    # SiteConfig.pledge_public_form_enabled (off by default) and heavily
+    # rate/bot-guarded below. Writes only unverified drafts; approval is manual.
     template_name = "pledges/public_form.html"
     MAX_AMOUNT = Decimal("100000000")   # sanity ceiling
     MIN_SECONDS = 2                     # forms filled faster than this are bots
@@ -615,6 +620,7 @@ class PublicPledgeView(View):
         return redirect("public_pledge_thanks")
 
 
+@method_decorator(login_not_required, name="dispatch")
 class PublicPledgeThanksView(View):
     def get(self, request):
         from core.models import SiteConfig

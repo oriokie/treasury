@@ -26,5 +26,11 @@ class BenevolentConfig(AppConfig):
             from .report_components import register_components, register_reports
             register_components()
             register_reports()
+            # item 6: the fourteen reporting-gap reports, registered the same way
+            from .report_components_extra import (
+                register_components as register_extra_components,
+                register_reports as register_extra_reports)
+            register_extra_components()
+            register_extra_reports()
         except Exception:  # noqa: BLE001 — never block startup on the catalogue
             pass

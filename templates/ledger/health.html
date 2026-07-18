@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}General ledger health · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head no-print"><div class="ws-titles"><h1>General ledger health check</h1>
+<div class="ws-head no-print"><div class="ws-titles"><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>General ledger health check</h1>
   <div class="ws-sub">Proactive integrity monitoring — everything an audit would check by hand</div></div>
   <div class="toolbar">
     <a class="btn btn-sm btn-ghost" href="{% url 'trial_balance' %}">Trial balance</a>

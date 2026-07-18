@@ -72,34 +72,47 @@ def site_context(request):
                     ctx["update_available"] = tag
             except Exception:
                 pass
+        from django.db.models import Count, Q
         from giving.models import Transaction
         from cashbook.models import Expense
-        ctx["queue_badge"] = Transaction.objects.filter(
-            allocation_status=Transaction.Status.REVIEW,
-            direction=Transaction.Direction.CREDIT).count()
-        ctx["sabbath_badge"] = Transaction.objects.filter(
-            sabbath_confirm_pending=True).count()
-        ctx["debit_badge"] = Transaction.objects.filter(
-            allocation_status=Transaction.Status.REVIEW,
-            direction=Transaction.Direction.DEBIT,
-            channel=Transaction.Channel.BANK).count()
-        ctx["expense_badge"] = Expense.objects.filter(
-            status=Expense.Status.PENDING,
-            doc_class=Expense.DocClass.EXPENSE).count()
+        # Consolidated badge counts. These used to be four separate COUNT queries
+        # against Transaction and two against Expense — six fixed queries on every
+        # page. They are now two grouped aggregates (one per model), which both
+        # cuts the per-page query count AND leaves room for the benevolent task
+        # badge below to be added without growing the total. This is the
+        # consolidation docs/recommendations.md flagged as the right time to add a
+        # benevolent badge.
+        txn_badges = Transaction.objects.aggregate(
+            queue=Count("pk", filter=Q(
+                allocation_status=Transaction.Status.REVIEW,
+                direction=Transaction.Direction.CREDIT)),
+            sabbath=Count("pk", filter=Q(sabbath_confirm_pending=True)),
+            debit=Count("pk", filter=Q(
+                allocation_status=Transaction.Status.REVIEW,
+                direction=Transaction.Direction.DEBIT,
+                channel=Transaction.Channel.BANK)))
+        ctx["queue_badge"] = txn_badges["queue"]
+        ctx["sabbath_badge"] = txn_badges["sabbath"]
+        ctx["debit_badge"] = txn_badges["debit"]
+        exp_badges = Expense.objects.aggregate(
+            expense=Count("pk", filter=Q(
+                status=Expense.Status.PENDING,
+                doc_class=Expense.DocClass.EXPENSE)),
+            liability=Count("pk", filter=Q(
+                status=Expense.Status.PENDING,
+                doc_class=Expense.DocClass.LIABILITY)))
+        ctx["expense_badge"] = exp_badges["expense"]
         # pending liability documents surface on the Liability Register
-        ctx["liability_badge"] = Expense.objects.filter(
-            status=Expense.Status.PENDING,
-            doc_class=Expense.DocClass.LIABILITY).count()
-        # NOTE: a benevolent "cases awaiting action" badge was deliberately NOT
-        # added here. It would be a seventh unconditional COUNT on every single
-        # page render, and accounts.test_user_list_search's query-count bound
-        # caught it immediately — the nav badges are already six fixed queries
-        # per request. The dashboard's "Needs attention" panel covers the same
-        # need without taxing every page in the app. See docs/recommendations.md:
-        # consolidating the badge counts into one query would make a benevolent
-        # badge free, and is the right time to add one.
+        ctx["liability_badge"] = exp_badges["liability"]
         from core.services.notifications import unread_count
         ctx["notif_badge"] = unread_count(user)
+        # Review-tasks badge: only queried for users who can actually see the
+        # benevolent module, so it adds no cost to any other page render. With
+        # the consolidation above this is well within the per-page query budget.
+        if "view_benevolent" in _granted:
+            from benevolent.models import BenevolentTask
+            ctx["benevolent_task_badge"] = BenevolentTask.objects.filter(
+                status=BenevolentTask.Status.OPEN).count()
     return ctx
 
 

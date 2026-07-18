@@ -80,6 +80,10 @@ def validate(scheme, *, kind, membership=None, case=None, amount=None, date=None
                 f"a levy.")
         if case is None:
             problems.append("A levy has to say which case it was raised for.")
+        elif case.status == case.Status.DRAFT:
+            problems.append(
+                f"{case.number} is still a draft — it has not been submitted for "
+                f"review yet, so there is nothing settled to levy against.")
     if kind == K.REGISTRATION and not policy.registration_fee:
         problems.append("This policy charges no registration fee.")
     if kind == K.RENEWAL and not policy.renewal_fee:
@@ -104,6 +108,10 @@ def validate(scheme, *, kind, membership=None, case=None, amount=None, date=None
 
     if case is not None and case.scheme_id != scheme.pk:
         problems.append(f"{case.number} belongs to a different scheme.")
+    if case is not None and case.status not in case.OPEN_STATUSES:
+        problems.append(
+            f"{case.number} is {case.get_status_display().lower()} — money cannot be "
+            f"attributed to a case that is already settled.")
 
     if amount is not None and Decimal(amount) <= 0:
         problems.append("A contribution must be a positive amount.")
@@ -621,7 +629,13 @@ def adjustments_total(membership, as_of=None) -> Decimal:
     """
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
-    for adj in membership.adjustments.filter(on__lte=as_of):
+    # Iterate the (possibly prefetched) relation and filter in Python rather than
+    # issuing a .filter() query — a filtered call would bypass a batch prefetch
+    # and re-hit the database per member. The set of adjustments per member is
+    # tiny, so the in-Python date test is free.
+    for adj in membership.adjustments.all():
+        if adj.on > as_of:
+            continue
         if adj.reversed_on and adj.reversed_on <= as_of:
             continue
         total += adj.signed

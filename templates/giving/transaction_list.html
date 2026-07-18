@@ -1,9 +1,16 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Ledger · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head">
-  <div class="ws-titles"><h1>{% if cash_only %}Cash entries{% else %}Ledger{% endif %}</h1><div class="ws-sub">{% if cash_only %}Cash collections — filter and check{% else %}Every receipt and bank movement{% endif %}</div></div>
-  <div class="ws-actions">{% if can_enter_data %}<a class="btn" href="{% url 'cash_new' %}">＋ Record entry</a>{% if not cash_only %}<a class="btn btn-ghost btn-sm" href="{% url 'mark_processed_import' %}" title="Bulk-mark bank entries as manual (paper) receipts — kept out of receipting, no system envelope">✓ Mark manual receipts</a>{% endif %}{% endif %}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">{% if cash_only %}Cash{% else %}Ledger{% endif %} · {{ SITE_NAME }}</div>
+      <h1>{% if cash_only %}Cash entries{% else %}Ledger{% endif %}</h1>
+      <div class="desc">{% if cash_only %}Cash collections — filter and check.{% else %}Every receipt and bank movement, with a running balance.{% endif %}</div>
+    </div>
+    <div class="mast-actions no-print">{% if can_enter_data %}<a class="btn" href="{% url 'cash_new' %}">＋ Record entry</a>{% if not cash_only %}<a class="btn btn-ghost btn-sm" href="{% url 'mark_processed_import' %}" title="Bulk-mark bank entries as manual (paper) receipts — kept out of receipting, no system envelope">✓ Mark manual receipts</a>{% endif %}{% endif %}</div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
 </div>
 
 <div class="ws-summary">
@@ -219,6 +226,5 @@ td:not(.row-debit) .cr-dr-badge{background:var(--forest-soft,#e3ede9);color:var(
 .ws-summary .ws-metric{padding:.6rem .8rem}
 .ws-summary .ws-metric .wm-v{font-size:1.15rem}
 .ws-toolbar{padding:.6rem .7rem;margin-bottom:.8rem;gap:.5rem}
-.ws-head{padding-bottom:.6rem;margin-bottom:.8rem}
 </style>
 {% endblock %}

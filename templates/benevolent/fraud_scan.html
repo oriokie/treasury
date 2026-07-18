@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Red flags · Benevolent{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles">
+  <h1>Red flags</h1>
+  <div class="ws-sub">Patterns worth a second look across the welfare schemes. Every item here is a
+    signal for you to judge — not an accusation, and nothing has been blocked. Most have an innocent
+    explanation; the point is that none goes unseen.</div>
+</div></div>
+
+<form method="get" class="filter-bar u-mb">
+  <label>Scheme
+    <select name="scheme" class="field" onchange="this.form.submit()">
+      <option value="">All schemes</option>
+      {% for s in schemes %}<option value="{{ s.id }}" {% if f_scheme == s.id|stringformat:'s' %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button class="btn btn-sm">Filter</button></noscript>
+</form>
+
+<div class="stat-row u-mb">
+  <div class="stat {% if summary.high %}danger{% else %}accent{% endif %}">
+    <div class="stat-label">High</div><div class="stat-value">{{ summary.high }}</div></div>
+  <div class="stat brass"><div class="stat-label">Medium</div><div class="stat-value">{{ summary.medium }}</div></div>
+  <div class="stat"><div class="stat-label">Low</div><div class="stat-value">{{ summary.low }}</div></div>
+</div>
+
+{% if not signals %}
+<div class="alert alert-success">Nothing stood out. No control breaches, membership-abuse patterns, identity
+  overlaps or contribution manipulation were detected across the schemes in scope.</div>
+{% else %}
+  {% for group_name, items in grouped.items %}{% if items %}
+  <div class="card u-mb"><div class="hd">
+      <h3>{{ group_name|capfirst }} · {{ items|length }}</h3></div>
+    <table class="ledger">
+      <thead><tr><th>Flag</th><th>Detail</th><th></th></tr></thead>
+      <tbody>
+        {% for s in items %}
+        <tr>
+          <td><span class="pill {% if s.severity == 'high' %}pill-red{% elif s.severity == 'medium' %}pill-amber{% else %}pill-muted{% endif %}">{{ s.label }}</span></td>
+          <td class="muted">{{ s.detail }}</td>
+          <td class="num u-xs">
+            {% if s.case_id %}<a class="link" href="{% url 'benevolent_case_detail' s.case_id %}">Case →</a>
+            {% elif s.membership_id %}<a class="link" href="{% url 'benevolent_membership_detail' s.membership_id %}">Member →</a>
+            {% elif s.scheme_id %}<a class="link" href="{% url 'benevolent_scheme_detail' s.scheme_id %}">Scheme →</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}{% endfor %}
+{% endif %}
+{% endblock %}

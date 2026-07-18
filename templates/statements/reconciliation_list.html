@@ -2,8 +2,17 @@
 {% block title %}Bank reconciliations · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="btn-row no-print" style="justify-content:flex-end;margin-bottom:.4rem"><a class="btn btn-ghost btn-sm" href="{% url 'auto_reconcile' %}">⟳ Auto-reconcile</a></div>
-<div class="page-head"><div><h1>Bank reconciliations</h1><div class="sub">Reconcile the bank statement to the cash book</div></div>
-{% if can_enter_data %}<a class="btn" href="{% url 'reconciliation_new' %}">＋ New reconciliation</a>{% endif %}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Banking · {{ SITE_NAME }}</div>
+      <h1>Bank reconciliations</h1>
+      <div class="desc">Reconcile the bank statement to the cash book</div>
+    </div>
+    <div class="rpt-actions no-print">{% if can_enter_data %}<a class="btn" href="{% url 'reconciliation_new' %}">＋ New reconciliation</a>{% endif %}</div>
+  </div>
+  <div class="rule"></div>
+</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Statement date</th><th class="num">Bank balance</th><th class="num">Adjusted</th><th class="num">Book balance</th><th>Status</th>{% if is_treasurer %}<th class="no-print"></th>{% endif %}</tr></thead>
   <tbody>

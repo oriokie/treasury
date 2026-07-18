@@ -2,7 +2,7 @@
 {% block title %}My departments · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
-  <div class="ws-titles"><h1>My departments</h1>
+  <div class="ws-titles"><div class="eyebrow">Leaders · {{ SITE_NAME }}</div><h1>My departments</h1>
     <div class="ws-sub">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · read-only overview</div></div>
   <form method="get" class="btn-row u-items-end">
     <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto">

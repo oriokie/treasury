@@ -8,9 +8,9 @@ from cashbook.models import Expense
 from departments.models import Department
 from members.models import Member
 
-from .models import (BenevolentCase, BenevolentEventType, BenevolentScheme,
-                     CaseAttachment, SchemeBenefitRule, SchemeDependant,
-                     SchemeMembership, SchemePolicy)
+from .models import (BenevolentCase, BenevolentContribution, BenevolentEventType,
+                     BenevolentScheme, CaseAttachment, SchemeBenefitRule,
+                     SchemeDependant, SchemeMembership, SchemePolicy)
 
 
 def _local_funds():
@@ -78,7 +78,9 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
     GROUPS = [
         ("Membership & eligibility",
          ["membership_required", "waiting_period_days", "min_contributions",
-          "arrears_treatment", "max_arrears_allowed", "arrears_block",
+          "min_paid_months", "no_missed_contributions", "missed_contributions_allowed",
+          "arrears_treatment", "max_arrears_allowed", "max_arrears_periods",
+          "arrears_block", "catch_up_restores_eligibility", "catch_up_requalify_days",
           "grace_period_days"]),
         ("Registration",
          ["registration_required", "registration_approval", "registration_fee",
@@ -100,8 +102,8 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
          ["bereaved_contribution_policy", "bereaved_reduction_percent",
           "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
         ("Inactivity & lapsing",
-         ["inactivity_months", "inactivity_missed_cases", "inactivity_action",
-          "reinstatement_fee", "reinstatement_waiting_days"]),
+         ["inactivity_months", "inactivity_missed_cases", "inactivity_missed_cases_window",
+          "inactivity_action", "reinstatement_fee", "reinstatement_waiting_days"]),
         ("Household & dependants",
          ["household_mode", "max_dependants", "dependant_age_limit",
           "max_household_size", "spouse_auto_covered"]),
@@ -120,7 +122,9 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
             f for _g, fs in [
                 ("Membership & eligibility",
                  ["membership_required", "waiting_period_days", "min_contributions",
-                  "arrears_treatment", "max_arrears_allowed", "arrears_block",
+                  "min_paid_months", "no_missed_contributions", "missed_contributions_allowed",
+                  "arrears_treatment", "max_arrears_allowed", "max_arrears_periods",
+                  "arrears_block", "catch_up_restores_eligibility", "catch_up_requalify_days",
                   "grace_period_days"]),
                 ("Registration",
                  ["registration_required", "registration_approval", "registration_fee",
@@ -142,8 +146,8 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
                  ["bereaved_contribution_policy", "bereaved_reduction_percent",
                   "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
                 ("Inactivity & lapsing",
-                 ["inactivity_months", "inactivity_missed_cases", "inactivity_action",
-                  "reinstatement_fee", "reinstatement_waiting_days"]),
+                 ["inactivity_months", "inactivity_missed_cases", "inactivity_missed_cases_window",
+                  "inactivity_action", "reinstatement_fee", "reinstatement_waiting_days"]),
                 ("Household & dependants",
                  ["household_mode", "max_dependants", "dependant_age_limit",
                   "max_household_size", "spouse_auto_covered"]),
@@ -343,6 +347,15 @@ class CaseForm(StyledFormMixin, forms.ModelForm):
                   "fundraising goal you can set now or later, independent of "
                   "whatever the policy ultimately computes as the benefit.")
 
+    create_and_approve = forms.BooleanField(
+        required=False, label="Approve immediately",
+        help_text="Submit, assess and approve this case in one step, for the "
+                  "assessed amount, instead of leaving it as a draft. Only "
+                  "offered where the scheme's policy allows the same person to "
+                  "both raise and approve a case — if assessment finds the case "
+                  "ineligible, this stops there rather than overriding "
+                  "anything; you decide what to do with it from the case page.")
+
     class Meta:
         model = BenevolentCase
         # Order matters: this is the order the template renders them, and the
@@ -367,6 +380,12 @@ class CaseForm(StyledFormMixin, forms.ModelForm):
         if self.scheme is not None and not self.instance.scheme_id:
             self.instance.scheme = self.scheme
         self.policy = self.scheme.current_policy if self.scheme else None
+        # The fast path is only ever offered where the scheme's own policy
+        # already permits the same person to raise and approve (see
+        # SchemePolicy.require_different_approver) — popped entirely, not just
+        # hidden, so a crafted POST cannot set it where the policy forbids it.
+        if self.policy is None or self.policy.require_different_approver:
+            self.fields.pop("create_and_approve", None)
         if self.scheme is not None:
             self.fields["membership"].queryset = (
                 SchemeMembership.objects.filter(
@@ -448,6 +467,17 @@ class ContributionForm(StyledFormMixin, forms.Form):
                                 min_value=Decimal("0.01"))
     channel = forms.ChoiceField(choices=[("CASH", "Cash"), ("BANK", "Bank / M-Pesa"),
                                          ("ENVELOPE", "Envelope")], initial="CASH")
+    payer_type = forms.ChoiceField(
+        choices=BenevolentContribution.PayerType.choices,
+        initial=BenevolentContribution.PayerType.SELF, required=False,
+        label="Paid by",
+        help_text="Who actually paid. Use the others when someone paid on a member's "
+                  "behalf (employer, sponsor, third party) or gave anonymously — the "
+                  "money still counts, and the member's statement stays truthful about it.")
+    payer_name = forms.CharField(
+        required=False, max_length=120, label="Payer name",
+        help_text="The employer, sponsor or third party who paid. Leave blank for the "
+                  "member's own payment, or for a genuinely anonymous gift.")
     period_label = forms.CharField(required=False, max_length=10,
                                    help_text="Dues period, e.g. 2026-07. Left blank, it is "
                                              "derived from the date and the policy.")
@@ -950,7 +980,8 @@ class IntakeResolveForm(StyledFormMixin, forms.Form):
                 SchemeMembership.objects.filter(scheme=item.scheme)
                 .select_related("member").order_by("member__name"))
             self.fields["case"].queryset = (
-                BenevolentCase.objects.filter(scheme=item.scheme)
+                BenevolentCase.objects.filter(
+                    scheme=item.scheme, status__in=BenevolentCase.OPEN_STATUSES)
                 .order_by("-event_date"))
             if item.suggested_membership_id:
                 self.fields["membership"].initial = item.suggested_membership_id

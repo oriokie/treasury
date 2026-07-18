@@ -16,9 +16,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views import View
 
-from core.permissions import (BenevolentCommitteeMixin, BenevolentRegistrationMixin,
-                              BenevolentSettingsMixin, BenevolentSetupMixin,
-                              BenevolentViewMixin)
+from core.permissions import (BenevolentCommitteeMixin, BenevolentManageMixin,
+                              BenevolentRegistrationMixin, BenevolentSettingsMixin,
+                              BenevolentSetupMixin, BenevolentViewMixin)
 
 from .forms import (ApplyProfileForm, FeeForm, MembershipEditForm, NomineeForm,
                     PolicyProfileForm, SaveAsProfileForm, SettingsForm, VoteForm)
@@ -26,6 +26,7 @@ from .models import (BenevolentCase, BenevolentScheme, BenevolentSettings,
                      PolicyProfile, SchemeMembership, SchemePolicy)
 from .services import cases as case_svc
 from .services import contributions as contrib_svc
+from .services import bulk_sms
 from .services import profiles as profile_svc
 from .services import schemes as scheme_svc
 from .services import wizard as wizard_svc
@@ -381,10 +382,16 @@ class CaseLevyView(BenevolentViewMixin, View):
     def get(self, request, pk):
         case = get_object_or_404(
             BenevolentCase.objects.select_related("scheme", "membership__member"), pk=pk)
-        summary = contrib_svc.levy_summary(case)
-        if summary is None:
+        if case.status == BenevolentCase.Status.DRAFT:
             messages.info(
-                request, f"{case.scheme.name}'s policy does not raise a levy per case.")
+                request, f"{case.number} is still a draft — it has not been submitted "
+                        f"for review yet, so there is nothing settled to collect a "
+                        f"levy against. Submit it first.")
+            return redirect("benevolent_case_detail", pk=pk)
+        try:
+            summary = contrib_svc.raise_case_levy(case)
+        except ValidationError as e:
+            messages.info(request, "; ".join(e.messages))
             return redirect("benevolent_case_detail", pk=pk)
         return render(request, "benevolent/case_levy.html",
                       {"case": case, "levy": summary})
@@ -396,6 +403,11 @@ class CaseLevyView(BenevolentViewMixin, View):
         if not can_manage_benevolent(request.user):
             messages.error(request, "You don't have the benevolent-administration right.")
             return redirect("benevolent_case_levy", pk=pk)
+        if case.status == BenevolentCase.Status.DRAFT:
+            messages.error(
+                request, f"{case.number} is still a draft — submit it for review "
+                        f"before collecting a levy against it.")
+            return redirect("benevolent_case_detail", pk=pk)
         m = SchemeMembership.objects.filter(
             pk=request.POST.get("membership"), scheme=case.scheme).first()
         try:
@@ -416,3 +428,79 @@ class CaseLevyView(BenevolentViewMixin, View):
         else:
             messages.success(request, f"Levy of {amount} receipted from {m.member.name}.")
         return redirect("benevolent_case_levy", pk=pk)
+
+
+class SmsCenterView(BenevolentManageMixin, View):
+    """One versatile page for every "text the members" scenario (Round 9,
+    items 8/9): a case just approved and the levy roster should know, a
+    defaulter needs a nudge before they are marked inactive, or just reaching
+    a scheme's whole membership. One audience-picker, one composer, one send
+    path — reusing the exact arrears/inactivity/levy-roster logic the rest of
+    the module already computes, so an audience here can never disagree with
+    what a member's own standing page says about them.
+
+    Sending is synchronous and immediate — a typical scheme's membership is
+    small enough (tens to a few hundred) that this does not need a background
+    queue, and every attempt is logged to SmsLog exactly as any other SMS in
+    the app is.
+    """
+    template_name = "benevolent/sms_center.html"
+
+    def get(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        preview_audience = request.GET.get("audience") or ""
+        preview_case = request.GET.get("case") or ""
+        recipients = self._resolve_audience(scheme, preview_audience, preview_case)
+        with_phone = sum(1 for m, _ in recipients if m.member.receipt_phone)
+        return render(request, self.template_name, {
+            "scheme": scheme,
+            "audiences": bulk_sms.AUDIENCES,
+            "presets": bulk_sms.PRESETS,
+            "cases": (BenevolentCase.objects.filter(
+                        scheme=scheme, status__in=BenevolentCase.OPEN_STATUSES)
+                     .order_by("-event_date")),
+            "selected_audience": preview_audience,
+            "selected_case": preview_case,
+            "recipients": recipients,
+            "recipient_count": len(recipients),
+            "with_phone": with_phone,
+            "no_phone_count": len(recipients) - with_phone,
+        })
+
+    def post(self, request, pk):
+        scheme = get_object_or_404(BenevolentScheme, pk=pk)
+        audience_key = request.POST.get("audience") or ""
+        case_id = request.POST.get("case") or ""
+        message = (request.POST.get("message") or "").strip()
+        if not message:
+            messages.error(request, "Write a message before sending.")
+            return redirect("benevolent_sms_center", pk=pk)
+
+        recipients = self._resolve_audience(scheme, audience_key, case_id)
+        if not recipients:
+            messages.warning(request, "Nobody matched that audience — nothing sent.")
+            return redirect("benevolent_sms_center", pk=pk)
+
+        result = bulk_sms.send_bulk_sms(recipients, message, scheme=scheme)
+        summary = (f"{result.sent} sent, {result.failed} failed, "
+                  f"{result.no_phone} had no phone number on file "
+                  f"(of {len(recipients)} in the audience).")
+        if result.sent:
+            messages.success(request, summary)
+        else:
+            messages.error(request, summary)
+        return redirect("benevolent_sms_center", pk=pk)
+
+    def _resolve_audience(self, scheme, audience_key, case_id):
+        if audience_key == "CASE_ROSTER":
+            if not case_id:
+                return []
+            case = BenevolentCase.objects.filter(pk=case_id, scheme=scheme).first()
+            if case is None:
+                return []
+            return bulk_sms.audience_case_roster_unpaid(case)
+        entry = bulk_sms.AUDIENCES.get(audience_key)
+        if entry is None or entry[1] is None:
+            return []
+        _label, fn = entry
+        return fn(scheme)

@@ -81,6 +81,12 @@ class EngineFixture(TestCase):
         self.m = reg_svc.register(self.scheme, self.mary,
                                   joined_on=TODAY - dt.timedelta(days=90),
                                   user=self.treasurer)
+        # The obligations engine (built after this fixture) correctly applies an
+        # unpaid registration fee before anything else, regardless of what a
+        # narration says — real, intended behaviour, but not what THIS fixture's
+        # tests are about, so Mary's registration is already settled here.
+        self.m.registration_fee_paid = True
+        self.m.save(update_fields=["registration_fee_paid"])
 
     def _bank_receipt(self, *, amount, reference="", phone="", name="",
                       date=None, department=None):

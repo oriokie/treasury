@@ -1,7 +1,16 @@
 {% extends 'base.html' %}
 {% block title %}Import statement · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Import a statement</h1><div class="sub">CSV, XLSX or XLS — the columns are detected automatically</div></div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Banking · {{ SITE_NAME }}</div>
+      <h1>Import a statement</h1>
+      <div class="desc">CSV, XLSX or XLS — the columns are detected automatically</div>
+    </div>
+  </div>
+  <div class="rule"></div>
+</div>
 <div class="card u-narrow-md"><div class="bd">
   <form method="post" enctype="multipart/form-data"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
     <div class="btn-row"><button class="btn">Upload &amp; import</button><a class="btn btn-ghost" href="{% url 'statement_list' %}">Cancel</a></div>

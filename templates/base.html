@@ -95,6 +95,8 @@
           <a href="{% url 'benevolent_contribution_list' %}" class="{% if 'benevolent_contribution' in request.resolver_match.url_name %}active{% endif %}">Contributions</a>
           {% if can.manage_benevolent %}<a href="{% url 'benevolent_intake_queue' %}" class="{% if 'intake' in request.resolver_match.url_name %}active{% endif %}">Intake queue</a>{% endif %}
           {% if can.view_benevolent %}<a href="{% url 'benevolent_overrides_exceptions' %}" class="{% if 'overrides_exceptions' in request.resolver_match.url_name %}active{% endif %}">Overrides &amp; exceptions</a>{% endif %}
+          {% if can.view_benevolent %}<a href="{% url 'benevolent_fraud_scan' %}" class="{% if 'fraud' in request.resolver_match.url_name %}active{% endif %}">Red flags</a>{% endif %}
+          {% if can.view_benevolent %}<a href="{% url 'benevolent_task_list' %}" class="{% if 'task' in request.resolver_match.url_name %}active{% endif %}">Review tasks{% if benevolent_task_badge %}<span class="badge">{{ benevolent_task_badge }}</span>{% endif %}</a>{% endif %}
           {% if can.manage_benevolent_settings %}<a href="{% url 'benevolent_notification_templates' %}" class="{% if 'notification_template' in request.resolver_match.url_name %}active{% endif %}">Notification templates</a>{% endif %}
           {% if can.view_benevolent %}<a href="{% url 'benevolent_notification_history' %}" class="{% if 'notification_history' in request.resolver_match.url_name %}active{% endif %}">Notification history</a>{% endif %}
           {% if can.view_reports %}<a href="{% url 'report_library' %}?q=benevolent">Reports</a>{% endif %}
@@ -267,19 +269,13 @@
 
 <script>
 (function(){
-  // --- remember sidebar scroll position across page loads ---
   var sb=document.getElementById("sidebar"), SKEY="sidebar-scroll";
-  if(sb){
-    try{ var y=sessionStorage.getItem(SKEY); if(y!==null) sb.scrollTop=parseInt(y,10)||0; }catch(e){}
-    var saveT;
-    sb.addEventListener("scroll",function(){
-      clearTimeout(saveT);
-      saveT=setTimeout(function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} },120);
-    });
-    window.addEventListener("beforeunload",function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} });
-  }
 
   // --- collapsible nav groups: open the active group, remember the rest ---
+  // Done BEFORE restoring scroll: opening a group changes the sidebar's
+  // content height, so if we restored scroll first the newly-opened active
+  // group would shift everything and the restored position would be wrong
+  // (this was the "jumps back to top" bug).
   var KEY="nav-open";
   var open={};
   try{ open=JSON.parse(localStorage.getItem(KEY)||"{}"); }catch(e){}
@@ -292,6 +288,39 @@
       try{ localStorage.setItem(KEY,JSON.stringify(open)); }catch(e){}
     });
   });
+
+  // --- remember sidebar scroll position across page loads ---
+  // Restore only AFTER the group state above has changed the layout, on the
+  // next animation frame so the browser has finished laying the sidebar out
+  // (scrollTop set against a not-yet-tall-enough element clamps to 0).
+  if(sb){
+    var restore=function(){
+      try{
+        var y=sessionStorage.getItem(SKEY);
+        if(y!==null){
+          var target=parseInt(y,10)||0;
+          // clamp to the real scrollable range so a shorter page can't
+          // leave us stuck, but otherwise honour exactly where the user was
+          sb.scrollTop=Math.min(target, sb.scrollHeight - sb.clientHeight);
+        }
+      }catch(e){}
+    };
+    // rAF twice: first frame applies the <details> open state's height, the
+    // second frame lets the browser settle it before we set scrollTop.
+    requestAnimationFrame(function(){ requestAnimationFrame(restore); });
+
+    var saveT;
+    sb.addEventListener("scroll",function(){
+      clearTimeout(saveT);
+      saveT=setTimeout(function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} },120);
+    });
+    window.addEventListener("beforeunload",function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} });
+    // A click on a nav link should persist the CURRENT position immediately,
+    // before navigation starts, so the debounced save above can't miss it.
+    sb.querySelectorAll("a[href]").forEach(function(a){
+      a.addEventListener("click",function(){ try{ sessionStorage.setItem(SKEY, sb.scrollTop); }catch(e){} });
+    });
+  }
 
   // --- dropdowns: close when clicking elsewhere ---
   document.addEventListener("click",function(e){

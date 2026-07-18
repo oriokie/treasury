@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Intake · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Whose money is this?</h1>
+<div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Whose money is this?</h1>
   <div class="sub">{{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }} received {{ item.date|date:"d M Y" }}
     · <span class="pill u-xs">{{ item.get_status_display }}</span></div></div>
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_intake_queue' %}">← Queue</a></div></div>

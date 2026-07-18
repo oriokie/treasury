@@ -1,7 +1,9 @@
 from django.contrib import messages
+from django.contrib.auth.decorators import login_not_required as _lnr
 from django.contrib.auth.models import User, Group
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
+from django.utils.decorators import method_decorator as _lnr_method_decorator
 from django.views.generic import ListView, FormView, View
 
 from core.permissions import TreasurerRequiredMixin
@@ -463,9 +465,12 @@ class ProfileEditView(RightRequiredMixin, View):
 
     def get(self, request, pk=None):
         profile = self._get(pk)
+        grouped = R.grouped_rights()
+        total_rights = sum(len(items) for _g, items in grouped)
         return render(request, "accounts/profile_form.html", {
             "profile": profile,
-            "grouped_rights": R.grouped_rights(),
+            "grouped_rights": grouped,
+            "total_rights": total_rights,
             "granted": set(profile.rights) if profile else set(),
             "all_users": User.objects.filter(is_active=True).order_by("username"),
             "assigned": set(profile.users.values_list("id", flat=True)) if profile else set(),
@@ -532,6 +537,7 @@ SIGNOUT_VERSES = [
 ]
 
 
+@_lnr_method_decorator(_lnr, name="dispatch")
 class SignOutView(_TemplateView):
     template_name = "registration/logged_out.html"
 

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Payment register · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Payment register</h1>
+<div class="page-head"><div><div class="eyebrow">Banking · {{ SITE_NAME }}</div><h1>Payment register</h1>
   <div class="sub">Cheques and other payment instruments — every payment references its source obligation</div></div>
 <div class="btn-row">
   <a class="btn btn-ghost btn-sm" href="{% url 'payment_outstanding' %}">Outstanding report</a>

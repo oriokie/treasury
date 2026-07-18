@@ -1,8 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Petty cash · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Petty cash</h1><div class="sub">A small cash float — top-ups in, disbursements charged to their ministry</div></div>
-<div class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=xlsx">⬇ Excel</a><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=csv">CSV</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
+      <h1>Petty cash</h1>
+      <div class="desc">A small cash float — top-ups in, disbursements charged to their ministry</div>
+    </div>
+    <div class="rpt-actions no-print"><div class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=xlsx">⬇ Excel</a><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=csv">CSV</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+  </div>
+  <div class="rule"></div>
+</div>
 {% include "ui/period_selector.html" %}
 
 <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">

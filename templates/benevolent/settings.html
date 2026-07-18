@@ -41,6 +41,18 @@
         voucher charged to it. There is no separate benevolent accounting, which is why the ledger, the cash book, the
         bank reconciliation and the board pack all see this module's money with no special handling.</p>
     </div></div>
+    <div class="card u-mt"><div class="hd">Fund solvency</div><div class="bd">
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'block_overdrawn_payouts reserve_open_cases' %}
+        <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <p class="help u-mt">These govern the fund-position view and the affordability warning shown when a benefit
+        voucher is raised. They change what the app WARNS about, never what the ledger records — the balance always
+        reflects every voucher already approved.</p>
+    </div></div>
   </section>
 
   <section class="tabpane" data-pane="notifications">
@@ -73,7 +85,7 @@
         suspended, withdrew or expelled is left completely alone, and every rule reinstates as readily as it demotes
         (a member who clears their arrears goes back to active on the next run without anyone lifting a finger).</p>
       <div class="form-grid u-mt">
-      {% for f in form %}{% if f.name in 'automation_enabled auto_refresh_arrears auto_flag_inactive auto_lapse_unrenewed arrears_reminder_days renewal_reminder_days' %}
+      {% for f in form %}{% if f.name in 'automation_enabled auto_refresh_arrears auto_flag_inactive auto_lapse_unrenewed auto_archive_cases arrears_reminder_days renewal_reminder_days' %}
         <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}

@@ -6,56 +6,16 @@ from .models import SiteConfig
 class SiteConfigForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = SiteConfig
-        fields = [
-            "church_name", "field_name", "church_address", "church_contact",
-            "currency_symbol", "report_footer_note", "receipt_strip_strings",
-            "camp_offering_fund", "camp_offering_goal",
-            "require_expense_approval", "show_mpesa_ref", "enable_dev_groups",
-            "auto_create_members", "envelope_auto_receipt", "receipt_bank_scope",
-            "receipt_message",
-            "sms_enabled", "sms_receipt_scope", "sms_api_url", "sms_api_key",
-            "sms_partner_id", "sms_shortcode", "sms_receipt_template",
-            "llm_enabled", "llm_provider", "llm_api_key", "llm_model", "llm_base_url",
-            "sig_treasurer", "sig_pastor", "sig_elder",
-            "asset_depr_method", "asset_depr_rate",
-            "trust_remit_due_day", "petty_cash_float",
-            "dual_approval_threshold", "enforce_fund_balance",
-            "enforce_petty_float", "require_dual_yearend", "require_import_confirmation",
-            "require_different_approver", "auto_lock_on_reconciliation",
-            "leader_delete_window_days", "archive_replaced_ledger_entries",
-            "notify_email_enabled",
-            "cheque_width_mm", "cheque_height_mm", "cheque_offset_x_mm",
-            "cheque_offset_y_mm", "cheque_date_x_mm", "cheque_date_y_mm",
-            "cheque_payee_x_mm", "cheque_payee_y_mm", "cheque_words1_x_mm",
-            "cheque_words1_y_mm", "cheque_words2_x_mm", "cheque_words2_y_mm",
-            "cheque_amount_x_mm", "cheque_amount_y_mm", "cheque_font_pt",
-            "cheque_ac_payee_only",
-            "dev_group_builder_apply",
-            "numbered_fund_families",
-            "lcb_departments",
-            "sabbath_cutoff_enabled",
-            "email_enabled", "email_host", "email_port", "email_use_tls", "email_use_ssl",
-            "email_host_user", "email_host_password", "email_from",
-            "whatsapp_enabled", "whatsapp_provider", "whatsapp_api_url",
-            "whatsapp_api_key", "whatsapp_sender",
-            "daraja_enabled", "daraja_shortcode", "daraja_consumer_key",
-            "daraja_consumer_secret", "daraja_env",
-            "bank_feed_enabled", "bank_feed_auth_mode", "bank_feed_username",
-            "bank_feed_password", "bank_feed_token",
-            "pledge_match_mode", "pledge_match_same_fund_only",
-            "pledge_match_window_days", "pledge_public_form_enabled",
-            "backup_email", "offsite_backup_enabled", "offsite_backup_url",
-            "offsite_backup_user", "offsite_backup_password",
-            "require_2fa_for_treasurers",
-            "error_alerts_enabled", "error_alert_phone",
-            "opening_bank_balance", "opening_cash_on_hand", "opening_unremitted_trust",
-            "telegram_enabled", "telegram_bot_token", "telegram_pin",
-            "telegram_session_minutes", "telegram_run_in_app", "site_base_url",
-            "telegram_envelope_enabled", "telegram_allow_new_member",
-            "telegram_envelope_confirm", "telegram_envelope_channel",
-            "telegram_envelope_funds",
-            "sabbath_confirm_scope",
-        ]
+        # DENYLIST, not allowlist (recommendation #74a). A ModelForm bound with
+        # `fields = [...]` silently omits any model field not named in the list,
+        # so adding a setting to SiteConfig used to require also remembering to
+        # add it here — and forgetting left the setting unreachable with no error.
+        # `exclude` inverts that: every editable field binds automatically, and
+        # only the deliberately-excluded few are named. `board_config` is edited
+        # through its own board-configuration screen, not this general form;
+        # id/updated_at are not user-editable. A test
+        # (test_siteconfig_form_binds_every_field) asserts this stays true.
+        exclude = ["id", "updated_at", "board_config"]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
                    "receipt_message": forms.Textarea(attrs={"rows": 3}),
                    "telegram_envelope_funds": forms.CheckboxSelectMultiple(),

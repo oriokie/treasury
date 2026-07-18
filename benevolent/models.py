@@ -411,11 +411,26 @@ class SchemePolicy(models.Model):
     # basis of decisions already made. (Things that steer operations but decide
     # nothing — accounting mappings, notification preferences, automation —
     # live on BenevolentSettings, and are freely editable.)
+    # Every concrete field on this model is deliberately classified as EITHER a
+    # versioned policy rule (RULE_FIELDS, below) OR explicit non-rule metadata
+    # (NON_RULE_FIELDS, here). A test (test_rule_fields_complete) asserts the two
+    # sets together cover every field with no overlap — so adding a field to the
+    # model without classifying it FAILS THE BUILD, rather than silently vanishing
+    # from policy versioning and the settings UI. This is the guard for the
+    # frozen-allowlist trap (recommendation #74a): the list may stay curated, but
+    # it can no longer rot unnoticed.
+    NON_RULE_FIELDS = frozenset({
+        "id", "scheme", "version", "status", "effective_to",
+        "created_at", "created_by", "published_at", "published_by", "notes",
+    })
+
     RULE_FIELDS = [
         "effective_from",
         # membership & eligibility
         "membership_required", "waiting_period_days", "min_contributions",
-        "arrears_block", "max_arrears_allowed", "arrears_treatment",
+        "min_paid_months", "no_missed_contributions", "missed_contributions_allowed",
+        "arrears_block", "max_arrears_allowed", "max_arrears_periods", "arrears_treatment",
+        "catch_up_restores_eligibility", "catch_up_requalify_days",
         # registration
         "registration_required", "registration_approval", "registration_fee",
         "registration_fee_refundable", "min_age", "max_age",
@@ -438,6 +453,7 @@ class SchemePolicy(models.Model):
         # inactivity
         "inactivity_months", "inactivity_action", "reinstatement_fee",
         "reinstatement_waiting_days", "inactivity_missed_cases",
+        "inactivity_missed_cases_window",
         # standing (Phase 3)
         "grace_period_days", "allow_exemptions", "exemption_age",
         # registry (Phase 3)
@@ -475,11 +491,49 @@ class SchemePolicy(models.Model):
                   "0 = cover starts immediately.")
     min_contributions = models.PositiveIntegerField(
         default=0, help_text="Minimum number of contributions before a claim qualifies.")
+    min_paid_months = models.PositiveIntegerField(
+        default=0,
+        help_text="Minimum months of PAID-UP membership before a claim qualifies — the "
+                  "'you must have been paying in for N months' rule most welfare "
+                  "constitutions use (commonly 3, 6 or 12). Counts periods that were "
+                  "actually settled, unlike the waiting period (which is calendar time "
+                  "regardless of payment) and unlike minimum contributions (a bare count "
+                  "that two payments in one month would satisfy). 0 = no tenure requirement.")
+    no_missed_contributions = models.BooleanField(
+        default=False,
+        help_text="Require an unbroken payment record — ANY missed period (beyond the "
+                  "grace period and the tolerance below) disqualifies, even if the member "
+                  "later paid it. The strictest standing rule: it is not about how much is "
+                  "owed today, but about never having lapsed. Leave off for the usual "
+                  "'up to date now' test.")
+    missed_contributions_allowed = models.PositiveIntegerField(
+        default=0,
+        help_text="When 'no missed contributions' is on, how many missed periods to "
+                  "tolerate before disqualifying (a little slack for the member who "
+                  "genuinely forgot one month). 0 = none allowed.")
     arrears_block = models.BooleanField(
         default=False, help_text="A member in arrears cannot claim.")
     max_arrears_allowed = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
         help_text="If arrears block: how much a member may still owe and remain eligible.")
+    max_arrears_periods = models.PositiveIntegerField(
+        default=0,
+        help_text="An alternative to the shilling threshold above, expressed in PERIODS: "
+                  "how many periods a member may be behind and still claim (e.g. 'up to 2 "
+                  "months in arrears is fine'). Easier to reason about than an amount when "
+                  "the dues rate changes over time. 0 = use the shilling threshold instead.")
+    catch_up_restores_eligibility = models.BooleanField(
+        default=True,
+        help_text="When a member clears their arrears, does eligibility come back "
+                  "immediately? On (the humane default) = yes, paying up restores cover at "
+                  "once. Off = clearing arrears is necessary but the member must then serve "
+                  "the re-qualification period below before claiming again — a guard against "
+                  "someone paying up only once a death has already occurred.")
+    catch_up_requalify_days = models.PositiveIntegerField(
+        default=0,
+        help_text="When catch-up does NOT restore eligibility immediately, how many days a "
+                  "member must remain paid-up after clearing arrears before a claim "
+                  "qualifies again. 0 = no re-qualification period.")
 
     # ---- Contribution rules ----------------------------------------------
     contribution_mode = models.CharField(max_length=16, choices=ContributionMode.choices,
@@ -646,13 +700,29 @@ class SchemePolicy(models.Model):
         default=0,
         help_text="A reinstated member serves this waiting period again before they can "
                   "claim. Stops a lapsed member rejoining the week a relative falls ill.")
+    class MissedCasesWindow(models.TextChoices):
+        CONSECUTIVE = "CONSECUTIVE", "Consecutive — an unbroken run of misses, most recent first"
+        ROLLING_YEAR = "ROLLING_YEAR", "Any within the last 12 months"
+
     inactivity_missed_cases = models.PositiveSmallIntegerField(
         default=0,
-        help_text="A member who fails to contribute to this many consecutive case levies "
-                  "is inactive. The measure that matters in a levy scheme, where there "
-                  "are no monthly dues to miss — the member who never stands with a "
-                  "bereaved family, and then expects the family to stand with them. "
-                  "0 = do not measure this.")
+        help_text="A member who fails to contribute to this many case levies "
+                  "is inactive — see the window setting below for how the misses "
+                  "are counted. The measure that matters in a levy scheme, where "
+                  "there are no monthly dues to miss — the member who never stands "
+                  "with a bereaved family, and then expects the family to stand "
+                  "with them. 0 = do not measure this.")
+    inactivity_missed_cases_window = models.CharField(
+        max_length=12, choices=MissedCasesWindow.choices,
+        default=MissedCasesWindow.CONSECUTIVE,
+        help_text="How a 'missed case' streak is counted. Consecutive (the "
+                  "original, and the safer default) only catches an unbroken run "
+                  "of misses ending at the most recent case — someone who missed "
+                  "three levies two years ago but has paid every one since is not "
+                  "flagged. Rolling year instead counts ANY missed levies in the "
+                  "last 12 months, even with paid ones in between — a policy that "
+                  "wants to catch a member who pays sporadically, not just one who "
+                  "has stopped paying outright.")
 
     # ---- Standing (Phase 3) -------------------------------------------------
     grace_period_days = models.PositiveIntegerField(
@@ -1081,6 +1151,12 @@ class SchemeMembership(models.Model):
         return self.joined_on
 
     def last_contribution_date(self):
+        # A batch pass (standing.facts_for_scheme) can pre-compute this for every
+        # member in one query and stash it here, so the per-member call makes no
+        # round trip. Absent the cache, it queries as before — same answer.
+        cached = getattr(self, "_last_contribution_date_cache", "unset")
+        if cached != "unset":
+            return cached
         from benevolent.services.contributions import contributions_qs
         c = contributions_qs(membership=self).order_by("-transaction__date").first()
         return c.date if c else None
@@ -1099,7 +1175,7 @@ class SchemeMembership(models.Model):
         that is how a church actually runs a subscription year, rather than
         chasing 200 individual anniversaries."""
         as_of = as_of or _dt.date.today()
-        policy = policy or self.scheme.policy_on(as_of)
+        policy = policy or self._policy_on_cached(as_of)
         if policy is None or not policy.renewal_required:
             return None
         if policy.renewal_period == SchemePolicy.RenewalPeriod.NONE:
@@ -1116,12 +1192,30 @@ class SchemeMembership(models.Model):
 
     def renewal_overdue(self, policy=None, as_of=None):
         as_of = as_of or _dt.date.today()
-        policy = policy or self.scheme.policy_on(as_of)
+        policy = policy or self._policy_on_cached(as_of)
         due = self.renewal_due_on(policy, as_of)
         if due is None:
             return False
         grace = _dt.timedelta(days=(policy.renewal_grace_days or 0))
         return as_of > (due + grace)
+
+    def _policy_on_cached(self, d):
+        """The policy in force on `d`. Resolves from the per-instance version
+        cache ONLY when a batch pass (`facts_for_scheme`) has explicitly marked
+        this instance as batch-warmed for the current pass; otherwise it always
+        queries `scheme.policy_on`, fresh. This matters because a membership
+        object can be reused across assessments — e.g. after a new policy version
+        is published — and must then resolve against the CURRENT policies, never a
+        stale cached version list left over from an earlier call. Same resolution
+        rule as `scheme.policy_on` either way; the cache only removes a round trip
+        when it is provably current."""
+        versions = getattr(self, "_policy_versions", None)
+        if versions is None or not getattr(self, "_policy_cache_trusted", False):
+            return self.scheme.policy_on(d)
+        for v in versions:                 # ordered latest-first
+            if v.effective_from <= d and (v.effective_to is None or v.effective_to >= d):
+                return v
+        return None
 
 
 class SchemeDependant(models.Model):
@@ -1247,6 +1341,33 @@ class BenevolentContribution(models.Model):
                   "member's dues, so a levy paid towards someone else's bereavement — or "
                   "a registration fee — can never silently clear a member's own arrears.")
 
+    class PayerType(models.TextChoices):
+        """WHO paid — which is a different question from what KIND of money it is
+        and WHO it is for. A member's employer can pay that member's dues (kind =
+        DUES, for = the member, but paid by the employer); an anonymous donor can
+        give to the scheme (a DONATION, for nobody in particular, from someone who
+        does not want to be named). Recording this truthfully keeps the member's
+        statement honest — 'your dues, paid by Acme Ltd' rather than pretending the
+        member paid it — and lets an anonymous or third-party gift be reported as
+        what it is instead of being forced to look like a member's own payment."""
+        SELF = "SELF", "The member themselves"
+        ANONYMOUS = "ANONYMOUS", "Anonymous donor"
+        EMPLOYER = "EMPLOYER", "The member's employer"
+        SPONSOR = "SPONSOR", "A sponsor"
+        THIRD_PARTY = "THIRD_PARTY", "Someone else on the member's behalf"
+
+    payer_type = models.CharField(
+        max_length=12, choices=PayerType.choices, default=PayerType.SELF,
+        db_index=True,
+        help_text="Who actually paid. SELF for the ordinary case; the others record "
+                  "money paid on a member's behalf (employer, sponsor, third party) or "
+                  "an anonymous gift, so the member's statement stays truthful about it.")
+    payer_name = models.CharField(
+        max_length=120, blank=True,
+        help_text="The name of the third party who paid, where it is not the member "
+                  "(e.g. the employer or sponsor). Left blank for SELF and, by choice, "
+                  "for a genuinely ANONYMOUS gift.")
+
     # Where the money came in from an unattended channel and the allocator decided
     # who it belonged to, this records how sure it was — so a treasurer reading the
     # member's statement can see which lines a machine attributed and which a human
@@ -1275,6 +1396,20 @@ class BenevolentContribution(models.Model):
     recorded_by = models.ForeignKey("auth.User", null=True, blank=True,
                                     on_delete=models.SET_NULL,
                                     related_name="benevolent_contributions_recorded")
+
+    # Reversal / correction (item 3: contribution exceptions). A contribution is
+    # never deleted — a payment that bounced, or one recorded against the wrong
+    # member or scheme, is REVERSED, leaving both the original and the reversal on
+    # the record. `reversed_by_entry` points from the original to its reversal;
+    # `reverses` points the other way. The reason is kept so the member's
+    # statement, and any auditor, can see WHY a line was undone.
+    reversed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    reversal_reason = models.CharField(max_length=200, blank=True)
+    reverses = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="reversed_by_entry",
+        help_text="If this row is a reversal, the original contribution it reverses.")
+
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 
@@ -1746,6 +1881,7 @@ from benevolent.models_config import (  # noqa: E402,F401
 from benevolent.models_contrib import (  # noqa: E402,F401
     ContributionIntake, ContributionRefund, ContributionRule, MemberAdjustment)
 from benevolent.models_case import CaseEvent  # noqa: E402,F401
+from benevolent.models_tasks import BenevolentTask  # noqa: E402,F401
 from benevolent.models_committee import CommitteeMember  # noqa: E402,F401
 from benevolent.models_notify import (  # noqa: E402,F401
     BenevolentNotification, NotificationEvent, NotificationTemplate)

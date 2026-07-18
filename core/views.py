@@ -307,6 +307,34 @@ from core.models import SiteConfig, SmsLog
 from core.forms import SiteConfigForm
 
 
+def _unplaced_setting_fields(form):
+    """Bound SiteConfigForm fields that the settings template does NOT render in
+    any tab — so the template can show them in a fallback "Other settings" panel
+    rather than let them vanish (recommendation #74a). Self-maintaining: it reads
+    the template and treats a field as placed if the template references it, in a
+    tab's ``f.name in '…'`` allowlist OR as an explicit ``form.<name>``. So a new
+    setting shows up automatically — in its proper tab once added there, in the
+    fallback panel until then — and is never silently unreachable.
+    """
+    import functools
+    import pathlib
+    import re
+
+    @functools.lru_cache(maxsize=1)
+    def _placed_names(mtime):
+        tpl = pathlib.Path(__file__).resolve().parent.parent / "templates" / "settings.html"
+        text = tpl.read_text()
+        placed = set()
+        for grp in re.findall(r"f\.name in '([^']+)'", text):
+            placed |= set(grp.split())
+        placed |= set(re.findall(r"form\.([a-z0-9_]+)", text))
+        return placed
+
+    tpl = pathlib.Path(__file__).resolve().parent.parent / "templates" / "settings.html"
+    placed = _placed_names(tpl.stat().st_mtime)
+    return [form[name] for name in form.fields if name not in placed]
+
+
 class SettingsView(TreasurerRequiredMixin, View):
     template_name = "settings.html"
 
@@ -330,6 +358,7 @@ class SettingsView(TreasurerRequiredMixin, View):
             camp_progress = next((r for r in rows if r["kind"] == "Offering (trust)"), None)
         return render(request, self.template_name, {
             "form": SiteConfigForm(instance=cfg),
+            "unplaced_settings": _unplaced_setting_fields(SiteConfigForm(instance=cfg)),
             "recent_sms": SmsLog.objects.all()[:10],
             "cbs_webhook_url": request.build_absolute_uri(reverse("cbs_webhook")),
             "my_telegram_pin": mine.pin if mine else "",
@@ -1302,10 +1331,16 @@ class UpdateStatusView(TreasurerRequiredMixin, View):
         return JsonResponse(update_status())
 
 
+from django.contrib.auth.decorators import login_not_required as _login_not_required
+from django.utils.decorators import method_decorator as _method_decorator
+
+
+@_method_decorator(_login_not_required, name="dispatch")
 class HealthCheckView(View):
     """Lightweight health/readiness probe for hosting platforms and uptime
     monitors. Returns 200 with a tiny JSON body if the app and database are up.
-    No authentication required; exposes no sensitive data."""
+    No authentication required (exempt from the P1-1 login gate); exposes no
+    sensitive data."""
     def get(self, request):
         from django.http import JsonResponse
         from django.db import connection

@@ -16,6 +16,24 @@ from departments.models import Department
 from .forms import ExpenseForm, FundTransferForm, RecurringExpenseForm
 from .models import Expense
 
+# Financial totals live in the treasury-position service (see that module's
+# docstring). Re-exported here under their original names — including the
+# private `_petty_balance_asof` — so every existing `from cashbook.views import
+# ...` keeps working unchanged: assistant, dashboards, period close, statements,
+# liabilities, and this module's own views all depend on these names.
+from cashbook.services.treasury_position import (
+    petty_balance_asof as _petty_balance_asof,
+    outstanding_advances_total, outstanding_bank_advances_total,
+    outstanding_petty_advances_total, open_payables_total, open_accruals_total,
+    unexpired_prepayments_total, unpresented_cheques_total, unpresented_payments_qs)
+
+# Advance helpers shared with leaders/views.py now live in the advances service.
+# Re-exported under their original private names so every call site (this
+# module's advance views, leaders/views.py) keeps working unchanged.
+from cashbook.services.advances import (
+    advance_detail_ctx as _advance_detail_ctx,
+    record_advance_expense as _record_advance_expense)
+
 
 
 def _fund_available(dept_id, as_of):
@@ -740,10 +758,7 @@ from .models import PettyCashTopUp as PettyTopUp
 
 # The canonical implementation now lives in the treasury-position service
 # (cashbook/services/treasury_position.py) — see that module's docstring.
-# Re-exported here so every existing `from cashbook.views import ...` keeps
-# working unchanged (assistant, dashboards, period close, statements, tests).
-from cashbook.services.treasury_position import (          # noqa: E402
-    petty_balance_asof as _petty_balance_asof)
+# `_petty_balance_asof` is now re-exported from the top of this file.
 
 
 class PettyCashView(ReadAccessMixin, TemplateView):
@@ -938,24 +953,12 @@ class ExpenseRefundDelete(TreasurerRequiredMixin, View):
         return redirect("expense_detail", pk=pk)
 
 
-RECEIPT_ALLOWED_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif")
-RECEIPT_MAX_BYTES = 1 * 1024 * 1024   # 1 MB — receipts are photos/scans, not archives
-
-
-def validate_receipt_upload(f):
-    """Return an error string if a receipt file is not acceptable, else None.
-    Shared by every place a supporting document can be attached (treasurer
-    expense page, leader expense page, advance detail, missing-receipts queue)."""
-    if not f:
-        return None
-    if not f.name.lower().endswith(RECEIPT_ALLOWED_EXT):
-        return ("Receipts must be a PDF or image file "
-                "(.pdf, .jpg, .png, .heic, .webp).")
-    if f.size > RECEIPT_MAX_BYTES:
-        return ("That file is too large — receipts must be 1 MB or smaller. "
-                "Tip: a phone photo at normal quality, or a compressed PDF, "
-                "fits easily.")
-    return None
+# The canonical implementations now live in cashbook/services/receipts.py.
+# Re-exported here (constants and functions) so every existing call site and
+# `from cashbook.views import ...` keeps working unchanged.
+from cashbook.services.receipts import (                    # noqa: E402
+    RECEIPT_ALLOWED_EXT, RECEIPT_MAX_BYTES, validate_receipt_upload,
+    missing_receipts_queryset)
 
 
 class ExpenseAttachmentUpload(LoginRequiredMixin, View):
@@ -1020,11 +1023,8 @@ class ExpenseAttachmentDelete(DataEntryRequiredMixin, View):
 from .models import Payable, Accrual, Prepayment
 from .forms import PayableForm, AccrualForm, PrepaymentForm
 
-
-from cashbook.services.treasury_position import (          # noqa: E402
-    outstanding_advances_total, outstanding_bank_advances_total,
-    outstanding_petty_advances_total, open_payables_total, open_accruals_total,
-    unexpired_prepayments_total)
+# (outstanding_advances_total, open_payables_total, open_accruals_total,
+# unexpired_prepayments_total et al. are re-exported from the top of this file.)
 
 
 class AccrualsView(ReadAccessMixin, TemplateView):
@@ -1341,57 +1341,6 @@ class AdvanceDetail(ReadAccessMixin, View):
         return render(request, self.template_name, _advance_detail_ctx(adv, user=request.user))
 
 
-def _advance_detail_ctx(adv, *, leader_mode=False, user=None):
-    """Shared context for the advance statement (issued + top-ups → expense lines →
-    balance), used by both the treasurer and leader detail pages."""
-    from decimal import Decimal
-    # build a dated time-line of issues (base + top-ups) and expense lines
-    events = [{"date": adv.date_issued, "kind": "issue",
-               "label": f"Advance issued — {adv.purpose}", "amount": adv.base_amount}]
-    for t in adv.topups.all():
-        events.append({"date": t.date, "kind": "topup",
-                       "label": "Top-up issued" + (f" — {t.note}" if t.note else "")
-                                + (f" (KSh {t.charge:,.2f} sending charge)" if t.charge else ""),
-                       "amount": t.amount, "topup_id": t.id})
-    for e in adv.expenses.filter(
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID]).order_by("date", "id"):
-        events.append({"date": e.date, "kind": "expense", "label": e.description,
-                       "amount": e.amount, "expense": e})
-    if adv.returned_to_petty:
-        events.append({"date": adv.settled_on or adv.date_issued, "kind": "return",
-                       "label": "Unspent cash returned to petty cash",
-                       "amount": adv.returned_to_petty})
-    events.sort(key=lambda x: (x["date"], 0 if x["kind"] in ("issue", "topup") else 1))
-    rows, running = [], Decimal(0)
-    can_edit_line = bool(leader_mode and user and adv.status != adv.Status.CLOSED)
-    for ev in events:
-        if ev["kind"] in ("issue", "topup"):
-            running += ev["amount"]
-            rows.append({"date": ev["date"], "label": ev["label"],
-                         "out": ev["amount"], "back": None, "running": running,
-                         "topup_id": ev.get("topup_id")})
-        else:
-            running -= ev["amount"]
-            e = ev.get("expense")
-            mine = bool(e and user and e.recorded_by_id == getattr(user, "id", None))
-            is_charge = bool(e and e.category == Expense.Category.BANK_CHARGE)
-            rows.append({"date": ev["date"], "label": ev["label"], "out": None,
-                         "back": ev["amount"], "running": running, "expense": e,
-                         "editable": can_edit_line and mine and not is_charge,
-                         "deletable": can_edit_line and mine,
-                         "attachable": bool(leader_mode and e and adv.status != adv.Status.CLOSED),
-                         "is_charge": is_charge,
-                         "attachments": list(e.attachments.all()) if e else []})
-    from core.roles import is_treasurer as _is_tr
-    return {
-        "adv": adv, "expenses": adv.expenses.all(), "statement": rows,
-        "to_account": running,   # >0 still to account; <0 reimburse staff
-        "categories": Expense.Category.choices,
-        "today": dt.date.today().isoformat(), "leader_mode": leader_mode,
-        "is_treasurer": bool(user and _is_tr(user)) and not leader_mode,
-    }
-
-
 def _sync_advance_charge(adv, user):
     """Create / update / remove the BANK_CHARGE expense for the charge the CHURCH
     incurs when sending an advance to the holder (adv.bank_charge). This is the
@@ -1619,49 +1568,6 @@ class AdvanceExpenseImportView(View):
             msg += f" {len(errors)} row(s) skipped."
         messages.success(request, msg)
         return redirect(back, pk=pk)
-
-
-def _record_advance_expense(adv, *, date, desc, amount, category, user, claimant=None,
-                            charge=None):
-    """Create an APPROVED+PAID expense that accounts for part of a staff advance,
-    and refresh the advance's status. Optionally also book a transaction `charge`
-    the holder incurred on that payment (M-Pesa/bank fee) as a linked BANK_CHARGE
-    line — that, too, is met out of the advance and reduces the balance.
-
-    Enforces that the total accounted (expense + its charge) cannot exceed the
-    advance's remaining balance (#4): you can't account for more than was advanced.
-    Returns (expense, error_message); expense is None when blocked."""
-    from decimal import Decimal
-    from .models import StaffAdvance, Expense
-    charge = charge or Decimal(0)
-    needed = amount + charge
-    if needed > adv.balance:
-        return None, (f"This would account for KSh {needed:,.2f}, but only "
-                      f"KSh {adv.balance:,.2f} is left on the advance. Reduce the "
-                      f"amount, or ask the treasurer to top up the advance first.")
-    exp = Expense.objects.create(
-        date=date, sabbath_week=sabbath_week_of(date), department=adv.department,
-        description=desc, amount=amount,
-        category=category or Expense.Category.OTHER,
-        claimant=(claimant or adv.staff_name), method=adv.method,
-        status=Expense.Status.PAID, paid_date=date,
-        paid_from_petty_cash=False,   # the petty box lost the cash at issuance
-        recorded_by=user, advance=adv, approved_by=user)
-    if charge and charge > 0:
-        Expense.objects.create(
-            date=date, sabbath_week=sabbath_week_of(date), department=adv.department,
-            description=f"Transaction charge — {desc}", amount=charge,
-            category=Expense.Category.BANK_CHARGE,
-            claimant=(claimant or adv.staff_name), method=adv.method,
-            status=Expense.Status.PAID, paid_date=date, paid_from_petty_cash=False,
-            recorded_by=user, advance=adv, charge_for=exp, approved_by=user)
-    bal = adv.balance
-    if bal == 0:
-        adv.status = StaffAdvance.Status.SETTLED
-    elif adv.settled_total > 0:
-        adv.status = StaffAdvance.Status.PARTLY
-    adv.save(update_fields=["status"])
-    return exp, None
 
 
 class AdvanceAddExpense(AdvanceAccessMixin, View):
@@ -2740,8 +2646,8 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
         return redirect("accruals")
 
 
-from cashbook.services.treasury_position import (          # noqa: E402
-    unpresented_cheques_total, unpresented_payments_qs)
+# (unpresented_cheques_total, unpresented_payments_qs are re-exported from the
+# top of this file.)
 
 
 class ChequeRegisterView(PaymentViewMixin, View):
@@ -3240,31 +3146,9 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         return resp
 
 
-def missing_receipts_queryset(start, end, department_ids=None):
-    """Expenses in the period that have no supporting document (no attachment
-    file, text or link). Charge lines are excluded — they ride on their parent.
-    Once any attachment is added, the expense leaves this queue.
-
-    Also excludes a loan CONVERSION/WRITE_OFF's contra expense: that "expense"
-    is one half of a same-day, same-amount book-entry pair (see
-    loans.services.loans._retire) that retires a liability against income
-    with no cash ever changing hands — there is no physical transaction for a
-    receipt to document, so it can never leave this queue by any real action
-    a treasurer could take. An ordinary loan PRINCIPAL/INTEREST repayment
-    (also category=LOAN_REPAYMENT, but a genuine cash disbursement) still
-    correctly appears here until its proof of payment is attached."""
-    from .models import Expense
-    from loans.models import LoanTransaction
-    qs = (Expense.objects.filter(date__gte=start, date__lte=end,
-                                 attachments__isnull=True)
-          .exclude(category=Expense.Category.BANK_CHARGE)
-          .exclude(loan_transaction__kind__in=[LoanTransaction.Kind.CONVERSION,
-                                               LoanTransaction.Kind.WRITE_OFF])
-          .select_related("department", "recorded_by")
-          .order_by("-date", "-id"))
-    if department_ids is not None:
-        qs = qs.filter(department_id__in=department_ids)
-    return qs
+# Canonical implementation now in cashbook/services/receipts.py; re-exported
+# above alongside validate_receipt_upload. (core.views, leaders.views and this
+# module's MissingReceiptsView all call it via that name.)
 
 
 class MissingReceiptsView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
@@ -3307,44 +3191,10 @@ class MissingReceiptsView(LoginRequiredMixin, UserPassesTestMixin, TemplateView)
         return ctx
 
 
-def _amount_in_words(amount):
-    """Render a KES amount in words for cheque printing."""
-    from decimal import Decimal
-    ones = ["", "one", "two", "three", "four", "five", "six", "seven", "eight",
-            "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
-            "sixteen", "seventeen", "eighteen", "nineteen"]
-    tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
-            "eighty", "ninety"]
-
-    def under_1000(n):
-        w = []
-        if n >= 100:
-            w.append(ones[n // 100] + " hundred")
-            n %= 100
-        if n >= 20:
-            w.append(tens[n // 10])
-            n %= 10
-        if n:
-            w.append(ones[n])
-        return " ".join(w)
-
-    amount = Decimal(amount)
-    shillings = int(amount)
-    cents = int((amount - shillings) * 100)
-    if shillings == 0:
-        words = "zero"
-    else:
-        parts, scale = [], [(1_000_000, "million"), (1_000, "thousand"), (1, "")]
-        for div, name in scale:
-            if shillings >= div:
-                chunk = shillings // div
-                parts.append(under_1000(chunk) + (f" {name}" if name else ""))
-                shillings %= div
-        words = " ".join(p for p in parts if p.strip())
-    words = words.strip().capitalize() + " shillings"
-    if cents:
-        words += f" and {cents} cents"
-    return words + " only"
+# Canonical implementation now in cashbook/services/cheque_words.py — a
+# number-to-words renderer is not a view. Re-exported under its original name so
+# the cheque-print views (and the payment-instrument test) keep calling it.
+from cashbook.services.cheque_words import amount_in_words as _amount_in_words  # noqa: E402
 
 
 class ChequePrintView(ReadAccessMixin, View):

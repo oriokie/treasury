@@ -64,3 +64,14 @@ def abs_val(value):
         return abs(float(value))
     except (TypeError, ValueError):
         return value
+
+
+@register.filter
+def is_negative(value):
+    """True where a cell's value is a negative number; safely False for
+    blanks, text and None — used by the report engine to tint negative
+    figures without erroring on mixed-type cells."""
+    try:
+        return float(value) < 0
+    except (TypeError, ValueError):
+        return False

@@ -16,6 +16,8 @@ urlpatterns = [
          name="adoption_dashboard"),
     path("designer/", admin_views.DesignerListView.as_view(), name="designer_list"),
     path("designer/new/", admin_views.DesignerEditView.as_view(), name="designer_new"),
+    path("designer/preview/", admin_views.DesignerPreviewView.as_view(),
+         name="designer_preview"),
     path("designer/<slug:key>/", admin_views.DesignerEditView.as_view(),
          name="designer_edit"),
     path("designer/<slug:key>/duplicate/",

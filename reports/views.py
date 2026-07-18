@@ -560,71 +560,10 @@ class FundMembersView(PeriodMixin, TemplateView):
                              church=SiteConfig.get().church_name)
 
 
-def _balanced_partition(items, n, balance_size=True):
-    """Partition members into n development groups balanced by giving capability.
-
-    Two phases:
-
-    1. **Greedy seed** - heaviest giver first into the currently lightest group,
-       with a soft size cap (ceil(members / n)) so the groups also end up with an
-       even *number* of members, not just even totals. (The previous version
-       balanced totals only, which could leave one big giver alone in a group
-       while everyone else clustered elsewhere.)
-
-    2. **Local-search refinement** - repeatedly swap a member of the richest
-       group with a lighter member of the poorest group whenever doing so shrinks
-       the gap between them. Sizes are preserved (a swap is one-for-one), so this
-       only redistributes capability to cut the variance between groups.
-
-    Inherent limit: when giving is highly skewed - e.g. one member contributes
-    ~90% of all development giving - *no* partition can equalise the totals; that
-    member's group is unavoidably heavier. The algorithm still spreads everyone
-    else as evenly as possible and keeps group sizes within one member of each
-    other. `items` = [(member_id, name, phone, weight), ...].
-    """
-    items = sorted(items, key=lambda x: x[3], reverse=True)
-    m = len(items)
-    cap = (-(-m // n)) if (balance_size and n) else None  # ceil(m / n)
-    buckets = [{"members": [], "total": Decimal(0)} for _ in range(n)]
-
-    def lightest(respect_cap=True):
-        cands = buckets
-        if respect_cap and cap is not None:
-            open_b = [b for b in buckets if len(b["members"]) < cap]
-            if open_b:
-                cands = open_b
-        return min(cands, key=lambda x: (x["total"], len(x["members"])))
-
-    for mid, name, phone, w in items:
-        b = lightest()
-        b["members"].append({"id": mid, "name": name, "phone": phone, "weight": w})
-        b["total"] += w
-
-    # Phase 2: variance-reducing swaps between the richest and poorest groups.
-    for _ in range(2000):
-        hi = max(buckets, key=lambda b: b["total"])
-        lo = min(buckets, key=lambda b: b["total"])
-        if hi is lo or hi["total"] == lo["total"]:
-            break
-        gap = hi["total"] - lo["total"]
-        best = None  # (improvement, hi_member, lo_member)
-        for hm in hi["members"]:
-            for lm in lo["members"]:
-                delta = hm["weight"] - lm["weight"]   # hm to lo, lm to hi
-                if delta <= 0:
-                    continue
-                new_gap = abs(gap - 2 * delta)
-                improve = gap - new_gap
-                if improve > 0 and (best is None or improve > best[0]):
-                    best = (improve, hm, lm)
-        if not best:
-            break
-        _, hm, lm = best
-        hi["members"].remove(hm); hi["total"] -= hm["weight"]
-        lo["members"].remove(lm); lo["total"] -= lm["weight"]
-        hi["members"].append(lm); hi["total"] += lm["weight"]
-        lo["members"].append(hm); lo["total"] += hm["weight"]
-    return buckets
+# The canonical implementation now lives in reports/services/devgroups.py — a
+# partitioning algorithm is not a view. Re-exported here under its original name
+# so DevGroupBuilderView keeps calling it unchanged.
+from .services.devgroups import balanced_partition as _balanced_partition  # noqa: E402
 
 
 class DevGroupBuilderView(RightRequiredMixin, TemplateView):
@@ -1453,49 +1392,13 @@ from core.models import SiteConfig
 from core.utils import sabbath_week_of
 
 
-def _days_outstanding(dept):
-    """Days since the oldest *unremitted* trust receipt for a fund. Receipts up to
-    the last remittance's period are already settled, so we count only from the
-    first receipt after it — not the first contribution ever (which made everything look
-    months overdue even right after remitting)."""
-    from cashbook.models import RemittanceBatch
-    last = (RemittanceBatch.objects.filter(
-        status=RemittanceBatch.Status.REMITTED, period_end__isnull=False)
-        .order_by("-period_end").first())
-    q = Transaction.objects.filter(
-        department=dept, direction=Transaction.Direction.CREDIT,
-        confirmed=True, is_reversed=False, is_reversal=False)
-    if last:
-        q = q.filter(date__gt=last.period_end)
-    first = q.order_by("date").first()
-    if not first:
-        return 0
-    return (_dt.date.today() - first.date).days
-
-
-def _repost_to_ledger(expenses=None):
-    """After a bulk .update() (which bypasses post_save signals), rebuild the
-    general ledger so it always reflects batch approve/remit and stays reconciled."""
-    try:
-        from ledger.services import posting
-        if posting.chart_ready():
-            posting.rebuild()
-    except Exception:
-        from core.utils import log_exception as _lx; _lx('reports/views.py')
-        pass
-
-
-def remittance_dashboard_rows(start=None, end=None):
-    rows = []
-    for r in balances.trust_summary(start, end):   # period (or lifetime) collected vs remitted
-        out = r["to_remit"]
-        rows.append({
-            "department": r["department"], "collected": r["collected"],
-            "remitted": r["remitted"], "outstanding": out,
-            "unreceipted": r["unreceipted"],
-            "days": _days_outstanding(r["department"]) if out > 0 else 0,
-        })
-    return rows
+# The canonical implementations now live in reports/services/remittance.py.
+# Re-exported here with their original names so every existing call site keeps
+# working unchanged — including giving/views.py, which imports `_repost_to_ledger`.
+from .services.remittance import (                          # noqa: E402
+    days_outstanding as _days_outstanding,
+    repost_to_ledger as _repost_to_ledger,
+    remittance_dashboard_rows)
 
 
 def _remit_period(request):
@@ -3022,62 +2925,13 @@ class FundThankSmsView(ReportAccessMixin, TemplateView):
         return redirect(f"{reverse('report_fund', kwargs={'pk': dept.id})}?start={start}&end={end}")
 
 
-def _sfund(name):
-    """Sentence-case a fund/department name for narrative text (many are
-    stored in ALL CAPS). Same rule as the `sentence_fund` template filter —
-    kept in sync so Python-built narrative strings match table cells."""
-    from core.templatetags.treasury_extras import sentence_fund
-    return sentence_fund(name)
-
-
-def _camp_goal_records(year):
-    """Camp Meeting expense goal (Local fund flagged CAMP_EXPENSE, aggregated over
-    its sub-accounts, unchanged) paired with the Camp Meeting Offering goal — a
-    single church-wide Trust-fund target now configured in Settings → Goals
-    rather than on any individual fund."""
-    from decimal import Decimal
-    from django.db.models import Sum
-    from departments.models import Department as _D
-
-    def _ids(d):
-        out = [d.id]
-        for sub in d.subgroups.all():
-            out.extend(_ids(sub))
-        return out
-
-    def _collected(fund):
-        if fund is None:
-            return Decimal(0)
-        return (Transaction.objects.confirmed_credits().filter(
-            department_id__in=_ids(fund), excluded_from_income=False,
-            date__year=year).aggregate(t=Sum("amount"))["t"] or Decimal(0))
-
-    def _row(name, kind, goal, fund):
-        goal = goal or Decimal(0)
-        col = _collected(fund)
-        return {"name": name, "kind": kind, "goal": goal, "collected": col,
-                "variance": col - goal,
-                "pct": int(min(col / goal * 100, 999)) if goal else 0,
-                "short": max(goal - col, Decimal(0))}
-
-    rows = []
-    # deterministic + defensive: if more than one fund is (mis)flagged
-    # CAMP_EXPENSE, prefer the one that actually has a goal set rather than
-    # an arbitrary DB-order pick (an unordered .first() is not guaranteed
-    # stable across databases, and picking one with no year_goal would make
-    # the goal silently vanish from every report even though it's really set
-    # on a different fund).
-    camp = (_D.objects.filter(active=True, goal_type="CAMP_EXPENSE")
-            .prefetch_related("subgroups")
-            .order_by("-year_goal", "id").first())
-    if camp and camp.year_goal:
-        rows.append(_row("Camp Meeting Expense Goal", "Expense (local)",
-                         camp.year_goal, camp))
-    cfg = SiteConfig.get()
-    if cfg.camp_offering_goal and cfg.camp_offering_fund_id:
-        rows.append(_row("Camp Meeting Offering Goal", "Offering (trust)",
-                         cfg.camp_offering_goal, cfg.camp_offering_fund))
-    return rows
+# The canonical implementations now live in reports/services/goals.py — a data
+# aggregation is not a view. Re-exported here (with their original private
+# names) so every existing `from reports.views import _camp_goal_records` and
+# in-module `_sfund(...)` / `_camp_goal_records(...)` call keeps working
+# unchanged (core.views, and the report views below).
+from .services.goals import (sentence_fund_name as _sfund,      # noqa: E402
+                             camp_goal_records as _camp_goal_records)
 
 
 class MonthlyTreasurerReportView(ReportAccessMixin, TemplateView):

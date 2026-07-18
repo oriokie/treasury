@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Asset register · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head no-print"><div><h1>Fixed-asset register</h1><div class="sub">Net book value as at {{ as_of|date:"d M Y" }}</div></div>
+<div class="page-head no-print"><div><div class="eyebrow">Funds · {{ SITE_NAME }}</div><h1>Fixed-asset register</h1><div class="sub">Net book value as at {{ as_of|date:"d M Y" }}</div></div>
 <div class="btn-row">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'depreciation_rules' %}">Depreciation rules</a><a class="btn btn-sm" href="{% url 'asset_create' %}">+ Add asset</a>{% endif %}<button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button></div></div>
 <form method="get" class="filters no-print"><div class="f"><label>As at</label><input type="date" name="as_of" value="{{ as_of|date:'Y-m-d' }}" class="field"></div><button class="btn btn-sm">View</button></form>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Fixed-asset register — {{ as_of|date:"d M Y" }}</div></div>

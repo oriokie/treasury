@@ -1,7 +1,7 @@
 from django.urls import path
 
 from . import (api, views, views_bulk_import, views_committee, views_config, views_engine,
-              views_notify, views_public, views_registry, views_search)
+              views_exceptions, views_notify, views_public, views_registry, views_search)
 
 urlpatterns = [
     path("", views.BenevolentDashboardView.as_view(), name="benevolent_dashboard"),
@@ -80,6 +80,8 @@ urlpatterns = [
     path("schemes/<int:pk>/import/cases/",
          views_bulk_import.BulkCaseImportView.as_view(),
          name="benevolent_bulk_import_cases"),
+    path("schemes/<int:pk>/sms/", views_config.SmsCenterView.as_view(),
+         name="benevolent_sms_center"),
     path("members/<int:pk>/lifecycle/<str:action>/",
          views_registry.MembershipLifecycleView.as_view(),
          name="benevolent_membership_lifecycle"),
@@ -103,6 +105,24 @@ urlpatterns = [
     # Contributions
     path("contributions/", views.ContributionListView.as_view(),
          name="benevolent_contribution_list"),
+    path("contributions/<int:pk>/reverse/",
+         views_exceptions.ContributionReverseView.as_view(),
+         name="benevolent_contribution_reverse"),
+    path("contributions/<int:pk>/correct/",
+         views_exceptions.ContributionCorrectView.as_view(),
+         name="benevolent_contribution_correct"),
+    path("schemes/<int:pk>/reconcile/",
+         views_exceptions.ReconciliationView.as_view(),
+         name="benevolent_reconcile"),
+    path("schemes/<int:pk>/position/",
+         views_exceptions.FundPositionView.as_view(),
+         name="benevolent_fund_position"),
+    path("fraud/", views_exceptions.FraudScanView.as_view(),
+         name="benevolent_fraud_scan"),
+    path("tasks/", views_exceptions.TaskListView.as_view(),
+         name="benevolent_task_list"),
+    path("tasks/<int:pk>/resolve/", views_exceptions.TaskResolveView.as_view(),
+         name="benevolent_task_resolve"),
     path("schemes/<int:pk>/contribute/", views.ContributionCreateView.as_view(),
          name="benevolent_contribute"),
 

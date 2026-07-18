@@ -1,12 +1,20 @@
 {% extends 'base.html' %}
 {% block title %}Report designer · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Report designer</h1>
-<div class="sub">Design reports by arranging registered components — saved as data, rendered by the engine. No code changes.</div></div>
-<div class="btn-row no-print">
-  <a class="btn btn-sm" href="{% url 'designer_new' %}">+ New report</a>
-  <a class="btn btn-ghost btn-sm" href="{% url 'report_library' %}">Library</a>
-</div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Report designer · {{ SITE_NAME }}</div>
+      <h1>Designed reports</h1>
+      <div class="desc">Reports built by arranging components and writing your own headings and text — saved as data, rendered by the same engine as every other report.</div>
+    </div>
+    <div class="mast-actions no-print">
+      <a class="btn btn-sm" href="{% url 'designer_new' %}">+ New report</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'report_library' %}">Library</a>
+    </div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
 
 <div class="card"><div class="bd">
 {% if definitions %}
@@ -25,7 +33,8 @@
 </tr>{% endfor %}</tbody>
 </table></div>
 {% else %}
-<p class="empty">No designed reports yet. <a class="link" href="{% url 'designer_new' %}">Create one</a>.</p>
+<div class="rpt-empty"><div class="big">No designed reports yet</div>
+<div>Build one from the component palette — start with a heading, a text block, and a table. <a class="link" href="{% url 'designer_new' %}">Create your first report</a>.</div></div>
 {% endif %}
 </div></div>
 {% endblock %}

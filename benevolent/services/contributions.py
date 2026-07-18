@@ -107,6 +107,18 @@ def contributions_total(scheme=None, membership=None, start=None, end=None,
     return agg["t"] or Decimal(0)
 
 
+def contributions_in_period(membership, period_label, on_or_before=None):
+    """Dues paid AGAINST one period, optionally only those received on or before a
+    date. The `on_or_before` bound is what lets the unbroken-record rule ask
+    'was this period paid ON TIME', as distinct from 'is it paid now' — a period
+    back-paid months late is settled today but was still missed at the time."""
+    qs = contributions_qs(membership=membership, period_label=period_label,
+                          kinds=DUES_KINDS)
+    if on_or_before is not None:
+        qs = qs.filter(transaction__date__lte=on_or_before)
+    return qs.aggregate(t=Sum("transaction__amount"))["t"] or Decimal(0)
+
+
 # What actually counts against a member's dues — and nothing else does. Defined on
 # the model so there is ONE list, not one here and a different one in a report.
 DUES_KINDS = BenevolentContribution.SETTLES_DUES
@@ -120,6 +132,12 @@ def levy_collected(case) -> Decimal:
 
 
 def levy_paid_by(membership, case) -> Decimal:
+    # A batch pass can pre-load every (membership, case) levy total in one grouped
+    # query and stash the per-member slice here, keyed by case id — so the
+    # missed-case-levies scan makes no per-case round trip. Same total either way.
+    cache = getattr(membership, "_levy_paid_cache", None)
+    if cache is not None:
+        return cache.get(case.pk, Decimal(0))
     return contributions_total(membership=membership, case=case)
 
 
@@ -159,9 +177,16 @@ def _dues_rows(membership, as_of=None):
     # BenevolentScheme.policy_on's own docstring for why SUPERSEDED versions
     # must still resolve for dates inside their own window — only WHERE it
     # runs (Python, once cached, not the database, repeatedly) has changed.
-    versions = list(scheme.policies.filter(
-        status__in=[SchemePolicy.Status.ACTIVE, SchemePolicy.Status.SUPERSEDED]
-    ).order_by("-effective_from", "-version"))
+    # Reuse the per-instance version cache when a prior call in the same pass
+    # (e.g. arrears_for, then the tenure facts, both inside one facts_for) has
+    # already fetched them — the identical query against the identical rows.
+    # The cache is only ever this same scheme's ACTIVE/SUPERSEDED versions, so
+    # reading it changes nothing but the number of round trips.
+    versions = getattr(membership, "_policy_versions", None)
+    if versions is None:
+        versions = list(scheme.policies.filter(
+            status__in=[SchemePolicy.Status.ACTIVE, SchemePolicy.Status.SUPERSEDED]
+        ).order_by("-effective_from", "-version"))
     if not versions:
         return []
     # _waived_periods (called below, in this same pass) needs to resolve the
@@ -229,13 +254,20 @@ def _dues_rows(membership, as_of=None):
     # period. `contributions_total()` remains the single definition of the sum
     # and is still what every other caller uses; this is that same query, asked
     # once for every period at once.
-    paid_by_period = dict(
-        BenevolentContribution.objects
-        .filter(membership=membership, kind__in=DUES_KINDS)
-        .filter(_effective_q())
-        .values_list("period_label")
-        .annotate(total=Sum("transaction__amount"))
-    )
+    # A batch pass can pre-load every member's paid-by-period totals in one
+    # grouped query keyed by (membership, period) and stash the per-member slice
+    # here, so this per-member aggregate is skipped. Same values either way — it
+    # is the identical _effective_q()/DUES_KINDS query, asked once for the whole
+    # scheme instead of once per member.
+    paid_by_period = getattr(membership, "_paid_by_period_cache", None)
+    if paid_by_period is None:
+        paid_by_period = dict(
+            BenevolentContribution.objects
+            .filter(membership=membership, kind__in=DUES_KINDS)
+            .filter(_effective_q())
+            .values_list("period_label")
+            .annotate(total=Sum("transaction__amount"))
+        )
 
     for r in rows:
         r["waived"] = r["period"] in waived
@@ -301,9 +333,13 @@ def _waived_periods(membership, as_of=None):
             out.add(period_label_for(d, policy_now.contribution_frequency))
             d = (d.replace(day=28) + _dt.timedelta(days=7)).replace(day=1)
 
-    cases = membership.cases.filter(
-        status__in=[BenevolentCase.Status.APPROVED, BenevolentCase.Status.PARTLY_PAID,
-                    BenevolentCase.Status.PAID, BenevolentCase.Status.CLOSED])
+    cached_cases = getattr(membership, "_own_settled_cases_cache", None)
+    if cached_cases is not None:
+        cases = cached_cases
+    else:
+        cases = membership.cases.filter(
+            status__in=[BenevolentCase.Status.APPROVED, BenevolentCase.Status.PARTLY_PAID,
+                        BenevolentCase.Status.PAID, BenevolentCase.Status.CLOSED])
     for case in cases:
         policy = case.policy or _policy_on(case.event_date)
         if policy is None or not policy.bereaved_dues_waiver_months:
@@ -353,8 +389,14 @@ def arrears_for(membership, policy=None, as_of=None) -> Decimal:
     end = min(as_of, membership.left_on or as_of)
     # Only DUES pay off dues. A levy, a registration fee and a donation are all
     # money the member has given the scheme, and none of them is a subscription.
-    paid = contributions_total(membership=membership, start=start, end=end,
-                               kinds=DUES_KINDS)
+    # A batch pass may have already summed dues-paid per member (the same
+    # _effective_q()/DUES_KINDS total); use it rather than re-query.
+    paid_cache = getattr(membership, "_dues_paid_total_cache", None)
+    if paid_cache is not None:
+        paid = paid_cache
+    else:
+        paid = contributions_total(membership=membership, start=start, end=end,
+                                   kinds=DUES_KINDS)
 
     # Phase 4: the obligations ledger. A penalty charged INCREASES what is owed; a
     # waiver or a write-off REDUCES it. Neither is money and neither posts — see
@@ -382,7 +424,7 @@ def dues_schedule(membership, policy=None, as_of=None):
 def record_contribution(scheme, *, date, amount, user=None, membership=None,
                         member=None, channel=None, period_label=None, case=None,
                         note="", reference="", existing_transaction=None, fund=None,
-                        kind=None):
+                        kind=None, payer_type=None, payer_name=""):
     """Take money into a scheme.
 
     Creates (or adopts) the fund receipt and indexes it. Passing
@@ -463,9 +505,19 @@ def record_contribution(scheme, *, date, amount, user=None, membership=None,
             payer_phone=((member.phone or "") if member else "")[:12],
             raw_narration=note or "")
 
+    # Who paid, where the caller said. Default SELF; a memberless donation with
+    # no named payer is genuinely anonymous, so record it as such rather than
+    # leaving a misleading SELF on a row that has no member at all.
+    if payer_type is None:
+        if membership is None and not payer_name:
+            payer_type = BenevolentContribution.PayerType.ANONYMOUS
+        else:
+            payer_type = BenevolentContribution.PayerType.SELF
+
     contribution = BenevolentContribution.objects.create(
         scheme=scheme, membership=membership, transaction=txn, kind=kind,
-        period_label=period_label or "", case=case, note=note, recorded_by=user)
+        period_label=period_label or "", case=case, note=note, recorded_by=user,
+        payer_type=payer_type, payer_name=(payer_name or "")[:120])
 
     # a receipt saved before the index row existed is re-posted so the ledger
     # sees the final shape of the document (same belt-and-braces as loans)

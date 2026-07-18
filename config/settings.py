@@ -135,6 +135,14 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Default-deny (review P1-1): every view requires an authenticated user
+    # UNLESS it is explicitly marked @login_not_required. Before this, auth was
+    # opt-IN per view (a mixin on each), so a new view that forgot its mixin was
+    # public by accident. Now the default is closed and public views opt OUT
+    # deliberately and visibly. Runs right after AuthenticationMiddleware (which
+    # sets request.user) and before the app's own lock/2FA gates, so an
+    # unauthenticated request is turned away at the door.
+    "django.contrib.auth.middleware.LoginRequiredMiddleware",
     "accounts.auth.AccountLockMiddleware",
     "accounts.auth.TwoFactorMiddleware",
     "accounts.auth.ForcePasswordChangeMiddleware",

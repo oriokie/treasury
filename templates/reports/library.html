@@ -11,12 +11,13 @@
 </div></div>
 
 <form method="get" class="filter-bar no-print u-mb">
-  <input type="text" name="q" value="{{ q }}" class="field" placeholder="Search reports…">
+  <input type="search" id="lib-q" name="q" value="{{ q }}" class="field" placeholder="Search reports…"
+         autocomplete="off" style="min-width:260px">
   <button class="btn btn-sm">Search</button>
 </form>
 
 {% if favourites %}
-<div class="card u-mb"><div class="hd">★ Favourites</div><div class="bd">
+<div class="card u-mb"><div class="hd"><h3>★ Favourites</h3></div><div class="bd">
   <div class="pill-row">{% for r in favourites %}
     <a class="pill" href="{% url 'engine_report' r.key %}">{{ r.title }}</a>
   {% endfor %}</div>
@@ -24,7 +25,7 @@
 {% endif %}
 
 {% if frequent %}
-<div class="card u-mb"><div class="hd">Frequently used</div><div class="bd">
+<div class="card u-mb"><div class="hd"><h3>Frequently used</h3></div><div class="bd">
   <div class="pill-row">{% for r in frequent %}
     <a class="pill pill-grey" href="{% url 'engine_report' r.report_key %}">{{ r.report_key }} <span class="u-xs">×{{ r.n }}</span></a>
   {% endfor %}</div>
@@ -32,23 +33,47 @@
 {% endif %}
 
 {% for category, items in by_category.items %}
-<div class="card u-mb"><div class="hd">{{ category }}</div><div class="bd">
-<div class="table-wrap"><table class="ledger">
-<thead><tr><th></th><th>Report</th><th>Description</th><th></th></tr></thead>
-<tbody>{% for r in items %}<tr>
-  <td>
-    <form method="post" action="{% url 'toggle_favourite' r.key %}" style="display:inline">{% csrf_token %}
-      <button type="submit" class="btn-icon" title="Toggle favourite">{% if r.is_favourite %}★{% else %}☆{% endif %}</button>
-    </form>
-  </td>
-  <td><a class="link" href="{% url 'engine_report' r.key %}"><strong>{{ r.title }}</strong></a>
-      {% if r.designed %}<span class="pill pill-grey u-xs">designed</span>{% endif %}</td>
-  <td class="u-sm">{{ r.description|default:"—"|truncatewords:20 }}</td>
-  <td><a class="link u-xs" href="{% url 'snapshot_history' %}?report_key={{ r.key }}">history</a></td>
-</tr>{% endfor %}</tbody>
-</table></div>
-</div></div>
+<div class="lib-section" data-cat="{{ category|lower }}">
+  <div class="lib-cat">{{ category }} <span class="n">{{ items|length }} report{{ items|length|pluralize }}</span></div>
+  <div class="lib-grid">
+    {% for r in items %}
+    <div class="lib-card" data-search="{{ r.title|lower }} {{ r.description|lower }}">
+      <div class="eyebrow">{{ category }}{% if r.designed %} · designed{% endif %}</div>
+      <div class="t"><a href="{% url 'engine_report' r.key %}">{{ r.title }}</a></div>
+      <div class="d">{{ r.description|default:""|truncatewords:22 }}</div>
+      <div class="ft">
+        <form method="post" action="{% url 'toggle_favourite' r.key %}" style="display:inline">{% csrf_token %}
+          <button type="submit" class="btn-icon" title="{% if r.is_favourite %}Remove from favourites{% else %}Add to favourites{% endif %}">{% if r.is_favourite %}★{% else %}☆{% endif %}</button>
+        </form>
+        <a class="link u-xs" href="{% url 'snapshot_history' %}?report_key={{ r.key }}">History</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
 {% empty %}
-<p class="empty">No reports match “{{ q }}”.</p>
+<div class="rpt-empty">
+  <div class="big">No reports match “{{ q }}”</div>
+  <div>Try a shorter search, or clear it to browse every category.</div>
+</div>
 {% endfor %}
+
+<script>
+// Instant filter: narrows the card grid as you type, before the server round-trip.
+(function(){
+  var q = document.getElementById('lib-q');
+  if(!q) return;
+  q.addEventListener('input', function(){
+    var term = q.value.trim().toLowerCase();
+    document.querySelectorAll('.lib-card').forEach(function(card){
+      card.style.display = (!term || card.dataset.search.indexOf(term) !== -1) ? '' : 'none';
+    });
+    document.querySelectorAll('.lib-section').forEach(function(sec){
+      var any = Array.prototype.some.call(sec.querySelectorAll('.lib-card'),
+        function(c){ return c.style.display !== 'none'; });
+      sec.style.display = any ? '' : 'none';
+    });
+  });
+})();
+</script>
 {% endblock %}

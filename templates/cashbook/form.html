@@ -1,8 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}{% if object %}Edit expense{% else %}New expense{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{% if object %}Edit expense{% else %}Record an expense{% endif %}</h1>
-<div class="sub">{% if cfg.require_expense_approval %}Submitted as pending until a treasurer approves it{% else %}Approved on save{% endif %}</div></div></div>
+<div class="rpt-mast">
+  <div>
+    <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
+    <h1>{% if object %}Edit expense{% else %}Record an expense{% endif %}</h1>
+    <div class="desc">{% if cfg.require_expense_approval %}Saved as pending until a treasurer approves it — nothing hits a fund's balance before approval.{% else %}Approved on save.{% endif %}</div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
 <div class="card form-card" style="max-width:660px"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if settle %}<input type="hidden" name="settle" value="{{ settle }}">
@@ -32,13 +38,58 @@
         <div class="help">If this fund has a camp/budget set, pick the item this expense relates to, so spend is tracked per item.</div>
         {% for e in form.budget_line.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       </div>
-      {% for f in form %}{% if f.name != 'department' and f.name != 'budget_line' %}
+    </div>
+
+    <div class="xf-group"><div class="xf-group-h">Amount &amp; date</div>
+      <div class="form-grid xf-grid-2">
+      {% for f in form %}{% if f.name in 'amount date charge' %}
+        <div class="form-row{% if f.name == 'amount' %} xf-amount{% endif %}">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+      </div>
+    </div>
+
+    <div class="xf-group"><div class="xf-group-h">What it was for</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'description category expenditure_type capitalized_asset' %}
         <div class="form-row">
           <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
           {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
         </div>
       {% endif %}{% endfor %}
+      </div>
+    </div>
+
+    <div class="xf-group"><div class="xf-group-h">Paid to &amp; how</div>
+      <div class="form-grid xf-grid-2">
+      {% for f in form %}{% if f.name in 'claimant payee method voucher_no paid_from_petty_cash' %}
+        <div class="form-row">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+      </div>
+    </div>
+
+    {# Safety net: any form field not placed in a group above renders here, so
+       a field added to ExpenseForm later can never silently disappear from
+       this page (the frozen-allowlist trap, recommendation #74a). The group is
+       always in the DOM and hides itself when its grid is empty. #}
+    <div class="xf-group xf-fallback"><div class="xf-group-h">Other details</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name not in 'department budget_line amount date charge description category expenditure_type capitalized_asset claimant payee method voucher_no paid_from_petty_cash' %}
+        <div class="form-row">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+      </div>
     </div>
     {% if overspend_warning %}<label class="check-row text-amber"><input type="checkbox" name="override_balance" value="1"> Override — record this expense even though it exceeds the fund's available balance</label>{% endif %}
 
@@ -179,5 +230,13 @@ if(payDate && !payDate.value){ payDate.value = new Date().toISOString().slice(0,
 </script>
 <style>
 .help#balBox{margin-top:.4rem;padding:.5rem .7rem;border-radius:8px;border:1px solid var(--line);background:var(--card-head)}
+.xf-group{margin-top:1.1rem;padding-top:.85rem;border-top:1px solid var(--line)}
+.xf-group-h{font-family:var(--font-display,"Fraunces",serif);font-size:.95rem;font-weight:600;
+  color:var(--ink-soft);margin-bottom:.6rem;padding-bottom:.25rem;border-bottom:1px solid var(--brass);
+  display:inline-block}
+.xf-grid-2{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.xf-amount input{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
+  font-size:1.25rem;font-weight:600}
+.xf-fallback:not(:has(.form-row)){display:none}
 </style>
 {% endblock %}

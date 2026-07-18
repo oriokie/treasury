@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Envelope batches — review queue · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Envelope batch review queue</h1>
+<div class="page-head"><div><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Envelope batch review queue</h1>
 <div class="sub">Every envelope batch moves Draft → Review → Approve → Post. Only Post creates ledger entries.</div></div>
 <div class="btn-row no-print">
   <a class="btn btn-sm" href="{% url 'envelope_ledger' %}">＋ New entry sheet</a>

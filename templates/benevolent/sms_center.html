@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}SMS Center · {{ scheme.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ scheme.name }} · SMS Center</h1>
+  <div class="sub">One audience picker, one message, one send — for a case just approved, a defaulter needing a nudge, or the whole membership.</div></div>
+<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="card form-card" style="max-width:760px"><div class="bd">
+<form method="get" id="previewForm">
+  <div class="form-row">
+    <label for="audience">Audience</label>
+    <select name="audience" id="audience" class="field field--select" onchange="document.getElementById('caseWrap').style.display = this.value==='CASE_ROSTER' ? '' : 'none'; this.form.submit();">
+      <option value="">— choose —</option>
+      {% for key, entry in audiences.items %}
+        <option value="{{ key }}" {% if key == selected_audience %}selected{% endif %}>{{ entry.0 }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-row" id="caseWrap" style="{% if selected_audience != 'CASE_ROSTER' %}display:none{% endif %}">
+    <label for="case">Case</label>
+    <select name="case" id="case" class="field field--select" onchange="this.form.submit();">
+      <option value="">— choose a case —</option>
+      {% for c in cases %}<option value="{{ c.id }}" {% if selected_case == c.id|stringformat:"s" %}selected{% endif %}>{{ c.number }} — {{ c.beneficiary_display }}</option>{% endfor %}
+    </select>
+  </div>
+</form>
+
+{% if selected_audience %}
+<div class="alert {% if recipient_count %}alert-info{% else %}alert-warn{% endif %} u-mt">
+  <strong>{{ recipient_count }}</strong> member{{ recipient_count|pluralize }} in this audience,
+  <strong>{{ with_phone }}</strong> with a phone number on file{% if no_phone_count %}
+  ({{ no_phone_count }} with none){% endif %}.
+  {% if recipients %}<details class="u-mt-sm"><summary class="link u-xs">See who</summary>
+    <table class="ledger compact u-mt-sm"><thead><tr><th>Member</th><th>Phone</th><th>Why</th></tr></thead>
+    <tbody>{% for m, reason in recipients %}<tr>
+      <td>{{ m.member.name }}</td>
+      <td class="mono u-xs">{{ m.member.receipt_phone|default:"— none on file —" }}</td>
+      <td class="muted u-xs">{{ reason }}</td>
+    </tr>{% endfor %}</tbody></table>
+  </details>{% endif %}
+</div>
+
+<form method="post" class="u-mt" onsubmit="return confirm('Send this message to ' + '{{ with_phone }}' + ' member(s)? This cannot be undone.')">
+  {% csrf_token %}
+  <input type="hidden" name="audience" value="{{ selected_audience }}">
+  <input type="hidden" name="case" value="{{ selected_case }}">
+  <div class="form-row u-mt">
+    <label>Quick message</label>
+    <div class="btn-row no-print">
+      {% for key, preset in presets.items %}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('message').value = '{{ preset.1|escapejs }}';">{{ preset.0 }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="form-row">
+    <label for="message">Message</label>
+    <textarea name="message" id="message" class="field" rows="4" maxlength="480" required
+      placeholder="Dear {name}, ..."></textarea>
+    <div class="help">Placeholders: <code>{name}</code> (first name), <code>{full_name}</code>, <code>{scheme}</code>, <code>{number}</code> (membership number). Each recipient gets their own copy with these filled in.</div>
+  </div>
+  <div class="btn-row u-mt"><button class="btn" {% if not with_phone %}disabled{% endif %}>Send to {{ with_phone }} member{{ with_phone|pluralize }}</button></div>
+</form>
+{% endif %}
+</div></div>
+{% endblock %}

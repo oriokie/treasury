@@ -178,41 +178,54 @@ organisation with many simultaneous staff advances adopted the application.
 
 ---
 
-## 7. Two "god files" — `reports/views.py` (3,889 lines) and `cashbook/views.py` (3,116 lines)
+## 7. Two "god files" — `reports/views.py` and `cashbook/views.py`
 
-**Progress (metrics-expansion pass):** the six canonical accounting helpers
-that were trapped in `cashbook/views.py` (`_petty_balance_asof`, the three
+**Progress (god-file refactor pass, v2.77.0).** A second, dedicated pass
+continued extracting the pure-logic helpers that never belonged in a views
+file into properly-named service modules, each behaviour-preserving and
+independently regression-tested. New modules this pass:
+`reports/services/goals.py` (`camp_goal_records`, `sentence_fund_name`),
+`reports/services/remittance.py` (`days_outstanding`, `repost_to_ledger`,
+`remittance_dashboard_rows`), `reports/services/devgroups.py`
+(`balanced_partition`), `cashbook/services/receipts.py`
+(`validate_receipt_upload`, `missing_receipts_queryset`, the two receipt
+constants), `cashbook/services/cheque_words.py` (`amount_in_words`), and
+`cashbook/services/advances.py` (`advance_detail_ctx`,
+`record_advance_expense` — both also imported by leaders/views.py). Each views
+module re-exports every moved symbol under its exact original (often
+underscore-prefixed) name, so every existing `from reports.views import ...` /
+`from cashbook.views import ...` and every `views.ClassName` reference in the
+url confs keeps working byte-for-byte. `reports/views.py` went 4,180 → 4,034
+and `cashbook/views.py` 3,508 → 3,358. Verified: full cashbook suite (402,
+unchanged), full reports/statements/giving suites, and the targeted core
+suites for every external importer — all green — plus a direct import-surface
+check asserting every externally-imported symbol still resolves and both url
+confs still import cleanly.
+
+**Progress (earlier metrics-expansion pass).** The canonical accounting
+helpers trapped in `cashbook/views.py` (`_petty_balance_asof`, the three
 `outstanding_*_advances_total` functions, `unpresented_payments_qs`,
-`unpresented_cheques_total`) now live in
-`cashbook/services/treasury_position.py`; the views module re-imports them
-under the old names so every existing import path still works, and the metrics
-registry points at the service as the authoritative home. Similarly the Bank
-Position calculation moved out of `reports.views.BankPositionView` into
-`reports.services.balances.bank_position` (the view now only presents it).
-The broader module split remains open.
+`unpresented_cheques_total`, the payables/accruals/prepayment totals) moved to
+`cashbook/services/treasury_position.py`; the Bank Position calculation moved
+to `reports.services.balances.bank_position`.
 
-**Description.** These two files have grown, release by release, into the largest
-modules in the codebase by a wide margin (the next largest, `giving/views.py`, is
-about half the size). Individual view classes within them are each reasonably
-scoped, but the modules as a whole mix many unrelated concerns: `reports/views.py`
-contains the Monthly Treasurer's Report, the classic board report, fund ledgers,
-remittance batches, the trust-remittance subsystem, budget reports, and more; similarly
-`cashbook/views.py` mixes expenses, staff advances, petty cash, payables/accruals/
-prepayments, fixed-asset linkage, and fund transfers.
+**What deliberately remains open.** The largest single clusters are still
+*view* code, not pure helpers, so they were left alone this pass as
+higher-risk-per-line: `MonthlyTreasurerReportView` + `_monthly_report_context`
+(~530 lines) and the various board/position statement views in
+`reports/views.py`; the expense / advance / petty-cash / obligations view
+clusters in `cashbook/views.py`. A full package split (`reports/views/` with
+topic submodules re-exported from `__init__.py`) is the eventual end state, but
+it touches module-level import ordering and 66+ interdependent classes, so it
+warrants its own dedicated pass with a full-suite run rather than being folded
+into a helper-extraction pass. The incremental service-extraction approach
+taken so far is lower-risk and has already removed ~300 lines of non-view logic
+from the two files while leaving every import path intact.
 
-**Reason not refactored this pass.** Splitting either file into logical sub-modules
-(e.g. `reports/views/monthly.py`, `reports/views/remittance.py`, `reports/views/
-fund_ledger.py`, re-exported from `reports/views/__init__.py` for backward
-compatibility with existing imports and URL confs) is exactly the kind of change this
-review's brief asks to record rather than attempt inline — it touches import paths
-used throughout the app's `urls.py` files and would need a careful, dedicated pass
-with its own full-suite regression run to be done safely, not a "while I'm in here"
-edit.
-
-**Expected benefit.** Meaningfully easier navigation and lower risk of merge conflicts
-or accidental cross-feature coupling as the application keeps growing; each resulting
-file would be small enough to hold in your head at once (a widely-cited rule of thumb
-for maintainable module size).
+**Expected benefit.** Easier navigation, lower cross-feature coupling, and —
+the concrete architectural win — accounting/query logic now lives in testable
+service modules instead of view files, consistent with the Financial Metrics
+Registry direction the rest of the codebase is moving toward.
 
 **Priority: Medium.** Not urgent — the code works and is well-tested — but worth
 planning for before either file grows further.
@@ -2999,3 +3012,915 @@ found and fixed for the policy form. A treasurer had no way to see or change
 any of the obligations engine's behaviour since it shipped. Fixed: a new
 "Applying a payment to what a member owes" card on the Allocation tab. All 38
 `test_phase9` tests (including the completeness guard) now pass.
+
+---
+
+## 97. Round 9 second follow-up — ten items — RESOLVED
+
+### Item 1 — "Raise a case" opened blank instead of pre-filling from the death already on file
+`CaseCreateView.get()` already had full pre-fill support built (`?dependant=`/
+`?membership=` → `derive_case_defaults()`) — but the two "Raise a case" links
+(household dependant, and the DECEASED panel for a member's own death) never
+actually passed those query params, and the member's-own-death panel had no
+link at all. Fixed: both links now pass the right ID; the event/reported date
+is also pre-filled from the recorded `died_on` (previously only the
+beneficiary/relationship/fixed-amount were derived, never the date). The
+member's-own-death panel now also checks for an already-existing open case
+first and links to IT rather than risking a duplicate.
+
+### Item 2 — roster bulk import had no column for registration fee paid
+New `registration_fee_paid` column, independent of the pre-existing
+`mark_paid_up` (which only ever cleared DUES arrears). Documented in the
+column-reference table with an explicit warning: leaving it blank on someone
+who already paid would make their next payment wrongly clear the fee again
+instead of their actual dues (per the obligations engine's registration-first
+priority, #83).
+
+### Item 3 — inactivity: consecutive-only missed-case counting, no rolling-year option
+New `SchemePolicy.inactivity_missed_cases_window` (CONSECUTIVE, the unchanged
+original default, or ROLLING_YEAR — any misses in the last 12 months even
+with paid cases in between). Added to `RULE_FIELDS` (frozen/versioned) and
+both `PolicyForm` field-lists (`grouped()` for display, `Meta.fields` for
+binding) — the exact two places #74a's bug lived, so the same class of bug
+could not silently recur here.
+
+### Item 4 — the levy page worked on a still-draft case
+Fixed at the right layer: the roster CALCULATOR (`raise_case_levy`) stays a
+pure preview function usable on any case status (existing tests and the
+obligations engine call it this way) — the guard sits in the levy PAGE
+(GET redirects with an explanation, POST refuses) and, for defense in depth,
+in `validate()` (the shared layer manual entry and intake both go through).
+
+### Item 5 — configurable one-step create-and-approve
+Reuses the EXISTING `SchemePolicy.require_different_approver` (already
+configurable, already exactly this permission) rather than adding a
+redundant setting. New `CaseForm.create_and_approve` checkbox, offered ONLY
+when the policy allows self-approval (popped from the form entirely
+otherwise, so a crafted POST cannot bypass it) and gated a second time on the
+Approve right specifically in the view (raising a case only needs the
+Case-Officer right; approving one is a money decision). Chains
+submit→assess→approve automatically; stops cleanly (case left as far as it
+got) if assessment finds the case ineligible, rather than silently
+overriding anything.
+
+### Item 6 — intake could attribute money to a closed case, or another scheme's case
+The case dropdown already filtered by scheme; it did not filter by status.
+Fixed: `IntakeResolveForm` now offers only `BenevolentCase.OPEN_STATUSES`
+cases in the item's own scheme. Server-side `validate()` also now refuses a
+non-open case even if posted directly, matching the defense-in-depth pattern
+used for item 4.
+
+### Item 7 — bank gifts naming a scheme by fund reference alone never reached intake
+See #98 below (own entry — this was a significant root-cause investigation).
+
+### Item 8/9 — SMS to all active members on approval; a versatile SMS Center
+New `benevolent/services/bulk_sms.py`: three audiences (all active,
+defaulters, one step from inactive) plus a fourth resolved per-case (a
+specific case's unpaid levy roster) — every one computed via the SAME
+arrears/inactivity/levy-roster functions the rest of the module already
+uses (`contributions.arrears_for`, `contributions.raise_case_levy`), so an
+audience here can never disagree with what a member's own standing page
+says. Sends via the existing `core.services.sms.send_sms` / `SmsLog` — no
+new sending path. New page (Scheme → SMS Center) with an audience picker,
+recipient preview (who, and why), quick-message presets, and a free-text
+composer with `{name}`/`{full_name}`/`{scheme}`/`{number}` placeholders. A
+"✉ Notify members" quick-link appears on an approved-or-later case, jumping
+straight to the "all active members" audience. Gated on the general
+benevolent-management right (`BenevolentManageMixin`).
+
+`audience_defaulters` was deliberately NOT built on the existing
+`missed_case_levies()` (which only measures anything when the policy has
+`inactivity_missed_cases` configured — a narrower, threshold-specific
+question) — "who currently owes something" needed to work regardless of
+whether inactivity tracking happens to be turned on, so it computes unpaid
+levies independently.
+
+### Item 10 — three failing tests
+- `test_a_confident_receipt_is_allocated_automatically` expected DUES but got
+  REGISTRATION: correct, intended behaviour of the obligations engine
+  (#83) — an unpaid registration fee is settled before anything else,
+  regardless of what a narration keyword says. Fixture updated to mark the
+  test member's registration already paid, since the test is about
+  confident-allocation, not obligations priority.
+- `test_lines_are_recorded_exactly_as_the_bank_sent_them` asserted the
+  PRE-v2.69 bare-receipt dedup_key format. Updated to the current,
+  intentional format (folds amount + narration fingerprint — see #82).
+- `test_creates_the_seven_role_specific_demo_users` (`ben_admin` missing) —
+  turned out to be a REAL bug, broader than the "standalone command only"
+  scope originally logged (#81j): `_seed_benevolent_phase5` and
+  `_seed_benevolent_phase6`'s own "already seeded, skip" guards `return`ed
+  early WITHOUT continuing the cascade to the next phase — silently
+  skipping the committee roster and all seven role-specific demo users any
+  time phase 5's own guard condition was already true, which happens on
+  EVERY run of the standalone `seed_benevolent_demo` command (phase 1
+  creates a funding-target case before phase 5 ever runs) and would also
+  affect a second run of the full `seed_demo`. Fixed: both guards now
+  continue the cascade after skipping their own re-seed work.
+
+Tests: `benevolent/test_round9_followup.py` (31, covering items 1/2/3/4/5/6/8/9).
+Regression: phase4 (50), phase5 (45), phase9 (38, incl. the settings-
+completeness guard), phase10 (14), historical_case_import (30), round4 (36),
+bugfixes (56), statements (175) all pass. Migrations 0027 (inactivity
+window).
+
+## 98. Bank gifts naming a scheme by fund-allocation reference alone never reached the intake queue — RESOLVED
+
+Root cause: `benevolent.services.allocation.detect_scheme` has two ways to
+recognise a scheme — an active `ContributionRule` pattern, or its own
+documented fallback ("the fund belongs to exactly one scheme"). The
+statement importer called it exactly ONCE, before ordinary fund allocation
+had run (`fund=None` always), so the second fallback was structurally
+unreachable — a church that configured only a giving-level fund rule
+(`AllocationRule`, "put MSAMARIA references in the MSAMARIA fund") and never
+a benevolent-specific `ContributionRule` got the fund right and the intake
+queue silently empty, exactly as Edwin reported (two narrations,
+MSAMC-2026-0004 and MSAMARIA, landed in the right fund but never appeared in
+`/benevolent/intake/`). Fixed: the importer retries `detect_scheme` with the
+now-resolved fund once ordinary allocation has determined it. Verified
+conservative: a fund shared by two schemes is still never guessed either way.
+Tests: `statements/test_benevolent_intake_fund_fallback.py` (5, including the
+two-schemes-share-a-fund safety case). All 175 statements tests pass.
+
+## 99. God-file refactor (reports/views.py, cashbook/views.py) — IN PROGRESS
+
+Behaviour-preserving extraction of pure-logic helpers out of the two largest
+view files into properly-named service modules, following the exact precedent
+already set by `cashbook/services/treasury_position.py`. No logic changed — each
+helper was moved verbatim and re-exported from its original module under its
+original name (including private underscore-prefixed names), so every existing
+`from x.views import helper` and `views.ClassName` reference keeps working
+unchanged.
+
+Done this round:
+- `reports/services/goals.py` — `_sfund`, `_camp_goal_records` (imported by core.views).
+- `reports/services/remittance.py` — `_days_outstanding`, `_repost_to_ledger`
+  (imported by giving.views), `remittance_dashboard_rows`.
+- `reports/services/devgroups.py` — `_balanced_partition`.
+- `cashbook/services/receipts.py` — `validate_receipt_upload`,
+  `missing_receipts_queryset` (both imported by core/leaders/statements), and
+  the `RECEIPT_ALLOWED_EXT` / `RECEIPT_MAX_BYTES` constants.
+- `cashbook/services/cheque_words.py` — `_amount_in_words`.
+- Consolidated three scattered mid-file `treasury_position` re-export blocks in
+  cashbook/views.py into one block at the top.
+
+reports/views.py 4180 → 4034 lines; cashbook/views.py 3508 → 3445.
+
+Verification: full cashbook (402), statements+leaders (233), core+giving (683)
+and reports (388) suites all pass — 1,706 tests across every app that imports
+from these files. All 889 URL patterns force-resolve their callbacks with no
+import error, and every previously-importable symbol still imports cleanly.
+
+Deliberately NOT done (higher risk, deferred): a full topic split of the two
+files into `views/` packages. The remaining bulk is view classes with scattered
+mid-file imports and module-ordering dependencies; splitting them risks a
+missed cross-reference surfacing only at runtime on a specific page. The
+helper-extraction approach here captures most of the architectural benefit (the
+misplaced calculation logic is now in services, reusable and unit-testable
+without a request) at a fraction of the risk. Candidate further extractions if
+revisited: cashbook `_advance_detail_ctx`, `_record_advance_expense`,
+`apply_advance_edit`, `_sync_advance_charge`, `_sync_topup_charge` into a
+`cashbook/services/advances.py`; reports `_day_income_expense`, `_export`,
+`_remit_period` into small helpers. The large `MonthlyTreasurerReportView` +
+`_monthly_report_context` cluster (~530 lines) is the single biggest remaining
+block but is view code, not pure logic, so it stays put.
+
+---
+
+## 99. Sidebar scroll persistence + permission-profile editor UI (v2.78.0) — RESOLVED
+
+**Sidebar scroll jump.** Root cause: base.html restored the saved scrollTop
+*before* the active nav `<details>` group was opened; opening the group changed
+the sidebar height and invalidated the restored position (the "jumps to top"
+symptom). Fixed by reordering — group open/closed state is applied first, then
+scroll is restored on a double requestAnimationFrame (after layout settles),
+clamped to the real scrollable range, with an immediate save on nav-link click
+so the debounced save can't miss the last position.
+
+**Permission-profile editor.** Rebuilt templates/accounts/profile_form.html
+within the existing forest/brass design system: live rights/people counts,
+per-group select-all with running counts and indeterminate state, filter-by-name
+for both rights and people, global select-all/clear (operating on currently
+filtered rights), and a sticky save bar. View passes total_rights. No behavioural
+change to how profiles/rights persist — save round-trip verified, 127 accounts
+tests pass.
+
+---
+
+## 100. Eligibility rules real churches require (item 4) — RESOLVED
+
+Extended the policy engine with the standing rules constitutions actually
+carry, each following the engine's established contract (one policy field, one
+`_check_*` of (policy, facts) → Check, surfaced in `evaluate()` and frozen into
+the case's `eligibility_snapshot`; no scheme-specific branching):
+
+- **Paid-up tenure** (`min_paid_months`) — the "3/6/12 months paid in" rule.
+  Distinct from the waiting period (calendar time regardless of payment) and
+  from `min_contributions` (a bare count two payments in one month satisfy):
+  counts dues periods actually settled.
+- **Unbroken record** (`no_missed_contributions` + `missed_contributions_allowed`)
+  — any period missed AT ITS DUE TIME disqualifies, even if later back-paid,
+  with an optional tolerance. Keys off on-time settlement, not current arrears,
+  via the new `contributions_in_period(..., on_or_before=)`.
+- **Partial arrears in periods** (`max_arrears_periods`) — an alternative to the
+  shilling threshold, expressed as "up to N periods behind is fine"; easier to
+  reason about when the dues rate changes over time.
+- **Catch-up re-qualification** (`catch_up_restores_eligibility` +
+  `catch_up_requalify_days`) — whether clearing arrears restores cover
+  immediately (the humane default) or only after a paid-up window, guarding
+  against paying up once a death has already occurred. Deliberately narrow: it
+  bites only on a member who actually back-paid a LATE gap recently (computed
+  from late-settled periods), never on one who has simply always paid on time.
+- **Grace period** — already present (`grace_period_days`); now regression-tested
+  alongside the new rules.
+
+Facts layer: `MembershipFacts` gained `paid_periods`, `total_periods`,
+`missed_periods`, `arrears_periods`, `paid_up_since`, all derived in `facts_for`
+from the same dues schedule the arrears figure uses — so the register and the
+claim decision can never disagree. Guarded the one N+1 this introduced:
+`_dues_rows` now reuses the per-instance policy-version cache, so computing the
+tenure facts after arrears in one `facts_for` pass does not re-query (same
+versions, no behaviour change; phase10 query-count guard still passes).
+
+All six fields added to `RULE_FIELDS` (frozen/versioned) and both PolicyForm
+allowlists (`grouped()` display + `Meta.fields` binding) — the #74a bug class.
+The case detail page and policy form render everything generically, so no
+template changes were needed — the payoff of the engine's design. Migration
+0028. Tests: `benevolent/test_eligibility_rules.py` (17). Full benevolent
+regression (phase2-11, rounds, historical import ≈ 770 tests) passes.
+
+**Foundation for later items:** the exceptions engine (item 3), fraud detection
+(item 5) and the compliance/ageing reports (item 6) can now all read a single,
+authoritative eligibility decision and the new tenure/record facts rather than
+re-deriving standing.
+
+---
+
+## 101. Contribution exceptions and automatic reconciliation (item 3) — RESOLVED
+
+New service `benevolent/services/exceptions.py` handling the real-world messes a
+treasurer meets, on top of the happy-path `record_contribution`:
+
+- **Screening** (`screen_contribution`) flags future-dated, before-cover,
+  long-backdated, closed-period, non-positive and duplicate receipts. Blocking
+  ones (closed period, non-positive) stop a save; advisory ones (future date,
+  possible duplicate, out-of-cover) warn but let a treasurer who means it
+  proceed. Wired into the manual contribution view.
+- **Reversal** (`reverse_contribution`) undoes a bounced/erroneous/duplicate
+  contribution by reversing its underlying receipt — so it leaves every total
+  and the money shows a contra on the bank rec — and stamps `reversed_at`/
+  `reversal_reason` on the index row. Never deletes; double-reverse guarded.
+- **Correction** (`correct_attribution`) re-attributes a contribution recorded
+  against the wrong member/scheme/kind by reversing the wrong entry and booking
+  a correct one carrying the same money — preserving the fact it was ever wrong.
+- **Payer type** — new `BenevolentContribution.payer_type` (SELF / ANONYMOUS /
+  EMPLOYER / SPONSOR / THIRD_PARTY) + `payer_name`, so money paid on a member's
+  behalf, or given anonymously, is recorded truthfully instead of masquerading
+  as the member's own payment. A memberless, nameless gift defaults to ANONYMOUS.
+- **Bulk validation** (`validate_bulk`) screens a whole parsed batch BEFORE any
+  row commits, so a bad row 40 is found before rows 1-39 post.
+- **Automatic reconciliation** (`reconcile_scheme`) compares recorded
+  contributions against the scheme-fund bank receipts that carry them, reporting
+  orphan receipts (banked but unattributed and not in the intake queue), orphan
+  index rows, and amount mismatches. New page (Scheme → Reconcile). The
+  benevolent-side counterpart to the fund bank reconciliation.
+
+Reversal rides the existing architecture: `_effective_q()` already excludes
+reversed/reversal transactions from every total and arrears calc, so reversing
+the transaction cleanly removes the contribution everywhere — the service only
+stamps the human-facing metadata. New model fields (`payer_type`, `payer_name`,
+`reversed_at`, `reversal_reason`, `reverses`) are per-contribution facts, NOT
+policy, so deliberately NOT in RULE_FIELDS. Migration 0029. Contribution list
+gains a Paid-by column, reversed-row styling, and Correct/Reverse actions. Both
+the contribution form and correction page render fields generically, so payer
+type/name appear with no template change. Tests:
+`benevolent/test_contribution_exceptions.py` (24). Full benevolent regression
+(≈ 900 tests) + statements pass.
+
+**Remaining depends-on this:** fraud detection (item 5) can key off payer_type
+anomalies and reversal patterns; the compliance/reconciliation reports (item 6)
+can surface reconcile_scheme output.
+
+---
+
+## 102. Fund solvency: depletion, commitments and cash forecasting (item 8) — RESOLVED
+
+New service `benevolent/services/solvency.py`, sitting ON TOP of the (unchanged,
+already-correct) ledger integration, answering the questions a committee asks
+BEFORE committing money:
+
+- **Fund position** (`fund_position`) layers claims off the balance: balance →
+  less approved-unpaid → less vouchers awaiting approval → less a prudent reserve
+  for open pipeline cases. Exposes `is_depleted` (can't cover approvals),
+  `is_negative`, `is_overcommitted`. Keeps AVAILABLE distinct from BALANCE (a
+  fund can have a healthy balance and be unable to afford one more case) and
+  COMMITMENT distinct from LEDGER LIABILITY (commitments are memoranda, never on
+  the balance sheet — the balance already reflects every approved voucher).
+- **Affordability** (`can_fund_payout`) — the guard the payout-raising view now
+  consults: WARNS when a payout exceeds cash available after approvals, BLOCKS
+  only where the scheme's new `block_overdrawn_payouts` setting requires it (a
+  church may legitimately approve against a levy still being collected).
+- **Reserved commitments** (`_reserved_for_open_cases` + reporting wrapper +
+  registered metric `benevolent_reserved_commitments`) — draft/submitted/assessed
+  cases valued at assessed/claimed/policy amount, gated by the new
+  `reserve_open_cases` setting.
+- **Cash forecasting** (`forecast_scheme`) — a transparent trailing-6-month
+  run-rate projected forward, with approved-but-unpaid landing in month 1;
+  `runs_dry`/`first_dry_month` flag sustainability. New page (Scheme → Fund
+  position) shows the position waterfall and the forecast.
+
+Every cash figure comes from the Financial Metrics Registry via
+`reporting.scheme_balance / approved_unpaid_total / contributions_total /
+payouts_total` — nothing recomputes a balance or expense; the service projects
+and compares the registry's numbers, which is the one thing point-in-time fund
+tables cannot do for themselves. Two new BenevolentSettings
+(`block_overdrawn_payouts`, `reserve_open_cases`) added to the Accounting
+settings tab (SettingsForm uses `exclude`, so no allowlist risk; the settings
+template DID have a per-tab field allowlist — the #74a pattern — so they were
+added to it explicitly). Settings are operational, not policy, so NOT in
+RULE_FIELDS (tested). Migration 0030. Tests: `benevolent/test_solvency.py` (18).
+Full benevolent + metrics regression passes.
+
+**Depends-on this:** fraud detection (item 5) can flag payouts approved into a
+depleted fund; the fund-sustainability/scheme-profitability reports (item 6) can
+surface fund_position and forecast_scheme output.
+
+---
+
+## 103. Fraud detection / red-flag scanner (item 5) — RESOLVED
+
+New service `benevolent/services/fraud.py` — a RETROSPECTIVE scanner, not
+statistical anomaly detection. Fraud in a small welfare scheme is a person
+defeating a control or a pattern across ordinary-looking events; the scanner
+walks the record and surfaces the patterns an auditor would look for by hand,
+each with its specific evidence. Every item is a SIGNAL for a human to judge,
+never a verdict — the scan blocks nothing and accuses no one; a flagged honest
+case is a small cost, a missed dishonest one is not.
+
+Vectors (each a `_scan_*` returning `FraudSignal(code, label, severity, detail,
+refs)`):
+
+- **Control breaches**: `self_approval` (raiser == approver, high),
+  `payee_is_actor` (payout name matches the raiser/approver, high),
+  `override_approved` (approved over a failed eligibility check, medium),
+  `approved_into_deficit` (fund depleted per the solvency service, medium).
+- **Membership abuse**: `rapid_claim` (claimed ≤60 days after joining with ≤1
+  contribution, medium), `enrol_claim_leave` (joined, claimed, left within 120
+  days, medium).
+- **Identity/collusion**: `repeat_beneficiary` (one beneficiary across ≥3 cases
+  and ≥2 memberships, medium), `shared_phone` (one number on ≥4 members, low).
+- **Contribution manipulation**: `reversal_after_claim` (a contribution reversed
+  ≤45 days after a claim was approved — paid in to qualify, pulled back once
+  secured, high), `reversal_cluster` (≥4 reversals by one user within 30 days,
+  low).
+
+Needs NO new model fields and NO migration — every signal is a new QUESTION
+asked of facts the audit trail already records (who raised/approved/recorded,
+join/leave dates, what was reversed and by whom). This is the payoff of the
+actor-tracking and reversal metadata added in items 3 and 8, and it consumes the
+solvency service from item 8 for the deficit check. `scan(scheme, since)` returns
+signals worst-first; `summary()` gives severity counts for a badge. New page
+(Benevolent → Red flags), viewable by anyone with `view_benevolent` (auditors
+included), grouped high/medium/low with links to the case/member/scheme. Tests:
+`benevolent/test_fraud.py` (17) — each vector fires in its scenario and stays
+quiet on a clean scheme. Full benevolent regression unaffected (read-only).
+
+---
+
+## 104. Automation jobs and review tasks (item 7) — RESOLVED
+
+Extended the existing nightly runner (`schemes.run_automation`, which already
+recomputed standing and sent reminders) with the rest of the scheduled work,
+holding to the module's core principle: **automation writes only to derived
+state, never to `status`** (see `registry.suspend`'s note — a punishment is a
+person's decision). The design choice, confirmed with the product owner, is
+PROPOSE-ONLY for status changes.
+
+New `BenevolentTask` model (`models_tasks.py`) — the review-task backbone. A task
+STATES what a job found and what the policy would do, links to the
+member/dependant/case, and waits for a human. Idempotent to raise via a stable
+`dedup_key` unique among OPEN tasks (app-level, since MariaDB won't enforce a
+conditional unique), so a nightly job never piles up duplicates.
+
+New `benevolent/services/automation.py` with the jobs, split by safety:
+- **Propose (never act)**: `propose_suspensions` (member overdue enough that the
+  policy's inactivity_action is SUSPEND/LAPSE → task, status untouched),
+  `propose_closures` (long-suspended-and-idle → task), `flag_aged_out_dependants`
+  (child past the policy age limit → task, cover kept — there may be an education
+  or disability exception a human applies).
+- **Notify (safe)**: `flag_waiting_period_served` (member became claim-eligible),
+  `flag_duplicate_memberships` (same name AND phone across live memberships — a
+  shared family phone with different names is NOT flagged).
+- **Housekeeping (safe, acts)**: `archive_completed_cases` (cases settled >6
+  months, via a new ARCHIVED CaseEvent kind — a display flag, reversible, no
+  money/status change).
+
+Wired into `run_automation` after standing/reminders; every job idempotent. New
+review-task inbox page (Benevolent → Review tasks) with an open-count nav badge;
+`resolve_task` records done/dismissed but changes no status — the human takes the
+actual action via the link. New settings `auto_archive_cases` (added to the
+Automation settings tab allowlist — #74a). "Create monthly obligations" needed no
+job: obligations are already derived on-the-fly by `obligations_for`, not stored
+rows to create.
+
+**Query-count discipline:** adding the task badge tripped
+`accounts.test_user_list_search`'s per-page query bound (exactly the concern the
+old code's NOTE documented). Resolved by CONSOLIDATING the six separate
+Transaction/Expense badge COUNTs into two grouped conditional aggregates — a net
+REDUCTION — so the benevolent badge fits within budget. This is the consolidation
+the note itself flagged as the right time to add the badge. Migration 0031.
+Tests: `benevolent/test_automation_jobs.py` (20). Full benevolent + accounts
+query-count + core regression passes.
+
+**Depends-on this:** the pending-approvals / review-task reports (item 6) can
+surface the task queue and per-job tallies.
+
+---
+
+## 105. The fourteen reporting-gap reports (item 6) — RESOLVED
+
+Added the fourteen reports the brief named that the Phase-8 components did not
+already cover, ALL through the existing Generic Report Engine — each is a
+`ComponentSection` returning `SectionData`, registered into the engine, so each
+gets an HTML page, CSV/XLSX/PDF/DOCX export, print, permissions and a place in the
+report library for free, with no rendering code written per report.
+
+The reports: contribution compliance (% of dues periods paid), ageing arrears
+(bands + chart), pending approvals, rejected reasons, benefit utilisation
+(payouts÷contributions), scheme surplus/deficit, household statistics, dependant
+demographics (relationship + age bands), case turnaround (lifecycle timestamps),
+committee performance, fraud red flags (reuses item 5's fraud.scan), outstanding
+documents (reinterprets "document expiry" as missing required documents, reusing
+eligibility.missing_required_documents), contribution forecast and fund
+sustainability (both reuse item 8's solvency service).
+
+New service helpers in `benevolent/services/reporting.py` (contribution_compliance,
+case_turnaround, rejected_reasons, benefit_utilisation, dependant_demographics,
+household_statistics, missing_documents, pending_approvals) — every one a BREAKDOWN
+or operational metric; money still comes from the registry (scheme_summary /
+solvency / contributions_total). Compliance reuses the standing engine's own
+period counters (facts_for) so "X of Y periods paid" can never disagree with the
+member's arrears.
+
+New components in `benevolent/report_components_extra.py` (kept separate to leave
+the 660-line report_components.py stable), registered from BenevolentConfig.ready.
+For the "good modern UI" the reports use KPI bands and Chart.js charts (doughnut,
+bar, line) via the engine's own ChartSpec in the forest/brass palette — the same
+charts the dashboards use, no new charting path.
+
+**Engine enhancement (backward-compatible):** a `ComponentSection.render()` may
+now return a LIST of SectionData (a KPI band + chart + table from one component),
+not just one. `components.build()` applies provenance metadata to each and the
+engine's render loop flattens the list. Single-section components are unchanged;
+all existing report-engine tests pass. Also extended the KPI band template to show
+a pre-formatted `display` value (for %, days, counts) with an optional `sub` line,
+falling back to KES formatting — so a KPI card can show "82%" or "5 d", not only
+money.
+
+Tests: `benevolent/test_reports_extra.py` (14) — helper shapes, all 14 registered,
+all render 200, exports (CSV/XLSX/PDF) work, charts present, fraud report gated to
+managers, and the multi-section component path. Report-engine + reports-app
+regression unaffected.
+
+**This completes the 8-item benevolent batch (items 1–8, recs #99–105).**
+
+---
+
+## 106. Report engine UI — statement-set redesign (v2.85) — RESOLVED
+
+Reviewed and modernised the report engine's two shared surfaces, so every engine
+report (all ~30) improved at once with no per-report work:
+
+**The report page (`templates/reports/engine_report.html`):**
+- **Report masthead** — the signature element, set like the head of a printed
+  financial statement: brass eyebrow (category · church name), Fraunces title,
+  description, a mono tabular-figures period line, closed by a double rule
+  (2px forest over 1px brass hairline). Prints as the document head.
+- **Segmented export control** — CSV/Excel/PDF/Word/Print grouped into one
+  instrument (`.export-seg`) instead of five scattered ghost buttons.
+- **Labeled filters** — the date range and every filter now use the `.fb-field`
+  labeled pattern that already existed in the CSS but the template ignored;
+  no more placeholder-only inputs (an accessibility fix as much as a visual one).
+- **KPI cards** — real `.stat` cards with a cycling accent rhythm (forest top
+  border, brass, plain) and the small-`KES` prefix treatment; `display`/`sub`
+  support retained for %, days and counts.
+- **Tables** — sticky headers on tables >15 rows (`.table-wrap.sticky`, already
+  print-safe), negative figures tinted via a new safe `is_negative` template
+  filter (`core/templatetags/treasury_extras.py` — try/except float, never
+  errors on text/blank cells), blank cells render as a muted em-dash.
+- **Directive empty states** — "Nothing to report / try widening the dates"
+  instead of a bare sentence.
+- Charts get a slightly taller scoped container (`.engine-chart`, 260px).
+
+**The report library (`templates/reports/library.html`):**
+- Rebuilt from a flat table into a **card grid** (`.lib-grid`/`.lib-card`):
+  category sections with Fraunces headers and counts, each report a card with
+  brass eyebrow, title, truncated description, favourite star and history link.
+- **Instant filter** — typing in the search box narrows the grid client-side
+  before the server round-trip; server-side search unchanged.
+- All backend contracts identical (same context, same favourite-toggle form,
+  same URLs).
+
+Styles live in `static/css/app.css` (their proper engine-wide home; no
+`extra_css` block exists in base.html). Everything reuses the existing token
+system — no new palette, no new fonts. Exports (CSV/XLSX/PDF/DOCX) untouched:
+they render via `core/reporting/renderers.py`, not this template.
+
+Tests: `reports/test_engine_ui.py` (8) pin the UI contract (masthead, export
+segment, labeled filters, KPI accents, empty state, library grid + filter hook).
+Full report-surface regression (test_reports_extra, test_phase8, test_pages,
+designer, board) passes.
+
+---
+
+## 107. Dashboard & executive UI — statement vocabulary (v2.86) — RESOLVED
+
+Extended the v2.85 statement-set design language to both dashboards, so the
+report engine, the library, the main dashboard and the executive dashboard now
+speak one visual voice.
+
+**Both dashboards** now open with the `.rpt-mast` masthead (brass eyebrow ·
+Fraunces title · mono period/as-at line · forest-over-brass double rule). A real
+side benefit: print CSS hides `.ws-head`/`.page-head`, so both dashboards
+previously printed with NO header at all — the masthead prints as the document
+head. Section heads on both pages use a new shared `.sec-h` class (Fraunces,
+brass hairline, count/action slots) matching the library's category headers; the
+old `.section-title` class is untouched and keeps serving other templates.
+
+**Main dashboard:** masthead keeps the date-range form as the masthead action
+(now with proper label/`for` wiring); the duplicated "Needs attention" was
+resolved — the brass pill row now renders only where the richer attention grid is
+absent (hidden by widget preference, or empty), so the same counts no longer
+appear twice. The PNG table export, widget ordering/visibility, Sabbath snapshot
+and all charts untouched.
+
+**Executive dashboard:** masthead with an "as at" timestamp and a "Board copy ·
+Print" control (it is the page most likely to be projected or printed for a
+board). All five section heads moved to `.sec-h`. KPI cards restyled into the
+app's `.stat` voice — IBM Plex Mono tabular figures, small-KES prefix, 3px
+top-border tone accents (forest / brass for warn) instead of a full brass border,
+warn values in `--amber` not raw brass. Chart palette discipline: the charts now
+read `--forest/--brass/--danger/--muted` from computed style at runtime (as the
+main dashboard already did) instead of hardcoding — the off-palette terracotta
+`#c0532b` is gone, replaced by the danger token; `Chart.defaults.color` uses
+`--muted`. The local 200px `.chart-box` override was dropped so the app-wide
+height governs, and an `@media print` block hides the AI card and lays charts
+two-up. Backend contracts, chart data JSON, per-chart failure isolation and the
+AI-insights flow all unchanged.
+
+Tests: `core/test_dashboard_ui.py` (7) pin the contract (mastheads, section
+rhythm, labeled date filter, attention de-dupe, token-driven palette, card
+typography). Regression: core render/executive/forecast/charts suites,
+elder-role, phase8-admin, engine-UI and report pages all pass.
+
+---
+
+## 108. Telegram bot — link fixes and in-app command reference (v2.87) — RESOLVED
+
+Rechecked the Telegram bot's links and the information it surfaces, and fixed
+what was wrong or missing:
+
+**Corrupted /balance help (bug).** The `/help` line for `/balance` had been
+mangled by a bad HTML-escape edit into "…closing balance of a fundlt;fund•
+/balance <fund> … fundgt; for one)". Restored to a single clean line. A
+regression test now guards the `fundlt`/`fundgt` corruption specifically.
+
+**Links dropped silently.** The assistant reply renderer only attached a report
+link when `site_base_url` was configured; with no base URL the link vanished with
+no trace, hiding a capability. Extracted a shared `_app_link(path, label, cfg)`
+helper: with a base URL it builds the absolute `https://…` anchor Telegram needs;
+without one it degrades to a visible hint that names the in-app path and points
+to Settings → Telegram — so the record is still findable. The existing
+`_format_assistant` link block now reuses this helper (removing duplicated
+base-URL logic).
+
+**Command responses now deep-link back to the web app.** `/case`, `/member` and
+`/benevolent` returned rich text but no way to jump to the full record. Each now
+appends an "Open this case / member / scheme" link via `_app_link`, so a
+treasurer reading a figure in the chat is one tap from the web record (or, with
+no base URL set, is told the exact path).
+
+**Command reference surfaced in the app.** The Settings → Telegram tab documented
+only `/envelope`. Added a "What the bot can do" table listing every command and
+what it returns, a note that money-changing commands save as PENDING for
+approval, and that replies include web links when the site address is set — so
+the app documents its own remote capabilities without opening a chat.
+
+Tests: extended `core/test_telegram_links.py` (9 total) — absolute link,
+graceful hint, `/balance` non-corruption, full command list. Telegram regression
+(links, envelope, pending-receipt PDF parity, round7) and settings label
+accessibility all pass. No model or migration changes.
+
+---
+
+## 109. Report designer — custom text authoring + live preview (v2.88) — RESOLVED
+
+Extensively reviewed the designer and enhanced it around one goal: making a
+report with your own words should be as easy as arranging the numbers.
+
+**New `heading` component** (`core/reporting/component_library.py`,
+designer-safe). A standalone part-heading — "Part 1 — Income", "Notes for the
+board" — rendered BARE in the statement `.sec-h` vocabulary, not boxed in a card
+(a boxed heading reads as a mistake, not structure). Exports: Heading1 in PDF,
+`<h1>` in Word/HTML; tabular formats (CSV/XLSX) skip it along with the other
+non-tabular kinds.
+
+**Merge fields in all custom text.** `heading`, `commentary` and `info_panel`
+now substitute `{period_start}`, `{period_end}`, `{church}` and `{today}` at
+render, via `_fill_placeholders` — plain `str.replace` on a fixed set, never
+`str.format`, so a stray brace in ordinary prose can't raise and unknown
+`{tokens}` pass through untouched. A designed report's boilerplate ("For the
+period {period_start} to {period_end}") stays correct as the reader changes the
+dates.
+
+**Paragraphs preserved.** Blank lines in a text block now make real paragraphs:
+`linebreaks` in the HTML template, and double-newline splitting in the PDF and
+Word/HTML export renderers (single newlines become line breaks). Previously
+multi-paragraph commentary collapsed into one blob.
+
+**Palette regrouped for authoring.** `heading`, `commentary` and `info_panel`
+sit together under a new "Text" category with task-named labels — "Heading",
+"Text block", "Note (highlighted)" — each with a description, and every textarea
+param in the builder carries a hint documenting the paragraph rule and merge
+fields.
+
+**Live preview without saving.** New `DesignerPreviewView`
+(`reports/admin_views.py`, URL `designer/preview/`, registered BEFORE the
+`<slug:key>` catch-all) — the builder's "Preview without saving" button posts the
+CURRENT sections/filters JSON to a new tab; the same `compile_definition` that
+runs saved definitions compiles it in memory and the same engine template renders
+it. Nothing is persisted or registered; validation problems come back as the
+same per-section sentences the save path produces, never a traceback; the page
+carries an "Unsaved preview" banner and hides filters/exports/AI links
+(`preview_mode` flag in `engine_report.html`). Guarded by the same
+TreasurerRequiredMixin as the rest of the designer.
+
+**UI consistency.** Designer edit and list pages joined the v2.85 statement
+vocabulary (masthead + rule); the list gained a directive empty state.
+
+Tests: `reports/test_designer_text.py` (10) — registration/designer-safety,
+Text category grouping, bare heading, merge-field fill + unknown-token safety,
+paragraphs in HTML and Word, CSV skipping text, preview renders unsaved changes
+without persisting, preview shows problems not tracebacks, preview access
+control. Designer hardening, engine UI, report pages, phase8 and renderer-wide
+regression all pass. No model or migration changes.
+
+---
+
+## 110. Transactions & expenses UI — mastheads and a grouped expense form (v2.89) — RESOLVED
+
+Reviewed the three busiest daily surfaces. The two LISTS were already genuinely
+modern (metric strips in the app's tabular-mono voice, quick-filter tabs, the
+more-filters drawer, informed bulk confirmations, running balance, memo
+semantics, sticky tables, directive empty states) — deliberately left intact.
+Their real gap was the `ws-head` header, which print CSS hides, so both pages
+printed with no header (the same bug the dashboards had). Both now open with the
+`.rpt-mast` statement masthead (eyebrow · Fraunces title · double rule), which
+prints as the document head; the expense list's empty-row colspan was corrected
+(11 → 10).
+
+**The expense form** (`templates/cashbook/form.html`) — the most-used form —
+was the weak one: a bare header and every field in one flat loop. Restructured
+into statement-style groups with brass-underlined Fraunces group heads:
+
+- **Fund** first (the existing autocomplete + live available-balance box +
+  budget-item row, untouched);
+- **Amount & date** — the amount input set prominently in IBM Plex Mono
+  tabular figures (on a money form, the money leads); transaction charge beside;
+- **What it was for** — description, category, expenditure type, capital asset;
+- **Paid to & how** — claimant, payee, method, voucher, petty cash;
+- **Other details** — the anti-#74a SAFETY NET: an always-present fallback group
+  (self-hiding via `:not(:has(.form-row))` — `:empty` fails on whitespace) that
+  renders ANY form field not placed in a named group, so a field added to
+  ExpenseForm later appears there instead of silently vanishing from the page.
+
+Two tests make the net provable: a live assertion that every visible ExpenseForm
+field renders on the page, and a template-source consistency check that the
+fallback's exclusion list exactly equals the union of the group allowlists (a
+hole in either direction — double-render or vanish — fails the test).
+
+All form JavaScript (fund autocomplete + keyboard nav, balance fetch, budget
+items, claimant autocomplete, charge toggling, issue-payment-now block) kept
+byte-identical; every element id/class it depends on preserved. The overspend
+override flow verified end-to-end through the restructured page.
+
+Tests: `cashbook/test_busy_pages_ui.py` (6). Regression: expense entry/payment,
+amount validation, date defaults, clip popover, liabilities badge, transactions
+actions-dropdown / bulk-confirm / extra-filters / exports, label accessibility —
+all pass. No model or migration changes.
+
+---
+
+## 111. Continuous integration (review P0-1) — RESOLVED
+
+Added `.github/workflows/ci.yml` — the automated safety gate the engineering
+review flagged as the highest-leverage single change (a 233-file suite whose
+green status was previously only known when someone remembered to run it).
+
+On every push and PR, three jobs run:
+1. **Checks** (fast, <1min): `manage.py check` + `makemigrations --check
+   --dry-run` — proves the app boots and models/migrations agree.
+2. **Tests**: the full suite split into 5 balanced parallel shards (by app
+   volume: core+giving+envelopes / cashbook / reports+statements / benevolent /
+   the-rest), each running `--parallel auto --noinput`. `fail-fast: false` so one
+   shard's failure never hides another's.
+3. **CI Passed**: a single summary status for branch protection to require.
+
+SQLite (test default), Python 3.12, `DJANGO_DEBUG=1` + a throwaway CI secret so
+the prod start-up guards don't fire; no real secret ever needed (CI neither
+deploys nor connects to real services). `concurrency` cancels superseded runs.
+
+**Anti-drift guard (applying the review's own #74a lesson to the CI config
+itself):** `core/test_ci_coverage.py` (4 tests) reads the workflow back and fails
+the build if any local app with tests is in no shard, or in two shards, or a
+shard names a non-existent app — so the hand-maintained shard list can't silently
+stop covering an app. This guard caught a real gap while being written (an
+unassigned app), and a false-positive in its own first cut (django.contrib.admin
+resolving under .venv inside the repo root), both fixed.
+
+Guide: `docs/CI_GUIDE.md` — what CI does, reading a red build, running the same
+checks locally, how the shards work and how to change them safely, the
+environment, deliberate omissions (deploy/lint/coverage left for later), and how
+to turn on branch protection.
+
+Verified locally: `check` clean, `makemigrations --check` clean, the exact
+sharded `--parallel auto --noinput` invocation runs green, and the coverage guard
+passes. Remaining review items: P1-1 (default-deny auth), P1-3 (facts_for N+1),
+P1-4 (#74a systemic), P1-2 (god files).
+
+---
+
+## 112. facts_for N+1 batched (review P1-3) — RESOLVED
+
+The benevolent operational reports called `facts_for(membership)` in a per-member
+loop, so each grew ~15-20 queries PER member — the compliance report measured 139
+queries, and the cost scaled linearly with membership (a 200-member scheme would
+fire thousands). Fixed without reimplementing the facts (a second implementation
+would drift from the register and the eligibility engine, which share `facts_for`
+as their single source).
+
+**New `facts_for_scheme(scheme, as_of, memberships)`** (benevolent/services/
+standing.py) pre-loads, scheme-wide and in ~9 grouped queries, exactly the data
+each per-member call would otherwise fetch one row at a time — policy versions
+once; dues paid per (member, period); dues rows for the windowed paid-total; the
+per-scheme case scan; levy paid per (member, case); last-contribution and
+last-dues dates per member; each member's own settled cases — warms those onto
+the membership instances, then calls the SAME `facts_for` per member. Every leaf
+query finds its answer in a warmed cache, so the loop adds no round trips. The
+leaf functions (`last_contribution_date`, `_dues_rows` paid-by-period,
+`arrears_for` dues-paid, `levy_paid_by`, `missed_case_levies` scan,
+`_waived_periods` own-cases, `adjustments_total`, `_last_cleared_date`,
+`renewal_*`) each gained a read-only cache branch that falls back to the original
+query when unwarmed — identical results either way.
+
+**Wired into** contribution_compliance, arrears_analysis, and the automation jobs
+(propose_suspensions via a new `_batch_facts` helper).
+
+**Result:** facts are byte-identical to the per-member path (verified field-by-
+field including resolved policy), and the query count is CONSTANT in member count
+(9 queries whether 10 or 150 members). End-to-end: compliance report 139 -> 32
+queries, ageing arrears 37, benevolent overview 114 -> 58.
+
+**A real bug found and fixed along the way:** making the policy resolver
+cache-aware (`_policy_on_cached`) exposed a latent stale-cache hazard — a
+membership instance reused across assessments (e.g. after a new policy version is
+published) could resolve against a stale cached version list, making the register
+disagree with the eligibility engine under a BLOCK policy (caught by the
+cross-version agreement test in test_phase3). Fixed by gating the version cache
+behind a `_policy_cache_trusted` flag that ONLY the batch loader sets, and having
+`facts_for` clear all per-instance caches at entry unless called by the loader
+(`_batched=True`). Un-batched calls now always resolve fresh.
+
+Tests: `benevolent/test_batch_facts.py` (3) pin identical-facts, constant-query
+(fails if it starts scaling), and the stale-policy regression specifically.
+Regression: phase3/4, eligibility rules, automation jobs, reports-extra, phase8,
+phase10, fraud, round7 — all pass. No model or migration changes.
+
+Remaining review items: P1-1 (default-deny auth), P1-4 (#74a systemic), P1-2 (god
+files), P2/P3 items.
+
+---
+
+## 113. Default-deny authorization (review P1-1) — RESOLVED
+
+Authorization was opt-IN: every view carried an access mixin, and a new view that
+forgot its mixin would be public by accident — nothing caught it. Reversed the
+default so the safe state is the automatic one.
+
+**The gate.** Added Django 5.2's `LoginRequiredMiddleware` to the chain, right
+after `AuthenticationMiddleware` (which sets `request.user`) and before the app's
+own lock/2FA gates. Now EVERY view requires an authenticated user by default;
+views become public only by explicitly opting out with `@login_not_required`.
+
+**The public allowlist** (audited to be exactly the pre-existing public surface —
+the walk-every-URL audit showed the same 6 endpoints before and after): login,
+logout, the forgot-password flow (request + verify + emailed-link confirm),
+`twofactor_verify` (runs mid-login before auth completes; guarded by its
+PENDING_USER session token), `healthz` (exposes nothing), the CBS bank webhook
+(machine-to-machine, authenticated by shared-secret/HMAC per
+`bank_feed_auth_mode`, not a user session), and the public pledge form + thanks
+page (deliberately public, off by default behind a SiteConfig flag). Each opt-out
+carries a comment saying why it is safe.
+
+**The enforcement.** `accounts/test_default_deny.py` (5 tests): the middleware is
+installed and ordered after AuthenticationMiddleware; a brand-new view with NO
+mixin is denied to anonymous users by the gate (the exact "forgotten mixin" case
+the review named); a marked view is exempt; and — the durable guard — a test
+walks EVERY resolvable no-arg URL and fails, naming the offender, if any is
+reachable anonymously without being on the reviewed `PUBLIC_URL_NAMES` allowlist.
+So a future unprotected view fails CI rather than shipping. A companion test
+asserts the allowlisted pages really do load for anonymous users, so a broken
+allowlist entry is noticed too.
+
+No behaviour change for authenticated users; the per-view mixins remain in place
+(defence in depth — the middleware is the floor, not a replacement). No model or
+migration changes. Regression: full accounts suite (login/2FA/reset/lockout, 132
+tests), pledges (public flow), statements webhook, and a cross-app sample all
+pass.
+
+Remaining review items: P1-4 (#74a systemic), P1-2 (god files), P2/P3 items.
+
+---
+
+## 114. Frozen-allowlist trap made structurally impossible (review P1-4) — RESOLVED
+
+The #74a pattern — a hand-maintained list of field names that silently drops a
+field when someone forgets to add it — had recurred sixteen times. Rather than
+patch a seventeenth instance, addressed the class.
+
+**Principle established:** an allowlist that is MEANT to be complete (expose every
+field) is banned; use a denylist (`exclude=`) or derive from the model. Where a
+curated list must stay (e.g. it deliberately selects a subset), it MUST have a
+test that fails when a new model field is left unclassified. A restrictive form
+that intentionally exposes a few fields is fine and untouched — the rule targets
+lists whose omissions are bugs, not design.
+
+**Fixed the two canonical "should-be-complete" sites:**
+
+1. **`SchemePolicy.RULE_FIELDS`** (which fields are versioned policy rules) — must
+   stay curated (metadata like `version`/`status` must NOT version). Added an
+   explicit `NON_RULE_FIELDS` classifier and a test asserting
+   `RULE_FIELDS ∪ NON_RULE_FIELDS == every concrete field, no overlap`. Adding a
+   field to SchemePolicy without classifying it now fails the build.
+
+2. **`SiteConfigForm`** — was `fields = [...]` (a live #74a: a new SiteConfig
+   setting wouldn't appear unless hand-added). Converted to `exclude = ["id",
+   "updated_at", "board_config"]`, so every editable field now binds
+   automatically. A test asserts the form binds every editable field and the
+   exclude list stays small.
+
+**Fixed the harder half — the settings TEMPLATE's 16 per-tab field allowlists.**
+A field could bind to the form yet still vanish from the UI if not named in a
+tab's `f.name in '…'` group. Added a self-maintaining fallback: the view computes
+which bound fields the template doesn't place (by scanning the template for tab
+allowlists and explicit `form.<name>` refs) and passes them to a new "Other
+settings" panel that renders anything unplaced. A test asserts every bound field
+is reachable (in a tab or the fallback). This immediately surfaced ~28 settings
+that were genuinely unreachable from the page (cheque-layout coordinates, pledge
+matching, error alerts, off-site backup, 2FA-required) — now editable under
+"Other" until moved to proper tabs.
+
+Tests: `benevolent/test_allowlist_guard.py` (6). Regression: policy versioning
+(phase3), batch facts, settings label-accessibility, phase8, core render — all
+pass. Settings POST round-trip verified (saves, preserves unlisted fields). No
+model or migration changes.
+
+Remaining review items: P1-2 (god files), P2/P3 items.
+
+---
+
+## 115. Site-wide statement design sweep — RESOLVED
+
+Extended the statement design (v2.85 report engine, v2.86 dashboards, v2.88
+designer, v2.89 transactions/expenses) to the whole application, two ways:
+
+**Global, at the CSS level.** `.page-head` and `.ws-head` — used by ~246
+templates — were restyled in place to join the statement family: the
+forest-over-brass double rule beneath, statement spacing rhythm. Every page
+upgraded at once with zero template edits. The print stylesheet fix rides along
+and matters more than the looks: those headers were `display:none` in print, so
+EVERY page printed titleless — a bug reported and re-fixed page-by-page several
+times. Headers now print as a proper document head (black/grey rule for ink),
+with only the buttons/forms inside them hidden. That class of bug is closed
+everywhere at once, and `core/test_site_ui_sweep.py` pins the print rule so a
+stylesheet edit can't quietly bring it back.
+
+**Hand conversions for the key pages.** Full `.rpt-mast` mastheads (eyebrow ·
+church name, title, description, brass export segments, rule) on: members,
+statement imports, bank reconciliations, petty cash, transfers, funds &
+departments (its scattered header actions consolidated into one action row),
+benevolent dashboard/case list/registry, statement register/upload, intake
+queue, budget board. Eyebrows added (structure preserved) on the workspace
+pages: envelopes (list/batches/counts), pledges (list + dashboard), payment
+register, advances, loans register, benevolent contributions/members/schemes/
+tasks/fund position, assets, users, budgets, and the six accounting pages
+(general ledger, trial balance, journal, chart, health, integrity — keeping
+their own print-head design).
+
+Contract tests (5, core/test_site_ui_sweep.py): headers carry the statement
+rule; headers print (the pinned bug); no dead legacy CSS; 15 key pages render
+with statement marks; the hand-converted pages keep their full masthead. The
+render test immediately caught two pages the sweep had missed (pledge dashboard,
+budgeting) — fixed. Regression: core render, label accessibility, UX a11y,
+members, statements, full envelopes (171), pledges, benevolent phase8,
+departments — all green. Div balance verified on every restructured template.
+No model, migration or behaviour changes — presentation only.

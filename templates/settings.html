@@ -24,6 +24,7 @@
   <div class="st-group"><span class="st-grouplabel">System</span>
     <button type="button" class="tab" data-tab="assistant">Assistant</button>
     <button type="button" class="tab" data-tab="about">About &amp; updates</button>
+    {% if unplaced_settings %}<button type="button" class="tab" data-tab="other" style="color:var(--brass)">Other ⚠</button>{% endif %}
   </div>
 </div>
 
@@ -171,6 +172,28 @@
         <span class="mono" style="display:inline-block;margin:.2rem 0;word-break:break-all">https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url=https://&lt;HOST&gt;/api/telegram/webhook/&lt;TOKEN&gt;/</span><br>
         4. Open your bot in Telegram, send any message, and enter your PIN when prompted.
       </div>
+    </div></div>
+
+    <div class="card"><div class="hd">What the bot can do</div><div class="bd">
+      <div class="help u-mb-sm">Send <span class="mono">/help</span> in the chat for this list at any time. Anything that changes money is saved as <strong>PENDING</strong> for approval in the web app; everything else is read-only.</div>
+      <table class="ledger compact">
+        <thead><tr><th>Command</th><th>What it returns</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">/summary</td><td>Collections, expenses and surplus this month</td></tr>
+          <tr><td class="mono">/trust</td><td>Trust collected, remitted and still outstanding</td></tr>
+          <tr><td class="mono">/balance [fund]</td><td>Every fund's closing balance, or one fund's detail</td></tr>
+          <tr><td class="mono">/today</td><td>Today's collections</td></tr>
+          <tr><td class="mono">/pending</td><td>The pending-receipt list, as the same PDF the web app serves</td></tr>
+          <tr><td class="mono">/member NAME</td><td>A member's standing, arrears and dependants — with a link to open them</td></tr>
+          <tr><td class="mono">/case [NUMBER]</td><td>A case's contribution statement (blank lists open cases)</td></tr>
+          <tr><td class="mono">/benevolent</td><td>How every welfare scheme stands right now</td></tr>
+          <tr><td class="mono">/arrears [SCHEME]</td><td>Who owes their levy or dues, worst first</td></tr>
+          <tr><td class="mono">/expense</td><td>Record an expense, guided — saved PENDING for approval</td></tr>
+          <tr><td class="mono">/envelope</td><td>Record an offering envelope, guided — saved like the web ledger</td></tr>
+          <tr><td class="mono">/lock · /cancel</td><td>Lock the chat session, or abandon the current entry</td></tr>
+        </tbody>
+      </table>
+      <div class="help u-mt-sm">A treasurer can also just type a question — e.g. <em>how much tithe in May?</em> Replies that relate to a report or record include a link straight to it in the web app when the site address (above) is set.</div>
     </div></div>
 
     <div class="card"><div class="hd">Envelope entry from Telegram</div><div class="bd">
@@ -378,6 +401,19 @@
       </div>
     </div></div>
   </section>
+
+  {% if unplaced_settings %}
+  <section class="tabpane" data-pane="other">
+    <div class="card"><div class="hd">Other settings</div><div class="bd">
+      <div class="info-panel u-mb-sm">These settings exist but haven't been given a home on a specific tab yet. They still save normally. (If you're seeing this, a new setting was added — it will move to its proper tab in a future update.)</div>
+      <div class="form-grid">
+      {% for f in unplaced_settings %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% endfor %}
+      </div>
+    </div></div>
+  </section>
+  {% endif %}
 
   <div class="btn-row"><button class="btn">Save settings</button></div>
 </form>

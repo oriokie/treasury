@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Budgeting · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Annual budgeting</h1>
+<div class="page-head"><div><div class="eyebrow">Funds · {{ SITE_NAME }}</div><h1>Annual budgeting</h1>
 <div class="sub">Set each fund's annual budget and brought-forward opening balance</div></div>
 <form method="get" class="u-inline-flex">
   <select name="year" class="field--select" onchange="this.form.submit()">

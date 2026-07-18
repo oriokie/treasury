@@ -1,11 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Member registry · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Benevolent member registry</h1>
-  <div class="sub">Every enrolment, and where each member stands under their scheme's policy</div></div>
-<div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a>
-  <a class="btn btn-ghost btn-sm" href="{% querystring export='xlsx' %}">⬇ Excel</a>
-  <a class="btn btn-ghost btn-sm" href="{% querystring export='csv' %}">⬇ CSV</a></div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Benevolent · {{ SITE_NAME }}</div>
+      <h1>Benevolent member registry</h1>
+      <div class="desc">Every enrolment, and where each member stands under their scheme's policy</div>
+    </div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a> <span class="export-seg"><a href="{% querystring export='xlsx' %}">Excel</a><a href="{% querystring export='csv' %}">CSV</a></span></div>
+  </div>
+  <div class="rule"></div>
+</div>
 
 <p class="help u-mt-0">Standing is <strong>computed</strong>, never typed in — a pure function of the policy and the
   facts (see a member's page for the working). The <em>lifecycle</em> beside it — active, suspended, withdrawn,

@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Journal · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head"><div class="ws-titles"><h1>Journal</h1>
+<div class="ws-head"><div class="ws-titles"><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>Journal</h1>
   <div class="ws-sub">Balanced postings, most recent first</div></div>
   <div class="toolbar"><a class="btn btn-sm btn-ghost" href="?export=xlsx{% if start %}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}{% endif %}">⬇ Excel</a> <a class="btn btn-sm btn-ghost" href="{% url 'journal_archive' %}">🗄 Archive</a>{% if is_treasurer %} <a class="btn btn-sm" href="{% url 'manual_journal' %}">+ Manual entry</a>{% endif %}</div></div>
 {% include 'ledger/_period.html' %}

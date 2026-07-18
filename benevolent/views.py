@@ -442,6 +442,17 @@ class MembershipDetailView(BenevolentViewMixin, View):
             "refund_form": RefundForm(),
             "refunds": m.refunds.select_related("expense"),
         })
+        if m.status == SchemeMembership.Status.DECEASED:
+            # If a case for this member's own death already exists (auto-opened,
+            # or raised previously), the DECEASED panel should link straight to
+            # it — offering "Raise a case" again would invite a duplicate. Only
+            # when none exists does the panel offer the (pre-filled) new-case
+            # link, mirroring open_case_for_death()'s own idempotency query.
+            ctx["own_death_case"] = (
+                BenevolentCase.objects.filter(
+                    scheme=m.scheme, membership=m, dependant__isnull=True,
+                    status__in=BenevolentCase.OPEN_STATUSES)
+                .order_by("-event_date").first())
         return render(request, "benevolent/membership_detail.html", ctx)
 
     def post(self, request, pk):
@@ -520,20 +531,40 @@ class ContributionCreateView(BenevolentFinanceMixin, View):
         form = ContributionForm(request.POST, scheme=scheme)
         if form.is_valid():
             d = form.cleaned_data
+            # Screen for exceptions before recording. Blocking ones (a closed
+            # period, a non-positive amount) stop the save; advisory ones (a
+            # future date, a possible duplicate, an out-of-cover date) are shown
+            # as warnings but do not prevent a treasurer who means it.
+            from benevolent.services import exceptions as exc_svc
+            problems = exc_svc.screen_contribution(
+                scheme, date=d["date"], amount=d["amount"],
+                membership=d.get("membership"),
+                payer_type=d.get("payer_type") or None)
+            blocking = [p for p in problems if p.blocking]
+            if blocking and not request.POST.get("confirm_override"):
+                for p in blocking:
+                    form.add_error(None, f"{p.label}: {p.detail}")
+                return render(request, "benevolent/contribution_form.html", {
+                    "scheme": scheme, "form": form, "policy": scheme.policy_on(),
+                    "warnings": [p for p in problems if not p.blocking]})
             try:
                 c = contrib_svc.record_contribution(
                     scheme, date=d["date"], amount=d["amount"], user=request.user,
                     membership=d.get("membership"), member=d.get("member"),
                     case=d.get("case"),
                     channel=d.get("channel"), period_label=d.get("period_label") or None,
-                    note=d.get("note") or "")
+                    note=d.get("note") or "",
+                    payer_type=d.get("payer_type") or None,
+                    payer_name=d.get("payer_name") or "")
             except ValidationError as e:
                 for msg in e.messages:
                     form.add_error(None, msg)
             else:
-                messages.success(
-                    request, f"Contribution of {c.amount} receipted into "
-                             f"{scheme.fund.name}.")
+                warn = [p for p in problems if not p.blocking]
+                msg = f"Contribution of {c.amount} receipted into {scheme.fund.name}."
+                if warn:
+                    msg += " Noted: " + "; ".join(p.label.lower() for p in warn) + "."
+                messages.success(request, msg)
                 return redirect("benevolent_scheme_detail", pk=scheme.pk)
         return render(request, "benevolent/contribution_form.html", {
             "scheme": scheme, "form": form, "policy": scheme.policy_on()})
@@ -596,6 +627,19 @@ class CaseCreateView(BenevolentCaseMixin, View):
                 pk=mem_id, scheme=scheme).select_related("member").first()
         initial = case_svc.derive_case_defaults(
             scheme, membership=membership, dependant=dependant)
+        # The death date is already on file the moment it was recorded — a
+        # dependant's own died_on, or the member's own died_on for their own
+        # death — so it is pre-filled here too, the same "never retype what
+        # the scheme already knows" principle derive_case_defaults follows for
+        # the beneficiary and the fixed benefit amount.
+        died_on = None
+        if dependant is not None:
+            died_on = dependant.died_on
+        elif membership is not None:
+            died_on = membership.died_on
+        if died_on:
+            initial["event_date"] = died_on
+            initial["reported_date"] = died_on
         return render(request, "benevolent/case_form.html", {
             "scheme": scheme,
             "form": CaseForm(scheme=scheme, initial=initial),
@@ -624,6 +668,46 @@ class CaseCreateView(BenevolentCaseMixin, View):
                 if rel and not case.beneficiary_relationship:
                     case.beneficiary_relationship = rel
                     case.save(update_fields=["beneficiary_relationship"])
+
+                # The fast path (item 5): raise, submit, assess and approve in
+                # one step. The FORM already refuses to offer this where the
+                # policy requires a different approver, and it is gated here a
+                # second time on the Approve right itself — raising a case only
+                # needs BenevolentCaseMixin, but approving one is a money
+                # decision and needs BenevolentApproveMixin regardless of what
+                # the policy permits between raiser and approver.
+                if d.get("create_and_approve"):
+                    from core.roles import can_approve_benevolent
+                    if not can_approve_benevolent(request.user):
+                        messages.warning(
+                            request, f"Case {case.number} was drafted, but you do not "
+                                    f"have the right to approve a case, so it was left "
+                                    f"as a draft for someone who does.")
+                        return redirect("benevolent_case_detail", pk=case.pk)
+                    try:
+                        case_svc.submit_case(case, user=request.user)
+                        case_svc.assess_case(case, user=request.user)
+                        if case.status == BenevolentCase.Status.ASSESSED:
+                            case = case_svc.approve_case(
+                                case, amount=case.assessed_amount, user=request.user,
+                                allow_self_approval=True)
+                            messages.success(
+                                request, f"Case {case.number} raised and approved for "
+                                        f"{case.approved_amount}. Raise a payment voucher "
+                                        f"to pay it.")
+                        else:
+                            messages.warning(
+                                request, f"Case {case.number} was submitted and assessed, "
+                                        f"but stopped there — see the case for why it "
+                                        f"could not be approved automatically.")
+                    except ValidationError as e:
+                        messages.warning(
+                            request, f"Case {case.number} was drafted, but the "
+                                    f"approve-immediately step stopped: {'; '.join(e.messages)} "
+                                    f"The case is saved as far as it got — continue it "
+                                    f"from the case page.")
+                    return redirect("benevolent_case_detail", pk=case.pk)
+
                 messages.success(request, f"Case {case.number} drafted.")
                 return redirect("benevolent_case_detail", pk=case.pk)
         return render(request, "benevolent/case_form.html", {
@@ -813,6 +897,16 @@ class CasePayoutView(BenevolentCaseMixin, View):
             messages.error(request, "Check the payout details.")
             return redirect("benevolent_case_detail", pk=pk)
         d = form.cleaned_data
+        # Fund solvency (item 8): can the fund afford this payout right now? This
+        # warns when the payout would exceed the cash available after existing
+        # approvals, and blocks only where the scheme's settings say a fund must
+        # never overdraw. A church may legitimately approve against a levy still
+        # being collected, so the default is to warn, not refuse.
+        from benevolent.services import solvency as sol_svc
+        afford = sol_svc.can_fund_payout(case.scheme, d["amount"])
+        if afford.level == "block":
+            messages.error(request, afford.detail)
+            return redirect("benevolent_case_detail", pk=pk)
         try:
             payout = case_svc.record_payout(
                 case, amount=d["amount"], date=d["date"], user=request.user,
@@ -823,9 +917,11 @@ class CasePayoutView(BenevolentCaseMixin, View):
         except ValidationError as e:
             messages.error(request, "; ".join(e.messages))
         else:
-            messages.success(
-                request, f"Payment voucher for {payout.amount} raised on {case.number}. "
-                         f"It is pending approval in the expenses queue like any other claim.")
+            base = (f"Payment voucher for {payout.amount} raised on {case.number}. "
+                    f"It is pending approval in the expenses queue like any other claim.")
+            if afford.level == "warn":
+                messages.warning(request, afford.detail)
+            messages.success(request, base)
         return redirect("benevolent_case_detail", pk=pk)
 
 

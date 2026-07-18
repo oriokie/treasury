@@ -2,7 +2,7 @@
 {% block title %}Pledges · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
-  <div class="ws-titles"><h1>All pledges</h1><div class="ws-sub">Member commitments and fulfilment</div></div>
+  <div class="ws-titles"><div class="eyebrow">People · {{ SITE_NAME }}</div><h1>All pledges</h1><div class="ws-sub">Member commitments and fulfilment</div></div>
   <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_import' %}">⬆ Import</a>{% endif %}{% if can_enter_data %}<a class="btn" href="{% url 'pledge_create' %}">＋ New pledge</a>{% endif %}</div>
 </div>
 <div class="ws-summary">

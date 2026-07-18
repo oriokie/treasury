@@ -11,6 +11,9 @@
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import' scheme.id %}">Import roster</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import_contributions' scheme.id %}">Import contribution history</a>{% endif %}
   {% if can.approve_benevolent %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_bulk_import_cases' scheme.id %}">Import case history</a>{% endif %}
+  {% if can.manage_benevolent %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_sms_center' scheme.id %}">✉ SMS Center</a>{% endif %}
+  {% if can.view_benevolent %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_reconcile' scheme.id %}">Reconcile</a>{% endif %}
+  {% if can.view_benevolent %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_fund_position' scheme.id %}">Fund position</a>{% endif %}
   {% if can.manage_benevolent_schemes %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_edit' scheme.id %}">Edit</a>{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_list' %}">← Schemes</a></div></div>
 

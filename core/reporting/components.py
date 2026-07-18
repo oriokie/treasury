@@ -63,8 +63,15 @@ class ComponentSection(Section):
         for m in self.declared_metrics:
             if m not in used:
                 used.append(m)
-        data.extra.setdefault("metrics_used", used)
-        data.extra.setdefault("layout", self.layout.as_dict())
+        # A component may render as ONE section or, where it is worth a KPI band
+        # plus a chart plus a table, as SEVERAL. Both are supported: a list is
+        # returned as-is (each section gets the same provenance metadata), and the
+        # engine's render loop flattens it. Single-section components are
+        # unchanged.
+        sections = data if isinstance(data, (list, tuple)) else [data]
+        for s in sections:
+            s.extra.setdefault("metrics_used", used)
+            s.extra.setdefault("layout", self.layout.as_dict())
         return data
 
     # convenience builders reused by many components ---------------------------

@@ -1,9 +1,14 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Board budget summary {{ year }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Board budget summary — {{ year }}</h1>
-<div class="sub">Planned budget by department and source of funds, for the church board</div></div>
-<form method="get" class="u-inline-flex">
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Funds · {{ SITE_NAME }}</div>
+      <h1>Board budget summary — {{ year }}</h1>
+      <div class="desc">Planned budget by department and source of funds, for the church board</div>
+    </div>
+    <div class="rpt-actions no-print"><form method="get" class="u-inline-flex">
   <select name="year" class="field--select" onchange="this.form.submit()">
     {% for y in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
   </select>
@@ -11,6 +16,9 @@
   <a class="btn btn-sm btn-ghost" href="?year={{ year }}&export=csv">⬇ CSV</a>
   <button type="button" class="btn btn-sm btn-ghost" onclick="window.print()">⎙ Print</button>
 </form></div>
+  </div>
+  <div class="rule"></div>
+</div>
 
 <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
   <div class="stat"><div class="kpi-label">Total budget {{ year }}</div><div class="kpi-val mono">KES {{ totals.budget|floatformat:2|intcomma }}</div></div>

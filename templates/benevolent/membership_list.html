@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Scheme members · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Scheme members</h1>
+<div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Scheme members</h1>
   <div class="sub">Enrolments across every scheme. A member may belong to several — each enrolment stands on its own.</div></div>
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a>
   <a class="btn btn-ghost btn-sm" href="{% querystring export='xlsx' %}">⬇ Excel</a>

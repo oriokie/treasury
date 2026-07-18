@@ -117,7 +117,9 @@ h1{font-size:1.95rem}h2{font-size:1.4rem}h3{font-size:1.12rem}
 .content{padding:1.9rem;max-width:1240px;width:100%;animation:rise .3s ease both}
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;
-  gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}
+  gap:1rem;flex-wrap:wrap;position:relative;padding-bottom:.8rem;margin-bottom:1.2rem}
+.page-head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;
+  border-top:2px solid var(--forest);border-bottom:1px solid var(--brass)}
 .page-head h1{margin-bottom:.1rem}
 .page-head .sub{color:var(--muted);font-size:.92rem;margin-top:.1em}
 
@@ -183,6 +185,7 @@ table.ledger.plain td,table.ledger.plain th{border-bottom:1px solid var(--line)}
 .pill-brass{background:var(--brass-soft);color:var(--amber)}
 .pill-amber{background:var(--amber-soft);color:var(--amber)}
 .pill-red{background:var(--danger-soft);color:var(--danger)}
+.pill-muted{background:var(--forest-tint);color:var(--muted)}
 .pill-grey{background:#edeae0;color:var(--ink-soft)}
 .pill-blue{background:var(--blue-soft);color:var(--blue)}
 .pill-active{background:var(--forest);color:#fff}
@@ -274,6 +277,14 @@ input[type=checkbox],input[type=radio]{accent-color:var(--forest)}
 .report-meta{font-size:.8rem;color:var(--muted);margin-bottom:1rem}
 .print-head{display:none}
 .link{color:var(--forest);font-weight:500}
+.linkbtn{background:none;border:0;padding:0;color:var(--danger);font-weight:500;
+  cursor:pointer;font-size:inherit;font-family:inherit}
+.linkbtn:hover{text-decoration:underline}
+tr.is-reversed td{opacity:.55}
+tr.is-reversed s{color:var(--muted)}
+.num.neg,td.neg{color:var(--danger)}
+tr.subtotal td{border-top:1px solid var(--line);font-weight:600}
+tr.is-danger td{background:var(--danger-soft)}
 .link:hover{text-decoration:underline}
 .link-danger{color:var(--danger);background:none;border:none;cursor:pointer;padding:0;font:inherit;text-decoration:underline}
 .link-danger:hover{opacity:.8}
@@ -375,7 +386,12 @@ input[type=checkbox],input[type=radio]{accent-color:var(--forest)}
   .sidebar,.topbar,.sidebar-scrim,.searchbox,.palette,.dd-new,.nav-foot,
   .filters,.filter-bar,.btn,.btn-row,.toolbar,.no-print,.flash,.alert,
   .quick-actions,.attention-card,.pagination,nav,form.toolbar,
-  .page-head,.ws-head{display:none!important}
+  /* Headers PRINT as a document head (previously hidden entirely — every page
+     printed titleless). Actions/buttons/forms inside them do not print. */
+  .page-head,.ws-head{display:block!important;padding-bottom:.45rem;margin-bottom:.8rem}
+  .page-head::after,.ws-head::after{border-top-color:#000;border-bottom-color:#666}
+  .page-head .btn,.ws-head .btn,.page-head form,.ws-head form,
+  .page-head .btn-row,.ws-head .ws-actions,.page-head .toolbar{display:none!important}
   .shell{display:block}
   .main{display:block}
   .content{padding:0;max-width:none;margin:0;animation:none}
@@ -592,8 +608,9 @@ details.inline-edit summary::-webkit-details-marker{display:none}
 /* Page header refinement: a hairline brass rule under the title
    block evokes a ledger's ruled page without shouting. */
 .ws-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;
-  flex-wrap:wrap;padding-bottom:.9rem;margin-bottom:1.15rem;
-  border-bottom:1px solid var(--line)}
+  flex-wrap:wrap;position:relative;padding-bottom:.8rem;margin-bottom:1.2rem}
+.ws-head::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;
+  border-top:2px solid var(--forest);border-bottom:1px solid var(--brass)}
 .ws-head .ws-titles h1{margin:0;letter-spacing:-.015em}
 .ws-head .ws-sub{color:var(--muted);font-size:.9rem;margin-top:.15rem}
 .ws-head .ws-actions{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
@@ -1192,3 +1209,89 @@ a.clip-item:hover{background:var(--forest-soft,#e7f0eb)}
 .ld-kpis-1{display:grid;grid-template-columns:minmax(260px,340px);gap:.8rem;margin-bottom:1.2rem}
 .ld-kpis-1 .stat .value{font-size:1.4rem}
 .ld-kpis-1 .stat .value .ksh{font-size:.66em;margin-right:.12rem;opacity:.7}
+
+/* ============================================================
+   Report engine — statement-set report page (v2.85)
+   The masthead is set like the head of a printed financial
+   statement: eyebrow, Fraunces title, mono period line, closed
+   by a double rule (forest over brass hairline). Everything else
+   stays quiet: labeled filters, one segmented export control,
+   accented KPI cards, disciplined tables.
+   ============================================================ */
+.rpt-mast{margin-bottom:1.1rem}
+.rpt-mast .eyebrow,.ws-head .eyebrow,.page-head .eyebrow{font-size:.7rem;font-weight:700;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--brass);margin-bottom:.25rem}
+.rpt-mast h1{margin:0 0 .2rem;line-height:1.15}
+.rpt-mast .desc{color:var(--muted);font-size:.92rem;max-width:70ch}
+.rpt-mast .period{font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:.82rem;color:var(--ink-soft);margin-top:.35rem;
+  font-variant-numeric:tabular-nums}
+.rpt-mast .rule{margin-top:.8rem;border-top:2px solid var(--forest);
+  border-bottom:1px solid var(--brass);height:3px}
+.rpt-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.export-seg{display:inline-flex;border:1px solid var(--line-strong);
+  border-radius:var(--radius);overflow:hidden;background:var(--paper)}
+.export-seg a,.export-seg button{padding:.42rem .8rem;font-size:.8rem;font-weight:600;
+  color:var(--forest);text-decoration:none;border:none;background:none;cursor:pointer;
+  border-right:1px solid var(--line);font-family:inherit;line-height:1.2}
+.export-seg a:last-child,.export-seg button:last-child{border-right:none}
+.export-seg a:hover,.export-seg button:hover{background:var(--forest-soft);color:var(--forest-deep)}
+.export-seg .seg-lbl{padding:.42rem .7rem .42rem .8rem;font-size:.7rem;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  border-right:1px solid var(--line);background:var(--paper-2);cursor:default}
+.engine-grid{display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start}
+.engine-cell{min-width:280px}
+.engine-cell .card .hd h3{font-size:.98rem}
+.engine-chart{position:relative;height:260px;width:100%}
+.kpi-band{display:flex;flex-wrap:wrap;gap:1rem}
+.kpi-band .stat{flex:1;min-width:140px;margin:0}
+.rpt-empty{text-align:center;padding:2.4rem 1rem;color:var(--muted)}
+.rpt-empty .big{font-family:var(--font-display,"Fraunces",serif);font-size:1.05rem;
+  color:var(--ink-soft);margin-bottom:.3rem}
+td.cell-blank{color:var(--line-strong)}
+@media print{
+  .rpt-mast .rule{border-top-color:#000;border-bottom-color:#666}
+  .engine-grid{display:block}
+  .engine-cell{width:100%!important}
+}
+
+/* Report library — card grid (v2.85) */
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.9rem}
+.lib-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.95rem 1.05rem;display:flex;flex-direction:column;gap:.35rem;
+  transition:transform .12s,box-shadow .12s}
+.lib-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.lib-card .eyebrow{font-size:.62rem;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--brass)}
+.lib-card .t{font-weight:600;line-height:1.3}
+.lib-card .t a{color:var(--ink);text-decoration:none}
+.lib-card .t a:hover{color:var(--forest)}
+.lib-card .d{font-size:.8rem;color:var(--muted);flex:1}
+.lib-card .ft{display:flex;align-items:center;justify-content:space-between;
+  border-top:1px solid var(--line);padding-top:.5rem;margin-top:.25rem}
+.lib-card .btn-icon{background:none;border:none;cursor:pointer;font-size:1rem;
+  color:var(--brass);padding:0;line-height:1}
+.lib-cat{font-family:var(--font-display,"Fraunces",serif);font-size:1.05rem;
+  color:var(--ink-soft);margin:1.4rem 0 .6rem;padding-bottom:.3rem;
+  border-bottom:1px solid var(--brass);display:flex;align-items:baseline;gap:.5rem}
+.lib-cat .n{font-family:var(--font-body);font-size:.72rem;color:var(--muted);font-weight:600}
+
+/* ============================================================
+   Dashboards — shared section header + masthead reuse (v2.86)
+   The same statement vocabulary as the report engine: Fraunces
+   section heads closed by a brass hairline, and the .rpt-mast
+   masthead on both dashboards (which also restores a printed
+   header — .page-head/.ws-head are hidden in print).
+   ============================================================ */
+.sec-h{font-family:var(--font-display,"Fraunces",serif);font-size:1.05rem;
+  font-weight:600;color:var(--ink-soft);margin:1.6rem 0 .7rem;
+  padding-bottom:.35rem;border-bottom:1px solid var(--brass);
+  display:flex;align-items:baseline;gap:.55rem;letter-spacing:0;text-transform:none}
+.sec-h .n,.sec-h .muted{font-family:var(--font-body);font-size:.75rem;
+  color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0}
+.sec-h .right{margin-left:auto}
+.rpt-mast .mast-actions{display:flex;align-items:flex-end;gap:.6rem;flex-wrap:wrap}
+@media print{
+  .sec-h{border-bottom-color:#666}
+  .exec-cards,.insight-tiles,.kpi-strip,.chart-grid{break-inside:avoid}
+}

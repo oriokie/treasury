@@ -61,7 +61,7 @@ def resolve_branding(church=None):
 def _flatten(section):
     """A table/keyvalue/kpi/signature section -> (title, header, rows) for
     tabular exports. Non-tabular kinds (chart/commentary/info) return None."""
-    if section.kind in ("chart", "commentary", "info"):
+    if section.kind in ("chart", "commentary", "info", "heading"):
         return None
     header = [c.label for c in section.columns] if section.columns else ["", ""]
     rows = []
@@ -270,9 +270,15 @@ class PdfRenderer(Renderer):
                 story.append(HRFlowable(width="100%", thickness=0.6,
                                         color=colors.HexColor("#c79241"),
                                         spaceAfter=6))
+            if s.kind == "heading":
+                story.append(Paragraph(s.extra.get("text", ""), styles["Heading1"]))
+                continue
             story.append(Paragraph(s.title, styles["Heading2"]))
             if s.kind in ("commentary", "info"):
-                story.append(Paragraph(s.extra.get("text", ""), styles["Normal"]))
+                for para in (s.extra.get("text", "") or "").split("\n\n"):
+                    if para.strip():
+                        story.append(Paragraph(para.strip().replace("\n", "<br/>"),
+                                               styles["Normal"]))
             elif s.kind == "chart":
                 # server-side PNG of the same registry-sourced figures the
                 # on-screen Chart.js draws (recommendation #28)
@@ -372,9 +378,15 @@ class DocxRenderer(Renderer):
                              if _section_breaks(s) else "")
                 parts.append(f"<h1 style='border-bottom:1px solid {_pc};"
                              f"padding-bottom:3px'>{escape(grp)}</h1>")
+            if s.kind == "heading":
+                parts.append(f"<h1>{escape(s.extra.get('text', ''))}</h1>")
+                continue
             parts.append(f"<h2>{escape(s.title)}</h2>")
             if s.kind in ("commentary", "info"):
-                parts.append(f"<p>{escape(s.extra.get('text', ''))}</p>")
+                for para in (s.extra.get("text", "") or "").split("\n\n"):
+                    if para.strip():
+                        parts.append(
+                            "<p>" + escape(para.strip()).replace("\n", "<br>") + "</p>")
             elif s.kind == "chart":
                 # server-side PNG (recommendation #28) — Word can't run
                 # Chart.js; the Monthly report already embeds images this way

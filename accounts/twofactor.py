@@ -137,7 +137,16 @@ class TwoFactorSetupView(LoginRequiredMixin, View):
         return redirect("twofactor_setup")
 
 
+from django.contrib.auth.decorators import login_not_required
+from django.utils.decorators import method_decorator
+
+
+@method_decorator(login_not_required, name="dispatch")
 class TwoFactorVerifyView(View):
+    # Runs DURING login — the password step has passed but the session is not yet
+    # VERIFIED, so request.user is deliberately anonymous here. Exempt from the
+    # global login-required gate (P1-1) so the second factor can be completed;
+    # access is instead controlled by the PENDING_USER session token below.
     template_name = "accounts/twofactor_verify.html"
 
     def _pending_tf(self, request):

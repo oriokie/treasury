@@ -231,6 +231,146 @@ def _check_min_contributions(policy, membership) -> Check:
                  f"{made} contribution(s) recorded; {n} required.")
 
 
+def _check_tenure(policy, membership, event_date) -> Check:
+    """Months of PAID-UP membership — the '3/6/12 months paid in' rule most real
+    constitutions carry. Distinct from the waiting period (calendar time whether
+    or not anyone paid) and from min_contributions (a bare count two payments in
+    one month would satisfy): this counts dues periods actually settled."""
+    label = "Paid-up tenure met"
+    n = policy.min_paid_months
+    if not n:
+        return Check("tenure", label, True, "No paid-up tenure requirement applies.",
+                     blocking=False)
+    if membership is None:
+        return Check("tenure", label, False,
+                     "No membership, so paid-up tenure cannot be measured.")
+    from benevolent.services.standing import facts_for
+    facts = facts_for(membership, policy, as_of=event_date)
+    paid = facts.paid_periods
+    ok = paid >= n
+    unit = _period_word(policy)
+    return Check("tenure", label, ok,
+                 f"{paid} {unit}(s) paid in full; {n} required before a claim qualifies.")
+
+
+def _period_word(policy):
+    f = policy.contribution_frequency
+    return {SchemePolicy.Frequency.ANNUAL: "year",
+            SchemePolicy.Frequency.QUARTERLY: "quarter",
+            SchemePolicy.Frequency.MONTHLY: "month"}.get(f, "period")
+
+
+def _check_no_missed(policy, membership, event_date) -> Check:
+    """An unbroken payment record. The strictest standing rule: not 'up to date
+    now' but 'never lapsed' — any missed period beyond the allowed tolerance
+    disqualifies even if it was later paid. A member who wants to rely on the
+    scheme must have stood with it every period."""
+    label = "Unbroken contribution record"
+    if not policy.no_missed_contributions:
+        return Check("no_missed", label, True,
+                     "This policy does not require an unbroken record.", blocking=False)
+    if membership is None:
+        return Check("no_missed", label, False,
+                     "No membership, so the payment record cannot be checked.")
+    from benevolent.services.standing import facts_for
+    facts = facts_for(membership, policy, as_of=event_date)
+    allowed = policy.missed_contributions_allowed or 0
+    # a currently-clear record still counts historical gaps: missed_periods is
+    # today's outstanding, but "ever missed" needs the full history. We count
+    # periods that were EVER outstanding by re-reading the schedule for gaps.
+    ever_missed = _ever_missed_count(membership, policy, event_date)
+    ok = ever_missed <= allowed
+    tol = f" (up to {allowed} tolerated)" if allowed else ""
+    return Check("no_missed", label, ok,
+                 f"{ever_missed} period(s) missed at some point{tol}." if ever_missed
+                 else "No period has ever been missed.")
+
+
+def _ever_missed_count(membership, policy, as_of):
+    """How many dues periods were missed at their due time — a gap in the record,
+    whether or not it was later back-paid. Distinct from current arrears: a
+    member who fell behind and caught up has zero arrears but a broken record."""
+    from benevolent.services.contributions import dues_schedule, contributions_in_period
+    rows = dues_schedule(membership, policy, as_of=as_of)
+    missed = 0
+    for r in rows:
+        if r.get("waived"):
+            continue
+        # paid ON TIME? compare what was paid WITHIN the period against what was due.
+        # If back-payment cleared it later, `outstanding` is 0 today but the period
+        # was still missed at the time — that is what an unbroken record forbids.
+        end = _period_end_for(r["period"], policy.contribution_frequency)
+        on_time = contributions_in_period(membership, r["period"], on_or_before=end)
+        if on_time + Decimal("0.001") < r["due"]:
+            missed += 1
+    return missed
+
+
+def _period_end_for(label, frequency):
+    from benevolent.services.standing import _period_end
+    return _period_end(label, frequency)
+
+
+def _check_catch_up(policy, membership, event_date) -> Check:
+    """After clearing arrears, does eligibility come back at once, or must the
+    member serve a re-qualification period? On (the humane default) restores
+    cover immediately. Off guards against paying up only once a death has already
+    happened: a member who back-paid a gap must then stay paid-up for the
+    re-qualification window before a claim qualifies.
+
+    Deliberately narrow: it bites ONLY on a member who actually caught up a late
+    gap recently. A member who has simply paid on time every period has no gap to
+    have caught up on and is never caught by this — which is why it keys off
+    late-settled periods, not merely 'when did money last arrive'."""
+    label = "Re-qualified after catching up"
+    if policy.catch_up_restores_eligibility or not policy.catch_up_requalify_days:
+        return Check("catch_up", label, True,
+                     "Clearing arrears restores eligibility immediately under this policy.",
+                     blocking=False)
+    if membership is None:
+        return Check("catch_up", label, True, "No membership to check.", blocking=False)
+    from benevolent.services.standing import facts_for
+    facts = facts_for(membership, policy, as_of=event_date)
+    if facts.arrears > 0:
+        # not yet clear — the arrears rule governs this claim, not this one.
+        return Check("catch_up", label, True,
+                     "Not yet clear of arrears; the arrears rule governs this claim.",
+                     blocking=False)
+    # Did they catch up a LATE gap, and if so how recently? A period settled
+    # after its own due-end is a catch-up; the latest such settlement date is
+    # when their re-qualification window starts.
+    caught_up_on = _latest_catch_up_date(membership, policy, event_date)
+    if caught_up_on is None:
+        return Check("catch_up", label, True,
+                     "No late catch-up on record — the member has kept up, so no "
+                     "re-qualification period applies.", blocking=False)
+    need = policy.catch_up_requalify_days
+    clear_days = (event_date - caught_up_on).days
+    ok = clear_days >= need
+    return Check("catch_up", label, ok,
+                 f"Last caught up a missed period {max(0, clear_days)} day(s) ago; this "
+                 f"policy requires {need} day(s) paid-up after catching up before a claim "
+                 f"re-qualifies.")
+
+
+def _latest_catch_up_date(membership, policy, as_of):
+    """The most recent date on which a LATE period was settled — i.e. a dues
+    payment that landed after the end of the period it was paid for. None where
+    every period was paid on time (nothing was ever caught up)."""
+    from benevolent.services.contributions import (DUES_KINDS, contributions_qs)
+    from benevolent.services.standing import _period_end
+    latest = None
+    for c in contributions_qs(membership=membership, kinds=DUES_KINDS):
+        if not c.period_label:
+            continue
+        end = _period_end(c.period_label, policy.contribution_frequency)
+        pay_date = c.transaction.date
+        if end and pay_date > end:                 # settled after it was due
+            if latest is None or pay_date > latest:
+                latest = pay_date
+    return latest
+
+
 def _check_arrears(policy, membership, event_date) -> Check:
     """Arrears are not automatically a bar.
 
@@ -266,6 +406,22 @@ def _check_arrears(policy, membership, event_date) -> Check:
                      f"late of the {facts.grace_days}-day grace period — still covered.",
                      blocking=False)
     ok = owed <= allowed
+    # A policy may instead express its tolerance in PERIODS ("up to 2 months
+    # behind is fine") — easier to reason about than a shilling figure when the
+    # dues rate changes over time. When set, a member within the period
+    # tolerance passes regardless of the amount.
+    if policy.max_arrears_periods:
+        within_periods = facts.arrears_periods <= policy.max_arrears_periods
+        if treatment == SchemePolicy.ArrearsTreatment.DEDUCT:
+            return Check("arrears", label, within_periods,
+                         f"{facts.arrears_periods} period(s) in arrears "
+                         f"({_money(owed)}); up to {policy.max_arrears_periods} tolerated. "
+                         f"This policy pays the benefit and deducts them.",
+                         blocking=False)
+        return Check("arrears", label, within_periods,
+                     f"{facts.arrears_periods} period(s) in arrears ({_money(owed)}); "
+                     f"up to {policy.max_arrears_periods} permitted before a claim is "
+                     f"blocked.")
     if treatment == SchemePolicy.ArrearsTreatment.DEDUCT:
         return Check("arrears", label, ok,
                      f"Arrears of {_money(owed)} at the event date. This policy pays the "
@@ -806,7 +962,10 @@ def evaluate(scheme, *, event_type, event_date, membership=None,
         _check_joining_age(policy, membership),
         _check_waiting_period(policy, membership, event_date, rule),
         _check_min_contributions(policy, membership),
+        _check_tenure(policy, membership, event_date),
+        _check_no_missed(policy, membership, event_date),
         _check_arrears(policy, membership, event_date),
+        _check_catch_up(policy, membership, event_date),
         _check_renewal(policy, membership, event_date),
         _check_inactivity(policy, membership, event_date),
         _check_beneficiary_covered(policy, membership, case, event_type),

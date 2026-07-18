@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Loan register · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Loan register</h1><div class="sub">Every loan, its receipts, repayments and outstanding balance</div></div>
+<div class="page-head"><div><div class="eyebrow">Loans · {{ SITE_NAME }}</div><h1>Loan register</h1><div class="sub">Every loan, its receipts, repayments and outstanding balance</div></div>
 <div class="btn-row no-print">
   {% if can.manage_loans %}<a class="btn btn-sm" href="{% url 'loan_new' %}">+ New loan</a>{% endif %}
   <a class="btn btn-ghost btn-sm" href="?{{ request.GET.urlencode }}&export=csv">⬇ CSV</a>

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Reconciliation · {{ scheme.name }}{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles">
+  <h1>{{ scheme.name }} · Reconciliation</h1>
+  <div class="ws-sub">Do the contributions this scheme has recorded agree with the bank receipts that
+    carry the money? {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}.</div>
+</div>
+<div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_scheme_detail' scheme.id %}">← {{ scheme.name }}</a></div></div>
+
+<div class="stat-row u-mb">
+  <div class="stat accent"><div class="stat-label">Recorded as contributions</div>
+    <div class="stat-value">{{ result.recorded_total|floatformat:2 }}</div></div>
+  <div class="stat brass"><div class="stat-label">Banked into the fund</div>
+    <div class="stat-value">{{ result.receipts_total|floatformat:2 }}</div></div>
+  <div class="stat {% if result.balanced %}accent{% else %}danger{% endif %}">
+    <div class="stat-label">Difference</div>
+    <div class="stat-value">{{ result.difference|floatformat:2 }}</div></div>
+</div>
+
+{% if result.balanced %}
+<div class="alert alert-success">Everything reconciles. Every shilling banked into the fund is recorded as a
+  contribution, and every contribution has its receipt behind it.</div>
+{% else %}
+<div class="alert alert-warn">{{ result.exceptions|length }} item{{ result.exceptions|length|pluralize }}
+  need{{ result.exceptions|length|pluralize:"s," }} attention below.</div>
+
+<div class="card u-mt"><div class="hd"><h3>Items to resolve</h3></div>
+<table class="ledger">
+  <thead><tr><th>Type</th><th>Detail</th><th class="num">Amount</th><th></th></tr></thead>
+  <tbody>
+    {% for x in result.exceptions %}
+    <tr>
+      <td><span class="pill {% if x.kind == 'orphan_receipt' %}pill-amber{% else %}pill-red{% endif %}">{{ x.label }}</span></td>
+      <td class="muted">{{ x.detail }}</td>
+      <td class="num">{{ x.amount|floatformat:2 }}</td>
+      <td class="num">
+        {% if x.kind == 'orphan_receipt' %}
+          <a class="link u-xs" href="{% url 'benevolent_intake_queue' %}">Intake queue →</a>
+        {% elif x.contribution_id %}
+          <a class="link u-xs" href="{% url 'benevolent_contribution_correct' x.contribution_id %}">Correct →</a>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

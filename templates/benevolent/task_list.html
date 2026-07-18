@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Review tasks · Benevolent{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles"><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div>
+  <h1>Review tasks</h1>
+  <div class="ws-sub">Things the nightly automation noticed that need a person to decide. Automation never
+    changes a member's status on its own — it raises the question here and waits for you to confirm or dismiss.</div>
+</div></div>
+
+<form method="get" class="filter-bar u-mb">
+  <label>Scheme
+    <select name="scheme" class="field" onchange="this.form.submit()">
+      <option value="">All schemes</option>
+      {% for s in schemes %}<option value="{{ s.id }}" {% if f_scheme == s.id|stringformat:'s' %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Status
+    <select name="status" class="field" onchange="this.form.submit()">
+      {% for val, lbl in statuses %}<option value="{{ val }}" {% if f_status == val %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button class="btn btn-sm">Filter</button></noscript>
+</form>
+
+{% if not tasks %}
+<div class="alert alert-success">Nothing to review. No open tasks match this filter.</div>
+{% else %}
+<div class="card"><table class="ledger">
+  <thead><tr><th>Task</th><th>Detail</th><th></th><th class="no-print"></th></tr></thead>
+  <tbody>
+    {% for task in tasks %}
+    <tr>
+      <td>
+        <span class="pill {% if task.severity == 'HIGH' %}pill-red{% elif task.severity == 'MEDIUM' %}pill-amber{% else %}pill-muted{% endif %}">{{ task.get_kind_display }}</span>
+        <div class="u-xs muted u-mt-xs">{{ task.scheme.code }} · {{ task.created_at|date:"d M y" }}{% if task.created_by_automation %} · auto{% endif %}</div>
+      </td>
+      <td>
+        <strong>{{ task.title }}</strong>
+        <div class="muted u-xs">{{ task.detail }}</div>
+      </td>
+      <td class="num u-xs">
+        {% if task.case_id %}<a class="link" href="{% url 'benevolent_case_detail' task.case_id %}">Case →</a>
+        {% elif task.membership_id %}<a class="link" href="{% url 'benevolent_membership_detail' task.membership_id %}">Member →</a>{% endif %}
+      </td>
+      <td class="num no-print">
+        {% if task.status == 'OPEN' and can.manage_benevolent %}
+        <form method="post" action="{% url 'benevolent_task_resolve' task.id %}" style="display:inline">
+          {% csrf_token %}<input type="hidden" name="action" value="done">
+          <button class="btn btn-sm" type="submit" title="Mark done once you've taken the action">Actioned</button>
+        </form>
+        <form method="post" action="{% url 'benevolent_task_resolve' task.id %}" style="display:inline">
+          {% csrf_token %}<input type="hidden" name="action" value="dismiss">
+          <button class="btn btn-sm btn-ghost" type="submit">Dismiss</button>
+        </form>
+        {% elif task.status != 'OPEN' %}
+        <span class="muted u-xs">{{ task.get_status_display }}{% if task.resolved_by %} · {{ task.resolved_by.username }}{% endif %}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table></div>
+{% include 'partials/pagination.html' %}
+{% endif %}
+{% endblock %}

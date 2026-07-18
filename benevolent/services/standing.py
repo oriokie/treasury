@@ -70,6 +70,12 @@ class MembershipFacts:
     renewal_due_on: Optional[_dt.date] = None
     renewal_overdue: bool = False
     grace_days: int = 0
+    # tenure / payment-record facts (Phase: eligibility rules)
+    paid_periods: int = 0            # dues periods fully settled
+    total_periods: int = 0           # dues periods that have fallen due at all
+    missed_periods: int = 0          # periods still wholly or partly outstanding
+    arrears_periods: int = 0         # periods with any amount still outstanding
+    paid_up_since: Optional[_dt.date] = None  # when the record last became fully clear
 
     @property
     def exempt_from_dues(self):
@@ -96,18 +102,25 @@ def missed_case_levies(membership, policy=None, as_of=None) -> int:
     and then expects the family to stand with them — a thing every real welfare
     scheme has a rule about, and which a dues-shaped system cannot even see.
 
-    Counted CONSECUTIVELY, backwards from the most recent case: a member who
-    missed three levies two years ago and has paid every one since is not the
-    problem this rule is for.
+    Two ways to count, per `policy.inactivity_missed_cases_window`:
 
-    Cases raised for the member themselves are skipped: they were never levied for
-    their own bereavement (or, where the policy levies them, it comes out of what
-    they receive), so counting it as a miss would punish them for being bereaved.
+    CONSECUTIVE (the original, and the default): an unbroken run of misses,
+    backwards from the most recent case. A member who missed three levies two
+    years ago and has paid every one since is not the problem this mode is for.
+
+    ROLLING_YEAR: any missed levies in the last 12 months, even with paid ones
+    in between — for a policy that wants to catch sporadic non-payers, not just
+    someone who has stopped paying outright.
+
+    Either way, cases raised for the member themselves are skipped: they were
+    never levied for their own bereavement (or, where the policy levies them,
+    it comes out of what they receive), so counting it as a miss would punish
+    them for being bereaved.
     """
     from benevolent.services.contributions import levy_paid_by
 
     as_of = as_of or _dt.date.today()
-    policy = policy or membership.scheme.policy_on(as_of)
+    policy = policy or membership._policy_on_cached(as_of)
     if policy is None or not policy.inactivity_missed_cases:
         return 0
     leviable = (SchemePolicy.ContributionMode.PER_CASE_LEVY,
@@ -115,15 +128,33 @@ def missed_case_levies(membership, policy=None, as_of=None) -> int:
     if policy.contribution_mode not in leviable:
         return 0
 
-    cases = (BenevolentCase.objects
-             .filter(scheme=membership.scheme,
-                     event_date__gte=membership.cover_from,
-                     event_date__lte=as_of,
-                     status__in=[BenevolentCase.Status.APPROVED,
-                                 BenevolentCase.Status.PARTLY_PAID,
-                                 BenevolentCase.Status.PAID,
-                                 BenevolentCase.Status.CLOSED])
-             .order_by("-event_date"))
+    # This case list is per-SCHEME, not per-member — identical for every member
+    # of the scheme. A batch pass loads it once and stashes it on the scheme so
+    # the per-member scan reuses it instead of re-querying the same rows N times.
+    cases = getattr(membership.scheme, "_missed_case_scan_cache", None)
+    if cases is None:
+        cases = list(BenevolentCase.objects
+                     .filter(scheme=membership.scheme,
+                             event_date__lte=as_of,
+                             status__in=[BenevolentCase.Status.APPROVED,
+                                         BenevolentCase.Status.PARTLY_PAID,
+                                         BenevolentCase.Status.PAID,
+                                         BenevolentCase.Status.CLOSED])
+                     .order_by("-event_date"))
+    # each member only counts cases from their own cover date onward
+    cases = [c for c in cases if c.event_date >= membership.cover_from]
+
+    if policy.inactivity_missed_cases_window == SchemePolicy.MissedCasesWindow.ROLLING_YEAR:
+        window_start = as_of - _dt.timedelta(days=365)
+        missed = 0
+        for case in cases:
+            if case.event_date < window_start:
+                break                       # cases are ordered newest-first
+            if case.membership_id == membership.pk:
+                continue                   # never levied for their own case
+            if levy_paid_by(membership, case) <= 0:
+                missed += 1
+        return missed
 
     missed = 0
     for case in cases:
@@ -135,13 +166,167 @@ def missed_case_levies(membership, policy=None, as_of=None) -> int:
     return missed
 
 
-def facts_for(membership, policy=None, as_of=None) -> MembershipFacts:
+def facts_for_scheme(scheme, as_of=None, memberships=None):
+    """`facts_for` for EVERY member of a scheme, in a bounded number of queries.
+
+    `facts_for` is correct but expensive in a loop: called per member it issues
+    ~15-20 queries each (dues paid, levy payments, the case scan, adjustments,
+    exemptions, last contribution…), so a report over a 200-member scheme fired
+    thousands of round trips — the N+1 the engineering review flagged as P1-3.
+
+    This does NOT reimplement the facts (a second implementation would drift from
+    the register and the eligibility engine — the whole reason `facts_for` is the
+    single source). Instead it PRE-LOADS, scheme-wide and in a handful of grouped
+    queries, exactly the data each per-member call would otherwise fetch one at a
+    time, stashes each member's slice on the membership instance, and then calls
+    the SAME `facts_for`. Every leaf query inside `facts_for` finds its answer
+    already in a cache, so the loop adds no round trips. Same numbers, a fraction
+    of the queries.
+
+    Returns an ordered ``[(membership, MembershipFacts), …]``.
+    """
+    from decimal import Decimal as _Dec
+
+    from django.db.models import Max, Sum
+
+    from benevolent.models import (BenevolentCase, BenevolentContribution,
+                                   SchemeMembership, SchemePolicy)
+    from benevolent.services.contributions import (DUES_KINDS, _effective_q,
+                                                   period_label_for)
+
+    as_of = as_of or _dt.date.today()
+    if memberships is None:
+        memberships = list(scheme.memberships.select_related("member")
+                           .prefetch_related("exemptions", "adjustments"))
+    else:
+        memberships = list(memberships)
+    if not memberships:
+        return []
+    mem_ids = [m.pk for m in memberships]
+
+    # (1) Policy versions — once for the scheme, shared by every member.
+    versions = list(scheme.policies.filter(
+        status__in=[SchemePolicy.Status.ACTIVE, SchemePolicy.Status.SUPERSEDED]
+    ).order_by("-effective_from", "-version"))
+
+    # (2) Dues paid per (member, period) — one grouped query for the whole scheme.
+    paid_by_member_period = {}
+    for row in (BenevolentContribution.objects
+                .filter(membership_id__in=mem_ids, kind__in=DUES_KINDS)
+                .filter(_effective_q())
+                .values_list("membership_id", "period_label")
+                .annotate(total=Sum("transaction__amount"))):
+        mid, label, total = row
+        paid_by_member_period.setdefault(mid, {})[label] = total
+
+    # (3) Dues paid TOTAL per member, WITHIN each member's own dues window — the
+    #     date-windowed sum arrears_for uses (which counts lump sums regardless of
+    #     period label). Loaded as dated rows once, windowed per member in Python.
+    dues_rows = list(BenevolentContribution.objects
+                     .filter(membership_id__in=mem_ids, kind__in=DUES_KINDS)
+                     .filter(_effective_q())
+                     .values_list("membership_id", "transaction__date",
+                                  "transaction__amount"))
+    dues_by_member = {}
+    for mid, d, amt in dues_rows:
+        dues_by_member.setdefault(mid, []).append((d, amt or _Dec(0)))
+
+    # (4) The case scan for missed-levy counting — per SCHEME, shared by all.
+    case_scan = list(BenevolentCase.objects
+                     .filter(scheme=scheme, event_date__lte=as_of,
+                             status__in=[BenevolentCase.Status.APPROVED,
+                                         BenevolentCase.Status.PARTLY_PAID,
+                                         BenevolentCase.Status.PAID,
+                                         BenevolentCase.Status.CLOSED])
+                     .order_by("-event_date"))
+    scheme._missed_case_scan_cache = case_scan
+    scan_case_ids = [c.pk for c in case_scan]
+    # a member's OWN settled cases drive the bereaved-member dues waiver.
+    # _waived_periods filters by status only (no date bound), so load with the
+    # same filter — grouped by membership — rather than reusing the date-bounded
+    # scan above, which would drop a future-dated settled case.
+    own_cases_by_member = {}
+    for c in (BenevolentCase.objects
+              .filter(scheme=scheme, membership_id__in=mem_ids,
+                      status__in=[BenevolentCase.Status.APPROVED,
+                                  BenevolentCase.Status.PARTLY_PAID,
+                                  BenevolentCase.Status.PAID,
+                                  BenevolentCase.Status.CLOSED])
+              .select_related("policy")):
+        own_cases_by_member.setdefault(c.membership_id, []).append(c)
+
+    # (5) Levy paid per (member, case) — one grouped query for the whole scheme.
+    levy_by_member = {}
+    if scan_case_ids:
+        for row in (BenevolentContribution.objects
+                    .filter(membership_id__in=mem_ids, case_id__in=scan_case_ids)
+                    .filter(_effective_q())
+                    .values_list("membership_id", "case_id")
+                    .annotate(total=Sum("transaction__amount"))):
+            mid, cid, total = row
+            levy_by_member.setdefault(mid, {})[cid] = total or _Dec(0)
+
+    # (6) Last contribution date per member — one grouped query.
+    last_by_member = dict(
+        BenevolentContribution.objects
+        .filter(membership_id__in=mem_ids).filter(_effective_q())
+        .values_list("membership_id")
+        .annotate(last=Max("transaction__date")))
+
+    # Window boundary shared by dues windowing: the scheme's earliest policy date.
+    first_policy = min((v.effective_from for v in versions), default=None)
+
+    # Warm each membership's caches, then compute facts via the unchanged path.
+    out = []
+    for m in memberships:
+        m._policy_versions = versions
+        m._policy_cache_trusted = True
+        m._paid_by_period_cache = paid_by_member_period.get(m.pk, {})
+        m._levy_paid_cache = levy_by_member.get(m.pk, {})
+        m._last_contribution_date_cache = last_by_member.get(m.pk)  # None if never
+        m._own_settled_cases_cache = own_cases_by_member.get(m.pk, [])
+        # windowed dues-paid total (mirrors arrears_for's start/end exactly)
+        if first_policy is not None:
+            start = max(m.cover_from, first_policy)
+            end = min(as_of, m.left_on or as_of)
+            total = _Dec(0)
+            for d, amt in dues_by_member.get(m.pk, ()):
+                if start <= d <= end:
+                    total += amt
+            m._dues_paid_total_cache = total
+        drows = dues_by_member.get(m.pk, ())
+        m._last_dues_date_cache = max((d for d, _ in drows), default=None)
+        out.append((m, facts_for(m, as_of=as_of, _batched=True)))
+    return out
+
+
+def facts_for(membership, policy=None, as_of=None, _batched=False) -> MembershipFacts:
     """THE facts. Computed once; used by standing and by eligibility alike, so the
-    register and the claim decision can never disagree about a plain number."""
+    register and the claim decision can never disagree about a plain number.
+
+    For MANY members of one scheme, prefer ``facts_for_scheme`` — it pre-loads the
+    same data scheme-wide and calls this per member with its caches warmed, for a
+    fraction of the queries and the identical result.
+
+    ``_batched`` is set only by ``facts_for_scheme``: it means the per-instance
+    caches on this membership were deliberately warmed for THIS pass and may be
+    trusted. When it is False (every ordinary call), any per-instance cache left
+    over from an earlier call is cleared first — a membership object reused across
+    two assessments (e.g. after publishing a new policy version) must resolve
+    against the CURRENT policies, never a stale cached version list. This is the
+    invariant a cross-version agreement test caught."""
+    if not _batched:
+        for attr in ("_policy_versions", "_policy_cache_trusted",
+                     "_dues_window_start", "_paid_by_period_cache",
+                     "_dues_paid_total_cache", "_levy_paid_cache",
+                     "_last_contribution_date_cache", "_last_dues_date_cache",
+                     "_own_settled_cases_cache"):
+            if hasattr(membership, attr):
+                delattr(membership, attr)
     from benevolent.services.contributions import arrears_for, dues_schedule
 
     as_of = as_of or _dt.date.today()
-    policy = policy or membership.scheme.policy_on(as_of)
+    policy = policy or membership._policy_on_cached(as_of)
     f = MembershipFacts(as_of=as_of, policy=policy)
     if policy is None:
         return f
@@ -157,6 +342,24 @@ def facts_for(membership, policy=None, as_of=None) -> MembershipFacts:
     # implementations drift.
     f.arrears = arrears_for(membership, policy, as_of=as_of)
     f.days_past_due = _days_past_due(membership, policy, as_of)
+
+    # Tenure and payment-record facts, derived from the SAME dues schedule the
+    # arrears figure comes from — one read, so a member's "6 periods paid" and
+    # their arrears can never disagree. A period counts as PAID only when fully
+    # settled (outstanding == 0); a waived period (a bereaved-member rule)
+    # counts as paid, because the scheme chose not to charge it.
+    rows = dues_schedule(membership, policy, as_of=as_of)
+    f.total_periods = len(rows)
+    f.paid_periods = sum(1 for r in rows if r["outstanding"] <= 0)
+    f.missed_periods = sum(1 for r in rows if r["outstanding"] > 0)
+    f.arrears_periods = f.missed_periods
+    # paid_up_since: the day the record last became wholly clear. If anything is
+    # outstanding now it is None (they are not currently paid up); otherwise it
+    # is the end of the last period that HAD been outstanding, or the cover date
+    # if they have never missed. Used by the catch-up re-qualification rule.
+    if f.missed_periods == 0:
+        f.paid_up_since = _last_cleared_date(membership, rows, policy) \
+            or membership.cover_from
 
     f.months_idle = membership.months_since_contribution(as_of=as_of)
     f.missed_cases = missed_case_levies(membership, policy, as_of)
@@ -185,6 +388,21 @@ def _days_past_due(membership, policy, as_of):
     first = rows[0]["period"]              # dues_schedule is in period order
     end = _period_end(first, policy.contribution_frequency)
     return max(0, (as_of - end).days) if end else 0
+
+
+def _last_cleared_date(membership, rows, policy):
+    """The date of a currently-paid-up member's most recent dues payment — a
+    plain fact exposed on MembershipFacts for the register and reports. (The
+    catch-up eligibility rule computes its own 'last caught up a late gap' date
+    rather than relying on this, because 'last paid' and 'last caught up late'
+    are different questions.) None where no dues payment is on record."""
+    cached = getattr(membership, "_last_dues_date_cache", "unset")
+    if cached != "unset":
+        return cached
+    from benevolent.services.contributions import DUES_KINDS, contributions_qs
+    return (contributions_qs(membership=membership, kinds=DUES_KINDS)
+            .order_by("-transaction__date")
+            .values_list("transaction__date", flat=True).first())
 
 
 def _period_end(label, frequency):
@@ -288,7 +506,7 @@ def assess(membership, policy=None, as_of=None) -> StandingResult:
       5. Otherwise: arrears, or good standing.
     """
     as_of = as_of or _dt.date.today()
-    policy = policy or membership.scheme.policy_on(as_of)
+    policy = policy or membership._policy_on_cached(as_of)
     facts = facts_for(membership, policy, as_of)
     w = []
 

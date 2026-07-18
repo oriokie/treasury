@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Cash counts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Sabbath cash counts</h1><div class="sub">Counting-team verification sheets</div></div>
+<div class="page-head"><div><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Sabbath cash counts</h1><div class="sub">Counting-team verification sheets</div></div>
 {% if can_enter_data %}<a class="btn btn-sm" href="{% url 'count_new' %}">+ New count</a>{% endif %}</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Sabbath</th><th class="num">Counted</th><th class="num">Expected</th><th class="num">Discrepancy</th><th>Counters</th><th></th></tr></thead>

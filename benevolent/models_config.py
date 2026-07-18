@@ -146,6 +146,12 @@ class BenevolentSettings(models.Model):
     auto_lapse_unrenewed = models.BooleanField(
         default=True, help_text="Apply the policy's renewal rule when a membership's "
                                 "renewal falls due and is not paid within the grace period.")
+    auto_archive_cases = models.BooleanField(
+        default=True,
+        help_text="Automatically archive cases that have been settled (paid, closed, "
+                  "rejected or cancelled) for more than six months, so the working case "
+                  "list shows what is live. Archiving is a display flag only — it moves "
+                  "nothing and a person can unarchive at any time.")
     arrears_reminder_days = models.PositiveIntegerField(
         default=0,
         help_text="Remind a member this many days after they fall into arrears. "
@@ -188,6 +194,21 @@ class BenevolentSettings(models.Model):
         default=True,
         help_text="Propose a narration rule after a treasurer has allocated the same "
                   "unrecognised narration by hand a few times.")
+
+    # ---- Fund solvency (item 8: accounting scenarios) -----------------------
+    block_overdrawn_payouts = models.BooleanField(
+        default=False,
+        help_text="Refuse a benefit payout that would push a scheme's fund past the "
+                  "cash available after existing approvals. Off (the default) warns but "
+                  "still allows it — a church may legitimately approve against a levy "
+                  "still being collected. Switch on for a fund that must never go "
+                  "negative.")
+    reserve_open_cases = models.BooleanField(
+        default=True,
+        help_text="In the fund-position view, hold back a prudent reserve for open "
+                  "cases still working through the pipeline (draft/submitted/assessed), "
+                  "so 'available to commit to a new case' does not count money already "
+                  "spoken for. Off shows only firm approvals as claims on the balance.")
 
     # ---- Obligation allocation (Round 9, items 6/7/8) -----------------------
     apportion_to_obligations = models.BooleanField(

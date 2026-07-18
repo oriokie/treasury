@@ -6,6 +6,7 @@
     <span class="pill {% if case.status == 'PAID' or case.status == 'CLOSED' %}pill-green{% elif case.status == 'REJECTED' or case.status == 'CANCELLED' %}pill-red{% elif case.status == 'APPROVED' or case.status == 'PARTLY_PAID' %}pill-blue{% else %}pill-amber{% endif %} u-xs">{{ case.get_status_display }}</span></div></div>
 <div class="btn-row no-print">
   {% if can.benevolent_manage_cases or can.manage_benevolent %}{% if case.status == 'DRAFT' %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_edit' case.id %}">Edit</a>{% endif %}{% endif %}
+  {% if can.manage_benevolent %}{% if case.status == 'APPROVED' or case.status == 'PARTLY_PAID' or case.status == 'PAID' or case.status == 'CLOSED' %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_sms_center' case.scheme.id %}?audience=ALL_ACTIVE">✉ Notify members</a>{% endif %}{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">← Cases</a></div></div>
 
 <div class="grid cols-4 u-mb">

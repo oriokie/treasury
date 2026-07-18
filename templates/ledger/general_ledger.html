@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}General ledger · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head no-print"><div><h1>General ledger</h1><div class="sub">{% if account %}{{ account.code }} · {{ account.name }}{% endif %}</div></div>
+<div class="page-head no-print"><div><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>General ledger</h1><div class="sub">{% if account %}{{ account.code }} · {{ account.name }}{% endif %}</div></div>
 <button class="btn btn-sm no-print" onclick="window.print()">⎙ PDF</button></div>
 <form method="get" class="filters no-print">
   <div class="f"><label>Account</label><select name="account" class="field--select" onchange="this.form.submit()">{% for a in accounts %}<option value="{{ a.code }}" {% if account and a.code == account.code %}selected{% endif %}>{{ a.code }} — {{ a.name }}</option>{% endfor %}</select></div>

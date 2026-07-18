@@ -111,7 +111,13 @@ class RegisterImportTests(RegisterFixture):
         self.assertEqual(ln.date, dt.date(2026, 7, 1))
         self.assertEqual(ln.credit, Decimal("1000"))
         self.assertEqual(ln.bank_balance, Decimal("1000"))
-        self.assertEqual(ln.dedup_key, "UERAAA111")
+        # dedup_key folds in the amount and a narration fingerprint whenever the
+        # identifier is not itself a genuine 10-char M-Pesa receipt (UERAAA111 is
+        # 9 characters) — this is what lets several DISTINCT movements sharing
+        # one bank reference stay distinct (see statements/services/register.py
+        # and statements/test_dedup_shared_coreref.py for the real cases this
+        # fixed). A bare-receipt key would collapse them.
+        self.assertEqual(ln.dedup_key, "UERAAA111|1000|UERAAA111~441211#TITHE~2")
 
     def test_re_importing_the_same_file_adds_nothing(self):
         rows = [["2026-07-01", "UERAAA111~x#tithe~254700~C2B~A", "1000", "", "1000"]]

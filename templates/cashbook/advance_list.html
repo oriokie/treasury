@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Staff advances · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Staff advances (imprest)</h1><div class="sub">Cash advanced to staff before expenses, settled against receipts</div></div>
+<div class="page-head"><div><div class="eyebrow">Expenses · {{ SITE_NAME }}</div><h1>Staff advances (imprest)</h1><div class="sub">Cash advanced to staff before expenses, settled against receipts</div></div>
 {% if can_enter_data %}<a class="btn btn-sm" href="{% url 'advance_new' %}">+ New advance</a>{% endif %}</div>
 
 {% if total_outstanding %}

@@ -1,10 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Funds · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div class="ph-actions" style="margin-left:auto">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'dev_group_sms' %}">✉ SMS dev groups</a> <a class="btn btn-ghost btn-sm" href="{% url 'historical_accounts' %}">⌂ Closed / archived</a> <a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div><div><h1>Funds &amp; departments</h1><div class="sub">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div></div>
-{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a>
-<a class="btn btn-ghost" href="{% url 'fund_structure_import' %}">⬆ Import funds &amp; sub-accounts</a>
-<a class="btn btn-ghost" href="{% url 'bulk_fund_import' %}">⬆ Bulk budget import</a>{% endif %}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Funds · {{ SITE_NAME }}</div>
+      <h1>Funds &amp; departments</h1>
+      <div class="desc">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div>
+    </div>
+    <div class="rpt-actions no-print">{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a> <a class="btn btn-ghost btn-sm" href="{% url 'fund_structure_import' %}">⬆ Import funds &amp; sub-accounts</a> <a class="btn btn-ghost btn-sm" href="{% url 'bulk_fund_import' %}">⬆ Bulk budget import</a> <a class="btn btn-ghost btn-sm" href="{% url 'dev_group_sms' %}">✉ SMS dev groups</a> <a class="btn btn-ghost btn-sm" href="{% url 'historical_accounts' %}">⌂ Closed / archived</a> <a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div>
+  </div>
+  <div class="rule"></div>
+</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Name</th><th>Type</th><th>Category</th><th class="num">Opening</th><th class="num">Budget</th><th></th></tr></thead>
   <tbody>

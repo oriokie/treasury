@@ -48,7 +48,8 @@
 <tr><td class="mono">joined_on</td><td>YYYY-MM-DD. Left blank, defaults to today.</td></tr>
 <tr><td class="mono">registration_type</td><td><code>INDIVIDUAL</code> or <code>HOUSEHOLD</code>.</td></tr>
 <tr><td class="mono">household_name</td><td>Only for a household registration.</td></tr>
-<tr><td class="mono">mark_paid_up</td><td><code>1</code> to clear any arrears the import would otherwise show, with a visible waiver record; blank or <code>0</code> to leave arrears showing normally.</td></tr>
+<tr><td class="mono">registration_fee_paid</td><td><code>1</code> if the registration fee is already settled — separate from dues, this is checked and cleared BEFORE anything else when a payment comes in, so leaving it blank on someone who already paid years ago would make their next payment wrongly clear the fee again instead of their actual dues. Blank or <code>0</code> to leave it outstanding.</td></tr>
+<tr><td class="mono">mark_paid_up</td><td><code>1</code> to clear any DUES arrears the import would otherwise show, with a visible waiver record; blank or <code>0</code> to leave arrears showing normally.</td></tr>
 {% for i in dep_slots %}
 <tr><td class="mono">dependant{{ i }}_name</td><td>Blank if this slot is unused.</td></tr>
 <tr><td class="mono">dependant{{ i }}_relationship</td><td><code>SPOUSE</code>, <code>CHILD</code>, <code>PARENT</code>, <code>SIBLING</code>, or <code>OTHER</code>.</td></tr>

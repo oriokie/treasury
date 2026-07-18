@@ -1,8 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Fund transfers · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Inter-fund transfers</h1><div class="sub">Move money between funds — not income or expenditure</div></div>
-{% if can_enter_data %}<a class="btn" href="{% url 'transfer_create' %}">+ New transfer</a>{% endif %}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Funds · {{ SITE_NAME }}</div>
+      <h1>Inter-fund transfers</h1>
+      <div class="desc">Move money between funds — not income or expenditure</div>
+    </div>
+    <div class="rpt-actions no-print">{% if can_enter_data %}<a class="btn" href="{% url 'transfer_create' %}">+ New transfer</a>{% endif %}</div>
+  </div>
+  <div class="rule"></div>
+</div>
 <div class="info-panel">A transfer reduces the source fund and increases the destination fund by the same amount, so total church funds are unchanged. Trust funds can't be transferred — that money is restricted for remittance.</div>
 
 {% if date_default_applied %}

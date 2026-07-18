@@ -1,12 +1,20 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Contribution intake · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Contribution intake</h1>
-  <div class="sub">Receipts that are scheme money, waiting to be attached to a member</div></div>
-<div class="btn-row no-print">
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Benevolent · {{ SITE_NAME }}</div>
+      <h1>Contribution intake</h1>
+      <div class="desc">Receipts that are scheme money, waiting to be attached to a member</div>
+    </div>
+    <div class="rpt-actions no-print"><div class="btn-row no-print">
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_allocation_test' %}">Test a narration</a>
   {% if can.manage_benevolent_settings %}<a class="btn btn-ghost btn-sm" href="{% url 'benevolent_rules' %}">Narration rules</a>{% endif %}
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_dashboard' %}">← Benevolent</a></div></div>
+  </div>
+  <div class="rule"></div>
+</div>
 
 <div class="alert alert-info u-mb">
   <strong>The money in this queue is already banked.</strong> Every row is already a receipt, already in the scheme's

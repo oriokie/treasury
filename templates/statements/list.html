@@ -1,8 +1,17 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Imports · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Statement imports</h1><div class="sub">Bank &amp; M-Pesa statements brought into the ledger</div></div>
-{% if can_enter_data %}<a class="btn" href="{% url 'statement_upload' %}">⬆ Import statement</a>{% endif %}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Banking · {{ SITE_NAME }}</div>
+      <h1>Statement imports</h1>
+      <div class="desc">Bank &amp; M-Pesa statements brought into the ledger</div>
+    </div>
+    <div class="rpt-actions no-print">{% if can_enter_data %}<a class="btn" href="{% url 'statement_upload' %}">⬆ Import statement</a>{% endif %}</div>
+  </div>
+  <div class="rule"></div>
+</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>When</th><th>File</th><th>By</th><th>Status</th><th class="num">Rows</th><th class="num">Imported</th><th class="num">Queued</th><th class="num">Dupes</th><th></th></tr></thead>
   <tbody>

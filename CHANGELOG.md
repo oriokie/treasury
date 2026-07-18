@@ -1,3 +1,620 @@
+# v2.94.0 — Statement design across the whole app
+
+The statement design that arrived with the report engine, dashboards and the
+transactions pages now runs through every page of the application.
+
+**Every page, at once.** The two page-header styles used across ~246 screens
+were upgraded in place — every page now carries the family's forest-over-brass
+rule and spacing, with no behaviour changes anywhere.
+
+**Printing fixed everywhere.** Until now, printing any ordinary page produced a
+document with no title at all — the page header was simply left off the paper.
+That bug had been reported and patched one page at a time; it is now fixed
+globally. Every page prints with its title and description as a proper document
+head, while the buttons and filters around it stay off the paper. A test pins
+this so it cannot quietly break again.
+
+**Key pages, full treatment.** Members, statement imports, bank
+reconciliations, petty cash, transfers, funds & departments, the benevolent
+dashboard, case list and registry, the intake queue and the budget board all
+received the complete masthead — section label, title, description and the
+double rule — with export links in the brass segmented style. The envelopes,
+pledges, payments, advances, loans, assets, users and accounting screens keep
+their layouts and gain the section label.
+
+Presentation only: no figures, models or workflows changed.
+
+---
+
+# Changelog
+
+## v2.93.0 - No setting can go missing
+
+Fixed a whole class of bug where a newly added setting could quietly fail to show
+up. Previously, several places kept a hand-written list of which fields to display
+or save, and if someone added a field but forgot the list, that field simply never
+appeared — with no error. This has happened more than a dozen times over the
+project's life.
+
+Now the settings form shows every setting automatically rather than from a list
+that can fall out of date, and any setting that hasn't been given a home on a
+specific tab appears under a new "Other" tab instead of disappearing. Turning this
+on immediately surfaced a number of settings that had become unreachable — cheque
+printing alignment, pledge matching, error alerts, off-site backup, and the
+"require two-factor for treasurers" option among them — so they can be edited
+again.
+
+The same protection was added to the welfare-scheme policy rules: a test now fails
+the build if a new policy field is ever added without being classified, so it can
+never silently drop out of the rules that get versioned. None of this changes any
+existing behaviour or figures; it only makes sure nothing goes missing.
+# Changelog
+
+## v2.92.0 - Locked by default
+
+Every page in the application now requires you to be logged in unless it is one of
+a small, deliberately chosen set of public pages (the login and password-reset
+screens, the health check, the bank's data feed, and the optional public pledge
+form). Previously each page had to remember to ask for a login individually; now
+the default is that a page is protected, and the few public ones are marked as
+such on purpose.
+
+In practice nothing changes for anyone signed in — the same people can reach the
+same pages as before. What changes is safety: if a new page is ever added and
+someone forgets to protect it, it is now closed by default instead of open, and
+an automatic test will flag it by name before it can ship.
+# Changelog
+
+## v2.91.0 - Faster benevolent reports
+
+The welfare-scheme reports — contribution compliance, arrears ageing, and the
+scheme overview — now open much faster, especially for large schemes. They used
+to do a separate round of database work for every single member, so a scheme with
+two hundred members was thousands of database queries; now the same figures are
+gathered for the whole scheme in one short, fixed set of queries no matter how
+many members there are. On the demo data the compliance report went from 139
+queries to 32, and unlike before, that number no longer climbs as the membership
+grows.
+
+The numbers shown are exactly the same as before — this was purely about how they
+are fetched, not how they are calculated, and each figure is still produced by
+the one shared calculation the register and the eligibility decision both rely on,
+so they can never disagree.
+
+While making this change we also found and fixed a subtle correctness bug: in a
+scheme where the rules had been re-published, a member's record could briefly be
+judged against the old rules instead of the current ones. That is now guarded by a
+test so it cannot come back.
+# Changelog
+
+## v2.90.0 - Continuous integration
+
+The project now has an automated safety net. Every time a change is pushed, a
+build runs on its own and checks three things: the application still starts, the
+database models and their migrations still agree, and the test suite still passes.
+The result shows as a single green or red mark, so the health of the code is
+known at all times rather than only when someone remembers to run the tests by
+hand.
+
+Because the test suite is large, it is split into several groups that run at the
+same time, so the whole thing still finishes quickly. A small built-in guard makes
+sure every part of the app is included in one of those groups — if a new area is
+ever added and left out, the build says so by name.
+
+None of this changes how the application behaves; it is entirely about catching
+mistakes before they reach the live site. A short guide, docs/CI_GUIDE.md,
+explains how to read a failed build, how to run the same checks on your own
+machine before pushing, and how to require a green build before anything is
+merged.
+# Changelog
+
+## v2.89.0 - The ledger, expenses page and expense form join the statement design
+
+The two pages a treasurer lives in — the ledger and the expenses list — now open
+with the same masthead as every report: the page's place in small brass capitals,
+the title, and the double rule. Because their old headers were hidden when
+printing, both pages used to print with no title at all; they now print with a
+proper document head. Everything that already worked well — the clickable status
+totals, quick-filter tabs, bulk actions with their itemised confirmations, the
+running balance — is untouched.
+
+The bigger change is the **expense form**, reshaped around how you actually fill
+it in:
+
+- **Fund first**, with the live available-balance line as before.
+- **Amount & date** together, with the amount set large in the app's figure
+  typography — on a money form, the money leads.
+- **What it was for** — description, category, capital or recurrent.
+- **Paid to & how** — claimant, payee, method, voucher, petty cash.
+
+Nothing about how expenses save, validate or get approved changed — the balance
+check, the override, the pay-now option and every autocomplete work exactly as
+before. The form is simply organised the way the questions come to mind.
+# Changelog
+
+## v2.88.0 - Report designer: write your own words, preview before saving
+
+The report designer now treats your own text as a first-class part of a report,
+not an afterthought:
+
+- **Headings.** A new Heading component divides a designed report into named
+  parts — "Part 1 — Income", "Notes for the board" — set in the same style as
+  every section heading in the app, and carried into PDF and Word as proper
+  document headings.
+- **Text blocks that behave like text.** Blank lines now make real paragraphs —
+  on screen, in PDF and in Word — instead of collapsing into one block.
+- **Merge fields.** Write {period_start}, {period_end}, {church} or {today} in
+  any heading, text block or note, and the report fills them in when it renders —
+  so "For the period {period_start} to {period_end}" stays correct whatever dates
+  the reader picks. Anything else in braces is left alone.
+- **Find them easily.** Heading, Text block and Note now sit together under a
+  "Text" group in the component palette, and every text box carries a short
+  reminder of the paragraph rule and the merge fields.
+
+And the change that makes authoring quick: **Preview without saving**. A new
+button opens the report exactly as it currently stands in a new tab — nothing is
+saved, nothing goes live. Adjust a sentence, preview, adjust again, and only save
+when it reads right. If something in the draft isn't valid yet, the preview
+lists the specific problems instead of failing.
+
+The designer pages also joined the same masthead design as the rest of the
+reporting surface.
+# Changelog
+
+## v2.87.0 - Telegram bot: working links and a command reference
+
+Three fixes to the Telegram bot, and one addition:
+
+- The help text for **/balance** had become garbled — a stray bit of code left it
+  reading "closing balance of a fundlt;fund…". It now reads cleanly: every fund's
+  closing balance, or one fund's detail with /balance <fund>.
+- Replies that point at a report or record now always show where to find it. When
+  the site's web address is set (Settings → Telegram), the reply carries a tappable
+  link straight to the web app; when it isn't, it names the exact page to open
+  instead of silently leaving the link out.
+- **/case**, **/member** and **/benevolent** now each include an "open in the app"
+  link, so you can go from a figure in the chat to the full record in one tap.
+- The Settings → Telegram tab now lists everything the bot can do — every command
+  and what it returns — with a reminder that anything touching money is saved as
+  pending for approval in the web app.
+# Changelog
+
+## v2.86.0 - The dashboards join the statement design
+
+The main dashboard and the executive dashboard now open the same way every
+report does: a proper masthead — the page's place in small brass capitals, the
+title, the period (or an "as at" timestamp on the executive view), and the double
+rule beneath. Because the old dashboard headers were hidden when printing, both
+pages used to print with no header at all; the masthead now prints as the
+document head.
+
+On the main dashboard, the date-range picker sits in the masthead with proper
+labels, section headings carry the same brass-hairline treatment as the report
+library, and "Needs attention" now appears once: the compact pill row only shows
+where the fuller attention panel isn't on the page, instead of repeating the same
+counts twice.
+
+The executive dashboard — the page most often projected at a board meeting —
+gains a "Board copy · Print" control in its masthead and a print layout that
+drops the AI panel and lays the charts two-up. Its key-figure cards now use the
+app's own figure typography (tabular monospace digits, the KES prefix set small),
+with a coloured top edge marking anything that needs a second look. And its
+charts now draw every colour from the app's palette — the one off-palette orange
+that had crept in is gone.
+
+Nothing moved and nothing was removed: every widget, chart, table, PNG export and
+the AI briefing work exactly as before — they just dress consistently now.
+# Changelog
+
+## v2.85.0 - A statement-set report page and a browsable report library
+
+Every engine report now opens with a proper report masthead, set like the head of
+a printed financial statement: the report's category in small brass capitals, its
+title, the reporting period in tabular figures, and a double rule beneath — forest
+over a brass hairline. The same head carries straight through to print.
+
+Around it, the page tidied up:
+
+- The export buttons are one grouped control — Export: CSV · Excel · PDF · Word ·
+  Print — instead of a row of separate buttons.
+- Filters are labelled fields now, not bare boxes you had to hover to understand.
+- Key-figure cards carry the app's accent rhythm and show the KES prefix small,
+  the figure large — and can show percentages, day-counts and plain counts, not
+  only money.
+- Long tables keep their column headers in view as you scroll; negative figures
+  show in red; blank cells show a quiet dash instead of nothing.
+- An empty report now tells you what to do about it — widen the dates — rather
+  than just stating there is no data.
+
+The report library was rebuilt from a flat list into a browsable grid: each report
+is a card with its category, a short description, a favourite star and its
+snapshot history, grouped under category headings. Typing in the search box
+narrows the grid instantly as you type.
+
+One template serves every engine report, so all of this applies to the whole
+catalogue at once — including the fourteen benevolent reports added in v2.84 —
+with exports and permissions untouched.
+# Changelog
+
+## v2.84.0 - Fourteen new benevolent reports
+
+Fourteen reports join the report library, each filterable by scheme and period,
+and each — like every other report in the system — printable and exportable to
+Excel, CSV, PDF and Word with nothing extra to set up.
+
+**Where members stand:** Contribution Compliance shows what share of each member's
+dues periods were paid, with the least-compliant first. Ageing Arrears takes the
+arrears total and ages it into bands, with a chart. Fund Sustainability shows each
+fund's balance once its commitments are set aside, and Contribution Forecast
+projects each scheme forward at its recent run-rate to show whether — and roughly
+when — it might run dry.
+
+**Where cases stand:** Pending Approvals lists everything awaiting a decision or a
+payment; Rejected Cases shows what was refused and why; Case Turnaround shows how
+long cases take at each stage; Outstanding Documents flags open cases still missing
+required paperwork before they can be approved.
+
+**The bigger picture:** Benefit Utilisation compares what members put in against
+what flowed back out as benefits; Scheme Surplus/Deficit shows each scheme's
+operating result; Household Statistics and Dependant Demographics show who the
+schemes actually cover, by household size, relationship and age; Committee
+Performance shows each committee member's activity; and Fraud Red Flags brings the
+red-flag scan into the report library for the board.
+
+Several of these lean on visuals — compliance gauges, utilisation bars, forecast
+lines, demographic doughnuts — in the app's own colours, so a report reads at a
+glance and still exports cleanly to a document.
+
+Every figure in every one of these reports comes from the same Financial Metrics
+Registry the rest of the system uses; none of them computes a money total of its
+own.
+# Changelog
+
+## v2.83.0 - Automation jobs and a review-task inbox
+
+The nightly automation already recomputed where every member stood and sent due
+reminders. It now does the rest of the routine watching a welfare scheme needs —
+but with one firm rule: it never changes a member's status on its own. Suspending
+a member, closing a membership, or ending a dependant's cover is a decision a
+person makes and answers for. So where a job sees that such a decision is due, it
+raises a task rather than acting on it.
+
+**A new Review tasks inbox** (Benevolent -> Review tasks, with an open-count badge)
+is where those land. Each task says what was found and what the policy would do,
+links straight to the member or case, and waits for you to confirm or dismiss.
+Marking a task done records that it was dealt with — it doesn't itself move
+anything.
+
+What the jobs watch for:
+
+- **Overdue members** whose policy says they should be suspended or lapsed — raised
+  as a task, the member left active until you confirm.
+- **Long-suspended, long-idle memberships** worth closing off the register.
+- **Child dependants who've passed the age limit** — flagged rather than dropped,
+  because a church may keep a dependant in full-time education or with a disability.
+- **Members who've just become eligible** after serving their waiting period.
+- **Possible duplicate memberships** — the same name and phone enrolled twice (a
+  shared family phone with different names is left alone).
+
+And one job that runs on its own because it's pure housekeeping: **archiving cases**
+that have been settled for more than six months, so the working case list shows
+what's live. Archiving is just a display flag — nothing moves, and it can be undone.
+
+None of this changes how anything is recorded; it's the nightly routine noticing
+what needs a person's attention and making sure none of it sits unseen.
+# Changelog
+
+## v2.82.0 - Red flags: fraud detection for the welfare schemes
+
+A new Red flags page (Benevolent -> Red flags) scans the schemes for the patterns
+an auditor would look for by hand and lists anything worth a second look. It is
+deliberately not a black box: every item says exactly what it found and why, links
+straight to the case or member in question, and is ranked high / medium / low. It
+never blocks anything and never accuses anyone — most flags have an innocent
+explanation, and the whole point is that none of them goes unseen.
+
+What it looks for:
+
+**Control breaches.** A case both raised and approved by the same person; a payout
+made to the very person who raised or approved it; a case approved over a failed
+eligibility check with an override; a fund approving benefits it can't currently
+afford.
+
+**Membership abuse.** A member who claimed almost immediately after joining, having
+paid little or nothing in; a member who joined, claimed, and left in quick
+succession.
+
+**Identity overlaps.** The same person named as beneficiary across several cases
+under different members; one phone number registered against many members.
+
+**Contribution manipulation.** A contribution reversed soon after a claim was paid —
+money put in to look paid-up long enough to qualify, then pulled back out once the
+benefit was secured; a burst of reversals by one person in a short window.
+
+None of this required any new record-keeping — it's built entirely on the audit
+trail the module already keeps (who raised, approved and recorded each thing, when
+members joined and left, and what was reversed). It's a set of new questions asked
+of information that was already there.
+# Changelog
+
+## v2.81.0 - Fund solvency: can the fund afford it, and is it sustainable?
+
+The accounting was already right — a benefit is an ordinary expense in the scheme's
+fund, in the ledger like any other payment. What was missing were the questions a
+committee needs answered *before* it commits money, and this release adds them,
+without changing a single thing about how the ledger records anything.
+
+**Can the fund afford this payout?** When a benefit voucher is raised, the app now
+checks it against the cash actually available after everything already approved. By
+default it warns — a church may legitimately approve a payout it intends to fund
+from a levy still being collected — and a new per-scheme setting can turn that into
+a hard block for a fund that must never go negative.
+
+**Where does the fund really stand?** A new Fund position page (Scheme → Fund
+position) shows the balance with each claim taken off it in turn: what's approved
+but not yet paid, what's on vouchers awaiting approval, and a prudent reserve for
+open cases still working through the pipeline — ending with what's genuinely free to
+commit to a new case. It flags a fund that's depleted (can't cover its approvals),
+negative, or fully committed. These are memorandum figures: promises the fund must
+honour, never restated as balance-sheet liabilities, because the balance already
+reflects every voucher that's been approved.
+
+**Is the fund sustainable?** The same page projects the fund forward month by month
+at its recent run-rate — money in, money out, closing balance — and flags roughly
+when it would run dry if nothing changes. It's a plain, follow-it-by-hand
+projection, because a forecast a treasurer can't check is one they can't trust with
+a welfare fund.
+
+Every figure on these views comes from the same Financial Metrics Registry the board
+pack and fund statements use, so nothing here can disagree with what the rest of the
+app reports.
+# Changelog
+
+## v2.80.0 - Contribution exceptions and automatic reconciliation
+
+The scheme's contribution handling now copes with the things that go wrong in
+real life, not just the clean case where the right money arrives from the right
+member on the right day.
+
+**Money paid on someone's behalf, or anonymously.** A contribution can now record
+WHO actually paid — the member themselves, their employer, a sponsor, another
+third party, or an anonymous donor. An employer paying a member's dues is recorded
+as exactly that: the member's dues, paid by the employer — so the member's
+statement stays honest rather than pretending they paid it themselves.
+
+**Reversing a payment.** A payment that bounced, was entered by mistake, or turns
+out to be a duplicate can be reversed. Nothing is ever deleted — the original and
+its reversal both stay on the record, with the reason, so the member's statement
+and any auditor can see what happened. The money correctly leaves every total and
+shows a contra entry on the bank reconciliation.
+
+**Fixing a wrong attribution.** A contribution recorded against the wrong member,
+the wrong scheme, or as the wrong kind of money can be corrected. This reverses the
+wrong entry and books a correct one carrying the same money, rather than quietly
+editing the original — so the correction itself is on the record.
+
+**Catching mistakes as they're entered.** Recording a contribution now warns about
+a future date, a date before the member's cover began, a long-backdated receipt, or
+a possible duplicate — and blocks a closed accounting period or a non-positive
+amount outright. A bulk upload is screened as a whole before any of it commits, so
+a bad row is caught before the good ones post.
+
+**Automatic reconciliation.** A new per-scheme reconciliation (Scheme → Reconcile)
+checks that everything the scheme has recorded as contributions agrees with the bank
+receipts that actually carry the money — flagging money banked but never attributed,
+contributions whose receipt has gone, and any amount that disagrees with its receipt.
+It's the benevolent-side counterpart to the bank reconciliation the rest of the app
+already does.
+# Changelog
+
+## v2.79.0 - Eligibility rules real welfare schemes require
+
+The policy engine now carries the standing rules church constitutions actually
+use, alongside the ones it already had. Each is a per-scheme policy setting, so a
+Medical fund and a Burial fund can require completely different things without any
+code change — and each shows up, with its reasoning, on the case's eligibility
+breakdown exactly like every existing check.
+
+**Paid-up tenure.** A policy can require a member to have paid in for a set number
+of months before a claim qualifies — the "you must have contributed for 3 / 6 / 12
+months" rule most schemes have. This counts months actually paid in full, which is
+deliberately different from the waiting period (calendar time whether or not anyone
+paid) and from a bare contribution count (two payments in one month wouldn't satisfy
+a two-month tenure).
+
+**Unbroken contribution record.** For schemes that expect members to never lapse, a
+policy can require an unbroken record: any period missed at the time it fell due
+disqualifies, even if the member later back-paid it — with an optional tolerance for
+the member who genuinely forgot a month or two.
+
+**Partial arrears, counted in periods.** As well as the existing "how many shillings
+may they still owe" tolerance, a policy can now say "up to N periods behind is fine" —
+which is easier to reason about than an amount when the dues rate has changed over the
+years.
+
+**Catch-up re-qualification.** A policy chooses whether clearing arrears restores
+cover immediately (the default, and what most schemes do) or only after the member has
+stayed paid-up for a set window. The window only ever applies to a member who genuinely
+just back-paid a late gap — someone who has always paid on time is never caught by it.
+
+All of these sit on top of the grace period, waiting period, arrears treatment and the
+dozen other checks already in the engine, and every one is frozen onto a case when it's
+assessed, so an auditor can see years later exactly which rules applied and why.
+# Changelog
+
+## v2.78.0 - Sidebar scroll fix, and a rebuilt permission-profile editor
+
+### The sidebar no longer jumps back to the top
+
+Clicking a link deep in the sidebar used to scroll you back up to the top on the
+next page. The cause was an ordering bug: the app restored your scroll position
+first and *then* expanded the navigation group for the page you're on, which
+changed the sidebar's height and threw the restored position away. Now the group
+state is applied first and the scroll position is restored afterwards, once the
+layout has settled — so you stay where you were. A click on a nav link also saves
+your position immediately, so it can never be missed.
+
+### The permission-profile editor is much easier to use
+
+The page for editing a permission profile (a named bundle of rights you assign to
+people) was a long, flat wall of checkboxes. It now has: a live count of how many
+rights and people are selected, a search box to filter rights by name, a search box
+to find a person, a "select all / clear" for the visible rights, an "all" toggle per
+group with a running count, and a sticky save bar that follows you down the page and
+summarises what you're about to save. The layout is a clean two-column split — rights
+on the left, people on the right — and the save action names what it does ("Save
+changes" vs "Create profile"). No change to how profiles or rights actually work.
+# Changelog
+
+## v2.77.0 - God-file refactor: accounting logic moved out of the two big view files (no behaviour change)
+
+A structural, behaviour-preserving pass on the project's two largest files —
+`reports/views.py` and `cashbook/views.py`. Pure calculation and query helpers
+that had accumulated inside these view modules over many releases were moved
+into properly-named, single-responsibility service modules, continuing the
+pattern already established by `cashbook/services/treasury_position.py`.
+
+Nothing about how the app behaves changes. Every function that moved is
+re-exported from its original module under its exact original name, so every
+existing import path — including the ones other apps rely on, and every
+`views.ClassName` reference in the URL configuration — keeps working exactly as
+before. This was verified three ways: the full cashbook test suite still passes
+with the identical count (402), the full reports, statements and giving suites
+plus the targeted core suites for every module that imports from these files all
+pass, and a direct import-surface check confirms every externally-imported
+symbol still resolves and both URL configs still load cleanly.
+
+**Moved this release**
+
+- `reports/services/goals.py` — the Camp Meeting goal records and the
+  sentence-case fund-name helper.
+- `reports/services/remittance.py` — days-outstanding, the post-bulk-update
+  ledger repost, and the remittance dashboard rows.
+- `reports/services/devgroups.py` — the balance-by-giving development-group
+  partitioning algorithm.
+- `cashbook/services/receipts.py` — the acceptable-receipt-file rule and the
+  missing-receipts queue query.
+- `cashbook/services/cheque_words.py` — the amount-in-words renderer for cheque
+  printing.
+- `cashbook/services/advances.py` — the advance running-balance statement
+  builder and the account-against-an-advance expense recorder (both also used
+  by the leaders' pages).
+
+`reports/views.py` shrank from 4,180 to 4,034 lines and `cashbook/views.py`
+from 3,508 to 3,358, with the extracted logic now living where it can be tested
+and reused directly rather than through a view.
+
+**Deliberately left for a dedicated pass**
+
+The largest remaining clusters are view code, not pure helpers — the Monthly
+Treasurer's Report and the board/position statements in reports, and the
+expense/advance/petty-cash view clusters in cashbook. Splitting those (and
+ultimately turning each views file into a package of topic sub-modules) touches
+module-level import ordering across dozens of interdependent classes, so it is
+recorded as its own future pass rather than rushed in alongside this one.
+# Changelog
+
+## v2.77.0 - Internal refactor: financial helpers moved out of the two big view files (no behaviour change)
+
+A structural clean-up with no functional change. The two largest view files —
+`reports/views.py` and `cashbook/views.py` — held a number of pure financial
+helper functions that don't belong in a view layer at all (a query or a
+number-to-words routine is not a view), several of which were imported from all
+over the app. Those have been moved into properly-named service modules,
+following the same pattern already established by the treasury-position service.
+
+Every function was moved verbatim and re-exported from its original module under
+its original name, so nothing that imported them had to change and no behaviour
+shifts. Moved: the camp-goal records, the remittance-dashboard rows and their
+ledger-repost/days-outstanding helpers, the development-group balancing
+algorithm, the receipt-validation and missing-receipts-queue helpers (with their
+size/type constants), and the cheque amount-in-words renderer. Three scattered
+mid-file import blocks in the cashbook views were also consolidated to the top.
+
+Verified against the full test suites of every app that touches these files —
+cashbook, statements, leaders, core, giving and reports, 1,706 tests in all —
+plus a check that all 889 URL patterns still resolve their views and every
+previously-importable helper still imports. The remaining view classes were
+deliberately left in place: splitting them further carries real risk for little
+additional benefit, and the misplaced calculation logic — the part that actually
+mattered — is now where it belongs.
+# Changelog
+
+## v2.76.0 - Ten production items: case pre-fill, fast-path approval, an SMS Center, and a real intake bug
+
+### Raise-a-case pre-fills from what's already on file
+
+The "Raise a case" links (a household dependant's death, and now a proper link
+on the member's-own-death panel too) actually pass the pre-fill the case form
+already supported but never received — beneficiary, relationship, the fixed
+benefit amount, and now the event date too. The member's-own-death panel also
+checks for an already-open case first, linking to it instead of risking a
+duplicate.
+
+### Bank gifts naming a scheme by fund reference alone now reach the intake queue
+
+Root cause: recognising a scheme from a bank narration had two paths — a
+configured rule, or "this fund belongs to only one scheme" — but the second
+path was structurally unreachable, called before the fund itself was even
+known. A church that set up an ordinary fund-allocation rule (got the fund
+right) but never a benevolent-specific one got a silently empty intake queue.
+Fixed: the fallback gets a real chance once the fund is actually resolved.
+
+### The levy page, and attributing intake money, respect a case's real status
+
+The levy page no longer works on a still-draft case (nothing has been decided
+yet to collect against) — fixed at the page and the shared validation layer,
+while the roster calculator itself stays usable for preview purposes
+elsewhere, unchanged. The intake page's case picker is now scoped to open
+cases in the transaction's own scheme, not any case in any scheme; posting a
+closed or wrong-scheme case directly is refused server-side too.
+
+### One-step create-and-approve, where the scheme already allows it
+
+Reuses the scheme's own `require_different_approver` setting — already
+configurable, already exactly this permission — rather than adding a
+redundant one. A new checkbox on the case form, visible only where the policy
+permits it and gated again on the Approve right, chains submit → assess →
+approve automatically; if assessment finds the case ineligible, it stops
+cleanly rather than overriding anything.
+
+### Inactivity: consecutive misses, or any miss in the last year
+
+A scheme's policy can now choose how a "missed case" streak is counted — an
+unbroken consecutive run (the original, unchanged default), or any misses in
+a rolling 12 months even with paid cases in between, for a policy that wants
+to catch sporadic non-payers rather than only someone who has stopped paying
+outright.
+
+### An SMS Center
+
+One page (Scheme → SMS Center) reaches all active members, defaulters, members
+one step from being marked inactive, or a specific case's unpaid levy roster —
+computed the same way the rest of the module already computes them, so an
+audience here can never disagree with a member's own standing page. A
+"✉ Notify members" link on an approved case jumps straight to notifying
+everyone. Sends through the same SMS integration and log as everything else
+in the app.
+
+### Roster import: a column for whether the registration fee was already paid
+
+Separate from the pre-existing "mark paid up" (dues arrears only) — the
+registration fee is settled before anything else once the obligations engine
+sees a payment, so leaving this blank on someone who paid years ago would
+make their next payment wrongly re-clear the fee instead of their dues.
+
+### Three failing tests, one of them a real bug
+
+Two were outdated expectations from intentional changes earlier in the
+project (the obligations engine correctly prioritising an unpaid registration
+fee; the dedup-key format that now keeps a shared bank reference's distinct
+payments apart). The third — `ben_admin` and six other role-specific demo
+users missing — turned out to be a real, broader bug: two "already seeded,
+skip" guards in the demo-data seeder returned early without continuing to the
+next phase, silently skipping the committee roster and all seven role users
+any time their own guard condition was already true — which is every run of
+the standalone seed command, and would also affect a second run of the full
+one. Fixed.
 # Changelog
 
 ## v2.75.0 - Historical case import, and a module review

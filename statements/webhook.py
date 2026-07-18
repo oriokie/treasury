@@ -18,6 +18,7 @@ from decimal import Decimal, InvalidOperation
 from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
+from django.contrib.auth.decorators import login_not_required
 from django.views.decorators.csrf import csrf_exempt
 
 from core.models import SiteConfig
@@ -46,8 +47,14 @@ def _parse_date(*candidates):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(login_not_required, name="dispatch")
 class CbsEventWebhookView(View):
-    """POST-only endpoint the bank calls for every transaction."""
+    """POST-only endpoint the bank calls for every transaction.
+
+    Machine-to-machine: the bank is not a logged-in user, so this is exempt from
+    the global login-required gate (P1-1). It is NOT unauthenticated — access is
+    controlled by ``_authenticated`` below (shared-secret token or HMAC per
+    ``bank_feed_auth_mode``), which every non-GET request must pass."""
 
     def get(self, request):
         # a simple health check so the bank/ops can verify the URL is live

@@ -1,36 +1,241 @@
 {% extends "base.html" %}
-{% block title %}{% if profile %}Edit profile{% else %}New profile{% endif %}{% endblock %}
+{% block title %}{% if profile %}Edit “{{ profile.name }}”{% else %}New permission profile{% endif %}{% endblock %}
 {% block content %}
-{% include "ui/page_header.html" with title="Profile" subtitle="Tick the rights this profile grants, and the users it applies to." %}
-<form method="post">{% csrf_token %}
+
+<div class="ws-head"><div class="ws-titles">
+  <h1>{% if profile %}Edit permission profile{% else %}New permission profile{% endif %}</h1>
+  <div class="ws-sub">A permission profile is a named bundle of rights you can hand to one or more
+    people at once — change the bundle here and everyone on it is updated together.</div>
+</div></div>
+
+{% if profile.is_system %}
+<div class="alert alert-info u-mb">This is a built-in profile. You can adjust which rights it grants and who it
+  applies to, but it can't be deleted — the app relies on it existing.</div>
+{% endif %}
+
+<form method="post" id="profileForm">{% csrf_token %}
+
 <div class="card u-mb"><div class="bd">
-  <div style="display:grid;grid-template-columns:1fr 2fr;gap:1rem">
-    <label class="field-label">Name<input name="name" value="{{ profile.name|default:'' }}" required class="field"></label>
-    <label class="field-label">Description<input name="description" value="{{ profile.description|default:'' }}" class="field"></label>
+  <div class="pf-meta">
+    <label class="field-label">Profile name
+      <input name="name" value="{{ profile.name|default:'' }}" required class="field"
+             placeholder="e.g. Benevolent committee">
+    </label>
+    <label class="field-label">Description <span class="pf-optional">optional</span>
+      <input name="description" value="{{ profile.description|default:'' }}" class="field"
+             placeholder="What is this bundle for? Who should get it?">
+    </label>
   </div>
 </div></div>
 
-<div class="card u-mb"><div class="hd">Rights</div><div class="bd">
-  {% for group, items in grouped_rights %}
-    <div class="u-mb"><div class="u-bold u-mb-sm">{{ group }}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.3rem">
-      {% for key, label in items %}
-        <label class="u-row-sm"><input type="checkbox" name="right_{{ key }}" {% if key in granted %}checked{% endif %}> {{ label }}</label>
-      {% endfor %}
+<div class="pf-grid">
+
+  <div class="card pf-rights"><div class="hd">
+      <h3>Rights</h3>
+      <span class="pf-count"><b id="rightsCount">0</b> of {{ total_rights }} selected</span>
+    </div>
+    <div class="pf-toolbar">
+      <div class="pf-search">
+        <span class="pf-search-ic" aria-hidden="true">⌕</span>
+        <input type="search" id="rightSearch" class="field" autocomplete="off"
+               placeholder="Filter rights by name…">
+      </div>
+      <div class="pf-bulk">
+        <button type="button" class="btn btn-ghost btn-sm" data-all="1">Select all</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-all="0">Clear all</button>
       </div>
     </div>
-  {% endfor %}
-</div></div>
-
-<div class="card u-mb"><div class="hd">Apply to users</div><div class="bd">
-  <p class="help">Selected users are governed by this profile (union with any other profiles they have). Unselected users keep their role-based access.</p>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.3rem">
-  {% for u in all_users %}
-    <label class="u-row-sm"><input type="checkbox" name="users" value="{{ u.id }}" {% if u.id in assigned %}checked{% endif %}> {{ u.username }}</label>
-  {% endfor %}
+    <div class="bd pf-groups" id="rightGroups">
+      {% for group, items in grouped_rights %}
+      <section class="pf-group" data-group>
+        <header class="pf-group-head">
+          <span class="pf-group-name">{{ group }}</span>
+          <span class="pf-group-count" data-groupcount>0/{{ items|length }}</span>
+          <label class="pf-group-toggle">
+            <input type="checkbox" data-grouptoggle> <span>all</span>
+          </label>
+        </header>
+        <div class="pf-rights-list">
+          {% for key, label in items %}
+          <label class="pf-right" data-right data-label="{{ label|lower }}">
+            <input type="checkbox" name="right_{{ key }}" {% if key in granted %}checked{% endif %}>
+            <span class="pf-right-label">{{ label }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+      <p class="pf-noresults" id="rightsNoResults" hidden>No rights match that filter.</p>
+    </div>
   </div>
-</div></div>
 
-<div class="btn-row"><button class="btn">Save profile</button> <a class="btn btn-ghost" href="{% url 'profile_list' %}">Cancel</a></div>
+  <div class="card pf-people"><div class="hd">
+      <h3>Applies to</h3>
+      <span class="pf-count"><b id="usersCount">0</b> selected</span>
+    </div>
+    <div class="pf-toolbar">
+      <div class="pf-search">
+        <span class="pf-search-ic" aria-hidden="true">⌕</span>
+        <input type="search" id="userSearch" class="field" autocomplete="off"
+               placeholder="Find a person…">
+      </div>
+    </div>
+    <div class="bd">
+      <p class="help u-mt-0">Selected people gain every right ticked on the left, on top of whatever their
+        role already allows. Unticking someone here only removes this bundle — it never takes away
+        access their role grants them.</p>
+      <div class="pf-people-list" id="userList">
+        {% for u in all_users %}
+        <label class="pf-person" data-person data-name="{{ u.username|lower }}{% if u.get_full_name %} {{ u.get_full_name|lower }}{% endif %}">
+          <input type="checkbox" name="users" value="{{ u.id }}" {% if u.id in assigned %}checked{% endif %}>
+          <span class="pf-avatar" aria-hidden="true">{{ u.username|first|upper }}</span>
+          <span class="pf-person-name">{{ u.username }}{% if u.get_full_name %}<small>{{ u.get_full_name }}</small>{% endif %}</span>
+        </label>
+        {% endfor %}
+        <p class="pf-noresults" id="usersNoResults" hidden>Nobody matches that search.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="pf-savebar" id="saveBar">
+  <div class="pf-savebar-summary">
+    <span><b id="rightsCountEcho">0</b> right<span data-plural="rights"></span></span>
+    <span class="pf-dot">·</span>
+    <span><b id="usersCountEcho">0</b> person<span data-plural="users"></span></span>
+  </div>
+  <div class="btn-row">
+    <a class="btn btn-ghost" href="{% url 'profile_list' %}">Cancel</a>
+    <button class="btn">{% if profile %}Save changes{% else %}Create profile{% endif %}</button>
+  </div>
+</div>
+
 </form>
+
+<style>
+.pf-meta{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:1rem}
+@media(max-width:640px){.pf-meta{grid-template-columns:1fr}}
+.pf-optional{font-weight:400;color:var(--muted);font-size:.72rem}
+.pf-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:1rem;align-items:start}
+@media(max-width:900px){.pf-grid{grid-template-columns:1fr}}
+.pf-count{font-size:.8rem;color:var(--muted)}
+.pf-count b{color:var(--forest);font-variant-numeric:tabular-nums}
+.pf-toolbar{display:flex;gap:.6rem;align-items:center;padding:.7rem 1.35rem;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pf-search{position:relative;flex:1;min-width:160px}
+.pf-search .field{padding-left:2rem}
+.pf-search-ic{position:absolute;left:.65rem;top:50%;transform:translateY(-50%);
+  color:var(--muted);font-size:1rem;pointer-events:none}
+.pf-bulk{display:flex;gap:.35rem}
+.pf-groups{max-height:min(60vh,560px);overflow-y:auto}
+.pf-group{margin-bottom:1.1rem}
+.pf-group:last-child{margin-bottom:0}
+.pf-group-head{display:flex;align-items:center;gap:.55rem;margin-bottom:.5rem;
+  position:sticky;top:0;background:var(--paper);padding:.15rem 0;z-index:1}
+.pf-group-name{font-weight:800;font-size:.82rem;letter-spacing:.02em;
+  text-transform:uppercase;color:var(--forest-deep)}
+.pf-group-count{font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.pf-group-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:.3rem;
+  font-size:.72rem;color:var(--muted);cursor:pointer;user-select:none}
+.pf-rights-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.15rem}
+.pf-right,.pf-person{display:flex;align-items:center;gap:.55rem;padding:.42rem .55rem;
+  border-radius:8px;cursor:pointer;transition:background var(--t)}
+.pf-right:hover,.pf-person:hover{background:var(--forest-tint)}
+.pf-right input,.pf-person input{flex:none;width:1rem;height:1rem;accent-color:var(--forest)}
+.pf-right input:checked ~ .pf-right-label{color:var(--forest-deep);font-weight:600}
+.pf-right-label{font-size:.86rem;line-height:1.25}
+.pf-people-list{display:flex;flex-direction:column;gap:.1rem;max-height:min(52vh,460px);overflow-y:auto}
+.pf-person{gap:.6rem}
+.pf-avatar{flex:none;width:1.7rem;height:1.7rem;border-radius:50%;display:grid;place-items:center;
+  background:linear-gradient(145deg,var(--forest-2),var(--forest));color:#fff;
+  font-size:.8rem;font-weight:700}
+.pf-person-name{display:flex;flex-direction:column;line-height:1.15;font-size:.9rem}
+.pf-person-name small{color:var(--muted);font-size:.74rem;font-weight:400}
+.pf-noresults{color:var(--muted);font-size:.85rem;padding:.6rem .2rem}
+.pf-savebar{position:sticky;bottom:0;margin-top:1rem;display:flex;align-items:center;
+  justify-content:space-between;gap:1rem;padding:.8rem 1.1rem;background:var(--paper);
+  border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:0 -6px 20px -14px rgba(0,0,0,.35);flex-wrap:wrap}
+.pf-savebar-summary{font-size:.9rem;color:var(--muted);display:flex;gap:.5rem;align-items:center}
+.pf-savebar-summary b{color:var(--forest);font-variant-numeric:tabular-nums}
+.pf-dot{opacity:.5}
+</style>
+
+<script>
+(function(){
+  var form=document.getElementById("profileForm");
+  if(!form) return;
+  var rightBoxes=[].slice.call(form.querySelectorAll('input[name^="right_"]'));
+  var userBoxes=[].slice.call(form.querySelectorAll('input[name="users"]'));
+
+  function plural(n){ return n===1?"":"s"; }
+  function refreshCounts(){
+    var r=rightBoxes.filter(function(b){return b.checked;}).length;
+    var u=userBoxes.filter(function(b){return b.checked;}).length;
+    document.getElementById("rightsCount").textContent=r;
+    document.getElementById("usersCount").textContent=u;
+    document.getElementById("rightsCountEcho").textContent=r;
+    document.getElementById("usersCountEcho").textContent=u;
+    form.querySelectorAll('[data-plural="rights"]').forEach(function(s){s.textContent=plural(r);});
+    form.querySelectorAll('[data-plural="users"]').forEach(function(s){s.textContent=plural(u);});
+    form.querySelectorAll('[data-group]').forEach(function(g){
+      var boxes=[].slice.call(g.querySelectorAll('input[type=checkbox]'));
+      var on=boxes.filter(function(b){return b.checked;}).length;
+      var cnt=g.querySelector('[data-groupcount]');
+      if(cnt) cnt.textContent=on+"/"+boxes.length;
+      var tog=g.querySelector('[data-grouptoggle]');
+      if(tog){ tog.checked=on===boxes.length && boxes.length>0;
+               tog.indeterminate=on>0 && on<boxes.length; }
+    });
+  }
+
+  form.querySelectorAll('[data-grouptoggle]').forEach(function(tog){
+    tog.addEventListener("change",function(){
+      var g=tog.closest('[data-group]');
+      g.querySelectorAll('input[name^="right_"]').forEach(function(b){
+        if(!b.closest('[data-right]').hidden) b.checked=tog.checked;
+      });
+      refreshCounts();
+    });
+  });
+
+  form.querySelectorAll('[data-all]').forEach(function(btn){
+    btn.addEventListener("click",function(){
+      var on=btn.dataset.all==="1";
+      rightBoxes.forEach(function(b){ if(!b.closest('[data-right]').hidden) b.checked=on; });
+      refreshCounts();
+    });
+  });
+
+  rightBoxes.concat(userBoxes).forEach(function(b){ b.addEventListener("change",refreshCounts); });
+
+  var rs=document.getElementById("rightSearch");
+  rs && rs.addEventListener("input",function(){
+    var q=this.value.trim().toLowerCase();
+    var anyGroup=false;
+    form.querySelectorAll('[data-group]').forEach(function(g){
+      var shown=0;
+      g.querySelectorAll('[data-right]').forEach(function(r){
+        var hit=!q || r.dataset.label.indexOf(q)>-1;
+        r.hidden=!hit; if(hit) shown++;
+      });
+      g.hidden=shown===0; if(shown) anyGroup=true;
+    });
+    document.getElementById("rightsNoResults").hidden=anyGroup;
+  });
+
+  var us=document.getElementById("userSearch");
+  us && us.addEventListener("input",function(){
+    var q=this.value.trim().toLowerCase(), any=false;
+    form.querySelectorAll('[data-person]').forEach(function(p){
+      var hit=!q || p.dataset.name.indexOf(q)>-1;
+      p.hidden=!hit; if(hit) any=true;
+    });
+    document.getElementById("usersNoResults").hidden=any;
+  });
+
+  refreshCounts();
+})();
+</script>
 {% endblock %}

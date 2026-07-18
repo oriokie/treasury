@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}{{ dept.name }} budget · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ dept.name }} — budget &amp; goals</h1>
+<div class="page-head"><div><div class="eyebrow">Funds · {{ SITE_NAME }}</div><h1>{{ dept.name }} — budget &amp; goals</h1>
   <div class="sub">Camp/fund budget by item and the goals it's tracked against</div></div>
   <div class="btn-row no-print">
     <a class="btn btn-ghost btn-sm" href="{% url 'report_fund' dept.id %}">← Fund ledger</a>

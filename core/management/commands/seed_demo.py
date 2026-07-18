@@ -1051,6 +1051,15 @@ class Command(BaseCommand):
                 scheme=main_scheme, funding_target__isnull=False).exists():
             self.stdout.write(self.style.SUCCESS(
                 "Benevolent (Phase 5): cases already exist, skipping"))
+            # Skip re-creating THIS phase's own cases, but the cascade must
+            # still continue — a `return` here used to abort phases 6/7/9 too
+            # (the committee roster, financial integration, and the
+            # role-specific demo users) any time phase 5 had already run, which
+            # is exactly what always happens from the standalone
+            # `seed_benevolent_demo` command (phase 1 already creates a case
+            # with a funding target before phase 5 is ever reached) — silently
+            # leaving ben_admin and the other six role demo users never created.
+            self._seed_benevolent_phase6(treasurer, main_scheme)
             return
 
         bereavement = main_scheme.event_types.filter(code="BER").first() \
@@ -1137,6 +1146,10 @@ class Command(BaseCommand):
         if CommitteeMember.objects.filter(scheme=main_scheme).exists():
             self.stdout.write(self.style.SUCCESS(
                 "Benevolent (Phase 6): committee already seeded, skipping"))
+            # Same fix as phase 5's guard above: skip THIS phase's own work but
+            # still cascade to phase 7, which is what reaches phase 9 and the
+            # role-specific demo users.
+            self._seed_benevolent_phase7(main_scheme)
             return
 
         assistant = User.objects.filter(groups__name="Assistant").first() or treasurer

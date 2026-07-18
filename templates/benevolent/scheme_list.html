@@ -1,7 +1,7 @@
 {% extends 'base.html' %}{% load humanize %}
 {% block title %}Schemes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Schemes &amp; policies</h1>
+<div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Schemes &amp; policies</h1>
   <div class="sub">Each scheme is defined by configuration — a fund and a versioned policy — not by code</div></div>
 <div class="btn-row no-print">
   {% if can.manage_benevolent_schemes %}<a class="btn btn-sm" href="{% url 'benevolent_scheme_new' %}">+ New scheme</a>

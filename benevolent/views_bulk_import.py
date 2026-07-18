@@ -49,15 +49,15 @@ class BulkMembershipImportView(BenevolentRegistrationMixin, View):
         resp["Content-Disposition"] = 'attachment; filename="benevolent_roster_template.csv"'
         w = _csv.writer(resp)
         header = ["name", "phone", "joined_on", "registration_type", "household_name",
-                  "mark_paid_up"]
+                  "registration_fee_paid", "mark_paid_up"]
         for i in range(1, DEP_SLOTS + 1):
             header += [f"dependant{i}_name", f"dependant{i}_relationship",
                       f"dependant{i}_phone"]
         w.writerow(header)
         w.writerow(["Mary Wanjiru", "0722111222", "2023-01-15", "HOUSEHOLD",
-                   "The Wanjiru Household", "1",
+                   "The Wanjiru Household", "1", "1",
                    "John Wanjiru", "SPOUSE", "0733444555", "", "", "", "", "", ""])
-        w.writerow(["Peter Otieno", "0700888999", "2022-06-01", "INDIVIDUAL", "", "1",
+        w.writerow(["Peter Otieno", "0700888999", "2022-06-01", "INDIVIDUAL", "", "1", "1",
                    "", "", "", "", "", "", "", "", ""])
         return resp
 
@@ -153,6 +153,17 @@ class BulkMembershipImportView(BenevolentRegistrationMixin, View):
             m = reg_svc.admit(m, user=user, on=joined_on,
                               reason="Imported from the existing roster — already "
                                     "active per prior records.", notify=False)
+
+        # The registration fee is a SEPARATE obligation from ongoing dues (see
+        # benevolent.services.obligations — a member with an unpaid fee gets it
+        # settled before anything else regardless of what a narration says), so
+        # importing a roster needs its own column for it rather than being
+        # folded into mark_paid_up, which only ever touched dues arrears.
+        reg_paid = (row.get("registration_fee_paid") or "").strip().lower() \
+            not in ("", "0", "false", "no")
+        if reg_paid and not m.registration_fee_paid:
+            m.registration_fee_paid = True
+            m.save(update_fields=["registration_fee_paid"])
 
         mark_paid = (row.get("mark_paid_up") or "").strip() not in ("", "0", "false", "no")
         if mark_paid:

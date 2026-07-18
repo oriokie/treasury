@@ -1,61 +1,95 @@
 {% extends 'base.html' %}{% load humanize treasury_extras static %}
 {% block title %}{{ report.title }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ report.title }}</h1>
-  {% if report.description %}<div class="sub">{{ report.description }}</div>{% endif %}
-  {% if rendered.context.start %}<div class="sub">{{ rendered.context.start|date:"d M Y" }} – {{ rendered.context.end|date:"d M Y" }}</div>{% endif %}</div>
-<div class="btn-row no-print">
-  <a class="btn btn-sm" href="{% url 'assistant' %}?report_key={{ report.key }}{% if rendered.context.start %}&start={{ rendered.context.start|date:'Y-m-d' }}&end={{ rendered.context.end|date:'Y-m-d' }}{% endif %}">✨ Ask AI about this report</a>
-  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=csv">⬇ CSV</a>
-  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=xlsx">⬇ Excel</a>
-  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=pdf">⬇ PDF</a>
-  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=docx">⬇ Word</a>
-  <button type="button" class="btn btn-ghost btn-sm" onclick="window.print()">🖶 Print</button>
-</div></div>
 
-{% if report.filters %}
+{# ---- Report masthead: set like the head of a printed statement ---------- #}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">{{ report.category|default:"Report" }} · {{ SITE_NAME }}</div>
+      <h1>{{ report.title }}</h1>
+      {% if report.description %}<div class="desc">{{ report.description }}</div>{% endif %}
+      {% if rendered.context.start %}
+      <div class="period">{{ rendered.context.start|date:"d M Y" }} — {{ rendered.context.end|date:"d M Y" }}</div>
+      {% endif %}
+    </div>
+    {% if preview_mode %}
+    <div class="rpt-actions no-print"><span class="pill pill-amber">Unsaved preview — exports and filters work after you save</span></div>
+    {% else %}
+    <div class="rpt-actions no-print">
+      <a class="btn btn-sm" href="{% url 'assistant' %}?report_key={{ report.key }}{% if rendered.context.start %}&start={{ rendered.context.start|date:'Y-m-d' }}&end={{ rendered.context.end|date:'Y-m-d' }}{% endif %}">✨ Ask AI</a>
+      <span class="export-seg">
+        <span class="seg-lbl">Export</span>
+        <a href="?{{ querystring }}&export=csv" title="Download as CSV">CSV</a>
+        <a href="?{{ querystring }}&export=xlsx" title="Download as Excel">Excel</a>
+        <a href="?{{ querystring }}&export=pdf" title="Download as PDF">PDF</a>
+        <a href="?{{ querystring }}&export=docx" title="Download as Word">Word</a>
+        <button type="button" onclick="window.print()" title="Print this report">Print</button>
+      </span>
+    </div>
+    {% endif %}
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
+
+{# ---- Filters: labeled fields, not bare placeholder inputs --------------- #}
+{% if not preview_mode %}{% if report.filters or rendered.context.start %}
 <form method="get" class="filter-bar no-print u-mb">
   {% if rendered.context.start %}
-    <input type="date" name="start" value="{{ rendered.context.start|date:'Y-m-d' }}" class="field" title="From">
-    <input type="date" name="end" value="{{ rendered.context.end|date:'Y-m-d' }}" class="field" title="To">
+    <div class="fb-field"><label for="rf_start">From</label>
+      <input id="rf_start" type="date" name="start" value="{{ rendered.context.start|date:'Y-m-d' }}" class="field"></div>
+    <div class="fb-field"><label for="rf_end">To</label>
+      <input id="rf_end" type="date" name="end" value="{{ rendered.context.end|date:'Y-m-d' }}" class="field"></div>
   {% endif %}
   {% for f in report.filters %}
     {% if f.kind == 'bool' %}
       <label class="u-inline"><input type="checkbox" name="{{ f.name }}" value="1" {% if filters|get_item:f.name %}checked{% endif %}> {{ f.label }}</label>
     {% elif f.kind == 'date' %}
-      <input type="date" name="{{ f.name }}" value="{{ filters|get_item:f.name|date:'Y-m-d' }}" class="field" title="{{ f.label }}">
+      <div class="fb-field"><label for="rf_{{ f.name }}">{{ f.label }}</label>
+        <input id="rf_{{ f.name }}" type="date" name="{{ f.name }}" value="{{ filters|get_item:f.name|date:'Y-m-d' }}" class="field"></div>
     {% else %}
-      <input type="text" name="{{ f.name }}" value="{{ filters|get_item:f.name|default:'' }}" class="field" placeholder="{{ f.label }}">
+      <div class="fb-field"><label for="rf_{{ f.name }}">{{ f.label }}</label>
+        <input id="rf_{{ f.name }}" type="text" name="{{ f.name }}" value="{{ filters|get_item:f.name|default:'' }}" class="field"></div>
     {% endif %}
   {% endfor %}
   <button class="btn btn-sm">Apply</button>
 </form>
-{% endif %}
+{% endif %}{% endif %}
 
-<div class="engine-grid" style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-start">
+<div class="engine-grid">
 {% for s in sections %}
   {% with layout=s.extra|get_item:'layout' %}
-  <div class="engine-cell" style="flex:1 1 {% if layout %}{{ layout.width|default:12|pct_of_12 }}{% else %}100{% endif %}%;min-width:280px;{% if layout and layout.page_break_before %}break-before:page;{% endif %}">
-  <div class="card u-mb"><div class="hd" style="display:flex;justify-content:space-between;align-items:center">
-    <span>{{ s.title }}</span>
-    <a class="ask-ai-link no-print" title="Ask the AI about this section"
-       href="{% url 'assistant' %}?report_key={{ report.key }}{% if rendered.context.start %}&start={{ rendered.context.start|date:'Y-m-d' }}&end={{ rendered.context.end|date:'Y-m-d' }}{% endif %}&element={{ s.title|urlencode }}">✨ Ask AI</a>
-  </div><div class="bd">
+  <div class="engine-cell" style="flex:1 1 {% if layout %}{{ layout.width|default:12|pct_of_12 }}{% else %}100{% endif %}%;{% if layout and layout.page_break_before %}break-before:page;{% endif %}">
+  {% if s.kind == 'heading' %}
+    <div class="sec-h">{{ s.extra|get_item:'text' }}</div>
+  {% else %}
+  <div class="card u-mb">
+    {% if s.title %}
+    <div class="hd" style="display:flex;justify-content:space-between;align-items:center;gap:.6rem">
+      <h3>{{ s.title }}</h3>
+      {% if not preview_mode %}<a class="ask-ai-link no-print" title="Ask the AI about this section"
+         href="{% url 'assistant' %}?report_key={{ report.key }}{% if rendered.context.start %}&start={{ rendered.context.start|date:'Y-m-d' }}&end={{ rendered.context.end|date:'Y-m-d' }}{% endif %}&element={{ s.title|urlencode }}">✨ Ask AI</a>{% endif %}
+    </div>
+    {% endif %}
+    <div class="bd">
 
     {% if s.kind == 'kpi' %}
-      <div class="kpi-band" style="display:flex;flex-wrap:wrap;gap:1rem">
+      <div class="kpi-band">
         {% for r in s.rows %}
-        <div class="stat" style="flex:1;min-width:130px">
+        <div class="stat {% cycle 'accent' 'brass' '' %}">
           <div class="lbl">{{ r.cells.label }}</div>
-          <div class="val mono">KES {{ r.cells.value|floatformat:0|intcomma }}</div>
+          {% with disp=r.cells|get_item:'display' %}
+          <div class="val mono">{% if disp %}{{ disp }}{% else %}<span class="ksh">KES</span>{{ r.cells.value|floatformat:0|intcomma }}{% endif %}</div>
+          {% endwith %}
+          {% with sub=r.cells|get_item:'sub' %}{% if sub %}<div class="foot">{{ sub }}</div>{% endif %}{% endwith %}
         </div>{% endfor %}
       </div>
 
     {% elif s.kind == 'chart' %}
-      <div class="chart-box"><canvas id="chart_{{ s.key }}"></canvas></div>
+      <div class="engine-chart"><canvas id="chart_{{ s.key }}"></canvas></div>
 
     {% elif s.kind == 'commentary' %}
-      <p>{{ s.extra|get_item:'text' }}</p>
+      {{ s.extra|get_item:'text'|linebreaks }}
 
     {% elif s.kind == 'info' %}
       <p class="help u-mt-0">{{ s.extra|get_item:'text' }}</p>
@@ -71,44 +105,56 @@
     {% elif s.kind == 'keyvalue' %}
       <table class="ledger"><tbody>{% for r in s.rows %}<tr {% if r.emphasis %}class="row-emph"{% endif %}>
         <td>{{ r.cells.label }}</td>
-        <td class="num mono">{{ r.cells.value|floatformat:2|intcomma }}</td>
+        <td class="num mono {% if r.cells.value|is_negative %}neg{% endif %}">{{ r.cells.value|floatformat:2|intcomma }}</td>
       </tr>{% endfor %}</tbody></table>
 
     {% elif s.is_empty %}
-      <p class="empty">No data for this period.</p>
+      <div class="rpt-empty">
+        <div class="big">Nothing to report</div>
+        <div>No rows match this period{% if report.filters %} and filter{% endif %}.
+          {% if rendered.context.start %}Try widening the dates above.{% endif %}</div>
+      </div>
 
     {% else %}
-      <div class="table-wrap"><table class="ledger">
+      <div class="table-wrap {% if s.rows|length > 15 %}sticky{% endif %}"><table class="ledger">
         <thead><tr>{% for c in s.columns %}<th {% if c.numeric %}class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
         <tbody>
         {% for r in s.rows %}<tr {% if r.emphasis %}class="row-emph"{% endif %}>
           {% for c in s.columns %}
-            <td {% if c.numeric %}class="num mono"{% endif %}>
-              {% if c.drilldown and r.url %}<a class="link" href="{{ r.url }}">{{ r.cells|get_item:c.key }}</a>
-              {% elif c.numeric %}{{ r.cells|get_item:c.key|floatformat:2|intcomma }}
-              {% else %}{{ r.cells|get_item:c.key }}{% endif %}
+            {% with v=r.cells|get_item:c.key %}
+            <td class="{% if c.numeric %}num mono{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}{% if v == None or v == '' %} cell-blank{% endif %}">
+              {% if c.drilldown and r.url %}<a class="link" href="{{ r.url }}">{{ v }}</a>
+              {% elif v == None or v == '' %}—
+              {% elif c.numeric %}{{ v|floatformat:2|intcomma }}
+              {% else %}{{ v }}{% endif %}
             </td>
+            {% endwith %}
           {% endfor %}
         </tr>{% endfor %}
         </tbody>
         {% if s.total %}<tfoot><tr class="row-emph">
-          {% for c in s.columns %}<td {% if c.numeric %}class="num mono"{% endif %}>
-            {% if c.numeric %}{{ s.total.cells|get_item:c.key|floatformat:2|intcomma }}{% else %}{{ s.total.cells|get_item:c.key }}{% endif %}
-          </td>{% endfor %}
+          {% for c in s.columns %}{% with v=s.total.cells|get_item:c.key %}
+          <td class="{% if c.numeric %}num mono{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}">
+            {% if v == None or v == '' %}{% elif c.numeric %}{{ v|floatformat:2|intcomma }}{% else %}{{ v }}{% endif %}
+          </td>{% endwith %}{% endfor %}
         </tr></tfoot>{% endif %}
       </table></div>
     {% endif %}
 
     {% if s.note %}<p class="help u-mt-sm">{{ s.note }}</p>{% endif %}
   </div></div>
+  {% endif %}
   </div>
   {% endwith %}
 {% empty %}
-  <p class="empty">This report has no visible sections for your role.</p>
+  <div class="rpt-empty">
+    <div class="big">Nothing visible here</div>
+    <div>This report has no sections your role can see.</div>
+  </div>
 {% endfor %}
 </div>
 
-{% if dep_map %}
+{% if dep_map and not preview_mode %}
 <details class="u-mt no-print"><summary class="link">Financial dependency map</summary>
 <div class="help">
   <p>Metrics consumed: <span class="mono">{{ dep_map.all_metrics|join:", " }}</span></p>

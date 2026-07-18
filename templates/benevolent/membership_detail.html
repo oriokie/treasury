@@ -91,7 +91,15 @@
       <strong>not</strong> closed, so the case can still be raised, assessed and paid.
       {% if policy.transfer_membership_on_death %}It can also be <strong>transferred</strong> to a survivor, who keeps
       the joining date of {{ membership.joined_on|date:"d M Y" }} — so the years already paid in stay with the
-      household.{% endif %}</div>
+      household.{% endif %}
+      <div class="u-mt-sm">
+        {% if own_death_case %}
+          <a class="link" href="{% url 'benevolent_case_detail' own_death_case.id %}">Open the case ({{ own_death_case.number }}, {{ own_death_case.get_status_display }})</a>
+        {% else %}
+          <a class="link" href="{% url 'benevolent_case_new' membership.scheme.id %}?membership={{ membership.id }}">Raise a case</a>
+        {% endif %}
+      </div>
+    </div>
     {% endif %}
 
     {% if can.manage_benevolent and policy.allow_transfers and not membership.transferred_to %}
@@ -139,7 +147,7 @@
       <button class="btn btn-ghost btn-sm" name="remove" value="{{ h.dependant.id }}">Remove</button></form>
     {% else %}
     <span class="pill pill-brass u-xs">Deceased {{ h.dependant.died_on|date:"d M Y" }}</span>
-    <a class="link u-xs" href="{% url 'benevolent_case_new' membership.scheme.id %}">Raise a case</a>
+    <a class="link u-xs" href="{% url 'benevolent_case_new' membership.scheme.id %}?dependant={{ h.dependant.id }}">Raise a case</a>
     {% endif %}
   {% endif %}</td>
 </tr>{% if h.dependant and can.manage_benevolent %}<tr class="no-border"><td colspan="5" style="padding-top:0">

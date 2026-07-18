@@ -2,7 +2,7 @@
 {% block title %}Envelopes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
-  <div class="ws-titles"><h1>Envelopes</h1><div class="ws-sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
+  <div class="ws-titles"><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Envelopes</h1><div class="ws-sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
   <div class="ws-actions">
     {% if can_enter_data %}<a class="btn" href="{% url 'envelope_ledger' %}">＋ Record</a>
     <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>

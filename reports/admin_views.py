@@ -436,3 +436,61 @@ class SnapshotCompareView(ReportAccessMixin, TemplateView):
                       "removed" if sb is None else "changed")
             rows.append({"title": title, "status": status})
         return rows
+
+
+class DesignerPreviewView(TreasurerRequiredMixin, View):
+    """Render the report the designer is CURRENTLY building — unsaved — in a new
+    tab. The builder posts its live sections/filters JSON here; the exact same
+    compiler that runs a saved definition compiles it in memory, and the exact
+    same engine template renders it. Nothing is persisted, registered or
+    recorded: change a text block, press Preview, see it — then save when it
+    reads right. Validation problems come back as a plain list on the page (the
+    same per-section sentences the save path produces), never a traceback.
+    """
+
+    def post(self, request, key=None):
+        import json as _json
+        from django.http import HttpResponse
+        from django.utils.html import escape
+        from core.reporting import build_dependency_map
+        from reports.services.designer import compile_definition, validate_definition
+        from reports.views import EngineReportView
+
+        try:
+            sections = _json.loads(request.POST.get("sections") or "[]")
+            filters = _json.loads(request.POST.get("filters") or "[]")
+        except _json.JSONDecodeError as e:
+            return HttpResponse(
+                f"<h2>Preview</h2><p>Invalid JSON: {escape(str(e))}</p>", status=400)
+
+        definition = {
+            "key": "__preview__",
+            "title": request.POST.get("title") or "Untitled report (preview)",
+            "sections": sections,
+            "filters": filters,
+        }
+        problems = validate_definition(definition)
+        if problems:
+            items = "".join(f"<li>{escape(p)}</li>" for p in problems)
+            return HttpResponse(
+                "<h2>This report can't be previewed yet</h2>"
+                f"<ul>{items}</ul>"
+                "<p>Fix these in the builder tab and press Preview again.</p>")
+
+        report = compile_definition(definition)
+        rendered = report.render(request)     # same permission/context pipeline
+        helper = EngineReportView()
+        helper.request = request
+        context = {
+            "report": report,
+            "rendered": rendered,
+            "sections": rendered.sections,
+            "filters": rendered.filters,
+            "querystring": "",
+            "dep_map": build_dependency_map(rendered),
+            "chart_json": helper._chart_json(rendered),
+            "is_favourite": False,
+            "preview_mode": True,     # template hides filters/exports/AI links
+            **helper._grouped_context(rendered),
+        }
+        return render(request, "reports/engine_report.html", context)

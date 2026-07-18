@@ -253,14 +253,25 @@ def run_automation(scheme=None, as_of=None, only=None, force=False, user=None):
     reminders = notify_svc.send_due_reminders(scheme=scheme, as_of=as_of)
     retried = notify_svc.retry_failed()
 
+    # item 7: the scheduled jobs — proposing status changes as review tasks
+    # (never acting on them), flagging eligibility/aged-out/duplicates, and
+    # archiving long-settled cases. All idempotent; safe to run nightly.
+    from benevolent.services import automation as automation_svc
+    jobs = automation_svc.run_jobs(scheme=scheme, as_of=as_of, cfg=cfg)
+
+    tasks_raised = (jobs["suspensions_proposed"] + jobs["closures_proposed"]
+                    + jobs["eligible_flagged"] + jobs["aged_out_flagged"]
+                    + jobs["duplicates_flagged"])
     summary = (f"{len(changes)} membership standing(s) recomputed across "
                f"{len(schemes)} scheme(s); {reminders['arrears']} arrears and "
                f"{reminders['renewal']} renewal reminder(s) sent; "
-               f"{retried} failed notification(s) retried.")
+               f"{retried} failed notification(s) retried; "
+               f"{tasks_raised} review task(s) raised; "
+               f"{jobs['cases_archived']} case(s) archived.")
     if not force:
         cfg.automation_last_run = timezone.now()
         cfg.automation_last_summary = summary[:255]
         cfg.save(update_fields=["automation_last_run", "automation_last_summary"])
     return {"ran": True, "changed": len(changes), "changes": changes,
             "summary": summary, "as_of": as_of, "reminders": reminders,
-            "retried": retried}
+            "retried": retried, "jobs": jobs}

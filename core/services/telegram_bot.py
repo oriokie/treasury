@@ -97,6 +97,29 @@ def send_document(chat_id, filename, content, caption="", cfg=None):
 
 
 # ----------------------------------------------------------------------------- commands
+def _app_link(path, label="Open in the app", cfg=None):
+    """Build an <a> deep-link back to the web app for a path like '/benevolent/cases/12/'.
+
+    Returns a Telegram-HTML anchor when a base URL is configured, so a treasurer
+    reading a figure in the chat is one tap from the full record on the web. When
+    `site_base_url` has not been set, the link cannot be absolute (Telegram needs
+    a full https URL), so rather than drop it silently — which hides a capability
+    and leaves people wondering where the detail is — it returns a muted hint
+    naming the in-app path and pointing at the setting. Either way the treasurer
+    knows the record exists and how to reach it.
+    """
+    if cfg is None:
+        cfg = _cfg()
+    base = (getattr(cfg, "site_base_url", "") or "").strip().rstrip("/")
+    if base and not base.startswith(("http://", "https://")):
+        base = "https://" + base
+    if base and path.startswith("/"):
+        return f'<a href="{base}{path}">{label}</a>'
+    # no base URL configured — name the path so it is still actionable
+    return (f"<i>{label}: open <code>{path}</code> in the app "
+            f"(set the site address in Settings → Telegram to make this a link)</i>")
+
+
 HELP = (
     "<b>Treasury bot</b>\n"
     "Queries:\n"
@@ -107,7 +130,7 @@ HELP = (
     "• /case [NUMBER] — a case's WhatsApp statement (blank lists open cases)\n"
     "• /benevolent — how every scheme stands\n"
     "• /arrears [SCHEME] — who owes, worst first\n"
-    "• /balance — all fund balances (or /balance • /balance &lt;fund&gt; — closing balance of a fundlt;fund• /balance &lt;fund&gt; — closing balance of a fundgt; for one)\n"
+    "• /balance — every fund's closing balance (or /balance &lt;fund&gt; for one fund's full detail)\n"
     "• /today — today's collections\n"
     "• Or just type a question, e.g. <i>how much tithe in May?</i>\n\n"
     "Record an expense:\n"
@@ -215,6 +238,7 @@ def _do_member(arg):
             block.append("Covers: " + ", ".join(
                 f"{d.display_name} ({d.get_relationship_display().lower()})"
                 for d in deps[:6]))
+        block.append(_app_link(f"/benevolent/members/{m.pk}/", "Open this member"))
         out.append("\n".join(block))
     return "\n\n".join(out)
 
@@ -252,6 +276,7 @@ def _do_case(chat_id, arg):
 
     data = stmt_svc.case_statement(case)
     text = stmt_svc.as_text(data, currency=SiteConfig.get().currency_symbol)
+    link = _app_link(f"/benevolent/cases/{case.pk}/", "Open this case")
     # Telegram messages cap at 4096 characters, and a 200-member scheme's
     # defaulters list will pass that. Send the summary as a message and the full
     # thing as a file the treasurer can open and copy from.
@@ -264,9 +289,9 @@ def _do_case(chat_id, arg):
                         f"{data['n_contributed']} contributed · "
                         f"{data['n_defaulted']} did not · "
                         f"surplus {_money(data['surplus'])}\n"
-                        f"Open the file and copy it into WhatsApp."),
+                        f"Open the file and copy it into WhatsApp.\n{link}"),
         }
-    return {"chat_id": chat_id, "text": f"<pre>{text}</pre>"}
+    return {"chat_id": chat_id, "text": f"<pre>{text}</pre>\n{link}"}
 
 
 def _do_benevolent():
@@ -287,7 +312,8 @@ def _do_benevolent():
             f"Balance: <b>{_money(s.balance)}</b>\n"
             f"Members: {snap['total']} "
             f"({len(snap['good'])} good, {len(snap['arrears'])} in arrears)\n"
-            f"Open cases: {open_cases}")
+            f"Open cases: {open_cases}\n"
+            f"{_app_link(f'/benevolent/schemes/{s.pk}/', 'Open this scheme')}")
     return "\n\n".join(out)
 
 
@@ -738,13 +764,8 @@ def _format_assistant(ans, cfg):
     if ans.get("note"):
         parts.append(f"<i>{ans['note']}</i>")
     link = ans.get("link")
-    if link:
-        base = (getattr(cfg, "site_base_url", "") or "").strip().rstrip("/")
-        if base and not base.startswith(("http://", "https://")):
-            base = "https://" + base
-        label = ans.get("link_label") or "Open report"
-        if base and link.startswith("/"):
-            parts.append(f'<a href="{base}{link}">{label}</a>')
+    if link and link.startswith("/"):
+        parts.append(_app_link(link, ans.get("link_label") or "Open report", cfg=cfg))
     return "\n".join(p for p in parts if p)
 
 

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Correct contribution · {{ c.scheme.name }}{% endblock %}
+{% block content %}
+<div class="ws-head"><div class="ws-titles">
+  <h1>Correct a contribution</h1>
+  <div class="ws-sub">Recorded against the wrong member, wrong scheme, or as the wrong kind? This
+    reverses the original entry and books a correct one carrying the same money — nothing is deleted,
+    so the record still shows what happened.</div>
+</div></div>
+
+<div class="card u-mb" style="max-width:640px"><div class="bd">
+  <table class="kv">
+    <tr><th>Amount</th><td>{{ c.amount|floatformat:2 }}</td></tr>
+    <tr><th>Date</th><td>{{ c.date|date:"d M Y" }}</td></tr>
+    <tr><th>Currently on</th><td>{{ c.scheme.name }}{% if c.membership %} · {{ c.membership.member.name }}{% endif %}</td></tr>
+    <tr><th>Currently kind</th><td>{{ c.get_kind_display }}</td></tr>
+  </table>
+</div></div>
+
+<form method="post" class="card" style="max-width:640px"><div class="bd">{% csrf_token %}
+  <label class="field-label">Move to scheme
+    <select name="new_scheme" class="field">
+      {% for s in schemes %}<option value="{{ s.id }}" {% if s.id == c.scheme_id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+    </select>
+    <span class="help">Leave as-is to keep the same scheme. Changing scheme clears the member (pick one below if the new scheme needs it).</span>
+  </label>
+
+  <label class="field-label u-mt">Correct member
+    <select name="new_membership" class="field">
+      <option value="">— unchanged / general donation —</option>
+      {% for m in c.scheme.memberships.all %}<option value="{{ m.id }}" {% if m.id == c.membership_id %}selected{% endif %}>{{ m.member.name }} ({{ m.number }})</option>{% endfor %}
+    </select>
+    <span class="help">Only members of the scheme above are valid. If you changed the scheme, save and reopen to pick from its members.</span>
+  </label>
+
+  <label class="field-label u-mt">Correct kind
+    <select name="new_kind" class="field">
+      {% for val, lbl in kinds %}<option value="{{ val }}" {% if val == c.kind %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+    </select>
+  </label>
+
+  <label class="field-label u-mt">Reason <span class="req">*</span>
+    <input name="reason" class="field" required maxlength="200"
+           placeholder="e.g. Receipted against the wrong member — belongs to Mary, not Jane.">
+    <span class="help">Kept on the record so the correction is explained to anyone reading it later.</span>
+  </label>
+
+  <div class="btn-row u-mt">
+    <button class="btn">Reverse and re-record correctly</button>
+    <a class="btn btn-ghost" href="{% url 'benevolent_contribution_list' %}">Cancel</a>
+  </div>
+</div></form>
+{% endblock %}

@@ -393,9 +393,61 @@ class NarrativeComponent(ComponentSection):
         return data
 
 
+def _fill_placeholders(text, ctx):
+    """Substitute the small set of merge fields custom text may carry, so a
+    designed report's boilerplate ("For the period {period_start} to
+    {period_end}") stays correct as the reader changes the dates. Plain
+    ``str.replace`` on a fixed set — never ``str.format`` — so a stray brace in
+    ordinary prose can't raise, and unknown {tokens} pass through untouched.
+    """
+    if not text or "{" not in text:
+        return text
+    import datetime as _dt
+    start = getattr(ctx, "start", None)
+    end = getattr(ctx, "end", None)
+    church = ""
+    try:
+        from core.models import SiteConfig
+        church = SiteConfig.get().church_name or ""
+    except Exception:  # noqa: BLE001 — a merge field must never break a render
+        pass
+    subs = {
+        "{period_start}": start.strftime("%d %b %Y") if start else "",
+        "{period_end}": end.strftime("%d %b %Y") if end else "",
+        "{church}": church,
+        "{today}": _dt.date.today().strftime("%d %b %Y"),
+    }
+    for token, value in subs.items():
+        text = text.replace(token, value)
+    return text
+
+
+class HeadingComponent(ComponentSection):
+    """A standalone heading — pure structure, no data. Lets a designed report be
+    divided into named parts ("Part 1 — Income", "Notes for the board") exactly
+    like a printed statement, without abusing a data section's title to do it.
+    Supports the same merge fields as text blocks."""
+    key = "heading"
+    title = ""
+
+    def __init__(self, text="", key=None, title=None, layout=None, permission=None):
+        super().__init__(key=key or "heading", title=title or "",
+                         layout=layout, permission=permission)
+        self._text = text
+
+    def render(self, ctx, filters):
+        text = _fill_placeholders(self._text, ctx)
+        if not text:
+            return None
+        return SectionData(key=self.key, title="", columns=[], rows=[],
+                           kind="heading", extra={"text": text})
+
+
 class CommentaryComponent(ComponentSection):
     """A static or callable commentary panel. ``text`` may be a string or a
-    ``fn(ctx, filters) -> str``."""
+    ``fn(ctx, filters) -> str``. Hand-written text supports merge fields
+    ({period_start}, {period_end}, {church}, {today}) and blank-line paragraph
+    breaks."""
     key = "commentary"
     title = "Commentary"
 
@@ -406,6 +458,7 @@ class CommentaryComponent(ComponentSection):
 
     def render(self, ctx, filters):
         text = self._text(ctx, filters) if callable(self._text) else self._text
+        text = _fill_placeholders(text, ctx)
         if not text:
             return None
         return SectionData(key=self.key, title=self.title, columns=[], rows=[],
@@ -466,8 +519,9 @@ class InfoPanelComponent(ComponentSection):
         self._text = text
 
     def render(self, ctx, filters):
+        text = _fill_placeholders(self._text, ctx)
         return SectionData(key=self.key, title=self.title, columns=[], rows=[],
-                           kind="info", extra={"text": self._text})
+                           kind="info", extra={"text": text})
 
 
 class FinancialStatementComponent(ComponentSection):
@@ -535,8 +589,17 @@ def _register_all():
                  label="Chart", category="Visual", designer_safe=False,
                  description="Needs a Python chart-spec function — composed "
                             "in code-defined reports only, not the designer.")
+    reg.register("heading", lambda text="", **k: HeadingComponent(text, **k),
+                 label="Heading", category="Text",
+                 description="A standalone heading to divide the report into "
+                             "named parts. Supports merge fields.",
+                 params_schema=[{"name": "text", "label": "Heading text",
+                                 "kind": "text", "required": True}])
     reg.register("commentary", lambda text="", **k: CommentaryComponent(text, **k),
-                 label="Commentary", category="Narrative",
+                 label="Text block", category="Text",
+                 description="Your own paragraphs — introductions, board notes, "
+                             "explanations. Blank lines make new paragraphs; "
+                             "merge fields fill in the period and church.",
                  params_schema=[{"name": "text", "label": "Text",
                                  "kind": "textarea", "required": True}])
     reg.register("narrative",
@@ -552,7 +615,9 @@ def _register_all():
                  description="Needs a Python render function — composed in "
                             "code-defined reports only, not the designer.")
     reg.register("info_panel", lambda text="", **k: InfoPanelComponent(text, **k),
-                 label="Info panel", category="Narrative",
+                 label="Note (highlighted)", category="Text",
+                 description="A short highlighted note — a caveat, a basis-of-"
+                             "preparation line, a reminder. Supports merge fields.",
                  params_schema=[{"name": "text", "label": "Text",
                                  "kind": "textarea", "required": True}])
     reg.register("financial_statement",
