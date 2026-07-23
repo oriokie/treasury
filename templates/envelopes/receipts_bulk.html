@@ -1,4 +1,4 @@
-{% load humanize %}<!doctype html><html><head><meta charset="utf-8">
+{% load humanize treasury_extras %}<!doctype html><html><head><meta charset="utf-8">
 <title>Receipts — {{ sabbath|date:"d M Y" }}</title>
 <style>
   *{box-sizing:border-box}
@@ -47,7 +47,7 @@
 <body class="{% if fmt == 'etr' %}etr{% endif %}">
 <div class="toolbar">
   <strong>Receipts — {{ sabbath|date:"d M Y" }}</strong>
-  <span class="meta">{{ count }} receipt{{ count|pluralize }} · KES {{ total|floatformat:2|intcomma }}</span>
+  <span class="meta">{{ count }} receipt{{ count|pluralize }} · {{ CURRENCY }} {{ total|money }}</span>
   <span class="sp"></span>
   {% if fmt == 'etr' %}<a href="?date={{ sabbath|date:'Y-m-d' }}">A4 cut-up</a>{% else %}<a href="?date={{ sabbath|date:'Y-m-d' }}&format=etr">ETR (thermal)</a>{% endif %}
   <button class="primary" onclick="window.print()">⎙ Print all</button>
@@ -65,8 +65,8 @@
     </div>
     <div class="rc-meta"><span>Received from:</span><b>{{ e.contributor_name }}</b></div>
     <table>
-      {% for l in e.lines.all %}<tr><td>{{ l.department.name }}</td><td class="amt">{{ l.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
-      <tr class="rc-tot"><td>TOTAL (KES)</td><td class="amt">{{ e.total|floatformat:2|intcomma }}</td></tr>
+      {% for l in e.lines.all %}<tr><td>{{ l.department.name }}</td><td class="amt">{{ l.amount|money }}</td></tr>{% endfor %}
+      <tr class="rc-tot"><td>TOTAL (KES)</td><td class="amt">{{ e.total|money }}</td></tr>
     </table>
     <div class="rc-msg">{{ receipt_message }}</div>
   </div>

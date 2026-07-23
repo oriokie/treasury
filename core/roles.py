@@ -18,7 +18,20 @@ ELDER = "Elder"     # church elder: read-only, scoped to a small curated set of
                     # such as reports is opt-in via an assignable right, not
                     # granted to every elder by default.
 
-ALL_ROLES = [TREASURER, ASSISTANT, AUDITOR, LEADER, ELDER]
+MEMBER = "Member"   # a member of the congregation using the self-service
+                    # portal. Deliberately NOT a staff role and not a
+                    # read-only office role either: a Leader or an Auditor sees
+                    # the church's figures, a Member sees only their own. Its
+                    # access is object-level (scoped by benevolent.MemberAccount)
+                    # rather than page-level, which is why it is confined to the
+                    # portal by middleware rather than gated view by view.
+
+ALL_ROLES = [TREASURER, ASSISTANT, AUDITOR, LEADER, ELDER, MEMBER]
+
+# Roles whose holders belong to the church office in any capacity. A portal
+# member is not one of them, and this tuple is what the confinement middleware
+# and the navigation both ask.
+OFFICE_ROLES = {TREASURER, ASSISTANT, AUDITOR, LEADER, ELDER}
 
 
 def user_roles(user):
@@ -61,6 +74,62 @@ def is_staff_role(user):
         return True
     r = user_roles(user)
     return bool(r & {TREASURER, ASSISTANT, AUDITOR})
+
+
+def is_portal_member(user):
+    """A congregation member using the self-service portal.
+
+    Two conditions, both required. Holding the group alone is not enough: the
+    portal shows a person their own money and their own family, so it needs the
+    *binding* that says which person that is. An account that is suspended,
+    closed or not yet activated fails here and the member is turned away —
+    which is what makes suspending portal access take effect on the next click
+    rather than the next login.
+
+    Never true for a superuser or an office role. An administrator who also
+    happens to be enrolled in a scheme uses the office application; giving them
+    two identities in one session is how object-level scoping gets confused.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser or bool(user_roles(user) & OFFICE_ROLES):
+        return False
+    if MEMBER not in user_roles(user):
+        return False
+    account = member_account(user)
+    return bool(account and account.is_usable)
+
+
+def member_account(user):
+    """The MemberAccount bound to this login, or None.
+
+    The single place the binding is read. Everything object-level in the portal
+    derives from what this returns, so there is exactly one function to audit
+    and exactly one to get wrong.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return None
+    try:
+        return user.member_account
+    except Exception:      # no account bound, or the relation is unavailable
+        return None
+
+
+def is_portal_only(user):
+    """True for a login that has the Member role and no office role at all.
+
+    Distinct from `is_portal_member`: this asks "should this login be confined
+    to the portal", and answers yes even when the account is suspended — a
+    suspended member must not fall *through* to the office application. The
+    two questions are separated on purpose; conflating them is how a
+    deactivated portal login would end up on the treasurer's dashboard.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser:
+        return False
+    r = user_roles(user)
+    return MEMBER in r and not (r & OFFICE_ROLES)
 
 
 def can_enter_data(user):
@@ -328,7 +397,11 @@ def role_label(user):
     if user.is_superuser:
         return "Administrator"
     roles = user_roles(user)
-    for r in (TREASURER, ASSISTANT, AUDITOR, LEADER):
+    for r in (TREASURER, ASSISTANT, AUDITOR, LEADER, MEMBER):
         if r in roles:
-            return "Department leader" if r == LEADER else r
+            if r == LEADER:
+                return "Department leader"
+            if r == MEMBER:
+                return "Member"
+            return r
     return "—"

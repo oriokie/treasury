@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Expense · {{ expense.description }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -32,9 +32,9 @@
 
 <div class="card detail-card"><div class="bd">
   <table class="ledger"><tbody>
-    <tr><td class="muted">Amount</td><td class="num mono">KES {{ expense.amount|floatformat:2|intcomma }}</td></tr>
+    <tr><td class="muted">Amount</td><td class="num mono">{{ CURRENCY }} {{ expense.amount|money }}</td></tr>
     <tr><td class="muted">Category</td><td>{{ expense.get_category_display }}</td></tr>
-    <tr><td class="muted">Type</td><td>{{ expense.get_expenditure_type_display }}</td></tr>
+    <tr><td class="muted">Type</td><td>{{ expense.get_expenditure_type_display }}{% if expense.expenditure_type == "CAPITAL" %}{% if expense.capitalized_asset %} · <a class="link" href="{% url 'asset_detail' expense.capitalized_asset.id %}">{{ expense.capitalized_asset.name }}</a>{% elif can_approve %} · <a class="link" href="{% url 'expense_capitalise' expense.id %}">Put on the asset register</a>{% endif %}{% endif %}</td></tr>
     <tr><td class="muted">Method</td><td>{{ expense.get_method_display }}{% if expense.paid_from_petty_cash %} · petty cash{% endif %}</td></tr>
     <tr><td class="muted">Claimant</td><td>{{ expense.claimant|default:"—" }}</td></tr>
     <tr><td class="muted">Status</td><td><span class="pill {% if expense.status == 'PAID' %}pill-green{% elif expense.status == 'APPROVED' %}pill-blue{% elif expense.status == 'REJECTED' %}pill-red{% else %}pill-amber{% endif %}">{{ expense.get_status_display }}</span></td></tr>
@@ -48,10 +48,10 @@
     <tr><td class="muted">Payment</td><td><a class="link" href="{% url 'payment_register' %}?for_kind=EXPENSE&amp;for_id={{ expense.id }}">Issue a payment (cheque / EFT / M-Pesa) →</a></td></tr>
     {% endif %}
     {% endwith %}
-    {% for ch in expense.charges.all %}<tr><td class="muted">M-Pesa / bank charge</td><td class="num mono">KES {{ ch.amount|floatformat:2|intcomma }} <a class="link" href="{% url 'expense_detail' ch.id %}">view</a></td></tr>{% endfor %}
+    {% for ch in expense.charges.all %}<tr><td class="muted">M-Pesa / bank charge</td><td class="num mono">{{ CURRENCY }} {{ ch.amount|money }} <a class="link" href="{% url 'expense_detail' ch.id %}">view</a></td></tr>{% endfor %}
     {% if expense.charge_for_id %}<tr><td class="muted">Charge for</td><td><a class="link" href="{% url 'expense_detail' expense.charge_for_id %}">{{ expense.charge_for.description }}</a></td></tr>{% endif %}
-    {% if expense.refunds_total %}<tr><td class="muted">Refunded</td><td class="num mono">− KES {{ expense.refunds_total|floatformat:2|intcomma }}</td></tr>
-    <tr><td class="muted"><strong>Net to fund</strong></td><td class="num mono"><strong>KES {{ expense.net_amount|floatformat:2|intcomma }}</strong></td></tr>{% endif %}
+    {% if expense.refunds_total %}<tr><td class="muted">Refunded</td><td class="num mono">− {{ CURRENCY }} {{ expense.refunds_total|money }}</td></tr>
+    <tr><td class="muted"><strong>Net to fund</strong></td><td class="num mono"><strong>{{ CURRENCY }} {{ expense.net_amount|money }}</strong></td></tr>{% endif %}
   </tbody></table>
 </div></div>
 
@@ -64,7 +64,7 @@
     <td class="mono">{{ r.date|date:"d/m/y" }}</td>
     <td>{{ r.get_method_display }}{% if r.to_petty_cash %} · to petty cash{% endif %}</td>
     <td>{{ r.note|default:r.reference|default:"—" }}</td>
-    <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ r.amount|money }}</td>
     {% if is_treasurer %}<td class="u-right"><form method="post" action="{% url 'expense_refund_delete' expense.id r.id %}" class="u-inline" onsubmit="return confirm('Remove this refund? The fund balance will drop back by this amount.');">{% csrf_token %}<button class="link link-danger">Remove</button></form></td>{% endif %}
   </tr>{% endfor %}
   </tbody></table>
@@ -80,7 +80,7 @@
     <div class="f u-grow"><label>Reference / note</label><input type="text" name="note" class="field" placeholder="e.g. unspent change from cups"></div>
     <button class="btn btn-sm">Record refund</button>
   </form>
-  <p class="help">Up to KES {{ refundable|floatformat:2|intcomma }} can still be returned against this expense.</p>
+  <p class="help">Up to {{ CURRENCY }} {{ refundable|money }} can still be returned against this expense.</p>
   {% endif %}
 </div></div>
 {% endif %}

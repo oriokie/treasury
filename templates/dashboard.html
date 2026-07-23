@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Dashboard · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -47,12 +47,12 @@
 
 {% url 'remittance_dashboard' as remit_url %}
 {% if "kpis" in widget_visible %}<div class="kpi-grid" data-w="kpis" style="order:{{ widget_order.kpis }}">
-  {% include "ui/stat.html" with label="Total receipts" prefix="KSh" value=totals.receipts|floatformat:2|intcomma accent="accent" foot="Across active funds" %}
-  {% include "ui/stat.html" with label="Expenses" prefix="KSh" value=totals.expenses_operating|floatformat:2|intcomma accent="warn" foot="Approved & paid · excl. trust remittances" %}
-  {% include "ui/stat.html" with label="Trust to remit" prefix="KSh" value=trust_to_remit|floatformat:2|intcomma accent="brass" foot="All trust funds (incl. tithe) → conference" href=remit_url %}
-  {% include "ui/stat.html" with label="Closing balance" prefix="KSh" value=totals.closing|floatformat:2|intcomma foot="Opening + receipts − expenses" %}
-  {% if missing_receipts_count %}{% include "ui/stat.html" with label="Awaiting receipts" prefix="KSh" value=missing_receipts_value|floatformat:2|intcomma accent="warn" foot=missing_receipts_count|stringformat:"s"|add:" expense(s) with no document" href="/expenses/missing-receipts/" %}{% endif %}
-  {% if live_balance %}{% include "ui/stat.html" with label="Bank balance (live feed)" prefix="KSh" value=live_balance.balance|floatformat:2|intcomma accent="accent" foot=live_balance.at|date:"d M H:i" href="/statements/feed-log/" %}{% endif %}
+  {% include "ui/stat.html" with label="Total receipts" prefix=CURRENCY value=totals.receipts|money accent="accent" foot="Across active funds" %}
+  {% include "ui/stat.html" with label="Expenses" prefix=CURRENCY value=totals.expenses_operating|money accent="warn" foot="Approved & paid · excl. trust remittances" %}
+  {% include "ui/stat.html" with label="Trust to remit" prefix=CURRENCY value=trust_to_remit|money accent="brass" foot="All trust funds (incl. tithe) → conference" href=remit_url %}
+  {% include "ui/stat.html" with label="Closing balance" prefix=CURRENCY value=totals.closing|money foot="Opening + receipts − expenses" %}
+  {% if missing_receipts_count %}{% include "ui/stat.html" with label="Awaiting receipts" prefix=CURRENCY value=missing_receipts_value|money accent="warn" foot=missing_receipts_count|stringformat:"s"|add:" expense(s) with no document" href="/expenses/missing-receipts/" %}{% endif %}
+  {% if live_balance %}{% include "ui/stat.html" with label="Bank balance (live feed)" prefix=CURRENCY value=live_balance.balance|money accent="accent" foot=live_balance.at|date:"d M H:i" href="/statements/feed-log/" %}{% endif %}
 </div>{% endif %}
 
 {% if sabbath.has_data and "sabbath" in widget_visible %}
@@ -61,18 +61,18 @@
     <div><div class="ss-eyebrow">Latest Sabbath</div>
       <div class="ss-date">{{ sabbath.date|date:"l, j M Y" }}</div></div>
     <div class="ss-total">
-      <span class="ksh">KSh</span>{{ sabbath.total|floatformat:0|intcomma }}
+      <span class="ksh">{{ CURRENCY }}</span>{{ sabbath.total|money:0 }}
       {% if sabbath.pct != None %}<span class="ss-delta {% if sabbath.up %}up{% else %}down{% endif %}">
         {% if sabbath.up %}▲{% else %}▼{% endif %} {{ sabbath.pct|floatformat:0 }}%</span>{% endif %}
     </div>
   </div>
   <div class="ss-meta">
     {{ sabbath.gifts }} contribution{{ sabbath.gifts|pluralize }}{% if sabbath.envelopes %} · {{ sabbath.envelopes }} envelope{{ sabbath.envelopes|pluralize }} recorded{% endif %}
-    · vs previous Sabbath KSh {{ sabbath.prev_total|floatformat:0|intcomma }}
+    · vs previous Sabbath {{ CURRENCY }} {{ sabbath.prev_total|money:0 }}
   </div>
   {% if sabbath.funds %}
   <div class="ss-funds">
-    {% for f in sabbath.funds %}<span class="ss-fund">{{ f.department__name }} <b>{{ f.t|floatformat:0|intcomma }}</b></span>{% endfor %}
+    {% for f in sabbath.funds %}<span class="ss-fund">{{ f.department__name }} <b>{{ f.t|money:0 }}</b></span>{% endfor %}
   </div>{% endif %}
 </div></div>
 {% endif %}
@@ -109,19 +109,19 @@
     {% for r in local_rows %}
       <tr>
         <td><a href="{% url 'report_fund' r.department.id %}">{{ r.department.name }}</a></td>
-        <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
-        <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
-        {% if local_show_expenses %}<td class="num mono">{{ r.expenses|floatformat:2|intcomma }}</td>{% endif %}
-        <td class="num mono"><strong>{{ r.closing|floatformat:2|intcomma }}</strong></td>
+        <td class="num mono">{{ r.opening|money }}</td>
+        <td class="num mono">{{ r.receipts|money }}</td>
+        {% if local_show_expenses %}<td class="num mono">{{ r.expenses|money }}</td>{% endif %}
+        <td class="num mono"><strong>{{ r.closing|money }}</strong></td>
       </tr>
     {% empty %}<tr><td colspan="5" class="muted">No local funds yet.</td></tr>{% endfor %}
     </tbody>
     <tfoot><tr class="tfoot-total">
       <td>Total local</td>
-      <td class="num mono">{{ local_totals.opening|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ local_totals.receipts|floatformat:2|intcomma }}</td>
-      {% if local_show_expenses %}<td class="num mono">{{ local_totals.expenses|floatformat:2|intcomma }}</td>{% endif %}
-      <td class="num mono">{{ local_totals.closing|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ local_totals.opening|money }}</td>
+      <td class="num mono">{{ local_totals.receipts|money }}</td>
+      {% if local_show_expenses %}<td class="num mono">{{ local_totals.expenses|money }}</td>{% endif %}
+      <td class="num mono">{{ local_totals.closing|money }}</td>
     </tr></tfoot>
   </table>
 </div>
@@ -203,9 +203,9 @@ function downloadLocalFundsPng(){
         <tbody>
         {% for r in trust_rows %}
           <tr><td>{{ r.department.name }}</td>
-            <td class="num mono">{{ r.collected|floatformat:2|intcomma }}</td>
-            <td class="num mono">{{ r.remitted|floatformat:2|intcomma }}</td>
-            <td class="num mono"><strong>{{ r.to_remit|floatformat:2|intcomma }}</strong></td></tr>
+            <td class="num mono">{{ r.collected|money }}</td>
+            <td class="num mono">{{ r.remitted|money }}</td>
+            <td class="num mono"><strong>{{ r.to_remit|money }}</strong></td></tr>
         {% empty %}<tr><td colspan="4" class="muted">No trust funds yet.</td></tr>{% endfor %}
         </tbody>
       </table>
@@ -216,11 +216,11 @@ function downloadLocalFundsPng(){
     <div class="card"><div class="bd">
       {% for c in channel_mix %}
         <div class="bar-item">
-          <div class="kv"><span>{{ c.label }} <span class="cnt">· {{ c.count }} contribution{{ c.count|pluralize }}</span></span><span class="mono">{{ c.total|floatformat:2|intcomma }}</span></div>
+          <div class="kv"><span>{{ c.label }} <span class="cnt">· {{ c.count }} contribution{{ c.count|pluralize }}</span></span><span class="mono">{{ c.total|money }}</span></div>
           <div class="pbar" title="{{ c.pct }}% of giving"><span style="width:{{ c.pct }}%"></span></div>
         </div>
       {% empty %}<div class="muted">No giving recorded in this period yet.</div>{% endfor %}
-      {% if channel_total %}<div class="kv channel-total"><span class="muted">Total</span><span class="mono">{{ channel_total|floatformat:2|intcomma }}</span></div>{% endif %}
+      {% if channel_total %}<div class="kv channel-total"><span class="muted">Total</span><span class="mono">{{ channel_total|money }}</span></div>{% endif %}
     </div></div>
   </div>
 </div>

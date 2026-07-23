@@ -1,8 +1,8 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Settle against an existing expense · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Settle against an existing expense</h1>
-  <div class="sub">{{ kind|title }}: {{ obj.description }} — {{ obj.amount|floatformat:2|intcomma }} ({{ obj.department.name }})</div></div>
+  <div class="sub">{{ kind|title }}: {{ obj.description }} — {{ obj.amount|money }} ({{ obj.department.name }})</div></div>
   <a class="btn btn-ghost btn-sm" href="{% url 'accruals' %}">← Back</a>
 </div>
 <div class="card u-mt"><div class="bd">
@@ -15,9 +15,9 @@
     {% for e in candidates %}<tr>
       <td><input type="radio" name="expense" value="{{ e.id }}" required></td>
       <td class="mono">{{ e.date|date:"d/m/y" }}</td>
-      <td>{{ e.description }}{% if e.amount != obj.amount %} <span class="muted u-xs">· differs from {{ obj.amount|floatformat:0|intcomma }}</span>{% endif %}</td>
+      <td>{{ e.description }}{% if e.amount != obj.amount %} <span class="muted u-xs">· differs from {{ obj.amount|money:0 }}</span>{% endif %}</td>
       <td class="muted">{{ e.claimant }}</td>
-      <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ e.amount|money }}</td>
     </tr>{% empty %}<tr><td colspan="5" class="empty">No unlinked expenses on this fund to choose from.</td></tr>{% endfor %}
     </tbody></table>
     {% if candidates %}<div class="btn-row"><button class="btn">Link &amp; settle</button></div>{% endif %}

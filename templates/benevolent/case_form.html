@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}{% if case %}Edit {{ case.number }}{% else %}New case{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ scheme.name }} · {% if case %}edit {{ case.number }}{% else %}new case{% endif %}</h1>
@@ -7,7 +7,7 @@
 
 {% if policy %}
 <div class="alert alert-info u-mb">Policy <strong>v{{ policy.version }}</strong> is currently in force
-  (from {{ policy.effective_from|date:"d M Y" }}): {{ policy.get_benefit_mode_display|lower }}{% if policy.benefit_cap %}, capped at {{ CURRENCY }} {{ policy.benefit_cap|floatformat:0|intcomma }}{% endif %}.
+  (from {{ policy.effective_from|date:"d M Y" }}): {{ policy.get_benefit_mode_display|lower }}{% if policy.benefit_cap %}, capped at {{ CURRENCY }} {{ policy.benefit_cap|money:0 }}{% endif %}.
   {% if policy.waiting_period_days %}Waiting period {{ policy.waiting_period_days }} days.{% endif %}
   {% if policy.claim_window_days %}Claims must be reported within {{ policy.claim_window_days }} days.{% endif %}</div>
 {% else %}

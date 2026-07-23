@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Sabbath confirmations · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Sabbath confirmations</h1>
@@ -12,7 +12,7 @@
 <form method="post" class="card" style="margin-bottom:1.1rem">{% csrf_token %}
   <input type="hidden" name="sabbath" value="{{ g.sabbath|date:'Y-m-d' }}">
   <div class="hd">Sabbath {{ g.sabbath|date:"d M Y" }}
-    <span class="muted" style="font-weight:400">· {{ g.count }} offering(s) · KES {{ g.total|floatformat:2|intcomma }}</span>
+    <span class="muted" style="font-weight:400">· {{ g.count }} offering(s) · {{ CURRENCY }} {{ g.total|money }}</span>
     <span style="float:right;display:flex;gap:.4rem">
       <button class="btn btn-sm" name="action" value="keep" title="These offerings were given for this Sabbath — keep them on it">✓ Keep all on this Sabbath</button>
       <button class="btn btn-sm btn-ghost" name="action" value="move" title="These arrived too late — count them under the next Sabbath" onclick="return confirm('Move ALL {{ g.count }} offering(s) to the Sabbath after {{ g.sabbath|date:'d M' }}?')">→ Move all to next Sabbath</button>
@@ -27,7 +27,7 @@
         <td class="mono">{{ t.date|date:"d/m/y" }}</td>
         <td>{% if t.payer_name %}{{ t.payer_name }}{% elif t.member %}{{ t.member.name }}{% else %}—{% endif %}</td>
         <td>{{ t.department.name|default:"(in review)" }} <span class="muted mono">{{ t.reference|truncatechars:22 }}</span></td>
-        <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+        <td class="num mono">{{ t.amount|money }}</td></tr>
     {% endfor %}
     </tbody>
   </table></div>

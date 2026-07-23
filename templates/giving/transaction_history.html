@@ -1,8 +1,8 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Audit history · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Audit history</h1>
-  <div class="sub">Entry #{{ txn.id }} · {{ txn.date|date:"d M Y" }} · {{ txn.payer_name|default:"—" }} · KES {{ txn.amount|floatformat:2|intcomma }}</div></div>
+  <div class="sub">Entry #{{ txn.id }} · {{ txn.date|date:"d M Y" }} · {{ txn.payer_name|default:"—" }} · {{ CURRENCY }} {{ txn.amount|money }}</div></div>
 <a class="btn btn-ghost" href="{% url 'transaction_list' %}">← Back to transactions</a></div>
 
 <div class="card"><div class="bd bd-flush">

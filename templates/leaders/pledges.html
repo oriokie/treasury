@@ -1,8 +1,8 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ dept.name }} pledges · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
-  <div class="ws-titles"><h1>{{ dept.name }} — pledges</h1>
+  <div class="ws-titles"><div class="eyebrow">Leaders · {{ SITE_NAME }}</div><h1>{{ dept.name }} — pledges</h1>
     <div class="ws-sub">{{ rows|length }} pledge{{ rows|length|pluralize }} · read-only</div></div>
   <div class="btn-row">
     <a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
@@ -10,9 +10,9 @@
 </div>
 
 <div class="ws-summary u-mb">
-  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ pledged|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric"><span class="wm-l">Paid</span><span class="wm-v">{{ paid|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric"><span class="wm-l">Outstanding</span><span class="wm-v">{{ outstanding|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ pledged|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Paid</span><span class="wm-v">{{ paid|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Outstanding</span><span class="wm-v">{{ outstanding|money:0 }}</span></div>
   <div class="ws-metric {% if pct >= 100 %}is-positive{% endif %}"><span class="wm-l">Fulfilled</span><span class="wm-v">{{ pct }}%</span></div>
 </div>
 
@@ -29,9 +29,9 @@
       <td>{{ r.member }}</td>
       <td class="mono muted">{{ r.phone|default:"—" }}</td>
       <td>{{ r.campaign }}</td>
-      <td class="num mono">{{ r.amount|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.paid|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.outstanding|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.amount|money:0 }}</td>
+      <td class="num mono">{{ r.paid|money:0 }}</td>
+      <td class="num mono">{{ r.outstanding|money:0 }}</td>
       <td><div class="progress"><span style="width:{{ r.pct }}%"></span></div></td>
       <td><span class="pill {% if r.pct >= 100 %}pill-green{% else %}pill-grey{% endif %}">{{ r.status }}</span></td>
     </tr>{% empty %}<tr><td colspan="8" class="muted">No pledges toward this department.</td></tr>{% endfor %}

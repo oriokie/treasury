@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Scheme members · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Scheme members</h1>
@@ -23,7 +23,7 @@
   <td>{{ m.member.name }}</td>
   <td class="muted">{{ m.scheme.name }}</td>
   <td>{{ m.joined_on|date:"d M y" }}</td>
-  <td class="num mono">{{ m.contributions_total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ m.contributions_total|money }}</td>
   <td><span class="pill {% if m.status == 'ACTIVE' %}pill-green{% elif m.status == 'LAPSED' %}pill-red{% elif m.status == 'SUSPENDED' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ m.get_status_display }}</span></td>
   <td><a class="link" href="{% url 'benevolent_membership_detail' m.id %}">Open</a></td>
 </tr>{% empty %}<tr><td colspan="7" class="empty">No enrolments.</td></tr>{% endfor %}</tbody>

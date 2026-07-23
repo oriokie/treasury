@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Review queue · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -56,7 +56,7 @@
   {% if can_enter_data %}<label class="q-check no-print"><input type="checkbox" class="bulk-check" name="txn" value="{{ t.id }}" form="bulkAllocForm"></label>{% endif %}
   <div class="q-info">
     <div class="q-amt-row">
-      <span class="q-amt mono">KSh {{ t.amount|floatformat:2|intcomma }}</span>
+      <span class="q-amt mono">{{ CURRENCY }} {{ t.amount|money }}</span>
       <span class="pill {% if t.direction == 'DEBIT' %}pill-red{% else %}pill-green{% endif %}">{{ t.get_direction_display }}</span>
       <span class="muted mono q-date">{{ t.date|date:"d M Y" }}</span>
     </div>
@@ -91,7 +91,7 @@
     </div>
 
     <div class="q-split-panel" hidden>
-      <div class="q-split-hint">Divide this offering across funds — the parts must total <strong class="mono">KSh {{ t.amount|floatformat:2 }}</strong>.</div>
+      <div class="q-split-hint">Divide this offering across funds — the parts must total <strong class="mono">{{ CURRENCY }} {{ t.amount|floatformat:2 }}</strong>.</div>
       {% for i in "123" %}
       <div class="split-row">
         <div class="combo combo-split">

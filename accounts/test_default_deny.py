@@ -37,6 +37,14 @@ PUBLIC_URL_NAMES = {
     "cbs_webhook",           # bank machine-to-machine; auth'd by token/HMAC, not a session
     "public_pledge",         # deliberately public member pledge form (off by default)
     "public_pledge_thanks",  # its thank-you page
+    # The public benevolent application form. Same security model as the pledge
+    # form above and for the same reasons: off unless explicitly enabled,
+    # write-only (it never reads or exposes any member data), touches no ledger
+    # and creates no cover, and is defended by a honeypot, a minimum fill time
+    # and a per-session throttle. It was previously absent from this list AND
+    # missing its `login_not_required` — so it was "protected", this test passed,
+    # and the form was unreachable by the applicants it exists for.
+    "benevolent_public_apply",
 }
 
 
@@ -132,3 +140,57 @@ class DefaultDenyTests(TestCase):
             self.assertIsNotNone(path, f"{name} not found in URLconf")
             self.assertEqual(self.anon.get(path).status_code, 200,
                              f"public page {name} did not return 200")
+
+
+class PublicEndpointsAreActuallyReachableTests(TestCase):
+    """Everything on the public allowlist must actually be reachable.
+
+    ``DefaultDenyTests.test_allowlisted_public_pages_really_are_reachable``
+    already asks this question, but only of three hard-coded names (login, the
+    password-reset entry, healthz). So it could never notice a *fourth* public
+    endpoint going wrong, which is exactly what happened: the public benevolent
+    application form was missing its ``@login_not_required`` and redirected
+    every applicant to a login page they have no account for. The deny test
+    passed — a redirect to login is precisely "turned away" — and the form was
+    dead whether or not a church switched it on.
+
+    This generalises the same assertion over the whole allowlist, so a new
+    public endpoint is checked the day it is added rather than the day someone
+    remembers to extend a hard-coded tuple. The narrower test above is kept as
+    it is: it asserts a full 200 for pages that must genuinely render, which is
+    stronger than "did not bounce to login" and worth keeping distinct.
+    """
+
+    # Endpoints that legitimately answer a bare anonymous GET with a redirect,
+    # for a reason other than "you are not logged in". Kept short and justified.
+    REDIRECTS_FOR_ANOTHER_REASON = {
+        "logout",             # bounces to the login page by design
+        "twofactor_verify",   # no pending login in session -> back to login
+        "password_reset_confirm",  # needs a token in the path
+    }
+
+    def test_allowlisted_endpoints_do_not_redirect_to_login(self):
+        anon = Client()
+        urls = _all_named_no_arg_urls()
+        offenders = []
+
+        for name in sorted(PUBLIC_URL_NAMES - self.REDIRECTS_FOR_ANOTHER_REASON):
+            path = urls.get(name)
+            if not path:
+                continue
+            try:
+                response = anon.get(path)
+            except Exception:
+                continue      # a view that raises is a different test's problem
+            location = response.headers.get("Location", "") if \
+                response.status_code in (301, 302) else ""
+            if "/accounts/login" in location:
+                offenders.append(
+                    f"  {name} ({path}) redirected anonymous users to {location}")
+
+        self.assertFalse(
+            offenders,
+            "These endpoints are on the public allowlist but send anonymous "
+            "visitors to the login page, so they cannot do the job they exist "
+            "for. They are most likely missing @login_not_required:\n"
+            + "\n".join(offenders))

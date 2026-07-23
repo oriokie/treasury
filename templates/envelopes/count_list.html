@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Cash counts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Sabbath cash counts</h1><div class="sub">Counting-team verification sheets</div></div>
@@ -8,9 +8,9 @@
   <tbody>
   {% for s in sessions %}<tr>
     <td>{{ s.date|date:"d M Y" }}</td>
-    <td class="num mono">{{ s.counted_total|floatformat:2|intcomma }}</td>
-    <td class="num mono">{{ s.expected_total|floatformat:2|intcomma }}</td>
-    <td class="num mono" style="{% if s.has_discrepancy %}color:var(--red,#b00){% endif %}">{{ s.discrepancy|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ s.counted_total|money }}</td>
+    <td class="num mono">{{ s.expected_total|money }}</td>
+    <td class="num mono" style="{% if s.has_discrepancy %}color:var(--red,#b00){% endif %}">{{ s.discrepancy|money }}</td>
     <td class="muted">{{ s.witnesses.count }} signed-in</td>
     <td><a class="link" href="{% url 'count_detail' s.id %}">View</a></td>
   </tr>{% empty %}<tr><td colspan="6" class="empty">No counts recorded yet.</td></tr>{% endfor %}

@@ -234,3 +234,63 @@ class RightRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
             messages.error(self.request, self.permission_message)
             return redirect("dashboard")
         return super().handle_no_permission()
+
+
+class PortalAccessMixin(LoginRequiredMixin, UserPassesTestMixin):
+    """The gate on every self-service portal view.
+
+    Passing it guarantees exactly one thing, and it is the thing the portal is
+    built on: ``self.account`` is the ``MemberAccount`` of the person making
+    this request. Views never re-derive that from ``request.user``, and never
+    filter a queryset by anything else — the object-level rule lives in
+    ``benevolent.services.portal.scope`` and takes this account as its
+    argument, so there is a single implementation to audit.
+
+    An office login fails this test on purpose. A treasurer who wants to see a
+    member's portal view uses the staff screens, which show the same figures
+    from the same services; letting one session hold both identities is how
+    scoping mistakes get written.
+    """
+    permission_message = "That page is part of the member portal."
+
+    def test_func(self):
+        return roles.is_portal_member(self.request.user)
+
+    @property
+    def account(self):
+        return roles.member_account(self.request.user)
+
+    def dispatch(self, request, *args, **kwargs):
+        response = super().dispatch(request, *args, **kwargs)
+        account = self.account
+        if account is not None:
+            account.touch()
+        return response
+
+    def handle_no_permission(self):
+        user = self.request.user
+        if not user.is_authenticated:
+            return super().handle_no_permission()
+        # A login that IS a portal member but whose account is not usable —
+        # suspended, closed, or invited but never activated. Say so plainly
+        # rather than showing a generic refusal; the remedy differs in each
+        # case and only the church office can apply it.
+        account = roles.member_account(user)
+        if account is not None and not account.is_usable:
+            return redirect("portal_unavailable")
+        messages.error(self.request, self.permission_message)
+        return redirect("dashboard")
+
+
+class PortalAdminMixin(RoleRequiredMixin):
+    """The office side of the portal: inviting members, reviewing what they
+    submit. Uses the module's existing broad administration right rather than
+    inventing a new one — a church that has already decided who administers the
+    scheme has already decided who handles its post.
+
+    The individual *decisions* are gated more tightly than this, by the right
+    that owns the change being made (registration, cases, finance). This mixin
+    only opens the queue.
+    """
+    allow_check = staticmethod(roles.can_manage_benevolent)
+    permission_message = "Managing member portal access requires scheme administration."

@@ -98,7 +98,13 @@ h1{font-size:1.95rem}h2{font-size:1.4rem}h3{font-size:1.12rem}
   font-weight:700;border-radius:var(--radius-pill);padding:.05rem .45rem;min-width:18px;text-align:center;
   box-shadow:0 1px 3px rgba(0,0,0,.25)}
 
-.main{min-width:0;display:flex;flex-direction:column}
+.main{min-width:0;display:flex;flex-direction:column;overflow-x:clip}
+/* `clip` (not `auto`) deliberately: it contains horizontal overflow without
+   creating a scroll container, so the sticky topbar and normal vertical page
+   scrolling are untouched. Without this, one table wider than the content
+   column widens the whole document; because the sidebar is sticky on `top`
+   only, horizontal scrolling then slides the page underneath it. Wide tables
+   scroll inside their own card instead (.table-wrap). */
 .topbar{background:rgba(255,253,248,.82);backdrop-filter:saturate(140%) blur(10px);
   -webkit-backdrop-filter:saturate(140%) blur(10px);
   border-bottom:1px solid var(--line);padding:.7rem 1.8rem;
@@ -381,6 +387,9 @@ tr.is-danger td{background:var(--danger-soft)}
 }
 
 @media print{
+  /* printing must never clip a wide table — let it lay out in full */
+  .main{overflow:visible!important}
+
   @page{margin:14mm}
   /* hide all interactive chrome so only the document prints */
   .sidebar,.topbar,.sidebar-scrim,.searchbox,.palette,.dd-new,.nav-foot,
@@ -1194,16 +1203,7 @@ html[data-motion="reduced"] .toast{animation:none}
 a.clip-item:hover{background:var(--forest-soft,#e7f0eb)}
 
 /* ---- Leader area shared layout (hero header, KPI cards, tables) ---- */
-.ld-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;
-  padding:1.3rem 1.5rem;margin-bottom:1.2rem;border-radius:16px;
-  background:linear-gradient(135deg,var(--forest) 0%,var(--forest-deep,#16463a) 100%);
-  color:#fff;box-shadow:var(--shadow-md,0 8px 24px rgba(0,0,0,.12))}
-.ld-hero h1{margin:.1rem 0 .15rem;color:#fff;font-size:1.7rem;line-height:1.1}
-.ld-hero .ld-eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.8;font-weight:600}
-.ld-hero .ld-period{font-size:.82rem;opacity:.85;max-width:560px}
-.ld-hero-back{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.45);color:#fff}
-.ld-hero-back:hover{background:rgba(255,255,255,.28);color:#fff}
-.ld-hero-actions{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+.ld-filter-actions{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
 .ld-filter{display:flex;gap:.45rem;flex-wrap:wrap;align-items:end;margin-bottom:1rem}
 .ld-filter .field{padding:.4rem .55rem;font-size:.88rem;width:auto}
 .ld-kpis-1{display:grid;grid-template-columns:minmax(260px,340px);gap:.8rem;margin-bottom:1.2rem}
@@ -1295,3 +1295,22 @@ td.cell-blank{color:var(--line-strong)}
   .sec-h{border-bottom-color:#666}
   .exec-cards,.insight-tiles,.kpi-strip,.chart-grid{break-inside:avoid}
 }
+
+/* ---- display preferences (v2.96): typography & table presentation ---- */
+/* Heading typeface: serif (Fraunces, default) or match the body face */
+html[data-headings="sans"]{--font-display:"Public Sans",system-ui,-apple-system,sans-serif}
+/* Figures: tabular monospace (default) or the body face. tabular-nums is kept
+   either way so columns of amounts still align digit-for-digit. */
+html[data-figures="body"] .mono,html[data-figures="body"] .num,
+html[data-figures="body"] table.ledger tfoot th.num,
+html[data-figures="body"] table.ledger tfoot td.num{
+  font-family:inherit;font-variant-numeric:tabular-nums}
+/* Table stripes off */
+html[data-stripes="off"] table.ledger tbody tr:nth-child(even){background:transparent}
+/* Full grid: column separators too (last column stays clean) */
+html[data-grid="grid"] table.ledger th,html[data-grid="grid"] table.ledger td{
+  border-inline-end:1px solid var(--line)}
+html[data-grid="grid"] table.ledger th:last-child,
+html[data-grid="grid"] table.ledger td:last-child{border-inline-end:none}
+/* Sticky table headers off */
+html[data-stickyhead="off"] table.ledger th{position:static}

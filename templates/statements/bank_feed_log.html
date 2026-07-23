@@ -1,11 +1,11 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Bank feed log · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Real-time bank feed</h1><div class="sub">Events pushed by the bank's Core Banking System</div></div></div>
 {% if cleared %}
 <div class="card u-mt" style="max-width:420px"><div class="bd">
   <div class="muted u-xs" style="text-transform:uppercase;letter-spacing:.05em">Current bank balance (cleared)</div>
-  <div class="mono" style="font-size:1.9rem;font-weight:700;color:var(--forest)">{{ cleared.currency }} {{ cleared.balance|floatformat:2|intcomma }}</div>
+  <div class="mono" style="font-size:1.9rem;font-weight:700;color:var(--forest)">{{ cleared.currency }} {{ cleared.balance|money }}</div>
   <div class="help u-mt-0">{% if cleared.account %}Account {{ cleared.account }} · {% endif %}as reported {{ cleared.at|date:"d M Y H:i" }}</div>
 </div></div>
 {% endif %}
@@ -21,7 +21,7 @@
     <td class="mono">{{ e.cbs_transaction_id }}</td>
     <td class="mono">{{ e.acct_no }}</td>
     <td>{{ e.event_type }}</td>
-    <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ e.amount|money }}</td>
     <td><span class="pill {% if e.status == 'PROCESSED' %}pill-green{% elif e.status == 'FAILED' or e.status == 'REJECTED' %}pill-amber{% else %}pill-grey{% endif %}">{{ e.get_status_display }}</span>{% if e.error %}<div class="help">{{ e.error }}</div>{% endif %}</td>
     <td>{% if e.transaction %}<a class="link" href="{% url 'transaction_list' %}">view</a>{% else %}—{% endif %}</td>
     <td>{% if e.pretty %}<details><summary class="link u-xs">JSON</summary><pre class="mono u-xs" style="white-space:pre-wrap;max-width:420px;margin:.3rem 0;padding:.5rem;background:var(--paper);border:1px solid var(--line);border-radius:8px">{{ e.pretty }}</pre></details>{% else %}—{% endif %}</td>

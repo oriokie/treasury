@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% load humanize %}
+{% load treasury_extras %}
+{% block title %}Depreciation runs · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Depreciation runs</h1><div class="sub">Monthly depreciation charged to the general ledger</div></div>
+  <a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">Back to register</a>
+</div>
+
+<div class="card u-mb-3">
+  <div class="bd">
+    <div class="rpt-mast" style="margin-bottom:.75rem">
+      <div class="eyebrow">Control · {{ SITE_NAME }}</div>
+      <h2 style="margin:.1rem 0">Register &harr; ledger reconciliation</h2>
+      <div class="desc">The fixed-asset control accounts should equal the register once the opening balance and every monthly run to date are posted.</div>
+    </div>
+    <div class="table-wrap"><table class="ledger compact">
+      <thead><tr><th></th><th class="num">Register</th><th class="num">Ledger</th><th class="num">Difference</th></tr></thead>
+      <tbody>
+        <tr><td>Cost</td><td class="num mono">{{ rec.cost.register|money }}</td><td class="num mono">{{ rec.cost.ledger|money }}</td><td class="num mono">{{ rec.cost.diff|money_acct }}</td></tr>
+        <tr><td>Accumulated depreciation</td><td class="num mono">{{ rec.accdep.register|money }}</td><td class="num mono">{{ rec.accdep.ledger|money }}</td><td class="num mono">{{ rec.accdep.diff|money_acct }}</td></tr>
+        <tr class="total-row"><td>Net book value</td><td class="num mono">{{ rec.nbv.register|money }}</td><td class="num mono">{{ rec.nbv.ledger|money }}</td><td class="num mono">{{ rec.nbv.diff|money_acct }}</td></tr>
+      </tbody>
+    </table></div>
+    {% if reconciled %}
+      <div class="info-panel" style="border-left-color:#1f5f4f">✓ Register and ledger agree.</div>
+    {% else %}
+      <div class="info-panel">The register and ledger differ — post any outstanding monthly runs below to bring them into line.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if can_manage and suggest_pending %}
+<form method="post" class="card u-mb-3"><div class="bd">{% csrf_token %}
+  <input type="hidden" name="year" value="{{ suggest_year }}">
+  <input type="hidden" name="month" value="{{ suggest_month }}">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+    <div>Depreciation for <strong>{{ suggest_year }}-{{ suggest_month }}</strong> has not been posted.</div>
+    <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" name="action" value="generate">Generate draft</button>
+      <button class="btn btn-sm" name="action" value="generate_post">Generate &amp; post</button>
+    </div>
+  </div>
+</div></form>
+{% endif %}
+
+<div class="card"><div class="bd">
+  <div class="table-wrap"><table class="ledger compact">
+    <thead><tr><th>Period</th><th>Status</th><th class="num">Assets</th><th class="num">Charge</th><th>Journal</th>{% if can_manage %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in runs %}
+      <tr>
+        <td class="mono">{{ r.year }}-{{ r.month|stringformat:"02d" }}</td>
+        <td>{{ r.get_status_display }}</td>
+        <td class="num">{{ r.lines.count }}</td>
+        <td class="num mono">{{ r.total_charge|money }}</td>
+        <td class="mono">{% if r.journal %}{{ r.journal.number }}{% else %}—{% endif %}</td>
+        {% if can_manage %}<td class="num">
+          {% if r.status == 'DRAFT' %}
+          <form method="post" style="display:inline">{% csrf_token %}
+            <input type="hidden" name="year" value="{{ r.year }}"><input type="hidden" name="month" value="{{ r.month }}">
+            <button class="btn btn-sm" name="action" value="post">Post</button>
+          </form>
+          {% endif %}
+        </td>{% endif %}
+      </tr>
+    {% empty %}
+      <tr><td colspan="{% if can_manage %}6{% else %}5{% endif %}" class="muted">No depreciation runs yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+<style>.ledger.compact td,.ledger.compact th{padding:.35rem .55rem}</style>
+{% endblock %}

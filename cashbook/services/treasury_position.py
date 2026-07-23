@@ -219,17 +219,63 @@ def pending_expense_claims(as_of=None):
 # ===========================================================================
 
 def open_payables_total(as_of=None):
-    """Credit purchases owed as at a date: incurred on/before it and either
-    unsettled, or settled only after it (so settling on the 15th still shows
-    as a liability on a 14th statement)."""
-    from django.db.models import Q
-    from cashbook.models import Payable
-    if as_of:
-        qs = Payable.objects.filter(date__lte=as_of).filter(
-            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
-    else:
+    """Credit purchases still owed as at a date.
+
+    A payable may be paid in instalments, so this is the invoice less what has
+    actually been paid by the reporting date — not the whole invoice until the
+    final payment arrives. Paying half a bill on the 10th reduces the liability
+    on the 10th, which is the whole reason partial settlement exists: otherwise
+    the balance sheet would carry a debt the church had already half discharged.
+
+    The as-of treatment is unchanged in spirit: a payable incurred on or before
+    the date counts, and only payments dated on or before it count against it,
+    so settling on the 15th still shows in full on a 14th statement.
+
+    Netted per payable rather than in one aggregate, because a payment can never
+    reduce the liability below zero — an overpayment to one vendor must not
+    cancel out what is owed to another. Hence the per-row `Greatest(..., 0)`
+    before the outer sum, and hence this being one annotated query rather than a
+    loop: the balance sheet must not issue a query per invoice.
+    """
+    from django.db.models import Case, Count, DecimalField, F, Q, Value, When
+    from django.db.models.functions import Coalesce, Greatest
+    from cashbook.models import Expense, Payable
+
+    money = DecimalField(max_digits=14, decimal_places=2)
+    zero = Value(Decimal("0"), output_field=money)
+    counted = Q(payments__status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+
+    if not as_of:
+        # "Right now" — the cached flag is the fast path, and anything still
+        # flagged unsettled owes its invoice less whatever has been paid.
         qs = Payable.objects.filter(settled=False)
-    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+        row = (qs.annotate(paid=Coalesce(Sum("payments__amount", filter=counted,
+                                             output_field=money), zero))
+                 .annotate(owed=Greatest(F("amount") - F("paid"), zero,
+                                         output_field=money))
+                 .aggregate(t=Sum("owed", output_field=money)))
+        return row["t"] or Decimal(0)
+
+    counted &= Q(payments__date__lte=as_of)
+    row = (Payable.objects.filter(date__lte=as_of)
+           .annotate(
+               paid=Coalesce(Sum("payments__amount", filter=counted,
+                                 output_field=money), zero),
+               n_payments=Count("payments", filter=counted))
+           .annotate(owed=Case(
+               # A payable marked settled that has no payments to show for it.
+               # This is how every payable settled BEFORE instalments existed
+               # looks if its expense link was never recorded — and the flag is
+               # the only evidence there is that the debt was discharged. Ignore
+               # it and the balance sheet resurrects debts the church has
+               # already paid, which is a far worse error than trusting a flag
+               # a treasurer set deliberately.
+               When(n_payments=0, settled=True, settled_on__lte=as_of, then=zero),
+               default=Greatest(F("amount") - F("paid"), zero,
+                                output_field=money),
+               output_field=money))
+           .aggregate(t=Sum("owed", output_field=money)))
+    return row["t"] or Decimal(0)
 
 
 def open_accruals_total(as_of=None):

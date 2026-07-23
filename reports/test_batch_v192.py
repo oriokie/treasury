@@ -118,11 +118,14 @@ class DashboardDebitPillTests(TestCase):
             direction="DEBIT", channel="BANK", allocation_status="REVIEW",
             confirmed=True, reference="DBTX1")
         body = self.c.get("/").content.decode()
-        self.assertIn("bank debit(s) to classify", body)
+        # v2.86 dashboard: the "Needs attention" card carries the debit item.
+        # Same contract as the old pill — a count, the words, a /debits/ link.
         import re
-        m = re.search(r'href="([^"]+)"[^>]*>\u2691 \d+ bank debit', body)
-        self.assertIsNotNone(m)
-        self.assertIn("/debits/", m.group(1))
+        m = re.search(r'<a class="att-item[^"]*" href="/debits/">.*?'
+                      r'<span class="att-n">(\d+)</span>\s*'
+                      r'<span class="att-l">bank debits? need', body, re.S)
+        self.assertIsNotNone(m, "no attention item linking to /debits/")
+        self.assertEqual(m.group(1), "1")
 
 
 class SectionInsightsTests(TestCase):

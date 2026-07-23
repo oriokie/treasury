@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Pending receipt · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -13,7 +13,7 @@
 
 <div class="ws-summary">
   <div class="ws-metric is-primary"><span class="wm-l">Items</span><span class="wm-v">{{ count|intcomma }}</span></div>
-  <div class="ws-metric is-positive"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">KES</span>{{ total|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ total|money:0 }}</span></div>
   {% if duplicate_names %}<div class="ws-metric is-warn"><span class="wm-l">Names appearing more than once</span><span class="wm-v">{{ duplicate_names }}</span></div>{% endif %}
 </div>
 
@@ -40,7 +40,7 @@
   <td class="u-xs">{{ r.fund }}</td>
   <td class="mono u-xs">{{ r.reference|default:"—" }}</td>
   <td class="mono u-xs">{{ r.mpesa_ref|default:"—" }}</td>
-  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.amount|money }}</td>
 </tr>
 {% empty %}
 <tr><td colspan="7" class="empty">Nothing pending receipt right now.</td></tr>

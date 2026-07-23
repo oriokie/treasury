@@ -1,0 +1,54 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Member requests · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div><div class="eyebrow">Benevolent · Member portal</div>
+      <h1>Member requests</h1>
+      <div class="desc">What members have sent in. Nothing here has changed a record —
+        each one is a claim awaiting a decision.</div></div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'portal_admin_accounts' %}">Portal accounts</a></div>
+  </div>
+  <div class="rule"></div>
+</div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">Awaiting the office</div>
+    <div class="val mono">{{ awaiting }}</div>
+    <div class="foot">Submitted or under review</div></div>
+</div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <select class="field" name="status">
+    <option value="open" {% if status == 'open' %}selected{% endif %}>Open</option>
+    <option value="" {% if not status %}selected{% endif %}>All</option>
+    {% for value, label in statuses %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="field" name="kind"><option value="">Any type</option>
+    {% for value, label in kinds %}<option value="{{ value }}" {% if kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="panel">
+<table class="table">
+  <thead><tr><th>Reference</th><th>Member</th><th>Type</th><th>About</th><th>Sent</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for r in page %}
+  <tr><td><a class="link" href="{% url 'portal_admin_review' r.pk %}">{{ r.reference }}</a></td>
+    <td>{{ r.account.member.name }}</td>
+    <td>{{ r.get_kind_display }}</td>
+    <td>{{ r.subject }}</td>
+    <td>{{ r.submitted_at|date:"d M Y"|default:"—" }}</td>
+    <td><span class="pill {% if r.status == 'APPROVED' %}pill-green{% elif r.status == 'DECLINED' %}pill-red{% elif r.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.get_status_display }}</span></td></tr>
+  {% empty %}<tr><td colspan="6" class="muted" style="padding:1.5rem;text-align:center">Nothing waiting.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if page.has_other_pages %}
+<div class="u-mt no-print">
+  {% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page.previous_page_number }}&status={{ status }}&kind={{ kind }}">← Previous</a>{% endif %}
+  <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page.next_page_number }}&status={{ status }}&kind={{ kind }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

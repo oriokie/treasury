@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Import pledges · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -32,7 +32,7 @@
   {% csrf_token %}<input type="hidden" name="apply" value="1">
   <div class="ws-summary">
     <div class="ws-metric is-primary"><span class="wm-l">Pledges in file</span><span class="wm-v">{{ plan|length }}</span></div>
-    <div class="ws-metric"><span class="wm-l">Total pledged</span><span class="wm-v"><span class="cur">KES</span>{{ total|floatformat:0|intcomma }}</span></div>
+    <div class="ws-metric"><span class="wm-l">Total pledged</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ total|money:0 }}</span></div>
     <div class="ws-metric {% if unmatched_members %}is-warn{% endif %}"><span class="wm-l">Members to check</span><span class="wm-v">{{ unmatched_members }}</span></div>
     <div class="ws-metric {% if unmatched_camps or no_campaign %}is-warn{% endif %}"><span class="wm-l">Campaigns to check</span><span class="wm-v">{{ unmatched_camps|length|add:no_campaign }}</span></div>
   </div>
@@ -81,7 +81,7 @@
           </select>
         {% else %}<span class="muted">(default)</span>{% endif %}
       </td>
-      <td class="num mono">{{ p.amount|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ p.amount|money:0 }}</td>
       <td>{{ p.frequency|title }}</td>
       <td class="mono u-xs">{{ p.start|default:"—" }}{% if p.end %} → {{ p.end }}{% endif %}</td>
     </tr>

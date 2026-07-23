@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{% if editing %}Edit advance{% else %}New advance{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{% if editing %}Edit staff advance{% else %}Issue a staff advance{% endif %}</h1>
@@ -24,7 +24,7 @@
   <label class="check-row" style="display:flex;gap:.5rem;align-items:flex-start;margin:.4rem 0">
     <input type="checkbox" name="from_petty_cash" value="1" class="form-check" id="fromPetty" style="margin-top:.2rem" {% if adv.from_petty_cash %}checked{% endif %}>
     <span>Issue from the <strong>petty-cash float</strong> (reduces petty cash; method is treated as cash).
-      <span class="muted">Available now: KSh {{ petty_balance|floatformat:2|intcomma }}</span></span>
+      <span class="muted">Available now: {{ CURRENCY }} {{ petty_balance|money }}</span></span>
   </label>
   {% if editing %}<input type="hidden" name="action" value="edit">{% endif %}
   <div class="btn-row"><button class="btn">{% if editing %}Save changes{% else %}Issue advance{% endif %}</button></div>

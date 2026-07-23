@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Journal · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>Journal</h1>
@@ -14,8 +14,8 @@
       <td class="mono">{% if forloop.first %}{{ e.date|date:"d/m/y" }}{% endif %}</td>
       <td>{% if forloop.first %}{{ e.memo }}{% endif %}</td>
       <td>{{ l.account.code }} {{ l.account.name }}</td>
-      <td class="num mono">{% if l.debit %}{{ l.debit|floatformat:2|intcomma }}{% endif %}</td>
-      <td class="num mono">{% if l.credit %}{{ l.credit|floatformat:2|intcomma }}{% endif %}</td>
+      <td class="num mono">{% if l.debit %}{{ l.debit|money }}{% endif %}</td>
+      <td class="num mono">{% if l.credit %}{{ l.credit|money }}{% endif %}</td>
     </tr>
   {% endfor %}{% empty %}<tr><td colspan="6" class="empty">No journal entries in this period.</td></tr>{% endfor %}
   </tbody>

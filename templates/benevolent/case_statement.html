@@ -14,7 +14,7 @@
     <div class="foot">on the roll when it happened</div></div>
   <div class="stat accent"><div class="lbl">Contributed</div><div class="val mono">{{ d.n_contributed }}</div></div>
   <div class="stat brass"><div class="lbl">Did not</div><div class="val mono">{{ d.n_defaulted }}</div></div>
-  <div class="stat"><div class="lbl">Surplus</div><div class="val mono">{{ CURRENCY }} {{ d.surplus|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Surplus</div><div class="val mono">{{ CURRENCY }} {{ d.surplus|money:0 }}</div></div>
 </div>
 
 <div class="info-panel">Membership is counted <strong>as the case saw it</strong> — everyone who was on the roll on

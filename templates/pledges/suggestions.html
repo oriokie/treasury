@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Pledge match suggestions · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>Match suggestions</h1><div class="ws-sub">Contributions the system thinks belong to an active pledge — confirm or dismiss</div></div>
@@ -10,9 +10,9 @@
     <tr>
       <td class="mono">{{ s.transaction.date|date:"d/m/y" }}</td>
       <td>{% if s.transaction.payer_name %}{{ s.transaction.payer_name }}{% elif s.pledge.member %}{{ s.pledge.member.name }}{% else %}—{% endif %}</td>
-      <td class="mono muted">{{ s.transaction.department.name|default:"—" }} · {{ s.transaction.amount|floatformat:0|intcomma }}</td>
+      <td class="mono muted">{{ s.transaction.department.name|default:"—" }} · {{ s.transaction.amount|money:0 }}</td>
       <td><a class="link" href="{% url 'pledge_detail' s.pledge.id %}">{{ s.pledge.member.name }}</a> · {{ s.pledge.campaign.name }}</td>
-      <td class="num mono">{{ s.amount|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ s.amount|money:0 }}</td>
       <td class="u-nowrap">
         <form method="post" action="{% url 'pledge_suggestion_action' s.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="confirm"><button class="btn btn-xs">Confirm</button></form>
         <form method="post" action="{% url 'pledge_suggestion_action' s.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="dismiss"><button class="btn btn-xs btn-ghost">Dismiss</button></form>

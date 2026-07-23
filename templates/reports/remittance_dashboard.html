@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Trust Fund Remittance · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Trust Fund Remittance</h1>
@@ -19,10 +19,10 @@
 {% if period_active %}<div class="callout u-mb">Showing trust collected{% if period_month %} for {{ period_month }}{% else %} from {{ period_start|date:'d M Y' }} to {{ period_end|date:'d M Y' }}{% endif %}. A batch created now will be stamped to this period and dated within it — the normal lump-sum-per-period workflow.</div>{% endif %}
 
 <div class="kpi-row">
-  <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|floatformat:0|intcomma }}</div></div>
-  <div class="kpi"><div class="kpi-label">Remitted</div><div class="kpi-val">{{ total_remitted|floatformat:0|intcomma }}</div></div>
-  <div class="kpi kpi-warn"><div class="kpi-label">Outstanding to remit<br><span class="u-xs">receipted</span></div><div class="kpi-val">{{ total_outstanding|floatformat:0|intcomma }}</div></div>
-  <div class="kpi"><div class="kpi-label">Unreceipted (pending)</div><div class="kpi-val">{{ total_unreceipted|floatformat:0|intcomma }}</div></div>
+  <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|money:0 }}</div></div>
+  <div class="kpi"><div class="kpi-label">Remitted</div><div class="kpi-val">{{ total_remitted|money:0 }}</div></div>
+  <div class="kpi kpi-warn"><div class="kpi-label">Outstanding to remit<br><span class="u-xs">receipted</span></div><div class="kpi-val">{{ total_outstanding|money:0 }}</div></div>
+  <div class="kpi"><div class="kpi-label">Unreceipted (pending)</div><div class="kpi-val">{{ total_unreceipted|money:0 }}</div></div>
   {% if has_deadlines %}
   <div class="kpi {% if days_to_sabbath < 0 %}kpi-danger{% elif days_to_sabbath <= 7 %}kpi-warn{% endif %}">
     <div class="kpi-label">Countdown to reporting Sabbath</div>
@@ -47,10 +47,10 @@
     <tr>
       {% if is_treasurer %}<td>{% if r.outstanding > 0 %}<input type="checkbox" name="fund" value="{{ r.department.id }}">{% endif %}</td>{% endif %}
       <td>{{ r.department.name }}</td>
-      <td class="num mono">{{ r.collected|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.remitted|floatformat:0|intcomma }}</td>
-      <td class="num mono {% if r.outstanding > 0 %}row-debit{% endif %}">{{ r.outstanding|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.unreceipted|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.collected|money:0 }}</td>
+      <td class="num mono">{{ r.remitted|money:0 }}</td>
+      <td class="num mono {% if r.outstanding > 0 %}row-debit{% endif %}">{{ r.outstanding|money:0 }}</td>
+      <td class="num mono">{{ r.unreceipted|money:0 }}</td>
       <td class="num"><span class="pill {% if r.days > 30 %}pill-red{% elif r.days > 0 %}pill-amber{% else %}pill-grey{% endif %}">{{ r.days }}</span></td>
     </tr>
   {% empty %}<tr><td colspan="6" class="empty">No trust funds.</td></tr>{% endfor %}
@@ -71,7 +71,7 @@
   {% for b in batches %}
     <tr><td><a class="link" href="{% url 'remittance_batch_detail' b.id %}">{{ b.batch_number }}</a></td>
       <td class="mono">{{ b.date|date:"d/m/y" }}</td>
-      <td class="num mono">{{ b.total_amount|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ b.total_amount|money:0 }}</td>
       <td><span class="pill {% if b.status == 'REMITTED' %}pill-green{% elif b.status == 'APPROVED' %}pill-blue{% elif b.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ b.get_status_display }}</span></td>
       <td class="mono muted">{{ b.cheque_no|default:"—" }}</td></tr>
   {% empty %}<tr><td colspan="5" class="empty">No batches yet.</td></tr>{% endfor %}

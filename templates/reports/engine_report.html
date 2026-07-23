@@ -79,7 +79,7 @@
         <div class="stat {% cycle 'accent' 'brass' '' %}">
           <div class="lbl">{{ r.cells.label }}</div>
           {% with disp=r.cells|get_item:'display' %}
-          <div class="val mono">{% if disp %}{{ disp }}{% else %}<span class="ksh">KES</span>{{ r.cells.value|floatformat:0|intcomma }}{% endif %}</div>
+          <div class="val mono">{% if disp %}{{ disp }}{% else %}<span class="ksh">{{ CURRENCY }}</span>{{ r.cells.value|money:0 }}{% endif %}</div>
           {% endwith %}
           {% with sub=r.cells|get_item:'sub' %}{% if sub %}<div class="foot">{{ sub }}</div>{% endif %}{% endwith %}
         </div>{% endfor %}
@@ -105,7 +105,7 @@
     {% elif s.kind == 'keyvalue' %}
       <table class="ledger"><tbody>{% for r in s.rows %}<tr {% if r.emphasis %}class="row-emph"{% endif %}>
         <td>{{ r.cells.label }}</td>
-        <td class="num mono {% if r.cells.value|is_negative %}neg{% endif %}">{{ r.cells.value|floatformat:2|intcomma }}</td>
+        <td class="num mono {% if r.cells.value|is_negative %}neg{% endif %}">{{ r.cells.value|money }}</td>
       </tr>{% endfor %}</tbody></table>
 
     {% elif s.is_empty %}
@@ -125,7 +125,7 @@
             <td class="{% if c.numeric %}num mono{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}{% if v == None or v == '' %} cell-blank{% endif %}">
               {% if c.drilldown and r.url %}<a class="link" href="{{ r.url }}">{{ v }}</a>
               {% elif v == None or v == '' %}—
-              {% elif c.numeric %}{{ v|floatformat:2|intcomma }}
+              {% elif c.numeric %}{{ v|money }}
               {% else %}{{ v }}{% endif %}
             </td>
             {% endwith %}
@@ -135,7 +135,7 @@
         {% if s.total %}<tfoot><tr class="row-emph">
           {% for c in s.columns %}{% with v=s.total.cells|get_item:c.key %}
           <td class="{% if c.numeric %}num mono{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}">
-            {% if v == None or v == '' %}{% elif c.numeric %}{{ v|floatformat:2|intcomma }}{% else %}{{ v }}{% endif %}
+            {% if v == None or v == '' %}{% elif c.numeric %}{{ v|money }}{% else %}{{ v }}{% endif %}
           </td>{% endwith %}{% endfor %}
         </tr></tfoot>{% endif %}
       </table></div>

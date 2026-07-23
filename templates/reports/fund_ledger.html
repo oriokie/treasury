@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}{{ department.name }} ledger · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Fund Ledger" %}
@@ -10,9 +10,9 @@
 <button class="btn btn-ghost" onclick="window.print()">⎙ Print</button></div></div>
 {% include 'partials/period_filter.html' %}
 <div class="grid-3 u-mt u-mb">
-  <div class="stat"><div class="lbl">Opening balance{% if has_subaccounts %} <span class="muted u-xs">incl. sub-accounts</span>{% endif %}</div><div class="val mono">{% if has_subaccounts %}{{ combined_opening|floatformat:2|intcomma }}{% else %}{{ opening|floatformat:2|intcomma }}{% endif %}</div></div>
-  <div class="stat"><div class="lbl">Closing balance{% if has_subaccounts %} <span class="muted u-xs">incl. sub-accounts</span>{% endif %}</div><div class="val mono"><strong>{% if has_subaccounts %}{{ combined_closing|floatformat:2|intcomma }}{% else %}{{ closing|floatformat:2|intcomma }}{% endif %}</strong></div></div>
-  <div class="stat"><div class="lbl">Receipts{% if has_subaccounts %} <span class="muted u-xs">incl. sub-accounts</span>{% endif %}</div><div class="val mono">{% if has_subaccounts %}{{ combined_receipts|floatformat:2|intcomma }}{% else %}{{ combined_receipts|floatformat:2|intcomma }}{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Opening balance{% if has_subaccounts %} <span class="muted u-xs">incl. sub-accounts</span>{% endif %}</div><div class="val mono">{% if has_subaccounts %}{{ combined_opening|money }}{% else %}{{ opening|money }}{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Closing balance{% if has_subaccounts %} <span class="muted u-xs">incl. sub-accounts</span>{% endif %}</div><div class="val mono"><strong>{% if has_subaccounts %}{{ combined_closing|money }}{% else %}{{ closing|money }}{% endif %}</strong></div></div>
+  <div class="stat"><div class="lbl">Receipts{% if has_subaccounts %} <span class="muted u-xs">incl. sub-accounts</span>{% endif %}</div><div class="val mono">{% if has_subaccounts %}{{ combined_receipts|money }}{% else %}{{ combined_receipts|money }}{% endif %}</div></div>
 </div>
 {% if has_subaccounts %}<div class="help u-mt-0 u-mb">Top figures include this fund <strong>and</strong> its sub-accounts. The ledger below shows {{ department.name }}'s own movements; sub-accounts are listed separately further down.</div>{% endif %}
 <div class="table-wrap sticky"><table class="ledger">
@@ -20,9 +20,9 @@
   <tbody>
   {% for e in entries %}
     <tr><td class="mono">{{ e.date|date:"d/m/y" }}</td><td>{{ e.desc }}</td>
-      <td class="num mono row-debit">{% if e.debit %}{{ e.debit|floatformat:2|intcomma }}{% endif %}</td>
-      <td class="num mono">{% if e.credit %}{{ e.credit|floatformat:2|intcomma }}{% endif %}</td>
-      <td class="num mono">{{ e.balance|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono row-debit">{% if e.debit %}{{ e.debit|money }}{% endif %}</td>
+      <td class="num mono">{% if e.credit %}{{ e.credit|money }}{% endif %}</td>
+      <td class="num mono">{{ e.balance|money }}</td></tr>
   {% empty %}<tr><td colspan="5" class="empty">No movements in this period.</td></tr>{% endfor %}
   </tbody>
 </table></div>
@@ -38,20 +38,20 @@
   <tbody>
   {% for r in subgroups %}
     <tr><td><a class="link" href="{% url 'report_fund' r.sub.id %}">{{ r.sub.name }}</a></td>
-      <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
-      {% if sub_show_payments %}<td class="num mono row-debit">{{ r.payments|floatformat:2|intcomma }}</td>{% endif %}
-      <td class="num mono">{{ r.closing|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono">{{ r.opening|money }}</td>
+      <td class="num mono">{{ r.receipts|money }}</td>
+      {% if sub_show_payments %}<td class="num mono row-debit">{{ r.payments|money }}</td>{% endif %}
+      <td class="num mono">{{ r.closing|money }}</td></tr>
   {% endfor %}
   {% for r in dev_rows %}
     <tr><td class="muted">↳ {{ r.group.label }} <span class="pill pill-grey pill-xs">dev group</span></td>
       <td class="num mono">—</td>
-      <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.receipts|money }}</td>
       {% if sub_show_payments %}<td class="num mono">—</td>{% endif %}
-      <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono">{{ r.receipts|money }}</td></tr>
   {% endfor %}
-    <tr class="total-row"><td><strong>{{ department.name }} (this fund only)</strong></td><td class="num mono">{{ opening|floatformat:2|intcomma }}</td><td></td>{% if sub_show_payments %}<td></td>{% endif %}<td class="num mono">{{ closing|floatformat:2|intcomma }}</td></tr>
-    <tr class="total-row"><td><strong>Combined ({{ department.name }} + sub-accounts)</strong></td><td class="num mono">{{ combined_opening|floatformat:2|intcomma }}</td><td></td>{% if sub_show_payments %}<td></td>{% endif %}<td class="num mono"><strong>{{ combined_closing|floatformat:2|intcomma }}</strong></td></tr>
+    <tr class="total-row"><td><strong>{{ department.name }} (this fund only)</strong></td><td class="num mono">{{ opening|money }}</td><td></td>{% if sub_show_payments %}<td></td>{% endif %}<td class="num mono">{{ closing|money }}</td></tr>
+    <tr class="total-row"><td><strong>Combined ({{ department.name }} + sub-accounts)</strong></td><td class="num mono">{{ combined_opening|money }}</td><td></td>{% if sub_show_payments %}<td></td>{% endif %}<td class="num mono"><strong>{{ combined_closing|money }}</strong></td></tr>
   </tbody>
 </table></div>
 <style>.total-row td{border-top:2px solid var(--line)}</style>

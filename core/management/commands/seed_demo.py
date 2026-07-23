@@ -319,22 +319,40 @@ class Command(BaseCommand):
 
         # a couple of capital expenditures (so the income statement shows a capital section)
         from cashbook.models import Expense as _Exp
-        pa = FixedAsset.objects.filter(name__startswith="PA").first()
         dev = funds.get("Development") or Department.objects.filter(is_trust=False).first()
+        cap_date = _d.date(_d.date.today().year, max(_d.date.today().month - 1, 1), 12)
         cap = [
-            ("Sound system upgrade", "CONSTRUCTION", "420000", pa),
-            ("New plastic chairs", "MATERIALS", "120000", None),
+            ("Sound system upgrade", "CONSTRUCTION", "420000"),
+            ("New plastic chairs", "MATERIALS", "120000"),
         ]
         cn = 0
-        for desc, cat, amt, asset in cap:
+        for desc, cat, amt in cap:
             obj, created = _Exp.objects.get_or_create(
                 description=desc, defaults=dict(
-                    date=_d.date(_d.date.today().year, max(_d.date.today().month-1,1), 12),
-                    department=dev, amount=Decimal(amt), category=cat,
-                    expenditure_type="CAPITAL", capitalized_asset=asset,
-                    method="BANK", status="PAID", recorded_by=treasurer))
+                    date=cap_date, department=dev, amount=Decimal(amt), category=cat,
+                    expenditure_type="CAPITAL", method="BANK", status="PAID",
+                    recorded_by=treasurer))
             cn += 1 if created else 0
         self.stdout.write(self.style.SUCCESS(f"Capital expenses: {cn}"))
+
+        # The first capital payment buys an asset this year: the register records it
+        # from the date it was acquired, and the payment that bought it is linked, so
+        # the ledger carries its cost rather than the opening balance doing so.
+        # (The second is left unlinked, so it sits in capital work-in-progress.)
+        from assets.models import Acquisition as _Acq
+        upgrade = _Exp.objects.filter(description="Sound system upgrade").first()
+        if upgrade and not upgrade.capitalized_asset_id:
+            new_asset, _ = FixedAsset.objects.get_or_create(
+                name="Sound system upgrade",
+                defaults={"category": "EQUIPMENT", "acquired_on": upgrade.date,
+                          "in_service_on": upgrade.date, "cost": upgrade.amount,
+                          "department": dev})
+            upgrade.capitalized_asset = new_asset
+            upgrade.save(update_fields=["capitalized_asset"])
+            _Acq.objects.get_or_create(
+                asset=new_asset,
+                defaults=dict(source="PURCHASE", date=upgrade.date, amount=upgrade.amount,
+                              expense=upgrade, fund=dev, recorded_by=treasurer))
 
         # a demo inter-fund transfer (local funds only)
         from cashbook.models import FundTransfer

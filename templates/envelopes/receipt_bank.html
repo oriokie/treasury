@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Receipt bank contribution · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Receipt bank contribution as envelope</h1>
@@ -11,7 +11,7 @@
     <tr><td>Contributor</td><td>{{ txn.payer_name|default:"(bank)" }}{% if txn.member %} · {{ txn.member.name }}{% endif %}</td></tr>
     <tr><td>Fund</td><td>{{ txn.department.name|default:"—" }}</td></tr>
     <tr><td>Reference</td><td class="mono">{{ txn.mpesa_ref|default:txn.reference|default:"—" }}</td></tr>
-    <tr><td>Amount</td><td class="num mono"><strong>KSh {{ txn.amount|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td>Amount</td><td class="num mono"><strong>{{ CURRENCY }} {{ txn.amount|money }}</strong></td></tr>
   </tbody></table>
 
   {% if eligible %}

@@ -1,0 +1,53 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My contributions{% endblock %}
+{% block portal_desc %}Everything the church has recorded in your name. If something is missing or wrong, tell us — do not simply pay again.{% endblock %}
+{% block portal_actions %}
+<a class="btn btn-sm" href="{% url 'portal_statement' %}">Statement</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'portal_request_new' 'CORRECTION' %}">Something is wrong</a>
+{% endblock %}
+{% block portal_content %}
+<form method="get" class="filter-bar no-print u-mb">
+  <select class="field" name="year"><option value="">All years</option>
+    {% for y in years %}<option value="{{ y }}" {% if year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>{% endfor %}
+  </select>
+  <select class="field" name="scheme"><option value="">All schemes</option>
+    {% for m in memberships %}<option value="{{ m.scheme_id }}" {% if scheme_id == m.scheme_id|stringformat:"s" %}selected{% endif %}>{{ m.scheme.name }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-sm">Apply</button>
+</form>
+
+<div class="pt-cards u-mb">
+  <div class="stat accent"><div class="lbl">Total shown</div>
+    <div class="val mono">{{ CURRENCY }} {{ total|money }}</div>
+    <div class="foot">{{ count }} contribution{{ count|pluralize }}</div></div>
+</div>
+
+<div class="panel">
+<table class="table pt-stack">
+  <thead><tr><th>Date</th><th>Scheme</th><th>What for</th><th>Period</th>
+    <th class="num">Amount</th><th class="no-print"></th></tr></thead>
+  <tbody>
+  {% for c in page %}
+  <tr>
+    <td data-label="Date">{{ c.date|date:"d M Y" }}</td>
+    <td data-label="Scheme">{{ c.membership.scheme.name|default:"—" }}</td>
+    <td data-label="What for">{{ c.get_kind_display }}{% if c.case %} · case {{ c.case.number }}{% endif %}</td>
+    <td data-label="Period">{{ c.period_label|default:"—" }}</td>
+    <td data-label="Amount" class="num mono">{{ CURRENCY }} {{ c.amount|money }}</td>
+    <td data-label="" class="no-print"><a class="link" href="{% url 'portal_receipt' c.pk %}">Receipt</a></td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6"><div class="pt-empty">No contributions recorded for this selection.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if page.has_other_pages %}
+<div class="u-mt no-print">
+  {% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page.previous_page_number }}&year={{ year }}&scheme={{ scheme_id }}">← Newer</a>{% endif %}
+  <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page.next_page_number }}&year={{ year }}&scheme={{ scheme_id }}">Older →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

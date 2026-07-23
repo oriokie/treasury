@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Funds · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -20,8 +20,8 @@
       <td><strong>{{ node.fund.name }}</strong>{% if node.fund.status == 'CLOSED' %} <span class="pill pill-amber">Closed</span>{% elif node.fund.status == 'ARCHIVED' %} <span class="pill pill-grey">Archived</span>{% elif not node.fund.active %} <span class="pill pill-grey">inactive</span>{% endif %}{% if node.fund.collection_only %} <span class="pill pill-grey" title="Collection account — receives income only">collection</span>{% endif %}{% if node.subs %} <span class="muted u-small">({{ node.subs|length }} sub-account{{ node.subs|length|pluralize }})</span>{% endif %}</td>
       <td>{% if node.fund.is_trust %}<span class="pill pill-amber">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
       <td class="muted">{{ node.fund.get_category_display }}</td>
-      <td class="num mono">{{ node.fund.opening_balance|floatformat:2|intcomma }}</td>
-      <td class="num mono muted">{% if node.fund.annual_budget %}{{ node.fund.annual_budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="num mono">{{ node.fund.opening_balance|money }}</td>
+      <td class="num mono muted">{% if node.fund.annual_budget %}{{ node.fund.annual_budget|money:0 }}{% else %}—{% endif %}</td>
       <td class="num"><a class="link" href="{% url 'report_fund' node.fund.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' node.fund.id %}">Edit</a>{% if node.subs %} · <a class="link" href="{% url 'department_consolidate' node.fund.id %}">Consolidate</a>{% endif %}{% if node.fund.status == 'ACTIVE' %} · <form method="post" action="{% url 'department_close' node.fund.id %}" class="u-inline" onsubmit="return confirm('Close {{ node.fund.name|escapejs }}? Only possible at a zero balance.');">{% csrf_token %}<button class="link">Close</button></form>{% else %} · <form method="post" action="{% url 'department_reopen' node.fund.id %}" class="u-inline">{% csrf_token %}<button class="link">Reopen</button></form>{% endif %}{% endif %}</td>
     </tr>
     {% for s in node.subs %}
@@ -29,8 +29,8 @@
       <td class="u-indent-3" class="muted">↳ {{ s.name }}{% if not s.active %} <span class="pill pill-grey">inactive</span>{% endif %}</td>
       <td><span class="pill {% if s.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.7">{% if s.is_trust %}Trust{% else %}Local{% endif %}</span></td>
       <td class="muted">sub-account</td>
-      <td class="num mono">{{ s.opening_balance|floatformat:2|intcomma }}</td>
-      <td class="num mono muted">{% if s.annual_budget %}{{ s.annual_budget|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="num mono">{{ s.opening_balance|money }}</td>
+      <td class="num mono muted">{% if s.annual_budget %}{{ s.annual_budget|money:0 }}{% else %}—{% endif %}</td>
       <td class="num"><a class="link" href="{% url 'report_fund' s.id %}">Ledger</a>{% if is_treasurer %} · <a class="link" href="{% url 'department_edit' s.id %}">Edit</a>{% if s.status == 'ACTIVE' %} · <form method="post" action="{% url 'department_close' s.id %}" class="u-inline" onsubmit="return confirm('Close {{ s.name|escapejs }}? Only possible at a zero balance.');">{% csrf_token %}<button class="link">Close</button></form>{% else %} · <form method="post" action="{% url 'department_reopen' s.id %}" class="u-inline">{% csrf_token %}<button class="link">Reopen</button></form>{% endif %}{% endif %}</td>
     </tr>
     {% endfor %}
@@ -40,7 +40,7 @@
       <td><span class="pill pill-grey" style="opacity:.7">Local</span></td>
       <td class="muted">sub-account</td>
       <td class="num mono muted">—</td>
-      <td class="num mono muted">{% if g.target %}{{ g.target|floatformat:0|intcomma }}{% else %}—{% endif %}</td>
+      <td class="num mono muted">{% if g.target %}{{ g.target|money:0 }}{% else %}—{% endif %}</td>
       <td class="num"><a class="link" href="{% url 'report_dev_groups' %}">Progress</a>{% if is_treasurer %} · <a class="link" href="{% url 'dev_group_sms_one' g.id %}">SMS</a> · <a class="link" href="{% url 'dev_group_edit' g.id %}">Edit</a> · <a class="link" href="{% url 'dev_group_delete' g.id %}">Delete</a>{% endif %}</td>
     </tr>
     {% endfor %}

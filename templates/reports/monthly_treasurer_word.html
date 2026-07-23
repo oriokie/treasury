@@ -36,17 +36,17 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 
 <h2>Executive summary</h2>
 <table class="kpitable"><tr>
-  <td class="kpicard"><div class="l">Total collections</div><div class="v">{{ collections.total|floatformat:0|intcomma }}</div></td>
-  <td class="kpicard"><div class="l">Local fund receipts</div><div class="v">{{ collections.local|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Total collections</div><div class="v">{{ collections.total|money:0 }}</div></td>
+  <td class="kpicard"><div class="l">Local fund receipts</div><div class="v">{{ collections.local|money:0 }}</div></td>
 </tr><tr>
-  <td class="kpicard"><div class="l">Trust fund receipts</div><div class="v">{{ collections.trust|floatformat:0|intcomma }}</div></td>
-  <td class="kpicard"><div class="l">Total expenses</div><div class="v">{{ income_stmt.expense|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Trust fund receipts</div><div class="v">{{ collections.trust|money:0 }}</div></td>
+  <td class="kpicard"><div class="l">Total expenses</div><div class="v">{{ income_stmt.expense|money:0 }}</div></td>
 </tr><tr>
-  <td class="kpicard"><div class="l">Monthly surplus / (deficit)</div><div class="v">{{ income_stmt.surplus|floatformat:0|intcomma }}</div></td>
-  <td class="kpicard"><div class="l">Cash &amp; bank balance</div><div class="v">{{ sofp.cash|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Monthly surplus / (deficit)</div><div class="v">{{ income_stmt.surplus|money:0 }}</div></td>
+  <td class="kpicard"><div class="l">Cash &amp; bank balance</div><div class="v">{{ sofp.cash|money:0 }}</div></td>
 </tr><tr>
-  <td class="kpicard"><div class="l">Net assets</div><div class="v">{{ sofp.net_assets|floatformat:0|intcomma }}</div></td>
-  <td class="kpicard"><div class="l">Trust funds outstanding</div><div class="v">{{ sofp.trust_payable|floatformat:0|intcomma }}</div></td>
+  <td class="kpicard"><div class="l">Net assets</div><div class="v">{{ sofp.net_assets|money:0 }}</div></td>
+  <td class="kpicard"><div class="l">Trust funds outstanding</div><div class="v">{{ sofp.trust_payable|money:0 }}</div></td>
 </tr></table>
 
 <h3>Key highlights</h3>
@@ -63,29 +63,29 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 {% if chart_collections_mix %}<img src="{{ chart_collections_mix }}" style="width:100%;max-width:560px" alt="Collections local vs trust chart">
 <p class="note">✦ AI analysis: {{ insights.collections|default:narratives.collections }}</p>{% endif %}
 <table><tr><th>Fund</th><th class="num">Amount</th></tr>
-{% for r in collection_detail.trust %}<tr><td>{{ r.department.name|sentence_fund }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
-{% for r in collection_detail.local %}<tr><td>{{ r.department.name|sentence_fund }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td></tr>{% endfor %}
-<tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|floatformat:2|intcomma }}</td></tr>
+{% for r in collection_detail.trust %}<tr><td>{{ r.department.name|sentence_fund }}</td><td class="num">{{ r.receipts|money }}</td></tr>{% endfor %}
+{% for r in collection_detail.local %}<tr><td>{{ r.department.name|sentence_fund }}</td><td class="num">{{ r.receipts|money }}</td></tr>{% endfor %}
+<tr class="grand"><td>Total collections</td><td class="num">{{ collections.total|money }}</td></tr>
 </table>
 
 <h3>Trust fund performance</h3>
 <p class="narrative">{{ narratives.trust_trend }}</p>
 <table><tr><th>Trust fund</th>{% for c in trust_trend.columns %}<th class="num">{{ c.label }}</th>{% endfor %}</tr>
-{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name|sentence_fund }}</td>{% for v in r.cells %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endfor %}
-{% if trust_trend.rows %}<tr class="total"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|floatformat:2|intcomma }}</td>{% endfor %}</tr>{% endif %}
+{% for r in trust_trend.rows %}<tr><td>{{ r.dept.name|sentence_fund }}</td>{% for v in r.cells %}<td class="num">{{ v|money }}</td>{% endfor %}</tr>{% endfor %}
+{% if trust_trend.rows %}<tr class="total"><td>Total</td>{% for v in trust_trend.col_totals %}<td class="num">{{ v|money }}</td>{% endfor %}</tr>{% endif %}
 </table>
 
 <h3>Local fund performance</h3>
 <p class="narrative">{{ narratives.local_statement }}</p>
 <table><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr>
 {% for r in local_statement.rows %}<tr><td>{{ r.department.name|sentence_fund }}{% if r.closing < 0 %} (overdrawn){% endif %}</td>
-  <td class="num">{{ r.opening|floatformat:2|intcomma }}</td><td class="num">{{ r.receipts|floatformat:2|intcomma }}</td>
-  <td class="num">{{ r.expenses|floatformat:2|intcomma }}</td><td class="num">{{ r.closing|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  <td class="num">{{ r.opening|money }}</td><td class="num">{{ r.receipts|money }}</td>
+  <td class="num">{{ r.expenses|money }}</td><td class="num">{{ r.closing|money }}</td></tr>{% endfor %}
 {% if local_statement.rows %}<tr class="grand"><td>Total</td>
-  <td class="num">{{ local_statement.totals.opening|floatformat:2|intcomma }}</td>
-  <td class="num">{{ local_statement.totals.receipts|floatformat:2|intcomma }}</td>
-  <td class="num">{{ local_statement.totals.expenses|floatformat:2|intcomma }}</td>
-  <td class="num">{{ local_statement.totals.closing|floatformat:2|intcomma }}</td></tr>{% endif %}
+  <td class="num">{{ local_statement.totals.opening|money }}</td>
+  <td class="num">{{ local_statement.totals.receipts|money }}</td>
+  <td class="num">{{ local_statement.totals.expenses|money }}</td>
+  <td class="num">{{ local_statement.totals.closing|money }}</td></tr>{% endif %}
 </table>
 
 <h3>Expenditure summary</h3>
@@ -93,22 +93,22 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 {% if chart_income_exp %}<img src="{{ chart_income_exp }}" style="width:100%;max-width:700px" alt="Income vs expenditure chart">
 <p class="note">✦ AI analysis: {{ insights.income }}</p>{% endif %}
 <table><tr><th>Category</th><th class="num">Amount</th></tr>
-{% for c in lcb_expenditure.rows %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|floatformat:2|intcomma }}</td></tr>{% endfor %}
-{% if lcb_expenditure.rows %}<tr class="grand"><td>Total LCB expenditure</td><td class="num">{{ lcb_expenditure.total|floatformat:2|intcomma }}</td></tr>{% endif %}
+{% for c in lcb_expenditure.rows %}<tr><td>{{ c.label }}</td><td class="num">{{ c.total|money }}</td></tr>{% endfor %}
+{% if lcb_expenditure.rows %}<tr class="grand"><td>Total LCB expenditure</td><td class="num">{{ lcb_expenditure.total|money }}</td></tr>{% endif %}
 </table>
 
 <h3>Budget &amp; goal tracking</h3>
 {% if budget_summary.rows %}<table><tr><th>Fund</th><th class="num">Budget</th><th class="num">Actual</th><th class="num">Variance</th></tr>
 {% for r in budget_summary.rows %}<tr><td>{{ r.department.name|sentence_fund }}{% if r.over %} (over){% endif %}</td>
-  <td class="num">{{ r.budget|floatformat:2|intcomma }}</td><td class="num">{{ r.actual|floatformat:2|intcomma }}</td>
-  <td class="num">{{ r.variance|floatformat:2|intcomma }}</td></tr>{% endfor %}
-<tr class="grand"><td>Total</td><td class="num">{{ budget_summary.totals.budget|floatformat:2|intcomma }}</td>
-  <td class="num">{{ budget_summary.totals.actual|floatformat:2|intcomma }}</td>
-  <td class="num">{{ budget_summary.totals.variance|floatformat:2|intcomma }}</td></tr>
+  <td class="num">{{ r.budget|money }}</td><td class="num">{{ r.actual|money }}</td>
+  <td class="num">{{ r.variance|money }}</td></tr>{% endfor %}
+<tr class="grand"><td>Total</td><td class="num">{{ budget_summary.totals.budget|money }}</td>
+  <td class="num">{{ budget_summary.totals.actual|money }}</td>
+  <td class="num">{{ budget_summary.totals.variance|money }}</td></tr>
 </table>{% endif %}
 {% if camp_goals %}<table><tr><th>Goal</th><th class="num">Target</th><th class="num">Collected</th><th class="num">% complete</th></tr>
-{% for g in camp_goals %}<tr><td>{{ g.name }}</td><td class="num">{{ g.goal|floatformat:2|intcomma }}</td>
-  <td class="num">{{ g.collected|floatformat:2|intcomma }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
+{% for g in camp_goals %}<tr><td>{{ g.name }}</td><td class="num">{{ g.goal|money }}</td>
+  <td class="num">{{ g.collected|money }}</td><td class="num">{{ g.pct }}%</td></tr>{% endfor %}
 </table>
 {% if chart_camp_goal %}<img src="{{ chart_camp_goal }}" style="width:100%;max-width:700px;margin-top:8pt" alt="Camp Meeting Expense Goal progress chart">
 <p class="note">✦ AI analysis: {{ insights.camp }}</p>{% endif %}
@@ -118,49 +118,49 @@ tr.grand td { border-top: 1.5pt solid #1f5f4f; font-weight: bold; background: #f
 <p class="narrative">{{ narratives.sofp }}</p>
 <table>
 <tr><th colspan="2">Assets</th></tr>
-<tr><td>Cash &amp; bank</td><td class="num">{{ sofp.cash_on_hand|floatformat:2|intcomma }}</td></tr>
-<tr><td>Property (net book value)</td><td class="num">{{ sofp.nbv|floatformat:2|intcomma }}</td></tr>
-<tr class="total"><td>Total assets</td><td class="num">{{ sofp.total_assets|floatformat:2|intcomma }}</td></tr>
+<tr><td>Cash &amp; bank</td><td class="num">{{ sofp.cash_on_hand|money }}</td></tr>
+<tr><td>Property (net book value)</td><td class="num">{{ sofp.nbv|money }}</td></tr>
+<tr class="total"><td>Total assets</td><td class="num">{{ sofp.total_assets|money }}</td></tr>
 <tr><th colspan="2">Liabilities</th></tr>
-<tr><td>Trust payable — receipted</td><td class="num">{{ sofp.trust_receipted|floatformat:2|intcomma }}</td></tr>
-<tr><td>Trust payable — not yet receipted</td><td class="num">{{ sofp.trust_unreceipted|floatformat:2|intcomma }}</td></tr>
-<tr class="total"><td>Total liabilities</td><td class="num">{{ sofp.total_liabilities|floatformat:2|intcomma }}</td></tr>
+<tr><td>Trust payable — receipted</td><td class="num">{{ sofp.trust_receipted|money }}</td></tr>
+<tr><td>Trust payable — not yet receipted</td><td class="num">{{ sofp.trust_unreceipted|money }}</td></tr>
+<tr class="total"><td>Total liabilities</td><td class="num">{{ sofp.total_liabilities|money }}</td></tr>
 <tr><th colspan="2">Net assets</th></tr>
-<tr><td>General net assets</td><td class="num">{{ sofp.unallocated|floatformat:2|intcomma }}</td></tr>
-<tr><td>Designated development funds</td><td class="num">{{ sofp.allocated|floatformat:2|intcomma }}</td></tr>
-<tr><td>Invested in property</td><td class="num">{{ sofp.nbv|floatformat:2|intcomma }}</td></tr>
-<tr class="grand"><td>Total net assets</td><td class="num">{{ sofp.net_assets|floatformat:2|intcomma }}</td></tr>
+<tr><td>General net assets</td><td class="num">{{ sofp.unallocated|money }}</td></tr>
+<tr><td>Designated development funds</td><td class="num">{{ sofp.allocated|money }}</td></tr>
+<tr><td>Invested in property</td><td class="num">{{ sofp.nbv|money }}</td></tr>
+<tr class="grand"><td>Total net assets</td><td class="num">{{ sofp.net_assets|money }}</td></tr>
 </table>
 
 {% if net_asset_changes %}<h3>Statement of changes in net assets</h3>
 <table>
-<tr><td>Net assets at start of period</td><td class="num">{{ net_asset_changes.opening|floatformat:2|intcomma }}</td></tr>
-<tr><td>Surplus / (deficit) for the period</td><td class="num">{{ net_asset_changes.surplus|floatformat:2|intcomma }}</td></tr>
-<tr class="grand"><td>Net assets at end of period</td><td class="num">{{ net_asset_changes.closing|floatformat:2|intcomma }}</td></tr>
+<tr><td>Net assets at start of period</td><td class="num">{{ net_asset_changes.opening|money }}</td></tr>
+<tr><td>Surplus / (deficit) for the period</td><td class="num">{{ net_asset_changes.surplus|money }}</td></tr>
+<tr class="grand"><td>Net assets at end of period</td><td class="num">{{ net_asset_changes.closing|money }}</td></tr>
 </table>{% endif %}
 
 <h3>Cash flow</h3>
 <p class="narrative">{{ narratives.cashflow }}</p>
 <table>
 <tr><th colspan="2">Operating activities</th></tr>
-<tr><td>Local receipts</td><td class="num">{{ cashflow.local_receipts|floatformat:2|intcomma }}</td></tr>
-<tr><td>Trust receipts</td><td class="num">{{ cashflow.trust_receipts|floatformat:2|intcomma }}</td></tr>
-<tr><td>Operating expenses paid</td><td class="num">({{ cashflow.operating_exp|floatformat:2|intcomma }})</td></tr>
-<tr><td>Remittances to field</td><td class="num">({{ cashflow.remittances|floatformat:2|intcomma }})</td></tr>
-<tr class="total"><td>Net operating cash</td><td class="num">{{ cashflow.net_operating|floatformat:2|intcomma }}</td></tr>
+<tr><td>Local receipts</td><td class="num">{{ cashflow.local_receipts|money }}</td></tr>
+<tr><td>Trust receipts</td><td class="num">{{ cashflow.trust_receipts|money }}</td></tr>
+<tr><td>Operating expenses paid</td><td class="num">({{ cashflow.operating_exp|money }})</td></tr>
+<tr><td>Remittances to field</td><td class="num">({{ cashflow.remittances|money }})</td></tr>
+<tr class="total"><td>Net operating cash</td><td class="num">{{ cashflow.net_operating|money }}</td></tr>
 <tr><th colspan="2">Investing activities</th></tr>
-<tr><td>Capital expenditure</td><td class="num">({{ cashflow.capital|floatformat:2|intcomma }})</td></tr>
-<tr class="grand"><td>Net change in cash</td><td class="num">{{ cashflow.net_change|floatformat:2|intcomma }}</td></tr>
+<tr><td>Capital expenditure</td><td class="num">({{ cashflow.capital|money }})</td></tr>
+<tr class="grand"><td>Net change in cash</td><td class="num">{{ cashflow.net_change|money }}</td></tr>
 </table>
 
 <h3>Bank reconciliation</h3>
 <p class="narrative">{{ narratives.recon }}</p>
 {% if recon %}<table>
 <tr><td>Statement date</td><td class="num">{{ recon.statement_date|date:"d M Y" }}</td></tr>
-<tr><td>Balance per bank statement</td><td class="num">{{ recon.bank_balance|floatformat:2|intcomma }}</td></tr>
-<tr><td>Adjusted bank balance</td><td class="num">{{ recon.adjusted_balance|floatformat:2|intcomma }}</td></tr>
-<tr><td>Balance per cash book</td><td class="num">{{ recon.book_balance|floatformat:2|intcomma }}</td></tr>
-<tr class="total"><td>Difference</td><td class="num">{% if recon.difference != None %}{{ recon.difference|floatformat:2|intcomma }}{% else %}—{% endif %}</td></tr>
+<tr><td>Balance per bank statement</td><td class="num">{{ recon.bank_balance|money }}</td></tr>
+<tr><td>Adjusted bank balance</td><td class="num">{{ recon.adjusted_balance|money }}</td></tr>
+<tr><td>Balance per cash book</td><td class="num">{{ recon.book_balance|money }}</td></tr>
+<tr class="total"><td>Difference</td><td class="num">{% if recon.difference != None %}{{ recon.difference|money }}{% else %}—{% endif %}</td></tr>
 <tr><td colspan="2">{% if recon.is_reconciled %}Reconciled{% else %}Not yet balanced{% endif %}</td></tr>
 </table>{% else %}<div class="note">No bank reconciliation recorded yet for this period.</div>{% endif %}
 

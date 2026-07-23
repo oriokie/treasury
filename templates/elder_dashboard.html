@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Elder dashboard · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Elder dashboard</h1>
@@ -8,7 +8,7 @@
   {% for c in cards %}
   <div class="exec-card tone-{{ c.tone }}">
     <div class="ec-label">{{ c.label }}</div>
-    <div class="ec-val">{% if c.money %}<span class="ec-cur">KES</span> {{ c.value|floatformat:0|intcomma }}{% else %}{{ c.value }}{% endif %}</div>
+    <div class="ec-val">{% if c.money %}<span class="ec-cur">{{ CURRENCY }}</span> {{ c.value|money:0 }}{% else %}{{ c.value }}{% endif %}</div>
     {% if c.sub %}<div class="ec-sub">{{ c.sub }}</div>{% endif %}
   </div>
   {% endfor %}

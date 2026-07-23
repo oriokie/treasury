@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Board budget summary {{ year }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -21,10 +21,10 @@
 </div>
 
 <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="stat"><div class="kpi-label">Total budget {{ year }}</div><div class="kpi-val mono">KES {{ totals.budget|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="kpi-label">Funded by Local Church Budget</div><div class="kpi-val mono" style="color:var(--brass)">KES {{ totals.lcb|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="kpi-label">Departments' own funds</div><div class="kpi-val mono">KES {{ totals.own|floatformat:2|intcomma }}</div></div>
-  {% if totals.other %}<div class="stat"><div class="kpi-label">Other funds</div><div class="kpi-val mono">KES {{ totals.other|floatformat:2|intcomma }}</div></div>{% endif %}
+  <div class="stat"><div class="kpi-label">Total budget {{ year }}</div><div class="kpi-val mono">{{ CURRENCY }} {{ totals.budget|money }}</div></div>
+  <div class="stat"><div class="kpi-label">Funded by Local Church Budget</div><div class="kpi-val mono" style="color:var(--brass)">{{ CURRENCY }} {{ totals.lcb|money }}</div></div>
+  <div class="stat"><div class="kpi-label">Departments' own funds</div><div class="kpi-val mono">{{ CURRENCY }} {{ totals.own|money }}</div></div>
+  {% if totals.other %}<div class="stat"><div class="kpi-label">Other funds</div><div class="kpi-val mono">{{ CURRENCY }} {{ totals.other|money }}</div></div>{% endif %}
 </div>
 
 <div class="card"><div class="hd">Budget by department &amp; source of funds</div><div class="bd u-pad-cell">
@@ -33,19 +33,19 @@
   <tbody>
   {% for r in data.rows %}<tr>
     <td>{{ r.dept.name }}{% if r.is_trust %} <span class="pill pill-amber u-xxs">Trust</span>{% endif %}</td>
-    <td class="num mono">{{ r.own|floatformat:2|intcomma }}</td>
-    <td class="num mono">{% if r.lcb %}{{ r.lcb|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
-    <td class="num mono">{% if r.other %}{{ r.other|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
-    <td class="num mono"><strong>{{ r.total|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono muted">{% if r.prior %}{{ r.prior|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+    <td class="num mono">{{ r.own|money }}</td>
+    <td class="num mono">{% if r.lcb %}{{ r.lcb|money }}{% else %}—{% endif %}</td>
+    <td class="num mono">{% if r.other %}{{ r.other|money }}{% else %}—{% endif %}</td>
+    <td class="num mono"><strong>{{ r.total|money }}</strong></td>
+    <td class="num mono muted">{% if r.prior %}{{ r.prior|money }}{% else %}—{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="6" class="empty">No budgets set for {{ year }}. Set them under Budgeting.</td></tr>{% endfor %}
   </tbody>
   {% if data.rows %}<tfoot><tr class="grand"><td><strong>TOTAL</strong></td>
-    <td class="num mono"><strong>{{ totals.own|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ totals.lcb|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ totals.other|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ totals.budget|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono muted"><strong>{{ totals.prior|floatformat:2|intcomma }}</strong></td></tr></tfoot>{% endif %}
+    <td class="num mono"><strong>{{ totals.own|money }}</strong></td>
+    <td class="num mono"><strong>{{ totals.lcb|money }}</strong></td>
+    <td class="num mono"><strong>{{ totals.other|money }}</strong></td>
+    <td class="num mono"><strong>{{ totals.budget|money }}</strong></td>
+    <td class="num mono muted"><strong>{{ totals.prior|money }}</strong></td></tr></tfoot>{% endif %}
 </table>
 </div></div>
 
@@ -55,11 +55,11 @@
   <tbody>
   {% for a in data.lcb_alloc %}<tr>
     <td>{{ a.dept.name }}</td>
-    <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ a.amount|money }}</td>
     <td class="num mono muted">{% widthratio a.amount totals.lcb 100 %}%</td>
   </tr>{% empty %}<tr><td colspan="3" class="empty">No budget lines are sourced from the Local Church Budget yet.</td></tr>{% endfor %}
   </tbody>
-  {% if data.lcb_alloc %}<tfoot><tr class="grand"><td><strong>TOTAL LCB OUTLAY</strong></td><td class="num mono"><strong>{{ totals.lcb|floatformat:2|intcomma }}</strong></td><td></td></tr></tfoot>{% endif %}
+  {% if data.lcb_alloc %}<tfoot><tr class="grand"><td><strong>TOTAL LCB OUTLAY</strong></td><td class="num mono"><strong>{{ totals.lcb|money }}</strong></td><td></td></tr></tfoot>{% endif %}
 </table>
 </div></div>
 <p class="help">Lines with no stated source are funded by the department's own funds. Trust funds and Local Church Budget items can be pegged on the prior year via “Copy {{ year|add:"-1" }} breakdown” on each fund's budget breakdown page.</p>

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Annual summary · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Annual Summary" %}
@@ -10,9 +10,9 @@
   <tbody>
   {% for r in rows %}
     <tr><td><strong>{{ r.year }}</strong></td>
-      <td class="num mono">{{ r.income|floatformat:2|intcomma }}</td>
-      <td class="num mono row-debit">{{ r.expense|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.net|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono">{{ r.income|money }}</td>
+      <td class="num mono row-debit">{{ r.expense|money }}</td>
+      <td class="num mono">{{ r.net|money }}</td></tr>
   {% empty %}<tr><td colspan="4" class="empty">No data yet.</td></tr>{% endfor %}
   </tbody>
 </table></div>
@@ -23,10 +23,10 @@
   <tbody>
   {% for h in historical %}
     <tr><td><strong>{{ h.year }}</strong></td>
-      <td class="num mono">{{ h.collection|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ h.trust_fund|floatformat:2|intcomma }}</td>
-      <td class="num mono row-debit">{{ h.expenditure|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ h.net|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono">{{ h.collection|money }}</td>
+      <td class="num mono">{{ h.trust_fund|money }}</td>
+      <td class="num mono row-debit">{{ h.expenditure|money }}</td>
+      <td class="num mono">{{ h.net|money }}</td></tr>
   {% endfor %}
   </tbody></table>
 </div></div>

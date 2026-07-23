@@ -1,0 +1,86 @@
+{% extends 'base.html' %}{% load treasury_extras %}
+{% block title %}Asset cost check · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+{% include "ui/print_header.html" with title="Asset Cost — Ledger Backing Check" %}
+<div class="page-head">
+  <div><h1>Asset cost — ledger backing check</h1>
+    <div class="sub">Assets acquired after {{ r.opening_date|date:"d M Y" }} · as at {{ as_of|date:"d M Y" }}</div></div>
+  <div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">Register</a>
+    <button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button></div>
+</div>
+
+<div class="grid-3 u-mt">
+  <div class="stat"><div class="lbl">Not backed by the ledger</div><div class="val mono {% if r.totals.shortfall %}row-debit{% endif %}">{{ r.totals.shortfall|money_acct }}</div></div>
+  <div class="stat"><div class="lbl">Would be counted twice</div><div class="val mono {% if r.totals.double_counted %}row-debit{% endif %}">{{ r.totals.double_counted|money_acct }}</div></div>
+  <div class="stat"><div class="lbl">Books would be out by</div><div class="val mono {% if r.totals.predicted_diff %}row-debit{% else %}{% endif %}" style="{% if not r.totals.predicted_diff %}color:var(--green){% endif %}">{{ r.totals.predicted_diff|money_acct }}</div></div>
+</div>
+
+{% if r.ready %}
+<p class="help u-mt">Every asset acquired since {{ r.opening_date|date:"d M Y" }} is backed by a
+  payment or a donation, and no payment would be counted twice. Cost can be recognised from each
+  asset's acquisition date without the register and the ledger falling out of agreement.</p>
+{% else %}
+<p class="help u-mt">{{ r.totals.unbacked_count }} asset{{ r.totals.unbacked_count|pluralize }}
+  worth {{ r.totals.shortfall|money_acct }} sit{{ r.totals.unbacked_count|pluralize:"s," }} on the
+  register without a payment or donation behind it. Today the opening entry quietly covers the
+  difference, so the books still agree; if cost were recognised from each asset's own acquisition
+  date, that amount would be missing from the fixed-asset account. Resolve these first.</p>
+{% endif %}
+
+{% if r.double_counted %}
+<div class="card u-mt"><div class="hd">Payments that would be counted twice</div><div class="bd bd-flush">
+  <div class="table-wrap"><table class="ledger"><thead><tr>
+    <th>Asset</th><th>Acquired</th><th class="num">Payment dated after opening</th><th>What to do</th>
+  </tr></thead><tbody>
+    {% for row in r.double_counted %}<tr>
+      <td><a class="link" href="{% url 'asset_detail' row.asset.id %}">{{ row.asset.name }}</a></td>
+      <td>{{ row.acquired_on|date:"d M Y" }}</td>
+      <td class="num mono row-debit">{{ row.amount|money_acct }}</td>
+      <td class="muted">{{ row.reason }}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>
+</div></div>
+{% endif %}
+
+{% if r.unbacked %}
+<div class="card u-mt"><div class="hd">Needs attention</div><div class="bd bd-flush">
+  <div class="table-wrap"><table class="ledger"><thead><tr>
+    <th>Asset</th><th>Acquired</th><th>How acquired</th>
+    <th class="num">Cost</th><th class="num">Backed</th><th class="num">Short by</th><th>What to do</th>
+  </tr></thead><tbody>
+    {% for row in r.unbacked %}<tr>
+      <td><a class="link" href="{% url 'asset_detail' row.asset.id %}">{{ row.asset.name }}</a></td>
+      <td>{{ row.acquired_on|date:"d M Y" }}</td>
+      <td class="muted">{{ row.source }}</td>
+      <td class="num mono">{{ row.cost|money_acct }}</td>
+      <td class="num mono">{{ row.covered|money_acct }}</td>
+      <td class="num mono row-debit">{{ row.shortfall|money_acct }}</td>
+      <td class="muted">{{ row.reason }}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>
+</div></div>
+{% endif %}
+
+{% if r.rows %}
+<div class="card u-mt"><div class="hd">All assets acquired since the opening date ({{ r.totals.count }})</div><div class="bd bd-flush">
+  <div class="table-wrap"><table class="ledger compact"><thead><tr>
+    <th>Asset</th><th>Acquired</th><th>How acquired</th><th class="num">Payments linked</th>
+    <th class="num">Cost</th><th class="num">Backed</th>
+  </tr></thead><tbody>
+    {% for row in r.rows %}<tr>
+      <td><a class="link" href="{% url 'asset_detail' row.asset.id %}">{{ row.asset.name }}</a></td>
+      <td>{{ row.acquired_on|date:"d M Y" }}</td>
+      <td class="muted">{{ row.source }}</td>
+      <td class="num mono">{{ row.expenses }}</td>
+      <td class="num mono">{{ row.cost|money_acct }}</td>
+      <td class="num mono">{{ row.covered|money_acct }}{% if not row.shortfall %} ✓{% endif %}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>
+</div></div>
+{% else %}
+<p class="empty u-p u-mt">No assets have been acquired since the opening date, so nothing would change.</p>
+{% endif %}
+
+<p class="help u-mt">This check only reads — it changes nothing. Assets already owned at
+  {{ r.opening_date|date:"d M Y" }} are brought in by the opening entry and are not affected.</p>
+{% endblock %}

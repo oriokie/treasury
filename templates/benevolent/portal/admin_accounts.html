@@ -1,0 +1,68 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Portal accounts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div><div class="eyebrow">Benevolent · Member portal</div>
+      <h1>Portal accounts</h1>
+      <div class="desc">Who can sign in and see their own record. Giving a member access
+        changes nothing about their membership or their cover.</div></div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'portal_admin_queue' %}">Member requests</a></div>
+  </div>
+  <div class="rule"></div>
+</div>
+
+<div class="grid cols-4 u-mb">
+  {% for label, count in counts %}
+  <div class="stat"><div class="lbl">{{ label }}</div>
+    <div class="val mono">{{ count }}</div></div>
+  {% endfor %}
+</div>
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input class="field" type="search" name="q" value="{{ q }}" placeholder="Search by name">
+  <select class="field" name="status"><option value="">Any status</option>
+    {% for value, label in statuses %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="panel u-mb">
+  <h3>Give a member access</h3>
+  <p class="muted">Creates a sign-in bound to that person. They set their own password
+    using “forgot password” — no password is ever issued or known by the office.</p>
+  <form method="post" class="filter-bar">{% csrf_token %}
+    <select class="field" name="member" required>
+      <option value="">Choose an enrolled member…</option>
+      {% for m in uninvited %}<option value="{{ m.pk }}">{{ m.name }}{% if m.phone %} · {{ m.phone }}{% endif %}</option>{% endfor %}
+    </select>
+    <input class="field" type="email" name="email" placeholder="Email (optional)">
+    <button class="btn btn-sm" name="action" value="invite">Invite</button>
+  </form>
+</div>
+
+<div class="panel">
+<table class="table">
+  <thead><tr><th>Member</th><th>Username</th><th>Status</th><th>Invited</th><th>Last seen</th><th class="no-print">Action</th></tr></thead>
+  <tbody>
+  {% for a in page %}
+  <tr><td>{{ a.member.name }}</td>
+    <td class="mono">{{ a.user.username }}</td>
+    <td><span class="pill {% if a.status == 'ACTIVE' %}pill-green{% elif a.status == 'SUSPENDED' %}pill-red{% elif a.status == 'CLOSED' %}pill-grey{% else %}pill-amber{% endif %}">{{ a.get_status_display }}</span></td>
+    <td>{{ a.invited_at|date:"d M Y"|default:"—" }}</td>
+    <td>{{ a.last_seen_at|date:"d M Y H:i"|default:"Never" }}</td>
+    <td class="no-print">
+      <form method="post" style="display:flex;gap:.35rem;flex-wrap:wrap">{% csrf_token %}
+        <input type="hidden" name="account" value="{{ a.pk }}">
+        {% if a.status == 'SUSPENDED' or a.status == 'CLOSED' %}
+          <button class="btn btn-ghost btn-sm" name="action" value="restore">Restore</button>
+        {% else %}
+          <input class="field" type="text" name="reason" placeholder="Reason" style="max-width:11rem">
+          <button class="btn btn-ghost btn-sm" name="action" value="suspend">Suspend</button>
+          <button class="btn btn-ghost btn-sm" name="action" value="close">Close</button>
+        {% endif %}
+      </form></td></tr>
+  {% empty %}<tr><td colspan="6" class="muted" style="padding:1.5rem;text-align:center">No portal accounts yet.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

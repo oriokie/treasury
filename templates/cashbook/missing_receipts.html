@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Expenses awaiting receipts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Awaiting supporting documents</h1>
@@ -8,7 +8,7 @@
 
 <div class="kpi-grid u-mb">
   {% include "ui/stat.html" with label="Expenses awaiting receipts" value=count accent="warn" foot="In this period" %}
-  {% include "ui/stat.html" with label="Value awaiting documentation" prefix=CURRENCY|default:"KSh" value=total|floatformat:2|intcomma accent="brass" %}
+  {% include "ui/stat.html" with label="Value awaiting documentation" prefix=CURRENCY|default:"KSh" value=total|money accent="brass" %}
 </div>
 
 <div class="card"><div class="bd bd-flush">
@@ -21,7 +21,7 @@
     <td>{{ e.department.name }}</td>
     <td>{{ e.description }}</td>
     <td>{{ e.claimant|default:"—" }}</td>
-    <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ e.amount|money }}</td>
     <td class="no-print u-right"><button type="button" class="btn btn-xs btn-ghost" onclick="var f=document.getElementById('mr-{{ e.id }}');f.style.display=f.style.display==='table-row'?'none':'table-row'">📎 Attach</button></td>
   </tr>
   <tr id="mr-{{ e.id }}" style="display:none" class="att-row"><td colspan="7">

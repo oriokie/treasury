@@ -15,9 +15,9 @@
 
 <div class="ws-summary">
   <div class="ws-metric is-primary"><span class="wm-l">{% if has_filters %}Filtered{% endif %} entries</span><span class="wm-v">{{ sum_count|intcomma }}</span></div>
-  <div class="ws-metric is-positive"><span class="wm-l">Receipts</span><span class="wm-v"><span class="cur">KES</span>{{ sum_credits|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric is-negative"><span class="wm-l">Payments</span><span class="wm-v"><span class="cur">KES</span>{{ sum_debits|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric"><span class="wm-l">Net</span><span class="wm-v"><span class="cur">KES</span>{{ sum_net|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Receipts</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ sum_credits|money:0 }}</span></div>
+  <div class="ws-metric is-negative"><span class="wm-l">Payments</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ sum_debits|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Net</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ sum_net|money:0 }}</span></div>
   {% if sum_review %}<div class="ws-metric is-warn"><span class="wm-l">In review</span><span class="wm-v">{{ sum_review }}</span></div>{% endif %}
 </div>
 
@@ -99,8 +99,8 @@
         <td class="mono muted">{{ t.reference|default:"—"|truncatechars:22 }}</td>
         {% if show_mpesa_ref %}<td class="mono muted">{{ t.mpesa_ref|default:"—" }}</td>{% endif %}
         <td><span class="pill {% if t.allocation_status == 'REVIEW' %}pill-amber{% elif t.allocation_status == 'AUTO' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_allocation_status_display }}</span></td>
-        <td class="num mono {% if t.direction == 'DEBIT' or t.is_reversal %}row-debit{% endif %}">{% if t.is_bank_memo %}<span class="cr-dr-badge" title="Memo — no cash effect: this bank line was receipted manually, so the money is counted once on its envelope entry; it does not move the running balance">MEMO</span> <s class="muted" title="Counted on the envelope entry — contributes zero here">{{ t.amount|floatformat:2|intcomma }}</s>{% else %}<span class="cr-dr-badge" title="{% if t.direction == 'DEBIT' or t.is_reversal %}Debit — money out, or an offsetting reversal{% else %}Credit — money in{% endif %}">{% if t.direction == 'DEBIT' or t.is_reversal %}DR{% else %}CR{% endif %}</span> {% if t.direction == 'DEBIT' or t.is_reversal %}({{ t.amount|floatformat:2|intcomma }}){% else %}{{ t.amount|floatformat:2|intcomma }}{% endif %}{% endif %}</td>
-        <td class="num mono muted u-xs" title="Balance up to and including this entry, in chronological order, under the current filters">{{ running_balances|get_item:t.id|floatformat:2|intcomma }}</td>
+        <td class="num mono {% if t.direction == 'DEBIT' or t.is_reversal %}row-debit{% endif %}">{% if t.is_bank_memo %}<span class="cr-dr-badge" title="Memo — no cash effect: this bank line was receipted manually, so the money is counted once on its envelope entry; it does not move the running balance">MEMO</span> <s class="muted" title="Counted on the envelope entry — contributes zero here">{{ t.amount|money }}</s>{% else %}<span class="cr-dr-badge" title="{% if t.direction == 'DEBIT' or t.is_reversal %}Debit — money out, or an offsetting reversal{% else %}Credit — money in{% endif %}">{% if t.direction == 'DEBIT' or t.is_reversal %}DR{% else %}CR{% endif %}</span> {% if t.direction == 'DEBIT' or t.is_reversal %}({{ t.amount|money }}){% else %}{{ t.amount|money }}{% endif %}{% endif %}</td>
+        <td class="num mono muted u-xs" title="Balance up to and including this entry, in chronological order, under the current filters">{{ running_balances|get_item:t.id|money }}</td>
         {% if can_enter_data %}<td class="num u-nowrap">
           <details class="dd tx-actions-dd">
             <summary title="Actions">⋮</summary>
@@ -116,7 +116,7 @@
               <a href="{% url 'receipt_one_bank' t.id %}" title="Receipt this bank contribution as an envelope (optionally with your own receipt number)">Receipt</a>
               {% endif %}
               {% if is_treasurer and not t.is_reversal and not t.is_reversed %}
-              <form method="post" action="{% url 'transaction_reverse' t.id %}" onsubmit="return confirm('Reverse this entry? It gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.\n\nAmount: KES {{ t.amount|floatformat:2|intcomma }}');">{% csrf_token %}<button class="dd-item-btn dd-item-danger" type="submit">Reverse</button></form>
+              <form method="post" action="{% url 'transaction_reverse' t.id %}" onsubmit="return confirm('Reverse this entry? It gets a contra posting (and any linked envelope receipt is removed). This is kept on the ledger for audit.\n\nAmount: {{ CURRENCY }} {{ t.amount|money }}');">{% csrf_token %}<button class="dd-item-btn dd-item-danger" type="submit">Reverse</button></form>
               {% endif %}
               {% if is_treasurer and not t.is_reversal and not t.is_reversed and t.allocation_status != 'REVIEW' and t.department_id %}
               <form method="post" action="{% url 'transaction_send_to_review' t.id %}" onsubmit="return confirm('Undo the allocation of this entry{% if t.reference %} (and any other part of the same split contribution){% endif %}, and send it back to the review queue as one combined entry for correct allocation? The original stays on the ledger, reversed, for the audit trail.');">{% csrf_token %}<input type="hidden" name="reason" value=""><button class="dd-item-btn" type="submit">↩ Send to review</button></form>
@@ -149,7 +149,7 @@
     return {n:checked.length, total:total};
   }
   function money(v){
-    return "KES "+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    return "{{ CURRENCY }} "+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   }
   function upd(){
     var sel=selection();

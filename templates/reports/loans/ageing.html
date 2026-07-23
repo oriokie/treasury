@@ -1,16 +1,16 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Loan Ageing · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Loan Ageing</h1><div class="sub">Outstanding by age since drawdown · as at {{ as_of_date|date:"d M Y" }}</div></div></div>
 {% with show_asof=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
 <div class="grid cols-2 u-mb"><div class="card"><div class="hd">Summary by bucket</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Age</th><th class="num">Loans</th><th class="num">Outstanding</th></tr></thead>
-<tbody>{% for label, b in buckets.items %}<tr><td>{{ label }}</td><td class="num">{{ b.count }}</td><td class="num mono">{{ b.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody>
-<tfoot><tr class="total-row"><td colspan="2"><strong>Total</strong></td><td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td></tr></tfoot></table>
+<tbody>{% for label, b in buckets.items %}<tr><td>{{ label }}</td><td class="num">{{ b.count }}</td><td class="num mono">{{ b.amount|money }}</td></tr>{% endfor %}</tbody>
+<tfoot><tr class="total-row"><td colspan="2"><strong>Total</strong></td><td class="num mono"><strong>{{ total|money }}</strong></td></tr></tfoot></table>
 </div></div></div>
 <div class="table-wrap"><table class="ledger">
 <thead><tr><th>Loan</th><th>Lender</th><th>Fund</th><th class="num">Age (days)</th><th>Bucket</th><th class="num">Outstanding</th></tr></thead>
 <tbody>{% for r in rows %}<tr><td class="mono">{{ r.loan.number }}</td><td>{{ r.loan.lender.name }}</td><td class="muted">{{ r.loan.fund.name }}</td>
-  <td class="num">{{ r.age_days }}</td><td class="muted">{{ r.bucket }}</td><td class="num mono">{{ r.outstanding|floatformat:2|intcomma }}</td></tr>
+  <td class="num">{{ r.age_days }}</td><td class="muted">{{ r.bucket }}</td><td class="num mono">{{ r.outstanding|money }}</td></tr>
 {% empty %}<tr><td colspan="6" class="empty">Nothing outstanding.</td></tr>{% endfor %}</tbody></table></div>
 {% endblock %}

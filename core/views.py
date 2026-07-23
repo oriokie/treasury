@@ -1444,9 +1444,12 @@ class PreferenceUpdateView(LoginRequiredMixin, View):
         "density", "high_contrast", "reduced_motion", "large_targets",
         "focus_indicators", "toasts_enabled", "toast_duration",
         "desktop_notifications",
+        "heading_font", "figure_font", "table_stripes", "table_grid",
+        "sticky_headers",
     }
     BOOLS = {"high_contrast", "reduced_motion", "large_targets",
-             "focus_indicators", "toasts_enabled", "desktop_notifications"}
+             "focus_indicators", "toasts_enabled", "desktop_notifications",
+             "table_stripes", "sticky_headers"}
     INTS = {"rows_per_page", "toast_duration"}
 
     def post(self, request):
@@ -1493,10 +1496,20 @@ class PostLoginRedirectView(LoginRequiredMixin, View):
     def get(self, request):
         from core.models import UserPreference
         from django.urls import reverse, NoReverseMatch
+        from core import roles
+        # A self-service member has exactly one landing page, and the landing
+        # preference does not apply to them: every choice it offers is an office
+        # screen the confinement middleware would refuse. Routed explicitly
+        # here rather than left to that middleware to bounce — relying on the
+        # bounce works, but it sends the member through a page they may not
+        # open to get to the one they may, which is an odd first impression and
+        # an accident waiting to be optimised away.
+        if roles.is_portal_only(request.user):
+            return redirect("portal_home")
+
         pref = UserPreference.get_for(request.user)
         target = (pref.landing_page if pref else "dashboard") or "dashboard"
         # leaders always land on their scoped dashboard
-        from core import roles
         if roles.is_leader(request.user) and not request.user.is_superuser:
             target = "leader_dashboard"
         valid = {c[0] for c in UserPreference.LANDING_CHOICES} | {"leader_dashboard"}

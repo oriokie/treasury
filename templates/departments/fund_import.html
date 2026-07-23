@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Import funds &amp; sub-accounts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -49,7 +49,7 @@
       <td>{% if p.parent %}{% if p.parent_ok %}{{ p.parent }}{% else %}<span class="text-danger">{{ p.parent }} (unknown)</span>{% endif %}{% else %}<span class="muted">— top level —</span>{% endif %}</td>
       <td>{{ p.ftype|title }}</td>
       <td>{{ p.cat|title }}</td>
-      <td class="num mono">{{ p.opening|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ p.opening|money:0 }}</td>
       <td>{% if p.exists %}<span class="pill pill-grey">exists · skip</span>{% elif not p.parent_ok %}<span class="pill pill-amber">skip · bad parent</span>{% else %}<span class="pill pill-green">create</span>{% endif %}</td>
     </tr>
     {% endfor %}

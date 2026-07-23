@@ -1,0 +1,42 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My documents{% endblock %}
+{% block portal_desc %}Papers you have sent the church. Keep them here and they can be attached to a claim later, without you having to find them again.{% endblock %}
+{% block portal_content %}
+<form method="post" enctype="multipart/form-data" class="panel u-mb no-print">{% csrf_token %}
+  <label class="lbl" for="id_documents">Upload (PDF or a photo, up to 10 MB each)</label>
+  <input class="field" type="file" name="documents" id="id_documents" multiple
+         accept=".pdf,.jpg,.jpeg,.png,.heic,.webp" required>
+  <label class="lbl u-mt" for="id_kind">What is it?</label>
+  <select class="field" name="document_kind" id="id_kind">
+    {% for value, label in kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+  </select>
+  <label class="lbl u-mt" for="id_label">A short description (optional)</label>
+  <input class="field" type="text" name="document_label" id="id_label" maxlength="140">
+  <button class="btn u-mt">Upload</button>
+</form>
+
+<div class="panel">
+<table class="table pt-stack">
+  <thead><tr><th>Document</th><th>Type</th><th>Uploaded</th><th>Attached to</th><th class="no-print"></th></tr></thead>
+  <tbody>
+  {% for d in documents %}
+  <tr><td data-label="Document">{{ d.label|default:d.original_name|default:"Document" }}</td>
+    <td data-label="Type">{{ d.get_kind_display }}</td>
+    <td data-label="Uploaded">{{ d.uploaded_at|date:"d M Y" }}</td>
+    <td data-label="Attached to">{% if d.request %}<a class="link" href="{% url 'portal_request_detail' d.request.pk %}">{{ d.request.reference }}</a>{% else %}<span class="muted">Not attached</span>{% endif %}</td>
+    <td data-label="" class="no-print">
+      <a class="link" href="{% url 'portal_document_action' d.pk 'download' %}">Download</a>
+      {% if d.may_withdraw %}
+      <form method="post" action="{% url 'portal_document_action' d.pk 'withdraw' %}" style="display:inline">{% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'portal_documents' %}">
+        <button class="link" style="background:none;border:0;cursor:pointer">Remove</button></form>
+      {% endif %}</td></tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="pt-empty">You have not uploaded anything yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="muted u-mt">A document already attached to a claim cannot be removed — evidence
+  behind a decision stays on the record.</p>
+{% endblock %}

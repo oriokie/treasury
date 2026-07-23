@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Bank reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Bank reconciliation</h1>
@@ -10,17 +10,17 @@
 {% else %}
 <div class="card"><div class="bd">
   <table class="ledger compact"><tbody>
-    <tr><td>Opening bank balance</td><td class="num mono">KSh {{ opening|floatformat:2|intcomma }}</td></tr>
-    <tr><td>+ Bank/M-Pesa receipts (to {{ stmt.stmt_last_date|date:"d M Y" }})</td><td class="num mono">KSh {{ bank_credits|floatformat:2|intcomma }}</td></tr>
-    <tr><td>− Bank payments / debits</td><td class="num mono">KSh {{ bank_debits|floatformat:2|intcomma }}</td></tr>
-    <tr><td>− Bank-paid expenses (not on a debit row)</td><td class="num mono">KSh {{ bank_expenses|floatformat:2|intcomma }}</td></tr>
-    <tr style="border-top:2px solid var(--line)"><td><strong>System bank balance</strong></td><td class="num mono"><strong>KSh {{ system_balance|floatformat:2|intcomma }}</strong></td></tr>
-    {% if statement_balance != None %}<tr><td>Bank statement closing balance{% if stmt %} <span class="muted u-xs">({{ stmt.stmt_last_date|date:"d M Y" }})</span>{% endif %}</td><td class="num mono">KSh {{ statement_balance|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if live_balance %}<tr><td>Live cleared balance <span class="muted u-xs">(bank feed · {{ live_balance.at|date:"d M Y H:i" }})</span></td><td class="num mono">KSh {{ live_balance.balance|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Difference vs live balance</td><td class="num mono"><strong class="{% if live_difference %}text-danger{% endif %}">KSh {{ live_difference|floatformat:2|intcomma }}</strong></td></tr>{% endif %}
+    <tr><td>Opening bank balance</td><td class="num mono">{{ CURRENCY }} {{ opening|money }}</td></tr>
+    <tr><td>+ Bank/M-Pesa receipts (to {{ stmt.stmt_last_date|date:"d M Y" }})</td><td class="num mono">{{ CURRENCY }} {{ bank_credits|money }}</td></tr>
+    <tr><td>− Bank payments / debits</td><td class="num mono">{{ CURRENCY }} {{ bank_debits|money }}</td></tr>
+    <tr><td>− Bank-paid expenses (not on a debit row)</td><td class="num mono">{{ CURRENCY }} {{ bank_expenses|money }}</td></tr>
+    <tr style="border-top:2px solid var(--line)"><td><strong>System bank balance</strong></td><td class="num mono"><strong>{{ CURRENCY }} {{ system_balance|money }}</strong></td></tr>
+    {% if statement_balance != None %}<tr><td>Bank statement closing balance{% if stmt %} <span class="muted u-xs">({{ stmt.stmt_last_date|date:"d M Y" }})</span>{% endif %}</td><td class="num mono">{{ CURRENCY }} {{ statement_balance|money }}</td></tr>{% endif %}
+    {% if live_balance %}<tr><td>Live cleared balance <span class="muted u-xs">(bank feed · {{ live_balance.at|date:"d M Y H:i" }})</span></td><td class="num mono">{{ CURRENCY }} {{ live_balance.balance|money }}</td></tr>
+    <tr><td>Difference vs live balance</td><td class="num mono"><strong class="{% if live_difference %}text-danger{% endif %}">{{ CURRENCY }} {{ live_difference|money }}</strong></td></tr>{% endif %}
     <tr style="border-top:2px solid var(--line)">
       <td><strong>Difference</strong></td>
-      <td class="num mono"><strong class="{% if difference %}text-danger{% endif %}">KSh {{ difference|floatformat:2|intcomma }}</strong></td></tr>
+      <td class="num mono"><strong class="{% if difference %}text-danger{% endif %}">{{ CURRENCY }} {{ difference|money }}</strong></td></tr>
   </tbody></table>
   <div class="help u-mt-sm">
     Compared against statement <strong>{{ stmt.filename }}</strong> covering {{ stmt.stmt_first_date|date:"d M Y" }} – {{ stmt.stmt_last_date|date:"d M Y" }}.
@@ -44,7 +44,7 @@
     {% for s in suspects %}
       <tr><td class="mono">{{ s.date|date:"d M Y" }}</td><td>{{ s.payer }}</td>
         <td class="mono">{{ s.ref }}</td>
-        <td class="num mono">KSh {{ s.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ CURRENCY }} {{ s.amount|money }}</td>
         <td><span class="pill pill-amber">{{ s.why }}</span></td>
         <td><a class="link" href="{% url 'transaction_edit' s.id %}">open</a></td></tr>
     {% endfor %}

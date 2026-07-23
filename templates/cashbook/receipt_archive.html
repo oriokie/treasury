@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Expense receipts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <style>
@@ -35,7 +35,7 @@
     <div class="meta">
       <div><span class="pill pill-grey" style="font-size:.72rem">#{{ a.expense.id }}</span> {{ a.expense.date|date:"d M Y" }} · {{ a.expense.department.name }}</div>
       <div>{{ a.expense.description }}</div>
-      <div class="amt">{{ CURRENCY|default:"KSh" }} {{ a.expense.amount|floatformat:2|intcomma }}</div>
+      <div class="amt">{{ CURRENCY|default:"KSh" }} {{ a.expense.amount|money }}</div>
       {% if a.label %}<div>{{ a.label }}</div>{% endif %}
     </div>
   </div>

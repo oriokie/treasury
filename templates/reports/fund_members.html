@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ department.name }} — by member · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ department.name }} — giving by member</h1>
@@ -18,8 +18,8 @@
 
 <div class="kpi-grid u-mb">
   {% include "ui/stat.html" with label="Givers" value=giver_count foot="Distinct members/payers" %}
-  {% include "ui/stat.html" with label="Named giving" prefix="KSh" value=named_total|floatformat:2|intcomma accent="accent" %}
-  {% include "ui/stat.html" with label="Total receipts" prefix="KSh" value=grand_total|floatformat:2|intcomma accent="brass" %}
+  {% include "ui/stat.html" with label="Named giving" prefix=CURRENCY value=named_total|money accent="accent" %}
+  {% include "ui/stat.html" with label="Total receipts" prefix=CURRENCY value=grand_total|money accent="brass" %}
 </div>
 
 <div class="card"><div class="hd">By member <span class="muted u-xs">(highest first)</span></div><div class="bd">
@@ -28,11 +28,11 @@
   <td class="muted">{{ forloop.counter }}</td>
   <td>{% if m.member_id %}<a href="{% url 'report_member' m.member_id %}">{{ m.name }}</a>{% else %}{{ m.name }} <span class="muted u-xs">(unlinked)</span>{% endif %}</td>
   <td class="num mono">{{ m.n }}</td>
-  <td class="num mono">{{ m.total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ m.total|money }}</td>
   <td class="num mono muted">{% widthratio m.total grand_total 100 %}%</td>
 </tr>{% empty %}<tr><td colspan="5" class="empty">No giving recorded in this period.</td></tr>{% endfor %}
-{% if anon_total %}<tr><td></td><td class="muted">(unnamed / loose offerings)</td><td class="num mono">{{ anon_count }}</td><td class="num mono">{{ anon_total|floatformat:2|intcomma }}</td><td></td></tr>{% endif %}
-<tr class="total-row"><td colspan="3"><strong>Total</strong></td><td class="num mono"><strong>{{ grand_total|floatformat:2|intcomma }}</strong></td><td></td></tr>
+{% if anon_total %}<tr><td></td><td class="muted">(unnamed / loose offerings)</td><td class="num mono">{{ anon_count }}</td><td class="num mono">{{ anon_total|money }}</td><td></td></tr>{% endif %}
+<tr class="total-row"><td colspan="3"><strong>Total</strong></td><td class="num mono"><strong>{{ grand_total|money }}</strong></td><td></td></tr>
 </tbody></table>
 </div></div>
 {% endblock %}

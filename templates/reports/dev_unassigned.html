@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Unassigned development offerings · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Unassigned development offerings</h1>
@@ -7,7 +7,7 @@
 
 <div class="kpi-grid u-my">
   {% include "ui/stat.html" with label="Offerings not assigned" value=count accent="warn" %}
-  {% include "ui/stat.html" with label="Total value" prefix=CURRENCY|default:"KSh" value=total|floatformat:2|intcomma accent="brass" %}
+  {% include "ui/stat.html" with label="Total value" prefix=CURRENCY|default:"KSh" value=total|money accent="brass" %}
 </div>
 
 {% if items %}
@@ -32,7 +32,7 @@
         <td class="mono">{{ t.date|date:"d/m/y" }}</td>
         <td>{{ t.department.name }}</td>
         <td>{% if t.payer_name %}{{ t.payer_name }}{% elif t.member %}{{ t.member.name }}{% else %}—{% endif %} <span class="muted mono">{{ t.reference|truncatechars:24 }}</span></td>
-        <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ t.amount|money }}</td>
       </tr>
     {% endfor %}
     </tbody>

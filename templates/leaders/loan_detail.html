@@ -1,19 +1,22 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ loan.number }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ld-hero">
-  <div class="ld-hero-main">
-    <div class="ld-eyebrow">{{ loan.fund.name }}</div>
-    <h1>{{ loan.number }}</h1>
-    <div class="ld-period">{{ loan.lender.name }} · taken {{ loan.loan_date|date:"d M Y" }}{% if loan.maturity_date %} · matures {{ loan.maturity_date|date:"d M Y" }}{% endif %} · {{ loan.get_status_display }}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">{{ loan.fund.name }} · {{ SITE_NAME }}</div>
+      <h1>{{ loan.number }}</h1>
+      <div class="period">{{ loan.lender.name }} · taken {{ loan.loan_date|date:"d M Y" }}{% if loan.maturity_date %} · matures {{ loan.maturity_date|date:"d M Y" }}{% endif %} · {{ loan.get_status_display }}</div>
+    </div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'leader_loans' %}">← Loans</a></div>
   </div>
-  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_loans' %}">← Loans</a>
+  <div class="rule"></div>
 </div>
 
 <div class="grid cols-3 u-mb">
-  <div class="stat"><div class="lbl">Received</div><div class="val mono">KES {{ loan.received_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Principal repaid</div><div class="val mono">KES {{ loan.principal_repaid|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Outstanding</div><div class="val mono" style="color:var(--forest)">KES {{ loan.outstanding_principal|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Received</div><div class="val mono">{{ CURRENCY }} {{ loan.received_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Principal repaid</div><div class="val mono">{{ CURRENCY }} {{ loan.principal_repaid|money }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding</div><div class="val mono" style="color:var(--forest)">{{ CURRENCY }} {{ loan.outstanding_principal|money }}</div></div>
 </div>
 {% if loan.purpose %}<p class="help">{{ loan.purpose }}</p>{% endif %}
 
@@ -23,8 +26,8 @@
   <td>{{ r.t.date|date:"d M y" }}</td>
   <td><span class="pill u-xs {% if r.t.kind == 'RECEIPT' %}pill-blue{% elif r.t.kind == 'PRINCIPAL' %}pill-green{% elif r.t.kind == 'INTEREST' %}pill-amber{% else %}pill-brass{% endif %}">{{ r.t.get_kind_display }}</span></td>
   <td class="muted">{{ r.t.note|default:"" }}</td>
-  <td class="num mono">{{ r.t.amount|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.t.amount|money }}</td>
+  <td class="num mono">{{ r.balance|money }}</td>
 </tr>{% empty %}<tr><td colspan="5" class="empty">No transactions.</td></tr>{% endfor %}</tbody></table>
 </div></div>
 <p class="help">Read-only. Contact the treasury office for any changes.</p>

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{% if policy %}Policy v{{ policy.version }}{% else %}Draft a policy{% endif %} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div>
@@ -59,9 +59,9 @@
 <th class="num">Wait (days)</th><th class="num">Max / year</th><th></th></tr></thead>
 <tbody>{% for r in rules %}<tr>
   <td>{{ r.event_type.name }}</td>
-  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.amount|money }}</td>
   <td class="num mono">{% if r.percent %}{{ r.percent }}%{% else %}—{% endif %}</td>
-  <td class="num mono">{% if r.cap %}{{ r.cap|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{% if r.cap %}{{ r.cap|money }}{% else %}—{% endif %}</td>
   <td class="num mono">{% if r.waiting_period_days is not None %}{{ r.waiting_period_days }}{% else %}<span class="muted">policy</span>{% endif %}</td>
   <td class="num mono">{% if r.max_per_year %}{{ r.max_per_year }}{% else %}—{% endif %}</td>
   <td>{% if can.manage_benevolent_schemes and not policy.is_locked %}

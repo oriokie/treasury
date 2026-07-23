@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Treasury controls · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Treasury controls</h1><div class="sub">Period locking and duplicate review</div></div>
@@ -46,8 +46,8 @@
     {% if is_closed %}<span class="pill pill-green u-ml-sm">Closed</span>{% endif %}
   </form>
   <table class="ledger compact"><thead><tr><th>Fund</th><th class="num">Closing (carried forward)</th></tr></thead><tbody>
-    {% for r in cf_rows %}<tr><td>{{ r.department.name }}{% if r.is_trust %} <span class="pill pill-grey">trust</span>{% endif %}</td><td class="num mono">{{ r.closing|floatformat:2|intcomma }}</td></tr>{% endfor %}
-    <tr class="total-row"><td><strong>Total carried forward into {{ close_year|add:1 }}</strong></td><td class="num mono"><strong>{{ cf_total|floatformat:2|intcomma }}</strong></td></tr>
+    {% for r in cf_rows %}<tr><td>{{ r.department.name }}{% if r.is_trust %} <span class="pill pill-grey">trust</span>{% endif %}</td><td class="num mono">{{ r.closing|money }}</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total carried forward into {{ close_year|add:1 }}</strong></td><td class="num mono"><strong>{{ cf_total|money }}</strong></td></tr>
   </tbody></table>
   <div class="btn-row u-mt-sm">
     {% if is_closed %}
@@ -64,7 +64,7 @@
   {% if closes %}
   <div class="sec u-mt">Closed years</div>
   <table class="ledger compact"><thead><tr><th>Year</th><th>Closed by</th><th>When</th><th class="num">Total carried forward</th></tr></thead><tbody>
-    {% for c in closes %}<tr><td>{{ c.year }}</td><td>{{ c.closed_by.get_full_name|default:c.closed_by.username }}</td><td class="mono">{{ c.closed_at|date:"d/m/y" }}</td><td class="num mono">{{ c.total_carried|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    {% for c in closes %}<tr><td>{{ c.year }}</td><td>{{ c.closed_by.get_full_name|default:c.closed_by.username }}</td><td class="mono">{{ c.closed_at|date:"d/m/y" }}</td><td class="num mono">{{ c.total_carried|money }}</td></tr>{% endfor %}
   </tbody></table>
   {% endif %}
 </div></div>

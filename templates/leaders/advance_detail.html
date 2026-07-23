@@ -1,20 +1,20 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Advance · {{ adv.staff_name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Advance — {{ adv.staff_name }}</h1>
+<div class="page-head"><div><div class="eyebrow">Leaders · {{ SITE_NAME }}</div><h1>Advance — {{ adv.staff_name }}</h1>
   <div class="sub">{{ adv.department.name }} · issued {{ adv.date_issued|date:"d M Y" }} · {{ adv.get_status_display }}</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'leader_advances' %}">← Advances</a></div>
 
 <div class="grid cols-3 u-mb">
-  <div class="stat"><div class="lbl">Advanced to you</div><div class="val mono">KSh {{ adv.amount|floatformat:2|intcomma }}</div>
-    {% if adv.topups_total %}<div class="foot">incl. top-ups KSh {{ adv.topups_total|floatformat:2|intcomma }}</div>{% endif %}</div>
-  <div class="stat"><div class="lbl">Accounted for</div><div class="val mono">KSh {{ adv.accounted_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Advanced to you</div><div class="val mono">{{ CURRENCY }} {{ adv.amount|money }}</div>
+    {% if adv.topups_total %}<div class="foot">incl. top-ups {{ CURRENCY }} {{ adv.topups_total|money }}</div>{% endif %}</div>
+  <div class="stat"><div class="lbl">Accounted for</div><div class="val mono">{{ CURRENCY }} {{ adv.accounted_total|money }}</div></div>
   <div class="stat"><div class="lbl">{% if to_account >= 0 %}Still to account for{% else %}Due back to you{% endif %}</div>
-    <div class="val mono" style="color:{% if to_account > 0 %}var(--brass){% elif to_account < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">KSh {{ to_account|floatformat:2|intcomma }}</div></div>
+    <div class="val mono" style="color:{% if to_account > 0 %}var(--brass){% elif to_account < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">{{ CURRENCY }} {{ to_account|money }}</div></div>
 </div>
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}</p>{% endif %}
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance came from the petty-cash float.</p>{% endif %}
-{% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> KSh {{ adv.bank_charge|floatformat:2|intcomma }} — the charge the church paid to send this advance (borne by the fund, not deducted from your balance).</p>{% endif %}
+{% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> {{ CURRENCY }} {{ adv.bank_charge|money }} — the charge the church paid to send this advance (borne by the fund, not deducted from your balance).</p>{% endif %}
 
 <div class="card u-mb"><div class="hd u-between">Statement
   <form method="get" class="adv-filter no-print">
@@ -32,9 +32,9 @@
   <td>{{ r.date|date:"d M y" }}</td>
   <td>{{ r.label }}{% if r.is_charge %} <span class="pill pill-grey">charge</span>{% endif %}
     {% if r.attachments %}<br><span class="muted u-xs">📎 {{ r.attachments|length }} receipt{{ r.attachments|length|pluralize }}</span>{% endif %}</td>
-  <td class="num mono">{% if r.out != None %}{{ r.out|floatformat:2|intcomma }}{% endif %}</td>
-  <td class="num mono">{% if r.back != None %}{{ r.back|floatformat:2|intcomma }}{% endif %}</td>
-  <td class="num mono">{{ r.running|floatformat:2|intcomma }}</td>
+  <td class="num mono">{% if r.out != None %}{{ r.out|money }}{% endif %}</td>
+  <td class="num mono">{% if r.back != None %}{{ r.back|money }}{% endif %}</td>
+  <td class="num mono">{{ r.running|money }}</td>
   <td class="no-print u-nowrap">
     {% if r.editable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('edit-{{ r.expense.id }}').style.display='block'">✎</button>{% endif %}
     {% if r.attachable %}<button type="button" class="btn btn-xs btn-ghost" onclick="document.getElementById('att-{{ r.expense.id }}').style.display='block'">📎</button>{% endif %}
@@ -93,7 +93,6 @@
   .adv-entry-grid .adv-add{grid-column:1 / -1;width:100%;padding:.7rem;font-size:1rem}
   .adv-filter{width:100%}
   .adv-filter .field-sm{flex:1;max-width:none}
-  .ld-hero h1{font-size:1.35rem}
 }
 </style>
 {% endblock %}

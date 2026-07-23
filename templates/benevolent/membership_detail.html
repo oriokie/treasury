@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}{{ membership.number }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ membership.member.name }}</h1>
@@ -21,7 +21,7 @@
     <p class="u-mt-0">{{ standing.reason }}</p>
     {% if standing.workings %}<ul class="muted u-xs">{% for w in standing.workings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
     <table class="ledger compact u-mt">
-      <tr><th>Arrears</th><td class="mono">{{ CURRENCY }} {{ facts.arrears|floatformat:2|intcomma }}
+      <tr><th>Arrears</th><td class="mono">{{ CURRENCY }} {{ facts.arrears|money }}
         {% if facts.days_past_due %}<span class="muted u-xs">({{ facts.days_past_due }} days late{% if facts.grace_days %}, {{ facts.grace_days }} allowed{% endif %})</span>{% endif %}</td></tr>
       <tr><th>Months idle</th><td class="mono">{{ facts.months_idle }}</td></tr>
       {% if facts.missed_cases %}<tr><th>Case levies missed</th><td class="mono">{{ facts.missed_cases }} <span class="muted u-xs">consecutive</span></td></tr>{% endif %}
@@ -118,9 +118,9 @@
 </div>
 
 <div class="grid cols-4 u-mb">
-  <div class="stat accent"><div class="lbl">Contributed</div><div class="val mono">{{ CURRENCY }} {{ contributed|floatformat:2|intcomma }}</div></div>
-  <div class="stat {% if facts.arrears %}warn{% endif %}"><div class="lbl">Arrears</div><div class="val mono">{{ CURRENCY }} {{ facts.arrears|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Benefits received</div><div class="val mono">{{ CURRENCY }} {{ benefits_received|floatformat:2|intcomma }}</div></div>
+  <div class="stat accent"><div class="lbl">Contributed</div><div class="val mono">{{ CURRENCY }} {{ contributed|money }}</div></div>
+  <div class="stat {% if facts.arrears %}warn{% endif %}"><div class="lbl">Arrears</div><div class="val mono">{{ CURRENCY }} {{ facts.arrears|money }}</div></div>
+  <div class="stat"><div class="lbl">Benefits received</div><div class="val mono">{{ CURRENCY }} {{ benefits_received|money }}</div></div>
   <div class="stat"><div class="lbl">Cases</div><div class="val mono">{{ cases|length }}</div>
     <div class="foot">{{ household|length }} person{{ household|length|pluralize:"s" }} covered</div></div>
 </div>
@@ -273,8 +273,8 @@
 <tbody>{% for a in adjustments %}<tr>
   <td>{{ a.on|date:"d M y" }}</td>
   <td>{{ a.get_kind_display }}{% if a.automated %} <span class="pill pill-brass u-xs" title="Raised automatically under a published policy">Auto</span>{% endif %}</td>
-  <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
-  <td class="num mono">{% if a.is_effective %}{% if a.signed > 0 %}+{% endif %}{{ a.signed|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}</td>
+  <td class="num mono">{{ a.amount|money }}</td>
+  <td class="num mono">{% if a.is_effective %}{% if a.signed > 0 %}+{% endif %}{{ a.signed|money }}{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="muted">{{ a.reason|truncatechars:60 }}{% if a.comments %}<div class="muted u-xs">{{ a.comments|truncatechars:50 }}</div>{% endif %}</td>
   <td>{% if a.reversed_on %}<span class="pill pill-brass u-xs">Reversed</span>
       {% elif a.is_effective %}<span class="pill pill-green u-xs">In force</span>
@@ -315,7 +315,7 @@
 <table class="ledger compact"><thead><tr><th>Date</th><th class="num">Amount</th><th>Why</th><th>Voucher</th><th>Counts</th></tr></thead>
 <tbody>{% for r in refunds %}<tr>
   <td>{{ r.date|date:"d M y"|default:"—" }}</td>
-  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.amount|money }}</td>
   <td class="muted">{{ r.reason|truncatechars:60 }}</td>
   <td>{{ r.status }}</td>
   <td>{% if r.effective %}<span class="pill pill-green u-xs">Paid</span>{% else %}<span class="pill pill-amber u-xs">Pending</span>{% endif %}</td>
@@ -338,9 +338,9 @@
 <div class="card u-mb"><div class="hd">Dues</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Period</th><th class="num">Due</th><th class="num">Paid</th><th class="num">Outstanding</th></tr></thead>
 <tbody>{% for d in dues %}<tr><td class="mono">{{ d.period }}</td>
-  <td class="num mono">{{ d.due|floatformat:2|intcomma }}{% if d.waived %} <span class="pill pill-blue u-xs">waived</span>{% endif %}</td>
-  <td class="num mono">{{ d.paid|floatformat:2|intcomma }}</td>
-  <td class="num mono">{% if d.outstanding %}<strong>{{ d.outstanding|floatformat:2|intcomma }}</strong>{% else %}—{% endif %}</td>
+  <td class="num mono">{{ d.due|money }}{% if d.waived %} <span class="pill pill-blue u-xs">waived</span>{% endif %}</td>
+  <td class="num mono">{{ d.paid|money }}</td>
+  <td class="num mono">{% if d.outstanding %}<strong>{{ d.outstanding|money }}</strong>{% else %}—{% endif %}</td>
 </tr>{% endfor %}</tbody></table>
 </div></div>
 {% endif %}
@@ -351,8 +351,8 @@
 <tbody>{% for c in cases %}<tr>
   <td class="mono">{{ c.number }}</td><td class="muted">{{ c.event_type.name }}</td>
   <td>{{ c.event_date|date:"d M y" }}</td>
-  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
-  <td class="num mono">{{ c.paid_total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|money }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ c.paid_total|money }}</td>
   <td><span class="pill u-xs">{{ c.get_status_display }}</span></td>
   <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">Open</a></td>
 </tr>{% empty %}<tr><td colspan="7" class="empty">No cases.</td></tr>{% endfor %}</tbody></table>

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ group.label }} members · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ group.label }} — member contributions</h1>
@@ -21,10 +21,10 @@
   <tbody>
   {% for r in rows %}<tr>
     <td>{{ r.name }}</td><td class="mono muted">{{ r.phone|default:"—" }}</td>
-    <td class="num mono">{{ r.count }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ r.count }}</td><td class="num mono">{{ r.total|money }}</td>
   </tr>{% empty %}<tr><td colspan="4" class="empty">No contributions in this period.</td></tr>{% endfor %}
   </tbody>
-  {% if rows %}<tfoot><tr class="grand"><td colspan="3"><strong>TOTAL</strong></td><td class="num mono"><strong>{{ grand_total|floatformat:2|intcomma }}</strong></td></tr></tfoot>{% endif %}
+  {% if rows %}<tfoot><tr class="grand"><td colspan="3"><strong>TOTAL</strong></td><td class="num mono"><strong>{{ grand_total|money }}</strong></td></tr></tfoot>{% endif %}
 </table></div>
-{% if group.target %}<p class="help">Group target: {{ group.target|floatformat:2|intcomma }} · collected to date shown on the <a class="link" href="{% url 'report_dev_groups' %}">progress report</a>.</p>{% endif %}
+{% if group.target %}<p class="help">Group target: {{ group.target|money }} · collected to date shown on the <a class="link" href="{% url 'report_dev_groups' %}">progress report</a>.</p>{% endif %}
 {% endblock %}

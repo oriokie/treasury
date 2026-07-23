@@ -1,8 +1,8 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Asset register · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head no-print"><div><div class="eyebrow">Funds · {{ SITE_NAME }}</div><h1>Fixed-asset register</h1><div class="sub">Net book value as at {{ as_of|date:"d M Y" }}</div></div>
-<div class="btn-row">{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'depreciation_rules' %}">Depreciation rules</a><a class="btn btn-sm" href="{% url 'asset_create' %}">+ Add asset</a>{% endif %}<button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_board' %}">Lifecycle</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'asset_import' %}">Import</a><a class="btn btn-ghost btn-sm" href="{% url 'depreciation_runs' %}">Depreciation runs</a><a class="btn btn-ghost btn-sm" href="{% url 'depreciation_rules' %}">Depreciation rules</a><a class="btn btn-sm" href="{% url 'asset_create' %}">+ Add asset</a>{% endif %}<button class="btn btn-ghost btn-sm" onclick="window.print()">⎙ Print</button></div></div>
 <form method="get" class="filters no-print"><div class="f"><label>As at</label><input type="date" name="as_of" value="{{ as_of|date:'Y-m-d' }}" class="field"></div><button class="btn btn-sm">View</button></form>
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Fixed-asset register — {{ as_of|date:"d M Y" }}</div></div>
 <div class="table-wrap"><table class="ledger compact">
@@ -13,9 +13,9 @@
       <td><a class="link" href="{% url 'asset_detail' r.a.id %}">{{ r.a.name }}</a>{% if r.a.reference %} <span class="muted" style="font-size:.76rem">· {{ r.a.reference }}</span>{% endif %}</td>
       <td>{{ r.a.get_category_display }}</td>
       <td class="mono">{{ r.a.acquired_on|date:"d/m/y" }}</td>
-      <td class="num mono">{{ r.a.cost|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.acc|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.nbv|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.a.cost|money }}</td>
+      <td class="num mono">{{ r.acc|money }}</td>
+      <td class="num mono">{{ r.nbv|money }}</td>
       {% if is_treasurer %}<td class="u-nowrap"><a class="link" href="{% url 'asset_edit' r.a.id %}">Edit</a>
         {% if not r.a.disposed %}<a class="link" href="{% url 'asset_detail' r.a.id %}">Manage / dispose</a>{% endif %}
       </td>{% endif %}
@@ -23,9 +23,9 @@
   {% empty %}<tr><td colspan="{% if is_treasurer %}7{% else %}6{% endif %}" class="empty"><div class="big">▤</div>No assets recorded yet.</td></tr>{% endfor %}
   </tbody>
   <tfoot><tr class="total-row"><td colspan="3"><strong>Totals</strong></td>
-    <td class="num mono"><strong>{{ t_cost|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ t_acc|floatformat:2|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ t_nbv|floatformat:2|intcomma }}</strong></td>{% if is_treasurer %}<td></td>{% endif %}</tr></tfoot>
+    <td class="num mono"><strong>{{ t_cost|money }}</strong></td>
+    <td class="num mono"><strong>{{ t_acc|money }}</strong></td>
+    <td class="num mono"><strong>{{ t_nbv|money }}</strong></td>{% if is_treasurer %}<td></td>{% endif %}</tr></tfoot>
 </table></div>
 <style>.ledger.compact td,.ledger.compact th{padding:.32rem .55rem;font-size:.88rem}.total-row td{border-top:2px solid var(--forest)}
 @media print{.no-print{display:none!important}.print-head{display:block!important;text-align:center;margin-bottom:1rem}.print-head .ph-church{font-size:1.3rem;font-weight:800}}</style>

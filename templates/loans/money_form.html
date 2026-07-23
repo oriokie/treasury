@@ -1,8 +1,8 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ title }} · {{ loan.number }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ title }} — {{ loan.number }}</h1>
-<div class="sub">{{ loan.lender.name }} · {{ loan.fund.name }} · outstanding KES {{ loan.outstanding_principal|floatformat:2|intcomma }}</div></div></div>
+<div class="sub">{{ loan.lender.name }} · {{ loan.fund.name }} · outstanding {{ CURRENCY }} {{ loan.outstanding_principal|money }}</div></div></div>
 <div class="card form-card" style="max-width:560px"><div class="bd">
 <form method="post" action="{{ action }}">{% csrf_token %}
   {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}

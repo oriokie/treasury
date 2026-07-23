@@ -58,6 +58,11 @@ class SiteConfig(models.Model):
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="This year's Camp Meeting Offering goal.")
 
+    capitalisation_threshold = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Purchases below this amount are treated as running costs rather "
+                  "than assets, to keep small items off the register. 0 = no threshold.")
+
     # --- Feature toggles ---
     require_expense_approval = models.BooleanField(
         default=True, help_text="Expenses need treasurer approval before they hit balances.")
@@ -854,6 +859,18 @@ class UserPreference(models.Model):
         COMFORTABLE = "COMFORTABLE", "Comfortable"
         COMPACT = "COMPACT", "Compact"
 
+    class HeadingFont(models.TextChoices):
+        SERIF = "SERIF", "Serif (Fraunces — default)"
+        SANS = "SANS", "Sans-serif (match body)"
+
+    class FigureFont(models.TextChoices):
+        MONO = "MONO", "Tabular monospace (default)"
+        BODY = "BODY", "Match body text"
+
+    class TableGrid(models.TextChoices):
+        ROWS = "ROWS", "Row lines only"
+        GRID = "GRID", "Full grid"
+
     # preset accent palette (key -> hex). CUSTOM uses accent_custom.
     ACCENT_PRESETS = {
         "forest": "#1f5f4f", "brass": "#b07d2c", "blue": "#2c5d86",
@@ -885,6 +902,13 @@ class UserPreference(models.Model):
                                     default=Width.BOXED)
     card_style = models.CharField(max_length=7, choices=Cards.choices,
                                   default=Cards.ROUNDED)
+    heading_font = models.CharField(max_length=6, choices=HeadingFont.choices,
+        default=HeadingFont.SERIF,
+        help_text="Typeface for page titles and section headings.")
+    figure_font = models.CharField(max_length=5, choices=FigureFont.choices,
+        default=FigureFont.MONO,
+        help_text="How monetary figures are set. Tabular monospace keeps "
+                  "columns of numbers perfectly aligned.")
 
     # --- Dashboard ---
     dashboard_widgets = models.JSONField(default=list, blank=True,
@@ -896,6 +920,13 @@ class UserPreference(models.Model):
     rows_per_page = models.PositiveSmallIntegerField(default=25)
     density = models.CharField(max_length=11, choices=Density.choices,
                                default=Density.COMFORTABLE)
+    table_stripes = models.BooleanField(default=True,
+        help_text="Subtle alternating row shading in tables.")
+    table_grid = models.CharField(max_length=5, choices=TableGrid.choices,
+        default=TableGrid.ROWS,
+        help_text="Row lines only (default) or a full grid with column lines.")
+    sticky_headers = models.BooleanField(default=True,
+        help_text="Keep table headers visible while scrolling long tables.")
     table_state = models.JSONField(default=dict, blank=True,
         help_text="Per-table saved columns / sort / filters, keyed by table id.")
 
@@ -918,7 +949,11 @@ class UserPreference(models.Model):
         ("dashboard", "Home dashboard"),
         ("executive", "Executive overview"),
         ("transaction_list", "Giving ledger"),
+        ("envelope_list", "Envelopes"),
+        ("member_list", "Members"),
         ("expense_list", "Expenses"),
+        ("benevolent_dashboard", "Benevolent schemes"),
+        ("budget", "Budgeting"),
         ("report_index", "Reports"),
         ("report_board", "Monthly Treasurer's Report"),
         ("reconciliation_list", "Bank reconciliation"),
@@ -984,6 +1019,40 @@ class UserPreference(models.Model):
         self.dashboard_widgets = [dict(w) for w in self.DEFAULT_WIDGETS]
         self.table_state = {}
         self.save()
+
+
+class Organization(models.Model):
+    """A church / entity — the root of multi-church scoping.
+
+    Scaffolding only in this phase: model FKs that reference an organization are
+    nullable and default to the single implicit church returned by
+    ``get_default()``, so a one-church install behaves exactly as before. Later
+    phases activate per-entity scoping and upward consolidation (union /
+    conference) without a painful migration, because the FK already exists.
+    """
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(unique=True)
+    is_default = models.BooleanField(default=False,
+        help_text="The implicit church used wherever an organization isn't set.")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    @classmethod
+    def get_default(cls):
+        """The default church, created on first use so single-church installs
+        never have to think about organizations."""
+        org = cls.objects.filter(is_default=True).order_by("id").first()
+        if org is None:
+            from core.models import SiteConfig
+            name = getattr(SiteConfig.get(), "church_name", "") or "Our Church"
+            org = cls.objects.create(name=name, slug="default", is_default=True)
+        return org
 
 
 # Financial Intelligence status persistence (insight dismissal audit trail).

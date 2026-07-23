@@ -1,6 +1,6 @@
-{% load humanize %}
+{% load humanize treasury_extras %}
 <table class="ledger compact"><thead><tr><th>Date</th><th>Payer</th><th>Reference</th><th>Signal</th><th class="num">Amount</th><th class="num">Count</th></tr></thead><tbody>
-{% for d in dup_offerings %}<tr><td class="mono">{{ d.date|date:"d/m/y" }}</td><td>{{ d.payer }}</td><td class="mono muted">{{ d.reference }}</td><td><span class="muted u-xs">{{ d.by }}</span></td><td class="num mono">{{ d.amount|floatformat:2|intcomma }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
+{% for d in dup_offerings %}<tr><td class="mono">{{ d.date|date:"d/m/y" }}</td><td>{{ d.payer }}</td><td class="mono muted">{{ d.reference }}</td><td><span class="muted u-xs">{{ d.by }}</span></td><td class="num mono">{{ d.amount|money }}</td><td class="num"><span class="pill pill-amber">×{{ d.count }}</span></td></tr>
 {% empty %}<tr><td colspan="6" class="empty">No duplicate offerings detected.</td></tr>{% endfor %}
 </tbody></table>
 <div class="help u-mt-sm">Flags the same giver + amount counted on <strong>both</strong> the bank and an envelope within one month (a probable double count), or a re-typed envelope (same giver + amount on one Sabbath). Distinct bank gifts that merely share a paybill reference (e.g. “tithe”) are <strong>not</strong> flagged — each has its own unique bank receipt.</div>

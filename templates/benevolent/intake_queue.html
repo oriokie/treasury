@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Contribution intake · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -26,7 +26,7 @@
 
 <div class="grid cols-4 u-mb">
   <div class="stat warn"><div class="lbl">Waiting</div><div class="val mono">{{ open_count }}</div>
-    <div class="foot">{{ CURRENCY }} {{ open_value|floatformat:2|intcomma }} to attribute</div></div>
+    <div class="foot">{{ CURRENCY }} {{ open_value|money }} to attribute</div></div>
   <div class="stat"><div class="lbl">Needs review</div><div class="val mono">{{ counts.REVIEW|default:0 }}</div>
     <div class="foot">The allocator has suggestions</div></div>
   <div class="stat"><div class="lbl">Unmatched</div><div class="val mono">{{ counts.UNMATCHED|default:0 }}</div>
@@ -46,7 +46,7 @@
 <th>Best guess</th><th>Matched via</th><th class="num">Confidence</th><th>Status</th><th></th></tr></thead>
 <tbody>{% for i in items %}<tr>
   <td>{{ i.date|date:"d M y" }}</td>
-  <td class="num mono">{{ i.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ i.amount|money }}</td>
   <td class="mono u-xs">{{ i.transaction.reference|default:"—"|truncatechars:28 }}</td>
   <td>{{ i.transaction.payer_name|default:"—"|truncatechars:20 }}
     <div class="muted u-xs mono">{{ i.transaction.payer_phone }}</div></td>

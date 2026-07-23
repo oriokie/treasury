@@ -7,6 +7,7 @@ idea a case sits behind it — must not have to remember to go and update the
 case. This signal is what makes that true: the case's payment status is always
 derived from its vouchers, never independently maintained.
 """
+from django.contrib.auth.signals import user_logged_in
 from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 
@@ -96,4 +97,46 @@ def _dependant_death_anywhere(sender, instance, created, **kwargs):
                             dependant=instance, event_date=instance.died_on,
                             user=None)
     except Exception:  # noqa: BLE001
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Member portal — activation on first real sign-in
+# ---------------------------------------------------------------------------
+
+@receiver(user_logged_in)
+def activate_member_account_on_first_login(sender, request, user, **kwargs):
+    """Turn an INVITED portal account into an ACTIVE one.
+
+    Without this, the invitation flow is a closed loop and the member can never
+    get in. Inviting them creates a login with no usable password and leaves the
+    account INVITED; they set a password through the ordinary self-service
+    reset; they sign in — and `is_portal_member` still refuses them, because the
+    account is INVITED and not ACTIVE. They land on the "not yet activated" page,
+    which tells them to set a password using "forgot password", which is exactly
+    what they just did.
+
+    So activation is bound to the event that actually proves the invitation was
+    taken up: a successful authentication using a password the member set
+    themselves. Done on the `user_logged_in` signal rather than in a view, so it
+    holds for every entry path — the normal login, a completed two-factor
+    challenge, or any future one — instead of only the path that happened to be
+    wired.
+
+    Deliberately narrow. It moves INVITED to ACTIVE and nothing else: a
+    SUSPENDED or CLOSED account is untouched, so signing in can never quietly
+    undo an officer's decision to withdraw access.
+    """
+    try:
+        account = getattr(user, "member_account", None)
+        if account is None:
+            return
+        from .models import MemberAccount
+        if account.status != MemberAccount.Status.INVITED:
+            return
+        if not user.has_usable_password():
+            return
+        from .services import portal as portal_svc
+        portal_svc.activate(account)
+    except Exception:      # never let this break a login
         pass

@@ -1,0 +1,329 @@
+"""Paying a payable a bit at a time.
+
+The behaviour is easy; the accounting is the part worth pinning. A payable that
+is half paid must be a liability for the other half, from the day the money left
+— not the full invoice until the last instalment arrives. If only one test here
+survives, it should be
+``PayableLiabilityTests.test_a_part_payment_reduces_the_liability_on_the_day_it_is_paid``.
+"""
+import datetime as dt
+from decimal import Decimal
+
+from django.contrib.auth.models import Group, User
+from django.core.exceptions import ValidationError
+from django.test import Client, TestCase
+from django.urls import reverse
+
+from core.roles import ASSISTANT, TREASURER
+from departments.models import Department
+
+from .models import Expense, Payable
+from .services import payables as payable_svc
+from .services.treasury_position import open_payables_total
+
+TODAY = dt.date.today()
+
+
+class PayableTestBase(TestCase):
+    def setUp(self):
+        self.treasurer = User.objects.create_user("tess", password="x")
+        self.treasurer.groups.add(Group.objects.get_or_create(name=TREASURER)[0])
+        self.fund = Department.objects.create(
+            name="Building Fund", slug="building-fund",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.MINISTRY)
+        self.payable = Payable.objects.create(
+            date=TODAY - dt.timedelta(days=30), vendor="Mwangi Hardware",
+            description="Cement and steel", amount=Decimal("100000.00"),
+            department=self.fund, recorded_by=self.treasurer,
+            due_date=TODAY + dt.timedelta(days=30))
+
+
+class PayablePartialSettlementTests(PayableTestBase):
+
+    def test_a_new_payable_owes_everything(self):
+        self.assertEqual(self.payable.paid_total, Decimal("0"))
+        self.assertEqual(self.payable.balance, Decimal("100000.00"))
+        self.assertFalse(self.payable.settled)
+        self.assertEqual(self.payable.status_label, "Outstanding")
+
+    def test_an_instalment_leaves_the_rest_owing(self):
+        payable_svc.settle(self.payable, amount=Decimal("30000"),
+                           user=self.treasurer)
+        self.payable.refresh_from_db()
+
+        self.assertEqual(self.payable.paid_total, Decimal("30000.00"))
+        self.assertEqual(self.payable.balance, Decimal("70000.00"))
+        self.assertFalse(self.payable.settled,
+                         "A part-paid payable must not read as settled.")
+        self.assertTrue(self.payable.is_part_paid)
+        self.assertEqual(self.payable.status_label, "Part paid")
+        self.assertEqual(self.payable.percent_paid, 30)
+
+    def test_instalments_accumulate_until_the_balance_clears(self):
+        for part in ("30000", "45000", "25000"):
+            payable_svc.settle(self.payable, amount=Decimal(part),
+                               user=self.treasurer)
+            self.payable.refresh_from_db()
+
+        self.assertEqual(self.payable.paid_total, Decimal("100000.00"))
+        self.assertEqual(self.payable.balance, Decimal("0"))
+        self.assertTrue(self.payable.settled)
+        self.assertEqual(self.payable.payments.count(), 3)
+
+    def test_settled_on_is_the_date_the_LAST_instalment_cleared_it(self):
+        """Not the first payment. The debt survives until the last shilling, and
+        a balance sheet dated between the two must still show it."""
+        first = TODAY - dt.timedelta(days=10)
+        last = TODAY - dt.timedelta(days=2)
+        payable_svc.settle(self.payable, amount=Decimal("60000"),
+                           user=self.treasurer, on=first)
+        payable_svc.settle(self.payable, amount=Decimal("40000"),
+                           user=self.treasurer, on=last)
+        self.payable.refresh_from_db()
+        self.assertEqual(self.payable.settled_on, last)
+
+    def test_no_amount_means_pay_the_remaining_balance(self):
+        payable_svc.settle(self.payable, amount=Decimal("40000"),
+                           user=self.treasurer)
+        expense = payable_svc.settle(self.payable, user=self.treasurer)
+        self.payable.refresh_from_db()
+
+        self.assertEqual(expense.amount, Decimal("60000.00"))
+        self.assertTrue(self.payable.settled)
+
+    def test_paying_more_than_is_owed_is_refused(self):
+        """Refused, not silently capped: an overpayment is either a typo or a
+        credit the vendor now holds, and a human has to say which."""
+        with self.assertRaises(ValidationError):
+            payable_svc.settle(self.payable, amount=Decimal("120000"),
+                               user=self.treasurer)
+        with self.assertRaises(ValidationError):
+            payable_svc.settle(self.payable, amount=Decimal("0"),
+                               user=self.treasurer)
+
+    def test_a_fully_settled_payable_cannot_be_paid_again(self):
+        payable_svc.settle(self.payable, user=self.treasurer)
+        self.payable.refresh_from_db()
+        with self.assertRaises(ValidationError):
+            payable_svc.settle(self.payable, amount=Decimal("1"),
+                               user=self.treasurer)
+
+    def test_a_payment_cannot_predate_the_invoice(self):
+        with self.assertRaises(ValidationError):
+            payable_svc.settle(
+                self.payable, amount=Decimal("100"), user=self.treasurer,
+                on=self.payable.date - dt.timedelta(days=1))
+
+    def test_each_instalment_is_a_real_expense_in_the_fund(self):
+        """The payment reaches the cash book, the fund balance and the ledger by
+        the ordinary route. Nothing about partial settlement is a side channel."""
+        payable_svc.settle(self.payable, amount=Decimal("30000"),
+                           user=self.treasurer)
+        expense = self.payable.payments.get()
+
+        self.assertEqual(expense.department, self.fund)
+        self.assertEqual(expense.amount, Decimal("30000.00"))
+        self.assertEqual(expense.status, Expense.Status.PAID)
+        self.assertEqual(expense.category, self.payable.category)
+        self.assertIn("Part payment", expense.description)
+        self.assertEqual(expense.payee, "Mwangi Hardware")
+
+    def test_a_pending_claim_does_not_reduce_the_balance(self):
+        """Only APPROVED/PAID payments count — the same rule advances use. An
+        unapproved claim must not discharge a debt before anyone authorised it."""
+        Expense.objects.create(
+            date=TODAY, department=self.fund, description="Unapproved",
+            amount=Decimal("50000"), status=Expense.Status.PENDING,
+            recorded_by=self.treasurer, payable=self.payable)
+        payable_svc.refresh_settlement(self.payable)
+        self.payable.refresh_from_db()
+
+        self.assertEqual(self.payable.paid_total, Decimal("0"))
+        self.assertEqual(self.payable.balance, Decimal("100000.00"))
+        self.assertFalse(self.payable.settled)
+
+
+class PayableLiabilityTests(PayableTestBase):
+    """What the balance sheet says we owe."""
+
+    def test_an_unpaid_payable_is_a_liability_in_full(self):
+        self.assertEqual(open_payables_total(), Decimal("100000.00"))
+        self.assertEqual(open_payables_total(TODAY), Decimal("100000.00"))
+
+    def test_a_part_payment_reduces_the_liability_on_the_day_it_is_paid(self):
+        """The heart of it. Before partial settlement existed, this payable
+        stayed on the balance sheet at its full 100,000 until the final
+        instalment — so the church reported owing money it had already paid."""
+        paid_on = TODAY - dt.timedelta(days=5)
+        payable_svc.settle(self.payable, amount=Decimal("30000"),
+                           user=self.treasurer, on=paid_on)
+
+        # the day before the payment: still owed in full
+        self.assertEqual(
+            open_payables_total(paid_on - dt.timedelta(days=1)),
+            Decimal("100000.00"))
+        # from the day of the payment: only the rest
+        self.assertEqual(open_payables_total(paid_on), Decimal("70000.00"))
+        self.assertEqual(open_payables_total(TODAY), Decimal("70000.00"))
+        self.assertEqual(open_payables_total(), Decimal("70000.00"))
+
+    def test_a_fully_settled_payable_leaves_the_liability(self):
+        payable_svc.settle(self.payable, user=self.treasurer, on=TODAY)
+        self.assertEqual(open_payables_total(), Decimal("0"))
+        self.assertEqual(open_payables_total(TODAY), Decimal("0"))
+        # ...but was still owed the day before it was paid
+        self.assertEqual(open_payables_total(TODAY - dt.timedelta(days=1)),
+                         Decimal("100000.00"))
+
+    def test_one_vendors_overpayment_cannot_cancel_another_vendors_debt(self):
+        """Netted per payable, never in one lump. A balance can't go negative."""
+        other = Payable.objects.create(
+            date=TODAY - dt.timedelta(days=10), vendor="Other Supplier",
+            description="Paint", amount=Decimal("5000"),
+            department=self.fund, recorded_by=self.treasurer)
+        # an expense larger than the invoice, linked directly (bypassing the
+        # service's own guard) to prove the metric is defensive too
+        Expense.objects.create(
+            date=TODAY, department=self.fund, description="Overpaid",
+            amount=Decimal("9000"), status=Expense.Status.PAID,
+            recorded_by=self.treasurer, payable=other)
+        payable_svc.refresh_settlement(other)
+
+        self.assertEqual(open_payables_total(TODAY), Decimal("100000.00"),
+                         "An overpayment on one payable reduced another's debt.")
+
+    def test_the_liability_metric_does_not_query_per_payable(self):
+        """The balance sheet must not issue a query per invoice."""
+        for i in range(12):
+            Payable.objects.create(
+                date=TODAY - dt.timedelta(days=5), vendor=f"V{i}",
+                description="d", amount=Decimal("1000"),
+                department=self.fund, recorded_by=self.treasurer)
+        with self.assertNumQueries(1):
+            open_payables_total(TODAY)
+
+
+class PayableUnlinkTests(PayableTestBase):
+    def test_detaching_a_payment_keeps_the_expense_and_restores_the_balance(self):
+        payable_svc.settle(self.payable, amount=Decimal("30000"),
+                           user=self.treasurer)
+        expense = self.payable.payments.get()
+
+        payable_svc.unlink_payment(expense)
+        self.payable.refresh_from_db()
+        expense.refresh_from_db()
+
+        self.assertEqual(self.payable.balance, Decimal("100000.00"))
+        self.assertIsNone(expense.payable_id)
+        self.assertTrue(Expense.objects.filter(pk=expense.pk).exists(),
+                        "The money left the bank; the expense must survive.")
+
+    def test_detaching_reopens_a_settled_payable(self):
+        payable_svc.settle(self.payable, user=self.treasurer)
+        self.payable.refresh_from_db()
+        self.assertTrue(self.payable.settled)
+
+        payable_svc.unlink_payment(self.payable.payments.get())
+        self.payable.refresh_from_db()
+        self.assertFalse(self.payable.settled)
+        self.assertIsNone(self.payable.settled_on)
+
+
+class PayableViewTests(PayableTestBase):
+    def setUp(self):
+        super().setUp()
+        self.client = Client()
+        self.client.login(username="tess", password="x")
+
+    def test_the_payables_page_shows_paid_and_balance(self):
+        payable_svc.settle(self.payable, amount=Decimal("30000"),
+                           user=self.treasurer)
+        response = self.client.get(reverse("accruals"))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Part paid", body)
+        self.assertIn("70,000", body)
+
+    def test_posting_an_instalment_through_the_view(self):
+        response = self.client.post(
+            reverse("payable_settle", args=[self.payable.pk]),
+            {"amount": "25000"})
+        self.assertEqual(response.status_code, 302)
+        self.payable.refresh_from_db()
+        self.assertEqual(self.payable.balance, Decimal("75000.00"))
+        self.assertFalse(self.payable.settled)
+
+    def test_posting_with_no_amount_pays_the_balance(self):
+        self.client.post(reverse("payable_settle", args=[self.payable.pk]), {})
+        self.payable.refresh_from_db()
+        self.assertTrue(self.payable.settled)
+
+    def test_an_overpayment_through_the_view_is_rejected_with_a_message(self):
+        self.client.post(reverse("payable_settle", args=[self.payable.pk]),
+                         {"amount": "500000"})
+        self.payable.refresh_from_db()
+        self.assertEqual(self.payable.paid_total, Decimal("0"),
+                         "An overpayment was accepted through the view.")
+
+    def test_an_assistant_may_pay_but_only_a_treasurer_may_detach(self):
+        assistant = User.objects.create_user("ass", password="x")
+        assistant.groups.add(Group.objects.get_or_create(name=ASSISTANT)[0])
+        payable_svc.settle(self.payable, amount=Decimal("1000"),
+                           user=self.treasurer)
+        expense = self.payable.payments.get()
+
+        client = Client()
+        client.login(username="ass", password="x")
+        self.assertEqual(
+            client.post(reverse("payable_settle", args=[self.payable.pk]),
+                        {"amount": "100"}).status_code, 302)
+        response = client.post(
+            reverse("payable_unlink_payment", args=[expense.pk]))
+        expense.refresh_from_db()
+        self.assertIsNotNone(expense.payable_id,
+                             "An assistant was able to detach a payment.")
+
+
+class PayableLegacySettlementTests(PayableTestBase):
+    """Payables settled before instalments existed must stay settled.
+
+    Added after nearly shipping the opposite. When settlement became a sum of
+    payments, a payable marked `settled` with no payment rows to show for it
+    computed as fully unpaid — so every debt discharged under the old
+    all-or-nothing button, whose expense link was never recorded, would have
+    reappeared on the balance sheet as money still owed.
+
+    The data migration re-points the ones that DO have a linked expense. This is
+    about the remainder, where the flag a treasurer set is the only evidence
+    there is. Trusting it is strictly safer than ignoring it: the worst case is
+    a debt that stays discharged, against a worst case of the church reporting
+    money it has already paid.
+    """
+
+    def test_a_flag_only_settlement_is_still_discharged(self):
+        self.payable.delete()          # isolate the legacy row
+        Payable.objects.create(
+            date=dt.date(2026, 6, 1), vendor="Acme", description="Chairs",
+            amount=Decimal("5000"), department=self.fund,
+            recorded_by=self.treasurer,
+            settled=True, settled_on=dt.date(2026, 6, 20))
+
+        self.assertEqual(open_payables_total(dt.date(2026, 6, 10)), Decimal("5000"))
+        self.assertEqual(open_payables_total(dt.date(2026, 6, 20)), Decimal("0"))
+        self.assertEqual(open_payables_total(), Decimal("0"))
+
+    def test_real_payments_still_win_over_the_flag(self):
+        """The flag is a fallback for rows with no payments, not an override."""
+        self.payable.delete()
+        p = Payable.objects.create(
+            date=dt.date(2026, 6, 1), vendor="Acme", description="Chairs",
+            amount=Decimal("5000"), department=self.fund,
+            recorded_by=self.treasurer)
+        Expense.objects.create(
+            date=dt.date(2026, 6, 10), department=self.fund, description="part",
+            amount=Decimal("2000"), status=Expense.Status.PAID,
+            recorded_by=self.treasurer, payable=p)
+        payable_svc.refresh_settlement(p)
+
+        self.assertEqual(open_payables_total(dt.date(2026, 6, 10)), Decimal("3000"))

@@ -1,0 +1,23 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My cases{% endblock %}
+{% block portal_desc %}Claims raised for you or your household, and where each has got to.{% endblock %}
+{% block portal_actions %}<a class="btn btn-sm" href="{% url 'portal_request_new' 'ASSISTANCE' %}">Ask for assistance</a>{% endblock %}
+{% block portal_content %}
+<div class="panel">
+<table class="table pt-stack">
+  <thead><tr><th>Case</th><th>What happened</th><th>Date</th><th>Status</th><th class="num">Approved</th><th class="num">Paid</th></tr></thead>
+  <tbody>
+  {% for c in cases %}
+  <tr><td data-label="Case"><a class="link" href="{% url 'portal_case_detail' c.pk %}">{{ c.number }}</a></td>
+    <td data-label="What happened">{{ c.event_type.name }}{% if c.dependant %} · {{ c.beneficiary_display }}{% endif %}</td>
+    <td data-label="Date">{{ c.event_date|date:"d M Y" }}</td>
+    <td data-label="Status"><span class="pill {% if c.status == 'PAID' or c.status == 'CLOSED' %}pill-green{% elif c.status == 'REJECTED' %}pill-red{% else %}pill-grey{% endif %}">{{ c.get_status_display }}</span></td>
+    <td data-label="Approved" class="num mono">{% if c.approved_amount %}{{ CURRENCY }} {{ c.approved_amount|money }}{% else %}—{% endif %}</td>
+    <td data-label="Paid" class="num mono">{% if c.paid_total %}{{ CURRENCY }} {{ c.paid_total|money }}{% else %}—{% endif %}</td></tr>
+  {% empty %}
+  <tr><td colspan="6"><div class="pt-empty">You have no cases. That is good news.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

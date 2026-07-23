@@ -76,10 +76,10 @@
       </div>
     </div>
 
-    {# Safety net: any form field not placed in a group above renders here, so
+    {% comment %} Safety net: any form field not placed in a group above renders here, so
        a field added to ExpenseForm later can never silently disappear from
        this page (the frozen-allowlist trap, recommendation #74a). The group is
-       always in the DOM and hides itself when its grid is empty. #}
+       always in the DOM and hides itself when its grid is empty. {% endcomment %}
     <div class="xf-group xf-fallback"><div class="xf-group-h">Other details</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name not in 'department budget_line amount date charge description category expenditure_type capitalized_asset claimant payee method voucher_no paid_from_petty_cash' %}

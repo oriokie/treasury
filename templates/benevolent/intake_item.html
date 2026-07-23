@@ -1,14 +1,14 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Intake · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Whose money is this?</h1>
-  <div class="sub">{{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }} received {{ item.date|date:"d M Y" }}
+  <div class="sub">{{ CURRENCY }} {{ item.amount|money }} received {{ item.date|date:"d M Y" }}
     · <span class="pill u-xs">{{ item.get_status_display }}</span></div></div>
 <div class="btn-row no-print"><a class="btn btn-ghost btn-sm" href="{% url 'benevolent_intake_queue' %}">← Queue</a></div></div>
 
 <div class="card u-mb"><div class="hd">The receipt</div><div class="bd">
 <table class="ledger compact">
-  <tr><th>Amount</th><td class="mono">{{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }}</td></tr>
+  <tr><th>Amount</th><td class="mono">{{ CURRENCY }} {{ item.amount|money }}</td></tr>
   <tr><th>Date</th><td>{{ item.date|date:"d M Y" }}</td></tr>
   <tr><th>Narration</th><td class="mono">{{ item.transaction.reference|default:"—" }}</td></tr>
   <tr><th>Paid by</th><td>{{ item.transaction.payer_name|default:"—" }}
@@ -22,7 +22,7 @@
 {% if item.duplicate_of %}
 <div class="alert alert-warn u-mb"><strong>This may be the same money twice.</strong>
   {{ item.duplicate_of.membership.member.name }} already paid
-  {{ CURRENCY }} {{ item.duplicate_of.amount|floatformat:2|intcomma }} to {{ item.scheme.code }} on
+  {{ CURRENCY }} {{ item.duplicate_of.amount|money }} to {{ item.scheme.code }} on
   {{ item.duplicate_of.date|date:"d M Y" }}.
   <div class="help u-mt-0">It is only a suspicion, and some of these are genuine — a member paying two months in two
     identical instalments, or two households sending the same levy on the same day. So it is flagged for you rather
@@ -76,11 +76,11 @@
     <td><input type="checkbox" name="targets" value="{{ o.key }}" checked></td>
     <td>{{ o.label }}</td>
     <td class="muted u-xs">{{ o.detail }}</td>
-    <td class="num mono">{{ CURRENCY }} {{ o.outstanding|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ CURRENCY }} {{ o.outstanding|money }}</td>
   </tr>{% endfor %}
   </tbody></table>
   <div class="btn-row u-mt">
-    <button class="btn" name="apply_obligations" value="1">Apply {{ CURRENCY }} {{ item.amount|floatformat:2|intcomma }} to these</button>
+    <button class="btn" name="apply_obligations" value="1">Apply {{ CURRENCY }} {{ item.amount|money }} to these</button>
   </div>
   <p class="help u-mt">The receipt is already banked; this splits it across the obligations and records each as the right
     kind (a levy stays a levy, a fee a fee) so nothing silently clears a member's dues. Any amount above what is owed is

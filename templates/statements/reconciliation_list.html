@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Bank reconciliations · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="btn-row no-print" style="justify-content:flex-end;margin-bottom:.4rem"><a class="btn btn-ghost btn-sm" href="{% url 'auto_reconcile' %}">⟳ Auto-reconcile</a></div>
@@ -19,10 +19,10 @@
   {% for r in reconciliations %}
     <tr>
       <td class="mono"><a href="{% url 'reconciliation_detail' r.id %}">{{ r.statement_date|date:"d M Y" }}</a></td>
-      <td class="num mono">{{ r.bank_balance|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.adjusted_balance|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.book_balance|floatformat:2|intcomma }}</td>
-      <td>{% if r.is_reconciled %}<span class="pill pill-green">Reconciled</span>{% elif r.difference != None %}<span class="pill pill-amber">Diff {{ r.difference|floatformat:2|intcomma }}</span>{% else %}<span class="pill pill-grey">In progress</span>{% endif %}</td>
+      <td class="num mono">{{ r.bank_balance|money }}</td>
+      <td class="num mono">{{ r.adjusted_balance|money }}</td>
+      <td class="num mono">{{ r.book_balance|money }}</td>
+      <td>{% if r.is_reconciled %}<span class="pill pill-green">Reconciled</span>{% elif r.difference != None %}<span class="pill pill-amber">Diff {{ r.difference|money }}</span>{% else %}<span class="pill pill-grey">In progress</span>{% endif %}</td>
       {% if is_treasurer %}<td class="no-print num">{% if r.can_delete %}<form method="post" action="{% url 'reconciliation_delete' r.id %}" onsubmit="return confirm('Delete the reconciliation for {{ r.statement_date|date:'d M Y' }}? This cannot be undone.');" class="u-inline">{% csrf_token %}<button class="btn btn-xs btn-ghost">✕ Delete</button></form>{% endif %}</td>{% endif %}
     </tr>
   {% empty %}<tr><td colspan="{% if is_treasurer %}6{% else %}5{% endif %}" class="empty"><div class="big">⇄</div>No reconciliations yet.</td></tr>{% endfor %}

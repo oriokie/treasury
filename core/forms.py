@@ -48,18 +48,17 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
 
 
 class UserPreferenceForm(StyledFormMixin, forms.ModelForm):
-    """Per-user appearance & workspace preferences."""
+    """Per-user appearance & workspace preferences.
+
+    Uses ``exclude`` rather than a ``fields`` allowlist (the frozen-allowlist
+    trap, rec #114): a preference field added to the model later appears here
+    automatically instead of silently vanishing from the page. Excluded are
+    only the non-form fields (relations, JSON blobs managed by their own UIs,
+    timestamps)."""
     class Meta:
         from core.models import UserPreference
         model = UserPreference
-        fields = [
-            "theme", "accent", "accent_custom", "sidebar", "sidebar_style", "font_size",
-            "font_family",
-            "layout_width", "card_style", "landing_page", "rows_per_page",
-            "density", "high_contrast", "reduced_motion", "large_targets",
-            "focus_indicators", "toasts_enabled", "toast_duration",
-            "desktop_notifications",
-        ]
+        exclude = ["user", "dashboard_widgets", "table_state", "updated_at"]
 
     def __init__(self, *args, **kwargs):
         from core.models import UserPreference

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Overrides &amp; exceptions · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Overrides &amp; exceptions</h1>
@@ -19,7 +19,7 @@
   <td class="muted">{{ c.scheme.code }}</td>
   <td>{{ c.approved_by|default:"—" }}</td>
   <td class="muted u-xs">{{ c.approved_at|date:"d M Y" }}</td>
-  <td class="num mono">{{ c.approved_amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ c.approved_amount|money }}</td>
   <td class="muted">{{ c.override_reason|truncatechars:100 }}</td>
 </tr>{% empty %}<tr><td colspan="6" class="empty">None in this period.</td></tr>{% endfor %}</tbody></table>
 </div></div>
@@ -31,7 +31,7 @@
   <td class="muted">{{ v.case.scheme.code }}</td>
   <td>{{ v.user }}</td>
   <td><span class="pill {% if v.decision == 'APPROVE' %}pill-green{% elif v.decision == 'REJECT' %}pill-red{% else %}pill-brass{% endif %} u-xs">{{ v.get_decision_display }}</span></td>
-  <td class="num mono">{% if v.amount %}{{ v.amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{% if v.amount %}{{ v.amount|money }}{% else %}—{% endif %}</td>
   <td class="muted u-xs">{{ v.created_at|date:"d M Y H:i" }}</td>
   <td class="muted">{{ v.note|truncatechars:80 }}</td>
 </tr>{% empty %}<tr><td colspan="7" class="empty">None in this period.</td></tr>{% endfor %}</tbody></table>
@@ -56,7 +56,7 @@
   <td>{{ a.membership.member.name }}</td>
   <td class="muted">{{ a.membership.scheme.code }}</td>
   <td>{{ a.get_kind_display }}</td>
-  <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ a.amount|money }}</td>
   <td>{{ a.approved_by|default:"—" }}
     {% if a.automated %}<span class="pill pill-brass u-xs" title="Raised automatically under a published policy">Auto</span>{% endif %}</td>
   <td class="muted u-xs">{% if a.policy %}v{{ a.policy.version }}{% else %}—{% endif %}</td>

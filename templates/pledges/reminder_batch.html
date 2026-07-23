@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Send pledge reminders · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>Send pledge reminders</h1><div class="ws-sub">Gentle reminders to members with an outstanding pledge</div></div>
@@ -13,7 +13,7 @@
 <div class="ws-table"><table class="ledger compact">
   <thead><tr><th>Member</th><th>Campaign</th><th>Phone</th><th class="num">Outstanding</th></tr></thead><tbody>
   {% for p in targets %}
-    <tr><td>{{ p.member.name }}</td><td>{{ p.campaign.name }}</td><td class="mono">{{ p.member.receipt_phone|default:"— none —" }}</td><td class="num mono row-debit">{{ p.outstanding|floatformat:0|intcomma }}</td></tr>
+    <tr><td>{{ p.member.name }}</td><td>{{ p.campaign.name }}</td><td class="mono">{{ p.member.receipt_phone|default:"— none —" }}</td><td class="num mono row-debit">{{ p.outstanding|money:0 }}</td></tr>
   {% empty %}<tr><td colspan="4"><div class="ws-empty"><div class="we-title">No one to remind</div><div class="we-hint">Everyone with a pledge is paid up, opted out, or has no balance.</div></div></td></tr>{% endfor %}
   </tbody></table></div>
 

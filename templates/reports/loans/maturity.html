@@ -1,19 +1,19 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Loan Maturity Schedule · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Loan Maturity Schedule</h1><div class="sub">As at {{ as_of_date|date:"d M Y" }}</div></div></div>
 {% with show_asof=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
 <div class="grid cols-3 u-mb">
-  <div class="stat"><div class="lbl">Overdue</div><div class="val mono" style="color:var(--red,#b00)">KES {{ overdue_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Current (≤12 months)</div><div class="val mono">KES {{ current_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Long-term (&gt;12 months)</div><div class="val mono">KES {{ long_term_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Overdue</div><div class="val mono" style="color:var(--red,#b00)">{{ CURRENCY }} {{ overdue_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Current (≤12 months)</div><div class="val mono">{{ CURRENCY }} {{ current_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Long-term (&gt;12 months)</div><div class="val mono">{{ CURRENCY }} {{ long_term_total|money }}</div></div>
 </div>
 <div class="table-wrap"><table class="ledger">
 <thead><tr><th>Maturity</th><th>Loan</th><th>Lender</th><th>Fund</th><th class="num">Outstanding</th><th class="num">Days</th><th>Class</th></tr></thead>
 <tbody>{% for r in rows %}<tr {% if r.overdue %}style="background:rgba(176,0,0,.04)"{% endif %}>
   <td>{{ r.maturity_date|date:"d M Y" }}</td><td class="mono">{{ r.loan.number }}</td>
   <td>{{ r.loan.lender.name }}</td><td class="muted">{{ r.loan.fund.name }}</td>
-  <td class="num mono">{{ r.outstanding|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.outstanding|money }}</td>
   <td class="num {% if r.overdue %}" style="color:var(--red,#b00){% else %}muted{% endif %}">{{ r.days }}</td>
   <td>{% if r.overdue %}<span class="pill pill-red u-xs">Overdue</span>{% elif r.current %}<span class="pill pill-blue u-xs">Current</span>{% else %}<span class="pill pill-brass u-xs">Long-term</span>{% endif %}</td>
 </tr>{% empty %}<tr><td colspan="7" class="empty">No dated loans outstanding.</td></tr>{% endfor %}</tbody></table></div>

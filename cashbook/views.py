@@ -12,6 +12,28 @@ from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from core.utils import block_if_locked as _block_if_locked, PrefPaginationMixin
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin, AdvanceAccessMixin, PaymentViewMixin
 from core.utils import sabbath_week_of
+from decimal import InvalidOperation
+from django.core.exceptions import ValidationError
+
+
+#: Prefix used in settlement messages. Read from site config so the wording
+#: matches the rest of the app rather than hard-coding a currency here.
+def _currency():
+    try:
+        from core.models import SiteConfig
+        return (SiteConfig.get().currency or "") + " "
+    except Exception:
+        return ""
+
+
+def _parse_date(value):
+    """A date the user typed, or None for 'today'."""
+    if not value:
+        return None
+    try:
+        return dt.date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
 from departments.models import Department
 from .forms import ExpenseForm, FundTransferForm, RecurringExpenseForm
 from .models import Expense
@@ -252,7 +274,11 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
             initial.update({
                 "date": dt.date.today(), "department": obj.department_id,
                 "description": getattr(obj, "description", "")[:200],
-                "amount": obj.amount, "category": obj.category,
+                # The balance, not the invoice total: a payable already part
+                # paid should open at what is left, or the treasurer has to
+                # work it out and retype it every instalment.
+                "amount": getattr(obj, "balance", None) or obj.amount,
+                "category": obj.category,
                 "method": Expense.Method.BANK})
         return initial
 
@@ -363,12 +389,31 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
         # if this expense settles a payable/accrual, link and close it
         kind, obj = self._settle_target()
         if obj and not obj.settled:
-            obj.settled = True
-            obj.settled_on = exp.date
-            obj.settled_expense = exp
-            obj.save()
-            messages.success(self.request,
-                f"{kind.title()} settled and recorded as an expense.")
+            if kind == "payable":
+                # A payable may be paid over several instalments, so the expense
+                # is LINKED and the service decides whether that clears it. The
+                # flags are never set here — services.payables.refresh_settlement
+                # is the only writer, which is what keeps them agreeing with the
+                # payments.
+                from .services import payables as payable_svc
+                exp.payable = obj
+                exp.save(update_fields=["payable"])
+                payable_svc.refresh_settlement(obj)
+                obj.refresh_from_db()
+                if obj.settled:
+                    messages.success(self.request,
+                        f"Payable settled in full and recorded as an expense.")
+                else:
+                    messages.success(self.request,
+                        f"Part payment recorded. {obj.balance:,.2f} still owing "
+                        f"to {obj.vendor}.")
+            else:
+                obj.settled = True
+                obj.settled_on = exp.date
+                obj.settled_expense = exp
+                obj.save()
+                messages.success(self.request,
+                    f"{kind.title()} settled and recorded as an expense.")
             return redirect("accruals")
         messages.success(self.request, f"Expense recorded.{payment_note}")
         return redirect(self.success_url)
@@ -900,6 +945,10 @@ class ExpenseDetailView(ReadAccessMixin, DetailView):
         ctx["dual_threshold"] = SiteConfig.get().dual_approval_threshold or 0
         ctx["refunds"] = self.object.refunds.select_related("recorded_by")
         ctx["refundable"] = self.object.refundable_balance
+        from core import roles
+        # gates the "put on the asset register" action (treasurer-only, and the
+        # capitalise view enforces it again server-side)
+        ctx["can_approve"] = roles.can_approve(self.request.user)
         import datetime as _dt
         ctx["today_iso"] = _dt.date.today().isoformat()
         return ctx
@@ -1114,16 +1163,76 @@ def _settle(obj, request):
         approved_by=request.user)
     obj.settled = True
     obj.settled_on = dt.date.today()
+    # Payables are settled through services.payables (they can be paid in
+    # instalments); this helper now serves accruals only, which are all-or-
+    # nothing by nature — an accrual is an estimate that is either replaced by
+    # the real invoice or not.
     obj.settled_expense = exp
     obj.save()
 
 
 class PayableSettle(DataEntryRequiredMixin, View):
+    """Pay a payable — all of it, or an instalment.
+
+    An `amount` on the form pays that much and leaves the rest outstanding; no
+    amount pays the balance, which is what the single button used to do. The
+    work itself is in `services.payables.settle`, so this view and any other
+    caller settle a payable exactly one way.
+    """
+
     def post(self, request, pk):
+        from .services import payables as payable_svc
+
         obj = get_object_or_404(Payable, pk=pk)
-        _settle(obj, request)
-        messages.success(request, f"Payable to {obj.vendor} settled and charged to "
-                                  f"{obj.department.name}.")
+        raw = (request.POST.get("amount") or "").strip()
+        try:
+            expense = payable_svc.settle(
+                obj, amount=raw or None, user=request.user,
+                on=_parse_date(request.POST.get("paid_on")),
+                method=request.POST.get("method") or Expense.Method.BANK,
+                reference=request.POST.get("reference", ""),   # -> voucher_no
+                paid_from_petty_cash=bool(request.POST.get("paid_from_petty_cash")))
+        except (ValidationError, InvalidOperation) as exc:
+            msg = "; ".join(exc.messages) if hasattr(exc, "messages") \
+                else "That is not a valid amount."
+            messages.error(request, msg)
+            return redirect("accruals")
+
+        obj.refresh_from_db()
+        if obj.settled:
+            messages.success(
+                request,
+                f"Payable to {obj.vendor} is now settled in full "
+                f"({_currency()}{expense.amount:,.2f} paid, charged to "
+                f"{obj.department.name}).")
+        else:
+            messages.success(
+                request,
+                f"{_currency()}{expense.amount:,.2f} paid to {obj.vendor}. "
+                f"{_currency()}{obj.balance:,.2f} still owing.")
+        return redirect("accruals")
+
+
+class PayableUnlinkPayment(TreasurerRequiredMixin, View):
+    """Detach a payment linked to the wrong payable.
+
+    Treasurer-only, and it removes the link rather than the expense: the money
+    did leave the bank, and undoing a mis-linking by deleting a real payment
+    would fix the paperwork by losing the cash.
+    """
+
+    def post(self, request, pk):
+        from .services import payables as payable_svc
+
+        expense = get_object_or_404(Expense, pk=pk)
+        payable = payable_svc.unlink_payment(expense, user=request.user)
+        if payable is None:
+            messages.error(request, "That payment is not linked to a payable.")
+        else:
+            messages.success(
+                request,
+                f"Payment detached. {payable.vendor} now shows "
+                f"{_currency()}{payable.balance:,.2f} outstanding.")
         return redirect("accruals")
 
 
@@ -2637,6 +2746,21 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
             messages.error(request, "That item can't be settled.")
             return redirect("accruals")
         exp = get_object_or_404(Expense, pk=request.POST.get("expense"))
+        if kind == "payable":
+            from .services import payables as payable_svc
+            exp.payable = obj
+            exp.save(update_fields=["payable"])
+            payable_svc.refresh_settlement(obj)
+            obj.refresh_from_db()
+            if obj.settled:
+                messages.success(
+                    request, f"Payable settled against the existing expense "
+                             f"“{exp.description}”.")
+            else:
+                messages.success(
+                    request, f"“{exp.description}” linked as a part payment. "
+                             f"{obj.balance:,.2f} still owing to {obj.vendor}.")
+            return redirect("accruals")
         obj.settled = True
         obj.settled_on = exp.date
         obj.settled_expense = exp

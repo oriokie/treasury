@@ -146,6 +146,11 @@ MIDDLEWARE = [
     "accounts.auth.AccountLockMiddleware",
     "accounts.auth.TwoFactorMiddleware",
     "accounts.auth.ForcePasswordChangeMiddleware",
+    # Confines a self-service portal member to /portal/. Runs after the auth
+    # gates (so an unauthenticated or locked request never gets this far) and
+    # before the view, so the confinement is one rule in one place rather than
+    # a mixin every office view has to remember. See the class docstring.
+    "core.middleware.PortalConfinementMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",

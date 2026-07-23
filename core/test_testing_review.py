@@ -58,6 +58,30 @@ class MovableDateDefaultInventoryTests(TestCase):
     tests for the hardcoded-date-vs-moving-default trap."""
 
     KNOWN_FILES_WITH_MOVABLE_DATE_DEFAULTS = {
+        "assets/models.py",    # AssetAssignment.from_date and AssetTransfer.date
+                               # default to dt.date.today (EAM Phase 2c).
+                               #
+                               # REVIEWED (Phase 2c). Neither field feeds a
+                               # date-window comparison: custody is "open until
+                               # to_date is set", and a transfer posts an
+                               # equity-only journal on its own date, so a
+                               # defaulted date cannot silently fall outside a
+                               # range the way pledges/benevolent could.
+                               # assets.test_eam_lifecycle pins the date on every
+                               # transfer it asserts a posting for, and lets it
+                               # default only where the assertion is about
+                               # status, not timing.
+                               #
+                               # The review DID surface a real bug in the same
+                               # family, now fixed: preflight.acquisition_coverage
+                               # scanned every asset regardless of `as_of`, while
+                               # both sides of register_vs_ledger are bounded by
+                               # it. That passed only because the test dates
+                               # happened to be earlier in the year than the day
+                               # the suite ran. It is now bounded by `as_of` and
+                               # locked by date-pinned tests
+                               # (test_it_reports_as_at_the_date_asked_for and
+                               # test_a_payment_after_the_date_asked_for_is_not_counted_yet).
         "pledges/models.py",   # Pledge.start_date, PledgeCampaign.start_date,
                                # PledgePayment.date — all default=dt.date.today.
                                # Confirmed (this review) that only pledges.tests

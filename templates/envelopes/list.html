@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Envelopes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -13,7 +13,7 @@
 </div>
 
 <div class="ws-summary">
-  <div class="ws-metric is-primary"><span class="wm-l">{{ month_label }}</span><span class="wm-v"><span class="cur">KES</span>{{ grand_total|floatformat:0|intcomma }}</span><span class="wm-sub">received this month</span></div>
+  <div class="ws-metric is-primary"><span class="wm-l">{{ month_label }}</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ grand_total|money:0 }}</span><span class="wm-sub">received this month</span></div>
   <div class="ws-metric"><span class="wm-l">Sabbaths</span><span class="wm-v">{{ all_sections|length }}</span><span class="wm-sub">counting periods</span></div>
 </div>
 
@@ -52,9 +52,9 @@
       {% if sec.closed %}<span class="pill pill-green" title="Closed by {{ sec.closed.closed_by.username|default:'—' }}">🔒 Sabbath closed</span>{% endif %}
       {% if month_locked %}<span class="pill pill-amber" title="The month is locked">🔒 {{ month_locked }} locked</span>{% endif %}</div>
     <div class="sabbath-totals">
-      <span class="pill pill-amber" title="Trust">T {{ sec.trust|floatformat:0|intcomma }}</span>
-      <span class="pill pill-grey" title="Local">L {{ sec.local|floatformat:0|intcomma }}</span>
-      <span class="mono"><strong>KES {{ sec.total|floatformat:2|intcomma }}</strong></span>
+      <span class="pill pill-amber" title="Trust">T {{ sec.trust|money:0 }}</span>
+      <span class="pill pill-grey" title="Local">L {{ sec.local|money:0 }}</span>
+      <span class="mono"><strong>{{ CURRENCY }} {{ sec.total|money }}</strong></span>
       {% if can_enter_data %}
       <form method="post" action="{% url 'sabbath_close' %}" class="u-inline">{% csrf_token %}
         <input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}">
@@ -72,7 +72,7 @@
   </div>
   {% if sec.items %}
   <details class="sabbath-list"{% if sel_sabbath == sec.sabbath %} open{% endif %}>
-    <summary class="sabbath-list-toggle">Show {{ sec.count }} envelope{{ sec.count|pluralize }} <span class="muted">· total {{ sec.total|floatformat:2|intcomma }}</span></summary>
+    <summary class="sabbath-list-toggle">Show {{ sec.count }} envelope{{ sec.count|pluralize }} <span class="muted">· total {{ sec.total|money }}</span></summary>
   <div class="table-wrap"><table class="ledger">
     <thead><tr><th>Receipt</th><th>Contributor</th><th>Channel</th><th>Funds</th><th class="num">Total</th>{% if can_enter_data %}<th>Move to</th>{% endif %}</tr></thead>
     <tbody>
@@ -86,7 +86,7 @@
         <td>{% if e.member %}<a href="{% url 'member_detail' e.member.id %}">{{ e.contributor_name }}</a>{% else %}{{ e.contributor_name }}{% endif %}</td>
         <td><span class="pill {% if e.channel == 'BANK' %}pill-amber{% else %}pill-grey{% endif %}">{{ e.get_channel_display }}</span></td>
         <td class="muted u-small">{% for l in e.lines.all %}{{ l.department.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-        <td class="num mono">{{ e.total|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ e.total|money }}</td>
         {% if can_enter_data %}
         <td><form method="post" action="{% url 'envelope_reassign' e.id %}" class="u-m-0">{% csrf_token %}
           <select name="sabbath" class="field--select" style="font-size:.8rem;padding:.2rem" onchange="this.form.submit()">

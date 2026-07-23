@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Schemes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Schemes &amp; policies</h1>
@@ -17,7 +17,7 @@
   <td class="muted">{{ r.scheme.get_kind_display }}</td>
   <td class="muted">{{ r.fund.name }}</td>
   <td>{% with p=r.scheme.current_policy %}{% if p %}v{{ p.version }} <span class="muted u-xs">from {{ p.effective_from|date:"d M y" }}</span>{% else %}<span class="pill pill-red u-xs">None</span>{% endif %}{% endwith %}</td>
-  <td class="num mono">{{ r.closing|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.closing|money }}</td>
   <td class="num">{{ r.members }}</td>
   <td><span class="pill {% if r.scheme.status == 'ACTIVE' %}pill-green{% elif r.scheme.status == 'SUSPENDED' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ r.scheme.get_status_display }}</span></td>
   <td><a class="link" href="{% url 'benevolent_scheme_detail' r.scheme.id %}">Open</a></td>

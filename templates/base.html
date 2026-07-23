@@ -1,6 +1,6 @@
 {% load static humanize %}
 <!doctype html>
-<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-sidebarstyle="{{ prefs.sidebar_style|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}"{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% else %} data-theme="light" data-fontfamily="system"{% endif %}>
+<html lang="en"{% if prefs %} data-theme="{{ prefs.theme|lower }}" data-accent="{{ prefs.accent }}" data-sidebar="{{ prefs.sidebar|lower }}" data-sidebarstyle="{{ prefs.sidebar_style|lower }}" data-font="{{ prefs.font_size|lower }}" data-fontfamily="{{ prefs.font_family|lower }}" data-width="{{ prefs.layout_width|lower }}" data-cards="{{ prefs.card_style|lower }}" data-density="{{ prefs.density|lower }}" data-headings="{{ prefs.heading_font|lower }}" data-figures="{{ prefs.figure_font|lower }}" data-grid="{{ prefs.table_grid|lower }}"{% if not prefs.table_stripes %} data-stripes="off"{% endif %}{% if not prefs.sticky_headers %} data-stickyhead="off"{% endif %}{% if prefs.high_contrast %} data-contrast="high"{% endif %}{% if prefs.reduced_motion %} data-motion="reduced"{% endif %}{% if prefs.large_targets %} data-targets="large"{% endif %}{% if not prefs.focus_indicators %} data-focus="off"{% endif %} style="--pref-accent:{{ prefs.accent_hex }}"{% else %} data-theme="light" data-fontfamily="system"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,7 +27,20 @@
       <div><b>{{ CHURCH_NAME }}</b><span>Treasury</span></div>
     </div>
     <nav class="nav" id="mainnav">
-      {% if is_leader %}
+      {% if is_portal_member %}
+      {# The member self-service portal. A member sees their own record and
+         nothing else, so this branch is short by design — every other link in
+         this file leads somewhere the confinement middleware would refuse. #}
+      <a href="{% url 'portal_home' %}" class="{% if portal_nav == 'home' %}active{% endif %}"><span class="ic">▦</span> My scheme</a>
+      <a href="{% url 'portal_contributions' %}" class="{% if portal_nav == 'contributions' %}active{% endif %}"><span class="ic">💰</span> My contributions</a>
+      <a href="{% url 'portal_standing' %}" class="{% if portal_nav == 'standing' %}active{% endif %}"><span class="ic">📋</span> My standing</a>
+      <a href="{% url 'portal_household' %}" class="{% if portal_nav == 'household' %}active{% endif %}"><span class="ic">👪</span> My household</a>
+      <a href="{% url 'portal_cases' %}" class="{% if portal_nav == 'cases' %}active{% endif %}"><span class="ic">🤝</span> My cases</a>
+      <a href="{% url 'portal_requests' %}" class="{% if portal_nav == 'requests' %}active{% endif %}"><span class="ic">✉️</span> My requests{% if portal_action_needed %} <span class="pill warn">{{ portal_action_needed }}</span>{% endif %}</a>
+      <a href="{% url 'portal_documents' %}" class="{% if portal_nav == 'documents' %}active{% endif %}"><span class="ic">📎</span> My documents</a>
+      <a href="{% url 'portal_notifications' %}" class="{% if portal_nav == 'notifications' %}active{% endif %}"><span class="ic">🔔</span> Messages</a>
+      <a href="{% url 'portal_profile' %}" class="{% if portal_nav == 'profile' %}active{% endif %}"><span class="ic">⚙️</span> My details</a>
+      {% elif is_leader %}
       <a href="{% url 'leader_dashboard' %}" class="{% if 'leader' in request.resolver_match.url_name and 'advance' not in request.resolver_match.url_name and 'collection' not in request.resolver_match.url_name and 'expense' not in request.resolver_match.url_name %}active{% endif %}"><span class="ic">▦</span> {% if leader_single_dept %}My department{% else %}My departments{% endif %}</a>
       {% if leader_primary_dept %}
       <a href="{% url 'leader_collections' leader_primary_dept.id %}" class="{% if 'collection' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">📥</span> Collections</a>

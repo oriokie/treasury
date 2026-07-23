@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Remittance advice · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Conference Remittance" %}
@@ -8,10 +8,10 @@
 <div class="card u-mt"><div class="bd">
   <table class="ledger plain">
     <thead><tr><th>Fund remitted</th><th class="num">Amount</th></tr></thead>
-    <tbody>{% for r in rows %}<tr><td>{{ r.department.name }}</td><td class="num mono">{{ r.to_remit|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td colspan="2" class="empty">Nothing to remit.</td></tr>{% endfor %}</tbody>
-    <tfoot><tr><th>Total enclosed</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>
+    <tbody>{% for r in rows %}<tr><td>{{ r.department.name }}</td><td class="num mono">{{ r.to_remit|money }}</td></tr>{% empty %}<tr><td colspan="2" class="empty">Nothing to remit.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><th>Total enclosed</th><th class="num mono">{{ total|money }}</th></tr></tfoot>
   </table>
-  {% if total_unreceipted %}<p class="muted u-xs u-mt-sm no-print">Receipted trust money only is remitted here. A further <strong>{{ total_unreceipted|floatformat:2|intcomma }}</strong> of trust money has been received but is not yet receipted, so it is held back from this remittance.</p>{% endif %}
+  {% if total_unreceipted %}<p class="muted u-xs u-mt-sm no-print">Receipted trust money only is remitted here. A further <strong>{{ total_unreceipted|money }}</strong> of trust money has been received but is not yet receipted, so it is held back from this remittance.</p>{% endif %}
   <div class="sign-row"><div>Prepared by: ____________________</div><div>Treasurer: ____________________</div><div>Date: ____________</div></div>
 </div></div>
 {% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My requests{% endblock %}
+{% block portal_desc %}Anything you have asked the church office to do, and where it has got to.{% endblock %}
+{% block portal_actions %}
+<a class="btn btn-sm" href="{% url 'portal_request_new' 'ASSISTANCE' %}">Ask for assistance</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'portal_request_new' 'DEATH' %}">Report a death</a>
+{% endblock %}
+{% block portal_content %}
+<div class="pt-actions no-print u-mb">
+  <a class="btn btn-ghost btn-sm" href="?status=open">Open</a>
+  <a class="btn btn-ghost btn-sm" href="?">All</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'portal_request_new' 'CORRECTION' %}">Correct a record</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'portal_request_new' 'HOUSEHOLD' %}">Change my household</a>
+</div>
+<div class="panel">
+<table class="table pt-stack">
+  <thead><tr><th>Reference</th><th>Type</th><th>About</th><th>Sent</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for r in requests %}
+  <tr><td data-label="Reference"><a class="link" href="{% url 'portal_request_detail' r.pk %}">{{ r.reference }}</a></td>
+    <td data-label="Type">{{ r.get_kind_display }}</td>
+    <td data-label="About">{{ r.subject }}</td>
+    <td data-label="Sent">{{ r.submitted_at|date:"d M Y"|default:"—" }}</td>
+    <td data-label="Status"><span class="pill {% if r.status == 'APPROVED' %}pill-green{% elif r.status == 'DECLINED' %}pill-red{% elif r.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.get_status_display }}</span></td></tr>
+  {% empty %}
+  <tr><td colspan="5"><div class="pt-empty">You have not asked for anything yet.</div></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

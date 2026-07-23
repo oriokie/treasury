@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Benevolent cases · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -32,8 +32,8 @@
   <td>{{ c.beneficiary_display }}</td>
   <td class="muted">{{ c.event_type.name }}</td>
   <td>{{ c.event_date|date:"d M y" }}</td>
-  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
-  <td class="num mono">{{ c.paid_total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|money }}{% else %}—{% endif %}</td>
+  <td class="num mono">{{ c.paid_total|money }}</td>
   <td class="muted u-xs">{% if c.policy_id %}v{{ c.policy.version }}{% if c.override_reason %} <span title="Approved despite failing a check">⚠</span>{% endif %}{% else %}—{% endif %}</td>
   <td><span class="pill {% if c.status == 'PAID' or c.status == 'CLOSED' %}pill-green{% elif c.status == 'REJECTED' or c.status == 'CANCELLED' %}pill-red{% elif c.status == 'APPROVED' or c.status == 'PARTLY_PAID' %}pill-blue{% else %}pill-amber{% endif %} u-xs">{{ c.get_status_display }}</span></td>
   <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">Open</a></td>

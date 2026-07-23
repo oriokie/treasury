@@ -18,25 +18,31 @@
 {% elif key == 'income_exp' %}<div class="two-col">
   <div class="card"><div class="hd">Income and expenditure (this period)</div><div class="bd">
     <table class="ledger compact"><tbody>
-      <tr><td>Local income</td><td class="num mono">{{ ie_income|floatformat:2|intcomma }}</td></tr>
-      {% for c in ie_expense_by_cat %}<tr><td style="padding-left:1.2rem" class="muted">{{ c.label }}</td><td class="num mono muted">({{ c.total|floatformat:2|intcomma }})</td></tr>{% endfor %}
-      <tr class="total-row"><td><strong>Total expenditure</strong></td><td class="num mono"><strong>({{ ie_expense|floatformat:2|intcomma }})</strong></td></tr>
-      <tr class="grand-row"><td><strong>Surplus / (deficit)</strong></td><td class="num mono"><strong>{{ ie_surplus|floatformat:2|intcomma }}</strong></td></tr>
-      {% if ie_capital %}<tr><td class="muted">Memo: capital additions</td><td class="num mono muted">{{ ie_capital|floatformat:2|intcomma }}</td></tr>{% endif %}
+      <tr><td>Local income</td><td class="num mono">{{ ie_income|money }}</td></tr>
+      {% for c in ie_expense_by_cat %}<tr><td style="padding-left:1.2rem" class="muted">{{ c.label }}</td><td class="num mono muted">({{ c.total|money }})</td></tr>{% endfor %}
+      <tr class="total-row"><td><strong>Total expenditure</strong></td><td class="num mono"><strong>({{ ie_expense|money }})</strong></td></tr>
+      <tr class="grand-row"><td><strong>Surplus / (deficit) — cash</strong></td><td class="num mono"><strong>{{ ie_surplus|money }}</strong></td></tr>
+      {% if ie_non_cash.any %}
+      {% if ie_non_cash.depreciation %}<tr><td class="muted">Less depreciation charged on assets</td><td class="num mono">{{ ie_depreciation_charge|money_acct }}</td></tr>{% endif %}
+      {% if ie_non_cash.donated_assets %}<tr><td class="muted">Add assets donated in kind</td><td class="num mono">{{ ie_non_cash.donated_assets|money_acct }}</td></tr>{% endif %}
+      {% if ie_non_cash.disposal_gain_loss %}<tr><td class="muted">Gain / (loss) on disposals</td><td class="num mono">{{ ie_non_cash.disposal_gain_loss|money_acct }}</td></tr>{% endif %}
+      <tr class="grand-row"><td><strong>Surplus / (deficit) after non-cash items</strong></td><td class="num mono"><strong>{{ ie_surplus_accrual|money_acct }}</strong></td></tr>
+      {% endif %}
+      {% if ie_capital %}<tr><td class="muted">Memo: capital additions</td><td class="num mono muted">{{ ie_capital|money }}</td></tr>{% endif %}
     </tbody></table>
   </div></div>
   {% if bvis.position %}<div class="card"><div class="hd">Statement of financial position (period end)</div><div class="bd">
     <table class="ledger compact"><tbody>
       <tr class="section-row"><td colspan="2"><strong>Assets</strong></td></tr>
-      <tr><td>Cash and bank</td><td class="num mono">{{ sofp.cash_bank|floatformat:2|intcomma }}</td></tr>
-      {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
-      <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|floatformat:2|intcomma }}</strong></td></tr>
+      <tr><td>Cash and bank</td><td class="num mono">{{ sofp.cash_bank|money }}</td></tr>
+      {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|money }}</td></tr>{% endif %}
+      <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|money }}</strong></td></tr>
       <tr class="section-row"><td colspan="2"><strong>Liabilities</strong></td></tr>
-      <tr><td>Trust funds to remit</td><td class="num mono">{{ sofp.trust_liab|floatformat:2|intcomma }}</td></tr>
-      {% if sofp.payables %}<tr><td>Payables</td><td class="num mono">{{ sofp.payables|floatformat:2|intcomma }}</td></tr>{% endif %}
-      {% if sofp.accruals %}<tr><td>Accruals</td><td class="num mono">{{ sofp.accruals|floatformat:2|intcomma }}</td></tr>{% endif %}
-      <tr class="total-row"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ sofp.total_liab|floatformat:2|intcomma }}</strong></td></tr>
-      <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|floatformat:2|intcomma }}</strong></td></tr>
+      <tr><td>Trust funds to remit</td><td class="num mono">{{ sofp.trust_liab|money }}</td></tr>
+      {% if sofp.payables %}<tr><td>Payables</td><td class="num mono">{{ sofp.payables|money }}</td></tr>{% endif %}
+      {% if sofp.accruals %}<tr><td>Accruals</td><td class="num mono">{{ sofp.accruals|money }}</td></tr>{% endif %}
+      <tr class="total-row"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ sofp.total_liab|money }}</strong></td></tr>
+      <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|money }}</strong></td></tr>
     </tbody></table>
   </div></div>{% endif %}
 </div>
@@ -45,12 +51,12 @@
 {% if not bvis.income_exp %}<div class="board-h">Statement of financial position (period end)</div>
 <div class="table-wrap u-narrow-md"><table class="ledger compact"><tbody>
   <tr class="section-row"><td colspan="2"><strong>Assets</strong></td></tr>
-  <tr><td>Cash and bank</td><td class="num mono">{{ sofp.cash_bank|floatformat:2|intcomma }}</td></tr>
-  {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|floatformat:2|intcomma }}</td></tr>{% endif %}
-  <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|floatformat:2|intcomma }}</strong></td></tr>
+  <tr><td>Cash and bank</td><td class="num mono">{{ sofp.cash_bank|money }}</td></tr>
+  {% if sofp.asset_nbv %}<tr><td>Fixed assets (net book value)</td><td class="num mono">{{ sofp.asset_nbv|money }}</td></tr>{% endif %}
+  <tr class="total-row"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ sofp.total_assets|money }}</strong></td></tr>
   <tr class="section-row"><td colspan="2"><strong>Liabilities</strong></td></tr>
-  <tr><td>Trust funds to remit</td><td class="num mono">{{ sofp.trust_liab|floatformat:2|intcomma }}</td></tr>
-  <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|floatformat:2|intcomma }}</strong></td></tr>
+  <tr><td>Trust funds to remit</td><td class="num mono">{{ sofp.trust_liab|money }}</td></tr>
+  <tr class="grand-row"><td><strong>Net assets / funds</strong></td><td class="num mono"><strong>{{ sofp.net_assets|money }}</strong></td></tr>
 </tbody></table></div>{% endif %}
 
 {% elif key == 'funds' %}
@@ -59,15 +65,15 @@
   <thead><tr><th>Fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Payments</th><th class="num">Closing</th></tr></thead>
   <tbody>
   {% for r in local_rows %}<tr><td>{{ r.department.name|sentence_fund }}</td>
-    <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>
-    <td class="num mono"><strong>{{ r.closing|floatformat:0|intcomma }}</strong></td></tr>{% endfor %}
+    <td class="num mono">{{ r.opening|money:0 }}</td>
+    <td class="num mono">{{ r.receipts|money:0 }}</td>
+    <td class="num mono">{{ r.expenses|money:0 }}</td>
+    <td class="num mono"><strong>{{ r.closing|money:0 }}</strong></td></tr>{% endfor %}
   <tr class="grand-row"><td><strong>Local funds</strong></td>
-    <td class="num mono"><strong>{{ totals.opening|floatformat:0|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ totals.receipts|floatformat:0|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ totals.expenses|floatformat:0|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ totals.closing|floatformat:0|intcomma }}</strong></td></tr>
+    <td class="num mono"><strong>{{ totals.opening|money:0 }}</strong></td>
+    <td class="num mono"><strong>{{ totals.receipts|money:0 }}</strong></td>
+    <td class="num mono"><strong>{{ totals.expenses|money:0 }}</strong></td>
+    <td class="num mono"><strong>{{ totals.closing|money:0 }}</strong></td></tr>
   </tbody>
 </table></div>
 
@@ -77,13 +83,13 @@
   <thead><tr><th>Trust fund</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Remitted</th><th class="num">To remit</th></tr></thead>
   <tbody>
   {% for r in trust_summary %}<tr><td>{{ r.department.name|sentence_fund }}</td>
-    <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.collected|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ r.remitted|floatformat:0|intcomma }}</td>
-    <td class="num mono"><strong>{{ r.to_remit|floatformat:0|intcomma }}</strong></td></tr>{% endfor %}
+    <td class="num mono">{{ r.opening|money:0 }}</td>
+    <td class="num mono">{{ r.collected|money:0 }}</td>
+    <td class="num mono">{{ r.remitted|money:0 }}</td>
+    <td class="num mono"><strong>{{ r.to_remit|money:0 }}</strong></td></tr>{% endfor %}
   <tr class="grand-row"><td><strong>Outstanding to remit to {{ FIELD_NAME }}</strong></td>
     <td></td><td></td><td></td>
-    <td class="num mono"><strong>{{ trust_outstanding|floatformat:0|intcomma }}</strong></td></tr>
+    <td class="num mono"><strong>{{ trust_outstanding|money:0 }}</strong></td></tr>
   </tbody>
 </table></div>
 
@@ -96,9 +102,9 @@
   {% for g in goals %}<tr>
     <td>{{ g.name }}</td>
     <td class="muted">{{ g.kind }}</td>
-    <td class="num mono">{{ g.goal|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
-    <td class="num mono {% if g.variance < 0 %}row-debit{% endif %}">{{ g.variance|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ g.goal|money:0 }}</td>
+    <td class="num mono">{{ g.collected|money:0 }}</td>
+    <td class="num mono {% if g.variance < 0 %}row-debit{% endif %}">{{ g.variance|money:0 }}</td>
     <td class="num mono"><strong>{{ g.pct }}%</strong></td></tr>{% endfor %}
   </tbody>
 </table></div>
@@ -111,9 +117,9 @@
   <thead><tr><th>Year</th><th class="num">Income</th><th class="num">Expenditure</th><th class="num">Net</th></tr></thead>
   <tbody>
   {% for t in trend %}<tr><td class="mono">{{ t.year }}</td>
-    <td class="num mono">{{ t.income|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ t.expense|floatformat:0|intcomma }}</td>
-    <td class="num mono {% if t.net < 0 %}row-debit{% endif %}">{{ t.net|floatformat:0|intcomma }}</td></tr>{% endfor %}
+    <td class="num mono">{{ t.income|money:0 }}</td>
+    <td class="num mono">{{ t.expense|money:0 }}</td>
+    <td class="num mono {% if t.net < 0 %}row-debit{% endif %}">{{ t.net|money:0 }}</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% if trend|length < 2 %}<p class="help">Add prior-year figures under Reports → Historical years to enable a fuller multi-year trend.</p>{% endif %}

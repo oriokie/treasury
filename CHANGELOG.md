@@ -1,3 +1,573 @@
+# v3.12.0 — A bill can now be paid a bit at a time
+
+Until now a payable could only be settled in one movement: one button, one
+payment for the whole invoice. Vendors are rarely paid that way. A treasurer
+paying a hardware bill in three instalments had two bad choices — mark the whole
+thing paid when it was not, or record nothing and let the cash book disagree
+with the bank.
+
+**A payable is now paid in instalments, and the page shows what is left.** Each
+payment is entered against the bill, the balance comes down, and the payable
+stays on the list marked "part paid" until the last shilling. Leaving the amount
+blank pays the balance, which is what the old button did, so nothing has to
+change for a bill that is settled in one go.
+
+**A half-paid bill is now a liability for the other half — from the day the
+money left.** This is the substantive change. Before, a payable sat on the
+balance sheet at its full value until the final instalment arrived, so the
+church reported owing money it had already paid. Each payment now reduces what
+is owed on the date it was made, and a statement dated between two instalments
+shows exactly what was outstanding that day.
+
+Every instalment is an ordinary expense in the bill's own fund, so it reaches
+the cash book, the fund balance and the ledger by the same route as any other
+payment. Paying more than is owed is refused rather than quietly written off —
+that is either a typo or a credit the vendor now holds, and someone needs to say
+which. A payment linked to the wrong bill can be detached by the treasurer; the
+expense itself is kept, because the money did leave the account.
+
+Bills settled before this release are unaffected and stay settled.
+
+---
+
+# v3.11.1 — Members invited to the portal can now actually get in
+
+A fault in the invitation flow shipped in v3.11.0: a member who was invited, set
+their password and signed in was told their access was "not yet activated" and
+advised to set a password — which is what they had just done. There was no way
+through it. The account is now made active by the member signing in with a
+password they set themselves, which is the thing that proves the invitation was
+taken up. Suspending or closing an account is unaffected: signing in cannot
+revive access an officer has withdrawn.
+
+Members also now land directly on their own portal after signing in, rather than
+being bounced off an office page on the way.
+
+---
+
+# v3.11.0 — Members can now see their own record
+
+Until now, everything this application knew about a member could only be seen by
+somebody in the church office. A member who wanted to know what they had paid,
+where they stood, or what had happened to a claim had to ask — and somebody had
+to stop and look it up.
+
+**There is now a member portal.** A member signs in and sees their own
+contributions, their own standing and arrears, their own household, their own
+cases, and everything the church has sent them. They can download a statement
+and a receipt for any contribution. On a phone, the tables become cards; this is
+read at a funeral as often as at a desk.
+
+**A separate fault was found and fixed while testing this.** The public
+application form — the one a church puts on a poster so somebody can apply to
+join a scheme — has not worked since default-deny authorisation was introduced.
+It sent every applicant to a login page they have no account for. It was missing
+the one line that marks a page as public, and its own guard test could not see
+the problem, because a redirect to the login page looks exactly like a page being
+correctly protected. The form works again, and the guard now also checks that
+every page the church intends to be public can actually be opened.
+
+**They can ask for things, and follow what happens.** A request for assistance, a
+death to report, a change to the household, a correction to a record, a change to
+their own details on the roll. Each gets a reference the member can quote, a
+status they can watch, and a conversation with the office if more is needed. A
+request that is declined always carries a reason, and the member can read it.
+
+**Nothing a member submits changes a record by itself.** A request is a claim, not
+a change. Approving one calls the same service the office already uses — the same
+registry that adds a dependant, the same case service that raises a case. A case
+raised from a portal request is a DRAFT like any other and still has to be
+assessed, pass eligibility and be approved on its own merits. The portal cannot
+grant cover, approve money, or post to the ledger, because it never writes to
+those records at all.
+
+**A correction request deliberately corrects nothing on its own.** A member may
+well be right that a contribution is missing, but putting that right is a ledger
+adjustment under the treasurer's authority. Approving the request records that
+the office accepted the point; the accounting change is still made where
+accounting changes are made.
+
+**The figures are the office's figures.** A member's arrears on their phone and
+their arrears on the treasurer's screen are one calculation, not two — the portal
+reads the same services and the same definition of a contribution that counts, so
+a reversed payment does not reappear as evidence of having paid.
+
+**Who can see what is one rule in one place.** A member's login reaches the portal
+and nothing else, and every row it shows is scoped by a single function. Reads are
+logged as well as writes: a member can see when their own record was opened, and
+so can an auditor.
+
+Giving a member access changes nothing about their membership or their cover, and
+taking it away does not either. No password is ever issued or known by the office —
+a member sets their own.
+
+---
+
+# v3.10.0 — The Income Statement and the Statement of Financial Position now agree
+
+The last release noted that the two statements did not add to the same total, and
+that closing the difference properly was still to do. It is done.
+
+The difference was the church's prepayments, less what it owes suppliers and what
+has been accrued. The Income Statement's reconciliation counted the fixed assets
+but not those items.
+
+**The Income Statement now bridges to net assets in full**, line by line: the money
+held in the funds, then the fixed assets at written-down value, prepayments, less
+amounts owed to suppliers, less expenses accrued, less loans still to repay —
+arriving at exactly the net assets figure on the Statement of Financial Position.
+
+Both statements now take those figures from a single shared definition, so they
+cannot fall out of step. If they ever did, the Income Statement would show the
+difference on its own line rather than quietly absorbing it.
+
+---
+
+# v3.09.0 — Depreciation and other non-cash items shown on every report
+
+Until now, only the Income & Expenditure statement and the Statement of Changes
+in Net Assets mentioned depreciation. The Board Report, the Treasurer's Report and
+the Income Statement showed a surplus with no mention of the church's assets being
+used up — so the board could be shown a surplus while the value of what the church
+owns had fallen, with nothing on the page explaining why.
+
+**The Board Report and the Treasurer's Report now show both results.** The cash
+surplus as before, then the items that change what the church is worth without any
+money moving — depreciation charged, assets donated in kind, and the gain or loss
+on anything disposed of — and then the surplus after those. Both reports draw on
+the same figures as the Income & Expenditure statement, so all three agree.
+
+**A misleading note has been removed from the Income Statement.** It claimed its
+net assets figure tied back to the Statement of Financial Position. It never did:
+that statement reports the money held in the funds, while the financial position
+also counts what the church owns. The statement now says which it is reporting,
+and shows the value of the fixed assets held outside the funds — the main reason
+the two differ.
+
+The two statements still do not add to exactly the same total, and the report no
+longer pretends otherwise. Closing that last difference properly is on the list.
+
+---
+
+# v3.08.2 — Negative figures on the statements, shown the usual way
+
+A presentation correction. On the Income & Expenditure statement and the
+Statement of Changes in Net Assets, the depreciation and disposal lines showed
+their brackets in a way that bypassed the system's standard accounting format.
+The figures were right; the formatting was written by hand rather than done the
+way every other statement does it.
+
+They now use the same accounting format as the rest of the system, so negatives
+are shown consistently wherever they appear — and the check that enforces that
+consistency across all statements passes again.
+
+---
+
+# v3.08.1 — Asset import: CSV files, a sample to start from, and clearer errors
+
+Fixes and improvements to bringing in your asset register.
+
+- **CSV files can now be imported**, not only .xlsx. Commas, semicolons or tabs
+  all work, and a file saved from Excel as CSV is read correctly.
+
+- **A sample file to start from.** "Download a sample file" on the import page
+  gives you a CSV with the headings filled in and a few example assets. Replace
+  the rows with your own and upload it.
+
+- **Files from other programs are handled better.** Some spreadsheets describe
+  their own size incorrectly, which stopped the file being read at all; those are
+  now read a second way that copes. An older .xls file now says so and tells you
+  to save it as .xlsx or CSV, instead of failing with a technical message.
+
+- **Clearer errors.** If a file still cannot be read, the message now says what to
+  try rather than showing an internal error.
+
+---
+
+# v3.08.0 — Asset reports, and loading your existing register from a spreadsheet
+
+**Bring in the assets you already own.** A new Import option on the asset register
+reads a spreadsheet and loads what the church owns. It matches your column
+headings by name, so your own spreadsheet will usually work as it is — only a name
+and a cost are essential, though an acquisition date is worth having, since
+depreciation runs from when an asset came into service.
+
+Nothing is saved when you first upload. The file is read and shown back to you:
+what would be brought in, and what would be left out with the reason — no cost, a
+date that could not be read, an asset already on the register, the same asset
+twice in one file, or an amount below your capitalisation threshold. The assets
+are added only after you confirm. Anything imported is recorded as already owned,
+rather than as a purchase made through the system.
+
+**Four asset reports, in the report library.** Alongside every other report, with
+the same date filters, printing and exports to PDF, Word, Excel and CSV:
+
+- **Fixed Asset Register** — what the church owns, at cost, with depreciation to
+  date and net book value.
+- **Fixed Asset Movement** — opening value, what was bought, what was donated,
+  depreciation charged, what left through disposal, and the closing value. This is
+  the note that supports the assets figure on the Statement of Financial Position.
+- **Depreciation Schedule** — the charge for the period, asset by asset, including
+  anything sold part-way through.
+- **Asset Disposals** — what left, what it was worth, what was received for it,
+  and the gain or loss.
+
+Every figure in these comes from the same shared catalogue the statements use, so
+they agree with each other.
+
+---
+
+# v3.07.0 — Assets in the financial statements, and pages that stay on the page
+
+Two things: the statements now account for assets properly, and a layout fault
+that pushed page content under the sidebar is fixed.
+
+**Depreciation now appears in Income & Expenditure.** It was missing altogether,
+so expenditure was understated and the surplus overstated by the whole
+depreciation charge. It is shown under "Non-cash items" — with donated assets, and
+a surplus after non-cash items — while the income, expenditure and surplus figures
+above continue to show cash only, as before.
+
+**The movement in fixed assets is now built from real figures.** On the Statement
+of Changes in Net Assets, depreciation used to be worked out backwards from the
+opening and closing values, which meant it quietly absorbed disposals and donated
+assets too — a donated asset made it look as though the assets had gained value.
+Each line is now its own figure: what was added, what was donated, what was
+charged as depreciation, and what left through disposal. If those ever fail to
+add up, the statement says so rather than hiding the difference.
+
+**A correction worth knowing about.** Net book value was being calculated over
+every asset on the register, including ones bought later, so the value shown for
+any date in the past was too high by the cost of anything acquired after it.
+Today's figures were right; older ones were not. This affected the Statement of
+Financial Position. It is now calculated the same way as cost and depreciation,
+and the three always agree.
+
+Also in this release: depreciation is no longer projected forward to the end of an
+unfinished period, the first month of a period is no longer left out of the
+charge, and depreciation on an asset sold part-way through the year is now counted
+up to the day it was sold.
+
+**Pages spilling under the sidebar.** The asset pages, and the envelope import
+page, were missing or had surplus closing tags, which ended the page layout early
+and let everything after it slide under the sidebar when scrolled. Fixed, with
+checks added so it cannot happen again unnoticed; wide tables now scroll within
+their own panel instead of stretching the page.
+
+---
+
+# v3.06.0 — An asset's cost counts from the day you bought it
+
+Until now, an asset bought part-way through the year was treated as though the
+church had owned it since 1 January, because its cost came in with the opening
+balances. That is now corrected.
+
+- **Cost starts at the acquisition date.** An asset bought in June appears on the
+  register from June. Ask what the church owned in January and you get January's
+  answer, not today's. Anything bought since the opening date is carried into the
+  books by the payment that bought it, or — for a gift — by the donation itself.
+
+- **The check confirms it stays right.** The asset cost check added last release
+  now serves as the standing explanation for any difference between the register
+  and the books: if the two ever disagree, it names the assets responsible and
+  what to do about each.
+
+The register and the ledger still agree exactly, and no other part of the system
+is affected — reports, cash book, giving, statements and expenses all behave
+exactly as before.
+
+Also fixed in this release: the "put on the asset register" page failed to open
+because of a formatting fault (recording a payment as an asset worked, but the
+page itself would not display).
+
+---
+
+# v3.05.0 — Asset cost check before recognising cost from the acquisition date
+
+A new read-only check, ahead of a planned improvement.
+
+At present an asset bought in June is treated as though the church had it from
+1 January, because its cost is brought in by the opening balance. The plan is to
+recognise each asset's cost from the date it was actually acquired. Before making
+that change, this release adds a check that tells you whether your register is
+ready for it — and if not, exactly what to put right first.
+
+- **Where to find it.** "Asset cost — ledger backing check", from the asset
+  register. It reads only; it changes nothing, so it is safe to run at any time.
+
+- **What it looks for.** Two things. An asset added since the opening date with
+  no payment or donation behind it — the books would come up short by its cost.
+  And a payment dated after the opening date for an asset the church already
+  owned at the opening date — that payment would end up counted twice.
+
+- **What it tells you.** Each asset concerned, how much of its cost is accounted
+  for, how much is not, and what to do about it in plain words — usually linking
+  the payment that bought it, correcting the cost, or fixing a date.
+
+Nothing about today's figures changes: the register and the ledger still agree
+exactly, as they have since assets came onto the ledger.
+
+---
+
+# v3.04.0 — The life of an asset (EAM Phase 2c)
+
+The register now follows an asset through its whole life, not just its value.
+
+- **A lifecycle you can see.** A new Lifecycle board shows every asset in the
+  column for the stage it is at — planned, on order, under construction, in
+  service, idle, under maintenance, impaired, held for disposal — with a count
+  and total value per column. Assets are moved along by buttons on each card, and
+  only the moves that make sense are offered.
+
+- **Who has it, and where.** An asset can be issued to a custodian and checked
+  back in, with the date and its condition each way. The register always knows
+  who is holding what, and an asset that is still in someone's hands cannot be
+  put up for disposal until it is returned.
+
+- **Moving an asset between locations or funds.** You can request a move; if it
+  changes the fund that owns the asset, it needs a second person's approval,
+  because the asset's value moves from one fund to another. Approval is what makes
+  the move happen, and the person who requested it cannot approve it themselves.
+
+- **A full profile for each asset.** The asset page now shows its status and who
+  holds it, its custody and movement history, the accounting entries it has
+  produced, its depreciation history, and a plain timeline of everything that has
+  happened to it.
+
+- **A disposal stays a disposal.** An asset can never be written off just by
+  changing its status — a disposal must record the date, method, proceeds and
+  fund, and post its entry to the ledger.
+
+The register and the ledger continue to agree exactly.
+
+---
+
+# v3.03.0 — Donated assets as net assets, and non-cash contributions on the statement
+
+Two corrections to how gifts in kind are treated.
+
+- **A donated asset is no longer counted as income.** It is added to the church's
+  net assets instead: to designated / restricted funds where the receiving fund is
+  restricted, and to the capital (asset) fund otherwise. The fund is recorded
+  either way, so the gift stays attributable to it. This matches the way a gift of
+  property is properly accounted for — the church is better off by the value of
+  the asset, but no money was received.
+
+- **The Income & Expenditure statement now shows non-cash contributions.** A new
+  "Non-cash contributions — donated assets" section lists each asset given during
+  the period, with donor, fund and fair value, and a total. It sits outside the
+  income and net surplus figures, which continue to reflect cash only — so gifts
+  in kind are visible without distorting the cash result.
+
+Also in this release: the gain/(loss) on disposals shown on that statement now
+comes from the shared financial metrics catalogue rather than being calculated
+separately, and a small layout fault in the statement's markup was corrected.
+
+---
+
+# v3.02.0 — Buying, building and being given assets (EAM Phase 2b)
+
+Assets now record how the church came by them, and a capital payment can be put
+straight onto the register.
+
+- **Put a payment on the asset register.** On a capital payment there is now a
+  "Put on the asset register" action. It creates the asset at the amount paid and
+  links the payment to it, so the money is held as an asset instead of being
+  counted as a running cost. You can also add the payment to an asset already on
+  the register — use that for construction or an improvement, where several
+  payments build up one asset's cost. Nothing is entered twice.
+
+- **Donated assets are recognised properly.** An asset given to the church is
+  brought onto the register at its fair value and recognised as donated-asset
+  income against the fund, with the donor on record — so a gift in kind shows up
+  as both an asset and support received, instead of appearing from nowhere.
+
+- **Every asset says where it came from.** Purchased, donated, self-constructed,
+  transferred in, or already owned before the system started — recorded once,
+  when the asset is added, and kept with it.
+
+- **Keep small items off the register.** You can set a capitalisation threshold in
+  settings; purchases below it are treated as running costs. It starts switched
+  off (set to 0), so nothing changes until you choose an amount.
+
+- **Disposals must name a fund.** The fund receives any sale proceeds and carries
+  the gain or loss, so every disposal belongs to a fund. This also closes a gap
+  where proceeds recorded without a fund were left out of the ledger.
+
+The asset register and the ledger continue to agree exactly.
+
+Still to come: the asset lifecycle screens — status transitions, transfers and
+custody, the full asset profile, and a board view of where each asset stands.
+
+---
+
+# v3.01.0 — Asset disposals on the ledger (EAM Phase 2a)
+
+Selling, scrapping or writing off an asset is now recorded in the books as a
+proper journal, not just a note on the asset register.
+
+- **A disposal produces a real journal entry.** The asset's cost and its
+  accumulated depreciation are taken out of the fixed-asset accounts, and the
+  difference between what you received and what the asset was still worth is
+  recognised as a gain or a loss on disposal. The Trial Balance, Income &
+  Expenditure and Statement of Financial Position all pick this up.
+
+- **The money you received is still the money you received.** Sale proceeds
+  continue to be recorded as a receipt into the fund you nominate, so fund
+  balances and the cash reports are unchanged. Only the genuine gain or loss
+  reaches the income result — the proceeds themselves are not counted as income.
+
+- **The register and the ledger still agree, before and after a disposal.**
+  An asset is now treated as being on the register right up to the day it is
+  disposed of, instead of disappearing from earlier periods. The reconciliation
+  on the Depreciation runs page stays exact through a mid-year disposal.
+
+- **The final month's depreciation is charged.** Depreciation runs now include
+  assets disposed of during the month, so the charge is complete up to the
+  disposal date.
+
+Note: if you record proceeds without choosing a fund to receive them, the
+proceeds are not reclassified in the ledger — choose the receiving fund when
+disposing of an asset that was sold.
+
+Still to come: entering new asset purchases through a proper acquisition
+workflow (with a "convert an expense to an asset" helper), and the asset
+lifecycle screens.
+
+---
+
+# v3.00.0 — Assets on the ledger (EAM Phase 1)
+
+Church assets are now part of the general ledger, not a separate spreadsheet-style
+register. Three things change:
+
+- **Depreciation is charged monthly and posted to the books.** Each month a
+  depreciation run books the charge (an expense) against accumulated depreciation,
+  exactly like every other posting — so the Trial Balance, Income & Expenditure and
+  Statement of Financial Position all reflect it. You can run it from the new
+  **Depreciation runs** page (under the asset register) or on a schedule. Moving
+  from a yearly to a monthly basis slightly changes the depreciation figures.
+
+- **The register and the ledger now reconcile.** An opening balance brings the
+  fixed-asset control accounts up to match the register, and the Depreciation runs
+  page shows a live reconciliation so you can confirm at a glance that the books and
+  the register agree — cost, accumulated depreciation and net book value.
+
+- **Capital spending is handled correctly.** Money spent buying or building assets
+  is held as an asset (capital work-in-progress), not counted as an ordinary expense,
+  and is capitalised to the asset once it's linked to a register record.
+
+Everything is backward compatible and the statements still balance. Disposals on the
+ledger, and a workflow for entering new asset purchases (with a "convert an expense
+to an asset" helper), come next.
+
+---
+
+# v2.99.0 — Asset management foundation (EAM Phase 0)
+
+The first step of turning the basic Fixed-Asset Register into a full asset
+management module. This release is groundwork only — nothing you see changes,
+and every figure on the financial statements is identical.
+
+What's now in place under the hood:
+
+- **Asset classes** you can configure (with their own depreciation policy),
+  replacing the fixed built-in category list — so a new class like "Library" or
+  "Heritage" no longer needs a code change.
+- **Locations** you can nest (campus → building → room), separate from the fund
+  that owns an asset.
+- **A lifecycle status on every asset** (planned, in service, under maintenance,
+  held for disposal, disposed, and so on), plus asset tags, serial numbers, a
+  commissioning date, a custodian, and the groundwork for multi-church use.
+- **Every asset figure now flows through the central metrics catalogue** — the
+  same place every other financial number comes from.
+
+Every existing asset was automatically backfilled with a class, a tag and a
+status, so the register is ready to use immediately. The next phase — putting
+asset depreciation and disposals onto the general ledger — changes how the
+financial statements are built, so it will wait for your sign-off on the
+accounting treatment.
+
+---
+
+# v2.98.0 — Formal statements show negatives the accountant's way
+
+The four formal statements — Income & Expenditure, the Income Statement, the
+Statement of Financial Position and the Statement of Changes in Net Assets — and
+the Trial Balance now show negative amounts in accounting parentheses, e.g.
+"(1,234.50)" instead of "-1,234.50". This is the standard convention on formal
+financial statements. The parentheses are real characters, so they carry through
+to the Word and PDF exports as well as the screen.
+
+Positive figures and all totals are completely unchanged; only the presentation
+of genuine negatives differs. Everyday screens (dashboards, ledgers, giving,
+expenses) keep the plain minus sign.
+
+---
+
+# v2.97.0 — One place for money formatting; consistent currency symbol
+
+**Central money filter.** Every monetary figure in the app used to be formatted
+with the same little incantation repeated in about 167 templates. That is now a
+single `money` filter — the amount, its decimals, its thousands separators and
+its handling of blanks all decided in one place. Nothing you see changes: the
+filter was checked digit-for-digit against the old formatting across hundreds of
+values before every page was switched over. A companion `money` variant renders
+negatives in accounting parentheses "(1,234.50)" for the places that want the
+accountant's convention.
+
+**Consistent currency symbol.** The app had drifted into showing "KES" in some
+places and "KSh" in others, ignoring the symbol set in Settings. Every figure's
+symbol now comes from that one setting, so changing it in Settings changes it
+everywhere at once.
+
+No figures, models or workflows changed — this is formatting and consistency
+only.
+
+---
+
+# v2.96.0 — More display preferences; leader pages join the statement design
+
+**Appearance & Preferences** gains five new controls, each applying instantly
+as you click, like the existing ones:
+
+- **Headings** — the classic serif titles, or plain sans-serif.
+- **Figures** — monospace numbers that align digit-for-digit in columns
+  (default), or numbers set in the ordinary text face.
+- **Row stripes** — the subtle alternating shading in tables, on or off.
+- **Gridlines** — row lines only, or a full grid with column separators.
+- **Sticky table headers** — keep column headings visible while scrolling
+  long tables, or let them scroll away.
+
+The landing-page choice also offers more destinations: Members, Envelopes,
+Benevolent schemes and Budgeting.
+
+**Leader pages redesigned to match the app.** Department leaders previously
+saw a green banner design found nowhere else in the application. Every leader
+page — departments, collections, expenses, advances, loans — now opens with
+the same statement masthead as the rest of the app, and prints with a proper
+document head. Nothing about what leaders can see or do changed.
+
+---
+
+# v2.95.0 — Reports code split into feature modules
+
+Internal engineering, first of four sessions: the single largest source file
+(reports/views.py, over 4,000 lines) is now thirteen focused modules — one per
+report family (remittance, board pack, financial statements, development
+groups, the treasurer report, and so on). Nothing changed for users: every
+page, export and link works exactly as before, verified name-by-name against
+the old file and by the full reports test suite.
+
+Why it matters: smaller files are faster to navigate, safer to change, and a
+new guard test stops any module from quietly growing back into a giant.
+
+Also fixed along the way: two stale tests surfaced by running the full suite —
+one asserting old dashboard wording, one flagging an improperly formatted
+template comment.
+
+---
+
 # v2.94.0 — Statement design across the whole app
 
 The statement design that arrived with the report engine, dashboards and the

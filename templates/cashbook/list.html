@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -21,21 +21,21 @@
 <div class="ws-summary">
   <a class="ws-metric is-primary {% if not filters.status %}is-active{% endif %}" href="?{{ status_qs }}">
     <span class="wm-l">All expenses</span>
-    <span class="wm-v"><span class="cur">KES</span>{{ filtered_total|floatformat:0|intcomma }}</span>
+    <span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ filtered_total|money:0 }}</span>
     <span class="wm-sub">across every status</span>
   </a>
   {% if filtered_remittances %}
   <div class="ws-metric" title="Trust remittances are a liability settlement, not operating expenditure">
     <span class="wm-l">Operating</span>
-    <span class="wm-v"><span class="cur">KES</span>{{ filtered_operating|floatformat:0|intcomma }}</span>
-    <span class="wm-sub">+ remittances KES {{ filtered_remittances|floatformat:0|intcomma }}</span>
+    <span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ filtered_operating|money:0 }}</span>
+    <span class="wm-sub">+ remittances {{ CURRENCY }} {{ filtered_remittances|money:0 }}</span>
   </div>
   {% endif %}
   {% for s in status_bar %}
   <a class="ws-metric {% if s.code == 'PENDING' %}is-warn{% elif s.code == 'REJECTED' %}is-negative{% elif s.code == 'PAID' %}is-positive{% endif %} {% if s.active %}is-active{% endif %}"
      href="?{{ status_qs }}{% if status_qs %}&{% endif %}status={{ s.code }}">
     <span class="wm-l">{{ s.label }} <span class="wm-n">{{ s.n }}</span></span>
-    <span class="wm-v"><span class="cur">KES</span>{{ s.t|floatformat:0|intcomma }}</span>
+    <span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ s.t|money:0 }}</span>
   </a>
   {% endfor %}
 </div>
@@ -82,7 +82,7 @@
       <td class="muted">{{ e.get_category_display }}</td>
       <td>{% if e.expenditure_type == 'CAPITAL' %}<span class="pill pill-brass">Capital</span>{% else %}<span class="pill pill-grey">Recurrent</span>{% endif %}</td>
       <td><span class="pill {% if e.status == 'PAID' %}pill-green{% elif e.status == 'APPROVED' %}pill-blue{% elif e.status == 'REJECTED' %}pill-red{% else %}pill-amber{% endif %}">{{ e.get_status_display }}</span></td>
-      <td class="num mono row-debit">({{ e.amount|floatformat:2|intcomma }})</td>
+      <td class="num mono row-debit">({{ e.amount|money }})</td>
       {% if can_enter_data %}<td class="actions"><a class="link" href="{% url 'expense_edit' e.id %}">Edit</a></td>{% endif %}
     </tr>
   {% empty %}<tr><td colspan="10"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}

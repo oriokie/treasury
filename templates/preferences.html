@@ -70,6 +70,18 @@
         <button type="button" data-val="MONO" {% if pref.font_family == 'MONO' %}class="on"{% endif %}>Mono</button>
       </div></div>
 
+    <div class="pref-row"><div class="pl"><label>Headings</label><div class="ph">Typeface for page titles and section headings.</div></div>
+      <div class="seg" data-pref="heading_font">
+        <button type="button" data-val="SERIF" {% if pref.heading_font == 'SERIF' %}class="on"{% endif %} style="font-family:'Fraunces',Georgia,serif">Serif</button>
+        <button type="button" data-val="SANS" {% if pref.heading_font == 'SANS' %}class="on"{% endif %}>Sans</button>
+      </div></div>
+
+    <div class="pref-row"><div class="pl"><label>Figures</label><div class="ph">How monetary amounts are set. Monospace keeps columns of numbers perfectly aligned.</div></div>
+      <div class="seg" data-pref="figure_font">
+        <button type="button" data-val="MONO" {% if pref.figure_font == 'MONO' %}class="on"{% endif %} style="font-family:'IBM Plex Mono',monospace">1,234.50</button>
+        <button type="button" data-val="BODY" {% if pref.figure_font == 'BODY' %}class="on"{% endif %}>1,234.50</button>
+      </div></div>
+
     <div class="pref-row"><div class="pl"><label>Layout width</label><div class="ph">Constrain content or use the full screen.</div></div>
       <div class="seg" data-pref="layout_width">
         <button type="button" data-val="BOXED" {% if pref.layout_width == 'BOXED' %}class="on"{% endif %}>Boxed</button>
@@ -118,6 +130,16 @@
         <button type="button" data-val="COMFORTABLE" {% if pref.density == 'COMFORTABLE' %}class="on"{% endif %}>Comfortable</button>
         <button type="button" data-val="COMPACT" {% if pref.density == 'COMPACT' %}class="on"{% endif %}>Compact</button>
       </div></div>
+
+    {% include "ui/pref_toggle.html" with key="table_stripes" label="Row stripes" hint="Subtle alternating row shading to help the eye track across wide tables." on=pref.table_stripes %}
+
+    <div class="pref-row"><div class="pl"><label>Gridlines</label><div class="ph">Row lines only, or a full grid with column separators.</div></div>
+      <div class="seg" data-pref="table_grid">
+        <button type="button" data-val="ROWS" {% if pref.table_grid == 'ROWS' %}class="on"{% endif %}>Rows only</button>
+        <button type="button" data-val="GRID" {% if pref.table_grid == 'GRID' %}class="on"{% endif %}>Full grid</button>
+      </div></div>
+
+    {% include "ui/pref_toggle.html" with key="sticky_headers" label="Sticky table headers" hint="Keep column headings visible while scrolling long tables." on=pref.sticky_headers %}
     <p class="help">Tables also remember the columns you show and your sorting and filters as you use them — those are saved automatically per table.</p>
   </div></div>
 </section>

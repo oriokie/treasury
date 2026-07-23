@@ -1,8 +1,8 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Budget lines · {{ dept.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ dept.name }} — budget breakdown {{ year }}</h1>
-<div class="sub">Annual budget {{ budget.lines_total|floatformat:2|intcomma }} (sum of lines below){% if prior_total != None %} · {{ prior_year }}: {{ prior_total|floatformat:2|intcomma }}{% endif %}</div></div>
+<div class="sub">Annual budget {{ budget.lines_total|money }} (sum of lines below){% if prior_total != None %} · {{ prior_year }}: {{ prior_total|money }}{% endif %}</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'budget' %}?year={{ year }}">Back to budgeting</a></div>
 
 {% if not lines and prior_has_lines %}
@@ -21,11 +21,11 @@
         <td>{% if ln.source_kind == 'LCB' %}<span class="pill pill-brass">{{ ln.source_fund.name }}</span>
             {% elif ln.source_kind == 'OTHER' %}<span class="pill pill-blue">{{ ln.source_fund.name }}</span>
             {% else %}<span class="muted">{{ dept.name }} (own funds)</span>{% endif %}</td>
-        <td class="num mono">{{ ln.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ ln.amount|money }}</td>
         <td><form method="post" class="u-inline" onsubmit="return confirm('Remove this line?');">{% csrf_token %}<input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="line" value="{{ ln.id }}"><button name="action" value="delete" class="link link-danger">Delete</button></form></td></tr>
     {% empty %}<tr><td colspan="6" class="empty">No breakdown lines yet.</td></tr>{% endfor %}
     </tbody>
-    {% if lines %}<tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="num mono"><strong>{{ budget.lines_total|floatformat:2|intcomma }}</strong></td><td></td></tr></tfoot>{% endif %}
+    {% if lines %}<tfoot><tr><td colspan="4"><strong>Total</strong></td><td class="num mono"><strong>{{ budget.lines_total|money }}</strong></td><td></td></tr></tfoot>{% endif %}
   </table>
 
   <form method="post" class="u-mt">{% csrf_token %}

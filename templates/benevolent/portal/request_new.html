@@ -1,0 +1,108 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}{{ kind_label }}{% endblock %}
+{% block portal_desc %}
+{% if kind == 'ASSISTANCE' %}Tell us what has happened and what you need. Someone from the church office will read it and come back to you.
+{% elif kind == 'DEATH' %}We are sorry. Tell us who has died and when, and the office will start the process for you.
+{% elif kind == 'HOUSEHOLD' %}Ask for someone to be added to, corrected on, or removed from your cover. A registration officer checks it before it takes effect.
+{% elif kind == 'PROFILE' %}Ask for your own name or phone number on the church roll to be changed.
+{% else %}Tell us what looks wrong on your record, and we will check it against ours.{% endif %}
+{% endblock %}
+{% block portal_content %}
+{% if error %}<div class="panel u-mb" style="border-left:3px solid var(--danger)">{{ error }}</div>{% endif %}
+<form method="post" enctype="multipart/form-data" class="panel">{% csrf_token %}
+
+  {% if memberships|length > 1 %}
+  <label class="lbl" for="id_membership">Which scheme</label>
+  <select class="field" name="membership" id="id_membership">
+    {% for m in memberships %}<option value="{{ m.pk }}">{{ m.scheme.name }}</option>{% endfor %}
+  </select>
+  {% endif %}
+
+  <label class="lbl" for="id_subject">In a few words, what is this about?</label>
+  <input class="field" type="text" name="subject" id="id_subject" maxlength="140" required
+         placeholder="{% if kind == 'DEATH' %}Bereavement in my family{% elif kind == 'ASSISTANCE' %}Help with hospital bill{% else %}A contribution is missing{% endif %}">
+
+  {% if kind == 'DEATH' %}
+    <label class="lbl u-mt" for="id_dependant">Who has died?</label>
+    <select class="field" name="dependant" id="id_dependant">
+      <option value="">Someone not listed below</option>
+      {% for d in dependants %}<option value="{{ d.pk }}">{{ d.name|default:d.member.name }} — {{ d.get_relationship_display }}</option>{% endfor %}
+    </select>
+    <label class="lbl u-mt" for="id_deceased_name">If they are not listed, their name</label>
+    <input class="field" type="text" name="deceased_name" id="id_deceased_name" maxlength="120">
+    <label class="lbl u-mt" for="id_event_date">Date of death</label>
+    <input class="field" type="date" name="event_date" id="id_event_date" max="{{ today|date:'Y-m-d' }}" required>
+  {% endif %}
+
+  {% if kind == 'ASSISTANCE' %}
+    <label class="lbl u-mt" for="id_event_type">What kind of help?</label>
+    <select class="field" name="event_type" id="id_event_type">
+      <option value="">I am not sure — please advise</option>
+      {% for e in event_types %}<option value="{{ e.pk }}">{{ e.name }}</option>{% endfor %}
+    </select>
+    <label class="lbl u-mt" for="id_event_date">When did it happen?</label>
+    <input class="field" type="date" name="event_date" id="id_event_date" max="{{ today|date:'Y-m-d' }}">
+  {% endif %}
+
+  {% if kind == 'HOUSEHOLD' %}
+    <label class="lbl u-mt" for="id_op">What would you like to change?</label>
+    <select class="field" name="op" id="id_op">
+      <option value="add">Add someone to my cover</option>
+      <option value="update">Correct someone's details</option>
+      <option value="remove">Remove someone from my cover</option>
+    </select>
+    <label class="lbl u-mt" for="id_dependant">Which person (for a correction or removal)</label>
+    <select class="field" name="dependant" id="id_dependant">
+      <option value="">—</option>
+      {% for d in dependants %}<option value="{{ d.pk }}">{{ d.name|default:d.member.name }} — {{ d.get_relationship_display }}</option>{% endfor %}
+    </select>
+    <label class="lbl u-mt" for="id_relationship">Relationship to you</label>
+    <select class="field" name="relationship" id="id_relationship">
+      {% for value, label in relationships %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+    <label class="lbl u-mt" for="id_name">Their full name</label>
+    <input class="field" type="text" name="name" id="id_name" maxlength="120">
+    <label class="lbl u-mt" for="id_phone">Their phone (optional, but it helps us match their payments)</label>
+    <input class="field" type="text" name="phone" id="id_phone" maxlength="32">
+    <label class="lbl u-mt" for="id_dob">Their date of birth</label>
+    <input class="field" type="date" name="date_of_birth" id="id_dob">
+  {% endif %}
+
+  {% if kind == 'PROFILE' %}
+    <label class="lbl u-mt" for="id_new_name">Your name, as it should read</label>
+    <input class="field" type="text" name="new_name" id="id_new_name" maxlength="120" value="{{ member.name }}">
+    <label class="lbl u-mt" for="id_new_phone">Your phone number for the church roll</label>
+    <input class="field" type="text" name="new_phone" id="id_new_phone" maxlength="32" value="{{ member.phone|default:'' }}">
+    <p class="muted">This is the number the church matches your payments against, so it is
+      checked before it changes. Where we send you messages is on
+      <a class="link" href="{% url 'portal_profile' %}">your details page</a> and is yours to set.</p>
+  {% endif %}
+
+  {% if kind == 'CORRECTION' %}
+    <label class="lbl u-mt" for="id_what">What looks wrong?</label>
+    <input class="field" type="text" name="what" id="id_what" maxlength="200"
+           placeholder="e.g. my March contribution of 500 is not showing">
+  {% endif %}
+
+  <label class="lbl u-mt" for="id_detail">Anything else we should know</label>
+  <textarea class="field" name="detail" id="id_detail" rows="5"></textarea>
+
+  <label class="lbl u-mt" for="id_documents">Attach anything that helps (PDF or a photo, up to 10 MB each)</label>
+  <input class="field" type="file" name="documents" id="id_documents" multiple
+         accept=".pdf,.jpg,.jpeg,.png,.heic,.webp">
+  <select class="field u-mt" name="document_kind">
+    <option value="OTHER">What are these? (optional)</option>
+    <option value="BURIAL_PERMIT">Burial permit</option>
+    <option value="DEATH_CERT">Death certificate</option>
+    <option value="MEDICAL">Medical report or invoice</option>
+    <option value="RECEIPT">Receipt or proof of payment</option>
+    <option value="ID">Identification</option>
+    <option value="LETTER">Letter</option>
+  </select>
+
+  <div class="pt-actions u-mt">
+    <button class="btn" name="action" value="submit">Send to the church office</button>
+    <button class="btn btn-ghost" name="action" value="draft">Save as a draft</button>
+  </div>
+</form>
+{% endblock %}

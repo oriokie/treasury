@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Sabbath reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -18,16 +18,16 @@
 {% endif %}
 
 <div class="ws-summary u-mb">
-  <div class="ws-metric is-primary"><span class="wm-l">Bank giving</span><span class="wm-v">{{ bank_total|floatformat:0|intcomma }}</span></div>
-  <div class="ws-metric"><span class="wm-l">Bank envelopes</span><span class="wm-v">{{ env_bank_total|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric is-primary"><span class="wm-l">Bank giving</span><span class="wm-v">{{ bank_total|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Bank envelopes</span><span class="wm-v">{{ env_bank_total|money:0 }}</span></div>
   <div class="ws-metric {% if balanced %}is-positive{% else %}is-warn{% endif %}">
     <span class="wm-l">{% if balanced %}Balanced{% else %}Difference{% endif %}</span>
-    <span class="wm-v">{% if balanced %}✓{% else %}{{ difference|floatformat:0|intcomma }}{% endif %}</span></div>
-  <div class="ws-metric"><span class="wm-l">Cash envelopes</span><span class="wm-v">{{ env_cash_total|floatformat:0|intcomma }}</span></div>
+    <span class="wm-v">{% if balanced %}✓{% else %}{{ difference|money:0 }}{% endif %}</span></div>
+  <div class="ws-metric"><span class="wm-l">Cash envelopes</span><span class="wm-v">{{ env_cash_total|money:0 }}</span></div>
 </div>
 
 <div class="help u-mb">
-  Bank credits this Sabbath: <strong>{{ bank_receipted|floatformat:2|intcomma }}</strong> already receipted (excluded from income — counted on the envelope side){% if bank_income %} + <span class="text-amber">{{ bank_income|floatformat:2|intcomma }} still counted as income</span>{% endif %}. Any credit that matches an envelope but is still counted as income is double-counted — mark it receipted to fix.
+  Bank credits this Sabbath: <strong>{{ bank_receipted|money }}</strong> already receipted (excluded from income — counted on the envelope side){% if bank_income %} + <span class="text-amber">{{ bank_income|money }} still counted as income</span>{% endif %}. Any credit that matches an envelope but is still counted as income is double-counted — mark it receipted to fix.
 </div>
 
 {% if suggestions %}
@@ -37,7 +37,7 @@
   <p class="help u-mt-0">Each is the only unmatched gift of its amount this Sabbath, so they are very likely the same contribution. Tick the ones to confirm.</p>
   {% for s in suggestions %}
   <label class="u-row-sm"><input type="checkbox" name="pair" value="env:{{ s.env.id }}:bank:{{ s.bank.id }}">
-  <span>bank <em>{{ s.bank.who }}</em> ({{ s.bank.amount|floatformat:2|intcomma }}) ↔ envelope <em>{{ s.env.who }}</em> ({{ s.env.amount|floatformat:2|intcomma }}) — {{ s.reason }}.</span></label>
+  <span>bank <em>{{ s.bank.who }}</em> ({{ s.bank.amount|money }}) ↔ envelope <em>{{ s.env.who }}</em> ({{ s.env.amount|money }}) — {{ s.reason }}.</span></label>
   {% endfor %}
   {% if can_enter_data %}<div class="u-mt-sm"><button class="btn btn-sm">Confirm ticked matches</button></div>{% endif %}
 </form>
@@ -54,7 +54,7 @@
       <td>{{ m.bank.who }}{% if m.bank.reference %} <span class="mono muted u-xs">{{ m.bank.reference }}</span>{% endif %}</td>
       <td>{{ m.env.who }} <span class="muted mono u-xs">#{{ m.env.receipt }}</span>{% if m.env.funds %}<br><span class="muted u-xs">{{ m.env.funds }}</span>{% endif %}</td>
       <td>{% if m.confidence == 'exact' %}<span class="pill pill-green">exact</span>{% else %}<span class="pill pill-amber" title="Names are close but not identical — likely a spelling difference">fuzzy {{ m.ratio }}</span>{% endif %}</td>
-      <td class="num mono">{{ m.bank.amount|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ m.bank.amount|money }}</td>
     </tr>{% endfor %}</tbody>
   </table>
   </div></div>
@@ -72,7 +72,7 @@
         {% if can_enter_data %}<td>{% if b.status == 'income' %}<input type="checkbox" name="mark_receipted" value="{{ b.id }}" title="Mark this bank credit as receipted (a confirmation — no envelope link needed)">{% endif %}</td>{% endif %}
         <td>{{ b.who }}{% if b.reference %} <span class="mono muted u-xs">{{ b.reference }}</span>{% endif %}</td>
         <td>{% if b.status == 'receipted' %}<span class="pill pill-grey">receipted</span>{% else %}<span class="pill pill-amber" title="Still counted as income">income</span>{% endif %}</td>
-        <td class="num mono">{{ b.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ b.amount|money }}</td>
       </tr>{% empty %}<tr><td colspan="4" class="muted">All bank contributions matched.</td></tr>{% endfor %}</tbody>
     </table>
     {% if can_enter_data and bank_unmatched %}<div class="u-p-sm"><button class="btn btn-sm">Mark ticked as receipted</button> <span class="help">A confirmation that the money is accounted for — one credit can cover several envelopes, so no link is required.</span></div>{% endif %}
@@ -85,7 +85,7 @@
       <tbody>{% for e in env_unmatched %}<tr>
         <td>{{ e.who }} <span class="muted mono u-xs">#{{ e.receipt }}</span>{% if e.funds %}<br><span class="muted u-xs">{{ e.funds }}</span>{% endif %}</td>
         <td><span class="pill {% if e.is_bank %}pill-blue{% else %}pill-green{% endif %}">{{ e.channel }}</span></td>
-        <td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ e.amount|money }}</td>
       </tr>{% empty %}<tr><td colspan="3" class="muted">All envelopes matched.</td></tr>{% endfor %}</tbody>
     </table>
   </div></div>

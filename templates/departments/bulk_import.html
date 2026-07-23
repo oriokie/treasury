@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Bulk fund &amp; budget import · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -51,9 +51,9 @@
     {% for p in plan %}
     <tr class="{% if not p.match_id %}row-warn{% endif %}">
       <td><strong>{{ p.name }}</strong></td>
-      <td class="num mono">{{ p.bf|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ p.pinc|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ p.pexp|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ p.bf|money:0 }}</td>
+      <td class="num mono">{{ p.pinc|money:0 }}</td>
+      <td class="num mono">{{ p.pexp|money:0 }}</td>
       <td>
         <select name="map_{{ forloop.counter0 }}" class="field--select map-select" data-row="{{ forloop.counter0 }}" style="min-width:230px">
           {% if p.match_id %}<option value="dept:{{ p.match_id }}" selected>✓ {{ p.match_name }}{% if p.score < 1 %} (likely){% endif %}</option>{% endif %}
@@ -105,7 +105,7 @@ document.querySelectorAll(".map-select").forEach(function(s){
   <input type="hidden" name="apply_lines" value="1">
   <div class="ws-summary">
     <div class="ws-metric is-primary"><span class="wm-l">Budget lines</span><span class="wm-v">{{ lines|length }}</span><span class="wm-sub">year {{ year }}</span></div>
-    <div class="ws-metric is-positive"><span class="wm-l">Total planned</span><span class="wm-v"><span class="cur">KES</span>{{ line_total|floatformat:0 }}</span></div>
+    <div class="ws-metric is-positive"><span class="wm-l">Total planned</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ line_total|floatformat:0 }}</span></div>
     <div class="ws-metric {% if unmatched_depts or unmatched_srcs %}is-warn{% endif %}"><span class="wm-l">Names to check</span><span class="wm-v">{{ unmatched_depts|length|add:unmatched_srcs|length }}</span></div>
   </div>
 

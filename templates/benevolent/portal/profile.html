@@ -1,0 +1,47 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My details{% endblock %}
+{% block portal_desc %}Where the church reaches you, and what it tells you about.{% endblock %}
+{% block portal_content %}
+<form method="post" class="panel u-mb">{% csrf_token %}
+  <h3>How to reach me</h3>
+  <p class="muted">This is where messages are sent. It is separate from the number on the
+    church roll, which is what your bank and M-Pesa payments are matched against —
+    changing that goes through
+    <a class="link" href="{% url 'portal_request_new' 'PROFILE' %}">a request</a>.</p>
+
+  <label class="lbl u-mt" for="id_phone">Phone</label>
+  <input class="field" type="text" name="contact_phone" id="id_phone" maxlength="32" value="{{ account.contact_phone }}">
+  <label class="lbl u-mt" for="id_email">Email</label>
+  <input class="field" type="email" name="contact_email" id="id_email" value="{{ account.contact_email }}">
+  <label class="lbl u-mt" for="id_channel">How I prefer to hear from you</label>
+  <select class="field" name="preferred_channel" id="id_channel">
+    {% for value, label in channels %}<option value="{{ value }}" {% if account.preferred_channel == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+
+  <h3 class="u-mt">What to tell me about</h3>
+  <label><input type="checkbox" name="notify_case_updates" {% if account.notify_case_updates %}checked{% endif %}> Progress on my requests and cases</label><br>
+  <label><input type="checkbox" name="notify_contributions" {% if account.notify_contributions %}checked{% endif %}> When a contribution of mine is recorded</label><br>
+  <label><input type="checkbox" name="notify_dues_reminders" {% if account.notify_dues_reminders %}checked{% endif %}> Reminders when a contribution falls due</label><br>
+  <label><input type="checkbox" name="notify_announcements" {% if account.notify_announcements %}checked{% endif %}> General scheme announcements</label>
+
+  <button class="btn u-mt">Save</button>
+</form>
+
+<div class="grid cols-2">
+  <div class="panel">
+    <h3>My sign-in</h3>
+    <div class="pt-row"><span class="k">Username</span><b class="mono">{{ account.user.username }}</b></div>
+    <div class="pt-row"><span class="k">Portal access</span><b>{{ account.get_status_display }}</b></div>
+    <div class="pt-row"><span class="k">Member since</span><b>{{ account.activated_at|date:"d M Y"|default:"—" }}</b></div>
+    <div class="u-mt no-print"><a class="btn btn-ghost btn-sm" href="{% url 'password_change' %}">Change my password</a></div>
+  </div>
+  <div class="panel">
+    <h3>Recent activity on my account</h3>
+    <p class="muted">So you can see for yourself when your record has been opened, and from where.</p>
+    {% for a in recent_access %}
+    <div class="pt-row"><span class="k">{{ a.at|date:"d M Y H:i" }}</span>
+      <span>{{ a.get_action_display }}</span></div>
+    {% empty %}<div class="pt-empty">Nothing recorded yet.</div>{% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Receipt {{ envelope.receipt_no }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Receipt {{ envelope.receipt_no }}</h1>
@@ -7,8 +7,8 @@
 <a class="btn btn-ghost btn-sm" href="{% url 'envelope_receipt' envelope.id %}?format=etr&print=1" target="_blank">ETR receipt</a></div></div>
 <div class="card u-narrow"><div class="bd">
   <table class="ledger"><thead><tr><th>Fund</th><th class="num">Amount</th></tr></thead><tbody>
-  {% for l in envelope.lines.all %}<tr><td>{{ l.department.name }}{% if l.department.is_trust %} <span class="pill pill-amber">Trust</span>{% endif %}</td><td class="num mono">{{ l.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
-  <tr><td><strong>Total</strong></td><td class="num mono"><strong>{{ envelope.total|floatformat:2|intcomma }}</strong></td></tr>
+  {% for l in envelope.lines.all %}<tr><td>{{ l.department.name }}{% if l.department.is_trust %} <span class="pill pill-amber">Trust</span>{% endif %}</td><td class="num mono">{{ l.amount|money }}</td></tr>{% endfor %}
+  <tr><td><strong>Total</strong></td><td class="num mono"><strong>{{ envelope.total|money }}</strong></td></tr>
   </tbody></table>
   {% if envelope.bank_transaction %}<div class="help u-mt-sm">Reconciled against bank entry {{ envelope.bank_transaction.mpesa_ref }} (processed via envelope).</div>{% endif %}
 </div></div>

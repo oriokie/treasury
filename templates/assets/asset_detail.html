@@ -1,27 +1,44 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Asset · {{ asset.name }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ asset.name }}</h1><div class="sub">{{ asset.get_category_display }} · acquired {{ asset.acquired_on|date:"d M Y" }}{% if asset.reference %} · {{ asset.reference }}{% endif %}</div></div>
-<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">← Assets</a>{% if is_treasurer and not asset.disposed %}<a class="btn btn-ghost btn-sm" href="{% url 'asset_edit' asset.id %}">Edit</a>{% endif %}</div></div>
+<div class="page-head"><div><h1>{{ asset.name }}</h1><div class="sub">{{ asset.get_category_display }} · acquired {{ asset.acquired_on|date:"d M Y" }}{% if asset.tag %} · tag {{ asset.tag }}{% endif %}{% if asset.reference %} · {{ asset.reference }}{% endif %}</div>
+<div class="u-mt-xs">
+  <span class="pill {% if asset.disposed %}pill-red{% elif asset.status == 'IN_SERVICE' %}pill-green{% elif asset.status == 'MAINTENANCE' or asset.status == 'HELD_SALE' %}pill-amber{% else %}pill-blue{% endif %}">{{ asset.get_status_display }}</span>
+  {% if open_assignment %}<span class="pill pill-amber">Issued to {{ open_assignment.holder }}</span>{% endif %}
+  {% if acquisition %}<span class="pill">{{ acquisition.get_source_display }}</span>{% endif %}
+</div></div>
+<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">← Assets</a><a class="btn btn-ghost btn-sm" href="{% url 'asset_board' %}">Lifecycle</a>{% if is_treasurer and not asset.disposed %}<a class="btn btn-ghost btn-sm" href="{% url 'asset_edit' asset.id %}">Edit</a>{% endif %}</div></div>
+
+{% if is_treasurer and allowed_transitions %}
+<div class="card u-narrow-md u-mt-xs"><div class="bd" style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+  <span class="muted" style="font-size:.85rem">Move this asset to:</span>
+  {% for t in allowed_transitions %}
+  <form method="post" action="{% url 'asset_transition' asset.id %}" class="u-inline">{% csrf_token %}
+    <input type="hidden" name="status" value="{{ t.value }}">
+    <button class="btn btn-ghost btn-sm">{{ t.label }}</button>
+  </form>
+  {% endfor %}
+</div></div>
+{% endif %}
 
 <div class="card u-narrow-md"><div class="bd">
   <table class="ledger"><tbody>
-    <tr><td class="muted">Cost</td><td class="num mono">KES {{ asset.cost|floatformat:2|intcomma }}</td></tr>
-    <tr><td class="muted">Accumulated depreciation</td><td class="num mono">{{ accum|floatformat:2|intcomma }}</td></tr>
-    <tr><td class="muted">Net book value</td><td class="num mono"><strong>KES {{ nbv|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td class="muted">Cost</td><td class="num mono">{{ CURRENCY }} {{ asset.cost|money }}</td></tr>
+    <tr><td class="muted">Accumulated depreciation</td><td class="num mono">{{ accum|money }}</td></tr>
+    <tr><td class="muted">Net book value</td><td class="num mono"><strong>{{ CURRENCY }} {{ nbv|money }}</strong></td></tr>
     {% if asset.department %}<tr><td class="muted">Fund / ministry</td><td>{{ asset.department.name }}</td></tr>{% endif %}
     {% if asset.location %}<tr><td class="muted">Location</td><td>{{ asset.location }}</td></tr>{% endif %}
     {% if asset.disposed %}
     <tr><td class="muted">Disposed</td><td>{{ asset.get_disposal_method_display }} on {{ asset.disposed_on|date:"d M Y" }}</td></tr>
-    <tr><td class="muted">Proceeds</td><td class="num mono">{{ asset.disposal_proceeds|default:0|floatformat:2|intcomma }}</td></tr>
-    <tr><td class="muted">Gain/(loss) on disposal</td><td class="num mono">{% if asset.disposal_gain_loss < 0 %}({{ asset.disposal_gain_loss|floatformat:2|intcomma|cut:"-" }}){% else %}{{ asset.disposal_gain_loss|default:0|floatformat:2|intcomma }}{% endif %}</td></tr>
+    <tr><td class="muted">Proceeds</td><td class="num mono">{{ asset.disposal_proceeds|default:0|money }}</td></tr>
+    <tr><td class="muted">Gain/(loss) on disposal</td><td class="num mono">{{ asset.disposal_gain_loss|default:0|money_acct }}</td></tr>
     {% endif %}
   </tbody></table>
 </div></div>
 
 {% if linked_expenses %}
 <div class="card u-narrow-md u-mt"><div class="hd">Expenses included in the cost ({{ linked_expenses|length }})</div><div class="bd bd-flush">
-  <table class="ledger compact">
+  <div class="table-wrap"><table class="ledger compact">
     <thead><tr><th>Date</th><th>Description</th><th>Fund</th><th>Status</th><th class="num">Amount</th></tr></thead>
     <tbody>
     {% for x in linked_expenses %}
@@ -29,11 +46,11 @@
         <td><a class="link" href="{% url 'expense_detail' x.id %}">{{ x.description }}</a></td>
         <td class="muted">{{ x.department.name }}</td>
         <td><span class="pill {% if x.status == 'PAID' %}pill-green{% elif x.status == 'APPROVED' %}pill-blue{% else %}pill-amber{% endif %}">{{ x.get_status_display }}</span></td>
-        <td class="num mono">{{ x.amount|floatformat:2|intcomma }}</td></tr>
+        <td class="num mono">{{ x.amount|money }}</td></tr>
     {% endfor %}
     </tbody>
-    <tfoot><tr><th colspan="4">Linked total</th><th class="num mono">{{ linked_total|floatformat:2|intcomma }}</th></tr></tfoot>
-  </table>
+    <tfoot><tr><th colspan="4">Linked total</th><th class="num mono">{{ linked_total|money }}</th></tr></tfoot>
+  </table></div>
   <p class="help">Reclassifying any of these to a recurrent expense (on its edit page) removes it here and reduces the asset's cost.</p>
 </div></div>
 {% endif %}
@@ -54,14 +71,15 @@
 {% endif %}
 
 {% if is_treasurer and not asset.disposed %}
+<div class="card u-narrow-md u-mt"><div class="hd">Dispose of this asset</div><div class="bd">
   <form method="post" action="{% url 'asset_dispose' asset.id %}">{% csrf_token %}
     <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
       <div class="form-row"><label>Date</label><input type="date" name="disposed_on" value="{{ today|date:'Y-m-d' }}" class="field"></div>
       <div class="form-row"><label>Method</label><select name="method" class="field--select">{% for v,l in asset.DisposalMethod.choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></div>
       <div class="form-row"><label>Proceeds (KES)</label><input name="proceeds" value="0" class="field"></div>
-      <div class="form-row"><label>Proceeds into fund</label><select name="fund" class="field--select"><option value="">—</option>{% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+      <div class="form-row"><label>Fund <span class="req">*</span></label><select name="fund" class="field--select" required><option value="">Choose a fund…</option>{% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
     </div>
-    <p class="help">Gain or loss is proceeds less net book value ({{ nbv|floatformat:2|intcomma }}). Proceeds are recorded as a receipt into the chosen fund.</p>
+    <p class="help">Gain or loss is proceeds less net book value ({{ nbv|money }}). The fund is required: it receives any proceeds and carries the gain or loss.</p>
     <div class="btn-row"><button class="btn btn-danger" onclick="return confirm('Dispose of this asset?');">Record disposal</button></div>
   </form>
 </div></div>
@@ -85,4 +103,110 @@
     <button class="btn">Attach document</button>
   </form>{% endif %}
 </div></div>
+
+<div class="card u-narrow-md u-mt"><div class="hd">Custody — who holds it</div><div class="bd">
+  {% if open_assignment %}
+    <p>Currently with <strong>{{ open_assignment.holder }}</strong> since {{ open_assignment.from_date|date:"d M Y" }}{% if open_assignment.location %}, at {{ open_assignment.location.name }}{% endif %}.</p>
+    {% if is_treasurer %}
+    <form method="post" action="{% url 'asset_checkin' asset.id %}">{% csrf_token %}
+      <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+        <div class="form-row"><label>Returned on</label><input type="date" name="to_date" value="{{ today|date:'Y-m-d' }}" class="field"></div>
+        <div class="form-row"><label>Condition on return</label><input name="condition_in" class="field" placeholder="e.g. good"></div>
+      </div>
+      <div class="btn-row"><button class="btn">Check back in</button></div>
+    </form>
+    {% endif %}
+  {% elif is_treasurer and not asset.disposed %}
+    <form method="post" action="{% url 'asset_assign' asset.id %}">{% csrf_token %}
+      <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+        <div class="form-row"><label>Issue to (user)</label><select name="custodian" class="field--select"><option value="">—</option>{% for u in users %}<option value="{{ u.id }}">{{ u.get_full_name|default:u.username }}</option>{% endfor %}</select></div>
+        <div class="form-row"><label>…or name</label><input name="holder_name" class="field" placeholder="If not a system user"></div>
+        <div class="form-row"><label>From</label><input type="date" name="from_date" value="{{ today|date:'Y-m-d' }}" class="field"></div>
+        <div class="form-row"><label>Condition issued</label><input name="condition_out" class="field"></div>
+      </div>
+      <div class="btn-row"><button class="btn">Issue asset</button></div>
+    </form>
+  {% else %}
+    <p class="empty u-p">Not currently issued to anyone.</p>
+  {% endif %}
+
+  {% if assignments %}
+  <div class="table-wrap"><table class="ledger compact u-mt"><thead><tr><th>Holder</th><th>From</th><th>To</th><th>Condition</th></tr></thead><tbody>
+    {% for a in assignments %}<tr>
+      <td>{{ a.holder }}</td><td>{{ a.from_date|date:"d M Y" }}</td>
+      <td>{% if a.to_date %}{{ a.to_date|date:"d M Y" }}{% else %}<em>open</em>{% endif %}</td>
+      <td class="muted">{{ a.condition_out|default:"—" }}{% if a.condition_in %} → {{ a.condition_in }}{% endif %}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+</div></div>
+
+<div class="card u-narrow-md u-mt"><div class="hd">Location &amp; fund — movement</div><div class="bd">
+  <p class="muted">Now at {{ asset.location_fk.name|default:asset.location|default:"—" }}, owned by {{ asset.department.name|default:"—" }}.</p>
+  {% if pending_transfers %}
+  <table class="ledger compact"><tbody>
+    {% for t in pending_transfers %}<tr>
+      <td>{{ t.date|date:"d M Y" }} → {{ t.to_location.name|default:"—" }} / {{ t.to_fund.name|default:"—" }}
+        <span class="pill pill-amber">Awaiting approval</span></td>
+      <td class="u-right">{% if is_treasurer %}
+        <form method="post" action="{% url 'asset_transfer_decide' t.id %}" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="decision" value="approve"><button class="link">Approve</button></form>
+        <form method="post" action="{% url 'asset_transfer_decide' t.id %}" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="decision" value="reject"><button class="link link-danger">Reject</button></form>
+      {% endif %}</td>
+    </tr>{% endfor %}
+  </tbody></table>{% endif %}
+
+  {% if is_treasurer and not asset.disposed %}
+  <form method="post" action="{% url 'asset_transfer' asset.id %}" class="u-mt">{% csrf_token %}
+    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+      <div class="form-row"><label>Move to location</label><select name="to_location" class="field--select"><option value="">— unchanged —</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></div>
+      <div class="form-row"><label>Move to fund</label><select name="to_fund" class="field--select"><option value="">— unchanged —</option>{% for d in all_funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></div>
+      <div class="form-row"><label>Date</label><input type="date" name="date" value="{{ today|date:'Y-m-d' }}" class="field"></div>
+      <div class="form-row"><label>Reason</label><input name="reason" class="field"></div>
+    </div>
+    <p class="help">Changing the owning fund moves the asset's value between funds, so it needs a second person's approval.</p>
+    <div class="btn-row"><button class="btn btn-ghost">Request transfer</button></div>
+  </form>{% endif %}
+
+  {% if transfers %}
+  <div class="table-wrap"><table class="ledger compact u-mt"><thead><tr><th>Date</th><th>To</th><th>Fund</th><th>Status</th></tr></thead><tbody>
+    {% for t in transfers %}<tr>
+      <td>{{ t.date|date:"d M Y" }}</td><td>{{ t.to_location.name|default:"—" }}</td>
+      <td>{{ t.to_fund.name|default:"—" }}</td><td>{{ t.get_status_display }}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+</div></div>
+
+{% if journal_lines or depreciation_lines %}
+<div class="card u-narrow-md u-mt"><div class="hd">On the books</div><div class="bd bd-flush">
+  {% if journal_lines %}
+  <div class="table-wrap"><table class="ledger compact"><thead><tr><th>Date</th><th>Entry</th><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>
+    {% for l in journal_lines %}<tr>
+      <td>{{ l.entry.date|date:"d M Y" }}</td><td class="mono">{{ l.entry.number }}</td>
+      <td>{{ l.account.name }}</td>
+      <td class="num mono">{% if l.debit %}{{ l.debit|money }}{% endif %}</td>
+      <td class="num mono">{% if l.credit %}{{ l.credit|money }}{% endif %}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+  {% if depreciation_lines %}
+  <div class="table-wrap"><table class="ledger compact"><thead><tr><th>Depreciation run</th><th class="num">Charge</th><th class="num">Accumulated</th></tr></thead><tbody>
+    {% for d in depreciation_lines %}<tr>
+      <td>{{ d.run.year }}-{{ d.run.month|stringformat:"02d" }}</td>
+      <td class="num mono">{{ d.amount|money }}</td>
+      <td class="num mono">{{ d.accumulated_after|money }}</td>
+    </tr>{% endfor %}
+  </tbody></table></div>{% endif %}
+</div></div>{% endif %}
+
+{% if events %}
+<div class="card u-narrow-md u-mt"><div class="hd">Timeline</div><div class="bd bd-flush">
+  <table class="ledger compact"><tbody>
+    {% for e in events %}<tr>
+      <td class="muted" style="white-space:nowrap">{{ e.at|date:"d M Y" }}</td>
+      <td>{{ e.summary }}</td>
+      <td class="muted u-right">{{ e.actor.username|default:"—" }}</td>
+    </tr>{% endfor %}
+  </tbody></table>
+</div></div>{% endif %}
+
 {% endblock %}

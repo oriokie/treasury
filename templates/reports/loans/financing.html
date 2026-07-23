@@ -1,15 +1,15 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Cash Flow from Financing · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Cash Flow from Financing Activities</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div></div>
 {% with show_period=1 %}{% include 'reports/loans/_filters.html' %}{% endwith %}
 <div class="card" style="max-width:520px"><div class="bd">
 <table class="ledger"><tbody>
-  <tr><td>Loan receipts (cash in)</td><td class="num mono">{{ receipts|floatformat:2|intcomma }}</td></tr>
-  <tr><td>Principal repayments (cash out)</td><td class="num mono">({{ repayments|floatformat:2|intcomma }})</td></tr>
-  <tr><td>Interest paid (cash out)</td><td class="num mono">({{ interest|floatformat:2|intcomma }})</td></tr>
+  <tr><td>Loan receipts (cash in)</td><td class="num mono">{{ receipts|money }}</td></tr>
+  <tr><td>Principal repayments (cash out)</td><td class="num mono">({{ repayments|money }})</td></tr>
+  <tr><td>Interest paid (cash out)</td><td class="num mono">({{ interest|money }})</td></tr>
   <tr class="total-row"><td><strong>Net cash from financing</strong></td>
-    <td class="num mono"><strong>{{ net_financing|floatformat:2|intcomma }}</strong></td></tr>
+    <td class="num mono"><strong>{{ net_financing|money }}</strong></td></tr>
 </tbody></table>
 </div></div>
 <p class="help">This is the financing section of the cash flow statement. Conversions and write-offs move no cash and are excluded.</p>

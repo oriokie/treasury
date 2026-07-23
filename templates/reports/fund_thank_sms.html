@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Thank contributors · {{ department.name }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Thank contributors — {{ department.name }}</h1>
@@ -23,12 +23,12 @@
   </div></div>
 </form>
 
-<div class="card u-mt"><div class="hd u-between">Recipients <span class="muted">{{ recipient_count }} · total {{ total|floatformat:0|intcomma }}</span></div><div class="bd bd-flush">
+<div class="card u-mt"><div class="hd u-between">Recipients <span class="muted">{{ recipient_count }} · total {{ total|money:0 }}</span></div><div class="bd bd-flush">
   <table class="ledger compact"><thead><tr><th>Member</th><th>Phone</th><th class="num">Total this period</th></tr></thead>
   <tbody>
   {% for m, amt in recipients %}<tr>
     <td>{{ m.name }}</td><td class="mono">{{ m.phone }}</td>
-    <td class="num mono">{{ amt|floatformat:0|intcomma }}</td>
+    <td class="num mono">{{ amt|money:0 }}</td>
   </tr>{% empty %}<tr><td colspan="3" class="empty">No contributors with a phone number in this period.</td></tr>{% endfor %}
   </tbody></table>
 </div></div>

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Staff advances · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Expenses · {{ SITE_NAME }}</div><h1>Staff advances (imprest)</h1><div class="sub">Cash advanced to staff before expenses, settled against receipts</div></div>
@@ -7,13 +7,13 @@
 {% if total_outstanding %}
 <div class="card u-mb"><div class="bd" style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
   <div><div class="help u-mt-0">Outstanding (not yet accounted)</div>
-    <div class="mono" style="font-size:1.35rem;font-weight:700;color:var(--forest)">KES {{ total_outstanding|floatformat:2|intcomma }}</div></div>
+    <div class="mono" style="font-size:1.35rem;font-weight:700;color:var(--forest)">{{ CURRENCY }} {{ total_outstanding|money }}</div></div>
   <div style="border-left:1px solid var(--line);padding-left:1.5rem">
     <div class="help u-mt-0">Bank-funded <span class="muted">— shown in bank reconciliation</span></div>
-    <div class="mono" style="font-weight:600">KES {{ bank_outstanding|floatformat:2|intcomma }}</div></div>
+    <div class="mono" style="font-weight:600">{{ CURRENCY }} {{ bank_outstanding|money }}</div></div>
   <div style="border-left:1px solid var(--line);padding-left:1.5rem">
     <div class="help u-mt-0">Petty-funded <span class="muted">— reflected in the petty cash float</span></div>
-    <div class="mono" style="font-weight:600">KES {{ petty_outstanding|floatformat:2|intcomma }}</div></div>
+    <div class="mono" style="font-weight:600">{{ CURRENCY }} {{ petty_outstanding|money }}</div></div>
 </div></div>
 {% endif %}
 
@@ -24,9 +24,9 @@
     <td>{{ a.staff_name }}</td><td class="muted">{{ a.purpose|truncatechars:40 }}</td>
     <td>{{ a.department.name }}</td>
     <td>{% if a.from_petty_cash %}<span class="pill pill-amber u-xs">Petty cash</span>{% else %}<span class="pill pill-blue u-xs">Bank</span>{% endif %}</td>
-    <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
-    <td class="num mono">{{ a.settled_total|floatformat:2|intcomma }}</td>
-    <td class="num mono">{{ a.balance|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ a.amount|money }}</td>
+    <td class="num mono">{{ a.settled_total|money }}</td>
+    <td class="num mono">{{ a.balance|money }}</td>
     <td><span class="pill {% if a.status == 'SETTLED' or a.status == 'CLOSED' %}pill-green{% elif a.status == 'PARTLY' %}pill-amber{% else %}pill-blue{% endif %}">{{ a.get_status_display }}</span></td>
     <td><a class="link" href="{% url 'advance_detail' a.id %}">Open</a></td>
   </tr>{% empty %}<tr><td colspan="9" class="empty">No advances recorded yet.</td></tr>{% endfor %}

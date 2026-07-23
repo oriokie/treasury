@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Closed &amp; archived accounts · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Closed &amp; archived accounts</h1>
@@ -12,7 +12,7 @@
   {% for r in rows %}<tr>
     <td>{{ r.dept.name }}{% if r.dept.collection_only %} <span class="pill pill-grey">collection</span>{% endif %}</td>
     <td>{% if r.dept.status == 'CLOSED' %}<span class="pill pill-amber">Closed</span>{% else %}<span class="pill pill-grey">Archived</span>{% endif %}</td>
-    <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ r.balance|money }}</td>
     <td class="muted u-xs">{% if r.last %}{{ r.last.changed_at|date:"d M Y" }}{% if r.last.changed_by %} · {{ r.last.changed_by.username }}{% endif %}{% if r.last.note %} · {{ r.last.note }}{% endif %}{% else %}—{% endif %}</td>
     {% if is_treasurer %}<td class="u-right">
       <a class="link" href="{% url 'report_fund' r.dept.id %}">Ledger</a>

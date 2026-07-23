@@ -21,13 +21,13 @@
     <thead><tr><th class="fundcol">Fund</th>{% for s in d.saturdays %}<th class="num sat">{{ s|date:"d/m" }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
     <tbody>
     <tr class="section-row"><td colspan="{{ d.saturdays|length|add:2 }}"><strong>Trust funds (remitted to {{ FIELD_NAME }})</strong></td></tr>
-    {% for r in d.trust_rows %}<tr><td class="fundcol">{{ r.fund.name }}</td>{% for c in r.cols %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}<td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>{% endfor %}
-    <tr class="total-row"><td class="fundcol"><strong>Total trust funds</strong></td>{% for c in d.trust_col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.trust_total|floatformat:0|intcomma }}</strong></td></tr>
+    {% for r in d.trust_rows %}<tr><td class="fundcol">{{ r.fund.name }}</td>{% for c in r.cols %}<td class="num mono">{% if c %}{{ c|money:0 }}{% endif %}</td>{% endfor %}<td class="num mono">{{ r.total|money:0 }}</td></tr>{% endfor %}
+    <tr class="total-row"><td class="fundcol"><strong>Total trust funds</strong></td>{% for c in d.trust_col_totals %}<td class="num mono"><strong>{{ c|money:0 }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.trust_total|money:0 }}</strong></td></tr>
 
     <tr class="section-row"><td colspan="{{ d.saturdays|length|add:2 }}"><strong>Local funds (retained)</strong></td></tr>
-    {% for r in d.local_rows %}<tr><td class="fundcol">{{ r.fund.name }}</td>{% for c in r.cols %}<td class="num mono">{% if c %}{{ c|floatformat:0|intcomma }}{% endif %}</td>{% endfor %}<td class="num mono">{{ r.total|floatformat:0|intcomma }}</td></tr>{% endfor %}
-    <tr class="total-row"><td class="fundcol"><strong>Total local funds</strong></td>{% for c in d.local_col_totals %}<td class="num mono"><strong>{{ c|floatformat:0|intcomma }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.local_total|floatformat:0|intcomma }}</strong></td></tr>
-    <tr class="grand-row"><td class="fundcol"><strong>GRAND TOTAL</strong></td><td class="num mono" colspan="{{ d.saturdays|length }}"></td><td class="num mono"><strong>{{ d.trust_total|add:d.local_total|floatformat:0|intcomma }}</strong></td></tr>
+    {% for r in d.local_rows %}<tr><td class="fundcol">{{ r.fund.name }}</td>{% for c in r.cols %}<td class="num mono">{% if c %}{{ c|money:0 }}{% endif %}</td>{% endfor %}<td class="num mono">{{ r.total|money:0 }}</td></tr>{% endfor %}
+    <tr class="total-row"><td class="fundcol"><strong>Total local funds</strong></td>{% for c in d.local_col_totals %}<td class="num mono"><strong>{{ c|money:0 }}</strong></td>{% endfor %}<td class="num mono"><strong>{{ d.local_total|money:0 }}</strong></td></tr>
+    <tr class="grand-row"><td class="fundcol"><strong>GRAND TOTAL</strong></td><td class="num mono" colspan="{{ d.saturdays|length }}"></td><td class="num mono"><strong>{{ d.trust_total|add:d.local_total|money:0 }}</strong></td></tr>
     </tbody>
   </table>
 

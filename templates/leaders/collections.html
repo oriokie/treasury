@@ -1,13 +1,16 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ dept.name }} collections · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ld-hero">
-  <div class="ld-hero-main">
-    <div class="ld-eyebrow">{{ dept.name }}</div>
-    <h1>Collections</h1>
-    <div class="ld-period">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · {{ count }} contribution{{ count|pluralize }}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">{{ dept.name }} · {{ SITE_NAME }}</div>
+      <h1>Collections</h1>
+      <div class="period">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }} · {{ count }} contribution{{ count|pluralize }}</div>
+    </div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a></div>
   </div>
-  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
+  <div class="rule"></div>
 </div>
 
 <form method="get" class="ld-filter no-print">
@@ -15,7 +18,7 @@
   <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field" aria-label="To">
   <input type="search" name="q" value="{{ q }}" placeholder="Search…" class="field">
   <button class="btn btn-sm">Apply</button>
-  <span class="ld-hero-actions">
+  <span class="ld-filter-actions">
     <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=csv">⬇ CSV</a>
     <a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=xlsx">⬇ Excel</a>
   </span>
@@ -31,10 +34,10 @@
       <td class="mono">{{ r.reference|default:"—" }}</td>
       <td>{{ r.channel }}</td>
       <td>{{ r.group|default:"—" }}</td>
-      <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.amount|money }}</td>
     </tr>{% empty %}<tr><td colspan="7" class="muted">No collections in this period.</td></tr>{% endfor %}
     </tbody>
-    {% if rows %}<tfoot><tr><th colspan="6" class="num">Total</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>{% endif %}
+    {% if rows %}<tfoot><tr><th colspan="6" class="num">Total</th><th class="num mono">{{ total|money }}</th></tr></tfoot>{% endif %}
   </table>
 </div></div>
 {% include 'partials/pagination.html' %}

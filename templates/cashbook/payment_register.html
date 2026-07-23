@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Payment register · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Banking · {{ SITE_NAME }}</div><h1>Payment register</h1>
@@ -11,17 +11,17 @@
 
 <div class="grid cols-4 u-mb">
   <div class="stat"><div class="lbl">Awaiting clearance</div>
-    <div class="val mono">KES {{ stats.awaiting_t|floatformat:2|intcomma }}</div>
+    <div class="val mono">{{ CURRENCY }} {{ stats.awaiting_t|money }}</div>
     <div class="help u-mt-0">{{ stats.awaiting_n }} instrument{{ stats.awaiting_n|pluralize }} ·
-      cheques {{ stats.out_cheques.t|default:0|floatformat:0|intcomma }} ·
-      EFT {{ stats.out_eft.t|default:0|floatformat:0|intcomma }} ·
-      RTGS {{ stats.out_rtgs.t|default:0|floatformat:0|intcomma }}</div></div>
+      cheques {{ stats.out_cheques.t|default:0|money:0 }} ·
+      EFT {{ stats.out_eft.t|default:0|money:0 }} ·
+      RTGS {{ stats.out_rtgs.t|default:0|money:0 }}</div></div>
   <div class="stat"><div class="lbl">Cleared today</div><div class="val mono">{{ stats.cleared_today }}</div></div>
   <div class="stat"><div class="lbl">Average days to clear</div>
     <div class="val mono">{% if stats.avg_days != None %}{{ stats.avg_days }}{% else %}—{% endif %}</div></div>
   <div class="stat"><div class="lbl">Oldest outstanding</div>
     {% if stats.oldest %}<div class="val mono u-sm">{{ stats.oldest.date_issued|date:"d M y" }}</div>
-    <div class="help u-mt-0">{{ stats.oldest.get_method_display }} {{ stats.oldest.instrument_number|default:stats.oldest.pk }} · KES {{ stats.oldest.amount|floatformat:0|intcomma }}</div>
+    <div class="help u-mt-0">{{ stats.oldest.get_method_display }} {{ stats.oldest.instrument_number|default:stats.oldest.pk }} · {{ CURRENCY }} {{ stats.oldest.amount|money:0 }}</div>
     {% else %}<div class="val mono">—</div>{% endif %}
     <div class="help u-mt-0">{{ stats.cancelled_n }} cancelled/voided all-time</div></div>
 </div>
@@ -64,7 +64,7 @@
         {% elif c.remittance_batch_id %}<a class="link" href="{% url 'remittance_batch_detail' c.remittance_batch_id %}">{{ c.source_label|truncatechars:40 }}</a>
         {% else %}{{ c.source_label|truncatechars:40 }}{% endif %}</td>
     <td class="muted u-xs">{{ c.fund_names|default:"—" }}</td>
-    <td class="num mono">{{ c.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ c.amount|money }}</td>
     <td class="mono u-xs">{{ c.date_issued|date:"d/m/y"|default:"—" }}</td>
     <td class="mono u-xs">{% if c.date_cleared %}{{ c.date_cleared|date:"d/m/y" }}{% if c.bank_transaction_id %} <span title="Matched to imported bank debit {{ c.bank_transaction.core_ref }}">🏦</span>{% endif %}
         {% elif c.is_outstanding %}<span class="pill pill-amber u-xs" title="Issued, not yet cleared at the bank">Outstanding</span>{% else %}—{% endif %}</td>

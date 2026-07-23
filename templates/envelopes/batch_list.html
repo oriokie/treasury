@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Envelope batches — review queue · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Envelope batch review queue</h1>
@@ -39,7 +39,7 @@
     {% elif b.status == 'REJECTED' %}<span class="pill pill-grey">Rejected</span>{% endif %}
   </td>
   <td class="num mono">{{ b.row_count_ }}</td>
-  <td class="num mono">{{ b.total_|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ b.total_|money }}</td>
   <td>{{ b.created_by.get_full_name|default:b.created_by.username }}</td>
   <td class="u-xs muted">{{ b.updated_at|date:"d M, H:i" }}</td>
   <td>

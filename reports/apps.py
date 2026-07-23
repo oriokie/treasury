@@ -16,6 +16,7 @@ class ReportsConfig(AppConfig):
         from . import component_demo  # noqa: F401
         from . import financial_statements  # noqa: F401
         from . import board_report  # noqa: F401
+        from . import asset_reports  # noqa: F401
         from . import consistency_reports
         consistency_reports.register_report()
         # Intelligence-backed components + the comprehensive Treasurer's Report.

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ case.number }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ case.number }}{% if case.external_reference %} <span class="muted" style="font-size:.6em;font-weight:500" title="Old workbook/paper reference">({{ case.external_reference }})</span>{% endif %}</h1>
@@ -10,19 +10,19 @@
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_list' %}">← Cases</a></div></div>
 
 <div class="grid cols-4 u-mb">
-  <div class="stat"><div class="lbl">Claimed</div><div class="val mono">{% if case.claimed_amount %}{{ case.claimed_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div></div>
-  <div class="stat"><div class="lbl">Assessed entitlement</div><div class="val mono">{% if case.assessed_amount is not None %}{{ case.assessed_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div>
+  <div class="stat"><div class="lbl">Claimed</div><div class="val mono">{% if case.claimed_amount %}{{ case.claimed_amount|money }}{% else %}—{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Assessed entitlement</div><div class="val mono">{% if case.assessed_amount is not None %}{{ case.assessed_amount|money }}{% else %}—{% endif %}</div>
     <div class="foot">By the policy engine</div></div>
-  <div class="stat accent"><div class="lbl">Approved</div><div class="val mono">{% if case.approved_amount %}{{ case.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</div></div>
-  <div class="stat brass"><div class="lbl">Paid / outstanding</div><div class="val mono">{{ case.paid_total|floatformat:2|intcomma }}</div>
-    <div class="foot">{{ CURRENCY }} {{ case.outstanding|floatformat:2|intcomma }} still authorised</div></div>
+  <div class="stat accent"><div class="lbl">Approved</div><div class="val mono">{% if case.approved_amount %}{{ case.approved_amount|money }}{% else %}—{% endif %}</div></div>
+  <div class="stat brass"><div class="lbl">Paid / outstanding</div><div class="val mono">{{ case.paid_total|money }}</div>
+    <div class="foot">{{ CURRENCY }} {{ case.outstanding|money }} still authorised</div></div>
 </div>
 
 <div class="card u-mb"><div class="hd">Funding target <span class="muted u-xs">— a fundraising goal, separate from what the policy computes as the benefit</span></div><div class="bd">
 {% if case.funding_target %}
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-    <div><span class="mono" style="font-size:1.3rem;font-weight:700">{{ CURRENCY }} {{ case.funding_collected|floatformat:2|intcomma }}</span>
-      <span class="muted">of {{ CURRENCY }} {{ case.funding_target|floatformat:2|intcomma }}</span>
+    <div><span class="mono" style="font-size:1.3rem;font-weight:700">{{ CURRENCY }} {{ case.funding_collected|money }}</span>
+      <span class="muted">of {{ CURRENCY }} {{ case.funding_target|money }}</span>
       {% if case.funding_fully_raised %}<span class="pill pill-green u-xs">Target reached</span>{% endif %}</div>
   </div>
   <div class="progress u-mt-sm" style="height:10px;background:var(--line);border-radius:6px;overflow:hidden">
@@ -107,7 +107,7 @@
     <td>{% if c.passed %}<span class="pill pill-green u-xs">Pass</span>{% else %}<span class="pill {% if c.blocking %}pill-red{% else %}pill-amber{% endif %} u-xs">Fail</span>{% endif %}</td>
     <td class="muted">{{ c.detail }}</td>
   </tr>{% endfor %}</tbody></table>
-  <p class="u-mt"><strong>Indicative entitlement: {{ CURRENCY }} {{ preview.entitlement.amount|floatformat:2|intcomma }}</strong>
+  <p class="u-mt"><strong>Indicative entitlement: {{ CURRENCY }} {{ preview.entitlement.amount|money }}</strong>
     <span class="muted">({{ preview.entitlement.basis }})</span></p>
 {% endif %}
 </div></div>
@@ -118,7 +118,7 @@
 <table class="ledger compact"><thead><tr><th>Date</th><th>Payee</th><th class="num">Amount</th><th>Voucher status</th><th>Counts</th><th></th></tr></thead>
 <tbody>{% for p in payouts %}<tr>
   <td>{{ p.date|date:"d M y"|default:"—" }}</td><td>{{ p.payee_name }}</td>
-  <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ p.amount|money }}</td>
   <td>{{ p.status }}</td>
   <td>{% if p.effective %}<span class="pill pill-green u-xs">Yes</span>{% else %}<span class="pill pill-amber u-xs">Not yet</span>{% endif %}</td>
   <td>{% if p.expense_id %}<a class="link" href="/expenses/{{ p.expense_id }}/">Voucher</a>{% endif %}</td>
@@ -158,10 +158,10 @@
 <div class="card u-mb"><div class="hd u-between"><span>Levy for this case</span>
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_statement' case.id %}">WhatsApp statement</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_levy' case.id %}">Open the levy round</a></div><div class="bd">
-  <p>{{ CURRENCY }} {{ levy.collected|floatformat:2|intcomma }} collected of
-     {{ CURRENCY }} {{ levy.expected|floatformat:2|intcomma }} expected
+  <p>{{ CURRENCY }} {{ levy.collected|money }} collected of
+     {{ CURRENCY }} {{ levy.expected|money }} expected
      ({{ levy.rows|length }} member{{ levy.rows|length|pluralize }} levied at
-     {{ CURRENCY }} {{ levy.per_member|floatformat:2|intcomma }} each{% if levy.exempt %}; {{ levy.exempt|length }} exempt{% endif %}).</p>
+     {{ CURRENCY }} {{ levy.per_member|money }} each{% if levy.exempt %}; {{ levy.exempt|length }} exempt{% endif %}).</p>
   {% if case.policy.benefit_mode == 'POOLED' %}
   <p class="help">This scheme pays out what the levy collects, so the benefit will rise as more members pay.
     Re-assess the case once collection is complete.</p>{% endif %}
@@ -169,7 +169,7 @@
   <details class="u-mt no-print"><summary class="link">Fund this case from the balance instead, without a levy</summary>
     <div class="u-mt">
       <p class="help u-mt-0">{{ case.scheme.fund.name }}'s balance right now is
-        <strong>{{ CURRENCY }} {{ fund_balance|floatformat:2|intcomma }}</strong>. A levy is a collection AID, never a
+        <strong>{{ CURRENCY }} {{ fund_balance|money }}</strong>. A levy is a collection AID, never a
         requirement — a case can already be approved and paid straight from this balance regardless. This just
         records that choice, dated and reasoned, on the case's own history, instead of it being an unstated
         decision reached by simply never opening the levy round above.</p>
@@ -215,7 +215,7 @@
     {% elif committee.waiting_on_chair %}<span class="pill pill-amber u-xs">Awaiting the Chair</span>
     {% elif committee.blocked %}<span class="pill pill-red u-xs">Refused</span>
     {% else %}<span class="pill pill-amber u-xs">Awaiting the committee</span>{% endif %}
-    {% if committee.agreed_amount %} · the quorum agreed on at most {{ CURRENCY }} {{ committee.agreed_amount|floatformat:2|intcomma }}{% endif %}</p>
+    {% if committee.agreed_amount %} · the quorum agreed on at most {{ CURRENCY }} {{ committee.agreed_amount|money }}{% endif %}</p>
   {% if committee.requires_chair %}<p class="help u-mt-0">This policy requires the Chair's own approval, not just a
     headcount — {% if committee.chair_approved %}the Chair has approved.{% else %}the Chair ({{ committee.chair_seat.user }})
     has not yet voted.{% endif %}</p>{% endif %}
@@ -225,7 +225,7 @@
     <td>{{ v.user.get_full_name|default:v.user.username }}
       {% if committee.chair_seat and v.user_id == committee.chair_seat.user_id %}<span class="pill pill-amber u-xs">Chair</span>{% endif %}</td>
     <td><span class="pill {% if v.decision == 'APPROVE' %}pill-green{% elif v.decision == 'REJECT' %}pill-red{% else %}pill-brass{% endif %} u-xs">{{ v.get_decision_display }}</span></td>
-    <td class="num mono">{% if v.amount %}{{ v.amount|floatformat:2|intcomma }}{% else %}<span class="muted">as assessed</span>{% endif %}</td>
+    <td class="num mono">{% if v.amount %}{{ v.amount|money }}{% else %}<span class="muted">as assessed</span>{% endif %}</td>
     <td class="muted">{{ v.note }}</td>
     <td class="muted u-xs">{{ v.created_at|date:"d M y H:i" }}</td>
   </tr>{% empty %}<tr><td colspan="5" class="empty">No decisions recorded yet.</td></tr>{% endfor %}</tbody></table>

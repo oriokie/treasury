@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Cash book · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Cash Book" %}
@@ -10,11 +10,11 @@
   <tbody>
   {% for e in entries %}
     <tr><td class="mono">{{ e.date|date:"d/m/y" }}</td><td>{{ e.desc }}</td>
-      <td class="num mono row-debit">{% if e.debit %}{{ e.debit|floatformat:2|intcomma }}{% endif %}</td>
-      <td class="num mono">{% if e.credit %}{{ e.credit|floatformat:2|intcomma }}{% endif %}</td>
-      <td class="num mono">{{ e.balance|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono row-debit">{% if e.debit %}{{ e.debit|money }}{% endif %}</td>
+      <td class="num mono">{% if e.credit %}{{ e.credit|money }}{% endif %}</td>
+      <td class="num mono">{{ e.balance|money }}</td></tr>
   {% empty %}<tr><td colspan="5" class="empty">No entries in this period.</td></tr>{% endfor %}
   </tbody>
-  <tfoot><tr><th colspan="4">Closing balance</th><th class="num mono">{{ closing|floatformat:2|intcomma }}</th></tr></tfoot>
+  <tfoot><tr><th colspan="4">Closing balance</th><th class="num mono">{{ closing|money }}</th></tr></tfoot>
 </table></div>
 {% endblock %}

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Variance · {{ dept.name }}{% endblock %}
 {% block content %}
 <div class="page-head"><div>
@@ -8,11 +8,11 @@
 
 <div class="card"><div class="bd">
   <table class="ledger compact"><tbody>
-    <tr><td>Fund engine balance</td><td class="num mono">KSh {{ engine|floatformat:2|intcomma }}</td></tr>
-    <tr><td>General-ledger balance</td><td class="num mono">KSh {{ ledger|floatformat:2|intcomma }}</td></tr>
-    <tr><td><strong>Difference</strong></td><td class="num mono"><strong>KSh {{ diff|floatformat:2|intcomma }}</strong></td></tr>
-    <tr><td>Explained by entries below</td><td class="num mono">KSh {{ explained|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Unexplained remainder</td><td class="num mono {% if unexplained %}text-danger{% endif %}">KSh {{ unexplained|floatformat:2|intcomma }}</td></tr>
+    <tr><td>Fund engine balance</td><td class="num mono">{{ CURRENCY }} {{ engine|money }}</td></tr>
+    <tr><td>General-ledger balance</td><td class="num mono">{{ CURRENCY }} {{ ledger|money }}</td></tr>
+    <tr><td><strong>Difference</strong></td><td class="num mono"><strong>{{ CURRENCY }} {{ diff|money }}</strong></td></tr>
+    <tr><td>Explained by entries below</td><td class="num mono">{{ CURRENCY }} {{ explained|money }}</td></tr>
+    <tr><td>Unexplained remainder</td><td class="num mono {% if unexplained %}text-danger{% endif %}">{{ CURRENCY }} {{ unexplained|money }}</td></tr>
   </tbody></table>
 </div></div>
 
@@ -27,7 +27,7 @@
         <td><span class="pill">{{ i.kind }}</span></td>
         <td>{{ i.desc }}</td>
         <td class="mono">{{ i.ref }}</td>
-        <td class="num mono">KSh {{ i.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ CURRENCY }} {{ i.amount|money }}</td>
         <td class="muted u-small">{{ i.reason }}</td>
         <td>{% if i.url %}<a class="link" href="{{ i.url }}">open</a>{% endif %}</td>
       </tr>

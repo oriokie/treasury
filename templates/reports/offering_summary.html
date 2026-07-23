@@ -10,8 +10,8 @@
   <tbody>
   {% for name, row in rows.items %}
     <tr><td><strong>{{ name }}</strong></td>
-      {% for s in sabbaths %}<td class="num mono">{{ row.cells|get_item:s|floatformat:2|intcomma }}</td>{% endfor %}
-      <td class="num mono"><strong>{{ row.total|floatformat:2|intcomma }}</strong></td></tr>
+      {% for s in sabbaths %}<td class="num mono">{{ row.cells|get_item:s|money }}</td>{% endfor %}
+      <td class="num mono"><strong>{{ row.total|money }}</strong></td></tr>
   {% empty %}<tr><td colspan="{{ sabbaths|length|add:'2' }}" class="empty">Nothing recorded in this period.</td></tr>{% endfor %}
   </tbody>
 </table></div>

@@ -26,7 +26,32 @@ def site_context(request):
         "is_leader": roles.is_leader(user) if user else False,
         "is_elder": roles.is_elder(user) if user else False,
         "is_staff_role": roles.is_staff_role(user) if user else False,
+        # The member self-service portal. `is_portal_member` drives the whole
+        # navigation branch, so a member never sees a link to a page the
+        # confinement middleware would only bounce them away from.
+        "is_portal_member": roles.is_portal_member(user) if user else False,
     }
+    if ctx["is_portal_member"]:
+        try:
+            from benevolent.models import PortalRequest
+            account = roles.member_account(user)
+            ctx["portal_account"] = account
+            ctx["portal_action_needed"] = PortalRequest.objects.filter(
+                account=account,
+                status=PortalRequest.Status.INFO_NEEDED).count()
+        except Exception:
+            ctx["portal_action_needed"] = 0
+    elif user is not None and getattr(user, "is_authenticated", False):
+        # The office's own counter: how much member post is waiting. Cheap, and
+        # only computed for a login that could actually action it.
+        try:
+            if roles.can_manage_benevolent(user):
+                from benevolent.models import PortalRequest
+                ctx["portal_queue_count"] = PortalRequest.objects.filter(
+                    status__in=[PortalRequest.Status.SUBMITTED,
+                                PortalRequest.Status.UNDER_REVIEW]).count()
+        except Exception:
+            pass
     from . import rights as _rights
     _granted = _rights.user_rights(user) if user else set()
     ctx["rights"] = _granted

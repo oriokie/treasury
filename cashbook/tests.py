@@ -263,7 +263,11 @@ class AccrualOverlayTests(TestCase):
         self.client.post(reverse("payable_settle", args=[p.id]))
         p.refresh_from_db()
         self.assertTrue(p.settled)
-        self.assertIsNotNone(p.settled_expense_id)
+        # `settled_expense` is now a property — the payment that cleared the
+        # balance — because a payable may be paid in several instalments.
+        self.assertIsNotNone(p.settled_expense)
+        self.assertEqual(p.paid_total, Decimal("15000"))
+        self.assertEqual(p.balance, Decimal("0"))
         after = {r["department"].id: r["closing"]
                  for r in balances.department_summary(None, None, consolidated=False)}
         # settling charges the fund (cash basis recognition at payment)

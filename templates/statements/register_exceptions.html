@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Register exceptions · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Exceptions</h1>
@@ -82,7 +82,7 @@
   {% if can_enter_data and f_status == 'OPEN' %}<td class="no-print">{% if e.is_open and row.dispositions %}<input type="checkbox" name="selected" value="{{ e.id }}" form="bulkForm" class="bulkChk">{% endif %}</td>{% endif %}
   <td><span class="pill {% if e.kind == 'MISSING_IN_LEDGER' %}pill-amber{% else %}pill-red{% endif %} u-xs">{{ e.get_kind_display }}</span></td>
   <td>{{ e.date|date:"d M y" }}</td>
-  <td class="num mono {% if e.amount < 0 %}row-debit{% endif %}">{{ e.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono {% if e.amount < 0 %}row-debit{% endif %}">{{ e.amount|money }}</td>
   <td class="mono u-xs">{{ e.ref|truncatechars:18 }}</td>
   <td class="u-xs">{{ e.detail|default:"—"|truncatechars:48 }}
     {% if e.transaction %}<div class="muted u-xs">Ledger #{{ e.transaction.id }}{% if e.transaction.department %} · {{ e.transaction.department.name }}{% endif %}</div>{% endif %}</td>
@@ -150,7 +150,7 @@ function confirmBulk(){
   really a bank payment and not cash.</p>
 <table class="ledger compact"><thead><tr><th>Date</th><th class="num">Amount</th><th>Fund</th><th>Reference</th><th>Member</th></tr></thead>
 <tbody>{% for t in unverifiable %}<tr>
-  <td>{{ t.date|date:"d M y" }}</td><td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+  <td>{{ t.date|date:"d M y" }}</td><td class="num mono">{{ t.amount|money }}</td>
   <td class="u-xs">{{ t.department.name|default:"—" }}</td>
   <td class="u-xs">{{ t.reference|default:"—"|truncatechars:28 }}</td>
   <td class="u-xs">{{ t.member.name|default:"—" }}</td>

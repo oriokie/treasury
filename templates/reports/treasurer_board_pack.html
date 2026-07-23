@@ -80,14 +80,14 @@
             <div class="bp-kpi{% if r.meta.good == True %} bp-kpi-good{% elif r.meta.good == False %} bp-kpi-bad{% endif %}">
               <div class="bp-kpi-label">{{ r.cells.label }}</div>
               <div class="bp-kpi-value">
-                {% if r.meta.format == 'money' %}<span class="bp-kpi-unit">KES</span> {{ r.cells.value|floatformat:0|intcomma }}
+                {% if r.meta.format == 'money' %}<span class="bp-kpi-unit">{{ CURRENCY }}</span> {{ r.cells.value|money:0 }}
                 {% elif r.meta.format == 'score' %}{{ r.cells.value|floatformat:0 }}<span class="bp-kpi-unit">/100</span>
-                {% else %}{{ r.cells.value|floatformat:0|intcomma }}{% endif %}
+                {% else %}{{ r.cells.value|money:0 }}{% endif %}
               </div>
               {% if r.meta.delta_abs != None %}
                 <div class="bp-kpi-delta {% if r.meta.delta_abs < 0 %}down{% else %}up{% endif %}">
                   {% if r.meta.delta_abs < 0 %}▼{% else %}▲{% endif %}
-                  KES {{ r.meta.delta_abs|abs_val|floatformat:0|intcomma }}
+                  {{ CURRENCY }} {{ r.meta.delta_abs|abs_val|money:0 }}
                   {% if r.meta.delta_pct != None %}<span class="bp-kpi-pct">({{ r.meta.delta_pct|abs_val|floatformat:1 }}%)</span>{% endif %}
                 </div>
               {% else %}
@@ -104,7 +104,7 @@
             <div class="bp-snapshot">
             {% for r in s.rows %}
               <div class="bp-kpi"><div class="bp-kpi-label">{{ r.cells.label }}</div>
-                <div class="bp-kpi-value"><span class="bp-kpi-unit">KES</span> {{ r.cells.value|floatformat:0|intcomma }}</div></div>
+                <div class="bp-kpi-value"><span class="bp-kpi-unit">{{ CURRENCY }}</span> {{ r.cells.value|money:0 }}</div></div>
             {% endfor %}
             </div>
           </div></div>
@@ -149,7 +149,7 @@
               {% for r in s.rows %}
                 <tr {% if r.emphasis %}class="bp-emph"{% endif %}>
                   <th scope="row">{{ r.cells.label }}</th>
-                  <td class="num mono">{{ r.cells.value|floatformat:2|intcomma }}</td>
+                  <td class="num mono">{{ r.cells.value|money }}</td>
                 </tr>
               {% endfor %}
               </tbody>
@@ -174,7 +174,7 @@
                   {% for c in s.columns %}
                     <td {% if c.numeric %}class="num mono"{% endif %}>
                       {% if c.drilldown and r.url %}<a class="link" href="{{ r.url }}">{{ r.cells|get_item:c.key }}</a>
-                      {% elif c.numeric %}{{ r.cells|get_item:c.key|floatformat:2|intcomma }}
+                      {% elif c.numeric %}{{ r.cells|get_item:c.key|money }}
                       {% else %}{{ r.cells|get_item:c.key }}{% endif %}
                     </td>
                   {% endfor %}
@@ -183,7 +183,7 @@
               </tbody>
               {% if s.total %}<tfoot><tr class="bp-emph">
                 {% for c in s.columns %}<td {% if c.numeric %}class="num mono"{% endif %}>
-                  {% if c.numeric %}{{ s.total.cells|get_item:c.key|floatformat:2|intcomma }}{% else %}{{ s.total.cells|get_item:c.key }}{% endif %}
+                  {% if c.numeric %}{{ s.total.cells|get_item:c.key|money }}{% else %}{{ s.total.cells|get_item:c.key }}{% endif %}
                 </td>{% endfor %}
               </tr></tfoot>{% endif %}
             </table></div>

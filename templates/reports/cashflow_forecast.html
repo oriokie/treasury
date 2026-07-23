@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Cash flow forecast · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Cash flow forecast</h1>
@@ -9,8 +9,8 @@
   {% for label, h in horizons.items %}
   <div class="card"><div class="hd">{{ label }}</div><div class="bd">
     <div class="mono" style="font-size:1.7rem;font-weight:700;color:{% if h.projected < 0 %}var(--danger){% else %}var(--forest){% endif %}">
-      {{ h.projected|floatformat:0|intcomma }}</div>
-    <div class="help u-mt-0">by {{ h.horizon_end|date:"d M Y" }} · {% if h.net >= 0 %}+{% endif %}{{ h.net|floatformat:0|intcomma }} vs today</div>
+      {{ h.projected|money:0 }}</div>
+    <div class="help u-mt-0">by {{ h.horizon_end|date:"d M Y" }} · {% if h.net >= 0 %}+{% endif %}{{ h.net|money:0 }} vs today</div>
   </div></div>
   {% endfor %}
 </div>
@@ -23,12 +23,12 @@
   <table class="ledger"><thead><tr><th>Component</th>
     {% for label, h in horizons.items %}<th class="num">{{ label }}</th>{% endfor %}</tr></thead>
   <tbody>
-    <tr><td>Opening cash (today)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.opening|floatformat:0|intcomma }}</td>{% endfor %}</tr>
-    <tr><td>+ Projected giving (run-rate)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.proj_giving|floatformat:0|intcomma }}</td>{% endfor %}</tr>
-    <tr><td>+ Expected pledge collections</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.pledge_in|floatformat:0|intcomma }}</td>{% endfor %}</tr>
-    <tr><td>− Recurring expenses (scheduled)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.recurring|floatformat:0|intcomma }}</td>{% endfor %}</tr>
-    <tr><td>− Other spending (run-rate)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.discretionary|floatformat:0|intcomma }}</td>{% endfor %}</tr>
-    <tr class="total-row"><td><strong>= Projected position</strong></td>{% for label, h in horizons.items %}<td class="num mono"><strong>{{ h.projected|floatformat:0|intcomma }}</strong></td>{% endfor %}</tr>
+    <tr><td>Opening cash (today)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.opening|money:0 }}</td>{% endfor %}</tr>
+    <tr><td>+ Projected giving (run-rate)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.proj_giving|money:0 }}</td>{% endfor %}</tr>
+    <tr><td>+ Expected pledge collections</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.pledge_in|money:0 }}</td>{% endfor %}</tr>
+    <tr><td>− Recurring expenses (scheduled)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.recurring|money:0 }}</td>{% endfor %}</tr>
+    <tr><td>− Other spending (run-rate)</td>{% for label, h in horizons.items %}<td class="num mono">{{ h.discretionary|money:0 }}</td>{% endfor %}</tr>
+    <tr class="total-row"><td><strong>= Projected position</strong></td>{% for label, h in horizons.items %}<td class="num mono"><strong>{{ h.projected|money:0 }}</strong></td>{% endfor %}</tr>
   </tbody></table>
 </div></div>
 <div class="help u-mt-0">Indicative only. Giving and other spending use an average of the last six months; recurring expenses and pledge installments use their actual schedules.</div>

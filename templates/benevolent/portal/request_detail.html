@@ -1,0 +1,66 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}{{ req.reference }}{% endblock %}
+{% block portal_desc %}{{ req.get_kind_display }} · {{ req.subject }}{% endblock %}
+{% block portal_actions %}<a class="btn btn-ghost btn-sm" href="{% url 'portal_requests' %}">All my requests</a>{% endblock %}
+{% block portal_content %}
+
+<div class="panel u-mb">
+  <div class="pt-row"><span class="k">Status</span>
+    <span class="pill {% if req.status == 'APPROVED' %}pill-green{% elif req.status == 'DECLINED' %}pill-red{% elif req.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ req.get_status_display }}</span></div>
+  <div class="pt-row"><span class="k">Sent</span><b>{{ req.submitted_at|date:"d M Y H:i"|default:"Not yet sent" }}</b></div>
+  {% if req.event_date %}<div class="pt-row"><span class="k">Date of the event</span><b>{{ req.event_date|date:"d M Y" }}</b></div>{% endif %}
+  {% if req.case %}<div class="pt-row"><span class="k">Case raised</span>
+    <b><a class="link" href="{% url 'portal_case_detail' req.case.pk %}">{{ req.case.number }}</a></b></div>{% endif %}
+  {% if req.detail %}<div class="u-mt"><span class="k">What you told us</span><p>{{ req.detail|linebreaksbr }}</p></div>{% endif %}
+</div>
+
+{% if req.decision_note %}
+<div class="panel u-mb" style="border-left:3px solid {% if req.status == 'DECLINED' %}var(--danger){% else %}var(--forest){% endif %}">
+  <b>{% if req.status == 'DECLINED' %}Why this was not accepted{% else %}From the church office{% endif %}</b>
+  <p>{{ req.decision_note|linebreaksbr }}</p>
+</div>
+{% endif %}
+
+<div class="grid cols-2">
+  <div class="panel">
+    <h3>Messages</h3>
+    {% for m in messages_thread %}
+    <div class="pt-row" style="flex-direction:column;align-items:stretch">
+      <span class="k">{% if m.from_member %}You{% else %}Church office{% endif %} · {{ m.created_at|date:"d M Y H:i" }}</span>
+      <span>{{ m.body|linebreaksbr }}</span></div>
+    {% empty %}<div class="pt-empty">No messages yet.</div>{% endfor %}
+
+    {% if req.is_open %}
+    <form method="post" class="u-mt no-print">{% csrf_token %}
+      <label class="lbl" for="id_body">Reply</label>
+      <textarea class="field" name="body" id="id_body" rows="3" required></textarea>
+      <button class="btn btn-sm u-mt" name="action" value="reply">Send reply</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>Documents</h3>
+    {% for d in documents %}
+    <div class="pt-row"><span class="k">{{ d.label|default:d.original_name|default:d.get_kind_display }}</span>
+      <a class="link" href="{% url 'portal_document_action' d.pk 'download' %}">Download</a></div>
+    {% empty %}<div class="pt-empty">Nothing attached.</div>{% endfor %}
+
+    {% if req.is_open %}
+    <form method="post" enctype="multipart/form-data" class="u-mt no-print">{% csrf_token %}
+      <input class="field" type="file" name="documents" multiple accept=".pdf,.jpg,.jpeg,.png,.heic,.webp">
+      <button class="btn btn-sm u-mt" name="action" value="upload">Attach</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if req.member_may_edit or req.is_open %}
+<div class="panel u-mt no-print">
+  <form method="post" class="pt-actions">{% csrf_token %}
+    {% if req.member_may_edit %}<button class="btn" name="action" value="submit">Send to the church office</button>{% endif %}
+    {% if req.is_open %}<button class="btn btn-ghost" name="action" value="withdraw">Withdraw this request</button>{% endif %}
+  </form>
+</div>
+{% endif %}
+{% endblock %}

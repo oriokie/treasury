@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Build development groups · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Balanced development groups</h1>
@@ -7,8 +7,8 @@
 
 <div class="kpi-grid u-mb">
   {% include "ui/stat.html" with label="Active members" value=member_count %}
-  {% include "ui/stat.html" with label="Total giving capability" prefix="KSh" value=total_capability|floatformat:2|intcomma accent="brass" %}
-  {% if n >= 2 %}{% include "ui/stat.html" with label="Capability spread across groups" prefix="KSh" value=spread|floatformat:2|intcomma foot="max − min group total (lower is better)" %}{% endif %}
+  {% include "ui/stat.html" with label="Total giving capability" prefix=CURRENCY value=total_capability|money accent="brass" %}
+  {% if n >= 2 %}{% include "ui/stat.html" with label="Capability spread across groups" prefix=CURRENCY value=spread|money foot="max − min group total (lower is better)" %}{% endif %}
 </div>
 
 <div class="card u-mb"><div class="bd">
@@ -38,9 +38,9 @@
   {% if not apply_enabled %}<p class="help u-mt-0">This is a proposal only — no groups are created and nothing is changed. Download it as Excel above. (A treasurer can switch on live group creation under <a class="link" href="{% url 'settings' %}">Settings → Channels</a>.)</p>{% endif %}
 <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.8rem">
   {% for b in preview %}
-  <div class="card" style="margin:0"><div class="hd u-between" style="font-size:.85rem">{{ b.number }} · {{ b.members|length }} member{{ b.members|length|pluralize }}<span class="mono">KSh {{ b.total|floatformat:0|intcomma }}</span></div>
+  <div class="card" style="margin:0"><div class="hd u-between" style="font-size:.85rem">{{ b.number }} · {{ b.members|length }} member{{ b.members|length|pluralize }}<span class="mono">{{ CURRENCY }} {{ b.total|money:0 }}</span></div>
   <div class="bd" style="max-height:240px;overflow:auto;padding:.5rem .8rem">
-    {% for m in b.members %}<div class="u-between" style="font-size:.82rem;gap:.5rem"><span>{{ m.name }}{% if m.phone %} <span class="muted">· {{ m.phone }}</span>{% endif %}</span><span class="muted mono">{{ m.weight|floatformat:0|intcomma }}</span></div>{% endfor %}
+    {% for m in b.members %}<div class="u-between" style="font-size:.82rem;gap:.5rem"><span>{{ m.name }}{% if m.phone %} <span class="muted">· {{ m.phone }}</span>{% endif %}</span><span class="muted mono">{{ m.weight|money:0 }}</span></div>{% endfor %}
   </div></div>
   {% endfor %}
 </div>

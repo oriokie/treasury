@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Count {{ cs.date|date:"d M Y" }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Cash count — {{ cs.date|date:"d M Y" }}</h1>
@@ -21,16 +21,16 @@
 {% endif %}
 
 <div class="grid cols-3 u-mb">
-  <div class="stat"><div class="lbl">Counted</div><div class="val mono">KES {{ cs.counted_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Expected</div><div class="val mono">KES {{ cs.expected_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Discrepancy</div><div class="val mono" style="color:{% if cs.has_discrepancy %}var(--red,#b00){% else %}var(--forest){% endif %}">KES {{ cs.discrepancy|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Counted</div><div class="val mono">{{ CURRENCY }} {{ cs.counted_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Expected</div><div class="val mono">{{ CURRENCY }} {{ cs.expected_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Discrepancy</div><div class="val mono" style="color:{% if cs.has_discrepancy %}var(--red,#b00){% else %}var(--forest){% endif %}">{{ CURRENCY }} {{ cs.discrepancy|money }}</div></div>
 </div>
 {% if cs.has_discrepancy %}<div class="flash" style="background:#fff7e6;border:1px solid var(--amber)">⚠ This count does not match the system's expected receipts. {% if cs.note %}Note: {{ cs.note }}{% endif %}</div>{% endif %}
 
 <div class="card"><div class="hd">Denomination breakdown</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Denomination</th><th class="num">Count</th><th class="num">Subtotal</th></tr></thead>
-<tbody>{% for d in cs.denominations.all %}<tr><td class="mono">KES {{ d.denomination|floatformat:0 }}</td><td class="num mono">{{ d.count }}</td><td class="num mono">{{ d.subtotal|floatformat:2|intcomma }}</td></tr>{% endfor %}</tbody>
-<tfoot><tr><td colspan="2" class="u-right"><strong>Total counted</strong></td><td class="num mono"><strong>{{ cs.counted_total|floatformat:2|intcomma }}</strong></td></tr></tfoot>
+<tbody>{% for d in cs.denominations.all %}<tr><td class="mono">{{ CURRENCY }} {{ d.denomination|floatformat:0 }}</td><td class="num mono">{{ d.count }}</td><td class="num mono">{{ d.subtotal|money }}</td></tr>{% endfor %}</tbody>
+<tfoot><tr><td colspan="2" class="u-right"><strong>Total counted</strong></td><td class="num mono"><strong>{{ cs.counted_total|money }}</strong></td></tr></tfoot>
 </table></div></div>
 
 <div class="card u-mt"><div class="hd">Counters / witnesses</div><div class="bd">

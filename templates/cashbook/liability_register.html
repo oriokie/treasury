@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Liability transactions · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Liability transactions</h1>
@@ -10,11 +10,11 @@
 </div></div>
 
 <div class="grid cols-4 u-mb">
-  <div class="stat"><div class="lbl">Outstanding loans</div><div class="val mono">KES {{ stats.loans_out|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Outstanding trust funds</div><div class="val mono">KES {{ stats.trust_out|floatformat:2|intcomma }}</div></div>
-  {% if stats.advances_out != None %}<div class="stat"><div class="lbl">Advances outstanding</div><div class="val mono">KES {{ stats.advances_out|floatformat:2|intcomma }}</div></div>{% endif %}
+  <div class="stat"><div class="lbl">Outstanding loans</div><div class="val mono">{{ CURRENCY }} {{ stats.loans_out|money }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding trust funds</div><div class="val mono">{{ CURRENCY }} {{ stats.trust_out|money }}</div></div>
+  {% if stats.advances_out != None %}<div class="stat"><div class="lbl">Advances outstanding</div><div class="val mono">{{ CURRENCY }} {{ stats.advances_out|money }}</div></div>{% endif %}
   <div class="stat"><div class="lbl">This month</div><div class="val mono">{{ stats.month_count }} <span class="u-xs muted">movements</span></div>
-    <div class="help u-mt-0">KES {{ stats.month_total|floatformat:2|intcomma }}</div></div>
+    <div class="help u-mt-0">{{ CURRENCY }} {{ stats.month_total|money }}</div></div>
 </div>
 
 {% if liability_badge %}<div class="alert alert-info u-mb">{{ liability_badge }} liability document{{ liability_badge|pluralize }} pending approval — open the voucher from the register below to approve.</div>{% endif %}
@@ -47,7 +47,7 @@
   <td class="muted u-xs">{{ r.description|truncatechars:60 }}</td>
   <td class="muted u-xs">{{ r.fund }}</td>
   <td class="u-xs">{{ r.party }}</td>
-  <td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.amount|money }}</td>
   <td>{% if r.direction > 0 %}<span class="pill pill-blue u-xs">▲ Increase</span>{% elif r.direction < 0 %}<span class="pill pill-green u-xs">▼ Settle</span>{% else %}<span class="muted u-xs">—</span>{% endif %}</td>
   <td class="u-xs">{{ r.status }}</td>
   <td class="muted u-xs">{{ r.created_by }}</td>

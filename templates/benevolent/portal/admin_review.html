@@ -1,0 +1,134 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}{{ req.reference }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div><div class="eyebrow">Benevolent · Member portal</div>
+      <h1>{{ req.reference }}</h1>
+      <div class="desc">{{ req.get_kind_display }} from {{ req.account.member.name }}</div></div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'portal_admin_queue' %}">Back to the queue</a></div>
+  </div>
+  <div class="rule"></div>
+</div>
+
+<div class="grid cols-2 u-mb">
+  <div class="panel">
+    <h3>What was asked</h3>
+    <div class="pt-row" style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Status</span>
+      <span class="pill {% if req.status == 'APPROVED' %}pill-green{% elif req.status == 'DECLINED' %}pill-red{% elif req.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ req.get_status_display }}</span></div>
+    <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Subject</span><b>{{ req.subject }}</b></div>
+    <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Scheme</span><b>{{ req.membership.scheme.name|default:"—" }}</b></div>
+    {% if req.event_date %}<div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Date of event</span><b>{{ req.event_date|date:"d M Y" }}</b></div>{% endif %}
+    {% if req.dependant %}<div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Dependant</span><b>{{ req.dependant }}</b></div>{% endif %}
+    {% if req.deceased_name %}<div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Who has died</span><b>{{ req.deceased_name }}</b></div>{% endif %}
+    {% if req.case %}<div style="display:flex;justify-content:space-between;padding:.5rem 0">
+      <span class="muted">Case raised</span><b><a class="link" href="{% url 'benevolent_case_detail' req.case.pk %}">{{ req.case.number }}</a></b></div>{% endif %}
+    {% if req.detail %}<div class="u-mt"><span class="muted">In the member's words</span>
+      <p>{{ req.detail|linebreaksbr }}</p></div>{% endif %}
+    {% if req.payload %}<div class="u-mt"><span class="muted">Proposed</span>
+      <table class="table">{% for k, v in req.payload.items %}
+        <tr><td>{{ k }}</td><td class="mono">{{ v|default:"—" }}</td></tr>{% endfor %}</table></div>{% endif %}
+  </div>
+
+  <div class="panel">
+    <h3>The member</h3>
+    <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Name on the roll</span><b>{{ req.account.member.name }}</b></div>
+    <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Membership</span><b>{{ req.membership.number|default:"—" }}</b></div>
+    <div style="display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--line)">
+      <span class="muted">Standing</span><b>{{ req.membership.get_standing_display|default:"—" }}</b></div>
+    <div style="display:flex;justify-content:space-between;padding:.5rem 0">
+      <span class="muted">Portal contact</span><b class="mono">{{ req.account.contact_phone|default:"—" }}</b></div>
+    {% if history %}<h3 class="u-mt">Their other requests</h3>
+      {% for h in history %}<div style="display:flex;justify-content:space-between;padding:.35rem 0">
+        <a class="link" href="{% url 'portal_admin_review' h.pk %}">{{ h.reference }}</a>
+        <span class="muted">{{ h.get_kind_display }} · {{ h.get_status_display }}</span></div>{% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid cols-2 u-mb">
+  <div class="panel">
+    <h3>Documents</h3>
+    {% for d in documents %}
+    <div style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--line)">
+      <span>{{ d.label|default:d.original_name }} <span class="muted">· {{ d.get_kind_display }}</span></span>
+      <a class="link" href="{{ d.file.url }}">Open</a></div>
+    {% empty %}<p class="muted">Nothing attached.</p>{% endfor %}
+  </div>
+  <div class="panel">
+    <h3>Conversation</h3>
+    {% for m in thread %}
+    <div style="padding:.4rem 0;border-bottom:1px solid var(--line)">
+      <div class="muted" style="font-size:.8rem">{% if m.from_member %}Member{% else %}Office{% endif %} · {{ m.created_at|date:"d M Y H:i" }}</div>
+      <div>{{ m.body|linebreaksbr }}</div></div>
+    {% empty %}<p class="muted">No messages.</p>{% endfor %}
+  </div>
+</div>
+
+{% if req.is_open %}
+<div class="panel">
+  <h3>Decide</h3>
+  {% if not may_decide %}
+  <p class="muted" style="border-left:3px solid var(--amber);padding-left:.75rem">
+    You can read this request, but deciding it needs the role that owns the change it
+    would make — {% if req.kind == 'ASSISTANCE' or req.kind == 'DEATH' %}case management{% else %}member registration{% endif %}.
+    Someone with that role must action it.</p>
+  {% endif %}
+
+  <form method="post" class="u-mb">{% csrf_token %}
+    <label class="lbl" for="id_message">Ask the member for more</label>
+    <textarea class="field" name="message" id="id_message" rows="2"
+              placeholder="e.g. Please attach the burial permit."></textarea>
+    <div class="u-mt" style="display:flex;gap:.5rem;flex-wrap:wrap">
+      {% if req.status == 'SUBMITTED' %}<button class="btn btn-ghost btn-sm" name="action" value="take">Take for review</button>{% endif %}
+      <button class="btn btn-ghost btn-sm" name="action" value="info">Ask for more information</button>
+    </div>
+  </form>
+
+  {% if may_decide %}
+  <form method="post" class="u-mb">{% csrf_token %}
+    {% if req.kind == 'ASSISTANCE' %}
+      <label class="lbl" for="id_event_type">Which event type does this fall under?</label>
+      <select class="field" name="event_type" id="id_event_type">
+        <option value="">—</option>
+        {% for e in event_types %}<option value="{{ e.pk }}" {% if req.event_type_id == e.pk %}selected{% endif %}>{{ e.name }}</option>{% endfor %}
+      </select>
+      <label class="lbl u-mt" for="id_amount">Amount claimed (optional)</label>
+      <input class="field" type="number" step="0.01" name="amount" id="id_amount">
+      <p class="muted u-mt">Approving raises a DRAFT case. It still has to be assessed,
+        pass eligibility and be approved on its own merits — this does not commit the
+        scheme to anything.</p>
+    {% endif %}
+    <label class="lbl u-mt" for="id_note">A note for the member (shown to them)</label>
+    <textarea class="field" name="decision_note" id="id_note" rows="2"></textarea>
+    <button class="btn u-mt" name="action" value="approve">Approve</button>
+  </form>
+
+  <form method="post">{% csrf_token %}
+    <label class="lbl" for="id_reason">Why this is being declined (shown to the member)</label>
+    <textarea class="field" name="reason" id="id_reason" rows="2" required></textarea>
+    <button class="btn btn-ghost u-mt" name="action" value="decline">Decline</button>
+  </form>
+  {% endif %}
+</div>
+{% elif req.decision_note %}
+<div class="panel"><h3>Decision</h3><p>{{ req.decision_note|linebreaksbr }}</p>
+  <p class="muted">By {{ req.reviewed_by }} on {{ req.reviewed_at|date:"d M Y H:i" }}</p></div>
+{% endif %}
+
+<div class="panel u-mt">
+  <form method="post">{% csrf_token %}
+    <label class="lbl" for="id_internal">Office notes (never shown to the member)</label>
+    <textarea class="field" name="internal_note" id="id_internal" rows="3">{{ req.internal_note }}</textarea>
+    <button class="btn btn-ghost btn-sm u-mt" name="action" value="note">Save note</button>
+  </form>
+</div>
+{% endblock %}

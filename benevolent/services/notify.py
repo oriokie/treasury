@@ -103,6 +103,28 @@ _DEFAULTS = {
         "Dear {user_name},\n\n{scheme} claim {case_number} ({beneficiary}) has been "
         "assessed and routed to the committee. Please review and record your "
         "decision."),
+
+    # --- member self-service portal ---------------------------------------
+    (NotificationEvent.PORTAL_REQUEST_UPDATED, "SMS"): (
+        "",
+        "{church}: your {kind} ({reference}) {phrase}. Sign in to the member "
+        "portal to see the details."),
+    (NotificationEvent.PORTAL_REQUEST_UPDATED, "EMAIL"): (
+        "Your request {reference} — {scheme}",
+        "Dear {member_name},\n\nYour {kind} \u2014 \"{subject}\" \u2014 reference "
+        "{reference}, {phrase}.\n\nSign in to the member portal to read the full "
+        "details and to reply if anything further is needed.\n\n{church}"),
+    (NotificationEvent.PORTAL_INVITED, "SMS"): (
+        "",
+        "{church}: you can now see your {scheme} contributions, standing and "
+        "requests online. Sign in as {username} and use \"forgot password\" to "
+        "set your password."),
+    (NotificationEvent.PORTAL_INVITED, "EMAIL"): (
+        "Your member portal access — {church}",
+        "Dear {member_name},\n\nYou can now see your {scheme} contributions, "
+        "standing, household and requests online.\n\nYour username is "
+        "{username}. Use the \"forgot password\" link on the sign-in page to set "
+        "a password for the first time.\n\n{church}"),
 }
 
 

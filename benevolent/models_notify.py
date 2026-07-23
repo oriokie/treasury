@@ -32,6 +32,13 @@ class NotificationEvent(models.TextChoices):
     PAYOUT_MADE = "PAYOUT_MADE", "Benefit paid"
     MEMBERSHIP_STATUS_CHANGED = "MEMBERSHIP_STATUS_CHANGED", "Membership status changed"
     COMMITTEE_VOTE_NEEDED = "COMMITTEE_VOTE_NEEDED", "Committee decision needed"
+    # The member self-service portal. Its own event rather than a reused case
+    # event: most portal requests never become a case, and a member who has
+    # asked to hear about "my requests" has not thereby asked to hear about
+    # every case in the scheme. A separate event is what makes that preference
+    # expressible at all.
+    PORTAL_REQUEST_UPDATED = "PORTAL_REQUEST_UPDATED", "Self-service request updated"
+    PORTAL_INVITED = "PORTAL_INVITED", "Invited to the member portal"
 
 
 class NotificationTemplate(models.Model):

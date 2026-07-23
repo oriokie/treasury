@@ -49,6 +49,10 @@ urlpatterns = [
     path("cheques/<int:pk>/print/", RedirectView.as_view(pattern_name="payment_print", permanent=True), name="cheque_print"),
     path("payables/payable/add/", views.PayableCreate.as_view(), name="payable_create"),
     path("payables/payable/<int:pk>/settle/", views.PayableSettle.as_view(), name="payable_settle"),
+    # Detach a payment linked to the wrong payable. Treasurer-only, and it
+    # removes the link, never the expense — see PayableUnlinkPayment.
+    path("payables/payment/<int:pk>/unlink/", views.PayableUnlinkPayment.as_view(),
+         name="payable_unlink_payment"),
     path("payables/accrual/add/", views.AccrualCreate.as_view(), name="accrual_create"),
     path("payables/accrual/<int:pk>/settle/", views.AccrualSettle.as_view(), name="accrual_settle"),
     path("payables/prepayment/add/", views.PrepaymentCreate.as_view(), name="prepayment_create"),

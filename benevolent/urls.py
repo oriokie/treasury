@@ -185,3 +185,9 @@ urlpatterns = [
     path("applications/<int:pk>/", views_public.ApplicationDetailView.as_view(),
          name="benevolent_application_detail"),
 ]
+
+# The office half of the member self-service portal (inviting members, reviewing
+# what they send in). The member half is mounted separately at /portal/ — see
+# benevolent/urls_portal.py for why the two halves live at different prefixes.
+from .urls_portal import admin_urlpatterns as _portal_admin_urls  # noqa: E402
+urlpatterns += _portal_admin_urls

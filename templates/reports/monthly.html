@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Monthly report · {{ SITE_NAME }}{% include "ui/print_signatures.html" %}
 {% endblock %}
 {% block content %}
@@ -10,10 +10,10 @@
 </div></div>
 {% include 'partials/period_filter.html' %}
 <div class="grid-4 u-my">
-  <div class="stat"><div class="lbl">Receipts</div><div class="val mono">{{ totals.receipts|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Local funds</div><div class="val mono">{{ local_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Trust funds</div><div class="val mono">{{ trust_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Expenses</div><div class="val mono row-debit">{{ totals.expenses|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Receipts</div><div class="val mono">{{ totals.receipts|money }}</div></div>
+  <div class="stat"><div class="lbl">Local funds</div><div class="val mono">{{ local_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Trust funds</div><div class="val mono">{{ trust_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Expenses</div><div class="val mono row-debit">{{ totals.expenses|money }}</div></div>
 </div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Fund</th><th>Type</th><th class="num">Opening</th><th class="num">Receipts</th><th class="num">Expenses</th><th class="num">Closing</th></tr></thead>
@@ -22,25 +22,25 @@
     <tr>
       <td><strong>{{ r.department.name }}</strong>{% if r.children %} <span class="muted u-xs">({{ r.children|length }} sub-account{{ r.children|length|pluralize }})</span>{% endif %}</td>
       <td>{% if r.is_trust %}<span class="pill pill-amber">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
-      <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.receipts|floatformat:2|intcomma }}</td>
-      <td class="num mono row-debit">{{ r.expenses|floatformat:2|intcomma }}</td>
-      <td class="num mono"><strong>{{ r.closing|floatformat:2|intcomma }}</strong></td>
+      <td class="num mono">{{ r.opening|money }}</td>
+      <td class="num mono">{{ r.receipts|money }}</td>
+      <td class="num mono row-debit">{{ r.expenses|money }}</td>
+      <td class="num mono"><strong>{{ r.closing|money }}</strong></td>
     </tr>
     {% for c in r.children %}{% if c.receipts or c.expenses or c.opening %}
     <tr class="child-row"><td class="u-indent-2" class="muted">↳ {{ c.department.name }}</td><td></td>
-      <td class="num mono muted">{{ c.opening|floatformat:2|intcomma }}</td>
-      <td class="num mono muted">{{ c.receipts|floatformat:2|intcomma }}</td>
-      <td class="num mono muted">{{ c.expenses|floatformat:2|intcomma }}</td>
-      <td class="num mono muted">{{ c.closing|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono muted">{{ c.opening|money }}</td>
+      <td class="num mono muted">{{ c.receipts|money }}</td>
+      <td class="num mono muted">{{ c.expenses|money }}</td>
+      <td class="num mono muted">{{ c.closing|money }}</td></tr>
     {% endif %}{% endfor %}
   {% empty %}<tr><td colspan="6" class="empty">No activity in this period.</td></tr>{% endfor %}
   </tbody>
   <style>.child-row td{font-size:.85rem;border-top:1px dotted var(--line)}</style>
   <tfoot><tr><th colspan="2">Total</th>
-    <th class="num mono">{{ totals.opening|floatformat:2|intcomma }}</th>
-    <th class="num mono">{{ totals.receipts|floatformat:2|intcomma }}</th>
-    <th class="num mono">{{ totals.expenses|floatformat:2|intcomma }}</th>
-    <th class="num mono">{{ totals.closing|floatformat:2|intcomma }}</th></tr></tfoot>
+    <th class="num mono">{{ totals.opening|money }}</th>
+    <th class="num mono">{{ totals.receipts|money }}</th>
+    <th class="num mono">{{ totals.expenses|money }}</th>
+    <th class="num mono">{{ totals.closing|money }}</th></tr></tfoot>
 </table></div>
 {% endblock %}

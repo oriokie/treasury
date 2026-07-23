@@ -38,6 +38,13 @@
       case "layout_width": root.setAttribute("data-width", v); break;
       case "card_style": root.setAttribute("data-cards", v); break;
       case "density": root.setAttribute("data-density", v); break;
+      case "heading_font": root.setAttribute("data-headings", String(v).toLowerCase()); break;
+      case "figure_font": root.setAttribute("data-figures", String(v).toLowerCase()); break;
+      case "table_grid": root.setAttribute("data-grid", String(v).toLowerCase()); break;
+      case "table_stripes":
+        value ? root.removeAttribute("data-stripes") : root.setAttribute("data-stripes", "off"); break;
+      case "sticky_headers":
+        value ? root.removeAttribute("data-stickyhead") : root.setAttribute("data-stickyhead", "off"); break;
       case "accent":
         root.setAttribute("data-accent", v); break;
       case "high_contrast":

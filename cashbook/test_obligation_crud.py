@@ -42,7 +42,11 @@ class ObligationCrudTests(TestCase):
         e = Expense.objects.create(date=dt.date(2026, 6, 3), department=self.fund,
             description="paid", amount=Decimal("5000"), category="MATERIALS",
             status="PAID", recorded_by=self.u)
-        p = self._payable(settled=True, settled_expense=e)
+        # the settling expense now points AT the payable, not the reverse:
+        # a payable can have several payments, so the link lives on Expense
+        p = self._payable(settled=True)
+        e.payable = p
+        e.save(update_fields=["payable"])
         self.assertEqual(self.c.get(f"/payables/payable/{p.id}/edit/").status_code, 302)
         self.c.post(f"/payables/payable/{p.id}/delete/")
         self.assertTrue(Payable.objects.filter(pk=p.id).exists())   # not deleted
@@ -56,7 +60,10 @@ class ObligationCrudTests(TestCase):
         self.assertIn("Chairs paid", r.content.decode())
         self.c.post(f"/payables/payable/{p.id}/settle-existing/", {"expense": str(e.id)})
         p.refresh_from_db()
-        self.assertTrue(p.settled); self.assertEqual(p.settled_expense_id, e.id)
+        self.assertTrue(p.settled)
+        # the linked expense is now reached through the payments relation
+        self.assertEqual(p.settled_expense.id, e.id)
+        self.assertIn(e, list(p.payments.all()))
         # the expense was not duplicated
         self.assertEqual(Expense.objects.filter(description="Chairs paid").count(), 1)
 

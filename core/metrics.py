@@ -606,3 +606,433 @@ metrics.register(Metric(
     inputs="as_of"),
     lambda as_of=None: _tp().unexpired_prepayments_total(
         as_of or __import__("datetime").date.today()))
+
+
+# ---------------------------------------------------------------------------
+# Asset metrics (EAM Phase 0). Read-only formalisation of the figures the
+# register already computes, so every asset number shown anywhere resolves
+# through the registry rather than ad-hoc `nbv_total()` / inline sums. These do
+# NOT post to the ledger — ledger-backed asset accounting (depreciation runs,
+# disposal postings) is Phase 1, pending the accounting-treatment sign-off.
+def _assets():
+    from assets import models as m
+    return m
+
+
+def _has_status():
+    from assets import models as m
+    return any(f.name == "status" for f in m.FixedAsset._meta.get_fields())
+
+
+def _assets_live_at(as_of=None):
+    """The assets on the register as at a date.
+
+    Delegates to `assets.models.assets_live_at` so there is exactly one
+    definition of which assets count at a date — cost, accumulated depreciation
+    and net book value must all be drawn from the same population or the
+    statements disagree with each other.
+    """
+    return _assets().assets_live_at(as_of)
+
+
+def _asset_cost_total(as_of=None):
+    from decimal import Decimal
+    return sum((a.cost for a in _assets_live_at(as_of)), Decimal(0))
+
+
+def _asset_accdep_total(as_of=None):
+    from decimal import Decimal
+    import datetime as _dt
+    m = _assets()
+    rules = {r.category: r for r in m.DepreciationRule.objects.all()}
+    from core.models import SiteConfig
+    cfg = SiteConfig.get()
+    as_of = as_of or _dt.date.today()
+    return sum((a.accumulated_depreciation(as_of, rules=rules, cfg=cfg)
+                for a in _assets_live_at(as_of)), Decimal(0))
+
+
+def _asset_depreciation_expense(start=None, end=None):
+    """Depreciation charged over the period.
+
+    Includes assets disposed of during the period, charged up to the day they
+    left: they were in use until then, so their depreciation belongs to the
+    period. Leaving them out understated the charge and left the movement in
+    fixed assets failing to tie by exactly that amount.
+    """
+    from decimal import Decimal
+    import datetime as _dt
+    m = _assets()
+    rules = {r.category: r for r in m.DepreciationRule.objects.all()}
+    from core.models import SiteConfig
+    cfg = SiteConfig.get()
+    end = end or _dt.date.today()
+    left = m.FixedAsset.objects.filter(disposed=True, disposed_on__isnull=False,
+                                       disposed_on__lte=end)
+    if start:
+        # anything already gone before the period began contributed nothing to it
+        left = left.filter(disposed_on__gte=start)
+    total = Decimal(0)
+    for a in list(_assets_live_at(end)) + list(left):
+        stop = min(end, a.disposed_on) if (a.disposed and a.disposed_on) else end
+        close = a.accumulated_depreciation(stop, rules=rules, cfg=cfg)
+        openv = a.accumulated_depreciation(start, rules=rules, cfg=cfg) if start else Decimal(0)
+        total += (close - openv)
+    return total
+
+
+def _assets_by_class(as_of=None):
+    from decimal import Decimal
+    import datetime as _dt
+    m = _assets()
+    as_of = as_of or _dt.date.today()
+    rules = {r.category: r for r in m.DepreciationRule.objects.all()}
+    from core.models import SiteConfig
+    cfg = SiteConfig.get()
+    out = {}
+    for a in _assets_live_at(as_of).select_related("asset_class"):
+        label = a.asset_class.name if getattr(a, "asset_class", None) else a.get_category_display()
+        row = out.setdefault(label, {"cost": Decimal(0), "nbv": Decimal(0), "count": 0})
+        row["cost"] += a.cost
+        row["nbv"] += a.net_book_value(as_of, rules=rules, cfg=cfg)
+        row["count"] += 1
+    return out
+
+
+metrics.register(Metric(
+    "net_book_value", "Net book value (as-at)", "Balance",
+    "Total carrying amount of all non-disposed assets as at a date "
+    "(cost less accumulated depreciation). Feeds the Statement of Financial "
+    "Position's property line.",
+    "assets.models.nbv_total", inputs="as_of",
+    notes="Authoritative NBV; reuses the register's nbv_total(). Ledger-backed "
+          "postings are Phase 1."),
+    lambda as_of=None: _assets().nbv_total(as_of))
+
+metrics.register(Metric(
+    "fixed_assets_cost", "Fixed assets at cost (as-at)", "Balance",
+    "Total acquisition cost of all non-disposed assets.",
+    "core.metrics._asset_cost_total", inputs="as_of"),
+    lambda as_of=None: _asset_cost_total(as_of))
+
+metrics.register(Metric(
+    "accumulated_depreciation", "Accumulated depreciation (as-at)", "Balance",
+    "Total accumulated depreciation across all non-disposed assets as at a date.",
+    "core.metrics._asset_accdep_total", inputs="as_of"),
+    lambda as_of=None: _asset_accdep_total(as_of))
+
+metrics.register(Metric(
+    "depreciation_expense", "Depreciation charge (period)", "Expense",
+    "Depreciation charged over the period (accumulated depreciation at end "
+    "less at start, per live asset).",
+    "core.metrics._asset_depreciation_expense", inputs="start, end"),
+    lambda start=None, end=None: _asset_depreciation_expense(start, end))
+
+metrics.register(Metric(
+    "assets_by_class", "Assets by class (as-at)", "Balance",
+    "Per asset class: total cost, net book value and count of non-disposed "
+    "assets.",
+    "core.metrics._assets_by_class", inputs="as_of"),
+    lambda as_of=None: _assets_by_class(as_of))
+
+
+def _asset_additions_at_cost(start=None, end=None):
+    """Cost of assets that came onto the register during the period.
+
+    Not the same as capital spending: money paid towards an asset that is not yet
+    linked to a register record sits in capital work-in-progress and has not been
+    added to the register, so it must not appear as an addition."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    m = _assets()
+    qs = m.FixedAsset.objects.filter(acquired_on__isnull=False)
+    if start:
+        qs = qs.filter(acquired_on__gte=start)
+    if end:
+        qs = qs.filter(acquired_on__lte=end)
+    return qs.aggregate(t=Sum("cost"))["t"] or Decimal(0)
+
+
+metrics.register(Metric(
+    "asset_additions_at_cost", "Additions to the register (period)", "Balance",
+    "Cost of assets acquired during the period, from the register. Excludes "
+    "capital spending not yet linked to an asset, which is held as work in "
+    "progress rather than added to the register.",
+    "core.metrics._asset_additions_at_cost", inputs="start, end"),
+    lambda start=None, end=None: _asset_additions_at_cost(start, end))
+
+
+def _net_assets(as_of=None):
+    """Net assets as at a date — the church's own worth.
+
+    THE definition, so the Statement of Financial Position and any statement
+    reconciling to it read the same figure instead of each assembling one:
+
+        local fund balances
+      + fixed assets at written-down value
+      + prepayments not yet expired
+      - amounts owed to suppliers
+      - expenses accrued
+      - loans still to repay
+
+    Returns the components as well as the total, so a statement can show the
+    bridge from fund balances to net assets line by line without recomputing
+    anything. Trust funds are excluded: that money is held on the field's behalf
+    and is matched by the trust payable, so it is not the church's own worth.
+    """
+    import datetime as _dt
+    from decimal import Decimal
+    as_of = as_of or _dt.date.today()
+
+    from reports.services import balances as _bal
+    rows = _bal.department_summary(None, as_of)
+    local_funds = sum((r["closing"] for r in rows if not r.get("is_trust")), Decimal(0))
+
+    from assets.models import nbv_total
+    nbv = Decimal(nbv_total(as_of) or 0)
+
+    from cashbook.views import (open_payables_total, open_accruals_total,
+                                unexpired_prepayments_total)
+    payables = Decimal(open_payables_total(as_of) or 0)
+    accruals = Decimal(open_accruals_total(as_of) or 0)
+    prepaid = Decimal(unexpired_prepayments_total(as_of) or 0)
+
+    from loans.services import reporting as _loans
+    loans_payable = Decimal(_loans.outstanding_liability(as_of)["total"] or 0)
+
+    accrual_adj = prepaid - payables - accruals
+    total = local_funds + nbv + accrual_adj - loans_payable
+    return {
+        "local_funds": local_funds,
+        "fixed_assets": nbv,
+        "prepayments": prepaid,
+        "payables": payables,
+        "accruals": accruals,
+        "accrual_adjustment": accrual_adj,
+        "loans_payable": loans_payable,
+        "total": total,
+    }
+
+
+metrics.register(Metric(
+    "net_assets", "Net assets (as at)", "Balance",
+    "The church's own worth as at a date: local fund balances, plus fixed assets "
+    "at written-down value, plus prepayments, less payables, accruals and loans "
+    "outstanding. Trust funds are excluded — that money is held on the field's "
+    "behalf and is matched by the trust payable. Returns the components as well "
+    "as the total so a statement can show the bridge without recomputing it.",
+    "core.metrics._net_assets", inputs="as_of"),
+    lambda as_of=None: _net_assets(as_of))
+
+
+def _non_cash_items(start=None, end=None):
+    """Everything that changed the church's net assets in the period without any
+    money moving.
+
+    One definition, read by every report that needs to explain why net assets
+    moved differently from the cash result:
+
+    * **depreciation** — assets consumed in use (reduces net assets)
+    * **donated assets** — gifts in kind received (increases net assets)
+    * **disposal gain/(loss)** — proceeds less what the asset was still worth
+
+    `net` is their combined effect on net assets. Depreciation is capped at
+    today, because charging months that have not happened would overstate it
+    against cash figures that are actuals.
+    """
+    import datetime as _dt
+    from decimal import Decimal
+    end = end or _dt.date.today()
+    charge_to = min(end, _dt.date.today())
+    depreciation = (_asset_depreciation_expense(start, charge_to)
+                    if (start is None or charge_to >= start) else Decimal(0))
+    donated = _donated_assets(start, end)
+    disposal = _disposal_gain_loss(start, end)
+    return {
+        "depreciation": depreciation,
+        "donated_assets": donated,
+        "disposal_gain_loss": disposal,
+        "net": donated + disposal - depreciation,
+        "any": bool(depreciation or donated or disposal),
+    }
+
+
+metrics.register(Metric(
+    "non_cash_items", "Non-cash items (period)", "Income",
+    "Movements in net assets during the period with no money attached: "
+    "depreciation charged, assets donated in kind, and the gain or loss on "
+    "disposals. `net` is their combined effect on net assets. Reports show these "
+    "separately from the cash result rather than inside it.",
+    "core.metrics._non_cash_items", inputs="start, end"),
+    lambda start=None, end=None: _non_cash_items(start, end))
+
+
+def _total_expenditure_accrual(start=None, end=None, cash_expenditure=None):
+    """Cash operating expenditure plus depreciation — expenditure on an accrual
+    basis. Pass the report's own cash figure so it stays consistent with whatever
+    that report includes or excludes; depreciation is added from the register."""
+    from decimal import Decimal
+    cash = Decimal(cash_expenditure or 0)
+    return cash + _non_cash_items(start, end)["depreciation"]
+
+
+metrics.register(Metric(
+    "total_expenditure_accrual", "Expenditure including depreciation (period)", "Expense",
+    "A report's cash operating expenditure plus the depreciation charged for the "
+    "period. Lets a report state the accrual result without recomputing "
+    "depreciation for itself.",
+    "core.metrics._total_expenditure_accrual", inputs="start, end, cash_expenditure"),
+    lambda start=None, end=None, cash_expenditure=None:
+        _total_expenditure_accrual(start, end, cash_expenditure))
+
+
+def _disposed_carrying_value(start=None, end=None):
+    """Net book value, at the date each left, of assets disposed of during the
+    period — what the register lost through disposals, as opposed to through
+    depreciation. Lets the movement in fixed assets be stated from real figures
+    rather than one line absorbing the difference."""
+    from decimal import Decimal
+    import datetime as _dt
+    m = _assets()
+    qs = m.FixedAsset.objects.filter(disposed=True, disposed_on__isnull=False)
+    if start:
+        qs = qs.filter(disposed_on__gte=start)
+    if end:
+        qs = qs.filter(disposed_on__lte=end)
+    total = Decimal(0)
+    for a in qs:
+        cost = Decimal(a.cost or 0)
+        total += cost - Decimal(a.accumulated_depreciation(a.disposed_on) or 0)
+    return total
+
+
+metrics.register(Metric(
+    "disposed_carrying_value", "Carrying value of disposals (period)", "Balance",
+    "Net book value, as at the disposal date, of assets disposed of during the "
+    "period. Used with additions and depreciation to state the movement in "
+    "fixed assets from real figures.",
+    "core.metrics._disposed_carrying_value", inputs="start, end"),
+    lambda start=None, end=None: _disposed_carrying_value(start, end))
+
+
+def _disposal_gain_loss(start=None, end=None):
+    """Gain/(loss) on asset disposals in the period, from the register. The only
+    part of a disposal that belongs in the income result — the proceeds
+    themselves are a capital receipt, excluded from income."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    m = _assets()
+    qs = m.FixedAsset.objects.filter(disposed=True)
+    if start:
+        qs = qs.filter(disposed_on__gte=start)
+    if end:
+        qs = qs.filter(disposed_on__lte=end)
+    return qs.aggregate(t=Sum("disposal_gain_loss"))["t"] or Decimal(0)
+
+
+metrics.register(Metric(
+    "disposal_gain_loss", "Gain/(loss) on disposals (period)", "Income",
+    "Proceeds less net book value on assets disposed of in the period. The "
+    "proceeds themselves are a capital receipt and are excluded from income.",
+    "core.metrics._disposal_gain_loss", inputs="start, end"),
+    lambda start=None, end=None: _disposal_gain_loss(start, end))
+
+
+def _donated_assets(start=None, end=None):
+    """Fair value of assets donated to the church in the period, from the
+    acquisition register. Non-cash: no Transaction exists for these, which is
+    why the Income & Expenditure statement reports them separately rather than
+    inside its (cash) income total."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from assets.models import Acquisition
+    qs = Acquisition.objects.filter(source=Acquisition.Source.DONATION)
+    if start:
+        qs = qs.filter(date__gte=start)
+    if end:
+        qs = qs.filter(date__lte=end)
+    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+
+def _donated_assets_detail(start=None, end=None):
+    """The donated assets behind `donated_assets`, for the statement's schedule."""
+    from assets.models import Acquisition
+    qs = (Acquisition.objects.filter(source=Acquisition.Source.DONATION)
+          .select_related("asset", "fund"))
+    if start:
+        qs = qs.filter(date__gte=start)
+    if end:
+        qs = qs.filter(date__lte=end)
+    return list(qs.order_by("date"))
+
+
+metrics.register(Metric(
+    "donated_assets", "Donated assets (period)", "Income",
+    "Fair value of assets donated in kind during the period, from the "
+    "acquisition register. Non-cash: credited to net assets, not to income, so "
+    "it is reported outside the cash income total.",
+    "core.metrics._donated_assets", inputs="start, end"),
+    lambda start=None, end=None: _donated_assets(start, end))
+
+metrics.register(Metric(
+    "donated_assets_detail", "Donated assets — schedule (period)", "Income",
+    "The individual donated assets making up `donated_assets`.",
+    "core.metrics._donated_assets_detail", inputs="start, end"),
+    lambda start=None, end=None: _donated_assets_detail(start, end))
+
+
+def _acquisition_coverage(as_of=None):
+    from assets.services.preflight import acquisition_coverage
+    return acquisition_coverage(as_of)
+
+
+metrics.register(Metric(
+    "acquisition_coverage", "Acquisition coverage (pre-flight)", "Balance",
+    "Explains any difference between the register's cost and the fixed-asset "
+    "control account: assets acquired after the opening date whose cost no "
+    "linked capital payment or donation carries (ledger short), and capital "
+    "payments dated after the opening date on assets the opening already brought "
+    "in (ledger over). `predicted_diff` equals the register_vs_ledger cost "
+    "difference. Read-only diagnostic.",
+    "assets.services.preflight.acquisition_coverage", inputs="as_of"),
+    lambda as_of=None: _acquisition_coverage(as_of))
+
+
+def _register_vs_ledger(as_of=None):
+    """The register↔ledger reconciliation control (EAM Phase 1). Returns, for the
+    fixed-asset control accounts, the register (subsidiary) figure, the ledger
+    (control-account) figure, and their difference — which must be zero once the
+    asset opening balance and every monthly depreciation run through `as_of` are
+    posted. Surfaced on the dashboard and enforced by a guard test."""
+    import datetime as _dt
+    from decimal import Decimal
+    from django.db.models import Sum
+    from ledger.models import JournalLine
+    as_of = as_of or _dt.date.today()
+
+    def _bal(key):
+        agg = (JournalLine.objects.filter(account__system_key=key, entry__date__lte=as_of)
+               .aggregate(d=Sum("debit"), c=Sum("credit")))
+        return (agg["d"] or Decimal(0)) - (agg["c"] or Decimal(0))
+
+    reg_cost = Decimal(_asset_cost_total(as_of) or 0)
+    reg_accdep = Decimal(_asset_accdep_total(as_of) or 0)
+    led_cost = _bal("FIXED_ASSETS")
+    led_accdep = -_bal("ACCUM_DEPRECIATION")   # contra-asset carries a credit balance
+    return {
+        "cost": {"register": reg_cost, "ledger": led_cost, "diff": reg_cost - led_cost},
+        "accdep": {"register": reg_accdep, "ledger": led_accdep,
+                   "diff": reg_accdep - led_accdep},
+        "nbv": {"register": reg_cost - reg_accdep, "ledger": led_cost - led_accdep,
+                "diff": (reg_cost - reg_accdep) - (led_cost - led_accdep)},
+    }
+
+
+metrics.register(Metric(
+    "register_vs_ledger", "Asset register vs ledger reconciliation", "Balance",
+    "Per control account (cost, accumulated depreciation, NBV): the register "
+    "(subsidiary) figure, the ledger (control-account) figure and their "
+    "difference. Zero once the asset opening balance and all monthly "
+    "depreciation runs through the date are posted.",
+    "core.metrics._register_vs_ledger", inputs="as_of"),
+    lambda as_of=None: _register_vs_ledger(as_of))

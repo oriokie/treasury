@@ -19,13 +19,13 @@
     <tbody>
     {% for r in d.rows %}
       <tr><td class="mono rcpt-col">{{ r.envelope.receipt_no }}</td><td class="contrib-col">{{ r.envelope.contributor_name }}</td>
-      {% for f in d.funds %}<td class="num mono fundcell">{% with a=r.cells|get_item:f.id %}{% if a %}{{ a|floatformat:0|intcomma }}{% endif %}{% endwith %}</td>{% endfor %}
-      <td class="num mono totcol">{{ r.total|floatformat:0|intcomma }}</td></tr>
+      {% for f in d.funds %}<td class="num mono fundcell">{% with a=r.cells|get_item:f.id %}{% if a %}{{ a|money:0 }}{% endif %}{% endwith %}</td>{% endfor %}
+      <td class="num mono totcol">{{ r.total|money:0 }}</td></tr>
     {% empty %}<tr><td colspan="{{ d.funds|length|add:3 }}" class="empty">No envelopes for this Sabbath.</td></tr>{% endfor %}
     </tbody>
     <tfoot><tr class="total-row"><td class="rcpt-col"></td><td class="contrib-col"><strong>TOTAL</strong></td>
-      {% for f in d.funds %}<td class="num mono fundcell"><strong>{{ d.fund_totals|get_item:f.id|floatformat:0|intcomma }}</strong></td>{% endfor %}
-      <td class="num mono totcol"><strong>{{ d.grand_total|floatformat:0|intcomma }}</strong></td></tr></tfoot>
+      {% for f in d.funds %}<td class="num mono fundcell"><strong>{{ d.fund_totals|get_item:f.id|money:0 }}</strong></td>{% endfor %}
+      <td class="num mono totcol"><strong>{{ d.grand_total|money:0 }}</strong></td></tr></tfoot>
   </table>
   </div>
   <div class="trust-note">* Trust fund items — remitted to {{ FIELD_NAME }}.</div>
@@ -33,12 +33,12 @@
   <div class="sabbath-summary">
     <table class="ledger sum-tbl"><tbody>
     <tr class="section-row"><td colspan="2"><strong>Trust fund items (remitted to {{ FIELD_NAME }})</strong></td></tr>
-    {% for f in d.trust_funds %}<tr><td>{{ f.name }}</td><td class="num mono">{{ d.fund_totals|get_item:f.id|floatformat:0|intcomma }}</td></tr>{% endfor %}
-    <tr class="total-row"><td><strong>Total trust funds</strong></td><td class="num mono"><strong>{{ d.trust_total|floatformat:0|intcomma }}</strong></td></tr>
+    {% for f in d.trust_funds %}<tr><td>{{ f.name }}</td><td class="num mono">{{ d.fund_totals|get_item:f.id|money:0 }}</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total trust funds</strong></td><td class="num mono"><strong>{{ d.trust_total|money:0 }}</strong></td></tr>
     <tr class="section-row"><td colspan="2"><strong>Local fund items (retained)</strong></td></tr>
-    {% for f in d.local_funds %}<tr><td>{{ f.name }}</td><td class="num mono">{{ d.fund_totals|get_item:f.id|floatformat:0|intcomma }}</td></tr>{% endfor %}
-    <tr class="total-row"><td><strong>Total local funds</strong></td><td class="num mono"><strong>{{ d.local_total|floatformat:0|intcomma }}</strong></td></tr>
-    <tr class="grand-row"><td><strong>Grand total given</strong></td><td class="num mono"><strong>{{ d.grand_total|floatformat:0|intcomma }}</strong></td></tr>
+    {% for f in d.local_funds %}<tr><td>{{ f.name }}</td><td class="num mono">{{ d.fund_totals|get_item:f.id|money:0 }}</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total local funds</strong></td><td class="num mono"><strong>{{ d.local_total|money:0 }}</strong></td></tr>
+    <tr class="grand-row"><td><strong>Grand total given</strong></td><td class="num mono"><strong>{{ d.grand_total|money:0 }}</strong></td></tr>
     </tbody></table>
   </div>
 

@@ -1,0 +1,60 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My standing{% endblock %}
+{% block portal_desc %}Where you stand with the scheme, and what its rules would say about a claim today.{% endblock %}
+{% block portal_content %}
+{% for row in rows %}
+<div class="panel u-mb">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap">
+    <h2 style="margin:0">{{ row.scheme.name }}</h2>
+    <span class="pill {% if row.membership.standing == 'GOOD' %}pill-green{% elif row.membership.standing == 'ARREARS' %}pill-red{% elif row.membership.standing == 'GRACE' %}pill-amber{% else %}pill-grey{% endif %}">{{ row.membership.get_standing_display }}</span>
+  </div>
+
+  {% if row.standing and row.standing.reasons %}
+  <ul class="u-mt">{% for reason in row.standing.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <div class="pt-cards u-mt">
+    <div class="stat {% if row.arrears > 0 %}warn{% endif %}"><div class="lbl">Owing now</div>
+      <div class="val mono">{{ CURRENCY }} {{ row.arrears|money }}</div></div>
+    <div class="stat"><div class="lbl">Membership</div>
+      <div class="val mono">{{ row.membership.get_status_display }}</div>
+      <div class="foot">Since {{ row.membership.joined_on|date:"d M Y" }}</div></div>
+  </div>
+
+  {% if row.schedule %}
+  <h3 class="u-mt">Recent contribution periods</h3>
+  <table class="table pt-stack">
+    <thead><tr><th>Period</th><th class="num">Due</th><th class="num">Paid</th><th>Status</th></tr></thead>
+    <tbody>{% for d in row.schedule %}
+      <tr><td data-label="Period">{{ d.label|default:d.period_label|default:"—" }}</td>
+        <td data-label="Due" class="num mono">{{ CURRENCY }} {{ d.due|default_if_none:0|money }}</td>
+        <td data-label="Paid" class="num mono">{{ CURRENCY }} {{ d.paid|default_if_none:0|money }}</td>
+        <td data-label="Status">{% if d.cleared %}<span class="pill pill-green">Cleared</span>{% elif d.waived %}<span class="pill pill-grey">Waived</span>{% else %}<span class="pill pill-amber">Outstanding</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+
+  {% if row.benefits %}
+  <h3 class="u-mt">What the rules say today</h3>
+  <p class="muted">An indication only. It is worked out from today's facts with no claim
+    in front of it, so the checks that depend on an actual claim — the documents, the
+    nominee, the time allowed to report — are not part of it. A real claim is assessed
+    on its own merits when it is made.</p>
+  <table class="table pt-stack">
+    <thead><tr><th>If this happened</th><th>Indication</th><th class="num">Benefit</th></tr></thead>
+    <tbody>{% for b in row.benefits %}
+      <tr><td data-label="If this happened">{{ b.event_type.name }}</td>
+        <td data-label="Indication">
+          {% if b.result and b.result.eligible %}<span class="pill pill-green">Would be considered</span>
+          {% elif b.result %}<span class="pill pill-amber">Something is in the way</span>
+            {% for f in b.result.blocking_failures %}<div class="muted" style="font-size:.8rem">{{ f.message|default:f.name }}</div>{% endfor %}
+          {% else %}<span class="pill pill-grey">Cannot say</span>{% endif %}</td>
+        <td data-label="Benefit" class="num mono">{% if b.result and b.result.entitlement %}{{ CURRENCY }} {{ b.result.entitlement.amount|default_if_none:0|money }}{% else %}—{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+</div>
+{% empty %}
+<div class="panel"><p class="muted">You are not enrolled in a scheme.</p></div>
+{% endfor %}
+{% endblock %}

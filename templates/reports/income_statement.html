@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Statement of financial activity · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Income & Expenditure Statement" %}
@@ -10,42 +10,49 @@
 <div class="stmt">
   <div class="stmt-section">Revenue</div>
   <table class="ledger compact"><tbody>
-    {% for r in income %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No local revenue in this period.</td></tr>{% endfor %}
-    <tr class="subtotal"><td><strong>Total revenue</strong></td><td class="num mono"><strong>{{ total_income|floatformat:2|intcomma }}</strong></td></tr>
+    {% for r in income %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|money_acct }}</td></tr>{% empty %}<tr><td class="empty">No local revenue in this period.</td></tr>{% endfor %}
+    <tr class="subtotal"><td><strong>Total revenue</strong></td><td class="num mono"><strong>{{ total_income|money_acct }}</strong></td></tr>
   </tbody></table>
 
   <div class="stmt-section">Operating (recurrent) expenditure</div>
   <table class="ledger compact"><tbody>
-    {% for r in recurrent %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No recurrent expenditure.</td></tr>{% endfor %}
-    <tr class="subtotal"><td><strong>Total operating expenditure</strong></td><td class="num mono"><strong>{{ total_recurrent|floatformat:2|intcomma }}</strong></td></tr>
+    {% for r in recurrent %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|money_acct }}</td></tr>{% empty %}<tr><td class="empty">No recurrent expenditure.</td></tr>{% endfor %}
+    <tr class="subtotal"><td><strong>Total operating expenditure</strong></td><td class="num mono"><strong>{{ total_recurrent|money_acct }}</strong></td></tr>
   </tbody></table>
 
   <div class="stmt-result {% if operating < 0 %}deficit{% endif %}" style="margin:.9rem 0">
     <span>{% if operating < 0 %}Operating deficit{% else %}Operating surplus{% endif %} (before capital)</span>
-    <strong class="mono">KES {{ operating|floatformat:2|intcomma }}</strong>
+    <strong class="mono">{{ CURRENCY }} {{ operating|money_acct }}</strong>
   </div>
 
   <div class="stmt-section">Capital expenditure</div>
   <table class="ledger compact"><tbody>
-    {% for r in capital %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No capital expenditure.</td></tr>{% endfor %}
-    <tr class="subtotal"><td><strong>Total capital expenditure</strong></td><td class="num mono"><strong>{{ total_capital|floatformat:2|intcomma }}</strong></td></tr>
+    {% for r in capital %}<tr><td>{{ r.name }}</td><td class="num mono">{{ r.amount|money_acct }}</td></tr>{% empty %}<tr><td class="empty">No capital expenditure.</td></tr>{% endfor %}
+    <tr class="subtotal"><td><strong>Total capital expenditure</strong></td><td class="num mono"><strong>{{ total_capital|money_acct }}</strong></td></tr>
   </tbody></table>
 
   <div class="stmt-result {% if surplus < 0 %}deficit{% endif %}">
     <span>{% if surplus < 0 %}Net deficit for the period{% else %}Net surplus for the period{% endif %}</span>
-    <strong class="mono">KES {{ surplus|floatformat:2|intcomma }}</strong>
+    <strong class="mono">{{ CURRENCY }} {{ surplus|money_acct }}</strong>
   </div>
 
   <div class="stmt-section">Change in net assets</div>
   <table class="ledger compact"><tbody>
-    <tr><td>Net assets brought forward</td><td class="num mono">{{ na_open|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Net surplus/(deficit) for the period</td><td class="num mono">{{ surplus|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Net inter-fund transfers</td><td class="num mono">{{ net_transfers|floatformat:2|intcomma }}</td></tr>
-    <tr class="grand"><td><strong>Net assets carried forward</strong></td><td class="num mono"><strong>{{ na_close|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td>Net assets brought forward</td><td class="num mono">{{ na_open|money_acct }}</td></tr>
+    <tr><td>Net surplus/(deficit) for the period</td><td class="num mono">{{ surplus|money_acct }}</td></tr>
+    <tr><td>Net inter-fund transfers</td><td class="num mono">{{ net_transfers|money_acct }}</td></tr>
+    <tr class="grand"><td><strong>Net assets carried forward (funds)</strong></td><td class="num mono"><strong>{{ na_close|money_acct }}</strong></td></tr>
+    {% for label, amount in na_bridge %}{% if amount %}
+    <tr><td class="muted">{{ label }}</td><td class="num mono">{{ amount|money_acct }}</td></tr>
+    {% endif %}{% endfor %}
+    {% if na_unexplained %}
+    <tr><td class="muted">Not accounted for — investigate</td><td class="num mono row-debit">{{ na_unexplained|money_acct }}</td></tr>
+    {% endif %}
+    <tr class="grand"><td><strong>Total net assets (per Statement of Financial Position)</strong></td><td class="num mono"><strong>{{ na_total|money_acct }}</strong></td></tr>
   </tbody></table>
 
   <p class="help">Capital expenditure (assets and development) is shown separately from recurrent running costs and can be linked to the fixed-asset register from the expense record. Net assets carried forward agrees with the local net assets on the Statement of Financial Position.</p>
-  {% if trust_collected %}<p class="help">Memorandum: {{ trust_collected|floatformat:2|intcomma }} of tithe and trust offerings was collected during the period. Following the SDA framework, tithe is a pass-through held on behalf of {{ FIELD_NAME }} and is excluded from revenue above.</p>{% endif %}
+  {% if trust_collected %}<p class="help">Memorandum: {{ trust_collected|money_acct }} of tithe and trust offerings was collected during the period. Following the SDA framework, tithe is a pass-through held on behalf of {{ FIELD_NAME }} and is excluded from revenue above.</p>{% endif %}
 </div>
 {% include 'reports/_report_styles.html' %}
 <style>

@@ -1,37 +1,40 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}{{ dept.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ld-hero">
-  <div class="ld-hero-main">
-    <div class="ld-eyebrow">My department</div>
-    <h1>{{ dept.name }}</h1>
-    <div class="ld-period">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</div>
-  </div>
-  <form method="get" class="ld-hero-tools no-print">
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">My department · {{ SITE_NAME }}</div>
+      <h1>{{ dept.name }}</h1>
+      <div class="period">{{ start|date:"j M Y" }} – {{ end|date:"j M Y" }}</div>
+    </div>
+    <form method="get" class="mast-actions no-print">
     <input type="date" name="start" value="{{ start|date:'Y-m-d' }}" class="field u-w-auto" aria-label="From">
     <input type="date" name="end" value="{{ end|date:'Y-m-d' }}" class="field u-w-auto" aria-label="To">
-    <button class="btn btn-sm">Apply</button>
+    <button class="btn btn-ghost btn-sm">Apply</button>
   </form>
+  </div>
+  <div class="rule"></div>
 </div>
 
 <!-- Headline KPIs -->
 <div class="ld-kpis{% if dept_collection_only %} ld-kpis-3{% endif %}">
   <div class="stat accent"><div class="label">Closing balance</div>
-    <div class="value"><span class="ksh">KSh</span>{{ kpi.closing|floatformat:0|intcomma }}</div>
+    <div class="value"><span class="ksh">{{ CURRENCY }}</span>{{ kpi.closing|money:0 }}</div>
     <div class="foot">{% if dept_collection_only %}Opening + receipts{% else %}Opening + receipts − expenses{% endif %}</div></div>
   <div class="stat"><div class="label">{% if dept_collection_only %}Receipts{% else %}Collections{% endif %}</div>
-    <div class="value"><span class="ksh">KSh</span>{{ kpi.receipts|floatformat:0|intcomma }}</div>
+    <div class="value"><span class="ksh">{{ CURRENCY }}</span>{{ kpi.receipts|money:0 }}</div>
     <div class="foot">{{ kpi.gifts }} contribution{{ kpi.gifts|pluralize }} this period</div></div>
   {% if not dept_collection_only %}
   <div class="stat warn"><div class="label">Expenses</div>
-    <div class="value"><span class="ksh">KSh</span>{{ kpi.spend|floatformat:0|intcomma }}</div>
+    <div class="value"><span class="ksh">{{ CURRENCY }}</span>{{ kpi.spend|money:0 }}</div>
     <div class="foot">Approved &amp; paid</div></div>
   <div class="stat {% if kpi.net >= 0 %}brass{% endif %}"><div class="label">Net this period</div>
-    <div class="value"><span class="ksh">KSh</span>{{ kpi.net|floatformat:0|intcomma }}</div>
+    <div class="value"><span class="ksh">{{ CURRENCY }}</span>{{ kpi.net|money:0 }}</div>
     <div class="foot">Collections − expenses</div></div>
   {% else %}
   <div class="stat brass"><div class="label">Opening balance</div>
-    <div class="value"><span class="ksh">KSh</span>{{ row.opening|floatformat:0|intcomma }}</div>
+    <div class="value"><span class="ksh">{{ CURRENCY }}</span>{{ row.opening|money:0 }}</div>
     <div class="foot">Brought forward</div></div>
   {% endif %}
 </div>
@@ -44,11 +47,11 @@
     <span class="s">{{ kpi.gifts }} contribution{{ kpi.gifts|pluralize }} · view names &amp; download</span></a>
   <a class="ld-link" href="{% url 'leader_expenses' dept.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
     <span class="ic">🧾</span><span class="t">Expenses</span>
-    <span class="s">KSh {{ kpi.spend|floatformat:0|intcomma }} · full list &amp; download</span></a>
+    <span class="s">{{ CURRENCY }} {{ kpi.spend|money:0 }} · full list &amp; download</span></a>
   {% if not dept_collection_only %}
   <a class="ld-link" href="{% url 'missing_receipts' %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">
     <span class="ic">📌</span><span class="t">Awaiting receipts{% if missing_receipts_count %} <span class="pill pill-amber">{{ missing_receipts_count }}</span>{% endif %}</span>
-    <span class="s">{% if missing_receipts_count %}KSh {{ missing_receipts_value|floatformat:0|intcomma }} without a document{% else %}All expenses documented ✓{% endif %}</span></a>
+    <span class="s">{% if missing_receipts_count %}{{ CURRENCY }} {{ missing_receipts_value|money:0 }} without a document{% else %}All expenses documented ✓{% endif %}</span></a>
   {% endif %}
   {% if pledge_summary %}
   <a class="ld-link" href="{% url 'leader_pledges' dept.id %}">
@@ -58,7 +61,7 @@
   {% if advance_summary %}
   <a class="ld-link" href="{% url 'leader_advances' %}">
     <span class="ic">💵</span><span class="t">Staff advances</span>
-    <span class="s">{{ advance_summary.open_count }} open · KSh {{ advance_summary.outstanding|floatformat:0|intcomma }} to account for</span></a>
+    <span class="s">{{ advance_summary.open_count }} open · {{ CURRENCY }} {{ advance_summary.outstanding|money:0 }} to account for</span></a>
   {% endif %}
 </div>
 
@@ -68,18 +71,18 @@
 <div class="ld-charts">
   {% if budget %}
   <div class="card"><div class="hd">Budget vs actual</div><div class="bd">
-    <div class="kv u-mb-xs"><span>Spent</span><span class="mono">{{ budget.spent|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mb-xs"><span>Spent</span><span class="mono">{{ budget.spent|money:0 }}</span></div>
     <div class="progress" style="height:14px"><span style="width:{{ budget.pct }}%;{% if budget.over %}background:var(--danger){% endif %}"></span></div>
-    <div class="kv u-mt-xs"><span class="muted">Annual budget</span><span class="mono">{{ budget.budget|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mt-xs"><span class="muted">Annual budget</span><span class="mono">{{ budget.budget|money:0 }}</span></div>
     {% if budget.over %}<p class="help text-danger u-mt-sm">Over budget for the year.</p>
     {% else %}<p class="help u-mt-sm">{{ budget.pct }}% of the annual budget used.</p>{% endif %}
   </div></div>
   {% elif pledge_summary %}
   <div class="card"><div class="hd">Pledge fulfilment</div><div class="bd">
-    <div class="kv u-mb-xs"><span>Paid</span><span class="mono">{{ pledge_summary.paid|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mb-xs"><span>Paid</span><span class="mono">{{ pledge_summary.paid|money:0 }}</span></div>
     <div class="progress" style="height:14px"><span style="width:{{ pledge_summary.pct }}%"></span></div>
-    <div class="kv u-mt-xs"><span class="muted">Pledged</span><span class="mono">{{ pledge_summary.pledged|floatformat:0|intcomma }}</span></div>
-    <div class="kv"><span class="muted">Outstanding</span><span class="mono">{{ pledge_summary.outstanding|floatformat:0|intcomma }}</span></div>
+    <div class="kv u-mt-xs"><span class="muted">Pledged</span><span class="mono">{{ pledge_summary.pledged|money:0 }}</span></div>
+    <div class="kv"><span class="muted">Outstanding</span><span class="mono">{{ pledge_summary.outstanding|money:0 }}</span></div>
     <p class="help u-mt-sm"><a class="link" href="{% url 'leader_pledges' dept.id %}">See all pledges →</a></p>
   </div></div>
   {% endif %}
@@ -88,7 +91,7 @@
 <!-- Development groups -->
 {% if dev_groups %}
 <div class="section-title u-between">
-  <span>Development groups <span class="muted u-subtle">— KSh {{ dev_collected|floatformat:0|intcomma }} collected this period</span></span>
+  <span>Development groups <span class="muted u-subtle">— {{ CURRENCY }} {{ dev_collected|money:0 }} collected this period</span></span>
   <span class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=groups_csv">⬇ CSV</a><a class="btn btn-sm btn-ghost" href="?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&export=groups_xlsx">⬇ Excel</a></span>
 </div>
 <div class="card u-mb-lg"><div class="bd bd-flush">
@@ -97,9 +100,9 @@
     <tbody>
     {% for g in dev_groups %}<tr>
       <td><a class="link" href="{% url 'leader_group_detail' g.group.id %}">{{ g.group }}</a></td>
-      <td class="num mono">{{ g.opening|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ g.closing|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ g.opening|money:0 }}</td>
+      <td class="num mono">{{ g.collected|money:0 }}</td>
+      <td class="num mono">{{ g.closing|money:0 }}</td>
     </tr>{% endfor %}
     </tbody>
   </table>
@@ -116,10 +119,10 @@
     <tbody>
     {% for r in subrows %}<tr>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">{{ r.department.name }}</a></td>
-      <td class="num mono">{{ r.opening|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.receipts|floatformat:0|intcomma }}</td>
-      {% if sub_show_expenses %}<td class="num mono">{{ r.expenses|floatformat:0|intcomma }}</td>{% endif %}
-      <td class="num mono">{{ r.closing|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.opening|money:0 }}</td>
+      <td class="num mono">{{ r.receipts|money:0 }}</td>
+      {% if sub_show_expenses %}<td class="num mono">{{ r.expenses|money:0 }}</td>{% endif %}
+      <td class="num mono">{{ r.closing|money:0 }}</td>
       <td><a class="link" href="{% url 'leader_department_detail' r.department.id %}">drill in →</a></td>
     </tr>{% endfor %}
     </tbody>
@@ -128,17 +131,6 @@
 {% endif %}
 
 <style>
-.ld-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;
-  padding:1.3rem 1.5rem;margin-bottom:1.4rem;border-radius:16px;
-  background:linear-gradient(135deg,var(--forest) 0%,var(--forest-deep,#16463a) 100%);
-  color:#fff;box-shadow:var(--shadow-md)}
-.ld-hero h1{margin:.1rem 0 .15rem;color:#fff;font-size:1.7rem;line-height:1.1}
-.ld-hero .ld-eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;opacity:.8;font-weight:600}
-.ld-hero .ld-period{font-size:.82rem;opacity:.85}
-.ld-hero-tools{display:flex;gap:.4rem;align-items:flex-end;flex-wrap:wrap}
-.ld-hero-tools .field{background:rgba(255,255,255,.92);border-color:transparent}
-.ld-hero-tools .btn{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.5);color:#fff}
-.ld-hero-tools .btn:hover{background:rgba(255,255,255,.28)}
 .ld-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem;margin-bottom:1.4rem}
 .ld-kpis-3{grid-template-columns:repeat(3,1fr)}
 .ld-kpis .stat{border-radius:14px}
@@ -151,7 +143,7 @@
 .ld-link .t{font-weight:600;font-family:var(--font-display,inherit)}
 .ld-link .s{font-size:.8rem;color:var(--muted)}
 .ld-charts{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.4rem;align-items:start}
-@media(max-width:820px){.ld-kpis{grid-template-columns:repeat(2,1fr)}.ld-charts{grid-template-columns:1fr}.ld-hero h1{font-size:1.4rem}}
+@media(max-width:820px){.ld-kpis{grid-template-columns:repeat(2,1fr)}.ld-charts{grid-template-columns:1fr}}
 </style>
 <script src="{% static 'js/table_png.js' %}"></script>
 {% endblock %}

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ loan.number }} · Loans · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ loan.number }} — {{ loan.lender.name }}</h1>
@@ -19,16 +19,16 @@
   <a class="btn btn-ghost btn-sm" href="{% url 'loan_register' %}">← Register</a></div></div>
 
 <div class="grid cols-4 u-mb">
-  <div class="stat"><div class="lbl">Received</div><div class="val mono">KES {{ loan.received_total|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Principal repaid</div><div class="val mono">KES {{ loan.principal_repaid|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Outstanding principal</div><div class="val mono" style="color:var(--forest)">KES {{ loan.outstanding_principal|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Received</div><div class="val mono">{{ CURRENCY }} {{ loan.received_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Principal repaid</div><div class="val mono">{{ CURRENCY }} {{ loan.principal_repaid|money }}</div></div>
+  <div class="stat"><div class="lbl">Outstanding principal</div><div class="val mono" style="color:var(--forest)">{{ CURRENCY }} {{ loan.outstanding_principal|money }}</div></div>
   <div class="stat"><div class="lbl">Interest paid{% if loan.interest_rate %} · {{ loan.interest_rate }}% {{ loan.get_interest_method_display }}{% endif %}</div>
-    <div class="val mono">KES {{ loan.interest_paid|floatformat:2|intcomma }}</div>
-    {% if loan.outstanding_interest %}<div class="help u-mt-0">Accrued unpaid ≈ KES {{ loan.outstanding_interest|floatformat:2|intcomma }}</div>{% endif %}</div>
+    <div class="val mono">{{ CURRENCY }} {{ loan.interest_paid|money }}</div>
+    {% if loan.outstanding_interest %}<div class="help u-mt-0">Accrued unpaid ≈ {{ CURRENCY }} {{ loan.outstanding_interest|money }}</div>{% endif %}</div>
 </div>
 {% if loan.purpose or loan.project %}<p class="help">{% if loan.project %}Project: {{ loan.project }} · {% endif %}{{ loan.purpose }}</p>{% endif %}
-{% if loan.converted_total %}<p class="help"><span class="pill pill-brass u-xs">Converted</span> KES {{ loan.converted_total|floatformat:2|intcomma }} of this loan was gifted to the church and now appears as contribution income{% if loan.lender.member %} on {{ loan.lender.member.name }}'s statement{% endif %}.</p>{% endif %}
-{% if loan.written_off_total %}<p class="help"><span class="pill pill-brass u-xs">Written off</span> KES {{ loan.written_off_total|floatformat:2|intcomma }} was forgiven.</p>{% endif %}
+{% if loan.converted_total %}<p class="help"><span class="pill pill-brass u-xs">Converted</span> {{ CURRENCY }} {{ loan.converted_total|money }} of this loan was gifted to the church and now appears as contribution income{% if loan.lender.member %} on {{ loan.lender.member.name }}'s statement{% endif %}.</p>{% endif %}
+{% if loan.written_off_total %}<p class="help"><span class="pill pill-brass u-xs">Written off</span> {{ CURRENCY }} {{ loan.written_off_total|money }} was forgiven.</p>{% endif %}
 
 <div class="card u-mb"><div class="hd">Loan ledger</div><div class="bd">
 <table class="ledger"><thead><tr><th>Date</th><th>Type</th><th>Detail</th><th class="num">Amount</th><th class="num">Outstanding after</th><th>Document</th></tr></thead>
@@ -37,8 +37,8 @@
   <td><span class="pill {% if r.t.kind == 'RECEIPT' %}pill-blue{% elif r.t.kind == 'PRINCIPAL' %}pill-green{% elif r.t.kind == 'INTEREST' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ r.t.get_kind_display }}</span>
     {% if not r.effective %}<span class="pill pill-red u-xs">Not effective</span>{% endif %}</td>
   <td class="muted">{{ r.t.note|default:"" }}</td>
-  <td class="num mono">{{ r.t.amount|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.t.amount|money }}</td>
+  <td class="num mono">{{ r.balance|money }}</td>
   <td class="u-xs">
     {% if r.t.receipt_transaction_id %}<a class="link" href="/transactions/{{ r.t.receipt_transaction_id }}/edit/">bank credit</a>{% endif %}
     {% if r.t.income_transaction_id %}<a class="link" href="/transactions/{{ r.t.income_transaction_id }}/edit/">income</a>{% endif %}

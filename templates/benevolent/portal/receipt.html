@@ -1,0 +1,19 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}Receipt{% endblock %}
+{% block portal_desc %}For one contribution recorded in your name.{% endblock %}
+{% block portal_actions %}<a class="btn btn-sm" href="javascript:window.print()">Print</a>{% endblock %}
+{% block portal_content %}
+<div class="panel">
+  <div class="pt-row"><span class="k">Received from</span><b>{{ member.name }}</b></div>
+  <div class="pt-row"><span class="k">Date</span><b>{{ contribution.date|date:"d M Y" }}</b></div>
+  <div class="pt-row"><span class="k">Scheme</span><b>{{ contribution.membership.scheme.name|default:"—" }}</b></div>
+  <div class="pt-row"><span class="k">What for</span><b>{{ contribution.get_kind_display }}</b></div>
+  {% if contribution.period_label %}<div class="pt-row"><span class="k">Period</span><b>{{ contribution.period_label }}</b></div>{% endif %}
+  {% if contribution.case %}<div class="pt-row"><span class="k">Towards case</span><b>{{ contribution.case.number }}</b></div>{% endif %}
+  {% if contribution.transaction %}<div class="pt-row"><span class="k">Reference</span><b class="mono">{{ contribution.transaction.reference|default:"—" }}</b></div>{% endif %}
+  <div class="pt-row"><span class="k">Amount</span>
+    <b class="mono" style="font-size:1.25rem">{{ CURRENCY }} {{ contribution.amount|money }}</b></div>
+</div>
+<p class="muted u-mt">Issued by {{ CHURCH_NAME }} · {{ generated_at|date:"d M Y H:i" }}.
+  A computer-generated receipt; no signature is required.</p>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}Case {{ case.number }}{% endblock %}
+{% block portal_desc %}{{ case.event_type.name }} · {{ case.beneficiary_display }} · {{ case.event_date|date:"d M Y" }}{% endblock %}
+{% block portal_actions %}<a class="btn btn-ghost btn-sm" href="{% url 'portal_cases' %}">All my cases</a>{% endblock %}
+{% block portal_content %}
+<div class="pt-cards u-mb">
+  <div class="stat accent"><div class="lbl">Status</div>
+    <div class="val">{{ case.get_status_display }}</div></div>
+  <div class="stat"><div class="lbl">Approved</div>
+    <div class="val mono">{% if case.approved_amount %}{{ CURRENCY }} {{ case.approved_amount|money }}{% else %}—{% endif %}</div></div>
+  <div class="stat brass"><div class="lbl">Paid to date</div>
+    <div class="val mono">{{ CURRENCY }} {{ case.paid_total|default_if_none:0|money }}</div></div>
+</div>
+
+{% if case.status == 'REJECTED' and case.rejection_reason %}
+<div class="panel u-mb" style="border-left:3px solid var(--danger)">
+  <b>This claim was not accepted</b><p>{{ case.rejection_reason }}</p>
+  <p class="muted">If you believe this is wrong, speak to the church office — a decision
+    can be looked at again.</p>
+</div>
+{% endif %}
+
+<div class="grid cols-2">
+  <div class="panel">
+    <h3>Progress</h3>
+    {% for e in timeline %}
+    <div class="pt-row"><span class="k">{{ e.at|date:"d M Y" }}</span><span>{{ e.summary }}</span></div>
+    {% empty %}<div class="pt-empty">Nothing recorded yet.</div>{% endfor %}
+  </div>
+  <div class="panel">
+    <h3>Documents on file</h3>
+    {% for d in documents %}
+    <div class="pt-row"><span class="k">{{ d.label|default:d.document_type|default:"Document" }}</span>
+      <span class="muted">{{ d.uploaded_at|date:"d M Y" }}</span></div>
+    {% empty %}<div class="pt-empty">None yet.</div>{% endfor %}
+    <div class="u-mt no-print"><a class="link" href="{% url 'portal_documents' %}">Upload a document →</a></div>
+  </div>
+</div>
+
+{% if payouts %}
+<div class="panel u-mt">
+  <h3>Payments made</h3>
+  {% for p in payouts %}
+  <div class="pt-row"><span class="k">{{ p.date|date:"d M Y" }} · {{ p.get_method_display|default:"" }}</span>
+    <span class="mono">{{ CURRENCY }} {{ p.amount|money }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

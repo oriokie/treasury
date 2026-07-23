@@ -1,13 +1,13 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Payables, accruals & prepayments · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Payables, accruals &amp; prepayments</h1>
 <div class="sub">Credit purchases owed, expenses incurred but unpaid, and amounts paid in advance</div></div></div>
 
 <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="stat"><div class="kpi-label">Open payables</div><div class="kpi-val mono">KES {{ open_payables|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="kpi-label">Open accruals</div><div class="kpi-val mono">KES {{ open_accruals|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="kpi-label">Prepaid (unexpired)</div><div class="kpi-val mono">KES {{ unexpired_prepay|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="kpi-label">Open payables</div><div class="kpi-val mono">{{ CURRENCY }} {{ open_payables|money }}</div></div>
+  <div class="stat"><div class="kpi-label">Open accruals</div><div class="kpi-val mono">{{ CURRENCY }} {{ open_accruals|money }}</div></div>
+  <div class="stat"><div class="kpi-label">Prepaid (unexpired)</div><div class="kpi-val mono">{{ CURRENCY }} {{ unexpired_prepay|money }}</div></div>
 </div>
 <div class="info-panel">Fund balances are kept on a cash basis. These items are an accrual overlay shown as memoranda on the Statement of Financial Position. Settling a payable or accrual records the actual payment in its fund; a prepayment records the cash paid now and shows the unexpired portion as a prepaid asset.</div>
 
@@ -20,18 +20,35 @@
 <div class="tab-panel" data-panel="payables">
 <!-- Payables -->
 <div class="card u-mt"><div class="hd">Accounts payable <span class="muted">— purchased on credit</span></div><div class="bd u-pad-cell">
-<table class="ledger compact"><thead><tr><th>Date</th><th>Vendor / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+<table class="ledger compact"><thead><tr><th>Date</th><th>Vendor / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead><tbody>
   {% for p in payables %}<tr {% if p.settled %}class="muted"{% endif %}>
     <td class="mono">{{ p.date|date:"d M y" }}</td>
-    <td>{{ p.vendor }} · <span class="muted">{{ p.description }}</span></td>
+    <td>{{ p.vendor }} · <span class="muted">{{ p.description }}</span>
+      {% if p.is_part_paid %}<span class="pill pill-amber u-xs">Part paid · {{ p.percent_paid }}%</span>{% endif %}
+      {% if p.payments.exists %}
+      <div class="muted u-xs">
+        {% for pay in p.payments.all %}{{ pay.date|date:"d M y" }} · {{ pay.amount|money }}{% if pay.reference %} · {{ pay.reference }}{% endif %}{% if is_treasurer %}
+          <form method="post" action="{% url 'payable_unlink_payment' pay.id %}" class="u-inline" onsubmit="return confirm('Detach this payment from the payable? The expense itself is kept.');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber" title="Detach (keeps the expense)">×</button></form>{% endif %}<br>{% endfor %}
+      </div>{% endif %}</td>
     <td>{{ p.department.name }}</td>
     <td class="mono">{{ p.due_date|date:"d M y"|default:"—" }}</td>
-    <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
-    <td class="u-right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% if p.settled_expense %} <span class="muted u-xs">· linked</span>{% endif %}{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=payable:{{ p.id }}">Settle / pay</a>
+    <td class="num mono">{{ p.amount|money }}</td>
+    <td class="num mono">{% if p.paid_total %}{{ p.paid_total|money }}{% else %}—{% endif %}</td>
+    <td class="num mono">{% if p.settled %}—{% else %}<b>{{ p.balance|money }}</b>{% endif %}</td>
+    <td class="u-right">{% if p.settled %}<span class="pill pill-green">Settled</span>{% if p.payments.count > 1 %} <span class="muted u-xs">· {{ p.payments.count }} payments</span>{% endif %}{% elif can_enter_data %}
+      <form method="post" action="{% url 'payable_settle' p.id %}" class="u-inline"
+            onsubmit="return confirm('Record this payment?');">{% csrf_token %}
+        <input type="number" step="0.01" min="0.01" max="{{ p.balance|stringformat:'s' }}"
+               name="amount" class="field field-xs u-inline" style="width:7rem"
+               placeholder="{{ p.balance|money }}"
+               title="Leave blank to pay the whole balance, or enter an instalment">
+        <button class="btn btn-xs btn-brass">Pay</button>
+      </form>
+      <a class="btn btn-xs btn-ghost" href="{% url 'expense_create' %}?settle=payable:{{ p.id }}" title="Record the payment on the full expense form">Pay in detail</a>
       <a class="btn btn-xs btn-ghost" href="{% url 'settle_existing' 'payable' p.id %}" title="Link an expense you already entered">Link expense</a>
       <a class="btn btn-xs btn-ghost" href="{% url 'payable_edit' p.id %}">Edit</a>
       <form method="post" action="{% url 'payable_delete' p.id %}" class="u-inline" onsubmit="return confirm('Delete this payable?');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber">Delete</button></form>{% endif %}</td>
-  </tr>{% empty %}<tr><td colspan="6" class="empty">No payables recorded.</td></tr>{% endfor %}
+  </tr>{% empty %}<tr><td colspan="8" class="empty">No payables recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
   <form method="post" action="{% url 'payable_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;align-items:end">{% csrf_token %}
@@ -53,7 +70,7 @@
 <table class="ledger compact"><thead><tr><th>Period</th><th>Description</th><th>Fund</th><th class="num">Amount</th><th></th></tr></thead><tbody>
   {% for a in accruals %}<tr {% if a.settled %}class="muted"{% endif %}>
     <td class="mono">{{ a.date|date:"d M y" }}</td><td>{{ a.description }}</td><td>{{ a.department.name }}</td>
-    <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ a.amount|money }}</td>
     <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% if a.settled_expense %} <span class="muted u-xs">· linked</span>{% endif %}{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=accrual:{{ a.id }}">Settle</a>
       <a class="btn btn-xs btn-ghost" href="{% url 'settle_existing' 'accrual' a.id %}" title="Link an expense you already entered">Link expense</a>
       <a class="btn btn-xs btn-ghost" href="{% url 'accrual_edit' a.id %}">Edit</a>
@@ -78,9 +95,9 @@
 <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Fund</th><th class="num">Paid</th><th>Spread</th><th class="num">Unexpired</th><th></th></tr></thead><tbody>
   {% for p in prepayments %}<tr>
     <td class="mono">{{ p.date|date:"d M y" }}</td><td>{{ p.description }}</td><td>{{ p.department.name }}</td>
-    <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ p.amount|money }}</td>
     <td class="mono">{{ p.months }}m from {{ p.start_date|date:"M y" }}</td>
-    <td class="num mono">{{ p.unexpired_now|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ p.unexpired_now|money }}</td>
     <td class="u-right">{% if can_enter_data %}<a class="btn btn-xs btn-ghost" href="{% url 'prepayment_edit' p.id %}">Edit</a>
       <form method="post" action="{% url 'prepayment_delete' p.id %}" class="u-inline" onsubmit="return confirm('Delete this prepayment? The original expense entry is kept.');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber">Delete</button></form>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="7" class="empty">No prepayments recorded.</td></tr>{% endfor %}

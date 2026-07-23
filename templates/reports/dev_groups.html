@@ -11,7 +11,7 @@
 </div></div>
 {% include 'partials/period_filter.html' %}
 {% if unassigned_count %}
-<div class="callout callout-warn u-mb">⚠ {{ unassigned_count }} development offering(s) totalling {{ unassigned_total|floatformat:2|intcomma }} are on the parent fund with no group assigned — these aren't counted in any group's progress below. <a class="link" href="{% url 'dev_unassigned' %}">Review &amp; assign →</a></div>
+<div class="callout callout-warn u-mb">⚠ {{ unassigned_count }} development offering(s) totalling {{ unassigned_total|money }} are on the parent fund with no group assigned — these aren't counted in any group's progress below. <a class="link" href="{% url 'dev_unassigned' %}">Review &amp; assign →</a></div>
 {% endif %}
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th class="num">Balance</th><th style="width:200px">Progress</th><th></th></tr></thead>
@@ -19,9 +19,9 @@
   {% for r in rows %}
     <tr>
       <td><strong>{{ r.group.label }}</strong></td>
-      <td class="num mono">{{ r.collected|floatformat:2|intcomma }}</td>
-      <td class="num mono muted">{{ r.target|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.collected|money }}</td>
+      <td class="num mono muted">{{ r.target|money }}</td>
+      <td class="num mono">{{ r.balance|money }}</td>
       <td><div class="bar"><div class="bar-fill" style="width:{{ r.pct|pct_width }}%"></div></div><span class="muted mono u-xs">{{ r.pct }}%</span></td>
       <td><a class="link" href="{% url 'report_dev_group_members' r.group.id %}">Members →</a></td>
     </tr>

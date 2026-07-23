@@ -1,4 +1,4 @@
-{% load humanize %}<!doctype html><html><head><meta charset="utf-8">
+{% load humanize treasury_extras %}<!doctype html><html><head><meta charset="utf-8">
 <title>Receipt {{ envelope.receipt_no }}</title>
 <style>
   :root{--ink:#1a1a1a}
@@ -53,9 +53,9 @@
   <table>
     <thead><tr><th>Contribution</th><th class="amt">Amount (KES)</th></tr></thead>
     <tbody>
-      {% for l in envelope.lines.all %}<tr><td>{{ l.department.name }}</td><td class="amt">{{ l.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+      {% for l in envelope.lines.all %}<tr><td>{{ l.department.name }}</td><td class="amt">{{ l.amount|money }}</td></tr>{% endfor %}
     </tbody>
-    <tfoot><tr><td>TOTAL</td><td class="amt">{{ envelope.total|floatformat:2|intcomma }}</td></tr></tfoot>
+    <tfoot><tr><td>TOTAL</td><td class="amt">{{ envelope.total|money }}</td></tr></tfoot>
   </table>
   <div class="rc-msg">{{ receipt_message }}</div>
   <div class="rc-sign">Served by: {{ request.user.get_full_name|default:request.user.username }}</div>

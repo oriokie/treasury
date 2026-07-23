@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize treasury_extras %}
 {% block content %}
 <div class="page">
   {% include "ui/page_header.html" with title="Undo envelope entries" subtitle="Reverse a batch of envelopes — e.g. ones typed for a Sabbath before the bank statement was imported." %}
@@ -25,7 +25,7 @@
     {% if envelopes %}
       <div class="card u-mt-1">
         <div class="u-flex u-between u-center">
-          <strong>{{ count }} envelope{{ count|pluralize }} · KES {{ total|floatformat:2|intcomma }}</strong>
+          <strong>{{ count }} envelope{{ count|pluralize }} · {{ CURRENCY }} {{ total|money }}</strong>
           {% if not blocked %}
           <form method="post" onsubmit="return confirm('Reverse {{ count }} envelope{{ count|pluralize }} for {{ date }}? Cash ledger entries they created will be removed; any bank deposits are kept and returned to the receipt queue. This cannot be undone.');">
             {% csrf_token %}
@@ -43,7 +43,7 @@
               <td class="mono"><a href="{% url 'envelope_detail' e.id %}">{{ e.receipt_no }}</a></td>
               <td>{{ e.member.name|default:e.contributor_name }}</td>
               <td>{% if e.channel == 'BANK' %}<span class="pill pill-grey">Bank</span>{% else %}<span class="pill">Cash</span>{% endif %}</td>
-              <td class="num mono">{{ e.total|floatformat:2|intcomma }}</td>
+              <td class="num mono">{{ e.total|money }}</td>
             </tr>
           {% endfor %}
           </tbody>

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Pledge statement · {{ member.name }}{% endblock %}
 {% block content %}
 <div class="ws-head no-print"><div class="ws-titles"><h1>Pledge statement</h1><div class="ws-sub">{{ member.name }} · {{ year }}</div></div>
@@ -12,10 +12,10 @@
   <p><strong>{{ member.name }}</strong></p>
   <table class="ledger compact"><thead><tr><th>Campaign</th><th class="num">Pledged</th><th class="num">Received in {{ year }}</th><th class="num">Total received</th><th class="num">Outstanding</th><th>Status</th></tr></thead><tbody>
   {% for r in rows %}
-    <tr><td>{{ r.pledge.campaign.name }}</td><td class="num mono">{{ r.pledge.amount|floatformat:2|intcomma }}</td><td class="num mono">{{ r.year_paid|floatformat:2|intcomma }}</td><td class="num mono">{{ r.pledge.paid|floatformat:2|intcomma }}</td><td class="num mono">{{ r.pledge.outstanding|floatformat:2|intcomma }}</td><td>{{ r.pledge.get_status_display }}</td></tr>
+    <tr><td>{{ r.pledge.campaign.name }}</td><td class="num mono">{{ r.pledge.amount|money }}</td><td class="num mono">{{ r.year_paid|money }}</td><td class="num mono">{{ r.pledge.paid|money }}</td><td class="num mono">{{ r.pledge.outstanding|money }}</td><td>{{ r.pledge.get_status_display }}</td></tr>
   {% empty %}<tr><td colspan="6" class="empty">No pledges on record.</td></tr>{% endfor %}
   </tbody>
-  <tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td>Total</td><td class="num mono">{{ total_pledged|floatformat:2|intcomma }}</td><td class="num mono">{{ total_paid_year|floatformat:2|intcomma }}</td><td colspan="3"></td></tr></tfoot>
+  <tfoot><tr style="font-weight:700;border-top:2px solid var(--line)"><td>Total</td><td class="num mono">{{ total_pledged|money }}</td><td class="num mono">{{ total_paid_year|money }}</td><td colspan="3"></td></tr></tfoot>
   </table>
   <p class="help u-mt">Thank you for your faithful giving. This statement is a record of pledge commitments and amounts received; it is not a tax receipt. “Each of you should give what you have decided in your heart to give.” — 2 Corinthians 9:7</p>
 </div></div>

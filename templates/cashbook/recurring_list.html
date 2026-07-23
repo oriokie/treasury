@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Recurring expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Recurring expenses</h1>
@@ -16,7 +16,7 @@
       <td>{{ r.s.description }}</td>
       <td>{{ r.s.department.name }}</td>
       <td>{{ r.s.get_frequency_display }}{% if r.s.frequency == 'MONTHLY' %} <span class="muted">(day {{ r.s.day_of_month }})</span>{% endif %}</td>
-      <td class="num mono">{{ r.s.amount|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ r.s.amount|money }}</td>
       <td>{{ r.s.claimant|default:"—" }}</td>
       <td class="mono">{% if r.next %}{{ r.next|date:"d M Y" }}{% else %}—{% endif %}</td>
       <td>{% if r.s.active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-grey">Paused</span>{% endif %}</td>

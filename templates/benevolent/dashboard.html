@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Benevolent · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -26,19 +26,19 @@
 
 <div class="grid cols-4 u-mb">
   <div class="stat accent"><div class="lbl">Scheme balances</div>
-    <div class="val mono">{{ CURRENCY }} {{ totals.closing|floatformat:2|intcomma }}</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.closing|money }}</div>
     <div class="foot">Closing, all scheme funds</div></div>
   <div class="stat"><div class="lbl">Contributions</div>
-    <div class="val mono">{{ CURRENCY }} {{ totals.contributions|floatformat:2|intcomma }}</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.contributions|money }}</div>
     <div class="foot">In the period</div></div>
   <div class="stat"><div class="lbl">Benefits paid</div>
-    <div class="val mono">{{ CURRENCY }} {{ totals.payouts|floatformat:2|intcomma }}</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.payouts|money }}</div>
     <div class="foot">In the period</div></div>
   <div class="stat brass"><div class="lbl">Approved, not yet paid</div>
-    <div class="val mono">{{ CURRENCY }} {{ totals.committed|floatformat:2|intcomma }}</div>
+    <div class="val mono">{{ CURRENCY }} {{ totals.committed|money }}</div>
     <div class="foot">{{ totals.members }} member{{ totals.members|pluralize }} · {{ totals.open_cases }} open case{{ totals.open_cases|pluralize }}</div></div>
   <div class="stat warn"><div class="lbl">Members' arrears</div>
-    <div class="val mono">{{ CURRENCY }} {{ arrears|floatformat:2|intcomma }}</div>
+    <div class="val mono">{{ CURRENCY }} {{ arrears|money }}</div>
     <div class="foot"><a class="link" href="{% url 'engine_report' 'benevolent_arrears_report' %}">See who</a></div></div>
 </div>
 
@@ -71,10 +71,10 @@
   <td><a class="link" href="{% url 'benevolent_scheme_detail' r.scheme.id %}">{{ r.scheme.name }}</a>
       <div class="muted u-xs">{{ r.scheme.get_kind_display }}</div></td>
   <td class="muted">{{ r.fund.name }}</td>
-  <td class="num mono">{{ r.opening|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ r.contributions|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ r.payouts|floatformat:2|intcomma }}</td>
-  <td class="num mono"><strong>{{ r.closing|floatformat:2|intcomma }}</strong></td>
+  <td class="num mono">{{ r.opening|money }}</td>
+  <td class="num mono">{{ r.contributions|money }}</td>
+  <td class="num mono">{{ r.payouts|money }}</td>
+  <td class="num mono"><strong>{{ r.closing|money }}</strong></td>
   <td class="num">{{ r.members }}</td>
   <td class="num">{{ r.open_cases }}</td>
   <td><span class="pill {% if r.scheme.status == 'ACTIVE' %}pill-green{% elif r.scheme.status == 'SUSPENDED' %}pill-amber{% else %}pill-brass{% endif %} u-xs">{{ r.scheme.get_status_display }}</span></td>
@@ -95,8 +95,8 @@
   <td>{{ c.beneficiary_display }}</td>
   <td class="muted">{{ c.event_type.name }}</td>
   <td>{{ c.event_date|date:"d M y" }}</td>
-  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
-  <td class="num mono">{% if c.outstanding %}{{ c.outstanding|floatformat:2|intcomma }}{% else %}—{% endif %}</td>
+  <td class="num mono">{% if c.approved_amount %}{{ c.approved_amount|money }}{% else %}—{% endif %}</td>
+  <td class="num mono">{% if c.outstanding %}{{ c.outstanding|money }}{% else %}—{% endif %}</td>
   <td><span class="pill {% if c.status == 'SUBMITTED' %}pill-amber{% elif c.status == 'ASSESSED' %}pill-blue{% else %}pill-green{% endif %} u-xs">{{ c.get_status_display }}</span></td>
   <td><a class="link" href="{% url 'benevolent_case_detail' c.id %}">Open</a></td>
 </tr>{% endfor %}</tbody>

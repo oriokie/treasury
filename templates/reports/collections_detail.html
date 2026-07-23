@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Collections detail · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Collections Detail" %}
@@ -15,11 +15,11 @@
 {% include 'partials/period_filter.html' %}
 
 <div class="stat-strip">
-  <div class="stat"><div class="stat-label">Collections</div><div class="stat-value mono">{{ d.tot_collections|floatformat:0|intcomma }}</div></div>
-  <div class="stat"><div class="stat-label">Trust funds</div><div class="stat-value mono">{{ d.tot_trust|floatformat:0|intcomma }}</div></div>
-  <div class="stat"><div class="stat-label">Local funds</div><div class="stat-value mono">{{ d.tot_local|floatformat:0|intcomma }}</div></div>
-  <div class="stat"><div class="stat-label">Expenditure</div><div class="stat-value mono row-debit">{{ d.tot_expenditure|floatformat:0|intcomma }}</div></div>
-  <div class="stat"><div class="stat-label">Net (coll &minus; exp)</div><div class="stat-value mono">{{ d.tot_net|floatformat:0|intcomma }}</div></div>
+  <div class="stat"><div class="stat-label">Collections</div><div class="stat-value mono">{{ d.tot_collections|money:0 }}</div></div>
+  <div class="stat"><div class="stat-label">Trust funds</div><div class="stat-value mono">{{ d.tot_trust|money:0 }}</div></div>
+  <div class="stat"><div class="stat-label">Local funds</div><div class="stat-value mono">{{ d.tot_local|money:0 }}</div></div>
+  <div class="stat"><div class="stat-label">Expenditure</div><div class="stat-value mono row-debit">{{ d.tot_expenditure|money:0 }}</div></div>
+  <div class="stat"><div class="stat-label">Net (coll &minus; exp)</div><div class="stat-value mono">{{ d.tot_net|money:0 }}</div></div>
 </div>
 
 <div class="table-wrap"><table class="ledger report-table">
@@ -30,7 +30,7 @@
       <td>{{ r.fund }}</td>
       <td>{% if r.is_trust %}<span class="pill pill-brass">Trust</span>{% else %}<span class="pill pill-grey">Local</span>{% endif %}</td>
       <td class="num mono">{{ r.n|intcomma }}</td>
-      <td class="num mono">{{ r.amount|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.amount|money:0 }}</td>
     </tr>
   {% empty %}
     <tr><td colspan="4" class="empty">No collections in this period.</td></tr>
@@ -38,9 +38,9 @@
   </tbody>
   {% if d.rows %}
   <tfoot>
-    <tr class="sub-row"><td colspan="3">Trust funds &mdash; subtotal</td><td class="num mono">{{ d.tot_trust|floatformat:0|intcomma }}</td></tr>
-    <tr class="sub-row"><td colspan="3">Local funds &mdash; subtotal</td><td class="num mono">{{ d.tot_local|floatformat:0|intcomma }}</td></tr>
-    <tr class="total-row"><td colspan="2"><strong>TOTAL COLLECTIONS</strong></td><td class="num mono"><strong>{{ d.n_receipts|intcomma }}</strong></td><td class="num mono"><strong>{{ d.tot_collections|floatformat:0|intcomma }}</strong></td></tr>
+    <tr class="sub-row"><td colspan="3">Trust funds &mdash; subtotal</td><td class="num mono">{{ d.tot_trust|money:0 }}</td></tr>
+    <tr class="sub-row"><td colspan="3">Local funds &mdash; subtotal</td><td class="num mono">{{ d.tot_local|money:0 }}</td></tr>
+    <tr class="total-row"><td colspan="2"><strong>TOTAL COLLECTIONS</strong></td><td class="num mono"><strong>{{ d.n_receipts|intcomma }}</strong></td><td class="num mono"><strong>{{ d.tot_collections|money:0 }}</strong></td></tr>
   </tfoot>
   {% endif %}
 </table></div>

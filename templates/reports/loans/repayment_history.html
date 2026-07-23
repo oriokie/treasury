@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Loan Repayment History · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Loan Repayment History</h1><div class="sub">Principal repayments in the period</div></div></div>
@@ -8,9 +8,9 @@
 <tbody>{% for t in rows %}<tr><td>{{ t.date|date:"d M y" }}</td><td class="mono">{{ t.loan.number }}</td>
   <td>{{ t.loan.lender.name }}</td><td class="muted">{{ t.loan.fund.name }}</td>
   <td class="muted u-xs">{% if t.expense %}{{ t.expense.voucher_no }}{% endif %}</td>
-  <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+  <td class="num mono">{{ t.amount|money }}</td></tr>
 {% empty %}<tr><td colspan="6" class="empty">No repayments in this period.</td></tr>{% endfor %}</tbody>
 {% if rows %}<tfoot><tr class="total-row"><td colspan="5"><strong>Total repaid</strong></td>
-  <td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td></tr></tfoot>{% endif %}
+  <td class="num mono"><strong>{{ total|money }}</strong></td></tr></tfoot>{% endif %}
 </table></div>
 {% endblock %}

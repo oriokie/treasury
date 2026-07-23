@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Import expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -27,7 +27,7 @@
 {% elif stage == "review" %}
 <div class="ws-summary u-mb">
   <div class="ws-metric is-primary"><span class="wm-l">Ready</span><span class="wm-v">{{ ready }}</span></div>
-  <div class="ws-metric"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">KES</span>{{ total|floatformat:0|intcomma }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ total|money:0 }}</span></div>
   <div class="ws-metric {% if problems %}is-warn{% endif %}"><span class="wm-l">Need attention</span><span class="wm-v">{{ problems }}</span></div>
 </div>
 {% if problems %}<div class="alert alert-warn u-mb">Rows missing a date, fund, description or amount will be skipped.</div>{% endif %}
@@ -44,7 +44,7 @@
         <td>{{ p.description|default:"—" }}</td>
         <td>{{ p.category|title }}</td>
         <td>{{ p.method|title }}</td>
-        <td class="num mono">{{ p.amount|floatformat:2|intcomma }}</td>
+        <td class="num mono">{{ p.amount|money }}</td>
         <td>{% if p.ok %}<span class="pill pill-green">ok</span>{% else %}<span class="pill pill-amber">skip</span>{% endif %}</td>
       </tr>{% endfor %}
       </tbody>

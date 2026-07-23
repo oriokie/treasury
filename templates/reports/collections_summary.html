@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Collections summary · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Collections Summary" %}
@@ -10,18 +10,18 @@
   <tbody>
   {% for r in d.rows %}
     <tr><td>{{ r.month }}</td>
-      <td class="num mono">{{ r.collections|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.trust|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.local|floatformat:0|intcomma }}</td>
-      <td class="num mono row-debit">{{ r.expenditure|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.net|floatformat:0|intcomma }}</td></tr>
+      <td class="num mono">{{ r.collections|money:0 }}</td>
+      <td class="num mono">{{ r.trust|money:0 }}</td>
+      <td class="num mono">{{ r.local|money:0 }}</td>
+      <td class="num mono row-debit">{{ r.expenditure|money:0 }}</td>
+      <td class="num mono">{{ r.net|money:0 }}</td></tr>
   {% endfor %}
     <tr class="total-row"><td><strong>TOTAL</strong></td>
-      <td class="num mono"><strong>{{ d.tot_collections|floatformat:0|intcomma }}</strong></td>
-      <td class="num mono"><strong>{{ d.tot_trust|floatformat:0|intcomma }}</strong></td>
-      <td class="num mono"><strong>{{ d.tot_local|floatformat:0|intcomma }}</strong></td>
-      <td class="num mono row-debit"><strong>{{ d.tot_expenditure|floatformat:0|intcomma }}</strong></td>
-      <td class="num mono"><strong>{{ d.tot_net|floatformat:0|intcomma }}</strong></td></tr>
+      <td class="num mono"><strong>{{ d.tot_collections|money:0 }}</strong></td>
+      <td class="num mono"><strong>{{ d.tot_trust|money:0 }}</strong></td>
+      <td class="num mono"><strong>{{ d.tot_local|money:0 }}</strong></td>
+      <td class="num mono row-debit"><strong>{{ d.tot_expenditure|money:0 }}</strong></td>
+      <td class="num mono"><strong>{{ d.tot_net|money:0 }}</strong></td></tr>
   </tbody>
 </table></div>
 <style>.total-row td{border-top:2px solid var(--line)}</style>

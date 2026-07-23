@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ member.name }} statement · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Member Giving Statement" %}
@@ -8,8 +8,8 @@
 <div class="card" style="margin-top:1rem;max-width:560px"><div class="bd">
   <table class="ledger plain">
     <thead><tr><th>Fund</th><th class="num">Amount</th></tr></thead>
-    <tbody>{% for r in rows %}<tr><td>{{ r.department__name|default:"Unallocated" }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td colspan="2" class="empty">No giving in this period.</td></tr>{% endfor %}</tbody>
-    <tfoot><tr><th>Total</th><th class="num mono">{{ total|floatformat:2|intcomma }}</th></tr></tfoot>
+    <tbody>{% for r in rows %}<tr><td>{{ r.department__name|default:"Unallocated" }}</td><td class="num mono">{{ r.total|money }}</td></tr>{% empty %}<tr><td colspan="2" class="empty">No giving in this period.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><th>Total</th><th class="num mono">{{ total|money }}</th></tr></tfoot>
   </table>
   <div class="note u-mt-sm">Thank you for your faithful giving. Please retain this statement for your records.</div>
 </div></div>

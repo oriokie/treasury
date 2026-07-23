@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Batch #{{ batch.pk }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Batch #{{ batch.pk }}
@@ -27,7 +27,7 @@
 
 <div class="entry-summary u-mb">
   <div class="es-stat"><span class="es-num" >{{ rows|length }}</span><span class="es-lbl">rows</span></div>
-  <div class="es-stat"><span class="es-num mono">{{ batch.computed_total|floatformat:2|intcomma }}</span><span class="es-lbl">total (KSh)</span></div>
+  <div class="es-stat"><span class="es-num mono">{{ batch.computed_total|money }}</span><span class="es-lbl">total (KSh)</span></div>
 </div>
 
 <div class="card u-mb"><div class="bd">
@@ -44,10 +44,10 @@
   <td class="mono">{{ r.receipt_no|default:"—" }}</td>
   <td>{{ r.contributor_name|default:"—" }}{% if r.member %} <span class="pill pill-grey u-xs" title="Matched member">member</span>{% endif %}</td>
   <td>{{ r.get_channel_display }}</td>
-  <td class="u-xs">{% for label, amt in r.fund_breakdown %}<span class="pill pill-grey u-xs">{{ label }} {{ amt|floatformat:2|intcomma }}</span> {% empty %}—{% endfor %}
+  <td class="u-xs">{% for label, amt in r.fund_breakdown %}<span class="pill pill-grey u-xs">{{ label }} {{ amt|money }}</span> {% empty %}—{% endfor %}
     {% if r.dev_group %}<span class="pill pill-brass u-xs">{{ r.dev_group }}</span>{% endif %}</td>
   <td class="num mono">{{ r.manual_total|default_if_none:"—"|floatformat:2 }}</td>
-  <td class="num mono">{{ r.computed_total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.computed_total|money }}</td>
   <td class="u-xs">{% if r.error %}<span class="pill pill-red" title="{{ r.error_detail }}">{{ r.error_detail }}</span>
     {% elif r.posted_envelope_id %}<a class="link" href="{% url 'envelope_detail' r.posted_envelope_id %}">posted</a>{% endif %}</td>
 </tr>

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Print {{ c.get_method_display }} {{ c.instrument_number }}{% endblock %}
 {% block content %}
 <div class="page-head no-print"><div><h1>Print payment</h1><div class="sub">{{ c.get_method_display }} {{ c.instrument_number }}</div></div>
@@ -8,7 +8,7 @@
   <div class="cheque-row"><div class="cheque-lbl">Date</div><div class="cheque-val mono">{{ c.date_issued|date:"d / m / Y"|default:"____ / ____ / ________" }}</div></div>
   <div class="cheque-row"><div class="cheque-lbl">Pay</div><div class="cheque-val">{{ c.payee|default:"________________________________" }}</div></div>
   <div class="cheque-row"><div class="cheque-lbl">The sum of</div><div class="cheque-val">{{ amount_words }}</div></div>
-  <div class="cheque-amount mono">KES {{ c.amount|floatformat:2|intcomma }}</div>
+  <div class="cheque-amount mono">{{ CURRENCY }} {{ c.amount|money }}</div>
   {% if c.note %}<div class="cheque-row"><div class="cheque-lbl">Being</div><div class="cheque-val">{{ c.note }}</div></div>{% endif %}
   <div class="cheque-sigs">
     <div class="sig"><div class="sig-line">{{ c.signatory_1 }}</div><div class="sig-cap">Signatory 1</div></div>

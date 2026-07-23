@@ -47,6 +47,10 @@ urlpatterns = [
     path("reports/", include("reports.urls")),
     path("loans/", include("loans.urls")),
     path("benevolent/", include("benevolent.urls")),
+    # The member self-service portal. Its own top-level prefix so the
+    # confinement middleware has a single path to allow — see
+    # core.middleware.PortalConfinementMiddleware.
+    path("portal/", include("benevolent.urls_portal")),
     path("", include("assets.urls")),
     path("", include("ledger.urls")),
     path("", include("pledges.urls")),

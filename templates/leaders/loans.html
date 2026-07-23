@@ -1,13 +1,16 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Department loans · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ld-hero">
-  <div class="ld-hero-main">
-    <div class="ld-eyebrow">My departments</div>
-    <h1>Loans</h1>
-    <div class="ld-period">Loans financing your funds · outstanding KES {{ outstanding_total|floatformat:2|intcomma }}</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">My departments · {{ SITE_NAME }}</div>
+      <h1>Loans</h1>
+      <div class="period">Loans financing your funds · outstanding {{ CURRENCY }} {{ outstanding_total|money }}</div>
+    </div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← Back</a></div>
   </div>
-  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_dashboard' %}">← Back</a>
+  <div class="rule"></div>
 </div>
 
 <div class="btn-row no-print u-mb">
@@ -20,14 +23,14 @@
 <tbody>{% for l in loans %}<tr>
   <td class="mono"><a class="link" href="{% url 'leader_loan_detail' l.id %}">{{ l.number }}</a></td>
   <td>{{ l.lender.name }}</td><td class="muted">{{ l.fund.name }}</td>
-  <td class="num mono">{{ l.principal_amount|default:l.received_total|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ l.outstanding_principal|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ l.principal_amount|default:l.received_total|money }}</td>
+  <td class="num mono">{{ l.outstanding_principal|money }}</td>
   <td>{{ l.loan_date|date:"d M y" }}</td>
   <td>{% if l.maturity_date %}{{ l.maturity_date|date:"d M y" }}{% if l.is_overdue %} <span class="pill pill-red u-xs">Overdue</span>{% endif %}{% else %}—{% endif %}</td>
   <td><span class="pill u-xs {% if l.status == 'ACTIVE' %}pill-blue{% elif l.status == 'COMPLETED' %}pill-green{% else %}pill-brass{% endif %}">{{ l.get_status_display }}</span></td>
 </tr>{% empty %}<tr><td colspan="8" class="empty">No loans on your departments.</td></tr>{% endfor %}</tbody>
 {% if loans %}<tfoot><tr class="total-row"><td colspan="4"><strong>Outstanding</strong></td>
-  <td class="num mono"><strong>{{ outstanding_total|floatformat:2|intcomma }}</strong></td><td colspan="3"></td></tr></tfoot>{% endif %}
+  <td class="num mono"><strong>{{ outstanding_total|money }}</strong></td><td colspan="3"></td></tr></tfoot>{% endif %}
 </table></div>
 <p class="help">Loan financing raises your fund's available cash but is not income or a contribution. This view is read-only.</p>
 {% endblock %}

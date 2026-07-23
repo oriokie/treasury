@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Payments analysis · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Payments analysis</h1>
@@ -27,9 +27,9 @@
 <th class="num">Cancelled</th><th class="num">Avg days to clear</th><th class="num">Slowest</th></tr></thead>
 <tbody>{% for r in rows %}<tr>
   <td>{{ r.group }}</td><td class="num">{{ r.count }}</td>
-  <td class="num mono">{{ r.total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.total|money }}</td>
   <td class="num">{{ r.cleared }}</td><td class="num">{{ r.outstanding }}</td>
-  <td class="num mono">{{ r.outstanding_total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ r.outstanding_total|money }}</td>
   <td class="num">{{ r.cancelled }}</td>
   <td class="num">{% if r.avg_days != None %}{{ r.avg_days }}{% else %}—{% endif %}</td>
   <td class="num">{% if r.max_days != None %}{{ r.max_days }}{% else %}—{% endif %}</td>

@@ -1,18 +1,21 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Advances · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ld-hero">
-  <div class="ld-hero-main">
-    <div class="ld-eyebrow">My staff advances</div>
-    <h1>Staff advances</h1>
-    <div class="ld-period">Advances issued on your funds — record the expenses that account for them</div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">My staff advances · {{ SITE_NAME }}</div>
+      <h1>Staff advances</h1>
+      <div class="period">Advances issued on your funds — record the expenses that account for them</div>
+    </div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'leader_dashboard' %}">← My departments</a></div>
   </div>
-  <a class="btn btn-sm ld-hero-back" href="{% url 'leader_dashboard' %}">← My departments</a>
+  <div class="rule"></div>
 </div>
 
 <div class="ld-kpis ld-kpis-1 u-mb">
   <div class="stat brass"><div class="label">Outstanding to account for</div>
-    <div class="value"><span class="ksh">{{ CURRENCY|default:'KSh' }}</span>{{ outstanding|floatformat:0|intcomma }}</div>
+    <div class="value"><span class="ksh">{{ CURRENCY|default:'KSh' }}</span>{{ outstanding|money:0 }}</div>
     <div class="foot">Across your open advances</div></div>
 </div>
 
@@ -27,9 +30,9 @@
   <td><a href="{% url 'leader_advance_detail' a.id %}">{{ a.staff_name }}</a>{% if a.from_petty_cash %} <span class="pill pill-brass" title="From petty cash">PC</span>{% endif %}</td>
   <td class="muted">{{ a.department.name }}</td>
   <td>{{ a.purpose|truncatechars:32 }}</td>
-  <td class="num mono">{{ a.amount|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ a.accounted_total|floatformat:2|intcomma }}</td>
-  <td class="num mono">{{ a.balance|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ a.amount|money }}</td>
+  <td class="num mono">{{ a.accounted_total|money }}</td>
+  <td class="num mono">{{ a.balance|money }}</td>
   <td><span class="pill {% if a.status == 'SETTLED' or a.status == 'CLOSED' %}pill-green{% elif a.status == 'PARTLY' %}pill-amber{% else %}pill-grey{% endif %}">{{ a.get_status_display }}</span></td>
   <td class="u-right"><a class="btn btn-xs btn-brass" href="{% url 'leader_advance_detail' a.id %}">Open →</a></td>
 </tr>{% empty %}<tr><td colspan="9" class="empty">No advances on your funds.</td></tr>{% endfor %}</tbody>

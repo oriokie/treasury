@@ -2570,3 +2570,87 @@ Two deliberate refusals:
 
 **Tests:** 13 new, written against the real file's exact shape. Affected suites
 run clean: statements, cashbook, giving (795 tests).
+
+---
+
+## The Member Self-Service Portal (v3.11.0)
+
+A member-facing workspace at `/portal/`, integrated with the module rather than
+built beside it.
+
+### The governing idea
+
+The portal is a **surface**, not a second system. It contains no accounting, no
+eligibility logic and no workflow of its own. Every figure it shows comes from
+the service that owns it, and every change it produces is applied by calling
+that service:
+
+| The portal shows / does | The service that actually owns it |
+|---|---|
+| what a member has paid | `services.contributions.contributions_qs` |
+| where a member stands | `services.standing.assess` |
+| what a claim would pay | `services.eligibility.evaluate` |
+| adding or correcting a dependant | `services.registry.add_dependant` / `update_dependant` / `remove_dependant` |
+| a death, and the case it opens | `services.registry.record_dependant_death`, `services.cases.open_case_for_death` |
+| a request for assistance | `services.cases.create_case` |
+| telling the member anything | `services.notify.send` |
+| statement and receipt exports | `benevolent.exports` (the office's own formatter) |
+
+A member's arrears on their phone and the arrears on the treasurer's registry
+screen are therefore one calculation rendered twice. A portal that computed its
+own would be a second opinion about a member's debt.
+
+### The four new models, and why only four
+
+* **`MemberAccount`** — the binding between an `auth.User` and a
+  `members.Member`. Nothing joined those before, because every login belonged to
+  the office. Object-level permission derives from this row and nowhere else.
+* **`PortalRequest`** (+ `PortalRequestMessage`) — a member's *claim*, never a
+  change. One model covers assistance, deaths, household changes, corrections
+  and profile changes, because the shape is identical in all five. Follows the
+  precedent of `BenevolentApplication`, which is a separate model from
+  `SchemeMembership` for exactly this reason.
+* **`PortalDocument`** — a member photographs a burial permit before a case
+  exists, so the upload cannot belong to a case. Mirrored into `CaseAttachment`
+  on approval, so the assessor's existing checklist sees it.
+* **`PortalAccessLog`** — a **read** log. Writes are already covered three times
+  (`simple_history`, `MembershipEvent`, `CaseEvent`); reads were covered nowhere,
+  and a portal leak is a read.
+
+### Access control
+
+Three layers, each doing one job:
+
+1. **`core.roles.MEMBER`** — a role that is deliberately not an office role.
+   `is_portal_member` additionally requires a *usable* account, so suspending
+   access takes effect on the next click.
+2. **`PortalConfinementMiddleware`** — a member-only login reaches `/portal/`,
+   the auth pages, and nothing else. Confinement is inverted for this role and
+   enforced in one place, rather than auditing every existing office view
+   forever. It triggers on `is_portal_only` (not `is_portal_member`) so a
+   *suspended* member is still confined instead of falling through to the office.
+3. **`services.portal.Scope`** — the object-level rule. Every portal queryset
+   comes from it; `PortalScopeDisciplineTests` fails the build if a view queries
+   a manager directly.
+
+### Separation of duties on the office side
+
+Opening the review queue needs scheme administration. *Deciding* an item needs
+the right that owns the change it would make — `can_manage_benevolent_cases` for
+assistance and deaths, `can_register_benevolent_members` for household and
+profile changes. The portal is not a way round the split a church has already
+chosen.
+
+### What the portal deliberately cannot do
+
+* Grant cover, approve money, or post to the ledger — it never writes to those
+  records at all.
+* Turn a request into an approved case: an approved assistance request raises a
+  **DRAFT** case, which still has to be assessed, pass eligibility and be
+  approved on its own merits.
+* Correct a contribution. Approving a correction request records that the office
+  accepted the point; the adjustment stays with `MemberAdjustment` under the
+  treasurer's authority.
+* Change the phone number on the church roll directly — that number is what bank
+  and M-Pesa payments are matched against, so it goes through an approved
+  request. The member's *contact* preference is separate and is theirs to set.

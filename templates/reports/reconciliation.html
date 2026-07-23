@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Bank Reconciliation" %}
@@ -8,13 +8,13 @@
 <div class="card u-mb-lg"><div class="hd">Statement reconciliation — {{ rec.statement_date|date:"d M Y" }}</div><div class="bd">
   <table class="ledger recon">
     <tbody>
-      <tr><td><strong>Bank statement closing balance</strong></td><td class="num mono"><strong>{{ rec.bank_balance|floatformat:2|intcomma }}</strong></td></tr>
+      <tr><td><strong>Bank statement closing balance</strong></td><td class="num mono"><strong>{{ rec.bank_balance|money }}</strong></td></tr>
       {% if rec_adds %}<tr class="recon-head"><td colspan="2">Add: funds not yet on the statement</td></tr>{% endif %}
-      {% for i in rec_adds %}<tr><td style="padding-left:1.5rem">{{ i.description }}</td><td class="num mono">{{ i.amount|floatformat:2|intcomma }}</td></tr>{% endfor %}
+      {% for i in rec_adds %}<tr><td style="padding-left:1.5rem">{{ i.description }}</td><td class="num mono">{{ i.amount|money }}</td></tr>{% endfor %}
       {% if rec_subs %}<tr class="recon-head"><td colspan="2">Less: amounts not yet cleared</td></tr>{% endif %}
-      {% for i in rec_subs %}<tr><td style="padding-left:1.5rem">{{ i.description }}</td><td class="num mono row-debit">({{ i.amount|floatformat:2|intcomma }})</td></tr>{% endfor %}
-      <tr style="border-top:2px solid var(--line);font-weight:700"><td>Cashbook balance</td><td class="num mono">{{ rec_computed_book|floatformat:2|intcomma }}</td></tr>
-      {% if rec_variance %}<tr><td class="row-debit">Variance</td><td class="num mono row-debit">{{ rec_variance|floatformat:2|intcomma }}</td></tr>{% endif %}
+      {% for i in rec_subs %}<tr><td style="padding-left:1.5rem">{{ i.description }}</td><td class="num mono row-debit">({{ i.amount|money }})</td></tr>{% endfor %}
+      <tr style="border-top:2px solid var(--line);font-weight:700"><td>Cashbook balance</td><td class="num mono">{{ rec_computed_book|money }}</td></tr>
+      {% if rec_variance %}<tr><td class="row-debit">Variance</td><td class="num mono row-debit">{{ rec_variance|money }}</td></tr>{% endif %}
     </tbody>
   </table>
   <p class="help u-mt-sm">Bank charges are posted as an expense (in the cashbook), so they are <em>not</em> shown here as a reconciling item — including them in both places would double-count. {% if rec.notes %}{{ rec.notes }}{% endif %}</p>
@@ -25,8 +25,8 @@
 
 {% include 'partials/period_filter.html' %}
 <div class="grid-3 u-my">
-  <div class="stat"><div class="lbl">Bank receipts (ledger)</div><div class="val mono">{{ ledger_credits|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Bank payments (ledger)</div><div class="val mono row-debit">{{ ledger_debits|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Bank receipts (ledger)</div><div class="val mono">{{ ledger_credits|money }}</div></div>
+  <div class="stat"><div class="lbl">Bank payments (ledger)</div><div class="val mono row-debit">{{ ledger_debits|money }}</div></div>
   <div class="stat"><div class="lbl">Unreconciled items</div><div class="val mono">{{ unreconciled|length }}</div></div>
 </div>
 <p class="help" style="margin:-.4rem 0 1rem">These are recorded bank-channel receipts and payments for the period — a movement summary, not the account balance. The balance is reconciled in the statement above.</p>
@@ -38,7 +38,7 @@
   {% for t in unreconciled %}
     <tr><td class="mono">{{ t.date|date:"d/m/y" }}</td><td>{{ t.payer_name|default:"—" }}</td>
       <td class="mono muted">{{ t.reference|default:"—"|truncatechars:28 }}</td>
-      <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td></tr>
+      <td class="num mono">{{ t.amount|money }}</td></tr>
   {% empty %}<tr><td colspan="4" class="empty"><div class="big">✓</div>Everything is reconciled.</td></tr>{% endfor %}
   </tbody>
 </table></div>

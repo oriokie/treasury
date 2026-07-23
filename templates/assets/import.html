@@ -1,0 +1,105 @@
+{% extends 'base.html' %}{% load treasury_extras %}
+{% block title %}Bring in your asset register · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Bring in your asset register</h1>
+    <div class="sub">Load what the church already owns from a spreadsheet</div></div>
+  <div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_list' %}">← Assets</a></div>
+</div>
+
+{% if checked %}
+<div class="card u-mt"><div class="hd">What I found in {{ filename }}</div><div class="bd">
+  <p>{{ ready|length }} asset{{ ready|length|pluralize }} ready to bring in{% if problems %},
+    and {{ problems|length }} row{{ problems|length|pluralize }} I have left out{% endif %}.
+    Nothing has been saved yet.</p>
+  <p class="help">Columns recognised: {{ matched|join:", " }}.</p>
+</div></div>
+
+{% if problems %}
+<div class="card u-mt"><div class="hd">Left out — {{ problems|length }} row{{ problems|length|pluralize }}</div><div class="bd bd-flush">
+  <div class="table-wrap"><table class="ledger compact">
+    <thead><tr><th>Row</th><th>Name</th><th class="num">Cost</th><th>Why it was left out</th></tr></thead>
+    <tbody>
+      {% for p in problems %}
+      <tr><td class="mono">{{ p.row }}</td><td>{{ p.name|default:"—" }}</td>
+        <td class="num mono">{% if p.cost %}{{ p.cost|money }}{% else %}—{% endif %}</td>
+        <td class="muted">{{ p.issues|join:"; " }}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+</div></div>
+{% endif %}
+
+{% if ready %}
+<div class="card u-mt"><div class="hd">Ready to bring in</div><div class="bd bd-flush">
+  <div class="table-wrap"><table class="ledger compact">
+    <thead><tr><th>Row</th><th>Name</th><th>Class</th><th>Fund</th><th>Acquired</th>
+      <th class="num">Cost</th><th>Depreciates from</th></tr></thead>
+    <tbody>
+      {% for r in ready %}
+      <tr><td class="mono">{{ r.row }}</td><td>{{ r.name }}</td><td>{{ r.category }}</td>
+        <td>{{ r.fund.name|default:"—" }}</td><td>{{ r.acquired_on|date:"d M Y" }}</td>
+        <td class="num mono">{{ r.cost|money }}</td>
+        <td>{{ r.in_service_on|date:"d M Y" }}</td></tr>
+      {% endfor %}
+    </tbody></table></div>
+</div></div>
+
+<div class="card u-mt"><div class="bd">
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    <input type="hidden" name="confirm" value="yes">
+    <input type="hidden" name="default_category" value="{{ defaults.category }}">
+    <input type="hidden" name="default_fund" value="{{ defaults.fund.id|default:'' }}">
+    <div class="form-row"><label>Confirm the file again</label>
+      <input type="file" name="file" accept=".xlsx,.xlsm,.csv,.txt" class="field" required>
+      <div class="help">Choose the same file once more, then bring the assets in.</div></div>
+    <div class="btn-row"><button class="btn">Bring in {{ ready|length }} asset{{ ready|length|pluralize }}</button>
+      <a class="btn btn-ghost" href="{% url 'asset_import' %}">Start again</a></div>
+  </form>
+</div></div>
+{% endif %}
+
+{% else %}
+<div class="card u-narrow-md u-mt"><div class="hd">Choose your spreadsheet</div><div class="bd">
+  <form method="post" enctype="multipart/form-data">{% csrf_token %}
+    <div class="form-row"><label>Spreadsheet (.xlsx) or CSV</label>
+      <input type="file" name="file" accept=".xlsx,.xlsm,.csv,.txt" class="field" required>
+      <div class="help">If your file is the older .xls format, open it and save it as
+        .xlsx or CSV first.</div></div>
+    <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem">
+      <div class="form-row"><label>Class to use when the sheet does not say</label>
+        <select name="default_category" class="field--select">
+          {% for v,l in categories %}<option value="{{ v }}"{% if v == "EQUIPMENT" %} selected{% endif %}>{{ l }}</option>{% endfor %}
+        </select></div>
+      <div class="form-row"><label>Fund to use when the sheet does not say</label>
+        <select name="default_fund" class="field--select">
+          <option value="">—</option>
+          {% for d in funds %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+        </select></div>
+    </div>
+    <p class="help">I will read the file and show you exactly what would be brought in,
+      and what would be left out and why. Nothing is saved until you confirm.</p>
+    <div class="btn-row"><button class="btn">Check the file</button></div>
+  </form>
+</div></div>
+
+<div class="card u-narrow-md u-mt"><div class="hd">What the sheet needs</div><div class="bd">
+  <p>Only two columns are essential — a <strong>name</strong> and a <strong>cost</strong>.
+    Headings are matched by name, so your own spreadsheet will usually work as it is.
+    An <strong>acquisition date</strong> is strongly recommended: depreciation is charged
+    from the date an asset came into service, and the register states what was owned at
+    any past date.</p>
+  <table class="ledger compact"><thead><tr><th>Column</th><th>Headings I recognise</th></tr></thead>
+    <tbody>
+      {% for field, aliases in headers.items %}
+      <tr><td>{{ field }}</td><td class="muted">{{ aliases|join:", " }}</td></tr>
+      {% endfor %}
+    </tbody></table>
+  <div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'asset_import' %}?sample=1">⬇ Download a sample file</a></div>
+  <p class="help">The sample is a CSV with the headings filled in and a few example
+    assets — open it, replace the rows with your own, and upload it.
+    Anything not recognised is ignored, so extra columns do no harm.
+    Assets are brought in as opening balances, which is what they are — already owned,
+    not bought through this system.</p>
+</div></div>
+{% endif %}
+{% endblock %}

@@ -9,9 +9,9 @@ class DepreciationTests(TestCase):
         a = FixedAsset.objects.create(name="Chairs", category="FURNITURE",
             acquired_on=dt.date(2021, 1, 20), cost=Decimal("300000"),
             method="STRAIGHT", rate=Decimal("12.5"))
-        # 2021..2026 inclusive of acquisition year = 6 charges * 37,500
-        self.assertEqual(a.accumulated_depreciation(dt.date(2026, 6, 6)), Decimal("225000.00"))
-        self.assertEqual(a.net_book_value(dt.date(2026, 6, 6)), Decimal("75000.00"))
+        # monthly: 300,000 * 12.5% / 12 = 3,125/month; 66 months to 2026-06 = 206,250
+        self.assertEqual(a.accumulated_depreciation(dt.date(2026, 6, 6)), Decimal("206250.00"))
+        self.assertEqual(a.net_book_value(dt.date(2026, 6, 6)), Decimal("93750.00"))
 
     def test_straight_line_capped_at_salvage(self):
         a = FixedAsset.objects.create(name="Old", category="EQUIPMENT",
@@ -25,8 +25,8 @@ class DepreciationTests(TestCase):
         a = FixedAsset.objects.create(name="Laptops", category="IT",
             acquired_on=dt.date(2024, 9, 1), cost=Decimal("240000"),
             method="REDUCING", rate=Decimal("30"))
-        # charge in 2024 (72,000) and on the 2025 anniversary (50,400); 2026 anniversary not reached
-        self.assertEqual(a.accumulated_depreciation(dt.date(2026, 6, 6)), Decimal("122400.00"))
+        # monthly reducing balance at 30%/12 = 2.5%/month, 22 months from 2024-09
+        self.assertEqual(a.accumulated_depreciation(dt.date(2026, 6, 6)), Decimal("102496.81"))
 
     def test_none_method(self):
         a = FixedAsset.objects.create(name="Land", category="LAND",

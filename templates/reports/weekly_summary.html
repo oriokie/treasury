@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Weekly summary · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head no-print"><div><h1>Weekly summary</h1><div class="sub">{{ start|date:"d M" }} – {{ sabbath|date:"d M Y" }} (week to Sabbath)</div></div>
@@ -7,12 +7,12 @@
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Week to {{ sabbath|date:"d M Y" }}</div></div>
 <div class="two-col">
   <div class="card"><div class="hd">Income by fund</div><div class="bd"><table class="ledger compact"><tbody>
-    {% for r in income %}<tr><td>{{ r.department__name|default:"—" }}</td><td class="num mono">{{ r.t|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No income.</td></tr>{% endfor %}
-    <tr class="total-row"><td><strong>Total</strong></td><td class="num mono"><strong>{{ total_income|floatformat:2|intcomma }}</strong></td></tr></tbody></table></div></div>
+    {% for r in income %}<tr><td>{{ r.department__name|default:"—" }}</td><td class="num mono">{{ r.t|money }}</td></tr>{% empty %}<tr><td class="empty">No income.</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total</strong></td><td class="num mono"><strong>{{ total_income|money }}</strong></td></tr></tbody></table></div></div>
   <div class="card"><div class="hd">Expenses by fund</div><div class="bd"><table class="ledger compact"><tbody>
-    {% for r in expense %}<tr><td>{{ r.department__name|default:"—" }}</td><td class="num mono">{{ r.t|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No expenses.</td></tr>{% endfor %}
-    <tr class="total-row"><td><strong>Total</strong></td><td class="num mono"><strong>{{ total_expense|floatformat:2|intcomma }}</strong></td></tr></tbody></table></div></div>
+    {% for r in expense %}<tr><td>{{ r.department__name|default:"—" }}</td><td class="num mono">{{ r.t|money }}</td></tr>{% empty %}<tr><td class="empty">No expenses.</td></tr>{% endfor %}
+    <tr class="total-row"><td><strong>Total</strong></td><td class="num mono"><strong>{{ total_expense|money }}</strong></td></tr></tbody></table></div></div>
 </div>
-<div class="net-line">Net for the week: <strong class="mono">KES {{ net|floatformat:2|intcomma }}</strong></div>
+<div class="net-line">Net for the week: <strong class="mono">{{ CURRENCY }} {{ net|money }}</strong></div>
 {% include 'reports/_report_styles.html' %}
 {% endblock %}

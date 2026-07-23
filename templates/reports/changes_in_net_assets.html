@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Statement of changes in net assets · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Statement of Changes in Net Assets" %}
@@ -10,12 +10,14 @@
 <div class="table-wrap"><table class="ledger report-table cna">
   <thead><tr><th>Movement</th><th class="num">General net assets</th><th class="num">Designated dev funds</th><th class="num">Invested in property</th><th class="num">Total</th></tr></thead>
   <tbody>
-    <tr class="open"><td>Net assets, beginning of period</td><td class="num mono">{{ un.opening|floatformat:2|intcomma }}</td><td class="num mono">{{ al.opening|floatformat:2|intcomma }}</td><td class="num mono">{{ prop.opening|floatformat:2|intcomma }}</td><td class="num mono">{{ t_open|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Surplus/(deficit) from operations</td><td class="num mono">{{ un.op_surplus|floatformat:2|intcomma }}</td><td class="num mono">{{ al.op_surplus|floatformat:2|intcomma }}</td><td class="num mono">—</td><td class="num mono">{{ t_opsurplus|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Capital expenditure (property acquired)</td><td class="num mono">({{ un.capital|floatformat:2|intcomma }})</td><td class="num mono">({{ al.capital|floatformat:2|intcomma }})</td><td class="num mono">{{ cap_total|floatformat:2|intcomma }}</td><td class="num mono">—</td></tr>
-    <tr><td>Depreciation &amp; disposals</td><td class="num mono">—</td><td class="num mono">—</td><td class="num mono">{{ depr|floatformat:2|intcomma }}</td><td class="num mono">{{ depr|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Net inter-fund transfers</td><td class="num mono">{{ un.transfers|floatformat:2|intcomma }}</td><td class="num mono">{{ al.transfers|floatformat:2|intcomma }}</td><td class="num mono">—</td><td class="num mono">{{ t_transfers|floatformat:2|intcomma }}</td></tr>
-    <tr class="close"><td><strong>Net assets, end of period</strong></td><td class="num mono"><strong>{{ un.closing|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ al.closing|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ prop.closing|floatformat:2|intcomma }}</strong></td><td class="num mono"><strong>{{ t_close|floatformat:2|intcomma }}</strong></td></tr>
+    <tr class="open"><td>Net assets, beginning of period</td><td class="num mono">{{ un.opening|money_acct }}</td><td class="num mono">{{ al.opening|money_acct }}</td><td class="num mono">{{ prop.opening|money_acct }}</td><td class="num mono">{{ t_open|money_acct }}</td></tr>
+    <tr><td>Surplus/(deficit) from operations</td><td class="num mono">{{ un.op_surplus|money_acct }}</td><td class="num mono">{{ al.op_surplus|money_acct }}</td><td class="num mono">—</td><td class="num mono">{{ t_opsurplus|money_acct }}</td></tr>
+    <tr><td>Capital expenditure (property acquired)</td><td class="num mono">({{ un.capital|money_acct }})</td><td class="num mono">({{ al.capital|money_acct }})</td><td class="num mono">{{ cap_total|money_acct }}</td><td class="num mono">—</td></tr>
+    {% if donated %}<tr><td>Donated assets received</td><td class="num mono">—</td><td class="num mono">—</td><td class="num mono">{{ donated|money_acct }}</td><td class="num mono">{{ donated|money_acct }}</td></tr>{% endif %}
+    <tr><td>Depreciation for the period</td><td class="num mono">—</td><td class="num mono">—</td><td class="num mono">{{ depr_charge|money_acct }}</td><td class="num mono">{{ depr_charge|money_acct }}</td></tr>
+    {% if disposals %}<tr><td>Assets disposed of (carrying value)</td><td class="num mono">—</td><td class="num mono">—</td><td class="num mono">{{ disposals_out|money_acct }}</td><td class="num mono">{{ disposals_out|money_acct }}</td></tr>{% endif %}
+    <tr><td>Net inter-fund transfers</td><td class="num mono">{{ un.transfers|money_acct }}</td><td class="num mono">{{ al.transfers|money_acct }}</td><td class="num mono">—</td><td class="num mono">{{ t_transfers|money_acct }}</td></tr>
+    <tr class="close"><td><strong>Net assets, end of period</strong></td><td class="num mono"><strong>{{ un.closing|money_acct }}</strong></td><td class="num mono"><strong>{{ al.closing|money_acct }}</strong></td><td class="num mono"><strong>{{ prop.closing|money_acct }}</strong></td><td class="num mono"><strong>{{ t_close|money_acct }}</strong></td></tr>
   </tbody>
 </table></div>
 <p class="help">Each column rolls its opening net assets forward by the period's activity to its closing balance. Capital expenditure is a reclassification — it reduces spendable funds and increases amounts invested in property, with no effect on total net assets. The closing total agrees with net assets on the Statement of Financial Position. Tithe is excluded as a pass-through held on behalf of {{ FIELD_NAME }}.</p>

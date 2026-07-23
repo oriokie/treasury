@@ -21,7 +21,7 @@
   <div class="stat {% if trial_balance_balanced %}accent{% else %}warn{% endif %}">
     <div class="label">Trial balance</div>
     <div class="value">{% if trial_balance_balanced %}<span class="pill pill-green">✓ Balances</span>{% else %}<span class="pill pill-red">Out of balance</span>{% endif %}</div>
-    <div class="foot mono">Dr {{ trial_balance_totals.debit|floatformat:2|intcomma }} · Cr {{ trial_balance_totals.credit|floatformat:2|intcomma }}</div>
+    <div class="foot mono">Dr {{ trial_balance_totals.debit|money }} · Cr {{ trial_balance_totals.credit|money }}</div>
   </div>
   <div class="stat {% if accounting_equation.balanced %}accent{% else %}warn{% endif %}">
     <div class="label">Accounting equation</div>
@@ -61,8 +61,8 @@
 <div class="card u-mb"><div class="hd">Unbalanced journals</div><div class="bd">
   <table class="ledger"><thead><tr><th>Entry</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Difference</th></tr></thead><tbody>
   {% for b in unbalanced_journals %}<tr class="row-warn"><td>{{ b.entry.number|default:b.entry_id }} — {{ b.entry.memo }}</td>
-    <td class="num mono">{{ b.debit|floatformat:2|intcomma }}</td><td class="num mono">{{ b.credit|floatformat:2|intcomma }}</td>
-    <td class="num mono">{{ b.diff|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    <td class="num mono">{{ b.debit|money }}</td><td class="num mono">{{ b.credit|money }}</td>
+    <td class="num mono">{{ b.diff|money }}</td></tr>{% endfor %}
   </tbody></table>
 </div></div>
 {% endif %}
@@ -83,13 +83,13 @@
   {% if missing_source_documents.transactions %}<div class="section-title">Receipts</div>
   <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th class="num">Amount</th><th></th></tr></thead><tbody>
   {% for t in missing_source_documents.transactions %}<tr class="row-warn"><td class="mono">{{ t.date|date:"d/m/y" }}</td>
-    <td>{{ t.department.name|sentence_fund }}</td><td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+    <td>{{ t.department.name|sentence_fund }}</td><td class="num mono">{{ t.amount|money }}</td>
     <td>{% if can_enter_data %}<a class="link" href="{% url 'transaction_edit' t.id %}">View / edit →</a>{% endif %}</td></tr>{% endfor %}
   </tbody></table>{% endif %}
   {% if missing_source_documents.expenses %}<div class="section-title u-mt">Expenses</div>
   <table class="ledger"><thead><tr><th>Date</th><th>Fund</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead><tbody>
   {% for e in missing_source_documents.expenses %}<tr class="row-warn"><td class="mono">{{ e.date|date:"d/m/y" }}</td>
-    <td>{{ e.department.name|sentence_fund }}</td><td>{{ e.description }}</td><td class="num mono">{{ e.amount|floatformat:2|intcomma }}</td>
+    <td>{{ e.department.name|sentence_fund }}</td><td>{{ e.description }}</td><td class="num mono">{{ e.amount|money }}</td>
     <td><a class="link" href="{% url 'expense_detail' e.id %}">View →</a></td></tr>{% endfor %}
   </tbody></table>{% endif %}
   {% if is_treasurer %}<p class="help u-mt-sm">Rebuilding the ledger posts these.</p>{% endif %}
@@ -119,8 +119,8 @@
 <div class="card u-mb"><div class="hd">Funds out of balance</div><div class="bd">
   <table class="ledger"><thead><tr><th>Fund</th><th class="num">Per fund report</th><th class="num">Per ledger</th><th class="num">Difference</th></tr></thead><tbody>
   {% for f in funds_out_of_balance %}<tr class="row-warn"><td>{{ f.fund.name|sentence_fund }}</td>
-    <td class="num mono">{{ f.engine|floatformat:2|intcomma }}</td><td class="num mono">{{ f.ledger|floatformat:2|intcomma }}</td>
-    <td class="num mono">{{ f.diff|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    <td class="num mono">{{ f.engine|money }}</td><td class="num mono">{{ f.ledger|money }}</td>
+    <td class="num mono">{{ f.diff|money }}</td></tr>{% endfor %}
   </tbody></table>
   <a class="link u-mt-sm u-inline" href="{% url 'ledger_reconciliation' %}">Full fund reconciliation →</a>
 </div></div>

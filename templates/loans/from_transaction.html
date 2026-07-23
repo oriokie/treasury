@@ -1,14 +1,14 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Record as loan receipt · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Record bank credit as a loan receipt</h1>
-<div class="sub">{{ txn.date|date:"d M Y" }} · KES {{ txn.amount|floatformat:2|intcomma }} · {{ txn.payer_name|default:txn.reference }} <span class="mono muted u-xs">{{ txn.core_ref|default:"" }}</span></div></div></div>
+<div class="sub">{{ txn.date|date:"d M Y" }} · {{ CURRENCY }} {{ txn.amount|money }} · {{ txn.payer_name|default:txn.reference }} <span class="mono muted u-xs">{{ txn.core_ref|default:"" }}</span></div></div></div>
 
 <div class="card form-card u-mb" style="max-width:640px"><div class="hd">Attach to an existing loan</div><div class="bd">
 <form method="post">{% csrf_token %}
   <div class="form-grid"><div class="form-row"><label>Loan</label>
     <select name="loan_id" class="field--select" required>
-      {% for l in loans %}<option value="{{ l.id }}">{{ l.number }} — {{ l.lender.name }} · {{ l.fund.name }} (outstanding {{ l.outstanding_principal|floatformat:0|intcomma }})</option>{% endfor %}
+      {% for l in loans %}<option value="{{ l.id }}">{{ l.number }} — {{ l.lender.name }} · {{ l.fund.name }} (outstanding {{ l.outstanding_principal|money:0 }})</option>{% endfor %}
     </select></div></div>
   <div class="btn-row u-mt"><button class="btn" {% if not loans %}disabled{% endif %}>Attach to loan</button></div>
 </form></div></div>

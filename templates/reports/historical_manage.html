@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Historical years · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Historical comparison years</h1>
@@ -22,13 +22,13 @@
 
   {% if month_rows %}
   {% for r in month_rows %}
-  <details class="hist-year"><summary><strong>{{ r.year }}</strong> · {{ r.count }}/12 months · collection {{ r.collection|floatformat:0|intcomma }} · trust {{ r.trust_fund|floatformat:0|intcomma }} · exp {{ r.expenditure|floatformat:0|intcomma }}</summary>
+  <details class="hist-year"><summary><strong>{{ r.year }}</strong> · {{ r.count }}/12 months · collection {{ r.collection|money:0 }} · trust {{ r.trust_fund|money:0 }} · exp {{ r.expenditure|money:0 }}</summary>
   <table class="ledger compact u-mt-sm"><thead><tr><th>Month</th><th class="num">Collection</th><th class="num">Trust fund</th><th class="num">Expenditure</th><th></th></tr></thead><tbody>
     {% for m in r.cells %}{% if m %}<tr>
       <td>{{ m.month_label }}</td>
-      <td class="num mono">{{ m.collection|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ m.trust_fund|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ m.expenditure|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ m.collection|money:0 }}</td>
+      <td class="num mono">{{ m.trust_fund|money:0 }}</td>
+      <td class="num mono">{{ m.expenditure|money:0 }}</td>
       <td class="u-right"><form method="post" class="u-inline" onsubmit="return confirm('Delete this month?');">{% csrf_token %}<input type="hidden" name="action" value="delete_month"><input type="hidden" name="pk" value="{{ m.pk }}"><button class="link link-danger">✕</button></form></td>
     </tr>{% endif %}{% endfor %}
   </tbody></table>
@@ -55,9 +55,9 @@
   {% for h in years %}
     <tr>
       <td><strong>{{ h.year }}</strong></td>
-      <td class="num mono">{{ h.collection|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ h.trust_fund|floatformat:2|intcomma }}</td>
-      <td class="num mono">{{ h.expenditure|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ h.collection|money }}</td>
+      <td class="num mono">{{ h.trust_fund|money }}</td>
+      <td class="num mono">{{ h.expenditure|money }}</td>
       <td class="help">{{ h.note }}</td>
       <td><form method="post" class="u-m-0" onsubmit="return confirm('Remove {{ h.year }}?');">{% csrf_token %}
         <input type="hidden" name="action" value="delete"><input type="hidden" name="pk" value="{{ h.pk }}">

@@ -1,0 +1,59 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}My household{% endblock %}
+{% block portal_desc %}Who is covered under your membership. Changes here are checked by the church office before they take effect — cover is not something a form can grant itself.{% endblock %}
+{% block portal_actions %}
+<a class="btn btn-sm" href="{% url 'portal_request_new' 'HOUSEHOLD' %}">Request a change</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'portal_request_new' 'PROFILE' %}">My own details</a>
+{% endblock %}
+{% block portal_content %}
+
+{% if pending %}
+<div class="panel u-mb" style="border-left:3px solid var(--brass)">
+  <b>Waiting on the church office</b>
+  {% for r in pending %}
+  <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_request_detail' r.pk %}">{{ r.reference }}</a> · {{ r.subject }}</span>
+    <span class="pill pill-amber">{{ r.get_status_display }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel u-mb">
+  <h3>You</h3>
+  <div class="pt-row"><span class="k">Name on the church roll</span><b>{{ member.name }}</b></div>
+  <div class="pt-row"><span class="k">Phone on the church roll</span><b class="mono">{{ member.phone|default:"—" }}</b></div>
+  <p class="muted u-mt">The number on the roll is what the church matches your bank and
+    M-Pesa payments against, so it is changed only on request. Where we send you messages
+    is <a class="link" href="{% url 'portal_profile' %}">yours to set</a>.</p>
+</div>
+
+<div class="panel">
+  <h3>Covered with you</h3>
+  <table class="table pt-stack">
+    <thead><tr><th>Name</th><th>Relationship</th><th>Scheme</th><th>Registered</th><th class="no-print"></th></tr></thead>
+    <tbody>
+    {% for d in dependants %}
+    <tr><td data-label="Name">{{ d.name|default:d.member.name }}</td>
+      <td data-label="Relationship">{{ d.get_relationship_display }}</td>
+      <td data-label="Scheme">{{ d.membership.scheme.name }}</td>
+      <td data-label="Registered">{{ d.registered_on|date:"d M Y" }}</td>
+      <td data-label="" class="no-print">
+        <a class="link" href="{% url 'portal_request_new' 'HOUSEHOLD' %}?dependant={{ d.pk }}&op=update">Correct</a></td></tr>
+    {% empty %}
+    <tr><td colspan="5"><div class="pt-empty">Nobody else is registered under your membership.</div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if former %}
+<div class="panel u-mt">
+  <h3>No longer covered</h3>
+  <p class="muted">Kept on the record. Someone covered when an event happened stays covered
+    for that event, however the household has changed since.</p>
+  {% for d in former %}
+  <div class="pt-row"><span class="k">{{ d.name|default:d.member.name }} · {{ d.get_relationship_display }}</span>
+    <span class="muted">until {{ d.removed_on|date:"d M Y" }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

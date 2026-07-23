@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}General ledger · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head no-print"><div><div class="eyebrow">Accounting · {{ SITE_NAME }}</div><h1>General ledger</h1><div class="sub">{% if account %}{{ account.code }} · {{ account.name }}{% endif %}</div></div>
@@ -14,9 +14,9 @@
   <thead><tr><th>JV #</th><th>Date</th><th>Detail</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
   <tbody>
   {% for r in rows %}<tr><td class="mono u-xs">{{ r.number|default:"—" }}</td><td class="mono">{{ r.date|date:"d/m/y" }}</td><td>{{ r.memo }}</td>
-    <td class="num mono">{% if r.debit %}{{ r.debit|floatformat:2|intcomma }}{% endif %}</td>
-    <td class="num mono">{% if r.credit %}{{ r.credit|floatformat:2|intcomma }}{% endif %}</td>
-    <td class="num mono">{{ r.balance|floatformat:2|intcomma }}</td></tr>
+    <td class="num mono">{% if r.debit %}{{ r.debit|money }}{% endif %}</td>
+    <td class="num mono">{% if r.credit %}{{ r.credit|money }}{% endif %}</td>
+    <td class="num mono">{{ r.balance|money }}</td></tr>
   {% empty %}<tr><td colspan="6" class="empty">No postings for this account in the period.</td></tr>{% endfor %}
   </tbody>
 </table></div>

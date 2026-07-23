@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Pastor's report · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Pastor's Financial Summary" %}
@@ -7,18 +7,18 @@
 <div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Pastor's Stewardship Report</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
 
 <div class="board-kpis">
-  <div class="bk"><div class="bk-l">Total giving</div><div class="bk-v">{{ total_income.receipts|floatformat:0|intcomma }}</div></div>
-  <div class="bk"><div class="bk-l">Tithe</div><div class="bk-v">{{ tithe|floatformat:0|intcomma }}</div></div>
+  <div class="bk"><div class="bk-l">Total giving</div><div class="bk-v">{{ total_income.receipts|money:0 }}</div></div>
+  <div class="bk"><div class="bk-l">Tithe</div><div class="bk-v">{{ tithe|money:0 }}</div></div>
   <div class="bk"><div class="bk-l">Active members</div><div class="bk-v">{{ active_members }}</div></div>
   <div class="bk"><div class="bk-l">Distinct givers</div><div class="bk-v">{{ givers }}</div></div>
 </div>
 
 <div class="two-col">
   <div class="card"><div class="hd">Giving by group</div><div class="bd"><table class="ledger compact"><tbody>
-    {% for g, t in by_group.items %}<tr><td>{{ g }}</td><td class="num mono">{{ t|floatformat:2|intcomma }}</td></tr>{% empty %}<tr><td class="empty">No group-tagged giving.</td></tr>{% endfor %}
+    {% for g, t in by_group.items %}<tr><td>{{ g }}</td><td class="num mono">{{ t|money }}</td></tr>{% empty %}<tr><td class="empty">No group-tagged giving.</td></tr>{% endfor %}
   </tbody></table></div></div>
   <div class="card"><div class="hd">Income by channel</div><div class="bd"><table class="ledger compact"><tbody>
-    {% for r in by_channel %}<tr><td>{{ r.channel|default:"—" }}</td><td class="num mono">{{ r.total|floatformat:2|intcomma }}</td></tr>{% endfor %}
+    {% for r in by_channel %}<tr><td>{{ r.channel|default:"—" }}</td><td class="num mono">{{ r.total|money }}</td></tr>{% endfor %}
   </tbody></table></div></div>
 </div>
 {% include 'reports/_report_styles.html' %}

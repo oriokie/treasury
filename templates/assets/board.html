@@ -1,0 +1,62 @@
+{% extends 'base.html' %}{% load treasury_extras %}
+{% block title %}Asset lifecycle · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+{% include "ui/print_header.html" with title="Asset Lifecycle" %}
+<div class="page-head">
+  <div><h1>Asset lifecycle</h1><div class="sub">Where every asset stands, as at {{ as_of|date:"d M Y" }}</div></div>
+  <div class="head-actions"><a class="btn btn-ghost" href="{% url 'asset_list' %}">Register</a></div>
+</div>
+
+<style>
+  .kanban{display:flex;gap:.8rem;overflow-x:auto;padding-bottom:.6rem;align-items:flex-start}
+  .kanban-col{flex:0 0 240px;background:var(--paper-2,#f7f5f0);border:1px solid var(--rule,#ddd8cc);border-radius:8px}
+  .kanban-col > .kh{padding:.55rem .7rem;border-bottom:1px solid var(--rule,#ddd8cc);
+    font-family:Fraunces,serif;font-size:.92rem;display:flex;justify-content:space-between;align-items:baseline;gap:.4rem}
+  .kanban-col .kh .n{font-family:'IBM Plex Mono',monospace;font-size:.78rem;opacity:.7}
+  .kanban-col .kt{padding:.3rem .7rem;font-family:'IBM Plex Mono',monospace;font-size:.74rem;
+    opacity:.75;border-bottom:1px solid var(--rule,#ddd8cc)}
+  .kcard{padding:.55rem .7rem;border-bottom:1px solid var(--rule-soft,#eee9dd)}
+  .kcard:last-child{border-bottom:0}
+  .kcard .nm{font-weight:600;font-size:.9rem}
+  .kcard .meta{font-size:.76rem;opacity:.72;margin-top:.15rem}
+  .kcard .amt{font-family:'IBM Plex Mono',monospace;font-size:.8rem}
+  .kmove{margin-top:.4rem;display:flex;gap:.3rem;flex-wrap:wrap}
+  .kmove button{font-size:.72rem;padding:.15rem .4rem;border:1px solid var(--rule,#ddd8cc);
+    background:#fff;border-radius:4px;cursor:pointer}
+  .kmove button:hover{border-color:var(--brass,#b08d57)}
+  .kempty{padding:.7rem;font-size:.78rem;opacity:.55}
+</style>
+
+<div class="kanban">
+  {% for col in columns %}
+  <div class="kanban-col">
+    <div class="kh"><span>{{ col.label }}</span><span class="n">{{ col.count }}</span></div>
+    <div class="kt">{{ col.total|money_acct }}</div>
+    {% for c in col.cards %}
+    <div class="kcard">
+      <div class="nm"><a class="link" href="{% url 'asset_detail' c.asset.id %}">{{ c.asset.name }}</a></div>
+      <div class="meta">{{ c.asset.department.name|default:"—" }}{% if c.asset.location_fk %} · {{ c.asset.location_fk.name }}{% endif %}</div>
+      <div class="meta amt">{{ c.nbv|money_acct }}</div>
+      {% if is_treasurer and c.targets %}
+      <div class="kmove">
+        {% for t in c.targets %}
+        <form method="post" action="{% url 'asset_transition' c.asset.id %}">{% csrf_token %}
+          <input type="hidden" name="status" value="{{ t.value }}">
+          <input type="hidden" name="next" value="board">
+          <button type="submit">{{ t.label }}</button>
+        </form>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% empty %}
+    <div class="kempty">Nothing here.</div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+<p class="help u-mt">Assets are moved along by the buttons on each card; the register decides
+  which moves are allowed. A disposal is recorded on the asset itself, because it needs the
+  date, proceeds, method and fund.</p>
+{% endblock %}

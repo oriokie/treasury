@@ -31,6 +31,7 @@ CHART = [
     ("1300", "Prepayments", "ASSET", "PREPAYMENTS"),
     ("1400", "Other receivables", "ASSET", "RECEIVABLES"),
     ("1500", "Fixed assets", "ASSET", "FIXED_ASSETS"),
+    ("1550", "Construction in progress", "ASSET", "CWIP"),
     ("1600", "Accumulated depreciation", "ASSET", "ACCUM_DEPRECIATION"),
     # --- Liabilities (2xxx) ---
     ("2000", "Trust funds payable (to field)", "LIABILITY", "TRUST_PAYABLE"),
@@ -42,6 +43,7 @@ CHART = [
     ("3000", "Accumulated fund balances", "EQUITY", "ACCUM_FUNDS"),
     ("3100", "Capital (asset) fund", "EQUITY", "CAPITAL_FUND"),
     ("3200", "Designated / restricted funds", "EQUITY", "DESIGNATED_FUNDS"),
+    ("3300", "Asset revaluation reserve", "EQUITY", "ASSET_REVAL_RESERVE"),
     ("3900", "Opening balance equity", "EQUITY", "OPENING_EQUITY"),
     # --- Income (4xxx) ---
     ("4100", "Tithe", "INCOME", "INC_TITHE"),
@@ -50,7 +52,13 @@ CHART = [
     ("4400", "Interest & investment income", "INCOME", "INC_INTEREST"),
     ("4500", "Fundraising & camp meeting", "INCOME", "INC_FUNDRAISING"),
     ("4600", "Donations & gifts in kind", "INCOME", "INC_DONATIONS"),
+    ("4700", "Gain on disposal of assets", "INCOME", "ASSET_DISPOSAL_GAIN"),
     ("4900", "Other income", "INCOME", "INC_OTHER"),
+    # --- Asset-related expenses at fixed codes below EXPENSE_BASE (5100) so the
+    #     dynamic per-category expense allocator never collides with them ---
+    ("5000", "Depreciation", "EXPENSE", "DEPRECIATION_EXPENSE"),
+    ("5010", "Loss on disposal of assets", "EXPENSE", "ASSET_DISPOSAL_LOSS"),
+    ("5020", "Asset impairment", "EXPENSE", "ASSET_IMPAIRMENT"),
 ]
 # expense accounts are generated per Expense.Category as 5xxx
 EXPENSE_BASE = 5100
@@ -86,6 +94,13 @@ def ensure_chart():
             system_key=key, defaults={"code": str(next_code), "name": label, "type": "EXPENSE"})
         existing_codes.add(str(next_code))
         next_code += 1
+
+    # v3.02 briefly recognised donated assets as income (account 4610). They are
+    # now credited to net assets instead (see post_acquisition), so retire that
+    # account — but only if nothing was ever posted to it, so no history is lost.
+    stale = Account.objects.filter(system_key="DONATED_ASSET_INCOME").first()
+    if stale and not JournalLine.objects.filter(account=stale).exists():
+        stale.delete()
 
 
 def _acct(key):
@@ -246,7 +261,16 @@ def post_expense(exp):
         # settling loan principal reduces the liability, not an expense
         debit = _acct("LOANS_PAYABLE") or _acct("PAYABLES")
     elif exp.expenditure_type == Expense.ExpenditureType.CAPITAL:
-        debit = _acct("FIXED_ASSETS")
+        # Capital spend already capitalised into a register asset posts to the
+        # fixed-asset control account (the delta-based asset opening nets this
+        # out, so there is no double count with the register). Capital spend not
+        # yet linked to an asset is held in CWIP (capital work-in-progress),
+        # awaiting capitalisation through the Acquisition workflow (EAM §9.3).
+        # Either way it is never an operating expense.
+        if getattr(exp, "capitalized_asset_id", None):
+            debit = _acct("FIXED_ASSETS")
+        else:
+            debit = _acct("CWIP") or _acct("FIXED_ASSETS")
     else:
         debit = _acct(f"EXP_{exp.category}") or _acct("EXP_OTHER")
     _post_pair(exp.date, f"{exp.get_category_display()}: {exp.description}",
@@ -268,7 +292,8 @@ def post_refund(ref):
     elif exp.category == Expense.Category.LOAN_REPAYMENT:
         exp_acct = _acct("LOANS_PAYABLE") or _acct("PAYABLES")
     elif exp.expenditure_type == Expense.ExpenditureType.CAPITAL:
-        exp_acct = _acct("FIXED_ASSETS")
+        exp_acct = _acct("FIXED_ASSETS") if getattr(exp, "capitalized_asset_id", None) \
+            else (_acct("CWIP") or _acct("FIXED_ASSETS"))
     else:
         exp_acct = _acct(f"EXP_{exp.category}") or _acct("EXP_OTHER")
     # negative amount flips the pair: DR Cash, CR Expense
@@ -314,6 +339,226 @@ def post_opening():
     _entry(d0, "Opening balances brought forward", "opening", None, lines)
 
 
+def _asset_opening_date():
+    """The go-live date for the asset register in the ledger — aligned with the
+    cash opening (1 Jan of the first transaction year) so the two opening
+    entries sit together."""
+    from giving.models import Transaction
+    first = Transaction.objects.order_by("date").values_list("date", flat=True).first()
+    return dt.date((first.year if first else dt.date.today().year), 1, 1)
+
+
+def post_asset_opening():
+    """Establish the fixed-asset control accounts so they equal the register
+    (the subsidiary ledger) as at the opening date — 'opening balances only',
+    no historical month-by-month reconstruction (EAM §9.6).
+
+    Self-reconciling: it posts the DELTA needed to bring FIXED_ASSETS and
+    ACCUM_DEPRECIATION from whatever they already hold (e.g. legacy capital
+    expenses) up to the register totals, with the balancing figure to the
+    capital fund. After it runs, the control accounts equal the register by
+    construction regardless of what else touched them — which is exactly the
+    register↔ledger reconciliation guarantee."""
+    from django.db.models import Sum
+    from core.metrics import metrics
+    _replace_entries(None, filter_kwargs={"source_type": "asset_opening"})
+    cost_acct = _acct("FIXED_ASSETS"); accdep = _acct("ACCUM_DEPRECIATION")
+    capital = _acct("CAPITAL_FUND") or _acct("ACCUM_FUNDS")
+    if not (cost_acct and accdep and capital):
+        return
+    d0 = _asset_opening_date()
+
+    def _bal(acct):
+        # Only what is already posted AS AT the opening date. The register's
+        # cost is temporal on acquisition, so the opening's target is what was
+        # owned at d0; netting against later postings (a payment for an asset
+        # bought after d0) would cancel out the very entries that are supposed
+        # to bring those later assets on. The two halves move together.
+        agg = (JournalLine.objects.filter(account=acct, entry__date__lte=d0)
+               .exclude(entry__source_type="asset_opening")
+               .aggregate(d=Sum("debit"), c=Sum("credit")))
+        return (agg["d"] or Decimal(0)) - (agg["c"] or Decimal(0))
+
+    target_cost = Decimal(metrics.fixed_assets_cost(d0) or 0)
+    # accumulated depreciation is brought in as at the day BEFORE the opening
+    # date (prior-period end); the first monthly run (the opening month) then
+    # adds that month's charge, so opening + runs ties to the register exactly.
+    target_accdep = Decimal(metrics.accumulated_depreciation(d0 - dt.timedelta(days=1)) or 0)
+    delta_cost = target_cost - _bal(cost_acct)
+    # accumulated depreciation is a credit-balance (contra-asset): balance = credits - debits
+    existing_accdep = -_bal(accdep)
+    delta_accdep = target_accdep - existing_accdep
+    if delta_cost == 0 and delta_accdep == 0:
+        return
+    lines = []
+    if delta_cost:
+        lines.append((cost_acct, delta_cost if delta_cost > 0 else Decimal(0),
+                      -delta_cost if delta_cost < 0 else Decimal(0), None))
+    if delta_accdep:
+        lines.append((accdep, -delta_accdep if delta_accdep < 0 else Decimal(0),
+                      delta_accdep if delta_accdep > 0 else Decimal(0), None))
+    # balancing figure to capital fund (net book value brought in)
+    net = delta_cost - delta_accdep
+    lines.append((capital, -net if net < 0 else Decimal(0),
+                  net if net > 0 else Decimal(0), None))
+    _entry(d0, "Fixed-asset opening balances (register)", "asset_opening", None, lines)
+
+
+@db_tx.atomic
+def post_depreciation_run(run):
+    """Book a monthly depreciation run: Dr depreciation expense (by fund) /
+    Cr accumulated depreciation. Idempotent — re-posting replaces the prior
+    entry. Refuses a run whose period is closed."""
+    _replace_entries("asset_depr", run.id)
+    dep_exp = _acct("DEPRECIATION_EXPENSE"); accdep = _acct("ACCUM_DEPRECIATION")
+    if not (dep_exp and accdep):
+        return
+    lines = []
+    for line in run.lines.select_related("department").all():
+        if not line.amount:
+            continue
+        lines.append((dep_exp, line.amount, Decimal(0), line.department))
+        lines.append((accdep, Decimal(0), line.amount, line.department))
+    if not lines:
+        return
+    entry = _entry(run.run_date, f"Depreciation {run.year}-{run.month:02d}",
+                   "asset_depr", run.id, lines)
+    return entry
+
+
+@db_tx.atomic
+def post_disposal(asset):
+    """Book an asset disposal in the general ledger. The cash proceeds are
+    already recorded as a fund receipt (an excluded-from-income Transaction, so
+    fund balances stay correct); this journal RECLASSIFIES that receipt: it
+    removes the asset's cost and accumulated depreciation from the control
+    accounts and recognises the balancing gain/(loss). Idempotent per asset.
+
+        Dr  <proceeds income account>   proceeds     (reverses the receipt's income leg)
+        Dr  Accumulated depreciation    accdep@disposal
+            Cr  Fixed assets             cost
+            Cr  Gain on disposal      OR Dr Loss on disposal   (balancing)
+
+    Net effect: cash stays (from the receipt), the proceeds income leg nets to
+    zero, the asset leaves the control accounts, and only the true gain/(loss)
+    reaches the income/expense line.
+    """
+    _replace_entries("asset_disposal", asset.pk)
+    if not (asset.disposed and asset.disposed_on):
+        return None
+    cost_acct = _acct("FIXED_ASSETS"); accdep_acct = _acct("ACCUM_DEPRECIATION")
+    gain_acct = _acct("ASSET_DISPOSAL_GAIN"); loss_acct = _acct("ASSET_DISPOSAL_LOSS")
+    if not (cost_acct and accdep_acct):
+        return None
+    cost = Decimal(asset.cost or 0)
+    accdep = Decimal(asset.accumulated_depreciation(asset.disposed_on) or 0)
+    fund = asset.disposal_fund
+    # Ledger proceeds mirror the receipt: only counted when a fund was nominated
+    # (that is exactly when the proceeds Transaction was created).
+    proceeds = Decimal(asset.disposal_proceeds or 0) if fund else Decimal(0)
+    nbv = cost - accdep
+    gain = proceeds - nbv
+    own = asset.department
+    lines = []
+    if proceeds:
+        # the account the receipt credited (mirror post_transaction)
+        if _is_trust(fund):
+            rcv = _acct("TRUST_PAYABLE")
+        else:
+            rcv = _acct(_income_key_for(fund)) if fund else _acct("INC_OTHER")
+        if rcv:
+            lines.append((rcv, proceeds, Decimal(0), fund))
+    if accdep:
+        lines.append((accdep_acct, accdep, Decimal(0), own))
+    lines.append((cost_acct, Decimal(0), cost, own))
+    if gain > 0 and gain_acct:
+        lines.append((gain_acct, Decimal(0), gain, fund or own))
+    elif gain < 0 and loss_acct:
+        lines.append((loss_acct, -gain, Decimal(0), fund or own))
+    return _entry(asset.disposed_on, f"Disposal: {asset.name}"[:200],
+                  "asset_disposal", asset.pk, lines)
+
+
+@db_tx.atomic
+def post_asset_transfer(tr):
+    """Move an asset's carrying value between funds.
+
+    Changing the fund that owns an asset moves value from one fund's net assets
+    to another's; nothing enters or leaves the church, so this is a pure
+    reallocation of equity at the asset's net book value on the transfer date:
+
+        Dr  <net assets, from fund>   net book value
+            Cr  <net assets, to fund>  net book value
+
+    Because both legs are equity and they are equal, the fixed-asset control
+    accounts are untouched and the register↔ledger reconciliation is unaffected.
+    Only an APPROVED transfer that actually changes fund posts. Idempotent.
+    """
+    _replace_entries("asset_transfer", tr.pk)
+    if tr.status != tr.Status.APPROVED or not tr.changes_fund:
+        return None
+    # One side may have no fund: an asset with no owning fund still carries its
+    # value in the general capital fund, so moving it into (or out of) a fund is
+    # a real reallocation. Both legs are equity, so it stays balanced either way.
+    if not (tr.from_fund_id or tr.to_fund_id):
+        return None
+    amount = Decimal(tr.asset.net_book_value(tr.date) or 0)
+    if not amount:
+        return None
+
+    def _equity(fund):
+        return _acct("DESIGNATED_FUNDS" if _is_trust(fund) else "CAPITAL_FUND") \
+            or _acct("ACCUM_FUNDS")
+
+    src, dst = _equity(tr.from_fund), _equity(tr.to_fund)
+    if not (src and dst):
+        return None
+    return _entry(tr.date, f"Asset transfer: {tr.asset.name}"[:200],
+                  "asset_transfer", tr.pk,
+                  [(src, amount, Decimal(0), tr.from_fund),
+                   (dst, Decimal(0), amount, tr.to_fund)])
+
+
+@db_tx.atomic
+def post_acquisition(acq):
+    """Book an asset acquisition.
+
+    Only a DONATION posts a journal of its own, because it is the only source
+    that brings value in without cash moving. A donated asset is not income —
+    it is an increase in the church's net assets, so the credit goes to fund
+    equity (EAM §9.4):
+
+        Dr  Fixed assets                          fair value
+            Cr  Designated / restricted funds     fair value   (restricted fund)
+            Cr  Capital (asset) fund              fair value   (otherwise)
+
+    Restricted follows the system's existing rule — trust money is restricted,
+    local funds are not — and the fund is carried on the line either way, so the
+    donation stays attributable to it.
+
+    A purchase or self-construction is paid through an Expense, which already
+    posts the cash side (to Fixed assets once linked to the asset, or to CWIP
+    while unlinked) — posting again here would double-count it. Opening balances
+    are brought on by the asset opening entry. Idempotent per acquisition.
+    """
+    _replace_entries("asset_acq", acq.pk)
+    if not acq.posts_own_journal:
+        return None
+    amount = Decimal(acq.amount or 0)
+    if not amount:
+        return None
+    cost_acct = _acct("FIXED_ASSETS")
+    fund = acq.fund or acq.asset.department
+    equity_key = "DESIGNATED_FUNDS" if _is_trust(fund) else "CAPITAL_FUND"
+    equity = _acct(equity_key) or _acct("ACCUM_FUNDS")
+    if not (cost_acct and equity):
+        return None
+    who = acq.donor_name or acq.asset.name
+    return _entry(acq.date, f"Donated asset: {who}"[:200], "asset_acq", acq.pk,
+                  [(cost_acct, amount, Decimal(0), fund),
+                   (equity, Decimal(0), amount, fund)])
+
+
 @db_tx.atomic
 def rebuild():
     """Regenerate the entire general ledger from the source documents."""
@@ -330,6 +575,28 @@ def rebuild():
         post_refund(r)
     for tr in FundTransfer.objects.all():
         post_transfer(tr)
+    from assets.models import Acquisition, AssetTransfer
+    # Donated assets bring value in without cash; post them before the opening so
+    # its delta nets them (exactly as it nets capital expenses).
+    for acq in Acquisition.objects.select_related("asset", "fund"):
+        post_acquisition(acq)
+    # Inter-fund asset moves are equity-only, so they neither disturb the control
+    # accounts nor the reconciliation.
+    for tr in (AssetTransfer.objects.filter(status=AssetTransfer.Status.APPROVED)
+               .select_related("asset", "from_fund", "to_fund")):
+        post_asset_transfer(tr)
+    # Asset opening runs AFTER the expense and acquisition postings so its
+    # self-reconciling delta nets against any capital spend already capitalised
+    # to the control account (a capital expense linked to a register asset, or a
+    # donation), leaving FIXED_ASSETS equal to the register — never double-counted.
+    post_asset_opening()
+    from assets.models import FixedAsset, DepreciationRun
+    # Disposals remove assets that were live at the opening date at their disposal
+    # date, so the register (temporal) and ledger agree before and after disposal.
+    for a in FixedAsset.objects.filter(disposed=True, disposed_on__isnull=False):
+        post_disposal(a)
+    for run in DepreciationRun.objects.exclude(status=DepreciationRun.Status.DRAFT):
+        post_depreciation_run(run)
     return JournalEntry.objects.count()
 
 

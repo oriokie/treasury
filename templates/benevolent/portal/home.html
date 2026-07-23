@@ -1,0 +1,71 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}Good day, {{ member.name }}{% endblock %}
+{% block portal_desc %}Your contributions, your standing, and anything you have asked the church for.{% endblock %}
+{% block portal_actions %}
+<a class="btn btn-sm" href="{% url 'portal_request_new' 'ASSISTANCE' %}">Ask for assistance</a>
+<a class="btn btn-ghost btn-sm" href="{% url 'portal_request_new' 'DEATH' %}">Report a death</a>
+{% endblock %}
+{% block portal_content %}
+
+{% if not rows %}
+<div class="panel u-mb"><p class="muted">You are not enrolled in a welfare scheme yet.
+  Speak to the church office if you think this is wrong.</p></div>
+{% endif %}
+
+{% for row in rows %}
+<div class="panel u-mb">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap">
+    <h2 style="margin:0">{{ row.scheme.name }}</h2>
+    {% if row.standing %}
+      <span class="pill {% if row.standing.standing == 'GOOD' %}pill-green{% elif row.standing.standing == 'ARREARS' %}pill-red{% elif row.standing.standing == 'GRACE' %}pill-amber{% else %}pill-grey{% endif %}">
+        {{ row.membership.get_standing_display }}</span>
+    {% endif %}
+  </div>
+  <div class="pt-cards u-mt">
+    <div class="stat accent"><div class="lbl">Contributed to date</div>
+      <div class="val mono">{{ CURRENCY }} {{ row.contributed|money }}</div>
+      <div class="foot">Everything recorded in your name</div></div>
+    <div class="stat {% if row.arrears > 0 %}warn{% endif %}"><div class="lbl">Owing</div>
+      <div class="val mono">{{ CURRENCY }} {{ row.arrears|money }}</div>
+      <div class="foot">{% if row.arrears > 0 %}Please clear this to stay covered{% else %}Nothing outstanding{% endif %}</div></div>
+    <div class="stat"><div class="lbl">Member since</div>
+      <div class="val mono">{{ row.membership.joined_on|date:"M Y" }}</div>
+      <div class="foot">No. {{ row.membership.number }}</div></div>
+  </div>
+  <div class="pt-actions u-mt no-print">
+    <a class="btn btn-ghost btn-sm" href="{% url 'portal_standing' %}">What am I entitled to?</a>
+    <a class="btn btn-ghost btn-sm" href="{% url 'portal_statement' %}">My statement</a>
+  </div>
+</div>
+{% endfor %}
+
+<div class="grid cols-2">
+  <div class="panel">
+    <h3>Recent contributions</h3>
+    {% for c in recent_contributions %}
+    <div class="pt-row"><span class="k">{{ c.date|date:"d M Y" }} · {{ c.get_kind_display }}</span>
+      <span class="mono">{{ CURRENCY }} {{ c.amount|money }}</span></div>
+    {% empty %}<div class="pt-empty">Nothing recorded yet.</div>{% endfor %}
+    <div class="u-mt"><a class="link" href="{% url 'portal_contributions' %}">All contributions →</a></div>
+  </div>
+  <div class="panel">
+    <h3>Your requests</h3>
+    {% for r in open_requests %}
+    <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_request_detail' r.pk %}">{{ r.reference }}</a> · {{ r.subject }}</span>
+      <span class="pill {% if r.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.get_status_display }}</span></div>
+    {% empty %}<div class="pt-empty">Nothing outstanding.</div>{% endfor %}
+    <div class="u-mt"><a class="link" href="{% url 'portal_requests' %}">All requests →</a></div>
+  </div>
+</div>
+
+{% if recent_cases %}
+<div class="panel u-mt">
+  <h3>Your cases</h3>
+  {% for c in recent_cases %}
+  <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_case_detail' c.pk %}">{{ c.number }}</a>
+      · {{ c.event_type.name }} · {{ c.event_date|date:"d M Y" }}</span>
+    <span class="pill pill-grey">{{ c.get_status_display }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

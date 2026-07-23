@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Budgeting · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Funds · {{ SITE_NAME }}</div><h1>Annual budgeting</h1>
@@ -43,10 +43,10 @@
     <tr>
       <td {% if r.child %}class="u-indent-2" class="muted"{% endif %}>{% if r.child %}↳ {% endif %}{{ r.d.name }}</td>
       <td><span class="pill {% if r.d.is_trust %}pill-amber{% else %}pill-grey{% endif %}" style="opacity:.75">{% if r.d.is_trust %}Trust{% else %}Local{% endif %}</span></td>
-      <td class="num mono">{{ r.opening_derived|floatformat:2|intcomma }}</td>
-      <td class="num">{% if founding_locked %}<span class="mono muted">{{ r.d.opening_balance|floatformat:2|intcomma }}</span>
+      <td class="num mono">{{ r.opening_derived|money }}</td>
+      <td class="num">{% if founding_locked %}<span class="mono muted">{{ r.d.opening_balance|money }}</span>
         {% else %}<input name="opening_{{ r.d.id }}" value="{{ r.d.opening_balance|stringformat:'.2f' }}" class="field mono" style="width:130px;text-align:right">{% endif %}</td>
-      <td class="num mono">{% if r.budget != None %}{{ r.budget|floatformat:2|intcomma }}{% else %}<span class="muted">—</span>{% endif %}{% if r.from_lines %} <span class="pill pill-blue u-xxs">from breakdown</span>{% endif %}</td>
+      <td class="num mono">{% if r.budget != None %}{{ r.budget|money }}{% else %}<span class="muted">—</span>{% endif %}{% if r.from_lines %} <span class="pill pill-blue u-xxs">from breakdown</span>{% endif %}</td>
       <td><a class="link" href="{% url 'budget_lines' r.d.id %}?year={{ year }}">Edit breakdown…</a></td>
     </tr>
   {% endfor %}

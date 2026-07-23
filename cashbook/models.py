@@ -98,6 +98,12 @@ class Expense(models.Model):
     recurring = models.ForeignKey(
         "cashbook.RecurringExpense", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="generated", help_text="If set: the recurring schedule that created this expense.")
+    payable = models.ForeignKey(
+        "cashbook.Payable", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="payments",
+        help_text="The payable this payment settles, in whole or in part. A "
+                  "payable may be paid over several instalments, so this is a "
+                  "ForeignKey and not a OneToOne — see Payable.paid_total.")
     advance = models.ForeignKey(
         "cashbook.StaffAdvance", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="expenses", help_text="If this expense settles a staff cash advance, link it here.")
@@ -594,10 +600,16 @@ class Payable(models.Model):
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
                                 default=Expense.Category.OTHER)
     due_date = models.DateField(null=True, blank=True)
-    settled = models.BooleanField(default=False)
-    settled_on = models.DateField(null=True, blank=True)
-    settled_expense = models.OneToOneField(Expense, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="payable")
+    # `settled` and `settled_on` are a CACHE of what the payments say, not a
+    # second opinion. They exist because "show me what we still owe" is a
+    # filter on thousands of rows and must stay indexed, and because reports,
+    # the backup export and the settle-from-expense form already read them.
+    # They are only ever written by services.payables.refresh_settlement(),
+    # which derives them from the payments — never set by hand.
+    settled = models.BooleanField(default=False, db_index=True)
+    settled_on = models.DateField(
+        null=True, blank=True,
+        help_text="The date the FINAL instalment cleared the balance.")
     recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
                                     related_name="payables_recorded")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -608,6 +620,73 @@ class Payable(models.Model):
 
     def __str__(self):
         return f"{self.vendor}: {self.amount}"
+
+    # -- settlement, derived from the payments themselves --------------------
+    # Deliberately computed rather than stored. A vendor paid in three
+    # instalments has three expenses in the fund; the amount still owed is the
+    # invoice less those expenses, and there is no second place where that
+    # figure could drift out of step with the cash book.
+
+    #: Payments count once they are APPROVED or PAID — the same test
+    #: StaffAdvance.settled_total applies, so a pending claim does not reduce a
+    #: liability before anyone has authorised it.
+    COUNTED_STATUSES = (Expense.Status.APPROVED, Expense.Status.PAID)
+
+    def paid_asof(self, on=None):
+        from django.db.models import Sum
+        qs = self.payments.filter(status__in=self.COUNTED_STATUSES)
+        if on is not None:
+            qs = qs.filter(date__lte=on)
+        return qs.aggregate(t=Sum("amount"))["t"] or Decimal("0")
+
+    @property
+    def paid_total(self):
+        return self.paid_asof()
+
+    def balance_asof(self, on=None):
+        """What is still owed. Never negative: an overpayment is a matter for
+        the vendor account, not a negative liability on the balance sheet."""
+        return max(self.amount - self.paid_asof(on), Decimal("0"))
+
+    @property
+    def balance(self):
+        return self.balance_asof()
+
+    @property
+    def is_settled(self):
+        return self.paid_total >= self.amount
+
+    @property
+    def is_part_paid(self):
+        return not self.is_settled and self.paid_total > 0
+
+    @property
+    def status_label(self):
+        if self.is_settled:
+            return "Settled"
+        if self.is_part_paid:
+            return "Part paid"
+        return "Outstanding"
+
+    @property
+    def percent_paid(self):
+        if not self.amount:
+            return 0
+        return int(min(self.paid_total / self.amount * 100, 100))
+
+    @property
+    def settled_expense(self):
+        """The instalment that cleared the balance.
+
+        Kept as a read-only property because this used to be a real OneToOne
+        field and callers still ask for it. It now means "the payment that
+        finished the job" rather than "the payment", which is the only sensible
+        reading once there can be several.
+        """
+        if not self.is_settled:
+            return None
+        return (self.payments.filter(status__in=self.COUNTED_STATUSES)
+                .order_by("date", "id").last())
 
 
 class Accrual(models.Model):

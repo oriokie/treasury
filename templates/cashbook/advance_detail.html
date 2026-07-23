@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Advance · {{ adv.staff_name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Advance — {{ adv.staff_name }}</h1>
@@ -9,31 +9,31 @@
   <a class="btn btn-ghost btn-sm" href="{% url 'advance_list' %}">← Advances</a></div></div>
 
 <div class="grid cols-3 u-mb">
-  <div class="stat"><div class="lbl">Advanced</div><div class="val mono">KES {{ adv.amount|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Settled by receipts</div><div class="val mono">KES {{ adv.settled_total|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Advanced</div><div class="val mono">{{ CURRENCY }} {{ adv.amount|money }}</div></div>
+  <div class="stat"><div class="lbl">Settled by receipts</div><div class="val mono">{{ CURRENCY }} {{ adv.settled_total|money }}</div></div>
   <div class="stat"><div class="lbl">{% if adv.balance >= 0 %}Surplus to recover{% else %}Shortfall to reimburse{% endif %}</div>
-    <div class="val mono" style="color:{% if adv.balance > 0 %}var(--brass){% elif adv.balance < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">KES {{ adv.balance|floatformat:2|intcomma }}</div></div>
+    <div class="val mono" style="color:{% if adv.balance > 0 %}var(--brass){% elif adv.balance < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">{{ CURRENCY }} {{ adv.balance|money }}</div></div>
 </div>
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}{% if adv.reference %} · Ref {{ adv.reference }}{% endif %}</p>{% endif %}
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance was issued from the petty-cash float, which it reduces until accounted for.</p>{% endif %}
-{% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> KSh {{ adv.bank_charge|floatformat:2|intcomma }} — the charge the church paid to send this advance. It's booked on {{ adv.department.name }} but does not reduce the holder's balance.</p>{% endif %}
+{% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> {{ CURRENCY }} {{ adv.bank_charge|money }} — the charge the church paid to send this advance. It's booked on {{ adv.department.name }} but does not reduce the holder's balance.</p>{% endif %}
 
 <div class="card u-mb"><div class="hd">Statement — how the advance is flowing</div><div class="bd">
 <table class="ledger"><thead><tr><th>Date</th><th>Detail</th><th class="num">Out to staff</th><th class="num">Accounted</th><th class="num">Still to account</th></tr></thead>
 <tbody>{% for r in statement %}<tr>
   <td>{{ r.date|date:"d M y" }}</td><td>{{ r.label }}{% if r.topup_id and is_treasurer %} <form method="post" action="{% url 'advance_topup_reverse' adv.id r.topup_id %}" class="inline-form" onsubmit="return confirm('Reverse this top-up? The advance total will drop and the source is restored.')" style="display:inline">{% csrf_token %}<button class="link u-xs" style="border:none;background:none;color:var(--red,#b3261e);cursor:pointer">reverse</button></form>{% endif %}</td>
-  <td class="num mono">{% if r.out != None %}{{ r.out|floatformat:2|intcomma }}{% endif %}</td>
-  <td class="num mono">{% if r.back != None %}{{ r.back|floatformat:2|intcomma }}{% endif %}</td>
-  <td class="num mono">{{ r.running|floatformat:2|intcomma }}</td></tr>{% endfor %}
+  <td class="num mono">{% if r.out != None %}{{ r.out|money }}{% endif %}</td>
+  <td class="num mono">{% if r.back != None %}{{ r.back|money }}{% endif %}</td>
+  <td class="num mono">{{ r.running|money }}</td></tr>{% endfor %}
 <tr class="total-row"><td colspan="4"><strong>{% if to_account > 0 %}Still to account for / recover{% elif to_account < 0 %}Reimburse staff{% else %}Fully accounted{% endif %}</strong></td>
-  <td class="num mono"><strong>{{ to_account|floatformat:2|intcomma }}</strong></td></tr>
+  <td class="num mono"><strong>{{ to_account|money }}</strong></td></tr>
 </tbody></table>
 </div></div>
 
 <div class="card"><div class="hd">Receipts / expenses settling this advance</div><div class="bd">
 <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th>Status</th></tr></thead>
 <tbody>{% for x in expenses %}<tr><td>{{ x.date|date:"d M y" }}</td><td>{{ x.description }}</td>
-  <td class="muted">{{ x.get_category_display }}</td><td class="num mono">{{ x.amount|floatformat:2|intcomma }}</td>
+  <td class="muted">{{ x.get_category_display }}</td><td class="num mono">{{ x.amount|money }}</td>
   <td><span class="pill">{{ x.get_status_display }}</span></td></tr>
 {% empty %}<tr><td colspan="5" class="empty">No settling expenses recorded yet.</td></tr>{% endfor %}</tbody>
 </table>

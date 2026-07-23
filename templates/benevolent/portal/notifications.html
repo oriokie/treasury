@@ -1,0 +1,35 @@
+{% extends 'benevolent/portal/_base.html' %}{% load humanize treasury_extras %}
+{% block portal_heading %}Messages{% endblock %}
+{% block portal_desc %}Everything the church has sent you about your scheme, and where each of your cases stands.{% endblock %}
+{% block portal_actions %}<a class="btn btn-ghost btn-sm" href="{% url 'portal_profile' %}">How I am contacted</a>{% endblock %}
+{% block portal_content %}
+
+{% if case_updates %}
+<div class="panel u-mb">
+  <h3>Where your cases stand</h3>
+  {% for c in case_updates %}
+  <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_case_detail' c.pk %}">{{ c.number }}</a> · {{ c.event_type.name }}</span>
+    <span class="pill pill-grey">{{ c.get_status_display }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="panel">
+  <h3>Messages sent to you</h3>
+  {% for n in page %}
+  <div class="pt-row" style="flex-direction:column;align-items:stretch">
+    <span class="k">{{ n.created_at|date:"d M Y H:i" }} · {{ n.get_channel_display }}
+      {% if n.status == 'FAILED' %}<span class="pill pill-red">Not delivered</span>{% endif %}</span>
+    {% if n.subject %}<b>{{ n.subject }}</b>{% endif %}
+    <span>{{ n.body|linebreaksbr }}</span></div>
+  {% empty %}<div class="pt-empty">Nothing has been sent to you yet.</div>{% endfor %}
+</div>
+
+{% if page.has_other_pages %}
+<div class="u-mt no-print">
+  {% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page.previous_page_number }}">← Newer</a>{% endif %}
+  <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page.next_page_number }}">Older →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

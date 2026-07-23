@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Cash count · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Sabbath cash count</h1>
@@ -8,9 +8,9 @@
 <form method="post" class="card"><div class="bd">{% csrf_token %}
   <div class="form-grid" style="display:grid;grid-template-columns:200px 1fr;gap:.8rem;align-items:end">
     <div class="form-row u-m-0"><label>Sabbath</label><input type="date" name="date" value="{{ sabbath|date:'Y-m-d' }}" class="field" onchange="this.form.action='';this.form.method='get';this.form.submit()"></div>
-    <div class="help">Expected (physical cash for this Sabbath): <strong class="mono">KES {{ expected|floatformat:2|intcomma }}</strong>
-      <br><span class="u-small">= cash entries {{ breakdown.cash|floatformat:2|intcomma }} + cash envelopes {{ breakdown.envelope|floatformat:2|intcomma }} − cash disbursed {{ breakdown.disbursed|floatformat:2|intcomma }} (bank / M-Pesa giving excluded)</span>
-      {% if breakdown.bank_as_cash %}<br><span style="font-size:.82rem;color:var(--amber)">Excluded {{ breakdown.bank_as_cash|floatformat:2|intcomma }} of cash-envelope rows that match a bank contribution this Sabbath — that money arrived in the bank, not as cash.</span>{% endif %}</div>
+    <div class="help">Expected (physical cash for this Sabbath): <strong class="mono">{{ CURRENCY }} {{ expected|money }}</strong>
+      <br><span class="u-small">= cash entries {{ breakdown.cash|money }} + cash envelopes {{ breakdown.envelope|money }} − cash disbursed {{ breakdown.disbursed|money }} (bank / M-Pesa giving excluded)</span>
+      {% if breakdown.bank_as_cash %}<br><span style="font-size:.82rem;color:var(--amber)">Excluded {{ breakdown.bank_as_cash|money }} of cash-envelope rows that match a bank contribution this Sabbath — that money arrived in the bank, not as cash.</span>{% endif %}</div>
   </div>
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1rem">
@@ -18,7 +18,7 @@
       <div class="section-title">Denomination breakdown</div>
       <table class="ledger compact"><thead><tr><th>Denomination</th><th class="num">Count</th><th class="num">Subtotal</th></tr></thead>
         <tbody>
-        {% for d in denoms %}<tr><td class="mono">KES {{ d }}</td>
+        {% for d in denoms %}<tr><td class="mono">{{ CURRENCY }} {{ d }}</td>
           <td><input name="d_{{ d }}" class="field mono dcount" data-denom="{{ d }}" inputmode="numeric" style="width:90px;text-align:right" value=""></td>
           <td class="num mono sub" id="sub_{{ d }}">0.00</td></tr>{% endfor %}
         </tbody>

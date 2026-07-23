@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Review auto-allocated · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Review auto-allocated entries</h1>
@@ -25,7 +25,7 @@
       <td>{% if t.department_id in comp_ids %}<span title="Part of a configured split — locked">{{ t.department.name }} <span class="muted">· split</span></span>{% else %}<select name="dept_{{ t.id }}" class="field--select" style="min-width:200px">
         {% for d in funds %}<option value="{{ d.id }}" {% if d.id == t.department_id %}selected{% endif %}>{{ d.name }}</option>{% endfor %}
       </select>{% endif %}</td>
-      <td class="num mono">{{ t.amount|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ t.amount|money }}</td>
       <td><span class="pill {% if t.allocation_status == 'AUTO' %}pill-green{% else %}pill-blue{% endif %}">{{ t.get_allocation_status_display }}</span></td>
     </tr>{% endfor %}
     </tbody>

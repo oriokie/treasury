@@ -1,0 +1,48 @@
+{% extends 'base.html' %}{% load treasury_extras %}
+{% block title %}Capitalise payment · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Put this payment on the asset register</h1>
+<div class="sub">{{ expense.description }} · {{ CURRENCY }} {{ expense.amount|money }} · {{ expense.date|date:"d M Y" }}</div></div></div>
+
+{% if already %}
+<div class="card u-narrow-md"><div class="bd">
+  <p>This payment is already part of <a class="link" href="{% url 'asset_detail' already.id %}">{{ already.name }}</a>.</p>
+</div></div>
+{% else %}
+
+<div class="card u-narrow-md"><div class="hd">Create a new asset</div><div class="bd">
+  <form method="post">{% csrf_token %}
+    <div class="form-grid">
+      <div class="form-row"><label>Name</label>
+        <input name="name" class="field" value="{{ expense.description }}" required></div>
+      <div class="form-row"><label>Category</label>
+        <select name="category" class="field--select">
+          {% for v,l in categories %}<option value="{{ v }}">{{ l }}</option>{% endfor %}
+        </select></div>
+      <div class="form-row"><label>Acquired on</label>
+        <input type="date" name="acquired_on" class="field" value="{{ expense.date|date:'Y-m-d' }}"></div>
+      <div class="form-row"><label>In service from</label>
+        <input type="date" name="in_service_on" class="field" value="{{ expense.date|date:'Y-m-d' }}">
+        <div class="help">Depreciation starts here, not at purchase.</div></div>
+    </div>
+    <p class="help">The asset is created at {{ CURRENCY }} {{ expense.amount|money }} — the amount paid —
+      and this payment is linked to it, so it is held as an asset rather than counted as a running cost.
+      No second entry is made.</p>
+    <div class="btn-row"><button class="btn">Create asset</button>
+      <a class="btn btn-ghost" href="{% url 'expense_detail' expense.id %}">Cancel</a></div>
+  </form>
+</div></div>
+
+<div class="card u-narrow-md u-mt"><div class="hd">Or add it to an asset already on the register</div><div class="bd">
+  <form method="post">{% csrf_token %}
+    <div class="form-row"><label>Asset</label>
+      <select name="existing" class="field--select" required>
+        <option value="">Choose an asset…</option>
+        {% for a in assets %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+      </select></div>
+    <p class="help">Use this for construction or an improvement — the payment is added to that asset's cost.</p>
+    <div class="btn-row"><button class="btn btn-ghost">Add to asset</button></div>
+  </form>
+</div></div>
+{% endif %}
+{% endblock %}

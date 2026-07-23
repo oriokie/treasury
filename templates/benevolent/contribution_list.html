@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Scheme contributions · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Benevolent · {{ SITE_NAME }}</div><h1>Scheme contributions</h1>
@@ -29,7 +29,7 @@
   <td class="u-xs">{% if c.payer_type != 'SELF' %}<span class="pill pill-brass">{{ c.get_payer_type_display }}</span>{% if c.payer_name %} {{ c.payer_name }}{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="mono">{{ c.period_label|default:"—" }}</td>
   <td class="muted u-xs">{{ c.transaction.get_channel_display }}</td>
-  <td class="num mono">{% if c.reversed_at %}<s>{{ c.amount|floatformat:2|intcomma }}</s>{% else %}{{ c.amount|floatformat:2|intcomma }}{% endif %}</td>
+  <td class="num mono">{% if c.reversed_at %}<s>{{ c.amount|money }}</s>{% else %}{{ c.amount|money }}{% endif %}</td>
   <td class="num u-xs no-print">
     {% if c.reversed_at %}<span class="muted" title="{{ c.reversal_reason }}">reversed</span>
     {% elif can.benevolent_manage_finance or can.manage_benevolent %}
@@ -43,7 +43,7 @@
   </td>
 </tr>{% empty %}<tr><td colspan="8" class="empty">No contributions.</td></tr>{% endfor %}</tbody>
 <tfoot><tr class="total-row"><td colspan="6"><strong>Total (period)</strong></td>
-  <td class="num mono"><strong>{{ total|floatformat:2|intcomma }}</strong></td><td></td></tr></tfoot>
+  <td class="num mono"><strong>{{ total|money }}</strong></td><td></td></tr></tfoot>
 </table></div>
 {% include 'partials/pagination.html' %}
 {% endblock %}

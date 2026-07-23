@@ -1,19 +1,53 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Income &amp; expenditure · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 {% include "ui/print_header.html" with title="Income & Expenditure Statement" %}
 <div class="page-head"><div><h1>Income &amp; expenditure</h1><div class="sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div></div>
 {% include 'partials/period_filter.html' %}
 <div class="grid-3 u-mt">
-  <div class="stat"><div class="lbl">Local income</div><div class="val mono" style="color:var(--green)">{{ income|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Operating expenditure</div><div class="val mono row-debit">{{ expense|floatformat:2|intcomma }}</div></div>
-  <div class="stat"><div class="lbl">Net surplus / (deficit)</div><div class="val mono" style="{% if net < 0 %}color:var(--red){% else %}color:var(--green){% endif %}">{{ net|floatformat:2|intcomma }}</div></div>
+  <div class="stat"><div class="lbl">Local income</div><div class="val mono" style="color:var(--green)">{{ income|money_acct }}</div></div>
+  <div class="stat"><div class="lbl">Operating expenditure</div><div class="val mono row-debit">{{ expense|money_acct }}</div></div>
+  <div class="stat"><div class="lbl">Net surplus / (deficit)</div><div class="val mono" style="{% if net < 0 %}color:var(--red){% else %}color:var(--green){% endif %}">{{ net|money_acct }}</div></div>
 </div>
-<p class="help">Local income excludes trust funds (tithe and the remitted share of offerings), which are held on behalf of the field; operating expenditure excludes remittances, which settle that trust liability.{% if disposal_gain_loss %} The net result includes a gain/(loss) on asset disposal of {{ disposal_gain_loss|floatformat:2|intcomma }} (disposal proceeds are a capital receipt, not income).{% endif %}</p>
+<p class="help">Local income excludes trust funds (tithe and the remitted share of offerings), which are held on behalf of the field; operating expenditure excludes remittances, which settle that trust liability.{% if disposal_gain_loss %} The net result includes a gain/(loss) on asset disposal of {{ disposal_gain_loss|money_acct }} (disposal proceeds are a capital receipt, not income).{% endif %}</p>
 <div class="card u-mt-xs"><div class="hd">Trust funds (held on behalf of the field — memo)</div><div class="bd">
   <table class="ledger"><tbody>
-    <tr><td>Trust funds collected this period</td><td class="num mono">{{ trust_collected|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Remitted to the field this period</td><td class="num mono">{{ remittances|floatformat:2|intcomma }}</td></tr>
-    {% if capital %}<tr><td>Capital additions this period (excluded from expenditure above)</td><td class="num mono">{{ capital|floatformat:2|intcomma }}</td></tr>{% endif %}
-  </tbody></table></div>
+    <tr><td>Trust funds collected this period</td><td class="num mono">{{ trust_collected|money_acct }}</td></tr>
+    <tr><td>Remitted to the field this period</td><td class="num mono">{{ remittances|money_acct }}</td></tr>
+    {% if capital %}<tr><td>Capital additions this period (excluded from expenditure above)</td><td class="num mono">{{ capital|money_acct }}</td></tr>{% endif %}
+  </tbody></table></div></div>
+
+{% if has_noncash %}
+<div class="card u-mt-xs"><div class="hd">Non-cash items</div><div class="bd">
+  <table class="ledger"><tbody>
+    {% if donated_assets %}<tr><td>Donated assets received (added to net assets)</td><td class="num mono">{{ donated_assets|money_acct }}</td></tr>{% endif %}
+    {% if depreciation %}<tr><td>Depreciation charged on assets</td><td class="num mono row-debit">{{ depreciation_charge|money_acct }}</td></tr>{% endif %}
+    <tr class="row-total"><td>Surplus / (deficit) after non-cash items</td><td class="num mono">{{ net_after_noncash|money_acct }}</td></tr>
+  </tbody></table>
+  <p class="help">The surplus above is cash: money in less money out. These items move the church's
+    net assets without any money changing hands — depreciation writes down what the assets are
+    worth as they are used, and a donated asset adds what it is worth.</p>
+</div></div>
+{% endif %}
+
+{% if donated_assets %}
+<div class="card u-mt-xs"><div class="hd">Donated assets received</div><div class="bd">
+  <table class="ledger"><thead><tr><th>Date</th><th>Asset</th><th>Donor</th><th>Fund</th><th class="num">Fair value</th></tr></thead>
+  <tbody>
+    {% for a in donated_assets_detail %}
+    <tr>
+      <td>{{ a.date|date:"d M Y" }}</td>
+      <td><a class="link" href="{% url 'asset_detail' a.asset_id %}">{{ a.asset.name }}</a></td>
+      <td>{{ a.donor_name|default:"—" }}</td>
+      <td>{{ a.fund.name|default:"—" }}</td>
+      <td class="num mono">{{ a.amount|money_acct }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="row-total"><td colspan="4">Total donated assets</td><td class="num mono">{{ donated_assets|money_acct }}</td></tr>
+  </tbody></table>
+  <p class="help">Gifts in kind received this period, at fair value. These are not cash, so they are
+    not part of the income or net result above — they are added to the church's net assets and
+    appear on the asset register and in the Statement of Financial Position.</p>
+</div></div>
+{% endif %}
 {% endblock %}

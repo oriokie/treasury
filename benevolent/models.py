@@ -104,6 +104,13 @@ class CaseSequence(_YearSequence):
     prefix = "BC"
 
 
+class PortalRequestSequence(_YearSequence):
+    """Numbering for member self-service requests. Its own counter, not the
+    case counter: a request is not a case (most never become one), and a member
+    quoting "REQ-2026-0007" on the phone must not collide with a case number."""
+    prefix = "REQ"
+
+
 # ---------------------------------------------------------------------------
 # The scheme
 # ---------------------------------------------------------------------------
@@ -1890,3 +1897,9 @@ from benevolent.models_notify import (  # noqa: E402,F401
 # The public application form (Round 4). See models_public.
 from benevolent.models_public import (  # noqa: E402,F401
     ApplicationDependant, BenevolentApplication)
+
+# The member self-service portal. See models_portal for why it is four models
+# and not a parallel copy of the scheme's workflow.
+from benevolent.models_portal import (  # noqa: E402,F401
+    MemberAccount, PortalAccessLog, PortalDocument, PortalRequest,
+    PortalRequestMessage)

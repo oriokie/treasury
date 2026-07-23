@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}{{ dept.name }} budget · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Funds · {{ SITE_NAME }}</div><h1>{{ dept.name }} — budget &amp; goals</h1>
@@ -15,18 +15,18 @@
 <div class="grid-2 u-mt">
   <div class="card"><div class="hd">{% if is_camp_expense %}Camp Meeting Expense Goal{% else %}Annual expense goal{% endif %} {{ year }} <span class="pill pill-grey u-xs">Local fund</span></div><div class="bd">
     <div class="mono" style="font-size:1.4rem;font-weight:700;color:var(--forest)">
-      {{ expense_goal.collected|floatformat:0|intcomma }} <span class="muted" style="font-size:.9rem">/ {{ expense_goal.goal|floatformat:0|intcomma }}</span></div>
+      {{ expense_goal.collected|money:0 }} <span class="muted" style="font-size:.9rem">/ {{ expense_goal.goal|money:0 }}</span></div>
     <div class="progress u-mt-0"><span style="width:{{ expense_goal.pct }}%"></span></div>
-    <div class="help u-mt-0">{{ expense_goal.pct }}% collected (across this fund and its sub-accounts){% if expense_goal.short %} · {{ expense_goal.short|floatformat:0|intcomma }} to go{% endif %}</div>
+    <div class="help u-mt-0">{{ expense_goal.pct }}% collected (across this fund and its sub-accounts){% if expense_goal.short %} · {{ expense_goal.short|money:0 }} to go{% endif %}</div>
   </div></div>
 
 {% if is_camp_expense %}
   <div class="card"><div class="hd">Camp Meeting Offering Goal {{ year }} <span class="pill pill-amber u-xs">Trust fund</span></div><div class="bd">
     {% if offering %}
     <div class="mono" style="font-size:1.4rem;font-weight:700;color:var(--brass)">
-      {{ offering_goal.collected|floatformat:0|intcomma }} <span class="muted" style="font-size:.9rem">/ {{ offering_goal.goal|floatformat:0|intcomma }}</span></div>
+      {{ offering_goal.collected|money:0 }} <span class="muted" style="font-size:.9rem">/ {{ offering_goal.goal|money:0 }}</span></div>
     <div class="progress u-mt-0"><span style="width:{{ offering_goal.pct }}%;background:var(--brass)"></span></div>
-    <div class="help u-mt-0">{{ offering_goal.pct }}% collected for <strong>{{ offering.name }}</strong>{% if offering_goal.short %} · {{ offering_goal.short|floatformat:0|intcomma }} to go{% endif %}</div>
+    <div class="help u-mt-0">{{ offering_goal.pct }}% collected for <strong>{{ offering.name }}</strong>{% if offering_goal.short %} · {{ offering_goal.short|money:0 }} to go{% endif %}</div>
     {% else %}
     <p class="muted u-mt-0">No Camp Meeting Offering goal is set up yet. Configure it under <a href="{% url 'settings' %}?tab=goals">Settings → Goals</a> — it's a single church-wide figure, not set per fund.</p>
     {% endif %}
@@ -43,15 +43,15 @@
   <table class="ledger compact u-mt"><thead><tr><th>Group</th><th class="num">Goal</th><th class="num">Collected {{ year }}</th><th class="num">To go</th><th style="width:96px">Progress</th></tr></thead><tbody>
   {% for g in group_rows %}<tr>
     <td>{{ g.name }}</td>
-    <td class="num mono">{{ g.goal|floatformat:0|intcomma }}</td>
-    <td class="num mono">{{ g.collected|floatformat:0|intcomma }}</td>
-    <td class="num mono">{% if g.short %}{{ g.short|floatformat:0|intcomma }}{% else %}<span class="pill pill-green u-xs">met</span>{% endif %}</td>
+    <td class="num mono">{{ g.goal|money:0 }}</td>
+    <td class="num mono">{{ g.collected|money:0 }}</td>
+    <td class="num mono">{% if g.short %}{{ g.short|money:0 }}{% else %}<span class="pill pill-green u-xs">met</span>{% endif %}</td>
     <td><div class="progress u-mt-0"><span style="width:{{ g.pct }}%"></span></div><span class="help u-xs">{{ g.pct }}%</span></td>
   </tr>{% endfor %}
   <tr class="total-row"><td><strong>All groups</strong></td>
-    <td class="num mono"><strong>{{ contribution_goal.goal|floatformat:0|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ contribution_goal.collected|floatformat:0|intcomma }}</strong></td>
-    <td class="num mono"><strong>{{ contribution_goal.short|floatformat:0|intcomma }}</strong></td>
+    <td class="num mono"><strong>{{ contribution_goal.goal|money:0 }}</strong></td>
+    <td class="num mono"><strong>{{ contribution_goal.collected|money:0 }}</strong></td>
+    <td class="num mono"><strong>{{ contribution_goal.short|money:0 }}</strong></td>
     <td></td></tr>
   </tbody></table>
   </div>
@@ -93,15 +93,15 @@
 <div class="card u-mb"><div class="bd">
   <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
     <div><div class="help u-mt-0">Loan financing received</div>
-      <div class="mono" style="font-size:1.2rem;font-weight:700">KES {{ loan_summary.financing|floatformat:2|intcomma }}</div></div>
+      <div class="mono" style="font-size:1.2rem;font-weight:700">{{ CURRENCY }} {{ loan_summary.financing|money }}</div></div>
     <div style="border-left:1px solid var(--line);padding-left:1.5rem"><div class="help u-mt-0">Outstanding loan balance</div>
-      <div class="mono" style="font-size:1.2rem;font-weight:700;color:var(--red,#b00)">KES {{ loan_summary.outstanding|floatformat:2|intcomma }}</div></div>
+      <div class="mono" style="font-size:1.2rem;font-weight:700;color:var(--red,#b00)">{{ CURRENCY }} {{ loan_summary.outstanding|money }}</div></div>
   </div>
   <table class="ledger compact u-mt"><thead><tr><th>Loan</th><th>Lender</th><th class="num">Received</th><th class="num">Outstanding</th><th>Status</th></tr></thead>
   <tbody>{% for l in loan_summary.loans %}<tr>
     <td><a class="link" href="{% url 'loan_detail' l.id %}">{{ l.number }}</a></td><td>{{ l.lender.name }}</td>
-    <td class="num mono">{{ l.received_total|floatformat:2|intcomma }}</td>
-    <td class="num mono">{{ l.outstanding_principal|floatformat:2|intcomma }}</td>
+    <td class="num mono">{{ l.received_total|money }}</td>
+    <td class="num mono">{{ l.outstanding_principal|money }}</td>
     <td><span class="pill u-xs">{{ l.get_status_display }}</span></td></tr>{% endfor %}</tbody></table>
   <p class="help">Loan money raises this fund's <em>available cash</em> but never its income or collections above. The fund's net position is its balance less the outstanding loans.</p>
 </div></div>
@@ -116,21 +116,21 @@
     <tbody>
     {% for r in rows %}<tr>
       <td>{{ r.name }}{% if r.category %} <span class="muted u-xs">· {{ r.category }}</span>{% endif %}{% if r.note %} <span class="muted u-xs">· {{ r.note }}</span>{% endif %}</td>
-      <td class="num mono">{{ r.budget|floatformat:0|intcomma }}</td>
-      <td class="num mono">{{ r.actual|floatformat:0|intcomma }}</td>
-      <td class="num mono {% if r.variance < 0 %}u-danger{% endif %}">{{ r.variance|floatformat:0|intcomma }}</td>
+      <td class="num mono">{{ r.budget|money:0 }}</td>
+      <td class="num mono">{{ r.actual|money:0 }}</td>
+      <td class="num mono {% if r.variance < 0 %}u-danger{% endif %}">{{ r.variance|money:0 }}</td>
       <td style="width:96px"><div class="progress u-mt-0"><span style="width:{% if r.pct > 100 %}100{% else %}{{ r.pct }}{% endif %}%;{% if r.pct > 100 %}background:var(--danger){% endif %}"></span></div><span class="muted u-xs">{{ r.pct }}%</span></td>
     </tr>{% empty %}<tr><td colspan="5" class="empty">No budget items yet for {{ year }} — add one below.</td></tr>{% endfor %}
     </tbody>
     <tfoot><tr><td><strong>Total</strong></td>
-      <td class="num mono"><strong>{{ tot_budget|floatformat:0|intcomma }}</strong></td>
-      <td class="num mono"><strong>{{ tot_actual|floatformat:0|intcomma }}</strong></td>
-      <td class="num mono {% if tot_variance < 0 %}u-danger{% endif %}"><strong>{{ tot_variance|floatformat:0|intcomma }}</strong></td>
+      <td class="num mono"><strong>{{ tot_budget|money:0 }}</strong></td>
+      <td class="num mono"><strong>{{ tot_actual|money:0 }}</strong></td>
+      <td class="num mono {% if tot_variance < 0 %}u-danger{% endif %}"><strong>{{ tot_variance|money:0 }}</strong></td>
       <td></td></tr></tfoot>
   </table>
   </div>
 </div></div>
-{% if untagged %}<div class="help u-mt-0">Plus {{ untagged|floatformat:0|intcomma }} of spend this year on this fund not tagged to any budget item.</div>{% endif %}
+{% if untagged %}<div class="help u-mt-0">Plus {{ untagged|money:0 }} of spend this year on this fund not tagged to any budget item.</div>{% endif %}
 
 <details class="card u-mt"><summary class="hd" style="cursor:pointer">Add / update a budget item</summary><div class="bd">
   <form method="post" style="display:flex;gap:.6rem;align-items:end;flex-wrap:wrap">{% csrf_token %}

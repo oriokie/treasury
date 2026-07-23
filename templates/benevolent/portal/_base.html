@@ -1,0 +1,54 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{# Shared chrome for every member-portal page.
+
+   Extends the application's own base so the portal inherits one design system,
+   one set of accessibility preferences and one theme — a portal with its own
+   stylesheet would drift, and the member would be the last to know. What it
+   adds is the mobile-first behaviour the office screens do not need: on a
+   narrow viewport the data tables below reflow into stacked cards, because a
+   member reads this on a phone at a funeral, not at a desk. #}
+{% block title %}{{ portal_title|default:"My scheme" }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<style>
+  .pt-mast .desc{max-width:52ch}
+  .pt-cards{display:grid;gap:.75rem;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .pt-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+  .pt-actions .btn{flex:1 1 auto;min-width:max-content}
+  .pt-row{display:flex;justify-content:space-between;gap:.75rem;align-items:baseline;
+          padding:.55rem 0;border-bottom:1px solid var(--line)}
+  .pt-row:last-child{border-bottom:0}
+  .pt-row .k{color:var(--muted);font-size:.82rem}
+  .pt-empty{padding:1.5rem;text-align:center;color:var(--muted)}
+  /* On a phone, a wide financial table is unreadable. Each row becomes a card
+     and each cell announces its own column via the header echoed in data-label. */
+  @media (max-width:720px){
+    .pt-stack thead{position:absolute;left:-9999px}
+    .pt-stack tr{display:block;border:1px solid var(--line);border-radius:var(--radius);
+                 margin-bottom:.6rem;padding:.5rem .7rem;background:var(--paper)}
+    .pt-stack td{display:flex;justify-content:space-between;gap:1rem;border:0;
+                 padding:.28rem 0;text-align:right}
+    .pt-stack td::before{content:attr(data-label);color:var(--muted);font-weight:600;
+                         font-size:.78rem;text-align:left}
+    .pt-actions .btn{flex:1 1 100%}
+  }
+</style>
+<div class="rpt-mast pt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">{{ SITE_NAME }} · Member portal</div>
+      <h1>{% block portal_heading %}My scheme{% endblock %}</h1>
+      <div class="desc">{% block portal_desc %}{% endblock %}</div>
+    </div>
+    <div class="rpt-actions no-print">{% block portal_actions %}{% endblock %}</div>
+  </div>
+  <div class="rule"></div>
+</div>
+{% if action_needed_count %}
+<div class="panel u-mb" style="border-left:3px solid var(--amber)">
+  <b>The church office needs something from you.</b>
+  <a class="link" href="{% url 'portal_requests' %}?status=INFO_NEEDED">See what is needed
+    ({{ action_needed_count }})</a>
+</div>
+{% endif %}
+{% block portal_content %}{% endblock %}
+{% endblock %}

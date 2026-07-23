@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize static %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Executive dashboard · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -23,7 +23,7 @@
   {% for c in cards %}
   {% if c.link %}<a class="exec-card tone-{{ c.tone }}" href="{{ c.link }}">{% else %}<div class="exec-card tone-{{ c.tone }}">{% endif %}
     <div class="ec-label">{{ c.label }}</div>
-    <div class="ec-val">{% if c.money %}<span class="ec-cur">KES</span> {{ c.value|floatformat:0|intcomma }}{% else %}{{ c.value }}{% endif %}</div>
+    <div class="ec-val">{% if c.money %}<span class="ec-cur">{{ CURRENCY }}</span> {{ c.value|money:0 }}{% else %}{{ c.value }}{% endif %}</div>
     {% if c.sub %}<div class="ec-sub">{{ c.sub }}</div>{% endif %}
   {% if c.link %}</a>{% else %}</div>{% endif %}
   {% endfor %}
@@ -66,7 +66,7 @@ function loadInsights(){
     <div class="insight-tile {% if t.tone == 'warn' %}it-warn{% endif %}">
       <div class="it-label">{{ t.label }}</div>
       <div class="it-value mono">
-        {% if t.money %}KSh {{ t.value|floatformat:0|intcomma }}{% elif t.pct != None %}{{ t.pct|floatformat:1 }}%{% else %}—{% endif %}
+        {% if t.money %}{{ CURRENCY }} {{ t.value|money:0 }}{% elif t.pct != None %}{{ t.pct|floatformat:1 }}%{% else %}—{% endif %}
         {% if t.delta != None %}<span class="it-delta {% if t.delta >= 0 %}good{% else %}bad{% endif %}">{% if t.delta >= 0 %}▲{% else %}▼{% endif %} {{ t.delta|floatformat:1 }}%</span>{% endif %}
       </div>
       <div class="it-sub">{{ t.sub }}</div>
@@ -95,15 +95,15 @@ function loadInsights(){
       {% with tot=cm.bank|add:cm.cash|add:cm.envelope %}
       <div class="chan-bar">
         {% if tot %}
-        <div class="chan-seg seg-bank" style="width:{% widthratio cm.bank tot 100 %}%" title="Bank {{ cm.bank|floatformat:0|intcomma }}"></div>
-        <div class="chan-seg seg-cash" style="width:{% widthratio cm.cash tot 100 %}%" title="Cash {{ cm.cash|floatformat:0|intcomma }}"></div>
-        <div class="chan-seg seg-env" style="width:{% widthratio cm.envelope tot 100 %}%" title="Envelope {{ cm.envelope|floatformat:0|intcomma }}"></div>
+        <div class="chan-seg seg-bank" style="width:{% widthratio cm.bank tot 100 %}%" title="Bank {{ cm.bank|money:0 }}"></div>
+        <div class="chan-seg seg-cash" style="width:{% widthratio cm.cash tot 100 %}%" title="Cash {{ cm.cash|money:0 }}"></div>
+        <div class="chan-seg seg-env" style="width:{% widthratio cm.envelope tot 100 %}%" title="Envelope {{ cm.envelope|money:0 }}"></div>
         {% endif %}
       </div>
       <div class="chan-legend">
-        <span><i class="dot seg-bank"></i> Bank <strong class="mono">{{ cm.bank|floatformat:0|intcomma }}</strong></span>
-        <span><i class="dot seg-cash"></i> Cash <strong class="mono">{{ cm.cash|floatformat:0|intcomma }}</strong></span>
-        <span><i class="dot seg-env"></i> Envelope <strong class="mono">{{ cm.envelope|floatformat:0|intcomma }}</strong></span>
+        <span><i class="dot seg-bank"></i> Bank <strong class="mono">{{ cm.bank|money:0 }}</strong></span>
+        <span><i class="dot seg-cash"></i> Cash <strong class="mono">{{ cm.cash|money:0 }}</strong></span>
+        <span><i class="dot seg-env"></i> Envelope <strong class="mono">{{ cm.envelope|money:0 }}</strong></span>
       </div>
       {% endwith %}{% endwith %}
     </div></div>
@@ -112,7 +112,7 @@ function loadInsights(){
       <div class="part-grid">
         <div class="part-tile"><div class="pt-val mono">{{ insights.participation.givers }}</div><div class="pt-lbl">Active givers</div></div>
         <div class="part-tile"><div class="pt-val mono">{{ insights.participation.gifts }}</div><div class="pt-lbl">Donations recorded</div></div>
-        <div class="part-tile"><div class="pt-val mono">KSh {{ insights.participation.median|floatformat:0|intcomma }}</div><div class="pt-lbl">Median donation</div></div>
+        <div class="part-tile"><div class="pt-val mono">{{ CURRENCY }} {{ insights.participation.median|money:0 }}</div><div class="pt-lbl">Median donation</div></div>
         <div class="part-tile"><div class="pt-val mono">{{ insights.participation.new_givers }}</div><div class="pt-lbl">New givers this month</div></div>
       </div>
       <div class="muted u-xs u-mt-sm">Aggregate figures only — individual giving is kept private.</div>
@@ -127,7 +127,7 @@ function loadInsights(){
     <div class="grid-3">
     {% for f in facts %}
       <div class="stat"><div class="lbl">{{ f.label }}</div>
-        <div class="val mono">{% if f.money %}{{ f.value|floatformat:0|intcomma }}{% elif f.value != None %}{{ f.value }}{% endif %}{% if f.text %}{% if f.value != None %} {% endif %}<span class="muted" style="font-size:.8rem">{{ f.text }}</span>{% endif %}</div>
+        <div class="val mono">{% if f.money %}{{ f.value|money:0 }}{% elif f.value != None %}{{ f.value }}{% endif %}{% if f.text %}{% if f.value != None %} {% endif %}<span class="muted" style="font-size:.8rem">{{ f.text }}</span>{% endif %}</div>
       </div>
     {% endfor %}
     </div>
@@ -141,8 +141,8 @@ function loadInsights(){
     <div class="grid-3">
       {% for label, h in forecast.items %}
       <div class="stat"><div class="lbl">Projected · {{ label }}</div>
-        <div class="val mono" style="{% if h.projected < 0 %}color:var(--danger){% endif %}">{{ h.projected|floatformat:0|intcomma }}</div>
-        <div class="muted u-xs">{% if h.net >= 0 %}+{% endif %}{{ h.net|floatformat:0|intcomma }} vs today</div>
+        <div class="val mono" style="{% if h.projected < 0 %}color:var(--danger){% endif %}">{{ h.projected|money:0 }}</div>
+        <div class="muted u-xs">{% if h.net >= 0 %}+{% endif %}{{ h.net|money:0 }} vs today</div>
       </div>
       {% endfor %}
     </div>
@@ -151,17 +151,17 @@ function loadInsights(){
   <div class="cash-balances-grid">
     <a class="cash-balance-tile" href="{% url 'pledge_list' %}">
       <div class="cbt-label">Outstanding pledges</div>
-      <div class="cbt-val mono">{{ pledges_outstanding|floatformat:0|intcomma }}</div>
+      <div class="cbt-val mono">{{ pledges_outstanding|money:0 }}</div>
       <div class="cbt-link">View pledges →</div>
     </a>
     <a class="cash-balance-tile" href="{% url 'advance_list' %}">
       <div class="cbt-label">Staff advances outstanding</div>
-      <div class="cbt-val mono">{{ advances_outstanding|floatformat:0|intcomma }}</div>
+      <div class="cbt-val mono">{{ advances_outstanding|money:0 }}</div>
       <div class="cbt-link">View advances →</div>
     </a>
     <a class="cash-balance-tile" href="{% url 'petty_cash' %}">
       <div class="cbt-label">Petty cash remaining</div>
-      <div class="cbt-val mono">{{ petty_balance|floatformat:0|intcomma }}</div>
+      <div class="cbt-val mono">{{ petty_balance|money:0 }}</div>
       <div class="cbt-link">Petty cash register →</div>
     </a>
   </div>
@@ -190,7 +190,7 @@ function loadInsights(){
   var DANGER=(css.getPropertyValue('--danger')||'#a23b32').trim();
   var MUTED=(css.getPropertyValue('--muted')||'#677770').trim();
   var SOFT="rgba(31,95,79,.15)";
-  var money = function(v){ return "KES " + Number(v).toLocaleString(); };
+  var money = function(v){ return "{{ CURRENCY }} " + Number(v).toLocaleString(); };
   if (typeof Chart === "undefined") return;
   Chart.defaults.font.family = "'Public Sans', system-ui, sans-serif";
   Chart.defaults.color = MUTED;

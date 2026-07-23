@@ -20,6 +20,7 @@ from django.core.paginator import Paginator
 from django.db import transaction as db_tx
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.contrib.auth.decorators import login_not_required
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_protect
@@ -34,6 +35,20 @@ MIN_SECONDS = 3          # a form filled faster than this is a bot
 MAX_DEPENDANTS = 12      # a sanity ceiling, not a policy
 
 
+# `login_not_required` is what actually makes this form public.
+#
+# The application denies by default (`LoginRequiredMiddleware`, review P1-1), so
+# a view is protected unless it says otherwise. This one said otherwise only in
+# its docstring, and the result was that the public application form redirected
+# every applicant to a login page they have no account for — the feature could
+# not work at all, whether or not a church switched it on.
+#
+# The default-deny guard test did not catch it, and could not: it asserts that
+# anonymous requests are *turned away* from anything not on its allowlist, and a
+# redirect to login is exactly that. The test was satisfied while the feature was
+# dead. See the matching decorator on the public pledge form (pledges/views.py),
+# which this view's security model was copied from but whose opt-out was not.
+@method_decorator(login_not_required, name="dispatch")
 @method_decorator(csrf_protect, name="dispatch")
 class PublicApplicationView(View):
     """The public form. No login."""

@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Statement of financial position · {{ SITE_NAME }}{% include "ui/print_signatures.html" %}
 {% endblock %}
 {% block content %}
@@ -12,54 +12,54 @@
   <div class="stmt-section">ASSETS</div>
   <table class="ledger compact"><tbody>
     <tr class="grp"><td colspan="2">Current assets</td></tr>
-    <tr><td class="indent">Bank (funds on hand)</td><td class="num mono">{{ cash_on_hand|floatformat:2|intcomma }}</td></tr>
-    {% if petty %}<tr><td class="indent">Petty cash float</td><td class="num mono">{{ petty|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if advances %}<tr><td class="indent">Staff advances (receivable)</td><td class="num mono">{{ advances|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if pending %}<tr><td class="indent">Bank receipts pending allocation</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if prepaid %}<tr><td class="indent">Prepayments (unexpired)</td><td class="num mono">{{ prepaid|floatformat:2|intcomma }}</td></tr>{% endif %}
+    <tr><td class="indent">Bank (funds on hand)</td><td class="num mono">{{ cash_on_hand|money_acct }}</td></tr>
+    {% if petty %}<tr><td class="indent">Petty cash float</td><td class="num mono">{{ petty|money_acct }}</td></tr>{% endif %}
+    {% if advances %}<tr><td class="indent">Staff advances (receivable)</td><td class="num mono">{{ advances|money_acct }}</td></tr>{% endif %}
+    {% if pending %}<tr><td class="indent">Bank receipts pending allocation</td><td class="num mono">{{ pending|money_acct }}</td></tr>{% endif %}
+    {% if prepaid %}<tr><td class="indent">Prepayments (unexpired)</td><td class="num mono">{{ prepaid|money_acct }}</td></tr>{% endif %}
     <tr class="grp"><td colspan="2">Non-current assets</td></tr>
-    <tr><td class="indent">Property, plant &amp; equipment (net book value)</td><td class="num mono">{{ nbv|floatformat:2|intcomma }}</td></tr>
-    <tr class="subtotal"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ total_assets|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td class="indent">Property, plant &amp; equipment (net book value)</td><td class="num mono">{{ nbv|money_acct }}</td></tr>
+    <tr class="subtotal"><td><strong>Total assets</strong></td><td class="num mono"><strong>{{ total_assets|money_acct }}</strong></td></tr>
   </tbody></table>
 
   <div class="stmt-section">LIABILITIES</div>
   <table class="ledger compact"><tbody>
     <tr class="grp"><td colspan="2">Current liabilities</td></tr>
-    <tr><td class="indent"><strong>Trust funds payable to {{ FIELD_NAME }}</strong></td><td class="num mono"><strong>{{ trust_total_payable|floatformat:2|intcomma }}</strong></td></tr>
-    <tr><td class="indent2">— Receipted (firmly due to remit)</td><td class="num mono">{{ trust_receipted|floatformat:2|intcomma }}</td></tr>
-    <tr><td class="indent2">— Not yet receipted (allocated, awaiting receipt)</td><td class="num mono">{{ trust_unreceipted|floatformat:2|intcomma }}</td></tr>
-    {% if payables %}<tr><td class="indent">Accounts payable (credit purchases)</td><td class="num mono">{{ payables|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if accruals %}<tr><td class="indent">Accrued expenses</td><td class="num mono">{{ accruals|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if pending %}<tr><td class="indent">Bank receipts pending allocation (suspense)</td><td class="num mono">{{ pending|floatformat:2|intcomma }}</td></tr>{% endif %}
-    {% if loans_current %}<tr><td class="indent">Loans payable — current (due within 12 months)</td><td class="num mono">{{ loans_current|floatformat:2|intcomma }}</td></tr>{% endif %}
+    <tr><td class="indent"><strong>Trust funds payable to {{ FIELD_NAME }}</strong></td><td class="num mono"><strong>{{ trust_total_payable|money_acct }}</strong></td></tr>
+    <tr><td class="indent2">— Receipted (firmly due to remit)</td><td class="num mono">{{ trust_receipted|money_acct }}</td></tr>
+    <tr><td class="indent2">— Not yet receipted (allocated, awaiting receipt)</td><td class="num mono">{{ trust_unreceipted|money_acct }}</td></tr>
+    {% if payables %}<tr><td class="indent">Accounts payable (credit purchases)</td><td class="num mono">{{ payables|money_acct }}</td></tr>{% endif %}
+    {% if accruals %}<tr><td class="indent">Accrued expenses</td><td class="num mono">{{ accruals|money_acct }}</td></tr>{% endif %}
+    {% if pending %}<tr><td class="indent">Bank receipts pending allocation (suspense)</td><td class="num mono">{{ pending|money_acct }}</td></tr>{% endif %}
+    {% if loans_current %}<tr><td class="indent">Loans payable — current (due within 12 months)</td><td class="num mono">{{ loans_current|money_acct }}</td></tr>{% endif %}
     {% if loans_long_term %}<tr class="grp"><td colspan="2">Long-term liabilities</td></tr>
-    <tr><td class="indent">Loans payable — long-term (due after 12 months)</td><td class="num mono">{{ loans_long_term|floatformat:2|intcomma }}</td></tr>{% endif %}
-    <tr class="subtotal"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ total_liabilities|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td class="indent">Loans payable — long-term (due after 12 months)</td><td class="num mono">{{ loans_long_term|money_acct }}</td></tr>{% endif %}
+    <tr class="subtotal"><td><strong>Total liabilities</strong></td><td class="num mono"><strong>{{ total_liabilities|money_acct }}</strong></td></tr>
   </tbody></table>
   <p class="help u-mt-0">Trust funds (e.g. tithe and field offerings) are held on behalf of {{ FIELD_NAME }} and remitted onward. <strong>Receipted</strong> trust has a formal receipt and is firmly due; <strong>not-yet-receipted</strong> is trust money already allocated to a trust fund but awaiting a receipt. Both are owed to the field. <strong>Bank receipts pending allocation</strong> are payments in the bank not yet matched to any fund — held in suspense until identified.</p>
 
   <div class="stmt-section">NET ASSETS</div>
   <table class="ledger compact"><tbody>
-    <tr><td>General net assets</td><td class="num mono">{{ unallocated|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Designated development funds</td><td class="num mono">{{ allocated|floatformat:2|intcomma }}</td></tr>
-    <tr><td>Invested in property</td><td class="num mono">{{ nbv|floatformat:2|intcomma }}</td></tr>
-    {% if accrual_adj %}<tr><td>Accrual adjustments (prepaid less payables &amp; accruals)</td><td class="num mono">{{ accrual_adj|floatformat:2|intcomma }}</td></tr>{% endif %}
-    <tr class="subtotal"><td><strong>Total net assets</strong></td><td class="num mono"><strong>{{ net_assets|floatformat:2|intcomma }}</strong></td></tr>
+    <tr><td>General net assets</td><td class="num mono">{{ unallocated|money_acct }}</td></tr>
+    <tr><td>Designated development funds</td><td class="num mono">{{ allocated|money_acct }}</td></tr>
+    <tr><td>Invested in property</td><td class="num mono">{{ nbv|money_acct }}</td></tr>
+    {% if accrual_adj %}<tr><td>Accrual adjustments (prepaid less payables &amp; accruals)</td><td class="num mono">{{ accrual_adj|money_acct }}</td></tr>{% endif %}
+    <tr class="subtotal"><td><strong>Total net assets</strong></td><td class="num mono"><strong>{{ net_assets|money_acct }}</strong></td></tr>
   </tbody></table>
   <p class="help u-mt-0"><strong>Unallocated funds (general)</strong> are the church's accumulated local reserves not earmarked for any particular purpose — available for general use at the board's discretion. <strong>Allocated funds (Board-designated)</strong> are local funds the board has set aside for specific purposes (development groups, projects, building) and are not free for general spending. <strong>Invested in property</strong> is the carrying value of fixed assets — net assets tied up in buildings and equipment rather than cash.</p>
 
   <table class="ledger compact u-mt-sm"><tbody>
-    <tr class="grand"><td><strong>TOTAL LIABILITIES &amp; NET ASSETS</strong></td><td class="num mono"><strong>{{ total_liab_and_na|floatformat:2|intcomma }}</strong></td></tr>
+    <tr class="grand"><td><strong>TOTAL LIABILITIES &amp; NET ASSETS</strong></td><td class="num mono"><strong>{{ total_liab_and_na|money_acct }}</strong></td></tr>
   </tbody></table>
-  <p class="bal-line">{% if balanced %}<span class="pill pill-green">✓ Balanced</span> Total assets equal total liabilities plus net assets.{% else %}<span class="pill pill-red">Out of balance</span> by {{ total_assets|floatformat:2|intcomma }} vs {{ total_liab_and_na|floatformat:2|intcomma }}.{% endif %}</p>
+  <p class="bal-line">{% if balanced %}<span class="pill pill-green">✓ Balanced</span> Total assets equal total liabilities plus net assets.{% else %}<span class="pill pill-red">Out of balance</span> by {{ total_assets|money_acct }} vs {{ total_liab_and_na|money_acct }}.{% endif %}</p>
 
-  {% if unpaid %}<p class="help">Memorandum: {{ unpaid|floatformat:2|intcomma }} of approved/pending vouchers were committed but not yet paid as at this date.</p>{% endif %}
+  {% if unpaid %}<p class="help">Memorandum: {{ unpaid|money_acct }} of approved/pending vouchers were committed but not yet paid as at this date.</p>{% endif %}
   {% if opening_total %}<div class="opening-pos"><div class="stmt-section">Opening cash position (start of year)</div>
     <table class="ledger compact"><tbody>
-      <tr><td>Bank balance</td><td class="num mono">{{ opening_bank|floatformat:2|intcomma }}</td></tr>
-      <tr><td>Add: cash on hand (not yet banked)</td><td class="num mono">{{ opening_cash_on_hand|floatformat:2|intcomma }}</td></tr>
-      <tr><td>Less: unremitted trust / pending receipts</td><td class="num mono">({{ opening_unremitted_trust|floatformat:2|intcomma }})</td></tr>
-      <tr class="subtotal"><td><strong>Opening funds carried forward</strong></td><td class="num mono"><strong>{{ opening_total|floatformat:2|intcomma }}</strong></td></tr>
+      <tr><td>Bank balance</td><td class="num mono">{{ opening_bank|money_acct }}</td></tr>
+      <tr><td>Add: cash on hand (not yet banked)</td><td class="num mono">{{ opening_cash_on_hand|money_acct }}</td></tr>
+      <tr><td>Less: unremitted trust / pending receipts</td><td class="num mono">({{ opening_unremitted_trust|money_acct }})</td></tr>
+      <tr class="subtotal"><td><strong>Opening funds carried forward</strong></td><td class="num mono"><strong>{{ opening_total|money_acct }}</strong></td></tr>
     </tbody></table>
     <p class="help">The opening balances brought forward reconcile to bank plus cash-in-hand less trust funds not yet remitted, rather than implying all funds were held in the bank.</p></div>{% endif %}
   <p class="help">Prepared on a fund-accounting basis following the SDA financial reporting framework. The equity section is presented as <strong>Net Assets</strong> (not “fund balance”), classified into general net assets and designated development funds plus amounts invested in property. Tithe is treated as a pass-through liability (held on behalf of {{ FIELD_NAME }}) and is not recognised as the church’s revenue or net assets.</p>

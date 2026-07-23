@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Lenders · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Lenders</h1><div class="sub">Whoever lent the church money — members, visitors, institutions. Never assumed to be a member.</div></div>
@@ -17,7 +17,7 @@
   <td>{{ l.name }}</td><td class="mono muted">{{ l.phone|default:"—" }}</td>
   <td>{% if l.member %}<span class="pill pill-green u-xs">{{ l.member.name }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
   <td class="num">{{ l.loans.count }}</td>
-  <td class="num mono">{{ l.outstanding_total|floatformat:2|intcomma }}</td>
+  <td class="num mono">{{ l.outstanding_total|money }}</td>
   <td><span class="pill {% if l.status == 'ACTIVE' %}pill-blue{% else %}pill-amber{% endif %} u-xs">{{ l.get_status_display }}</span></td>
   <td>{% if can.manage_loans %}<a class="link" href="{% url 'lender_edit' l.id %}">Edit</a>{% endif %}</td>
 </tr>{% empty %}<tr><td colspan="7" class="empty">No lenders yet.</td></tr>{% endfor %}</tbody></table></div>

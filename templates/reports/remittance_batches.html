@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Remittance batches · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Remittance batches</h1></div>
@@ -9,7 +9,7 @@
   {% for b in batches %}
     <tr><td><a class="link" href="{% url 'remittance_batch_detail' b.id %}">{{ b.batch_number }}</a></td>
       <td class="mono">{{ b.date|date:"d/m/y" }}</td>
-      <td class="num mono">{{ b.total_amount|floatformat:2|intcomma }}</td>
+      <td class="num mono">{{ b.total_amount|money }}</td>
       <td><span class="pill {% if b.status == 'REMITTED' %}pill-green{% elif b.status == 'APPROVED' %}pill-blue{% elif b.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ b.get_status_display }}</span></td>
       <td class="mono muted">{{ b.cheque_no|default:"—" }}</td>
       <td class="muted">{{ b.approved_by.username|default:"—" }}</td></tr>

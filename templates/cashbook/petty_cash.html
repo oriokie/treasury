@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Petty cash · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -15,9 +15,9 @@
 {% include "ui/period_selector.html" %}
 
 <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="stat"><div class="kpi-label">Float on hand (today)</div><div class="kpi-val mono">KES {{ balance_now|floatformat:2|intcomma }}</div></div>
-  {% if float_target %}<div class="stat"><div class="kpi-label">Imprest / float</div><div class="kpi-val mono">KES {{ float_target|floatformat:2|intcomma }}</div></div>
-  <div class="stat {% if to_topup %}kpi-warn{% endif %}"><div class="kpi-label">Top-up to reach float</div><div class="kpi-val mono">KES {{ to_topup|floatformat:2|intcomma }}</div></div>{% endif %}
+  <div class="stat"><div class="kpi-label">Float on hand (today)</div><div class="kpi-val mono">{{ CURRENCY }} {{ balance_now|money }}</div></div>
+  {% if float_target %}<div class="stat"><div class="kpi-label">Imprest / float</div><div class="kpi-val mono">{{ CURRENCY }} {{ float_target|money }}</div></div>
+  <div class="stat {% if to_topup %}kpi-warn{% endif %}"><div class="kpi-label">Top-up to reach float</div><div class="kpi-val mono">{{ CURRENCY }} {{ to_topup|money }}</div></div>{% endif %}
 </div>
 <div class="info-panel">Petty cash is a cash location, not a fund. Top-ups add physical cash to the box; each disbursement is charged to the fund/ministry it was for (so fund balances stay correct) and reduces the float. Reconcile the float on hand against the actual cash in the box.</div>
 
@@ -54,16 +54,16 @@
 <div class="card u-mt"><div class="hd">Register · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div><div class="bd u-pad-cell">
 <table class="ledger compact"><thead><tr><th>Date</th><th>Detail</th><th>Charged to</th><th class="num">Top-up</th><th class="num">Paid out</th><th class="num">Float</th></tr></thead>
 <tbody>
-  <tr class="open"><td></td><td colspan="2"><em>Opening float</em></td><td class="num"></td><td class="num"></td><td class="num mono">{{ opening|floatformat:2|intcomma }}</td></tr>
+  <tr class="open"><td></td><td colspan="2"><em>Opening float</em></td><td class="num"></td><td class="num"></td><td class="num mono">{{ opening|money }}</td></tr>
   {% for m in movements %}<tr>
     <td class="mono">{{ m.date|date:"d M" }}</td>
     <td>{{ m.desc }}{% if m.cat %} <span class="pill pill-grey">{{ m.cat }}</span>{% endif %}</td>
     <td>{{ m.fund|default:"—" }}</td>
-    <td class="num mono">{% if m.in %}{{ m.in|floatformat:2|intcomma }}{% endif %}</td>
-    <td class="num mono">{% if m.out %}{{ m.out|floatformat:2|intcomma }}{% endif %}</td>
-    <td class="num mono">{{ m.balance|floatformat:2|intcomma }}</td>
+    <td class="num mono">{% if m.in %}{{ m.in|money }}{% endif %}</td>
+    <td class="num mono">{% if m.out %}{{ m.out|money }}{% endif %}</td>
+    <td class="num mono">{{ m.balance|money }}</td>
   </tr>{% empty %}<tr><td colspan="6" class="empty">No petty cash movements in this period.</td></tr>{% endfor %}
-  <tr class="close"><td></td><td colspan="2"><strong>Closing float</strong></td><td class="num"></td><td class="num"></td><td class="num mono"><strong>{{ closing|floatformat:2|intcomma }}</strong></td></tr>
+  <tr class="close"><td></td><td colspan="2"><strong>Closing float</strong></td><td class="num"></td><td class="num"></td><td class="num mono"><strong>{{ closing|money }}</strong></td></tr>
 </tbody></table>
 </div></div>
 <style>.ledger .open td,.ledger .close td{background:var(--card-head)}.ledger .close td{border-top:2px solid var(--forest)}.kpi-warn .kpi-val{color:var(--amber)}</style>

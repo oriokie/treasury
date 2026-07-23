@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Portal unavailable · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast"><div class="eyebrow">{{ SITE_NAME }} · Member portal</div>
+  <h1>Your portal access is not active</h1><div class="rule"></div></div>
+<div class="panel">
+  {% if account.status == 'INVITED' %}
+    <p>Your access has been set up but not yet activated. Set a password using the
+      <a class="link" href="{% url 'self_reset_request' %}">forgot password</a> link, and
+      you will be able to sign in.</p>
+  {% elif account.status == 'SUSPENDED' %}
+    <p>Your portal access has been suspended.
+      {% if account.suspended_reason %}<br><b>Reason given:</b> {{ account.suspended_reason }}{% endif %}</p>
+    <p class="muted">This affects the portal only. It does not change your membership
+      of the scheme or any cover you have.</p>
+  {% elif account.status == 'CLOSED' %}
+    <p>This portal account has been closed.</p>
+  {% else %}
+    <p>Your portal access is not available at the moment.</p>
+  {% endif %}
+  <p class="muted">Please speak to the church treasurer's office if you think this is wrong.</p>
+  <p><a class="btn btn-sm" href="{% url 'logout' %}">Sign out</a></p>
+</div>
+{% endblock %}
