@@ -1,0 +1,103 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Suppliers · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div><div class="eyebrow">Cash book · Suppliers</div>
+      <h1>Supplier register</h1>
+      <div class="desc">Who the church buys from, what it owes them, and everything
+        agreed with them.</div></div>
+    {% if can_enter_data %}<div class="rpt-actions no-print">
+      <a class="btn btn-sm" href="{% url 'vendor_list' %}?new=1#new">Add a supplier</a></div>{% endif %}
+  </div><div class="rule"></div>
+</div>
+
+<div class="grid cols-4 u-mb">
+  {% for status, label in statuses %}
+  <div class="stat"><div class="lbl">{{ label }}</div>
+    <div class="val mono">{{ counts|default_if_none:0|dictsort:0|length|default:0 }}</div></div>
+  {% endfor %}
+</div>
+
+{% if duplicates %}
+<div class="panel u-mb" style="border-left:3px solid var(--brass)">
+  <b>{{ duplicates }} supplier record{{ duplicates|pluralize }} look like duplicates.</b>
+  <span class="muted">Open one and use “merge” to fold it into the other — nothing is lost.</span>
+</div>
+{% endif %}
+
+<form method="get" class="filter-bar no-print u-mb">
+  <input class="field" type="search" name="q" value="{{ q }}" placeholder="Name, code, phone, PIN or contact">
+  <select class="field" name="status"><option value="">Active</option>
+    {% for value, label in statuses %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select class="field" name="category"><option value="">Any category</option>
+    {% for c in categories %}<option value="{{ c.id }}" {% if category_id == c.id|stringformat:'s' %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+  <select class="field" name="tag"><option value="">Any tag</option>
+    {% for t in tags %}<option value="{{ t.id }}" {% if tag_id == t.id|stringformat:'s' %}selected{% endif %}>{{ t.name }}</option>{% endfor %}</select>
+  <button class="btn btn-sm">Filter</button>
+</form>
+
+<div class="panel">
+<table class="ledger compact">
+  <thead><tr><th>Supplier</th><th>Category</th><th>Terms</th><th class="num">Open bills</th>
+    <th class="num">Outstanding</th><th class="num">Overdue</th><th class="num">Total spend</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr {% if row.vendor.status == 'ARCHIVED' %}class="muted"{% endif %}>
+    <td><a class="link" href="{% url 'vendor_detail' row.vendor.pk %}">{{ row.vendor.name }}</a>
+      {% if row.vendor.code %}<span class="muted u-xs">· {{ row.vendor.code }}</span>{% endif %}
+      {% for t in row.vendor.tags.all %}<span class="pill u-xs">{{ t.name }}</span>{% endfor %}
+      {% if row.summary.over_credit_limit %}<span class="pill pill-red u-xs">Over credit limit</span>{% endif %}
+      {% if row.vendor.status == 'ON_HOLD' %}<span class="pill pill-amber u-xs">On hold</span>{% endif %}</td>
+    <td>{{ row.vendor.category.name|default:"—" }}</td>
+    <td>{{ row.vendor.get_payment_terms_display }}</td>
+    <td class="num mono">{{ row.summary.open_count|default:"—" }}</td>
+    <td class="num mono">{% if row.summary.outstanding %}<b>{{ row.summary.outstanding|money }}</b>{% else %}—{% endif %}</td>
+    <td class="num mono">{% if row.summary.overdue %}<b class="text-amber">{{ row.summary.overdue|money }}</b>{% else %}—{% endif %}</td>
+    <td class="num mono">{{ row.summary.total_spend|money }}</td>
+  </tr>
+  {% empty %}<tr><td colspan="7" class="empty">No suppliers match.</td></tr>{% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if page.has_other_pages %}
+<div class="u-mt no-print">
+  {% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page.previous_page_number }}&q={{ q }}">← Previous</a>{% endif %}
+  <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page.next_page_number }}&q={{ q }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+
+{% if can_enter_data %}
+<div class="card u-mt" id="new"><div class="hd">Add a supplier</div><div class="bd">
+<form method="post" action="{% url 'vendor_create' %}">{% csrf_token %}
+  <input type="hidden" name="action" value="save">
+  <div class="grid cols-2">
+    <div><label class="lbl" for="id_name">Name</label>
+      <input class="field" type="text" name="name" id="id_name" required maxlength="160"></div>
+    <div><label class="lbl" for="id_code">Short code (optional)</label>
+      <input class="field" type="text" name="code" id="id_code" maxlength="20"></div>
+    <div><label class="lbl" for="id_category">Category</label>
+      <select class="field" name="category" id="id_category"><option value="">—</option>
+        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+    <div><label class="lbl" for="id_terms">Payment terms</label>
+      <select class="field" name="payment_terms" id="id_terms">
+        <option value="IMMEDIATE">On delivery</option><option value="NET7">7 days</option>
+        <option value="NET14">14 days</option><option value="NET30">30 days</option>
+        <option value="NET60">60 days</option><option value="PREPAY">Paid in advance</option>
+        <option value="OTHER">Other / by agreement</option></select></div>
+    <div><label class="lbl" for="id_phone">Phone</label>
+      <input class="field" type="text" name="phone" id="id_phone" maxlength="32"></div>
+    <div><label class="lbl" for="id_email">Email</label>
+      <input class="field" type="email" name="email" id="id_email"></div>
+    <div><label class="lbl" for="id_pin">Tax PIN</label>
+      <input class="field" type="text" name="tax_pin" id="id_pin" maxlength="20"></div>
+    <div><label class="lbl" for="id_limit">Credit limit (optional)</label>
+      <input class="field" type="number" step="0.01" name="credit_limit" id="id_limit"></div>
+  </div>
+  <button class="btn u-mt">Add supplier</button>
+</form>
+</div></div>
+{% endif %}
+{% endblock %}

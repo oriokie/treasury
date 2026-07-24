@@ -1,0 +1,86 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}{{ campaign.name }} · Campaigns{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div><div class="eyebrow">Giving · Campaigns</div>
+      <h1>{{ campaign.name }}{% if not campaign.active %} <span class="pill pill-grey">Inactive</span>{% endif %}</h1>
+      <div class="desc">Contributions go to {{ campaign.department.name }}.
+        {% if campaign.triggers %}Recognised by: {{ campaign.triggers }}{% endif %}</div></div>
+    <div class="rpt-actions no-print">
+      <a class="btn btn-ghost btn-sm" href="{% url 'campaign_list' %}">All campaigns</a>
+      {% if can_enter_data %}<a class="btn btn-sm" href="{% url 'campaign_members' campaign.pk %}">Upload sheet</a>{% endif %}</div>
+  </div><div class="rule"></div>
+</div>
+
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">On the sheet</div>
+    <div class="val mono">{{ total_members }}</div>
+    <div class="foot">{{ groups|length }} group{{ groups|length|pluralize }}</div></div>
+  <div class="stat"><div class="lbl">Can be texted</div>
+    <div class="val mono">{{ total_reachable }}</div>
+    <div class="foot">have a usable phone number</div></div>
+  <div class="stat"><div class="lbl">Contributions</div>
+    <div class="val mono">{{ n_txns }}</div></div>
+  <div class="stat brass"><div class="lbl">Raised</div>
+    <div class="val mono">{{ CURRENCY }} {{ raised|money }}</div></div>
+</div>
+
+{% if not groups %}
+<div class="panel"><p class="muted">No member sheet has been uploaded for this campaign yet.
+  {% if can_enter_data %}<a class="link" href="{% url 'campaign_members' campaign.pk %}">Upload one</a>
+  to record who belongs to which group.{% endif %}</p></div>
+{% endif %}
+
+{% for g in groups %}
+<div class="card u-mb"><div class="hd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+  <span><b>{{ g.label }}</b>
+    <span class="muted">— {{ g.count }} member{{ g.count|pluralize }},
+      {{ g.reachable }} with a phone{% if g.unreachable %},
+      <span class="text-amber">{{ g.unreachable }} without</span>{% endif %}</span></span>
+  {% if is_treasurer and g.reachable %}
+  <button type="button" class="btn btn-xs btn-brass"
+          onclick="document.getElementById('sms{{ forloop.counter }}').hidden=!document.getElementById('sms{{ forloop.counter }}').hidden">
+    Send a message to this group</button>{% endif %}
+</div>
+<div class="bd u-pad-cell">
+
+  {% if is_treasurer %}
+  <div id="sms{{ forloop.counter }}" hidden class="panel u-mb">
+    {% if not sms_enabled %}
+    <p class="muted" style="border-left:3px solid var(--amber);padding-left:.6rem">
+      SMS is switched off in settings, so nothing will actually be delivered.
+      You can still compose and preview.</p>
+    {% endif %}
+    <form method="post" action="{% url 'campaign_group_sms' campaign.pk %}">{% csrf_token %}
+      <input type="hidden" name="group" value="{{ g.name }}">
+      <label class="lbl" for="msg{{ forloop.counter }}">Message to {{ g.label }}</label>
+      <textarea class="field" name="message" id="msg{{ forloop.counter }}" rows="3" required
+        placeholder="Dear {name}, greetings from {campaign}…"></textarea>
+      <div class="help">You can use{% for token, meaning in placeholders.items %}
+        <code>{{ token }}</code> ({{ meaning }}){% if not forloop.last %}, {% endif %}{% endfor %}.</div>
+      <button class="btn btn-sm u-mt">Preview and send…</button>
+      <span class="muted u-xs">You will see exactly who it goes to before anything is sent.</span>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if g.history %}
+  <div class="muted u-xs u-mb">Already sent to this group:
+    {% for m in g.history %}{{ m.sent_at|date:"d M y" }} ({{ m.sent_count }} sent{% if m.is_incomplete %} of {{ m.intended_count }} — <span class="text-amber">interrupted</span>{% endif %}){% if not forloop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+
+  <table class="ledger compact">
+    <thead><tr><th>Name</th><th>Phone</th><th>Group</th></tr></thead>
+    <tbody>
+    {% for m in g.members %}
+      <tr><td>{{ m.name }}</td>
+        <td class="mono">{{ m.phone|default:"—" }}</td>
+        <td>{{ m.group|default:"—" }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endfor %}
+{% endblock %}

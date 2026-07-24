@@ -118,6 +118,14 @@ class FixedAsset(models.Model):
         ARCHIVED    = "ARCHIVED",    "Archived"
 
     name = models.CharField(max_length=120)
+    # Who it was bought from. Optional, and PROTECTed: an asset naming a deleted
+    # supplier is a register entry pointing at nothing, and the supplier's own
+    # page needs to be able to answer "what have we bought from them".
+    supplier = models.ForeignKey(
+        "vendors.Vendor", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="assets",
+        help_text="The supplier this was purchased from, where they are on the "
+                  "supplier register.")
     category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
     # EAM classification (authoritative going forward; category retained for
     # backward compatibility and seeded 1:1 into asset_class on migration)

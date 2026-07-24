@@ -39,11 +39,32 @@ class BusyPagesUiTests(TestCase):
 
     def test_expense_form_groups(self):
         h = self.client.get("/expenses/new/").content.decode()
-        for group in ("Amount &amp; date", "What it was for", "Paid to &amp; how"):
+        # Section headings. "Who was paid" and "How it was paid" were one
+        # group ("Paid to & how") until v3.16.0; splitting them is what let the
+        # supplier field sit with the payee instead of falling through to
+        # "Other details", where it had landed unnoticed.
+        for group in ("How much, and when", "What it was for",
+                      "Who was paid", "How it was paid"):
             self.assertIn(group, h)
         self.assertIn("xf-amount", h)          # amount set prominently
         self.assertIn("deptSearch", h)         # fund autocomplete intact
         self.assertIn("xf-fallback", h)        # safety net present
+
+    def test_the_supplier_field_is_not_buried_in_other_details(self):
+        """It belongs with the payee, not in the catch-all at the bottom.
+
+        The fallback group exists so a newly-added field can never vanish —
+        but landing there is a symptom, not a home. `vendor` was added in
+        v3.14.0 and sat in "Other details" for two releases because no group
+        allowlist mentioned it.
+        """
+        h = self.client.get("/expenses/new/").content.decode()
+        who = h.index("Who was paid")
+        other = h.index("Other details")
+        supplier = h.index('name="vendor"')
+        self.assertTrue(who < supplier < other,
+                        "The supplier field is not inside the 'Who was paid' "
+                        "group — it has fallen through to 'Other details'.")
 
     def test_every_form_field_renders_somewhere(self):
         """The anti-#74a guarantee: every visible ExpenseForm field appears on

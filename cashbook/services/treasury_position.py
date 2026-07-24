@@ -226,20 +226,32 @@ def open_payables_total(as_of=None):
     final payment arrives. Paying half a bill on the 10th reduces the liability
     on the 10th, which is the whole reason partial settlement exists: otherwise
     the balance sheet would carry a debt the church had already half discharged.
+    """
+    from cashbook.models import Payable
+    return _open_obligation_total(Payable, as_of)
 
-    The as-of treatment is unchanged in spirit: a payable incurred on or before
-    the date counts, and only payments dated on or before it count against it,
-    so settling on the 15th still shows in full on a 14th statement.
 
-    Netted per payable rather than in one aggregate, because a payment can never
-    reduce the liability below zero — an overpayment to one vendor must not
-    cancel out what is owed to another. Hence the per-row `Greatest(..., 0)`
-    before the outer sum, and hence this being one annotated query rather than a
-    loop: the balance sheet must not issue a query per invoice.
+def _open_obligation_total(model, as_of=None):
+    """What is still owed on a set of obligations, as at a date.
+
+    Shared by payables and accruals. Three rules live here and nowhere else:
+
+    * only APPROVED/PAID payments reduce a liability — a pending claim must not
+      discharge a debt before anyone has authorised it;
+    * the netting is per row (`Greatest(amount - paid, 0)`), so one supplier's
+      overpayment can never cancel what is owed to another;
+    * an obligation flagged settled with NO payments to show for it is treated
+      as discharged. That is how every settlement made before instalments
+      existed looks if its expense link was never recorded, and the flag is the
+      only evidence there is. Ignoring it resurrects debts already paid, which
+      is a far worse error than trusting a flag a treasurer set deliberately.
+
+    Expressed as a single annotated query: the balance sheet must not issue a
+    query per invoice.
     """
     from django.db.models import Case, Count, DecimalField, F, Q, Value, When
     from django.db.models.functions import Coalesce, Greatest
-    from cashbook.models import Expense, Payable
+    from cashbook.models import Expense
 
     money = DecimalField(max_digits=14, decimal_places=2)
     zero = Value(Decimal("0"), output_field=money)
@@ -247,48 +259,39 @@ def open_payables_total(as_of=None):
 
     if not as_of:
         # "Right now" — the cached flag is the fast path, and anything still
-        # flagged unsettled owes its invoice less whatever has been paid.
-        qs = Payable.objects.filter(settled=False)
-        row = (qs.annotate(paid=Coalesce(Sum("payments__amount", filter=counted,
-                                             output_field=money), zero))
-                 .annotate(owed=Greatest(F("amount") - F("paid"), zero,
-                                         output_field=money))
-                 .aggregate(t=Sum("owed", output_field=money)))
-        return row["t"] or Decimal(0)
+        # flagged unsettled owes its amount less whatever has been paid.
+        return (model.objects.filter(settled=False)
+                .annotate(paid=Coalesce(Sum("payments__amount", filter=counted,
+                                            output_field=money), zero))
+                .annotate(owed=Greatest(F("amount") - F("paid"), zero,
+                                        output_field=money))
+                .aggregate(t=Sum("owed", output_field=money))["t"] or Decimal(0))
 
     counted &= Q(payments__date__lte=as_of)
-    row = (Payable.objects.filter(date__lte=as_of)
-           .annotate(
-               paid=Coalesce(Sum("payments__amount", filter=counted,
-                                 output_field=money), zero),
-               n_payments=Count("payments", filter=counted))
-           .annotate(owed=Case(
-               # A payable marked settled that has no payments to show for it.
-               # This is how every payable settled BEFORE instalments existed
-               # looks if its expense link was never recorded — and the flag is
-               # the only evidence there is that the debt was discharged. Ignore
-               # it and the balance sheet resurrects debts the church has
-               # already paid, which is a far worse error than trusting a flag
-               # a treasurer set deliberately.
-               When(n_payments=0, settled=True, settled_on__lte=as_of, then=zero),
-               default=Greatest(F("amount") - F("paid"), zero,
-                                output_field=money),
-               output_field=money))
-           .aggregate(t=Sum("owed", output_field=money)))
-    return row["t"] or Decimal(0)
+    return (model.objects.filter(date__lte=as_of)
+            .annotate(paid=Coalesce(Sum("payments__amount", filter=counted,
+                                        output_field=money), zero),
+                      n_payments=Count("payments", filter=counted))
+            .annotate(owed=Case(
+                When(n_payments=0, settled=True, settled_on__lte=as_of, then=zero),
+                default=Greatest(F("amount") - F("paid"), zero, output_field=money),
+                output_field=money))
+            .aggregate(t=Sum("owed", output_field=money))["t"] or Decimal(0))
 
 
 def open_accruals_total(as_of=None):
-    """Expenses incurred but not yet invoiced/paid, owed as at a date — same
-    as-of treatment as open_payables_total."""
-    from django.db.models import Q
+    """Expenses incurred but not yet invoiced/paid, still owed at a date.
+
+    Identical treatment to open_payables_total, and for the same reason: an
+    accrual can now be settled in instalments, so what is owed is the estimate
+    less what has actually been paid by the reporting date. The two share
+    `_open_obligation_total` rather than repeating the netting logic — the rules
+    (only APPROVED/PAID payments count, never negative per row, honour a
+    flag-only settlement from before instalments existed) are one set of rules
+    and must not drift apart between the two halves of the liability note.
+    """
     from cashbook.models import Accrual
-    if as_of:
-        qs = Accrual.objects.filter(date__lte=as_of).filter(
-            Q(settled=False) | Q(settled_on__gt=as_of) | Q(settled_on__isnull=True))
-    else:
-        qs = Accrual.objects.filter(settled=False)
-    return qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+    return _open_obligation_total(Accrual, as_of)
 
 
 def unexpired_prepayments_total(as_of=None):

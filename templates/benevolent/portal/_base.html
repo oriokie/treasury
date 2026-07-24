@@ -1,12 +1,12 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
-{# Shared chrome for every member-portal page.
+{% comment %} Shared chrome for every member-portal page.
 
    Extends the application's own base so the portal inherits one design system,
    one set of accessibility preferences and one theme — a portal with its own
    stylesheet would drift, and the member would be the last to know. What it
    adds is the mobile-first behaviour the office screens do not need: on a
    narrow viewport the data tables below reflow into stacked cards, because a
-   member reads this on a phone at a funeral, not at a desk. #}
+   member reads this on a phone at a funeral, not at a desk. {% endcomment %}
 {% block title %}{{ portal_title|default:"My scheme" }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <style>

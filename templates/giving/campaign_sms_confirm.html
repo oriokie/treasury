@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Confirm message · {{ campaign.name }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div><div class="eyebrow">Giving · Campaigns</div>
+    <h1>Send to {{ group|default:"members with no group" }}?</h1>
+    <div class="desc">{{ campaign.name }}. Nothing has been sent yet.</div></div>
+  <div class="rule"></div>
+</div>
+
+{% if not sms_enabled %}
+<div class="panel u-mb" style="border-left:3px solid var(--amber)">
+  <b>SMS is switched off in settings.</b> Confirming will record the attempt but
+  no message will reach anyone.</div>
+{% endif %}
+
+{% if duplicate %}
+<div class="panel u-mb" style="border-left:3px solid var(--amber)">
+  <b>This exact message already went to this group.</b>
+  Sent {{ duplicate.sent_at|date:"d M Y H:i" }} by {{ duplicate.sent_by|default:"—" }},
+  reaching {{ duplicate.sent_count }} member{{ duplicate.sent_count|pluralize }}.
+  <div class="muted">Sending again is allowed — a reminder is sometimes meant to
+    be repeated — but the congregation will receive it twice, and the church pays
+    twice.</div>
+</div>
+{% elif recent %}
+<div class="panel u-mb">
+  <b>Already sent to this group recently</b>
+  {% for m in recent %}<div class="muted u-xs">{{ m.sent_at|date:"d M Y H:i" }} —
+    {{ m.sent_count }} sent · “{{ m.body|truncatechars:70 }}”</div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="grid cols-2 u-mb">
+  <div class="stat accent"><div class="lbl">Will be sent to</div>
+    <div class="val mono">{{ plan.count }}</div>
+    <div class="foot">member{{ plan.count|pluralize }} in this group</div></div>
+  <div class="stat {% if plan.skipped_count %}warn{% endif %}"><div class="lbl">Cannot be reached</div>
+    <div class="val mono">{{ plan.skipped_count }}</div>
+    <div class="foot">no usable phone number</div></div>
+</div>
+
+<div class="panel u-mb">
+  <h3>What each person will receive</h3>
+  <p class="muted">Shown for the first few, with their own name and group filled in.</p>
+  <table class="ledger compact">
+    <thead><tr><th>Name</th><th>Phone</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for r in plan.recipients|slice:":8" %}
+      <tr><td>{{ r.member.name }}</td><td class="mono">{{ r.phone }}</td>
+        <td>{{ r.message }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if plan.count > 8 %}<p class="muted">…and {{ plan.count|add:"-8" }} more.</p>{% endif %}
+</div>
+
+{% if plan.skipped %}
+<div class="panel u-mb">
+  <h3>Will not receive it</h3>
+  <p class="muted">No usable phone number on the sheet.</p>
+  {% for r in plan.skipped %}<div>{{ r.member.name }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<form method="post" action="{% url 'campaign_group_sms' campaign.pk %}">{% csrf_token %}
+  <input type="hidden" name="group" value="{{ group }}">
+  <input type="hidden" name="message" value="{{ message }}">
+  <input type="hidden" name="confirm" value="yes">
+  <div class="btn-row">
+    <button class="btn">Send {{ plan.count }} message{{ plan.count|pluralize }} now</button>
+    <a class="btn btn-ghost" href="{% url 'campaign_detail' campaign.pk %}">Go back</a>
+  </div>
+  <p class="muted u-xs u-mt">A text message cannot be recalled once sent.</p>
+</form>
+{% endblock %}

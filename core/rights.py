@@ -68,6 +68,14 @@ RIGHTS = [
     ("manage_budgets",       "Manage budgets",                     "Setup"),
     ("manage_rules",         "Manage allocation rules",            "Setup"),
     ("manage_assets",        "Manage assets",                      "Setup"),
+    ("manage_vendors",       "Manage the supplier register",       "Setup"),
+    # Its own right, not part of managing suppliers generally. Changing where a
+    # supplier is paid is the single highest-risk edit in that module: the
+    # commonest fraud against churches is a letter announcing new bank details.
+    # A church that wants the office to maintain supplier records while only the
+    # treasurer touches payment details can now express that.
+    ("manage_vendor_bank_details", "Change supplier bank / M-Pesa payment details",
+                             "Money controls"),
     ("manage_channels",      "Manage SMS / channels / settings",   "Setup"),
     ("manage_profiles",      "Manage profiles & users",            "Setup"),
     ("manage_benevolent_schemes", "Set up benevolent schemes & policies", "Setup"),

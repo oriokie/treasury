@@ -32,7 +32,7 @@
     <thead><tr><th>Name</th><th>Relationship</th><th>Scheme</th><th>Registered</th><th class="no-print"></th></tr></thead>
     <tbody>
     {% for d in dependants %}
-    <tr><td data-label="Name">{{ d.name|default:d.member.name }}</td>
+    <tr><td data-label="Name">{% if d.name %}{{ d.name }}{% else %}{{ d.member.name }}{% endif %}</td>
       <td data-label="Relationship">{{ d.get_relationship_display }}</td>
       <td data-label="Scheme">{{ d.membership.scheme.name }}</td>
       <td data-label="Registered">{{ d.registered_on|date:"d M Y" }}</td>
@@ -51,7 +51,7 @@
   <p class="muted">Kept on the record. Someone covered when an event happened stays covered
     for that event, however the household has changed since.</p>
   {% for d in former %}
-  <div class="pt-row"><span class="k">{{ d.name|default:d.member.name }} · {{ d.get_relationship_display }}</span>
+  <div class="pt-row"><span class="k">{% if d.name %}{{ d.name }}{% else %}{{ d.member.name }}{% endif %} · {{ d.get_relationship_display }}</span>
     <span class="muted">until {{ d.removed_on|date:"d M Y" }}</span></div>
   {% endfor %}
 </div>

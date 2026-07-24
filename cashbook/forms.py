@@ -16,7 +16,10 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
         model = Expense
         fields = ["date", "department", "description", "amount", "category",
                   "expenditure_type", "capitalized_asset",
-                  "claimant", "payee", "method", "voucher_no",
+                  # `vendor` groups this payment under a supplier's account;
+                  # `payee` stays as what the voucher said. Both, not either —
+                  # see vendors.models for why the free text is kept.
+                  "vendor", "claimant", "payee", "method", "voucher_no",
                   "paid_from_petty_cash", "budget_line"]
         widgets = {"date": forms.DateInput(attrs={"type": "date"})}
 
@@ -25,6 +28,16 @@ class ExpenseForm(StyledFormMixin, forms.ModelForm):
         from departments.models import expense_departments
         from cashbook.models import category_choices
         self.fields["category"].choices = category_choices()
+        # Suppliers, archived ones excluded — an archived supplier should not
+        # appear in a picker, though the records that already name one still
+        # resolve.
+        from vendors.models import Vendor
+        self.fields["vendor"].queryset = (
+            Vendor.objects.exclude(status=Vendor.Status.ARCHIVED).order_by("name"))
+        self.fields["vendor"].required = False
+        self.fields["vendor"].label = "Supplier"
+        self.fields["vendor"].help_text = (
+            "Optional. Choosing one puts this payment on that supplier's account.")
         ids = [d.id for d in expense_departments()]
         self.fields["department"].queryset = Department.objects.filter(pk__in=ids)
         self.fields["department"].widget = forms.HiddenInput()
@@ -102,8 +115,13 @@ class RecurringExpenseForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         from .models import RecurringExpense
         model = RecurringExpense
-        fields = ["description", "department", "category", "amount", "frequency",
-                  "day_of_month", "claimant", "method", "start_date", "end_date", "active"]
+        # Everything an Expense carries, plus the two things that make it a
+        # schedule: frequency and end date. Ordered as the expense form is, so
+        # the two screens read the same way.
+        fields = ["description", "department", "category", "expenditure_type",
+                  "amount", "vendor", "claimant", "payee", "method",
+                  "voucher_no", "paid_from_petty_cash", "budget_line",
+                  "frequency", "day_of_month", "start_date", "end_date", "active"]
         widgets = {"start_date": forms.DateInput(attrs={"type": "date"}),
                    "end_date": forms.DateInput(attrs={"type": "date"})}
 
@@ -112,9 +130,17 @@ class RecurringExpenseForm(StyledFormMixin, forms.ModelForm):
         from departments.models import Department
         self.fields["department"].queryset = Department.objects.filter(
             active=True, is_trust=False).select_related("parent").order_by("name")
+        from vendors.models import Vendor
         self.fields["end_date"].required = False
         self.fields["claimant"].required = False
-        for f in ("category", "frequency", "method", "department"):
+        for name in ("vendor", "payee", "voucher_no", "budget_line",
+                     "expenditure_type"):
+            self.fields[name].required = False
+        self.fields["vendor"].queryset = (
+            Vendor.objects.exclude(status=Vendor.Status.ARCHIVED).order_by("name"))
+        self.fields["vendor"].label = "Supplier"
+        for f in ("category", "frequency", "method", "department", "vendor",
+                  "expenditure_type", "budget_line"):
             self.fields[f].widget.attrs.update({"class": "field--select"})
         self._style()
 
@@ -144,7 +170,15 @@ class PettyCashTopUpForm(StyledFormMixin, forms.Form):
 class PayableForm(StyledFormMixin, forms.Form):
     """Record a credit purchase — goods/services received now, paid later."""
     date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="Date incurred")
-    vendor = forms.CharField(max_length=120)
+    supplier = forms.ModelChoiceField(
+        queryset=None, required=False, label="Supplier",
+        help_text="Choose from the register to group this bill with the "
+                  "supplier's other invoices. Leave blank for a one-off.")
+    vendor = forms.CharField(
+        max_length=120, required=False, label="Name on the invoice",
+        help_text="Filled from the supplier if you leave it blank. Change it "
+                  "only if the invoice reads differently — this records what "
+                  "the document said.")
     description = forms.CharField(max_length=200)
     amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
     department = forms.ModelChoiceField(queryset=None, label="Charge to fund / ministry")
@@ -156,14 +190,42 @@ class PayableForm(StyledFormMixin, forms.Form):
         import datetime as _dt
         from cashbook.models import Expense
         from departments.models import Department
+        from vendors.models import Vendor
+        self.fields["supplier"].queryset = (
+            Vendor.objects.exclude(status=Vendor.Status.ARCHIVED).order_by("name"))
         self.fields["category"].choices = [c for c in Expense.Category.choices
                                             if c[0] != Expense.Category.REMITTANCE]
         self.fields["department"].queryset = Department.objects.filter(
             active=True, is_trust=False).select_related("parent").order_by("name")
         self.fields["date"].initial = _dt.date.today()
-        for f in ("category", "department"):
+        for f in ("category", "department", "supplier"):
             self.fields[f].widget.attrs.update({"class": "field--select"})
         self._style()
+
+    def clean(self):
+        """One of the two names must be present, and the supplier fills the gap.
+
+        `vendor` is what the invoice said and stays the record of that; but
+        making a treasurer type it again when they have just picked the supplier
+        from a list is the kind of friction that stops the register being used
+        at all. So a blank `vendor` is filled from the chosen supplier, and only
+        a bill with neither is refused.
+        """
+        cleaned = super().clean()
+        supplier = cleaned.get("supplier")
+        vendor = (cleaned.get("vendor") or "").strip()
+        if not vendor and supplier is not None:
+            cleaned["vendor"] = supplier.name[:120]
+        elif not vendor:
+            self.add_error(
+                "vendor",
+                "Say who this is owed to — choose a supplier or type a name.")
+
+        # Terms on the supplier imply the due date, so the treasurer does not
+        # work it out. Only when they have not set one themselves.
+        if supplier is not None and not cleaned.get("due_date") and cleaned.get("date"):
+            cleaned["due_date"] = supplier.due_date_for(cleaned["date"])
+        return cleaned
 
 
 class AccrualForm(StyledFormMixin, forms.Form):

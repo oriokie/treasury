@@ -12,6 +12,9 @@ urlpatterns = [
     path("expenses/receipts/", views.ReceiptArchiveView.as_view(), name="receipt_archive"),
     path("expenses/missing-receipts/", views.MissingReceiptsView.as_view(), name="missing_receipts"),
     path("expenses/import/", views.ExpenseImportView.as_view(), name="expense_import"),
+    # Several expenses sharing a date, fund, claimant and method — a stack of
+    # receipts from one person, entered once instead of one form at a time.
+    path("expenses/batch/", views.ExpenseBatchCreate.as_view(), name="expense_batch"),
     path("expenses/recategorize/", views.ExpenseRecategorizeView.as_view(), name="expense_recategorize"),
     path("expenses/new/", views.ExpenseCreate.as_view(), name="expense_create"),
     path("expenses/<int:pk>/edit/", views.ExpenseUpdate.as_view(), name="expense_edit"),
@@ -53,6 +56,8 @@ urlpatterns = [
     # removes the link, never the expense — see PayableUnlinkPayment.
     path("payables/payment/<int:pk>/unlink/", views.PayableUnlinkPayment.as_view(),
          name="payable_unlink_payment"),
+    path("payables/accrual-payment/<int:pk>/unlink/",
+         views.AccrualUnlinkPayment.as_view(), name="accrual_unlink_payment"),
     path("payables/accrual/add/", views.AccrualCreate.as_view(), name="accrual_create"),
     path("payables/accrual/<int:pk>/settle/", views.AccrualSettle.as_view(), name="accrual_settle"),
     path("payables/prepayment/add/", views.PrepaymentCreate.as_view(), name="prepayment_create"),

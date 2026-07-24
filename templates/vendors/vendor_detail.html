@@ -1,0 +1,194 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}{{ vendor.name }} · Suppliers{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div><div class="eyebrow">Cash book · Suppliers</div>
+      <h1>{{ vendor.name }}
+        {% if vendor.status == 'ARCHIVED' %}<span class="pill pill-grey">Archived</span>
+        {% elif vendor.status == 'ON_HOLD' %}<span class="pill pill-amber">On hold</span>{% endif %}</h1>
+      <div class="desc">{{ vendor.category.name|default:"Uncategorised" }} ·
+        {{ vendor.get_payment_terms_display }}{% if vendor.code %} · {{ vendor.code }}{% endif %}
+        {% for t in vendor.tags.all %}<span class="pill u-xs">{{ t.name }}</span>{% endfor %}</div></div>
+    <div class="rpt-actions no-print"><a class="btn btn-ghost btn-sm" href="{% url 'vendor_list' %}">All suppliers</a></div>
+  </div><div class="rule"></div>
+</div>
+
+{% if duplicates %}
+<div class="panel u-mb" style="border-left:3px solid var(--brass)">
+  <b>This may be the same supplier as:</b>
+  {% for d in duplicates %}<a class="link" href="{% url 'vendor_detail' d.pk %}">{{ d.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+  {% if is_treasurer %}
+  <form method="post" action="{% url 'vendor_merge' vendor.pk %}" class="u-mt" onsubmit="return confirm('Merge this record into the other? Everything is re-pointed and this one is archived.');">{% csrf_token %}
+    <select class="field u-inline" name="target" style="max-width:16rem">
+      {% for d in duplicates %}<option value="{{ d.pk }}">{{ d.name }}</option>{% endfor %}</select>
+    <button class="btn btn-sm btn-ghost">Merge this into it</button></form>{% endif %}
+</div>
+{% endif %}
+
+{% if summary.over_credit_limit %}
+<div class="panel u-mb" style="border-left:3px solid var(--danger)">
+  <b>Over the agreed credit limit.</b> Owing {{ summary.outstanding|money }} against a
+  limit of {{ vendor.credit_limit|money }}.</div>
+{% endif %}
+
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">Outstanding</div>
+    <div class="val mono">{{ CURRENCY }} {{ summary.outstanding|money }}</div>
+    <div class="foot">{{ summary.open_count }} open bill{{ summary.open_count|pluralize }}</div></div>
+  <div class="stat {% if summary.overdue %}warn{% endif %}"><div class="lbl">Overdue</div>
+    <div class="val mono">{{ CURRENCY }} {{ summary.overdue|money }}</div></div>
+  <div class="stat"><div class="lbl">Total spend</div>
+    <div class="val mono">{{ CURRENCY }} {{ summary.total_spend|money }}</div>
+    <div class="foot">{{ summary.payment_count }} payment{{ summary.payment_count|pluralize }}</div></div>
+  <div class="stat brass"><div class="lbl">Terms</div>
+    <div class="val">{{ vendor.get_payment_terms_display }}</div>
+    <div class="foot">{{ vendor.terms_note|default:"—" }}</div></div>
+</div>
+
+<div class="grid cols-2 u-mb">
+  <div class="panel"><h3>Ageing</h3>
+    <table class="ledger compact"><tbody>
+      <tr><td>Not yet due</td><td class="num mono">{{ ageing.current|money }}</td></tr>
+      <tr><td>1–30 days</td><td class="num mono">{{ ageing.d30|money }}</td></tr>
+      <tr><td>31–60 days</td><td class="num mono">{{ ageing.d60|money }}</td></tr>
+      <tr><td>61–90 days</td><td class="num mono">{{ ageing.d90|money }}</td></tr>
+      <tr><td>Over 90 days</td><td class="num mono"><b>{{ ageing.older|money }}</b></td></tr>
+      <tr><th>Total owed</th><th class="num mono">{{ ageing.total|money }}</th></tr>
+    </tbody></table>
+  </div>
+  <div class="panel"><h3>Contact &amp; tax</h3>
+    <table class="ledger compact"><tbody>
+      <tr><td>Phone</td><td class="mono">{{ vendor.phone|default:"—" }}</td></tr>
+      <tr><td>Email</td><td>{{ vendor.email|default:"—" }}</td></tr>
+      <tr><td>Website</td><td>{{ vendor.website|default:"—" }}</td></tr>
+      <tr><td>Tax PIN</td><td class="mono">{{ vendor.tax_pin|default:"—" }}</td></tr>
+      <tr><td>Tax exempt</td><td>{{ vendor.tax_exempt|yesno:"Yes,No" }}</td></tr>
+      <tr><td>Withholding</td><td>{% if vendor.withholding_rate %}{{ vendor.withholding_rate }}%{% else %}—{% endif %}</td></tr>
+      <tr><td>Credit limit</td><td class="mono">{% if vendor.credit_limit %}{{ vendor.credit_limit|money }}{% else %}—{% endif %}</td></tr>
+    </tbody></table>
+    {% for a in vendor.addresses.all %}
+    <div class="muted u-xs">{{ a.get_kind_display }}: {{ a }}</div>{% endfor %}
+  </div>
+</div>
+
+<div class="panel u-mb"><h3>Transactions</h3>
+  <table class="ledger compact">
+    <thead><tr><th>Date</th><th>What</th><th>Description</th><th>Fund</th>
+      <th class="num">Amount</th><th class="num">Balance</th><th>Status</th></tr></thead>
+    <tbody>{% for t in transactions %}
+      <tr><td class="mono">{{ t.date|date:"d M y" }}</td>
+        <td>{{ t.kind }}</td><td>{{ t.description }}</td>
+        <td>{{ t.fund.name|default:"—" }}</td>
+        <td class="num mono">{{ t.amount|money }}</td>
+        <td class="num mono">{% if t.balance != None %}{{ t.balance|money }}{% else %}—{% endif %}</td>
+        <td>{{ t.status }}</td></tr>
+    {% empty %}<tr><td colspan="7" class="empty">Nothing recorded with this supplier yet.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+
+<div class="grid cols-2 u-mb">
+  <div class="panel"><h3>Payment details</h3>
+    <p class="muted u-xs">Confirm any change by phoning a number you already had.
+      A letter announcing new bank details is the commonest fraud against churches.</p>
+    {% for b in vendor.bank_accounts.all %}
+    <div class="pt-row" style="display:flex;justify-content:space-between;padding:.4rem 0;border-bottom:1px solid var(--line)">
+      <span>{{ b }} <span class="muted u-xs">{{ b.account_name }}</span>
+        {% if b.is_verified %}<span class="pill pill-green u-xs">Verified {{ b.verified_on|date:"M Y" }}</span>
+        {% else %}<span class="pill pill-amber u-xs">Not verified</span>{% endif %}</span>
+      {% if can_edit_bank and not b.is_verified %}
+      <form method="post" action="{% url 'vendor_save' vendor.pk %}">{% csrf_token %}
+        <input type="hidden" name="action" value="verify_bank">
+        <input type="hidden" name="bank_id" value="{{ b.pk }}">
+        <button class="btn btn-xs btn-ghost">Mark verified</button></form>{% endif %}
+    </div>
+    {% empty %}<p class="muted">No payment details recorded.</p>{% endfor %}
+    {% if not can_edit_bank %}<p class="muted u-xs">Only someone with the
+      payment-details right may add or verify these.</p>{% endif %}
+    {% if can_edit_bank %}
+    <form method="post" action="{% url 'vendor_save' vendor.pk %}" class="u-mt">{% csrf_token %}
+      <input type="hidden" name="action" value="bank">
+      <select class="field" name="kind">{% for v, l in bank_kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+      <input class="field u-mt" type="text" name="bank_name" placeholder="Bank">
+      <input class="field u-mt" type="text" name="account_number" placeholder="Account number">
+      <input class="field u-mt" type="text" name="paybill_or_till" placeholder="Paybill / till (if M-Pesa)">
+      <button class="btn btn-sm u-mt">Add payment details</button></form>{% endif %}
+  </div>
+
+  <div class="panel"><h3>Contacts</h3>
+    {% for c in vendor.contacts.all %}
+    <div style="padding:.4rem 0;border-bottom:1px solid var(--line)">
+      <b>{{ c.name }}</b>{% if c.is_primary %} <span class="pill pill-green u-xs">Main</span>{% endif %}
+      <div class="muted u-xs">{{ c.get_kind_display }}{% if c.role %} · {{ c.role }}{% endif %}
+        {% if c.phone %} · {{ c.phone }}{% endif %}{% if c.email %} · {{ c.email }}{% endif %}</div></div>
+    {% empty %}<p class="muted">No contacts recorded.</p>{% endfor %}
+    {% if can_enter_data %}
+    <form method="post" action="{% url 'vendor_save' vendor.pk %}" class="u-mt">{% csrf_token %}
+      <input type="hidden" name="action" value="contact">
+      <input class="field" type="text" name="name" placeholder="Name" required>
+      <select class="field u-mt" name="kind">{% for v, l in contact_kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+      <input class="field u-mt" type="text" name="phone" placeholder="Phone">
+      <input class="field u-mt" type="email" name="email" placeholder="Email">
+      <label class="u-mt"><input type="checkbox" name="is_primary"> Main contact</label>
+      <button class="btn btn-sm u-mt">Add contact</button></form>{% endif %}
+  </div>
+</div>
+
+<div class="grid cols-2">
+  <div class="panel"><h3>Documents</h3>
+    {% if expiring %}<p class="muted" style="border-left:3px solid var(--amber);padding-left:.5rem">
+      Some documents have expired or expire soon.</p>{% endif %}
+    {% for d in vendor.documents.all %}
+    <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--line)">
+      <span><a class="link" href="{{ d.file.url }}">{{ d }}</a>
+        <span class="muted u-xs">· {{ d.get_kind_display }}</span>
+        {% if d.is_expired %}<span class="pill pill-red u-xs">Expired</span>{% endif %}</span>
+      <span class="muted u-xs">{{ d.uploaded_at|date:"d M y" }}</span></div>
+    {% empty %}<p class="muted">No documents.</p>{% endfor %}
+    {% if can_enter_data %}
+    <form method="post" action="{% url 'vendor_save' vendor.pk %}" enctype="multipart/form-data" class="u-mt">{% csrf_token %}
+      <input type="hidden" name="action" value="document">
+      <input class="field" type="file" name="file" required>
+      <select class="field u-mt" name="kind">{% for v, l in document_kinds %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
+      <input class="field u-mt" type="text" name="label" placeholder="Description">
+      <input class="field u-mt" type="date" name="expires_on" title="Expiry, for contracts and certificates">
+      <button class="btn btn-sm u-mt">Upload</button></form>{% endif %}
+  </div>
+
+  <div class="panel"><h3>Notes &amp; history</h3>
+    {% for n in vendor.note_entries.all %}
+    <div style="padding:.4rem 0;border-bottom:1px solid var(--line)">
+      {% if n.pinned %}<span class="pill pill-amber u-xs">Pinned</span>{% endif %}
+      <div>{{ n.body|linebreaksbr }}</div>
+      <div class="muted u-xs">{{ n.author|default:"—" }} · {{ n.created_at|date:"d M Y" }}</div></div>
+    {% empty %}<p class="muted">No notes.</p>{% endfor %}
+    {% if can_enter_data %}
+    <form method="post" action="{% url 'vendor_save' vendor.pk %}" class="u-mt">{% csrf_token %}
+      <input type="hidden" name="action" value="note">
+      <textarea class="field" name="body" rows="2" placeholder="Add a note" required></textarea>
+      <label class="u-mt"><input type="checkbox" name="pinned"> Pin to the top</label>
+      <button class="btn btn-sm u-mt">Add note</button></form>{% endif %}
+
+    <h3 class="u-mt">Activity</h3>
+    {% for e in timeline %}
+    <div style="display:flex;justify-content:space-between;padding:.3rem 0" class="u-xs">
+      <span class="muted">{{ e.at|date:"d M y H:i" }}</span>
+      <span>{{ e.kind }} — {{ e.summary }}</span></div>
+    {% empty %}<p class="muted">No activity.</p>{% endfor %}
+  </div>
+</div>
+
+{% if is_treasurer %}
+<div class="panel u-mt no-print">
+  <form method="post" action="{% url 'vendor_archive' vendor.pk %}">{% csrf_token %}
+    {% if vendor.status == 'ARCHIVED' %}
+      <button class="btn btn-ghost btn-sm" name="action" value="restore">Restore this supplier</button>
+    {% else %}
+      <input class="field u-inline" type="text" name="reason" placeholder="Reason" style="max-width:16rem">
+      <button class="btn btn-ghost btn-sm text-amber">Archive</button>
+      <span class="muted u-xs">Hides the supplier from pickers. Nothing is deleted.</span>
+    {% endif %}
+  </form>
+</div>
+{% endif %}
+{% endblock %}

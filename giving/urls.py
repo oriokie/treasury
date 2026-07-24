@@ -20,6 +20,8 @@ urlpatterns = [
     path("campaigns/", views.CampaignListView.as_view(), name="campaign_list"),
     path("campaigns/sample/", views.CampaignTemplateView.as_view(), name="campaign_template"),
     path("campaigns/new/", views.CampaignCreateView.as_view(), name="campaign_create"),
+    path("campaigns/<int:pk>/", views.CampaignDetailView.as_view(), name="campaign_detail"),
+    path("campaigns/<int:pk>/sms/", views.CampaignGroupSmsView.as_view(), name="campaign_group_sms"),
     path("campaigns/<int:pk>/members/", views.CampaignMemberImportView.as_view(), name="campaign_members"),
     path("campaigns/<int:pk>/delete/", views.CampaignDeleteView.as_view(), name="campaign_delete"),
 

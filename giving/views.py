@@ -2402,3 +2402,99 @@ class AllocationSettingsView(TreasurerRequiredMixin, View):
             return redirect("allocation_settings")
         messages.error(request, "Check the form.")
         return render(request, self.template_name, {"form": form})
+
+
+def _sms_enabled():
+    from core.models import SiteConfig
+    return SiteConfig.get().sms_enabled
+
+
+class CampaignDetailView(ReadAccessMixin, View):
+    """One campaign: the sheet that was uploaded, and its groups.
+
+    The list page could say how many members a campaign had but not who they
+    were, so an uploaded sheet was effectively write-only — a treasurer could
+    not check that the groups had come through correctly, which is the first
+    thing anyone wants to do after an import.
+    """
+    template_name = "giving/campaign_detail.html"
+
+    def get(self, request, pk):
+        from django.db.models import Count, Sum
+        from giving.models import Campaign
+        from giving.services import campaign_sms
+
+        campaign = get_object_or_404(
+            Campaign.objects.select_related("department"), pk=pk)
+        groups = campaign_sms.groups_for(campaign)
+        # What has already gone to each group, so a treasurer can see it before
+        # composing another one.
+        history = {g["name"]: campaign_sms.recent_sends(campaign, g["name"], limit=3)
+                   for g in groups}
+        for g in groups:
+            g["history"] = history.get(g["name"], [])
+        txns = campaign.transactions.all()
+        return render(request, self.template_name, {
+            "campaign": campaign,
+            "groups": groups,
+            "total_members": sum(g["count"] for g in groups),
+            "total_reachable": sum(g["reachable"] for g in groups),
+            "n_txns": txns.count(),
+            "raised": txns.aggregate(t=Sum("amount"))["t"] or 0,
+            "placeholders": campaign_sms.PLACEHOLDERS,
+            "sms_enabled": _sms_enabled(),
+        })
+
+
+class CampaignGroupSmsView(TreasurerRequiredMixin, View):
+    """Write to one group.
+
+    Treasurer-level on purpose. This is the only action in the application that
+    costs money on every press and cannot be recalled, so it sits with the role
+    that answers for spending rather than with general data entry.
+
+    Two steps, always: compose then confirm. The confirmation screen is built
+    from the same resolution the send uses, so the number on the button is the
+    number of messages that will leave.
+    """
+    template_name = "giving/campaign_sms_confirm.html"
+
+    def post(self, request, pk):
+        from giving.models import Campaign
+        from giving.services import campaign_sms
+
+        campaign = get_object_or_404(Campaign, pk=pk)
+        group = (request.POST.get("group") or "").strip()
+        template = (request.POST.get("message") or "").strip()
+
+        if not template:
+            messages.error(request, "Write the message first.")
+            return redirect("campaign_detail", pk=pk)
+
+        if request.POST.get("confirm") != "yes":
+            plan = campaign_sms.preview(campaign, group, template)
+            if not plan["count"]:
+                messages.error(
+                    request,
+                    "Nobody in that group has a usable phone number, so there "
+                    "is nothing to send.")
+                return redirect("campaign_detail", pk=pk)
+            return render(request, self.template_name, {
+                "campaign": campaign, "group": group, "message": template,
+                "plan": plan,
+                # Not a block — a church may legitimately repeat a reminder —
+                # but the person about to press send should know they are
+                # repeating it.
+                "duplicate": campaign_sms.already_sent(campaign, group, template),
+                "recent": campaign_sms.recent_sends(campaign, group, limit=3),
+                "sms_enabled": _sms_enabled(),
+            })
+
+        result = campaign_sms.send(campaign, group, template, user=request.user)
+        parts = [f"{result['sent']} message(s) sent"]
+        if result["failed"]:
+            parts.append(f"{result['failed']} failed")
+        if result["skipped"]:
+            parts.append(f"{result['skipped']} had no phone number")
+        messages.success(request, ", ".join(parts) + ".")
+        return redirect("campaign_detail", pk=pk)

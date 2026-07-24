@@ -26,10 +26,17 @@
   <table class="table pt-stack">
     <thead><tr><th>Period</th><th class="num">Due</th><th class="num">Paid</th><th>Status</th></tr></thead>
     <tbody>{% for d in row.schedule %}
-      <tr><td data-label="Period">{{ d.label|default:d.period_label|default:"—" }}</td>
+      {% comment %} Keys come from contributions.dues_schedule: period, due, paid,
+         outstanding, waived, policy_version. Written against that dict rather
+         than guessed at — the earlier version invented `label`/`period_label`
+         and `cleared`, and because a missing variable inside a filter argument
+         RAISES in Django rather than rendering blank, the whole page returned
+         500 for any member who actually had a schedule. It rendered fine in
+         tests only because the test member had none. {% endcomment %}
+      <tr><td data-label="Period">{{ d.period|default:"—" }}</td>
         <td data-label="Due" class="num mono">{{ CURRENCY }} {{ d.due|default_if_none:0|money }}</td>
         <td data-label="Paid" class="num mono">{{ CURRENCY }} {{ d.paid|default_if_none:0|money }}</td>
-        <td data-label="Status">{% if d.cleared %}<span class="pill pill-green">Cleared</span>{% elif d.waived %}<span class="pill pill-grey">Waived</span>{% else %}<span class="pill pill-amber">Outstanding</span>{% endif %}</td></tr>
+        <td data-label="Status">{% if d.waived %}<span class="pill pill-grey">Waived</span>{% elif d.outstanding > 0 %}<span class="pill pill-amber">{{ CURRENCY }} {{ d.outstanding|money }} outstanding</span>{% else %}<span class="pill pill-green">Cleared</span>{% endif %}</td></tr>
     {% endfor %}</tbody>
   </table>
   {% endif %}

@@ -342,15 +342,12 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
         # optional M-Pesa / bank transaction charge -> separate bank-charge expense
         charge = form.cleaned_data.get("charge")
         if charge and charge > 0:
-            ref = exp.voucher_no or f"exp #{exp.id}"
-            Expense.objects.create(
-                date=exp.date, sabbath_week=exp.sabbath_week, department=exp.department,
-                description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
-                amount=charge, category=Expense.Category.BANK_CHARGE,
-                method=exp.method, recorded_by=self.request.user,
-                voucher_no=exp.voucher_no, paid_from_petty_cash=exp.paid_from_petty_cash,
-                status=exp.status, charge_for=exp,
-                approved_by=self.request.user if auto else None)
+            # One implementation of the charge row, shared with the import and
+            # the batch screen — see services.expenses. The copies here had
+            # already drifted on `payee` and `claimant`, which is invisible
+            # until a bank reconciliation cannot match the charge.
+            from .services.expenses import _record_charge
+            _record_charge(exp, charge, self.request.user)
         payment_note = ""
         if issue_now and exp.status == Expense.Status.APPROVED:
             from .models import PaymentInstrument
@@ -389,24 +386,28 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
         # if this expense settles a payable/accrual, link and close it
         kind, obj = self._settle_target()
         if obj and not obj.settled:
-            if kind == "payable":
+            if kind in ("payable", "accrual"):
                 # A payable may be paid over several instalments, so the expense
                 # is LINKED and the service decides whether that clears it. The
                 # flags are never set here — services.payables.refresh_settlement
                 # is the only writer, which is what keeps them agreeing with the
                 # payments.
-                from .services import payables as payable_svc
-                exp.payable = obj
-                exp.save(update_fields=["payable"])
-                payable_svc.refresh_settlement(obj)
+                from .services import obligations as obligation_svc
+                field = "accrual" if kind == "accrual" else "payable"
+                setattr(exp, field, obj)
+                exp.save(update_fields=[field])
+                obligation_svc.refresh_settlement(obj)
                 obj.refresh_from_db()
                 if obj.settled:
-                    messages.success(self.request,
-                        f"Payable settled in full and recorded as an expense.")
+                    messages.success(
+                        self.request,
+                        f"{kind.title()} settled in full and recorded as an expense.")
                 else:
-                    messages.success(self.request,
+                    who = getattr(obj, "vendor", "") or obj.description
+                    messages.success(
+                        self.request,
                         f"Part payment recorded. {obj.balance:,.2f} still owing "
-                        f"to {obj.vendor}.")
+                        f"on {who}.")
             else:
                 obj.settled = True
                 obj.settled_on = exp.date
@@ -487,15 +488,13 @@ class ExpenseUpdate(DataEntryRequiredMixin, UpdateView):
                 # remove any accidental extra charge rows to prevent double-counting
                 exp.charges.exclude(pk=existing.pk).delete()
             else:
-                Expense.objects.create(
-                    date=exp.date, sabbath_week=exp.sabbath_week,
-                    department=exp.department, description=desc, amount=charge,
-                    category=Expense.Category.BANK_CHARGE, method=exp.method,
-                    recorded_by=self.request.user, voucher_no=exp.voucher_no,
-                    paid_from_petty_cash=exp.paid_from_petty_cash,
-                    status=exp.status, charge_for=exp,
-                    approved_by=(exp.approved_by if exp.status != Expense.Status.PENDING
-                                 else None))
+                from .services.expenses import _record_charge
+                created_charge = _record_charge(exp, charge, self.request.user)
+                # The edit screen composes its own description (it may mention
+                # the change), so keep that wording rather than the default.
+                if desc and created_charge.description != desc:
+                    created_charge.description = desc
+                    created_charge.save(update_fields=["description"])
         elif existing:
             # charge removed on edit — delete the linked charge entry
             exp.charges.all().delete()
@@ -882,8 +881,24 @@ class PettyCashView(ReadAccessMixin, TemplateView):
             m["balance"] = running
         cfg = SiteConfig.get()
         balance_now = _petty_balance_asof(dt.date.today())
+
+        # The register is computed forward — a running balance has to be — and
+        # then shown backward, because the row a treasurer wants is almost
+        # always the one they just entered. Reversing AFTER the balances are
+        # worked out means each row still carries the balance as it stood on
+        # its own date; reversing before would have produced a column that
+        # counted down to the opening balance, which is not what it says.
+        from django.core.paginator import Paginator
+        newest_first = list(reversed(movements))
+        paginator = Paginator(newest_first, 50)
+        page = paginator.get_page(self.request.GET.get("page"))
+
         ctx.update({
-            "start": start, "end": end, "opening": opening, "movements": movements,
+            "start": start, "end": end, "opening": opening,
+            # `movements` stays chronological for the export and for anything
+            # that needs to read the register forward.
+            "movements": movements,
+            "page": page, "rows": page.object_list,
             "closing": running, "balance_now": balance_now,
             "float_target": cfg.petty_cash_float,
             "to_topup": max(cfg.petty_cash_float - balance_now, Decimal(0)) if cfg.petty_cash_float else Decimal(0),
@@ -1082,13 +1097,24 @@ class AccrualsView(ReadAccessMixin, TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         today = dt.date.today()
-        payables = list(Payable.objects.select_related("department"))
-        accruals = list(Accrual.objects.select_related("department"))
+        # `supplier` and `payments` are both read for every row — the supplier
+        # to link to their account, the payments to show what is still owed —
+        # so both are fetched up front rather than one query per bill.
+        payables = list(Payable.objects
+                        .select_related("department", "supplier")
+                        .prefetch_related("payments"))
+        accruals = list(Accrual.objects.select_related("department")
+                        .prefetch_related("payments"))
         prepayments = list(Prepayment.objects.select_related("department"))
         for p in prepayments:
             p.unexpired_now = p.unexpired(today)
         ctx.update({
             "payables": payables, "accruals": accruals, "prepayments": prepayments,
+            # Bills with no supplier record cannot appear on any supplier
+            # account, so the page says how many there are rather than leaving
+            # the register quietly incomplete.
+            "unlinked_payables": sum(1 for p in payables
+                                     if not p.supplier_id and not p.settled),
             "open_payables": open_payables_total(), "open_accruals": open_accruals_total(),
             "unexpired_prepay": unexpired_prepayments_total(),
             "payable_form": PayableForm(), "accrual_form": AccrualForm(),
@@ -1105,6 +1131,7 @@ class PayableCreate(DataEntryRequiredMixin, View):
             if _block_if_locked(request, cd["date"]):
                 return redirect("accruals")
             Payable.objects.create(date=cd["date"], vendor=cd["vendor"],
+                supplier=cd.get("supplier"),
                 description=cd["description"], amount=cd["amount"], department=cd["department"],
                 category=cd["category"], due_date=cd.get("due_date"), recorded_by=request.user)
             messages.success(request, f"Payable to {cd['vendor']} recorded.")
@@ -1153,22 +1180,13 @@ class PrepaymentCreate(DataEntryRequiredMixin, View):
 
 @db_tx.atomic
 def _settle(obj, request):
-    """Create the actual payment expense in the fund and mark the item settled."""
+    """Kept only for callers outside this module. Both payables and accruals
+    now settle through services.obligations, which supports instalments; this
+    delegates rather than keeping a second, all-or-nothing implementation."""
+    from .services import obligations as obligation_svc
     if obj.settled:
         return
-    exp = Expense.objects.create(date=dt.date.today(), sabbath_week=sabbath_week_of(dt.date.today()),
-        department=obj.department, description=f"Settle: {obj.description}"[:200],
-        amount=obj.amount, category=obj.category, method=Expense.Method.BANK,
-        status=Expense.Status.PAID, paid_date=dt.date.today(), recorded_by=request.user,
-        approved_by=request.user)
-    obj.settled = True
-    obj.settled_on = dt.date.today()
-    # Payables are settled through services.payables (they can be paid in
-    # instalments); this helper now serves accruals only, which are all-or-
-    # nothing by nature — an accrual is an estimate that is either replaced by
-    # the real invoice or not.
-    obj.settled_expense = exp
-    obj.save()
+    obligation_svc.settle(obj, user=request.user)
 
 
 class PayableSettle(DataEntryRequiredMixin, View):
@@ -1237,10 +1255,49 @@ class PayableUnlinkPayment(TreasurerRequiredMixin, View):
 
 
 class AccrualSettle(DataEntryRequiredMixin, View):
+    """Pay an accrual — all of it, or an instalment. Same shape as
+    PayableSettle, same service underneath."""
+
     def post(self, request, pk):
+        from .services import obligations as obligation_svc
+
         obj = get_object_or_404(Accrual, pk=pk)
-        _settle(obj, request)
-        messages.success(request, "Accrual settled and recorded as an expense.")
+        try:
+            expense = obligation_svc.settle(
+                obj, amount=(request.POST.get("amount") or "").strip() or None,
+                user=request.user, on=_parse_date(request.POST.get("paid_on")),
+                method=request.POST.get("method") or Expense.Method.BANK,
+                reference=request.POST.get("reference", ""))
+        except (ValidationError, InvalidOperation) as exc:
+            messages.error(request, "; ".join(exc.messages)
+                           if hasattr(exc, "messages") else "That is not a valid amount.")
+            return redirect("accruals")
+
+        obj.refresh_from_db()
+        if obj.settled:
+            messages.success(request, "Accrual settled in full and recorded as "
+                                      "an expense.")
+        else:
+            messages.success(
+                request,
+                f"{_currency()}{expense.amount:,.2f} paid. "
+                f"{_currency()}{obj.balance:,.2f} still owing.")
+        return redirect("accruals")
+
+
+class AccrualUnlinkPayment(TreasurerRequiredMixin, View):
+    """Detach a payment linked to the wrong accrual, keeping the expense."""
+
+    def post(self, request, pk):
+        from .services import obligations as obligation_svc
+
+        expense = get_object_or_404(Expense, pk=pk)
+        obligation = obligation_svc.unlink_payment(expense, user=request.user)
+        if obligation is None:
+            messages.error(request, "That payment is not linked to an accrual.")
+        else:
+            messages.success(request, f"Payment detached. "
+                                      f"{_currency()}{obligation.balance:,.2f} outstanding.")
         return redirect("accruals")
 
 
@@ -2078,16 +2135,21 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         from django.http import HttpResponse
         from departments.models import Department
         wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Expenses"
+        # Every field the expense form offers, so the two entry paths produce
+        # the same record. Before v3.18.0 the upload was missing Supplier,
+        # Payee, Expenditure type and Budget item, which meant a spreadsheet
+        # silently produced the incomplete rows the form no longer allows.
         head = ["Date", "Fund", "Description", "Amount", "Category", "Method",
-                "Claimant", "Voucher no", "M-Pesa charge", "Paid from petty cash"]
+                "Claimant", "Supplier", "Payee", "Voucher no", "Expenditure type",
+                "Budget item", "M-Pesa charge", "Paid from petty cash"]
         ws.append(head)
         for c in range(1, len(head) + 1):
             ws.cell(1, c).font = Font(bold=True, color="FFFFFF")
             ws.cell(1, c).fill = PatternFill("solid", fgColor="1F5F4F")
         ws.append(["2026-06-06", "LCB", "Pulpit microphone", 4500, "Materials",
-                   "Cash", "J. Mwangi", "V-001", "", ""])
+                   "Cash", "J. Mwangi", "", "", "V-001", "Recurrent", "", "", ""])
         ws.append(["2026-06-07", "YOUTH", "Bus fare for rally", 2000, "Transport",
-                   "M-Pesa", "S. Achieng", "V-002", 30, "Yes"])
+                   "M-Pesa", "S. Achieng", "", "", "V-002", "Recurrent", "", 30, "Yes"])
         ref = wb.create_sheet("Lists")
         ref["A1"] = "Funds"; ref["A1"].font = Font(bold=True)
         funds = list(Department.objects.filter(active=True, selectable=True).order_by("name"))
@@ -2100,6 +2162,18 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         ref["C1"] = "Method"; ref["C1"].font = Font(bold=True)
         for i, m in enumerate([mm.label for mm in Expense.Method], start=2):
             ref.cell(i, 3, m)
+        # The supplier register, so whoever fills this in picks a name that
+        # already exists instead of typing a fourth spelling of it.
+        from vendors.models import Vendor
+        ref["D1"] = "Supplier"; ref["D1"].font = Font(bold=True)
+        suppliers = list(Vendor.objects.exclude(status=Vendor.Status.ARCHIVED)
+                         .order_by("name").values_list("name", flat=True))
+        for i, name in enumerate(suppliers, start=2):
+            ref.cell(i, 4, name)
+        ref["E1"] = "Expenditure type"; ref["E1"].font = Font(bold=True)
+        etypes = [t.label for t in Expense.ExpenditureType]
+        for i, t in enumerate(etypes, start=2):
+            ref.cell(i, 5, t)
         nrows = 500
         if funds:
             dv = DataValidation(type="list", formula1=f"=Lists!$A$2:$A${len(funds)+1}", allow_blank=True)
@@ -2108,8 +2182,20 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         ws.add_data_validation(dvc); dvc.add(f"E2:E{nrows}")
         dvm = DataValidation(type="list", formula1="=Lists!$C$2:$C$5", allow_blank=True)
         ws.add_data_validation(dvm); dvm.add(f"F2:F{nrows}")
+        if suppliers:
+            dvs = DataValidation(type="list",
+                                 formula1=f"=Lists!$D$2:$D${len(suppliers)+1}",
+                                 allow_blank=True)
+            ws.add_data_validation(dvs); dvs.add(f"H2:H{nrows}")
+        dvt = DataValidation(type="list",
+                             formula1=f"=Lists!$E$2:$E${len(etypes)+1}",
+                             allow_blank=True)
+        ws.add_data_validation(dvt); dvt.add(f"K2:K{nrows}")
         ws.column_dimensions["C"].width = 30
         ws.column_dimensions["B"].width = 18
+        ws.column_dimensions["H"].width = 24
+        ws.column_dimensions["I"].width = 20
+        ws.column_dimensions["L"].width = 20
         info = wb.create_sheet("How to fill this in")
         for i, line in enumerate([
             "Expense import",
@@ -2121,8 +2207,15 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             "  - Amount — required, > 0.",
             "  - Category — Allowance / Transport / Materials / ... (defaults to Other).",
             "  - Method — Cash / Bank / Cheque / M-Pesa (defaults to Cash).",
-            "  - Claimant — who was paid (optional).",
+            "  - Claimant — who incurred or requested it (optional).",
+            "  - Supplier — pick from the register on the Lists sheet. Optional, but",
+            "    choosing one puts the payment on that supplier's account.",
+            "  - Payee — who the money actually goes to, if not the claimant.",
             "  - Voucher no — optional reference.",
+            "  - Expenditure type — Recurrent (running cost) or Capital (creates or",
+            "    improves an asset). Defaults to Recurrent.",
+            "  - Budget item — optional. Matched by name within the fund on the same",
+            "    row, so the same item name may be used in different funds.",
             "  - M-Pesa charge — optional. The transaction/withdrawal charge for this",
             "    payment; it's recorded as a separate bank-charge expense on the same",
             "    fund and linked back to this expense.",
@@ -2171,7 +2264,11 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
         c_amt = col("amount", "value")
         c_cat = col("category")
         c_method = col("method", "paid by", "payment")
-        c_claim = col("claimant", "payee", "paid to")
+        c_claim = col("claimant", "paid to")
+        c_supplier = col("supplier", "vendor")
+        c_payee = col("payee")
+        c_etype = col("expenditure type", "type")
+        c_budget = col("budget item", "budget line", "budget")
         c_vouch = col("voucher no", "voucher", "ref")
         c_charge = col("m-pesa charge", "mpesa charge", "charge", "transaction charge")
         c_petty = col("paid from petty cash", "petty cash", "petty")
@@ -2181,6 +2278,17 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             return redirect("expense_import")
 
         funds = {d.name.strip().lower(): d for d in Department.objects.all()}
+        from vendors.models import Vendor, name_key as _vkey
+        # Matched on the register's own normalised key, so "Mwangi Hardware Ltd"
+        # in the sheet finds "MWANGI HARDWARE" in the register rather than
+        # creating a fourth spelling. Never creates a supplier: a typo in a
+        # spreadsheet must not silently add to the register.
+        suppliers = {}
+        for v in Vendor.objects.exclude(status=Vendor.Status.ARCHIVED):
+            suppliers.setdefault(v.name_key, v)
+            suppliers.setdefault(v.name.strip().lower(), v)
+        etypes = {t.label.upper(): t.value for t in Expense.ExpenditureType}
+        etypes.update({t.value: t.value for t in Expense.ExpenditureType})
 
         def cell(r, idx):
             if idx is None or idx >= len(r) or r[idx] in (None, ""):
@@ -2220,6 +2328,22 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
                 charge = 0.0
             petty_raw = cell(r, c_petty) if c_petty is not None else ""
             petty = str(petty_raw).strip().lower() in ("yes", "y", "true", "1", "x")
+            supplier_raw = cell(r, c_supplier) if c_supplier is not None else ""
+            supplier = None
+            if supplier_raw:
+                supplier = (suppliers.get(_vkey(supplier_raw))
+                            or suppliers.get(supplier_raw.strip().lower()))
+            etype_raw = cell(r, c_etype) if c_etype is not None else ""
+            etype = etypes.get(etype_raw.upper(), Expense.ExpenditureType.RECURRENT)
+            budget_raw = cell(r, c_budget) if c_budget is not None else ""
+            budget = None
+            if budget_raw and fund:
+                # Scoped to the row's own fund: the same item name may exist in
+                # several budgets, and charging spend to another fund's line
+                # would corrupt both.
+                from .models import BudgetLine
+                budget = BudgetLine.objects.filter(
+                    name__iexact=budget_raw, budget__department=fund).first()
             plan.append({
                 "date": d, "fund_raw": fund_raw,
                 "fund_id": fund.id if fund else None,
@@ -2228,6 +2352,16 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
                 "category": cat, "method": method, "charge": round(charge, 2),
                 "petty": petty,
                 "claimant": cell(r, c_claim)[:120], "voucher": cell(r, c_vouch)[:30],
+                "supplier_raw": supplier_raw,
+                "supplier_id": supplier.id if supplier else None,
+                "supplier_name": supplier.name if supplier else None,
+                "payee": (cell(r, c_payee)[:160] if c_payee is not None else ""),
+                "expenditure_type": etype,
+                "budget_line_id": budget.id if budget else None,
+                # An unrecognised supplier is a warning, not a rejection: the
+                # expense is still real and the register can be tidied later.
+                "warn": ("Supplier not on the register — will be recorded "
+                         "without one." if supplier_raw and not supplier else ""),
                 "ok": bool(d and desc and amt > 0 and fund),
             })
         if not plan:
@@ -2261,38 +2395,31 @@ class ExpenseImportView(DataEntryRequiredMixin, View):
             if not fund:
                 skipped += 1
                 continue
-            from decimal import Decimal as D
             import datetime as _dt
+            from .models import BudgetLine
+            from .services import expenses as expense_svc
+            from vendors.models import Vendor
+
             d = _dt.date.fromisoformat(p["date"])
-            petty = bool(p.get("petty"))
-            exp = Expense(
+            # Through the same function the form and the batch screen use, so
+            # an imported expense is indistinguishable from a typed one — and
+            # so the status and transaction-charge rules cannot drift between
+            # the three entry paths again.
+            expense, charge_expense = expense_svc.record(
                 date=d, department=fund, description=p["description"],
-                amount=D(str(p["amount"])), category=p["category"],
-                method=p["method"], claimant=p["claimant"], voucher_no=p["voucher"],
-                paid_from_petty_cash=petty, recorded_by=request.user,
-                sabbath_week=sabbath_week_of(d))
-            if petty:
-                # paid out of the float already — record as paid
-                exp.status = Expense.Status.PAID
-                exp.paid_date = d
-                exp.approved_by = request.user
-            elif auto:
-                exp.status = Expense.Status.APPROVED
-                exp.approved_by = request.user
-            exp.save()
+                amount=p["amount"], user=request.user,
+                category=p["category"], method=p["method"],
+                claimant=p["claimant"], payee=p.get("payee", ""),
+                voucher_no=p["voucher"],
+                vendor=(Vendor.objects.filter(pk=p["supplier_id"]).first()
+                        if p.get("supplier_id") else None),
+                expenditure_type=p.get("expenditure_type") or None,
+                budget_line=(BudgetLine.objects.filter(pk=p["budget_line_id"]).first()
+                             if p.get("budget_line_id") else None),
+                paid_from_petty_cash=bool(p.get("petty")),
+                auto_approve=auto, charge=p.get("charge"))
             created += 1
-            # optional M-Pesa / bank charge -> separate bank-charge expense, linked
-            charge = D(str(p.get("charge") or 0))
-            if charge > 0:
-                ref = exp.voucher_no or f"exp #{exp.id}"
-                Expense.objects.create(
-                    date=d, sabbath_week=exp.sabbath_week, department=fund,
-                    description=f"Transaction charge — {exp.description} [for {ref}]"[:200],
-                    amount=charge, category=Expense.Category.BANK_CHARGE,
-                    method=exp.method, claimant=exp.claimant, voucher_no=exp.voucher_no,
-                    paid_from_petty_cash=petty, recorded_by=request.user, charge_for=exp,
-                    status=exp.status, paid_date=exp.paid_date,
-                    approved_by=exp.approved_by)
+            if charge_expense is not None:
                 created += 1
         request.session.pop("expense_import_plan", None)
         state = "approved" if auto else "pending approval"
@@ -2746,20 +2873,21 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
             messages.error(request, "That item can't be settled.")
             return redirect("accruals")
         exp = get_object_or_404(Expense, pk=request.POST.get("expense"))
-        if kind == "payable":
-            from .services import payables as payable_svc
-            exp.payable = obj
-            exp.save(update_fields=["payable"])
-            payable_svc.refresh_settlement(obj)
+        if kind in ("payable", "accrual"):
+            from .services import obligations as obligation_svc
+            field = "accrual" if kind == "accrual" else "payable"
+            setattr(exp, field, obj)
+            exp.save(update_fields=[field])
+            obligation_svc.refresh_settlement(obj)
             obj.refresh_from_db()
             if obj.settled:
                 messages.success(
-                    request, f"Payable settled against the existing expense "
+                    request, f"{kind.title()} settled against the existing expense "
                              f"“{exp.description}”.")
             else:
                 messages.success(
                     request, f"“{exp.description}” linked as a part payment. "
-                             f"{obj.balance:,.2f} still owing to {obj.vendor}.")
+                             f"{obj.balance:,.2f} still owing.")
             return redirect("accruals")
         obj.settled = True
         obj.settled_on = exp.date
@@ -3480,3 +3608,101 @@ class PaymentAnalysisView(ReadAccessMixin, View):
         return render(request, "cashbook/payment_analysis.html", {
             "rows": rows, "group": group, "start": start, "end": end,
             "f": request.GET})
+
+
+class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
+    """Several expenses that share a date, fund, claimant and method.
+
+    A treasurer settling a stack of receipts from one person, on one day, from
+    one fund, was re-typing those four fields for every line — which is the slow
+    part, and the part where the fund gets mistyped on line seven and nobody
+    notices until the fund balances are wrong.
+
+    So the shared facts are entered once at the top, and each line carries only
+    what actually differs: the narration, the amount, and the transaction charge
+    where there was one. The work itself goes through
+    `services.expenses.record_batch`, the same function the single form and the
+    spreadsheet import use, so a batch-entered expense is indistinguishable from
+    one entered any other way.
+    """
+    template_name = "cashbook/expense_batch.html"
+
+    def get_context_data(self, **kwargs):
+        from core.models import SiteConfig
+        from vendors.models import Vendor
+        ctx = super().get_context_data(**kwargs)
+        ctx.update({
+            "categories": Expense.Category.choices,
+            "methods": Expense.Method.choices,
+            "expenditure_types": Expense.ExpenditureType.choices,
+            "vendors": Vendor.objects.exclude(
+                status=Vendor.Status.ARCHIVED).order_by("name"),
+            "today": dt.date.today(),
+            "auto_approve": not SiteConfig.get().require_expense_approval,
+        })
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        from core.models import SiteConfig
+        from departments.models import Department
+        from vendors.models import Vendor
+        from .services import expenses as expense_svc
+
+        post = request.POST
+        fund = Department.objects.filter(pk=post.get("department") or 0).first()
+        when = _parse_date(post.get("date"))
+        if fund is None or when is None:
+            messages.error(request, "Choose the fund and the date first.")
+            return self.render_to_response(self.get_context_data(**kwargs))
+
+        vendor = None
+        if (post.get("vendor") or "").isdigit():
+            vendor = Vendor.objects.filter(pk=int(post["vendor"])).first()
+
+        header = {
+            "date": when, "department": fund,
+            "claimant": post.get("claimant", ""), "payee": post.get("payee", ""),
+            "vendor": vendor,
+            "method": post.get("method") or Expense.Method.CASH,
+            "category": post.get("category") or Expense.Category.OTHER,
+            "expenditure_type": post.get("expenditure_type") or None,
+            "voucher_no": post.get("voucher_no", ""),
+            "paid_from_petty_cash": bool(post.get("paid_from_petty_cash")),
+        }
+
+        # Lines arrive as parallel lists, which is what a table of inputs
+        # produces; zip rather than index arithmetic so a ragged post cannot
+        # silently pair the wrong amount with the wrong narration.
+        descriptions = post.getlist("line_description")
+        amounts = post.getlist("line_amount")
+        categories = post.getlist("line_category")
+        charges = post.getlist("line_charge")
+        lines = []
+        for i, description in enumerate(descriptions):
+            lines.append({
+                "description": description,
+                "amount": amounts[i] if i < len(amounts) else None,
+                "category": categories[i] if i < len(categories) else None,
+                "charge": charges[i] if i < len(charges) else None,
+            })
+
+        try:
+            created = expense_svc.record_batch(
+                header=header, lines=lines, user=request.user,
+                auto_approve=not SiteConfig.get().require_expense_approval,
+                shared_charge=post.get("shared_charge"))
+        except Exception as exc:
+            from core.utils import log_exception as _lx
+            _lx("cashbook/views.py")
+            messages.error(request, f"Nothing was saved — {exc}")
+            return self.render_to_response(self.get_context_data(**kwargs))
+
+        if not created:
+            messages.error(request, "No lines had both a description and an amount.")
+            return self.render_to_response(self.get_context_data(**kwargs))
+
+        messages.success(
+            request,
+            f"{len(created)} expense(s) recorded against {fund.name} "
+            f"for {when:%d %b %Y}.")
+        return redirect("expense_list")

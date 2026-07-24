@@ -36,3 +36,87 @@ class RecurringFrequencyTests(TestCase):
     def test_choices_available(self):
         codes = {c[0] for c in RecurringExpense.Frequency.choices}
         self.assertTrue({"MONTHLY", "QUARTERLY", "YEARLY"}.issubset(codes))
+
+
+class RecurringCarriesEveryExpenseFieldTests(TestCase):
+    """A schedule must produce a complete expense, not a stub.
+
+    Before this, a schedule held only description, fund, category, amount,
+    claimant and method — so every generated row arrived missing the supplier,
+    the payee, the voucher number and the budget line, and someone had to open
+    each one and fill them in. A schedule that creates work is not a schedule.
+    """
+
+    def setUp(self):
+        from django.contrib.auth.models import Group, User
+        from core.roles import TREASURER
+        from departments.models import Department
+        from vendors.models import Vendor
+
+        self.user = User.objects.create_user("sched", password="x")
+        self.user.groups.add(Group.objects.get_or_create(name=TREASURER)[0])
+        self.fund = Department.objects.create(
+            name="Utilities", slug="utilities",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.MINISTRY)
+        self.supplier = Vendor.objects.create(name="Kenya Power")
+
+    def _schedule(self, **kw):
+        from cashbook.models import RecurringExpense
+        defaults = dict(
+            description="Monthly power bill", department=self.fund,
+            category="UTILITIES", amount=Decimal("4500"),
+            frequency=RecurringExpense.Frequency.MONTHLY, day_of_month=5,
+            start_date=dt.date.today() - dt.timedelta(days=90),
+            created_by=self.user, vendor=self.supplier,
+            voucher_no="SO-114", paid_from_petty_cash=False)
+        defaults.update(kw)
+        return RecurringExpense.objects.create(**defaults)
+
+    def test_the_generated_expense_carries_the_supplier_and_details(self):
+        from cashbook.services.recurring import generate_due
+        schedule = self._schedule()
+        generate_due(user=self.user)
+
+        from cashbook.models import Expense
+        expense = (Expense.objects.filter(recurring=schedule)
+                   .order_by("date").first())
+        self.assertIsNotNone(expense, "The schedule generated nothing.")
+        self.assertEqual(expense.vendor, self.supplier)
+        self.assertEqual(expense.voucher_no, "SO-114")
+        self.assertEqual(expense.payee, "Kenya Power",
+                         "The payee should fall back to the supplier's name.")
+
+    def test_an_explicit_payee_is_not_overwritten_by_the_supplier(self):
+        from cashbook.models import Expense
+        from cashbook.services.recurring import generate_due
+        schedule = self._schedule(payee="KPLC Prepaid")
+        generate_due(user=self.user)
+        expense = Expense.objects.filter(recurring=schedule).order_by("date").first()
+        self.assertEqual(expense.payee, "KPLC Prepaid")
+
+    def test_the_expenditure_type_comes_from_the_schedule(self):
+        """A monthly instalment on a capital purchase is scheduled but is not a
+        recurrent cost, and calling it one misstates the analysis."""
+        from cashbook.models import Expense
+        from cashbook.services.recurring import generate_due
+        schedule = self._schedule(expenditure_type=Expense.ExpenditureType.CAPITAL)
+        generate_due(user=self.user)
+        expense = Expense.objects.filter(recurring=schedule).order_by("date").first()
+        self.assertEqual(expense.expenditure_type, Expense.ExpenditureType.CAPITAL)
+
+    def test_the_form_offers_every_expense_field(self):
+        from cashbook.forms import ExpenseForm, RecurringExpenseForm
+        recurring = set(RecurringExpenseForm().fields)
+        expense = set(ExpenseForm().fields)
+        # `date` is the schedule's job (frequency + day_of_month), and
+        # `capitalized_asset`/`charge` are per-payment choices a schedule cannot
+        # make in advance — which asset a given month's instalment capitalises,
+        # or who to charge this one back to.
+        missing = expense - recurring - {"date", "capitalized_asset", "charge"}
+        self.assertFalse(
+            missing,
+            f"The recurring form is missing expense fields: {sorted(missing)}. "
+            f"A schedule that cannot record them produces incomplete rows.")
+        self.assertIn("frequency", recurring)
+        self.assertIn("end_date", recurring)

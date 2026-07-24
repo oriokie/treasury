@@ -26,7 +26,7 @@
     <label class="lbl u-mt" for="id_dependant">Who has died?</label>
     <select class="field" name="dependant" id="id_dependant">
       <option value="">Someone not listed below</option>
-      {% for d in dependants %}<option value="{{ d.pk }}">{{ d.name|default:d.member.name }} — {{ d.get_relationship_display }}</option>{% endfor %}
+      {% for d in dependants %}<option value="{{ d.pk }}">{% if d.name %}{{ d.name }}{% else %}{{ d.member.name }}{% endif %} — {{ d.get_relationship_display }}</option>{% endfor %}
     </select>
     <label class="lbl u-mt" for="id_deceased_name">If they are not listed, their name</label>
     <input class="field" type="text" name="deceased_name" id="id_deceased_name" maxlength="120">
@@ -54,7 +54,7 @@
     <label class="lbl u-mt" for="id_dependant">Which person (for a correction or removal)</label>
     <select class="field" name="dependant" id="id_dependant">
       <option value="">—</option>
-      {% for d in dependants %}<option value="{{ d.pk }}">{{ d.name|default:d.member.name }} — {{ d.get_relationship_display }}</option>{% endfor %}
+      {% for d in dependants %}<option value="{{ d.pk }}">{% if d.name %}{{ d.name }}{% else %}{{ d.member.name }}{% endif %} — {{ d.get_relationship_display }}</option>{% endfor %}
     </select>
     <label class="lbl u-mt" for="id_relationship">Relationship to you</label>
     <select class="field" name="relationship" id="id_relationship">

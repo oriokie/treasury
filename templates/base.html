@@ -28,9 +28,9 @@
     </div>
     <nav class="nav" id="mainnav">
       {% if is_portal_member %}
-      {# The member self-service portal. A member sees their own record and
+      {% comment %} The member self-service portal. A member sees their own record and
          nothing else, so this branch is short by design — every other link in
-         this file leads somewhere the confinement middleware would refuse. #}
+         this file leads somewhere the confinement middleware would refuse. {% endcomment %}
       <a href="{% url 'portal_home' %}" class="{% if portal_nav == 'home' %}active{% endif %}"><span class="ic">▦</span> My scheme</a>
       <a href="{% url 'portal_contributions' %}" class="{% if portal_nav == 'contributions' %}active{% endif %}"><span class="ic">💰</span> My contributions</a>
       <a href="{% url 'portal_standing' %}" class="{% if portal_nav == 'standing' %}active{% endif %}"><span class="ic">📋</span> My standing</a>
@@ -112,6 +112,11 @@
           {% if can.view_benevolent %}<a href="{% url 'benevolent_task_list' %}" class="{% if 'task' in request.resolver_match.url_name %}active{% endif %}">Review tasks{% if benevolent_task_badge %}<span class="badge">{{ benevolent_task_badge }}</span>{% endif %}</a>{% endif %}
           {% if can.manage_benevolent_settings %}<a href="{% url 'benevolent_notification_templates' %}" class="{% if 'notification_template' in request.resolver_match.url_name %}active{% endif %}">Notification templates</a>{% endif %}
           {% if can.view_benevolent %}<a href="{% url 'benevolent_notification_history' %}" class="{% if 'notification_history' in request.resolver_match.url_name %}active{% endif %}">Notification history</a>{% endif %}
+          {% comment %} The office side of the member self-service portal. Built in
+             v3.11.0 and left out of this menu, so for four releases the only
+             way to reach it was to type the URL. {% endcomment %}
+          {% if can.manage_benevolent %}<a href="{% url 'portal_admin_queue' %}" class="{% if request.resolver_match.url_name == 'portal_admin_queue' or request.resolver_match.url_name == 'portal_admin_review' %}active{% endif %}">Member requests{% if portal_queue_count %}<span class="badge">{{ portal_queue_count }}</span>{% endif %}</a>
+          <a href="{% url 'portal_admin_accounts' %}" class="{% if request.resolver_match.url_name == 'portal_admin_accounts' %}active{% endif %}">Portal accounts</a>{% endif %}
           {% if can.view_reports %}<a href="{% url 'report_library' %}?q=benevolent">Reports</a>{% endif %}
           <a href="{% url 'benevolent_scheme_list' %}" class="{% if 'benevolent_scheme' in request.resolver_match.url_name or 'benevolent_policy' in request.resolver_match.url_name %}active{% endif %}">Schemes &amp; policies</a>
           {% if can.manage_benevolent_schemes %}<a href="{% url 'benevolent_wizard_start' %}" class="{% if 'wizard' in request.resolver_match.url_name %}active{% endif %}">Constitution wizard</a>
@@ -124,11 +129,13 @@
       <details class="navgrp" data-grp="expenses">
         <summary><span class="ic">⊟</span> Expenses <span class="chev">▾</span></summary>
         <div class="grp-links">
+          <a href="{% url 'expense_batch' %}" class="{% if request.resolver_match.url_name == 'expense_batch' %}active{% endif %}">Batch entry</a>
           <a href="{% url 'expense_list' %}" class="{% if request.resolver_match.url_name == 'expense_list' %}active{% endif %}">Expenses{% if expense_badge %}<span class="badge">{{ expense_badge }}</span>{% endif %}</a>
           {% if can.view_liabilities %}<a href="{% url 'liability_register' %}" class="{% if request.resolver_match.url_name == 'liability_register' %}active{% endif %}">Liability transactions{% if liability_badge %}<span class="badge">{{ liability_badge }}</span>{% endif %}</a>{% endif %}
           <a href="{% url 'recurring_list' %}" class="{% if 'recurring' in request.resolver_match.url_name %}active{% endif %}">Recurring</a>
           <a href="{% url 'petty_cash' %}" class="{% if request.resolver_match.url_name == 'petty_cash' %}active{% endif %}">Petty cash</a>
           <a href="{% url 'accruals' %}" class="{% if request.resolver_match.url_name == 'accruals' %}active{% endif %}">Payables &amp; accruals</a>
+      <a href="{% url 'vendor_list' %}" class="{% if request.resolver_match.url_name|slice:":6" == 'vendor' %}active{% endif %}"><span class="ic">🏪</span> Suppliers</a>
           <a href="{% url 'advance_list' %}" class="{% if 'advance' in request.resolver_match.url_name %}active{% endif %}">Staff advances</a>
           <a href="{% url 'receipt_archive' %}" class="{% if request.resolver_match.url_name == 'receipt_archive' %}active{% endif %}">Receipts</a>
           <a href="{% url 'missing_receipts' %}" class="{% if request.resolver_match.url_name == 'missing_receipts' %}active{% endif %}">Awaiting receipts{% if missing_receipts_count %}<span class="badge">{{ missing_receipts_count }}</span>{% endif %}</a>

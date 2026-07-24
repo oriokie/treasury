@@ -73,8 +73,20 @@ def generate_schedule(sched, upto=None, user=None):
             Expense.objects.create(
                 date=d, sabbath_week=sabbath_week_of(d), department=sched.department,
                 description=sched.description, amount=sched.amount, category=sched.category,
-                expenditure_type=Expense.ExpenditureType.RECURRENT,
+                # Taken from the schedule rather than hardcoded: a monthly
+                # instalment on a capital purchase is scheduled but is not a
+                # recurrent cost, and calling it one misstates the analysis.
+                expenditure_type=(sched.expenditure_type
+                                  or Expense.ExpenditureType.RECURRENT),
                 claimant=sched.claimant, method=sched.method, status=status,
+                # The supplier, and the rest of what a treasurer would have
+                # typed. Without these the generated row arrives incomplete and
+                # has to be edited by hand, which is what scheduling was for.
+                vendor=sched.vendor,
+                payee=(sched.payee or (sched.vendor.name if sched.vendor else ""))[:160],
+                voucher_no=sched.voucher_no,
+                paid_from_petty_cash=sched.paid_from_petty_cash,
+                budget_line=sched.budget_line,
                 recorded_by=actor, recurring=sched,
                 approved_by=(approver if status == Expense.Status.APPROVED else None),
                 paid_date=None)

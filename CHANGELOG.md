@@ -1,3 +1,266 @@
+# v3.19.4 — The check for stray text now covers the pages it was missing
+
+The check added in v3.19.3 read every page that can be opened without picking a
+record first. It did not read the pages that show one record — an expense, an
+asset, a case — nor any page in the member portal, which it cannot reach at all
+because those require a member to be signed in.
+
+Both are now covered. Nothing further was found, which is the point of looking.
+
+---
+
+# v3.19.3 — Removes stray text that was appearing on several pages
+
+Explanatory notes left in five page templates were written in a form the
+template system does not recognise when it runs across more than one line. The
+result was that the notes themselves appeared on the page as plain text, in the
+sidebar of every page and on the expense form, the petty cash register and two
+member portal screens.
+
+The notes are now written in the form that works, and a check has been added
+that reads the finished pages rather than only asking whether they loaded — the
+existing checks all passed while this was happening, because a page covered in
+stray text still loads perfectly well.
+
+The new supplier module has also been added to the automated test schedule; it
+had tests but they were not being run there.
+
+---
+
+# v3.19.2 — An interrupted campaign message no longer disappears
+
+Sending a message to a large group takes time, and a slow connection or a
+server timeout could cut it off part-way. Until now the record of the send was
+only written once it finished, so if it was cut off the messages that had
+already gone left no trace: the treasurer saw a failed page, with no way to know
+whether sending again would reach some people twice.
+
+The record is now opened before the first message and kept up to date as the
+send proceeds. If it is interrupted, the campaign page says so and shows how
+many of the intended recipients were reached — which is the one case where
+sending again is the right thing to do, and the case a plain "already sent"
+note would have talked you out of.
+
+---
+
+# v3.19.1 — You can see what has already been sent to a group
+
+Campaign messages now leave a record: which group was written to, what was said,
+how many were reached, how many had no phone number, who pressed send and when.
+Each group on the campaign page shows its recent messages, and if you compose
+the same message to the same group again, the confirmation screen says so
+before anything goes out.
+
+It does not stop you — a reminder is sometimes meant to be repeated — but the
+congregation would receive it twice and the church would pay twice, so it is not
+a decision to make by accident.
+
+---
+
+# v3.19.0 — One charge for a batch; campaign groups and messages
+
+**A batch of expenses can now share a single transaction charge.** If a stack of
+receipts was settled with one transfer, the bank took one fee — so the fee is
+entered once, for the batch, rather than on each line. It is recorded as a
+single bank-charge expense on the fund. Charges on individual lines still work
+and the two can be combined, for the case where most of a stack went in one
+transfer and one item was paid separately.
+
+**Campaigns now show the sheet that was uploaded.** Until now a campaign could
+tell you how many members it had but not who they were, so there was no way to
+check that an import had put people in the right groups. Each campaign has a
+page listing its groups, who is in each, and how many of them have a phone
+number the church can actually reach. Groups numbered 2 and 10 now sort in that
+order rather than alphabetically.
+
+**A custom message can be sent to one group at a time.** Write it once using
+{name}, {group} and {campaign} where those should appear, and every member gets
+their own. Nothing is sent until you have seen exactly who it goes to and what
+they will receive — and anyone on the sheet without a usable phone number is
+listed plainly rather than quietly left out. Sending is limited to a treasurer,
+because it costs money each time and a text cannot be recalled.
+
+---
+
+# v3.18.0 — Enter a stack of receipts at once; the upload matches the form
+
+**A batch entry screen for expenses.** When a treasurer settles several receipts
+from the same person, on the same day, from the same fund, those four facts are
+now entered once at the top and each receipt takes a single line — narration,
+amount, and the transaction charge where there was one. A line can override the
+category if one purchase was different. Either every line is saved or none is,
+because a half-entered stack is worse than none.
+
+**The expense spreadsheet now carries every field the form does.** Supplier,
+payee, expenditure type and budget item were missing, so an upload quietly
+produced the incomplete records the form no longer allows. The registered
+suppliers are listed on the template as a dropdown, so whoever fills it in picks
+a name that already exists rather than typing a fourth spelling of it. A name
+that is not recognised is flagged on the review screen and the expense still
+goes in — it is simply recorded without a supplier, never invented into the
+register.
+
+Budget items are matched within the fund on the same row, so the same item name
+can be used in different funds without spend landing on the wrong one.
+
+**One set of rules for recording an expense, everywhere.** The form, the
+spreadsheet and the new batch screen now share a single implementation of what
+state a new expense starts in and how a transaction charge is recorded. The
+three copies had already drifted — one omitted the payee from the charge entry,
+which is invisible until a bank reconciliation cannot match it.
+
+---
+
+# v3.17.0 — The expense form, rearranged
+
+The form for recording an expense had grown a field at a time and read as one
+long column of everything, in no particular order. It now has five numbered
+sections — how much and when, what it was for, who was paid, how it was paid,
+and anything else — and uses the width of the screen instead of a narrow strip
+down the middle.
+
+Alongside it sits a panel that stays in view as you scroll, showing the fund,
+the amount, who is being paid and how, and — in plain words — what happens when
+you press save: whether the expense goes in as pending for approval, or lands on
+the fund's balance straight away. The save button lives there too, so it is
+never scrolled away from the figure it commits.
+
+**The supplier field has moved to where it belongs.** It was added in v3.14.0
+and had been sitting at the bottom under "Other details" ever since, because it
+had never been assigned to a section. It now sits with the payee, where someone
+recording a payment would look for it.
+
+On a phone the two columns become one, with the summary below the form.
+
+---
+
+# v3.16.0 — The member portal appears in the menu; petty cash reads newest first
+
+**The office side of the member portal is now in the Benevolent menu.** It has
+been built and working since v3.11.0, and linked from nowhere — the only way to
+reach "Member requests" or "Portal accounts" was to know the address and type
+it. Both are now where they should have been all along, with a count of requests
+waiting.
+
+**Petty cash starts with the most recent movement** and is paginated fifty at a
+time. The closing float now sits at the top with the newest entry and the
+opening float at the bottom, so the register still reads consistently — just
+downwards through time. Each row keeps the balance as it stood on its own date.
+
+**Payables show their supplier**, linked to that supplier's account, and the
+page says how many open bills are not linked to one — since those appear on
+nobody's account.
+
+**A recurring expense now records everything an ordinary expense does** —
+supplier, payee, voucher number, budget line, expenditure type and petty-cash
+flag — and passes them all to each payment it generates. Previously a schedule
+produced rows missing exactly the details a treasurer would have filled in by
+hand, so each had to be opened and completed. A schedule that creates work is
+not a schedule.
+
+---
+
+# v3.15.2 — Every page is now checked against a database with data in it
+
+Three faults in recent releases were the same shape: a page that worked
+perfectly on an empty system and failed on a real one. The tests passed each
+time, because a test that creates only what its own assertion needs never
+exercises the parts of a page that deal with actual records.
+
+There is now a check that seeds the demonstration data and asks for every page
+in the application — 275 of them — plus the detail pages for each kind of
+record, and then asks for them all again with the optional details deliberately
+left blank, since an unapproved expense or an unmatched payment is the ordinary
+case rather than the exception.
+
+No further faults were found, which is the reassuring part. Keeping it that way
+is what the check is for.
+
+---
+
+# v3.15.1 — The member portal's "My standing" page works again
+
+"My standing" failed to load for any member who had contributions due — which
+is every member the page was written for. The page referred to information by
+names the system does not use, and rather than leaving a blank space, that took
+the whole page down. Members would have seen an error, not their record.
+
+The household page had the same fault waiting for it, for any dependant
+recorded by name only rather than linked to the church roll — which is most of
+them, since a spouse or child is rarely on the roll in their own right.
+
+Both are fixed. The portal has also now been walked end to end on real data —
+sign-in, every page, submitting a request, the office review screens, and
+suspension — rather than only tested against an empty record.
+
+---
+
+# v3.15.0 — Supplier payment details are a separate permission
+
+Changing where a supplier is paid is now its own permission, held apart from
+the right to maintain supplier records generally. The office can keep contacts,
+addresses and notes up to date while only a treasurer adds or verifies bank and
+M-Pesa details.
+
+This is a deliberate control, not extra paperwork. A letter or email announcing
+that a supplier's bank account has changed is the commonest way churches are
+defrauded, and the person who receives that letter should not be the person who
+can act on it alone. Every change to payment details stays on the record, so an
+auditor can always see what the account used to be and who changed it.
+
+**Assets can also record who they were bought from**, and appear on that
+supplier's account alongside their bills and payments — so "what have we bought
+from them, and were we happy with it" is answerable before buying again.
+
+---
+
+# v3.14.0 — Suppliers have a record of their own
+
+A supplier used to be a name typed into a box. "Mwangi Hardware", "Mwangi
+Hardware Ltd" and "mwangi hardware" were three different suppliers as far as the
+system was concerned, the question "what do we owe Mwangi altogether" could not
+be asked at all, and nothing about a supplier — their terms, their bank details,
+their PIN, the contract — had anywhere to live.
+
+**There is now a supplier register.** Each supplier has a page showing what is
+owed, how overdue it is, everything ever bought from them, their contacts,
+addresses, payment details, tax information, documents and notes, and a history
+of changes to the record. Bills and payments are listed together in date order,
+because that is how a treasurer asks the question.
+
+**The names already on file were grouped automatically.** Existing payables were
+read, spellings of the same business matched up, and a supplier created for each
+— so the register is useful on the first day rather than after a week of typing.
+What each invoice actually said is untouched: the register sits alongside it, and
+where the grouping got something wrong the two records can be merged.
+
+**Bills and payments can be recorded against a supplier as you enter them.**
+Choosing a supplier fills in the name and works out the due date from their
+agreed terms, and settling a bill puts the payment on their account
+automatically. Typing a different name still works, and is kept as typed —
+what the invoice said is what gets recorded.
+
+**Payment details carry a warning and a verification mark.** A letter announcing
+that a supplier's bank account has changed is the commonest fraud against
+churches, so new details start unverified, must be confirmed by someone, and
+every change is kept on the record with who made it.
+
+A supplier is archived, never deleted — the bills that name them are evidence.
+
+---
+
+# v3.13.0 — Accruals can be paid in instalments too
+
+What v3.12.0 did for payables now applies to accrued expenses. A utility bill
+accrued at an estimate and then paid in two goes can be recorded as it actually
+happened, and the balance sheet shows what is still owed on the day it is owed.
+
+The behaviour is not a second copy of the payable version: both obligations now
+share one implementation, so the rules about what counts as a payment and what
+is still owed cannot drift apart between the two halves of the liability note.
+
+---
+
 # v3.12.0 — A bill can now be paid a bit at a time
 
 Until now a payable could only be settled in one movement: one button, one

@@ -42,7 +42,7 @@
       <tbody>
       {% for c in campaigns %}
         <tr>
-          <td><strong>{{ c.name }}</strong>{% if not c.active %} <span class="pill pill-grey">ended</span>{% endif %}</td>
+          <td><strong><a class="link" href="{% url 'campaign_detail' c.pk %}">{{ c.name }}</a></strong>{% if not c.active %} <span class="pill pill-grey">ended</span>{% endif %}</td>
           <td>{{ c.department.name }}</td>
           <td class="u-xs muted">{{ c.triggers|default:"&mdash;" }}</td>
           <td class="num mono">{{ c.n_members }}</td>

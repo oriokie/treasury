@@ -104,6 +104,16 @@ class Expense(models.Model):
         help_text="The payable this payment settles, in whole or in part. A "
                   "payable may be paid over several instalments, so this is a "
                   "ForeignKey and not a OneToOne — see Payable.paid_total.")
+    vendor = models.ForeignKey(
+        "vendors.Vendor", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="expenses",
+        help_text="The supplier this was paid to, where they are on the "
+                  "supplier register. Optional: `payee` still records what the "
+                  "voucher said, and a one-off payment needs no register entry.")
+    accrual = models.ForeignKey(
+        "cashbook.Accrual", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="payments",
+        help_text="The accrual this payment settles, in whole or in part.")
     advance = models.ForeignKey(
         "cashbook.StaffAdvance", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="expenses", help_text="If this expense settles a staff cash advance, link it here.")
@@ -443,6 +453,33 @@ class RecurringExpense(models.Model):
     day_of_month = models.PositiveSmallIntegerField(
         default=1, help_text="For monthly/quarterly/yearly schedules: day of the month the payment falls due.")
     claimant = models.CharField(max_length=120, blank=True)
+    # --- everything else an Expense carries -------------------------------
+    # A schedule that cannot record a supplier, a payee or a budget line
+    # produces expenses missing exactly the details a treasurer would have
+    # filled in by hand — so the generated rows had to be edited afterwards,
+    # which defeats the point of scheduling them. These mirror Expense field
+    # for field, and `services.recurring` copies them onto each generated row.
+    expenditure_type = models.CharField(
+        max_length=12, choices=Expense.ExpenditureType.choices,
+        default=Expense.ExpenditureType.RECURRENT,
+        help_text="A scheduled cost is recurrent by nature, but a monthly "
+                  "instalment on a capital purchase is not.")
+    vendor = models.ForeignKey(
+        "vendors.Vendor", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="recurring_expenses",
+        help_text="The supplier, where they are on the register. Every payment "
+                  "this schedule generates lands on their account.")
+    payee = models.CharField(
+        max_length=160, blank=True, default="",
+        help_text="Filled from the supplier if left blank.")
+    voucher_no = models.CharField(
+        max_length=30, blank=True, default="",
+        help_text="A fixed reference, e.g. a standing order number. Left blank "
+                  "for most schedules, since each payment gets its own.")
+    paid_from_petty_cash = models.BooleanField(default=False)
+    budget_line = models.ForeignKey(
+        "cashbook.BudgetLine", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="recurring_expenses")
     method = models.CharField(max_length=8, choices=Expense.Method.choices,
                               default=Expense.Method.CASH)
     start_date = models.DateField(help_text="First date the schedule is effective from.")
@@ -587,53 +624,29 @@ class ExpenseAttachment(models.Model):
         return self.label or self.file.name
 
 
-class Payable(models.Model):
-    """An amount owed for goods/services received but not yet paid (a credit
-    purchase). Tracked as an obligation; settling it records the actual payment."""
-    date = models.DateField(db_index=True, help_text="Date the liability was incurred.")
-    vendor = models.CharField(max_length=120)
-    description = models.CharField(max_length=200)
-    amount = models.DecimalField(max_digits=12, decimal_places=2,
-        validators=[MinValueValidator(Decimal("0.01"))])
-    department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
-                                   related_name="payables")
-    category = models.CharField(max_length=14, choices=Expense.Category.choices,
-                                default=Expense.Category.OTHER)
-    due_date = models.DateField(null=True, blank=True)
-    # `settled` and `settled_on` are a CACHE of what the payments say, not a
-    # second opinion. They exist because "show me what we still owe" is a
-    # filter on thousands of rows and must stay indexed, and because reports,
-    # the backup export and the settle-from-expense form already read them.
-    # They are only ever written by services.payables.refresh_settlement(),
-    # which derives them from the payments — never set by hand.
-    settled = models.BooleanField(default=False, db_index=True)
-    settled_on = models.DateField(
-        null=True, blank=True,
-        help_text="The date the FINAL instalment cleared the balance.")
-    recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
-                                    related_name="payables_recorded")
-    created_at = models.DateTimeField(auto_now_add=True)
-    history = HistoricalRecords()
+class SettleableObligation(models.Model):
+    """Something the church owes that may be discharged over several payments.
 
-    class Meta:
-        ordering = ["settled", "due_date", "-date"]
+    Payables and accruals are different animals — a payable is an invoice that
+    has arrived, an accrual is an estimate of one that has not — but they are
+    settled identically: by payments, in instalments, until the balance clears.
+    That behaviour is defined once here rather than twice, so there is one
+    implementation of "how much do we still owe" to reason about and one place
+    a rounding or status rule can be got wrong.
 
-    def __str__(self):
-        return f"{self.vendor}: {self.amount}"
-
-    # -- settlement, derived from the payments themselves --------------------
-    # Deliberately computed rather than stored. A vendor paid in three
-    # instalments has three expenses in the fund; the amount still owed is the
-    # invoice less those expenses, and there is no second place where that
-    # figure could drift out of step with the cash book.
+    A subclass supplies a `payments` reverse relation (a ForeignKey from
+    Expense) and the `amount` it owes. Everything else follows.
+    """
 
     #: Payments count once they are APPROVED or PAID — the same test
     #: StaffAdvance.settled_total applies, so a pending claim does not reduce a
     #: liability before anyone has authorised it.
     COUNTED_STATUSES = (Expense.Status.APPROVED, Expense.Status.PAID)
 
+    class Meta:
+        abstract = True
+
     def paid_asof(self, on=None):
-        from django.db.models import Sum
         qs = self.payments.filter(status__in=self.COUNTED_STATUSES)
         if on is not None:
             qs = qs.filter(date__lte=on)
@@ -645,7 +658,7 @@ class Payable(models.Model):
 
     def balance_asof(self, on=None):
         """What is still owed. Never negative: an overpayment is a matter for
-        the vendor account, not a negative liability on the balance sheet."""
+        the supplier's account, not a negative liability on the balance sheet."""
         return max(self.amount - self.paid_asof(on), Decimal("0"))
 
     @property
@@ -678,10 +691,10 @@ class Payable(models.Model):
     def settled_expense(self):
         """The instalment that cleared the balance.
 
-        Kept as a read-only property because this used to be a real OneToOne
-        field and callers still ask for it. It now means "the payment that
-        finished the job" rather than "the payment", which is the only sensible
-        reading once there can be several.
+        A read-only property because this used to be a real OneToOne field and
+        callers still ask for it. It now means "the payment that finished the
+        job" rather than "the payment", which is the only sensible reading once
+        there can be several.
         """
         if not self.is_settled:
             return None
@@ -689,7 +702,49 @@ class Payable(models.Model):
                 .order_by("date", "id").last())
 
 
-class Accrual(models.Model):
+class Payable(SettleableObligation):
+    """An amount owed for goods/services received but not yet paid (a credit
+    purchase). Tracked as an obligation; settling it records the actual payment."""
+    date = models.DateField(db_index=True, help_text="Date the liability was incurred.")
+    vendor = models.CharField(
+        max_length=120,
+        help_text="The supplier's name as it appears on the invoice. Kept even "
+                  "when `supplier` is set — it is what the document said.")
+    supplier = models.ForeignKey(
+        "vendors.Vendor", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="payables",
+        help_text="The supplier register entry, where there is one.")
+    description = models.CharField(max_length=200)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
+    department = models.ForeignKey("departments.Department", on_delete=models.PROTECT,
+                                   related_name="payables")
+    category = models.CharField(max_length=14, choices=Expense.Category.choices,
+                                default=Expense.Category.OTHER)
+    due_date = models.DateField(null=True, blank=True)
+    # `settled` and `settled_on` are a CACHE of what the payments say, not a
+    # second opinion. They exist because "show me what we still owe" is a
+    # filter on thousands of rows and must stay indexed, and because reports,
+    # the backup export and the settle-from-expense form already read them.
+    # They are only ever written by services.obligations.refresh_settlement(),
+    # which derives them from the payments — never set by hand.
+    settled = models.BooleanField(default=False, db_index=True)
+    settled_on = models.DateField(
+        null=True, blank=True,
+        help_text="The date the FINAL instalment cleared the balance.")
+    recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
+                                    related_name="payables_recorded")
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["settled", "due_date", "-date"]
+
+    def __str__(self):
+        return f"{self.vendor}: {self.amount}"
+
+
+class Accrual(SettleableObligation):
     """An expense incurred in a period but not yet invoiced/paid (e.g. an estimate
     for utilities consumed). A liability until settled."""
     date = models.DateField(db_index=True, help_text="Period-end the accrual relates to.")
@@ -700,10 +755,12 @@ class Accrual(models.Model):
                                    related_name="accruals")
     category = models.CharField(max_length=14, choices=Expense.Category.choices,
                                 default=Expense.Category.OTHER)
-    settled = models.BooleanField(default=False)
-    settled_on = models.DateField(null=True, blank=True)
-    settled_expense = models.OneToOneField(Expense, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="accrual")
+    # A cache of what the payments say, written only by
+    # services.obligations.refresh_settlement(). See SettleableObligation.
+    settled = models.BooleanField(default=False, db_index=True)
+    settled_on = models.DateField(
+        null=True, blank=True,
+        help_text="The date the FINAL instalment cleared the balance.")
     recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
                                     related_name="accruals_recorded")
     created_at = models.DateTimeField(auto_now_add=True)

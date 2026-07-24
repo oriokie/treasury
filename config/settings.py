@@ -111,6 +111,9 @@ INSTALLED_APPS = [
     "giving",
     "statements",
     "cashbook",
+    # Suppliers. A vendor used to be free text on a payable; this gives one an
+    # identity that expenses, payables, accruals and assets can all point at.
+    "vendors",
     "envelopes",
     "reports",
     "assets",

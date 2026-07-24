@@ -1,4 +1,4 @@
-"""Settling a payable — in full, or a bit at a time.
+"""Settling an obligation — a payable or an accrual — in full, or a bit at a time.
 
 A payable is an invoice the church has received and not yet paid. Until now it
 could only be discharged in one movement: one button, one expense for the whole
@@ -23,8 +23,13 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction as db_tx
 
-from ..models import Expense, Payable
+from ..models import Accrual, Expense, Payable
 from core.utils import sabbath_week_of
+
+
+def _link_field(obligation):
+    """Which column on Expense points back at this kind of obligation."""
+    return "accrual" if isinstance(obligation, Accrual) else "payable"
 
 
 def refresh_settlement(payable, *, save=True):
@@ -101,14 +106,17 @@ def settle(payable, *, amount=None, user, on=None, method=Expense.Method.BANK,
         description=description[:200],
         amount=amount, category=payable.category, method=method,
         status=Expense.Status.PAID, paid_date=on,
-        payee=(payable.vendor or "")[:160],
+        payee=(getattr(payable, "vendor", "") or "")[:160],
+        # Carry the supplier through, so a payment made by settling a bill lands
+        # on the supplier's account without anyone re-selecting them.
+        vendor=getattr(payable, "supplier", None),
         # The bank/M-Pesa code for this instalment goes on the voucher number —
         # Expense has no separate reference field, and voucher_no is what the
         # rest of the cash book already prints against a payment.
         voucher_no=(reference or "")[:30],
         paid_from_petty_cash=paid_from_petty_cash,
         recorded_by=user, approved_by=user,
-        payable=payable)
+        **{_link_field(payable): payable})
 
     refresh_settlement(payable)
     return expense
@@ -123,10 +131,11 @@ def unlink_payment(expense, *, user=None):
     losing a real payment. Only the link is removed, and the payable's balance
     recovers by that much.
     """
-    payable = expense.payable
+    payable = expense.payable or getattr(expense, "accrual", None)
     if payable is None:
         return None
-    expense.payable = None
-    expense.save(update_fields=["payable"])
+    field = _link_field(payable)
+    setattr(expense, field, None)
+    expense.save(update_fields=[field])
     refresh_settlement(payable)
     return payable

@@ -372,3 +372,133 @@ class PortalInvitationJourneyTests(PortalPageTestBase):
         self.assertIn("suspended", body.lower())
         self.assertIn("Under review", body,
                       "A member told they are suspended should be told why.")
+
+
+class PortalPagesWithRealDataTests(PortalPageTestBase):
+    """The pages, rendered for a member who actually has something on them.
+
+    `PortalPageRenderTests` renders every page for a member with an empty
+    record, which is the right first check and was not enough. A member with no
+    contributions has no dues schedule, so the schedule table never rendered and
+    a template that referenced keys the service does not produce passed as
+    green. On real data the standing page returned 500 — for every member, since
+    every real member has a schedule.
+
+    The specific trap is worth naming: Django resolves filter *arguments*
+    eagerly, so `{{ a|default:b }}` raises when `b` cannot be resolved even
+    though `a` is present and the default is never used. A missing key in a
+    plain `{{ }}` renders blank; the same key inside a filter argument takes the
+    page down.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from .models import SchemePolicy
+        from .services import schemes as scheme_svc
+
+        policy = SchemePolicy.objects.create(
+            scheme=self.scheme,
+            effective_from=dt.date.today() - dt.timedelta(days=500),
+            membership_required=True, waiting_period_days=30,
+            contribution_mode=SchemePolicy.ContributionMode.FIXED_PERIODIC,
+            contribution_amount=Decimal("200"),
+            contribution_frequency=SchemePolicy.Frequency.MONTHLY)
+        scheme_svc.publish_policy(policy, user=self.treasurer)
+
+    def test_the_standing_page_renders_with_a_real_dues_schedule(self):
+        response = self.client.get(reverse("portal_standing"))
+        self.assertEqual(response.status_code, 200,
+                         "The standing page failed for a member with a schedule.")
+
+    def test_the_dues_schedule_actually_appears(self):
+        """Guards the fix rather than just the absence of a crash: the page
+        must show the periods, not silently render an empty table."""
+        from .services import contributions as contrib_svc
+        schedule = contrib_svc.dues_schedule(self.membership,
+                                             self.scheme.current_policy)
+        if not schedule:
+            self.skipTest("No schedule produced for this policy shape.")
+        body = self.client.get(reverse("portal_standing")).content.decode()
+        self.assertIn(str(schedule[-1]["period"]), body,
+                      "The schedule was computed but not rendered.")
+
+    def test_household_renders_for_a_dependant_with_no_linked_member(self):
+        """A dependant recorded by name only — the common case, since most
+        family members are not themselves on the church roll."""
+        from .services import registry as reg_svc
+        reg_svc.add_dependant(
+            self.membership, relationship=SchemeDependant.Relationship.CHILD,
+            name="Faith Momanyi")
+        for name in ["portal_household", "portal_request_new"]:
+            url = (reverse(name, args=["HOUSEHOLD"]) if name == "portal_request_new"
+                   else reverse(name))
+            self.assertEqual(self.client.get(url).status_code, 200,
+                             f"{name} failed for a name-only dependant.")
+
+
+class PortalPagesDoNotLeakTemplateMarkupTests(PortalPagesWithRealDataTests):
+    """No portal page shows a member raw template markup.
+
+    Two of the five templates that shipped with unrendered multi-line comments
+    in v3.19.2 were portal templates — `portal/_base.html`, which every portal
+    page extends, and `portal/standing.html`. Neither the portal suites nor the
+    seeded smoke test caught it: the portal suites assert status codes, and the
+    smoke test cannot reach these pages at all, because they need a signed-in
+    member and the confinement middleware turns an office login away.
+
+    So the check has to live here. It is the same assertion
+    `core.test_seeded_smoke.NoTemplateSyntaxLeaksIntoPagesTests` makes, applied
+    to the pages that suite is structurally unable to see.
+
+    **It extends the real-data fixture deliberately, and that is not incidental.**
+    The first version of this class inherited the empty-record base, and it
+    passed against a deliberately reintroduced leak — because the comment in
+    `standing.html` sits inside `{% for %}` over the dues schedule, and a member
+    with no contributions has no schedule, so the loop body never executed. A
+    leak check that renders no loops checks almost nothing. Same lesson as
+    #121/#122/#125, arrived at while writing the guard for #130.
+    """
+
+    ALLOWED_CONTEXT = ("${", "javascript:", "<script", "<code", "<pre")
+
+    def _leaks(self, html):
+        import re
+        found = []
+        for pattern in (r"\{#", r"\{%\s*\w", r"\{\{\s*\w"):
+            for m in re.finditer(pattern, html):
+                window = html[max(0, m.start() - 200):m.start()]
+                if any(t in window.lower() for t in self.ALLOWED_CONTEXT):
+                    continue
+                found.append(html[m.start():m.start() + 60].replace("\n", " "))
+        return found
+
+    def test_no_portal_page_leaks_template_markup(self):
+        failures = []
+        pages = ["portal_home", "portal_contributions", "portal_statement",
+                 "portal_standing", "portal_household", "portal_cases",
+                 "portal_requests", "portal_documents", "portal_notifications",
+                 "portal_profile"]
+        for name in pages:
+            response = self.client.get(reverse(name))
+            if response.status_code != 200:
+                continue
+            if "text/html" not in response.headers.get("Content-Type", ""):
+                continue
+            leaks = self._leaks(response.content.decode("utf-8", "ignore"))
+            if leaks:
+                failures.append(f"  {name}: {leaks[:2]}")
+
+        for kind in PortalRequest.Kind.values:
+            response = self.client.get(reverse("portal_request_new", args=[kind]))
+            if response.status_code != 200:
+                continue
+            leaks = self._leaks(response.content.decode("utf-8", "ignore"))
+            if leaks:
+                failures.append(f"  portal_request_new/{kind}: {leaks[:2]}")
+
+        self.assertFalse(
+            failures,
+            "Portal pages showing a member raw template markup. The usual "
+            "cause is a `{# ... #}` comment spanning several lines — Django's "
+            "is single-line, so a multi-line one is not a comment and renders "
+            "in full:\\n" + "\\n".join(failures))

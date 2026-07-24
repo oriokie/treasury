@@ -740,3 +740,72 @@ class CampaignMember(models.Model):
     class Meta:
         indexes = [models.Index(fields=["campaign", "name_key"]),
                    models.Index(fields=["campaign", "phone"])]
+
+
+class CampaignMessage(models.Model):
+    """A record of one bulk message sent to one group of a campaign.
+
+    `SmsLog` already records every individual message, but it records them as
+    four hundred unrelated rows with no idea which campaign, which group, or
+    which press of the button produced them. So the one question a treasurer
+    actually asks — "have we already told Group 2 about this?" — could not be
+    answered, and nothing stopped the same message going out twice.
+
+    That is a real harm and not a small one: a congregation receiving the same
+    appeal twice reads it as disorganisation at best, and the church pays for
+    both. This is the row that makes the send visible afterwards.
+    """
+    campaign = models.ForeignKey("giving.Campaign", on_delete=models.CASCADE,
+                                 related_name="messages")
+    group = models.CharField(
+        max_length=40, blank=True,
+        help_text="The group as written on the sheet. Blank means the members "
+                  "with no group recorded.")
+    body = models.TextField(
+        help_text="The message as composed, with its placeholders still in it — "
+                  "so an identical resend can be recognised.")
+    sent_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(
+        default=0, help_text="On the sheet, but with no usable phone number.")
+    sent_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                on_delete=models.SET_NULL, related_name="+")
+    sent_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    # How far the send actually got. Written as it goes, not at the end: a
+    # large group sent inside a web request can hit the server's timeout
+    # part-way through, and if the record were only written afterwards the
+    # messages that DID go out would leave no trace at all — the treasurer
+    # would see a failed page and have no way to know whether to resend.
+    class State(models.TextChoices):
+        RUNNING = "RUNNING", "Sending"
+        DONE = "DONE", "Finished"
+        INTERRUPTED = "INTERRUPTED", "Interrupted part-way"
+
+    state = models.CharField(max_length=12, choices=State.choices,
+                             default=State.DONE, db_index=True)
+    intended_count = models.PositiveIntegerField(
+        default=0, help_text="How many were due to receive it when the send began.")
+
+    class Meta:
+        ordering = ["-sent_at"]
+        indexes = [models.Index(fields=["campaign", "group", "-sent_at"])]
+
+    def __str__(self):
+        return f"{self.campaign.name} · {self.group or 'no group'} · {self.sent_at:%d %b %Y}"
+
+    @property
+    def group_label(self):
+        return self.group or "No group recorded"
+
+    @property
+    def is_incomplete(self):
+        """True when the send did not reach everyone it set out to.
+
+        Surfaced on the campaign page, because a half-sent message is the one
+        situation where a treasurer genuinely needs to send again — and the one
+        where a bare "already sent" note would mislead them into not doing so.
+        """
+        return (self.state != self.State.DONE
+                or (self.intended_count
+                    and self.sent_count + self.failed_count < self.intended_count))

@@ -20,10 +20,19 @@
 <div class="tab-panel" data-panel="payables">
 <!-- Payables -->
 <div class="card u-mt"><div class="hd">Accounts payable <span class="muted">— purchased on credit</span></div><div class="bd u-pad-cell">
-<table class="ledger compact"><thead><tr><th>Date</th><th>Vendor / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead><tbody>
+{% if unlinked_payables %}
+<div class="panel u-mb no-print" style="border-left:3px solid var(--brass)">
+  <b>{{ unlinked_payables }} open bill{{ unlinked_payables|pluralize }} {{ unlinked_payables|pluralize:"is,are" }} not linked to a supplier.</b>
+  <span class="muted">They will not show on any supplier's account. Edit a bill to
+    choose its supplier, or <a class="link" href="{% url 'vendor_list' %}">open the register</a>.</span>
+</div>
+{% endif %}
+<table class="ledger compact"><thead><tr><th>Date</th><th>Supplier / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead><tbody>
   {% for p in payables %}<tr {% if p.settled %}class="muted"{% endif %}>
     <td class="mono">{{ p.date|date:"d M y" }}</td>
-    <td>{{ p.vendor }} · <span class="muted">{{ p.description }}</span>
+    <td>{% if p.supplier %}<a class="link" href="{% url 'vendor_detail' p.supplier.pk %}">{{ p.vendor }}</a>{% else %}{{ p.vendor }}{% endif %}
+      · <span class="muted">{{ p.description }}</span>
+      {% if not p.supplier %}<span class="pill pill-grey u-xs" title="Not linked to the supplier register — this bill will not appear on any supplier's account">Unlinked</span>{% endif %}
       {% if p.is_part_paid %}<span class="pill pill-amber u-xs">Part paid · {{ p.percent_paid }}%</span>{% endif %}
       {% if p.payments.exists %}
       <div class="muted u-xs">
@@ -67,15 +76,29 @@
 <div class="tab-panel" data-panel="accruals" hidden>
 <!-- Accruals -->
 <div class="card u-mt"><div class="hd">Accrued expenses <span class="muted">— incurred, not yet invoiced/paid</span></div><div class="bd u-pad-cell">
-<table class="ledger compact"><thead><tr><th>Period</th><th>Description</th><th>Fund</th><th class="num">Amount</th><th></th></tr></thead><tbody>
+<table class="ledger compact"><thead><tr><th>Period</th><th>Description</th><th>Fund</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead><tbody>
   {% for a in accruals %}<tr {% if a.settled %}class="muted"{% endif %}>
-    <td class="mono">{{ a.date|date:"d M y" }}</td><td>{{ a.description }}</td><td>{{ a.department.name }}</td>
+    <td class="mono">{{ a.date|date:"d M y" }}</td>
+    <td>{{ a.description }}
+      {% if a.is_part_paid %}<span class="pill pill-amber u-xs">Part paid · {{ a.percent_paid }}%</span>{% endif %}</td>
+    <td>{{ a.department.name }}</td>
     <td class="num mono">{{ a.amount|money }}</td>
-    <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% if a.settled_expense %} <span class="muted u-xs">· linked</span>{% endif %}{% elif can_enter_data %}<a class="btn btn-xs btn-brass" href="{% url 'expense_create' %}?settle=accrual:{{ a.id }}">Settle</a>
+    <td class="num mono">{% if a.paid_total %}{{ a.paid_total|money }}{% else %}—{% endif %}</td>
+    <td class="num mono">{% if a.settled %}—{% else %}<b>{{ a.balance|money }}</b>{% endif %}</td>
+    <td class="u-right">{% if a.settled %}<span class="pill pill-green">Settled</span>{% if a.payments.count > 1 %} <span class="muted u-xs">· {{ a.payments.count }} payments</span>{% endif %}{% elif can_enter_data %}
+      <form method="post" action="{% url 'accrual_settle' a.id %}" class="u-inline"
+            onsubmit="return confirm('Record this payment?');">{% csrf_token %}
+        <input type="number" step="0.01" min="0.01" name="amount"
+               class="field field-xs u-inline" style="width:7rem"
+               placeholder="{{ a.balance|money }}"
+               title="Leave blank to pay the whole balance, or enter an instalment">
+        <button class="btn btn-xs btn-brass">Pay</button>
+      </form>
+      <a class="btn btn-xs btn-ghost" href="{% url 'expense_create' %}?settle=accrual:{{ a.id }}">Pay in detail</a>
       <a class="btn btn-xs btn-ghost" href="{% url 'settle_existing' 'accrual' a.id %}" title="Link an expense you already entered">Link expense</a>
       <a class="btn btn-xs btn-ghost" href="{% url 'accrual_edit' a.id %}">Edit</a>
       <form method="post" action="{% url 'accrual_delete' a.id %}" class="u-inline" onsubmit="return confirm('Delete this accrual?');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber">Delete</button></form>{% endif %}</td>
-  </tr>{% empty %}<tr><td colspan="5" class="empty">No accruals recorded.</td></tr>{% endfor %}
+  </tr>{% empty %}<tr><td colspan="7" class="empty">No accruals recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
   <form method="post" action="{% url 'accrual_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;align-items:end">{% csrf_token %}

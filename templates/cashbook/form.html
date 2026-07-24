@@ -9,8 +9,8 @@
   </div>
   <div class="rule" aria-hidden="true"></div>
 </div>
-<div class="card form-card" style="max-width:660px"><div class="bd">
-  <form method="post">{% csrf_token %}
+<form method="post" class="xf-shell">{% csrf_token %}
+<div class="card form-card xf-main"><div class="bd">
     {% if settle %}<input type="hidden" name="settle" value="{{ settle }}">
     <div class="alert alert-info u-mb">{{ settle_label }} — complete how it was paid (method, claimant, any charge) and save to settle it.</div>{% endif %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
@@ -40,7 +40,7 @@
       </div>
     </div>
 
-    <div class="xf-group"><div class="xf-group-h">Amount &amp; date</div>
+    <div class="xf-group"><div class="xf-group-h"><span class="xf-n">1</span> How much, and when</div>
       <div class="form-grid xf-grid-2">
       {% for f in form %}{% if f.name in 'amount date charge' %}
         <div class="form-row{% if f.name == 'amount' %} xf-amount{% endif %}">
@@ -52,7 +52,7 @@
       </div>
     </div>
 
-    <div class="xf-group"><div class="xf-group-h">What it was for</div>
+    <div class="xf-group"><div class="xf-group-h"><span class="xf-n">2</span> What it was for</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'description category expenditure_type capitalized_asset' %}
         <div class="form-row">
@@ -64,9 +64,23 @@
       </div>
     </div>
 
-    <div class="xf-group"><div class="xf-group-h">Paid to &amp; how</div>
+    <div class="xf-group"><div class="xf-group-h"><span class="xf-n">3</span> Who was paid</div>
       <div class="form-grid xf-grid-2">
-      {% for f in form %}{% if f.name in 'claimant payee method voucher_no paid_from_petty_cash' %}
+      {% for f in form %}{% if f.name in 'vendor payee claimant' %}
+        <div class="form-row">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="help">Choosing a supplier puts this payment on their account.
+        Leave it blank for a one-off — the payee name is still recorded.</div>
+    </div>
+
+    <div class="xf-group"><div class="xf-group-h"><span class="xf-n">4</span> How it was paid</div>
+      <div class="form-grid xf-grid-2">
+      {% for f in form %}{% if f.name in 'method voucher_no paid_from_petty_cash' %}
         <div class="form-row">
           <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
@@ -80,9 +94,9 @@
        a field added to ExpenseForm later can never silently disappear from
        this page (the frozen-allowlist trap, recommendation #74a). The group is
        always in the DOM and hides itself when its grid is empty. {% endcomment %}
-    <div class="xf-group xf-fallback"><div class="xf-group-h">Other details</div>
+    <div class="xf-group xf-fallback"><div class="xf-group-h"><span class="xf-n">5</span> Other details</div>
       <div class="form-grid">
-      {% for f in form %}{% if f.name not in 'department budget_line amount date charge description category expenditure_type capitalized_asset claimant payee method voucher_no paid_from_petty_cash' %}
+      {% for f in form %}{% if f.name not in 'department budget_line amount date charge description category expenditure_type capitalized_asset vendor payee claimant method voucher_no paid_from_petty_cash' %}
         <div class="form-row">
           <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
@@ -118,9 +132,31 @@
     </div></div>
     {% endif %}
 
-    <div class="btn-row"><button class="btn">Save expense</button><a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a></div>
-  </form>
 </div></div>
+
+{% comment %} The rail. It carries the things a treasurer checks before saving — which
+   fund, how much, what happens on save — and the save button itself, so on a
+   long form the action is never scrolled away from the figure it commits. {% endcomment %}
+<aside class="xf-rail">
+  <div class="card"><div class="bd">
+    <div class="xf-rail-h">Before you save</div>
+    <div class="xf-sum"><span>Fund</span><b id="sumFund">—</b></div>
+    <div class="xf-sum"><span>Amount</span><b id="sumAmount" class="mono">—</b></div>
+    <div class="xf-sum"><span>Paid to</span><b id="sumPayee">—</b></div>
+    <div class="xf-sum"><span>Method</span><b id="sumMethod">—</b></div>
+    <div class="xf-outcome">
+      {% if cfg.require_expense_approval %}Saves as <b>pending</b>. A treasurer
+      approves it before it touches the fund's balance.
+      {% else %}Saves as <b>approved</b> and reduces the fund's balance
+      immediately.{% endif %}
+    </div>
+    <div class="btn-row xf-actions">
+      <button class="btn">Save expense</button>
+      <a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a>
+    </div>
+  </div></div>
+</aside>
+</form>
 
 <script>
 const balUrl="{% url 'department_balance' %}", searchUrl="{% url 'member_search' %}", fundUrl="{% url 'fund_search' %}";
@@ -227,6 +263,30 @@ function toggleCharge(){ if(!method||!chargeInput) return;
 if(method){ method.addEventListener("change",toggleCharge); toggleCharge(); }
 const payDate=document.getElementById("paymentDate");
 if(payDate && !payDate.value){ payDate.value = new Date().toISOString().slice(0,10); }
+
+// --- the summary rail -------------------------------------------------------
+// Read-only echo of what has been entered. Deliberately plain text and not a
+// second set of inputs: two places to type the same number is how they end up
+// disagreeing.
+(function(){
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v||"—"; };
+  const amt=document.getElementById("id_amount");
+  const payee=document.getElementById("id_payee"),
+        claimant=document.getElementById("id_claimant"),
+        vendor=document.getElementById("id_vendor"),
+        methodSel=document.getElementById("id_method");
+  function sync(){
+    set("sumFund", deptSearch && deptSearch.value.trim());
+    set("sumAmount", amt && amt.value ? "KES "+fmt(amt.value) : "");
+    const who = (vendor && vendor.selectedIndex>0 ? vendor.options[vendor.selectedIndex].text : "")
+             || (payee && payee.value.trim()) || (claimant && claimant.value.trim());
+    set("sumPayee", who);
+    set("sumMethod", methodSel && methodSel.selectedIndex>=0
+        ? methodSel.options[methodSel.selectedIndex].text : "");
+  }
+  ["input","change"].forEach(ev=>document.addEventListener(ev,sync,true));
+  sync();
+})();
 </script>
 <style>
 .help#balBox{margin-top:.4rem;padding:.5rem .7rem;border-radius:8px;border:1px solid var(--line);background:var(--card-head)}
@@ -238,5 +298,28 @@ if(payDate && !payDate.value){ payDate.value = new Date().toISOString().slice(0,
 .xf-amount input{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;
   font-size:1.25rem;font-weight:600}
 .xf-fallback:not(:has(.form-row)){display:none}
+.xf-n{display:inline-flex;align-items:center;justify-content:center;width:1.35rem;height:1.35rem;
+  margin-right:.4rem;border-radius:50%;background:var(--brass);color:#fff;font-size:.72rem;
+  font-weight:700;font-family:"IBM Plex Mono",ui-monospace,monospace;vertical-align:.05em}
+
+/* Two columns on a desk, one on a phone. The rail follows the page rather than
+   sitting at the bottom, so the amount and the save button stay together. */
+.xf-shell{display:grid;grid-template-columns:minmax(0,1fr) 20rem;gap:1.25rem;align-items:start}
+.xf-main{max-width:none}
+.xf-rail{position:sticky;top:1rem}
+.xf-rail-h{font-family:var(--font-display,"Fraunces",serif);font-size:.95rem;font-weight:600;
+  color:var(--ink-soft);padding-bottom:.4rem;margin-bottom:.6rem;border-bottom:1px solid var(--brass)}
+.xf-sum{display:flex;justify-content:space-between;gap:.75rem;padding:.4rem 0;
+  border-bottom:1px solid var(--line);font-size:.88rem}
+.xf-sum span{color:var(--muted)}
+.xf-sum b{text-align:right;word-break:break-word}
+.xf-outcome{margin-top:.7rem;padding:.6rem .7rem;border-radius:8px;background:var(--card-head);
+  border:1px solid var(--line);font-size:.82rem;color:var(--ink-soft)}
+.xf-actions{margin-top:.8rem;display:flex;gap:.5rem;flex-wrap:wrap}
+.xf-actions .btn{flex:1 1 auto}
+@media (max-width:900px){
+  .xf-shell{grid-template-columns:1fr}
+  .xf-rail{position:static;order:2}
+}
 </style>
 {% endblock %}

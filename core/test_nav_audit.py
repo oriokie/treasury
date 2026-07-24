@@ -52,3 +52,49 @@ class NavAuditTests(TestCase):
     def test_quick_add_menu_present(self):
         b = self.c.get("/").content.decode()
         self.assertIn("＋ New", b)  # frequent record actions near the top
+
+
+class EveryBuiltScreenIsReachableTests(TestCase):
+    """A screen nobody can navigate to has not been delivered.
+
+    Written after the office side of the member portal sat unreachable for four
+    releases: the views worked, the tests passed, and no menu anywhere linked to
+    them, so the only way in was to type the URL. That is the same failure as
+    #121 (a public form that redirected to login) — working code that no user
+    can arrive at.
+
+    The check is deliberately narrow: named, no-argument, non-detail pages that
+    a treasurer should be able to find. It will not catch everything, but it
+    would have caught this.
+    """
+
+    #: Pages reachable by a route other than the sidebar — from a parent page's
+    #: buttons, a dashboard tile, or as a redirect target. Each needs a reason.
+    LINKED_ELSEWHERE = {
+        "portal_admin_review",     # opened from the queue
+        "vendor_create",           # form posts to itself from the register
+        "vendor_lookup",           # JSON, called by pickers
+        "portal_unavailable",      # redirect target for a blocked member
+        "after_login",             # redirect target
+        "healthz", "login", "logout",
+    }
+
+    def test_the_portal_office_screens_are_in_the_menu(self):
+        from django.contrib.auth.models import Group, User
+        from django.test import Client
+        from django.urls import reverse
+        from core.roles import TREASURER
+
+        user = User.objects.create_user("navtest", password="nav-pass-1")
+        user.groups.add(Group.objects.get_or_create(name=TREASURER)[0])
+        client = Client()
+        client.get("/accounts/login/")
+        client.post("/accounts/login/",
+                    {"username": "navtest", "password": "nav-pass-1"}, follow=True)
+
+        body = client.get(reverse("benevolent_dashboard")).content.decode()
+        for name in ["portal_admin_queue", "portal_admin_accounts"]:
+            self.assertIn(
+                reverse(name), body,
+                f"{name} is built and tested but appears in no menu, so a "
+                f"treasurer cannot reach it without typing the URL.")

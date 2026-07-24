@@ -327,3 +327,85 @@ class PayableLegacySettlementTests(PayableTestBase):
         payable_svc.refresh_settlement(p)
 
         self.assertEqual(open_payables_total(dt.date(2026, 6, 10)), Decimal("3000"))
+
+
+class AccrualPartialSettlementTests(TestCase):
+    """The same behaviour, on the other obligation.
+
+    Accruals were left all-or-nothing when payables gained instalments, on the
+    reasoning that an accrual is an estimate either replaced by the real invoice
+    or not. That reasoning does not survive contact with a utility bill paid in
+    two goes against an accrued estimate. Both now share
+    `SettleableObligation` and one service, so these tests are as much a check
+    that the generalisation did not fork as that accruals work.
+    """
+
+    def setUp(self):
+        self.treasurer = User.objects.create_user("tess2", password="x")
+        self.treasurer.groups.add(Group.objects.get_or_create(name=TREASURER)[0])
+        self.fund = Department.objects.create(
+            name="Utilities Fund", slug="utilities-fund",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.MINISTRY)
+        from .models import Accrual
+        self.accrual = Accrual.objects.create(
+            date=TODAY - dt.timedelta(days=20), description="Power for June",
+            amount=Decimal("8000.00"), department=self.fund,
+            recorded_by=self.treasurer)
+
+    def test_an_instalment_leaves_the_rest_owing(self):
+        payable_svc.settle(self.accrual, amount=Decimal("3000"),
+                           user=self.treasurer)
+        self.accrual.refresh_from_db()
+        self.assertEqual(self.accrual.paid_total, Decimal("3000.00"))
+        self.assertEqual(self.accrual.balance, Decimal("5000.00"))
+        self.assertFalse(self.accrual.settled)
+        self.assertEqual(self.accrual.status_label, "Part paid")
+
+    def test_instalments_clear_it(self):
+        payable_svc.settle(self.accrual, amount=Decimal("3000"), user=self.treasurer)
+        payable_svc.settle(self.accrual, user=self.treasurer)
+        self.accrual.refresh_from_db()
+        self.assertTrue(self.accrual.settled)
+        self.assertEqual(self.accrual.payments.count(), 2)
+
+    def test_the_accrual_liability_nets_off_payments(self):
+        from .services.treasury_position import open_accruals_total
+        paid_on = TODAY - dt.timedelta(days=3)
+        payable_svc.settle(self.accrual, amount=Decimal("3000"),
+                           user=self.treasurer, on=paid_on)
+
+        self.assertEqual(open_accruals_total(paid_on - dt.timedelta(days=1)),
+                         Decimal("8000.00"))
+        self.assertEqual(open_accruals_total(paid_on), Decimal("5000.00"))
+        self.assertEqual(open_accruals_total(), Decimal("5000.00"))
+
+    def test_a_flag_only_accrual_settlement_is_still_discharged(self):
+        """The legacy-data rule holds for accruals too."""
+        from .models import Accrual
+        from .services.treasury_position import open_accruals_total
+        self.accrual.delete()
+        Accrual.objects.create(
+            date=dt.date(2026, 6, 1), description="Water", amount=Decimal("500"),
+            department=self.fund, recorded_by=self.treasurer,
+            settled=True, settled_on=dt.date(2026, 6, 15))
+
+        self.assertEqual(open_accruals_total(dt.date(2026, 6, 14)), Decimal("500"))
+        self.assertEqual(open_accruals_total(dt.date(2026, 6, 15)), Decimal("0"))
+
+    def test_overpayment_is_refused_on_accruals_too(self):
+        with self.assertRaises(ValidationError):
+            payable_svc.settle(self.accrual, amount=Decimal("9000"),
+                               user=self.treasurer)
+
+    def test_the_settlement_rules_are_shared_not_copied(self):
+        """A guard on the generalisation itself: both obligations must inherit
+        the one implementation, not each carry their own."""
+        from .models import Accrual, Payable, SettleableObligation
+        self.assertTrue(issubclass(Payable, SettleableObligation))
+        self.assertTrue(issubclass(Accrual, SettleableObligation))
+        for name in ("paid_asof", "balance_asof", "is_part_paid", "status_label"):
+            self.assertNotIn(name, Payable.__dict__,
+                             f"Payable redefines {name} instead of inheriting it.")
+            self.assertNotIn(name, Accrual.__dict__,
+                             f"Accrual redefines {name} instead of inheriting it.")

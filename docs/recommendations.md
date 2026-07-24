@@ -1432,3 +1432,387 @@ established and the change is small. *Priority: Low.*
 **123b. No vendor account view.** Partial settlement makes "what do we owe
 Mwangi Hardware across all their invoices" a natural question, and there is
 still no screen that answers it. *Priority: Medium.*
+
+---
+
+## 124. Accrual instalments + Supplier register — v3.13.0 / v3.14.0 — NEW
+
+**123a done.** `Payable` and `Accrual` now share `SettleableObligation` (the
+computed settlement behaviour) and one service (`cashbook.services.obligations`,
+with `payables` kept as an alias so no caller changed). The liability netting for
+both goes through one `_open_obligation_total`, so the two halves of the
+liability note cannot drift apart. A guard test asserts neither model redefines
+the inherited properties.
+
+**123b done, and considerably enlarged.** New `vendors` app: `Vendor` plus
+categories, tags, contacts, addresses, bank accounts, documents and notes, with
+`simple_history` throughout. `Payable.supplier` and `Expense.vendor` link
+spending to it.
+
+**The design decision worth keeping.** The free text was NOT removed and NOT made
+mandatory. `Payable.vendor` still records what the invoice said; the FK is added
+alongside. A treasurer paying a boda rider once should not have to create a
+supplier record, and re-pointing historical vouchers at a tidied master record
+would quietly rewrite what a document said. A data migration backfills the links
+by normalised name so the register is populated on day one.
+
+`vendors.services.accounts` owns no arithmetic: `outstanding` calls
+`SettleableObligation.balance_asof`, the same implementation the balance-sheet
+query reproduces in SQL. A test asserts the supplier account and
+`open_payables_total` agree.
+
+### Not delivered — be aware before calling this finished
+
+**124a. Asset linking — DONE (v3.15.0). Contracts still outstanding.**
+`FixedAsset.supplier` links an asset to the register (PROTECTed, so a supplier
+with assets cannot be deleted), and assets appear in the supplier's transaction
+history beside their bills and payments.
+
+**Contracts remain unbuilt.** There is no contracts module — it is proposed in
+`ASSET_EAM_DESIGN.md` §1.4 and has never been implemented. Attaching a
+CONTRACT-type document to a supplier is filing, not contract management: no
+term, no renewal date, no value, no notice period, no link to the spend it
+authorises. It should be built with the EAM work rather than bolted onto the
+supplier register. *Priority: Medium.*
+
+**124b. No REST API.** This application has no DRF dependency and adding one is a
+decision worth taking deliberately rather than in passing. A single JSON lookup
+endpoint (`vendor_lookup`) exists, in the shape of the existing member lookup.
+A real API belongs with the one proposed for assets in §7 of the EAM design, as
+one decision. *Priority: Medium.*
+
+**124c. No supplier dashboard.** The register carries per-supplier figures and
+the profile carries ageing, but there is no cross-supplier spend analysis,
+top-suppliers chart or ageing summary across the whole register — and when there
+is, it should be a Report Engine report, not a bespoke page. *Priority: Medium.*
+
+**124d. Supplier pickers — DONE (v3.14.0).** Without this the register went stale
+from the first invoice entered after the backfill. `PayableForm` and `ExpenseForm`
+now offer the supplier register (archived suppliers excluded). Three rules, each
+pinned by a test:
+
+* a blank invoice name is filled from the chosen supplier — a treasurer who just
+  picked from a list should not retype the name, and that friction is exactly
+  what stops registers being used;
+* an explicitly typed name is kept as typed, because `vendor` records what the
+  document said, not what the register was later tidied to;
+* the supplier's payment terms set the due date when the treasurer has not, and
+  an explicit due date always wins.
+
+Settling a bill also carries the supplier onto the payment expense, so a payment
+lands on the supplier's account without anyone re-selecting them.
+
+**124e. Vendor permissions — DONE (v3.15.0).** Two new rights:
+`manage_vendors` and, separately, `manage_vendor_bank_details`. The split is the
+point — invoice-redirection fraud is defeated by the person who receives the
+"our bank has changed" letter not being the person who can act on it. Payment
+details are gated in the view AND hidden in the template, and `simple_history`
+on `VendorBankAccount` means an auditor can always recover the previous account
+number and who changed it. Pinned by `VendorBankControlTests`.
+
+---
+
+## 125. Portal pages failed on real data — FIXED (v3.15.1) — NEW
+
+**Found by walking the portal end to end on the seeded database, after the test
+suite had passed.** `portal_standing` returned 500 for any member with a dues
+schedule; `portal_household` and the household request form would have done the
+same for any dependant recorded by name only.
+
+**Root cause — worth internalising, because it is not obvious.** Django resolves
+filter *arguments* eagerly. `{{ a|default:b }}` raises `VariableDoesNotExist`
+when `b` cannot be resolved, **even when `a` is present and the default is never
+used**. A missing key in a plain `{{ }}` renders blank; the identical key inside
+a filter argument takes the page down. The templates referenced
+`d.period_label`, `d.label` and `d.cleared`, none of which
+`contributions.dues_schedule` produces — it returns `period`, `due`, `paid`,
+`outstanding`, `waived`, `policy_version`.
+
+**Why the tests passed.** `PortalPageRenderTests` renders every page for a
+newly-invited member with an empty record. A member with no contributions has no
+dues schedule, so the `{% for %}` body never executed and the broken expression
+was never evaluated. Green suite, dead page — the same shape as the portal
+invitation loop (#122) and the public application form (#121).
+
+**Fix.** Templates written against the dict the service actually returns, with
+`{% if %}` in place of eager-argument defaults where a related object may be
+null. `PortalPagesWithRealDataTests` covers a member WITH a policy, a schedule
+and a name-only dependant, and was confirmed to fail against the old templates
+before being accepted.
+
+### The pattern, three times now
+
+#121, #122 and #125 are one failure mode: **a suite that only exercises the
+empty case.** An empty record renders every page, satisfies every permission
+check and exercises almost no template logic. The fixture that finds real bugs
+is a populated one.
+
+**125a. Seeded smoke tests — DONE (v3.15.2).** `core/test_seeded_smoke.py` runs
+`seed_demo` and then asks for every page, asserting only that it does not fall
+over — which is the assertion the other suites were quietly failing to make.
+Three layers:
+
+* **275 no-argument pages** against seeded data;
+* **detail pages** for a real record of each major model, since the
+  null-relation hazard lives on rows and a row is what a detail page renders;
+* **the same pages again with optional relations blanked** (`approved_by`,
+  `member`, `payee`, `location`, `dependant`, …). This is the layer that
+  matters: null is not an edge case for those fields, it is the ordinary state
+  of an unapproved expense or an unmatched gift, and the seed populates them.
+
+**Result: no further instances found.** The 40-odd `|default:x.y.z` expressions
+across the templates are on relations that are either non-nullable or handled;
+the portal standing page was the outlier. So the grep was worth doing and the
+answer was reassuring — but the smoke test, not the grep, is what will keep it
+that way.
+
+**Known gap, stated so the file is not read as covering more than it does:**
+`portal_*` pages are excluded, because they need a signed-in portal member and
+the confinement middleware bounces an office login. They are covered by
+`PortalPagesWithRealDataTests` instead. The bug that prompted all of this was a
+portal page, so that companion suite is doing the real work for that module.
+
+**125b. Detail-page coverage is a hand-maintained list.** `DETAIL_PAGES` names
+nine URL/model pairs. A new detail page is not covered until someone adds it,
+and nothing complains. Deriving the list from the URL resolver (any route taking
+a single `<int:pk>`) would close that, at the cost of needing a model hint per
+route. *Priority: Low.*
+
+---
+
+## 126. Portal office screens were unreachable — FIXED (v3.16.0) — NEW
+
+**Reported by Edwin: "the portal menu is missing".** Correct. `portal_admin_queue`
+and `portal_admin_accounts` were built in v3.11.0, tested, and linked from no
+menu anywhere. For four releases the only way in was to type the URL.
+
+**This is the fourth instance of one failure mode** — working code no user can
+arrive at. #121 was a public form that redirected to login; #122 an invitation
+that dead-ended; #125 a page that rendered only on an empty database; this is a
+screen with no door. In every case the tests passed, because a test reverses a
+URL and requests it directly — which is precisely the step a real user cannot
+take.
+
+**Fix.** Both links added to the Benevolent menu, with a waiting-request count.
+`EveryBuiltScreenIsReachableTests` in `core/test_nav_audit.py` asserts they
+appear in the rendered sidebar.
+
+**126a. The guard is narrow.** It names the two screens rather than deriving
+"every built page is linked from somewhere", which would need a map of pages
+legitimately reached from a parent screen. Worth generalising, and not trivially.
+*Priority: Medium.*
+
+---
+
+## 127. Edwin's list of 24 July — partially delivered
+
+Items 1, 2, 3 and 6 are done (v3.16.0). **Items 4, 5 and 7 are not started** and
+are recorded here so they are not lost:
+
+**127a. Expense form — DONE (v3.17.0).** Five numbered sections, a two-column
+layout that uses the screen, and a sticky summary rail carrying fund, amount,
+payee, method, the plain-English consequence of saving, and the save button —
+so the action is never scrolled away from the figure it commits.
+
+**The find worth recording:** `vendor` had been rendering under "Other details"
+since v3.14.0. That group is a deliberate safety net (#74a) — a field in no
+allowlist still appears rather than vanishing — and it worked exactly as
+designed. But *landing* there is a symptom, and nothing was watching for it, so
+the supplier picker sat in the wrong place for two releases while every test
+passed. `test_the_supplier_field_is_not_buried_in_other_details` now asserts
+position, not just presence.
+
+**127a-i. The group allowlists use substring matching.** `{% if f.name in
+'amount date charge' %}` is Django's `in` against a *string*, so a field named
+`at` or `e c` would match by accident. It has not bitten yet and the fallback
+plus the union guard would catch the fallout, but it is a trap. Splitting on
+whitespace via a filter would make it exact. *Priority: Low.*
+
+**127a-ii. The recurring form still uses the plain Django rendering.** It now
+carries the same fields as the expense form but not the same sectioning, so the
+two screens no longer look alike. Worth applying the same grouping.
+*Priority: Medium.*
+
+**127b. Expense upload — DONE (v3.18.0).** Template and parser gained Supplier,
+Payee, Expenditure type and Budget item; the supplier register is a validated
+dropdown on the Lists sheet. Suppliers are matched on the register's own
+normalised key (`vendors.name_key`), so "Mwangi Hardware Ltd" in a sheet finds
+"MWANGI HARDWARE" in the register. An unmatched name **warns and imports without
+a supplier** rather than creating one — a typo in a spreadsheet must not add to
+the register. Budget items are matched within the row's own fund, since the same
+item name may exist in several budgets and charging spend to another fund's line
+would corrupt both.
+
+`ImportTemplateCoverageTests` walks `ExpenseForm().fields` and fails if any has
+no column, so the sheet cannot fall behind the form again.
+
+**127c. Campaigns — DONE (v3.19.0).** `campaign_detail` lists the uploaded sheet
+by group, with per-group reachability counts; `campaign_group_sms` composes and
+sends a templated message to one group.
+
+**The care here is deliberate and worth preserving.** Bulk SMS is the only action
+in this application that costs money on every press and cannot be recalled, so:
+
+* the confirmation screen is built from the *same* resolution the send performs
+  (`campaign_sms.preview`), so the number on the button cannot disagree with the
+  number of messages that leave — pinned by a test;
+* members without a usable phone are returned explicitly, never silently
+  dropped: "sent to 38 of 52" is what the sender needs to know;
+* it is treasurer-only, sitting with the role that answers for spending rather
+  than with general data entry;
+* groups sort numerically, so "Group 2" precedes "Group 10".
+
+**127c-i. Send history — DONE (v3.19.1).** New `giving.CampaignMessage` records
+each bulk send: campaign, group, the composed body, sent/failed/skipped counts,
+who and when.
+
+**Why a second model beside `SmsLog`.** `SmsLog` answers "what did this number
+receive"; it stores four hundred unrelated rows with no idea which campaign,
+group or press of the button produced them. `CampaignMessage` answers "have we
+told this group yet". Neither answers the other, and deriving the second from
+the first would mean matching on rendered message text that differs per member
+by design.
+
+Duplicates are **warned about, not blocked** — a church may legitimately repeat
+a reminder, so the decision stays with the treasurer and only the information is
+added. Comparison is on the composed template, not the rendered messages.
+Pinned by `CampaignSendHistoryTests`.
+
+**127c-ii. Interrupted sends — PARTLY DONE (v3.19.2).** The send is still a
+synchronous loop inside the request, but its record is now opened *before* the
+first message and checkpointed every 25, with a `state` of RUNNING / DONE /
+INTERRUPTED and an `intended_count`.
+
+**The integrity problem is fixed; the scale problem is not.** Writing the record
+only at the end meant a timeout mid-send erased all knowledge of the messages
+that had already gone — the worst possible outcome, since the treasurer could
+neither confirm nor safely repeat. That is closed, and an interrupted send is now
+shown as such on the campaign page (a bare "already sent" note would have
+discouraged the one resend that was warranted).
+
+**Still outstanding: a genuinely large group will still time out.** The remaining
+fix is to move sending out of the request entirely, following the pattern the
+benevolent module already uses — a queued row processed by a management command
+under cron — rather than adding a task-queue dependency. `CampaignMessage` is
+now shaped for it: it already carries state and counts, so a worker would resume
+rather than restart. Also unaddressed: no rate limit against the provider.
+*Priority: Medium.*
+
+---
+
+## 129. Batch expenses may share one transaction charge — NEW (v3.19.0)
+
+Asked for by Edwin: if a batch is settled with a single payment, the fee is one
+fee. `record_batch(shared_charge=...)` records it once as a bank-charge expense
+on the batch's fund.
+
+**`charge_for` is deliberately left null on it.** That field means "the fee
+levied on *this* expense", and a batch fee belongs to no single line. Attaching
+it to the first line would misstate that line and — because `ExpenseUpdate`
+replaces an expense's linked charges wholesale — would expose the batch fee to
+deletion when that line's own charge was edited. The description and the shared
+voucher number tie it to the batch instead. Pinned by `BatchSharedChargeTests`.
+
+**129a. A batch charge cannot be edited as a batch.** It is an ordinary expense
+afterwards, so correcting it means editing that row directly; no screen
+understands that it covers a group. *Priority: Low.*
+
+---
+
+## 128. Batch expense entry — NEW (v3.18.0)
+
+**Asked for by Edwin:** several expenses sharing a claimant, fund and date, where
+only the narration, amount and transaction charge change. `/expenses/batch/`
+enters the shared facts once and takes one line per receipt.
+
+**The refactor it forced, which was overdue.** Recording an expense — what status
+it starts in, and what to do with a transaction charge — existed in three copies
+(the create form, the edit view, the import), and they had drifted:
+
+* the charge row got `approved_by` only when auto-approving in one copy;
+* one set `paid_date` on it and another did not;
+* one omitted `payee` from the charge row entirely.
+
+None of that is visible in a test asserting on the parent expense; it surfaces
+months later when a bank reconciliation cannot match a charge that has no payee.
+`cashbook/services/expenses.py` now owns `record()`, `record_batch()` and
+`_record_charge()`, and every entry path calls them.
+
+**128a. `ExpenseUpdate` still composes its own charge description** and overwrites
+the one the service produced, so the edit path retains a small piece of charge
+logic. Worth folding in as a `description=` argument. *Priority: Low.*
+
+**128b. Batch entry has no draft or resume.** A long stack typed into the browser
+is lost if the page is closed before saving. *Priority: Low.*
+
+---
+
+## 130. Multi-line `{# #}` comments rendered as visible text — FIXED (v3.19.3) — NEW
+
+**Found by Edwin's full regression run**, in `reports.test_board_pack_fixes_v241`
+— a guard added in v2.4.1 for exactly this, which I did not run.
+
+Django's `{# #}` is a **single-line** construct. Spanning lines does not comment
+anything out: the engine never recognises the block as a comment, and it renders
+in full as visible text. I introduced six of them across five templates —
+`base.html` (twice, so every page in the application), the expense form, the
+petty cash register, and two member portal screens. All converted to
+`{% comment %}` blocks.
+
+**Why none of my own checks caught it.** `core.test_seeded_smoke` renders 275
+pages and asserts they do not fall over. A page covered in stray comment text
+returns a perfectly healthy 200. **Status codes tell you the view worked; they
+say nothing about what the reader is looking at.** The same blind spot would
+hide a broken `{% if %}`, an unclosed tag, or any other markup that degrades
+output without raising.
+
+Closed by `NoTemplateSyntaxLeaksIntoPagesTests`, which reads the rendered HTML of
+every no-argument page and fails on any surviving `{#`, `{%` or `{{`. Confirmed
+to catch a deliberately reintroduced instance before being accepted. Restricted
+to `text/html` responses — the first run flagged three spreadsheet downloads
+whose compressed bytes happened to contain `{%`.
+
+**130a. Detail and portal leak coverage — DONE (v3.19.4).**
+`NoTemplateSyntaxLeaksIntoPagesTests` gained a detail-page pass over
+`DETAIL_PAGES`, and `benevolent.PortalPagesDoNotLeakTemplateMarkupTests` covers
+the portal — which the seeded smoke suite cannot reach, since those pages need a
+signed-in member and the confinement middleware turns an office login away.
+
+**Two things surfaced while proving the new guard actually works, both worth
+keeping.**
+
+*First:* a multi-line `{# #}` placed **outside any `{% block %}`** in a template
+that `{% extends %}` another is genuinely inert — Django discards content outside
+blocks, so it never renders however malformed it is. Of the six comments fixed in
+v3.19.3, `portal/_base.html` was in that position and was harmless; the other
+five did render. Worth knowing before treating every instance of this pattern as
+an emergency.
+
+*Second, and more important:* the first version of the portal leak test inherited
+the **empty-record** fixture, and it passed against a deliberately reintroduced
+leak — because the comment in `standing.html` sits inside `{% for %}` over the
+dues schedule, and a member with no contributions has no schedule, so the loop
+body never executed. A leak check that renders no loops checks almost nothing.
+
+That is the same failure as #121, #122 and #125 — **and it happened while writing
+the guard against it.** The lesson is not "empty fixtures miss bugs", which was
+already written down; it is that the habit reasserts itself even when the lesson
+is the thing being acted on. The only defence that worked was deliberately
+breaking the code and confirming the test noticed. **Every guard test in this
+project should be verified that way before it is trusted.**
+
+---
+
+## 131. `vendors` was in no CI shard — FIXED (v3.19.3) — NEW
+
+`core.test_ci_coverage` caught that the `vendors` app, added in v3.14.0 with 38
+tests, appeared in no shard of `.github/workflows/ci.yml` — so none of those
+tests would ever have run in CI. Added to the `the-rest` shard.
+
+A reminder that adding an app is not finished when its tests pass locally.
+
+**On the `ci.yml` not-found errors in the same run:** the file is present in the
+repository and is included in the packaged archive (verified). Those four errors
+indicate the working copy the suite ran against was missing `.github/`, most
+likely from an extraction that dropped dot-directories rather than anything in
+the code.
