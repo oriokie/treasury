@@ -7,19 +7,28 @@
 {% endblock %}
 {% block portal_content %}
 <form method="get" class="filter-bar no-print u-mb">
-  <select class="field" name="year"><option value="">All years</option>
-    {% for y in years %}<option value="{{ y }}" {% if year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>{% endfor %}
-  </select>
-  <select class="field" name="scheme"><option value="">All schemes</option>
-    {% for m in memberships %}<option value="{{ m.scheme_id }}" {% if scheme_id == m.scheme_id|stringformat:"s" %}selected{% endif %}>{{ m.scheme.name }}</option>{% endfor %}
-  </select>
+  <div class="fb-field"><label for="f-year">Year</label>
+    <select class="field" name="year" id="f-year"><option value="">All years</option>
+      {% for y in years %}<option value="{{ y }}" {% if year == y|stringformat:"s" %}selected{% endif %}>{{ y }}</option>{% endfor %}
+    </select></div>
+  <div class="fb-field"><label for="f-scheme">Scheme</label>
+    <select class="field" name="scheme" id="f-scheme"><option value="">All schemes</option>
+      {% for m in memberships %}<option value="{{ m.scheme_id }}" {% if scheme_id == m.scheme_id|stringformat:"s" %}selected{% endif %}>{{ m.scheme.name }}</option>{% endfor %}
+    </select></div>
   <button class="btn btn-sm">Apply</button>
+  <div class="fb-spacer"></div>
 </form>
 
-<div class="pt-cards u-mb">
+<div class="pt-cards">
   <div class="stat accent"><div class="lbl">Total shown</div>
     <div class="val mono">{{ CURRENCY }} {{ total|money }}</div>
-    <div class="foot">{{ count }} contribution{{ count|pluralize }}</div></div>
+    <div class="foot">{{ year|default:"All years" }}{% if scheme_id %} · this scheme{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Contributions</div>
+    <div class="val mono">{{ count }}</div>
+    <div class="foot">Receipt available for each</div></div>
+  <div class="stat brass"><div class="lbl">Most recent</div>
+    <div class="val mono">{% if last_on %}{{ last_on|date:"d M Y" }}{% else %}—{% endif %}</div>
+    <div class="foot">{% if last_on %}Last payment recorded{% else %}Nothing recorded yet{% endif %}</div></div>
 </div>
 
 <div class="panel">
@@ -34,10 +43,13 @@
     <td data-label="What for">{{ c.get_kind_display }}{% if c.case %} · case {{ c.case.number }}{% endif %}</td>
     <td data-label="Period">{{ c.period_label|default:"—" }}</td>
     <td data-label="Amount" class="num mono">{{ CURRENCY }} {{ c.amount|money }}</td>
-    <td data-label="" class="no-print"><a class="link" href="{% url 'portal_receipt' c.pk %}">Receipt</a></td>
+    <td data-label="" class="no-print u-right"><a class="btn btn-xs btn-ghost" href="{% url 'portal_receipt' c.pk %}">Receipt</a></td>
   </tr>
   {% empty %}
-  <tr><td colspan="6"><div class="pt-empty">No contributions recorded for this selection.</div></td></tr>
+  <tr><td colspan="6"><div class="pt-empty">
+    <div class="big">Nothing recorded for this selection.</div>
+    <div class="sm">If you have given and it is not here, tell the office — do not pay again.</div>
+  </div></td></tr>
   {% endfor %}
   </tbody>
 </table>

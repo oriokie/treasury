@@ -30,6 +30,7 @@ urlpatterns = [
     path("expenses/recurring/<int:pk>/edit/", views.RecurringUpdate.as_view(), name="recurring_edit"),
     path("expenses/recurring/<int:pk>/toggle/", views.RecurringToggle.as_view(), name="recurring_toggle"),
     path("expenses/recurring/<int:pk>/delete/", views.RecurringDelete.as_view(), name="recurring_delete"),
+    path("expenses/recurring/<int:pk>/pay-early/", views.RecurringPayEarly.as_view(), name="recurring_pay_early"),
     path("expenses/recurring/generate/", views.RecurringGenerate.as_view(), name="recurring_generate"),
     path("petty-cash/", views.PettyCashView.as_view(), name="petty_cash"),
     path("petty-cash/top-up/", views.PettyCashTopUp.as_view(), name="petty_cash_topup"),

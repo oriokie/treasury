@@ -4,6 +4,24 @@ from django.utils.text import slugify
 from simple_history.models import HistoricalRecords
 
 
+class ParentAwareDepartmentManager(models.Manager):
+    """Always load a department's parent alongside it.
+
+    `Department.__str__` prints "Parent / Child" for a sub-account, so rendering
+    a department triggers a fetch of its parent. That is invisible until you
+    render a list of them: a fund dropdown calls str() once per option, so a
+    register with sub-accounts cost one query per option, on every page carrying
+    a fund selector. Selecting the parent here makes the whole app's forms
+    correct at once instead of relying on each queryset to remember.
+
+    The cost is a LEFT JOIN on a table with a few dozen rows. `.values()`,
+    `.update()` and aggregates ignore select_related, so nothing else changes.
+    """
+
+    def get_queryset(self):
+        return super().get_queryset().select_related("parent")
+
+
 class Department(models.Model):
     """A fund the church allocates money to.
 
@@ -112,6 +130,15 @@ class Department(models.Model):
 
     class Meta:
         ordering = ["fund_type", "name"]
+
+    # `__str__` needs the parent's name, so every place that renders a
+    # Department — above all the fund dropdowns, which call str() once per
+    # option — was paying a query per sub-account. Selecting the parent by
+    # default turns that into one small self-join on a table of a few dozen
+    # rows, and it fixes every such form at once rather than requiring each
+    # queryset to remember. Callers that add their own select_related("parent")
+    # are unaffected.
+    objects = ParentAwareDepartmentManager()
 
     def __str__(self):
         if self.parent_id:

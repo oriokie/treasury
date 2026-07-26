@@ -98,6 +98,10 @@ class Expense(models.Model):
     recurring = models.ForeignKey(
         "cashbook.RecurringExpense", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="generated", help_text="If set: the recurring schedule that created this expense.")
+    recurring_due_date = models.DateField(
+        null=True, blank=True, db_index=True,
+        help_text="Which scheduled instalment this row settles. Normally the "
+                  "same as the date; different when the payment was made early.")
     payable = models.ForeignKey(
         "cashbook.Payable", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="payments",

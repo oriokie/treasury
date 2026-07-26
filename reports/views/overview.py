@@ -111,8 +111,14 @@ class ExpenseReportView(PeriodMixin, TemplateView):
                               .annotate(total=Sum("amount")).order_by("-total"))
         ctx["by_claimant"] = (base.exclude(claimant="").values("claimant")
                               .annotate(total=Sum("amount")).order_by("-total"))
-        ctx["outstanding"] = Expense.objects.filter(
-            status__in=[Expense.Status.PENDING, Expense.Status.APPROVED]).order_by("date")
+        # The template prints e.department.name for every row, so without
+        # select_related each row costs its own query — 41 of this page's 61
+        # queries were this one FK being fetched over and over.
+        ctx["outstanding"] = (Expense.objects
+                              .filter(status__in=[Expense.Status.PENDING,
+                                                  Expense.Status.APPROVED])
+                              .select_related("department")
+                              .order_by("date"))
         ctx["cat_labels"] = dict(Expense.Category.choices)
         return ctx
 

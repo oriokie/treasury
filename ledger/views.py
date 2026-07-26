@@ -154,10 +154,19 @@ class ReconciliationReportView(ReadAccessMixin, View):
         from departments.models import Department
         from reports.services import balances
         eng = {r["department"].id: r for r in balances.department_summary(None, None, consolidated=False)}
+        funds = list(Department.objects.filter(active=True).order_by("is_trust", "name"))
+        # One grouped aggregate for every fund, not a query pair per fund.
+        # `fund_balances_from_ledger_bulk` was written for this page — its
+        # docstring names it — but the page went on calling the single-fund
+        # version in the loop below, so the cost grew with the fund list: four
+        # queries per fund, 258 on a 59-fund register. The health check next
+        # door has always used the bulk helper and stays flat, which is what
+        # made the difference visible.
+        gl_balances = posting.fund_balances_from_ledger_bulk([d.id for d in funds])
         rows, diffs = [], Decimal(0)
-        for d in Department.objects.filter(active=True).order_by("is_trust", "name"):
+        for d in funds:
             engine_bal = eng.get(d.id, {}).get("closing", Decimal(0))
-            gl_bal = posting.fund_balance_from_ledger(d)
+            gl_bal = gl_balances.get(d.id, Decimal(0))
             diff = engine_bal - gl_bal
             diffs += abs(diff)
             if engine_bal == 0 and gl_bal == 0:

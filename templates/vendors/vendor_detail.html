@@ -15,7 +15,7 @@
 </div>
 
 {% if duplicates %}
-<div class="panel u-mb" style="border-left:3px solid var(--brass)">
+<div class="panel panel-brass u-mb">
   <b>This may be the same supplier as:</b>
   {% for d in duplicates %}<a class="link" href="{% url 'vendor_detail' d.pk %}">{{ d.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
   {% if is_treasurer %}

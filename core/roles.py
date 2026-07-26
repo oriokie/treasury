@@ -39,7 +39,12 @@ def user_roles(user):
         return set()
     if user.is_superuser:
         return set([TREASURER, ASSISTANT, AUDITOR])  # admin is staff, not a leader
-    return set(user.groups.values_list("name", flat=True))
+    # `user.groups.all()` rather than `.values_list("name", flat=True)`: a
+    # values_list issues its own query every time and ignores a prefetch cache,
+    # so any caller listing users had to pay one query per user no matter how
+    # carefully it built its queryset. Reading `.all()` uses the cache when the
+    # caller has prefetched, and costs the same single query when it has not.
+    return {g.name for g in user.groups.all()}
 
 
 def is_treasurer(user):

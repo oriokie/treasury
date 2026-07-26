@@ -1,3 +1,362 @@
+# v3.22.0 — Approving a batch, counting the tin, and paying ahead
+
+Three faults reported together. Two turned out to be the same shape: a figure or
+an action that was right in one place and wrong in another, with nothing
+comparing the two.
+
+## Approving a remittance batch appeared to hang
+
+`repost_to_ledger` took the expenses that had changed and ignored them. It called
+`posting.rebuild()` instead — which deletes every non-manual journal entry in the
+database and re-posts every transaction, expense, refund, transfer, asset
+acquisition, disposal and depreciation run the church has ever recorded. To
+approve one batch.
+
+On the seeded demo, with 214 transactions, that was 3,349 queries and a second
+and a half. On a real register with years behind it, it is minutes — and it runs
+twice in the workflow, once on approve and again on remit. Worse, the cost grew
+every year the church kept using the system, so a page that was merely slow at
+first eventually stopped answering at all.
+
+Only the batch's own expenses are reposted now. `post_expense` begins by
+replacing that expense's entries, so it is idempotent and also withdraws them
+when a status moves back out of approved or paid; reposting the affected rows is
+therefore complete rather than a partial patch. Approving a three-line batch went
+from 3,349 queries to 70, and a test compares the resulting ledger line by line
+against what a full rebuild produces — same sources, accounts, debits, credits,
+dates and funds — because a faster route to the books is only acceptable if it
+arrives at the same books. Called with no argument the function still rebuilds
+everything, so anything that genuinely wants that keeps it.
+
+## The petty cash register disagreed with the float card
+
+The closing balance and the "float on hand today" card are meant to be the same
+number and were worked out two different ways. The card's helper counts cash
+handed back into the tin when an expense is refunded. The register's list of
+movements never showed those refunds at all — while its *opening* balance came
+from that same helper. So a refund before the period was counted and a refund
+inside it silently vanished, and the two figures differed by exactly the refunds
+falling in the period.
+
+Refunds returned to petty cash are now listed as what they are: money going back
+into the box, on the day it went back, against the fund it came from. The two
+figures agree by construction, and — the part that matters more — the register
+adds up on its face. Somebody counting the tin can follow it. A refund that was
+banked rather than returned to the box is still left out, because it never
+touched the tin.
+
+## A scheduled expense can be paid before it falls due
+
+Churches pay ahead: the payee is travelling, the office closes over a holiday, a
+quarter's rent goes out on one cheque. The schedule had no way to do it, so it
+was done by hand — and generation recognised an existing entry by its *date*,
+which a hand-written early payment does not match. The schedule then raised the
+same charge again on the due date. A five thousand shilling stipend was recorded
+twice, ten thousand against the fund, with nothing to flag it.
+
+The idea that was missing is *which instalment a payment settles*, as distinct
+from *when the money left*. Both are now recorded. The expense is dated the day
+the cash goes out, because fund balances are kept on a cash basis and anything
+else misstates the fund for the weeks in between; alongside it sits the
+instalment being settled, which is what generation now checks. Pay January's
+stipend in December and December is when the fund is charged — and January comes
+round with nothing owing.
+
+The schedules page offers the next three unsettled instalments with a **Pay
+early** button. An instalment already settled drops off the list, so the same
+period cannot be paid twice, and one that never was a due date, or falls after
+the schedule ends, or lands in a closed period, is refused. Paying early does not
+lower the bar for approval: an amount that needs a treasurer's signature on its
+due date still needs it a fortnight sooner.
+
+Existing generated expenses are backfilled to settle the date they were created
+on, which is what they have always meant, so the new check is identical in effect
+for everything already recorded.
+
+## Files
+
+* `reports/services/remittance.py` — repost the batch, not the whole ledger
+* `cashbook/views.py` — refunds in the petty cash register; the pay-early action;
+  upcoming instalments on the schedules page
+* `cashbook/models.py` — `Expense.recurring_due_date`
+* `cashbook/services/recurring.py` — `pay_early`, `upcoming_instalments`,
+  generation keyed on the instalment
+* `cashbook/migrations/0043_expense_recurring_due_date.py` — field and backfill
+* `cashbook/urls.py`, `templates/cashbook/recurring_list.html`
+* `cashbook/test_early_and_registers.py` — new, 19 tests
+
+One migration, additive, with a backfill. No accounting figure changes for
+anything already recorded: the ledger after a batch approval is proved identical
+to a full rebuild, the petty cash float was already right on the card and is now
+matched by the register, and existing recurring expenses keep the meaning they
+had.
+
+## Tests
+
+cashbook 489 including the 19 new, reports 470 — all passing.
+
+# v3.21.1 — The envelope list stops re-reading its own postings
+
+A follow-on to the v3.21.0 audit, closing the one item on its own list that was
+worth closing.
+
+The weekly envelope list strikes a receipt through when every ledger entry
+behind it has been reversed. Deciding that means reading each line's
+transaction, and while the view prefetched each line's *department* it did not
+prefetch its *transaction* — so drawing the list cost a query for every line
+that had posted. Thirty queries down to twenty-one on the seeded register, and
+the cost no longer follows the number of envelopes in the month.
+
+The other three screens listed in recommendation #135 were re-probed and left
+alone: each turns out to be a single bounded fetch rather than a per-row
+pattern, so changing them would add risk without removing work. The
+recommendation now records that, so the next person does not re-investigate
+what has already been measured.
+
+## Files
+
+* `envelopes/views.py` — prefetch `lines__transaction`, select `bank_transaction`
+* `docs/recommendations.md` — #135 updated
+
+No migrations. No accounting change: this alters how the page fetches what it
+already displayed, not what it displays.
+
+## Tests
+
+envelopes 171, benevolent 697 (the whole app, including the two modules
+outstanding at v3.21.0), and the 16 query-growth guards — all passing.
+
+# v3.21.0 — Pages stop paying a query for every fund
+
+A performance audit, measured rather than guessed. Every one of the app's 951
+URL patterns was swept, query counts and timings taken on the 189 pages that
+answer a GET, and then the pages that looked expensive were measured a second
+time against a larger register. That second step is the one that matters: a
+count is only evidence of a fault if it *grows*. Three axes were tested — number
+of funds, volume of transactions and expenses, and number of user accounts.
+
+Nothing in the app scales with transaction volume. Adding three hundred
+transactions and a hundred and fifty expenses moved no page by a single query,
+which says the list views' pagination and `select_related` were already right.
+What did scale was the fund register, and it scaled badly.
+
+| Page | Before | After |
+|---|---|---|
+| General ledger reconciliation | 258 | 33 |
+| Envelope template download | 108 | 12 |
+| Envelope ledger | 69 | 19 |
+| Settings | 66 | 23 |
+| Expenses report | 61 | 19 |
+| Allocation rules | 28 | 19 |
+
+## The reconciliation report had a fix waiting for it
+
+`/ledger/reconciliation/` called `fund_balance_from_ledger(d)` once per fund —
+four queries each, 258 on a register of fifty-nine funds, and four more for
+every fund a church adds. A bulk version, `fund_balances_from_ledger_bulk`,
+already existed and does the identical computation in a small constant number of
+grouped aggregates. Its own docstring names the reconciliation report as its
+caller. Only the health check ever adopted it, which is why `/ledger/health/`
+sat flat at 49 queries while the page next door, proving the same numbers, cost
+five times as much. The helper was tested; nothing tested it *through the view*.
+
+## A fund dropdown was costing a query per option
+
+`Department.__str__` prints "Parent / Child" for a sub-account, so rendering a
+department fetches its parent. Harmless in isolation and invisible in review —
+until a form renders a fund selector, which calls `str()` once per option. Every
+page in the app carrying a fund dropdown was paying a query per sub-account.
+
+Fixed once, at the model's default manager, which now loads the parent with the
+department. One small self-join on a table of a few dozen rows replaces the
+per-option queries, and it corrects every form at once rather than leaving each
+queryset to remember. No migration; `.values()`, `.update()` and aggregates
+ignore `select_related`, so nothing else changes.
+
+## Smaller ones
+
+The envelope screens called `subgroups_for()` inside a loop over every fund. The
+ordering rule has been lifted into `_shape_subgroups`, so the single-fund path
+and the whole-register path share one definition and cannot disagree about what
+a subgroup list looks like; the catalogue now fetches every fund's children in
+one grouped query. The import screens were also building that catalogue twice in
+the same request.
+
+The settings page had three separate faults: a reverse one-to-one fetched per
+user, the user's groups fetched per user, and the settings form built twice —
+each rebuild running every fund selector's queryset again. The group fault
+belonged in `core.roles.user_roles`, not in the page: it read groups with
+`values_list`, which issues its own query and **ignores a prefetch cache**, so
+no caller could have optimised it from the outside however carefully it built
+its queryset. It now reads `user.groups.all()`, which uses the cache when the
+caller has prefetched and costs the same single query when it has not.
+
+The expenses report handed the template a queryset of outstanding vouchers with
+no `select_related`, and the template printed each one's fund.
+
+## Guards
+
+`core.test_query_growth` measures a page, adds twenty funds with sub-accounts,
+and requires the query count not to move. This is deliberately not a ceiling: a
+ceiling set against a small fixture passes happily while a page queries per row,
+which is exactly how the reconciliation report survived. Flatness is the property
+that was actually violated, so flatness is what is asserted.
+
+It also pins the root causes directly rather than only their symptoms — that
+rendering the whole fund register costs one query, and that reading roles for
+prefetched users costs none — because those faults lived in a model and a
+helper, and a guard sitting on one page would not have found them.
+
+Speed must not change the answer, so the same file checks that the bulk ledger
+balance still agrees with the single-fund computation for every fund, that both
+subgroup paths shape a fund identically, and that a sub-account still reads
+"Parent / Child".
+
+## Files
+
+* `ledger/views.py` — reconciliation uses the bulk helper
+* `departments/models.py` — `ParentAwareDepartmentManager`
+* `core/roles.py` — `user_roles` honours a prefetch cache
+* `core/views.py` — settings prefetches roles and profiles, builds its form once
+* `envelopes/services/posting.py` — `_shape_subgroups`, bulk child fetch
+* `envelopes/views.py` — catalogue built once per request
+* `reports/views/overview.py` — outstanding vouchers select their fund
+* `core/test_query_growth.py` — new, 16 tests
+* `docs/recommendations.md` — #134, #135
+
+No migrations. No accounting change: every figure, metric and ledger posting is
+untouched, and the reconciliation report's numbers are checked against the
+original computation fund by fund.
+
+## Tests
+
+Targeted regression, all passing: departments/ledger/envelopes 275, core 478 +
+16 new, reports 425, giving 288, cashbook 470, accounts/members 199,
+assets/vendors 164, loans/pledges 101, statements 176.
+
+# v3.20.0 — The member portal gets the styling it was always asking for
+
+The portal was built out of two classes, `.panel` and `.table`, that had never
+been defined in the stylesheet. Twenty-seven templates asked for `.panel` and
+eleven for `.table`, and every one of them was rendering as a bare `<div>` and an
+unstyled HTML table: no surface, no border, no radius, no header treatment, no
+zebra striping, no right-aligned figures. This was not a matter of taste. The
+portal had been written against a component vocabulary that did not exist, and
+because a missing CSS class is silent — the page loads, the markup is valid — it
+had gone unnoticed through every render test the portal has.
+
+Both are now defined once. `.panel` is a real component built from the same
+tokens as `.card`, with `panel-forest`, `panel-brass`, `panel-amber` and
+`panel-danger` accent rails replacing the inline `border-left` styles that had
+been copied around. `.table` is unified with `table.ledger` by rewriting all
+fifty-three ledger rules to `:is(.ledger,.table)` — one definition under two
+names, so the two cannot drift apart the first time either is touched. The same
+change lifts the supplier register and the benevolent screens, which were built
+from the same vocabulary.
+
+Two further classes were being used and never defined: `.compact`, written on
+ninety-two tables across the app and therefore inert on all of them, and
+`.field-xs`. Both are now defined, `.compact` matched to the figures the global
+density preference already uses so a compact table and a compact site agree.
+
+On top of that the portal pages get labelled filters, a three-figure summary on
+the contributions page answering the question members actually ask first — did my
+last payment land — and empty states that read as a normal condition rather than
+a fault, because a member with no cases is a member nothing bad has happened to.
+Every portal page also sets its own browser title; they had all shared one, so a
+member with three tabs open could not tell them apart.
+
+## The standing page returned 500 for anyone who could not yet claim
+
+`/portal/standing/` rendered `{{ f.message|default:f.name }}` over an eligibility
+check, whose fields are `code`, `label`, `passed`, `detail` and `blocking`.
+Neither `message` nor `name` exists. Because `f.name` sits in a filter argument —
+and a missing variable used as a filter argument raises in Django rather than
+rendering blank — the page failed outright.
+
+This is the same fault, in the loop immediately below the one that was fixed in
+v3.19.x, and it survived for the reason recorded there: the line only runs for a
+member who is *ineligible*, inside `{% for f in b.result.blocking_failures %}`.
+Every fixture had members in good standing. Of the nine portal accounts in the
+seeded demo, eight rendered perfectly and one — a reinstated member who had not
+served the waiting period — crashed. The page now shows the check's own sentence
+explaining what is in the way, which is what a member needs to read.
+
+## A supplier can be chosen when a bill is entered
+
+`PayableForm` has always defined `supplier` as a selector over the vendor
+register. The payables page never rendered it, putting out only the free-text
+"vendor" field. So every bill entered there was saved with no supplier — which is
+exactly what the "N open bills are not linked to a supplier" warning at the top
+of that same page counts. The page was generating the condition it complained
+about, and no amount of clearing the backlog could have fixed it. The supplier's
+payment terms, which set the due date, could not apply either.
+
+The selector is now rendered first, on a new `.entry-grid` shared by the
+payables, accruals and prepayments forms, with the invoice name back-filled from
+the supplier and the due date taken from its terms. One-off purchases from
+unregistered traders are still accepted; a bill owed to nobody is still refused.
+The three summary figures on that page had been using `kpi-label` and `kpi-val`,
+which are defined nowhere, so they rendered as plain body text inside otherwise
+styled cards; they now use the classes `.stat` actually styles. The same defect
+is fixed on the petty cash and budget board screens.
+
+## Guards
+
+Three suites, each verified by reintroducing the defect and confirming it fails.
+
+`benevolent.test_portal_render_contract` renders every portal page for a member
+who has a genuine blocking failure, and does it twice: once asserting a plain
+200, once under a recording `string_if_invalid` sentinel asserting that no
+template variable is left unresolved. Both halves are needed and neither is
+sufficient. The 200 check is the only one that catches the raising kind, and it
+needs a fixture that reaches the loop. The sentinel is the only one that catches
+the *silent* kind — `{{ f.message }}` alone renders blank, which is how a wrong
+attribute name survives review until the day it lands in a filter argument. And
+the sentinel cannot replace the 200 check, because with a `%s` sentinel installed
+Django returns early at the invalid variable and never resolves the filter's
+arguments: a sentinel-only suite would have passed against this very bug.
+
+`core.test_css_contract` compares the classes templates use against the classes
+anything defines, following `{% extends %}` and `{% include %}` chains so
+inherited styles are not counted as missing. It fails on any class used in three
+or more templates with no definition — a single-use name is often a legitimate
+JavaScript hook, but a name used across several templates with nothing behind it
+is a shared vocabulary with a hole in it. Nine such classes already exist and are
+listed in `KNOWN_UNDEFINED` as a ratchet: the list may shrink and must never
+grow. They are written up as recommendation #132.
+
+`cashbook.test_payables_supplier` tests the behaviour rather than the markup —
+that a bill entered through the page arrives on the supplier's account with the
+terms applied.
+
+## Files
+
+* `static/css/app.css` — `.panel` and its accent rails, `.compact`, `.field-xs`,
+  `.entry-grid`; all fifty-three `.ledger` selectors rewritten to
+  `:is(.ledger,.table)`
+* `templates/benevolent/portal/` — `_base.html`, `standing.html`,
+  `contributions.html`, `statement.html`, `household.html`, `cases.html`,
+  `requests.html`, `documents.html`, `notifications.html`
+* `benevolent/views_portal.py` — `portal_title` per view; most recent
+  contribution date for the contributions summary
+* `templates/cashbook/accruals.html` — supplier selector, entry grid, stat classes
+* `templates/cashbook/petty_cash.html`, `templates/reports/budget_board.html` —
+  stat classes
+* `templates/vendors/`, `templates/giving/campaign_sms_confirm.html` — named
+  accent classes in place of inline styles
+* `benevolent/test_portal_render_contract.py`, `core/test_css_contract.py`,
+  `cashbook/test_payables_supplier.py` — new
+* `docs/recommendations.md` — #132, #133
+
+No migrations. No accounting change: no figure, metric or ledger posting is
+touched by this release.
+
+## Tests
+
+Targeted regression, all passing: cashbook 470, core 478, reports 425,
+benevolent portal suites 58, vendors 38, and the 19 new tests above.
+
 # v3.19.4 — The check for stray text now covers the pages it was missing
 
 The check added in v3.19.3 read every page that can be opened without picking a

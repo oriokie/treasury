@@ -15,7 +15,7 @@
     <td data-label="Approved" class="num mono">{% if c.approved_amount %}{{ CURRENCY }} {{ c.approved_amount|money }}{% else %}—{% endif %}</td>
     <td data-label="Paid" class="num mono">{% if c.paid_total %}{{ CURRENCY }} {{ c.paid_total|money }}{% else %}—{% endif %}</td></tr>
   {% empty %}
-  <tr><td colspan="6"><div class="pt-empty">You have no cases. That is good news.</div></td></tr>
+  <tr><td colspan="6"><div class="pt-empty"><div class="big">You have no cases.</div><div class="sm">That is good news.</div></div></td></tr>
   {% endfor %}
   </tbody>
 </table>

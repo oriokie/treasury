@@ -22,7 +22,7 @@
       {% if n.status == 'FAILED' %}<span class="pill pill-red">Not delivered</span>{% endif %}</span>
     {% if n.subject %}<b>{{ n.subject }}</b>{% endif %}
     <span>{{ n.body|linebreaksbr }}</span></div>
-  {% empty %}<div class="pt-empty">Nothing has been sent to you yet.</div>{% endfor %}
+  {% empty %}<div class="pt-empty"><div class="big">Nothing has been sent to you yet.</div><div class="sm">Messages about your scheme will appear here.</div></div>{% endfor %}
 </div>
 
 {% if page.has_other_pages %}

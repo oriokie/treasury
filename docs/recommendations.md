@@ -1816,3 +1816,119 @@ repository and is included in the packaged archive (verified). Those four errors
 indicate the working copy the suite ran against was missing `.github/`, most
 likely from an extraction that dropped dot-directories rather than anything in
 the code.
+
+---
+
+## 132. Nine shared CSS classes are still used but never defined — OPEN — NEW
+
+`core.test_css_contract` was added in v3.20.0 after `.panel` and `.table` were
+found to be used across 38 templates with no definition anywhere. The same audit
+finds nine more classes used in three or more templates that nothing defines, so
+every screen using them renders that element unstyled and nothing complains:
+
+| class | templates | examples |
+|---|---|---|
+| `ph-sub` | 8 | `cashbook/petty_cash.html`, `reports/board_report.html`, `reports/cash_flows.html` |
+| `u-sm` | 5 | `cashbook/payment_register.html`, `intelligence/workspace.html` |
+| `btn-link` | 4 | `intelligence/workspace.html`, `reports/designer_edit.html` |
+| `btn-primary` | 4 | `cashbook/fund_budget.html`, `elder_dashboard.html` |
+| `form-check` | 4 | `cashbook/advance_form.html`, `cashbook/expense_detail.html` |
+| `callout` | 3 | `reports/dev_groups.html`, `reports/reconciliation.html` |
+| `field-label` | 3 | `accounts/profile_form.html`, `giving/campaign_list.html` |
+| `head-actions` | 3 | `assets/board.html`, `reports/collections_detail.html` |
+| `report-table` | 3 | `reports/changes_in_net_assets.html`, `reports/collections_summary.html` |
+
+They are held in `KNOWN_UNDEFINED` in that test as a ratchet: the list may shrink
+and must never grow. Each needs deciding individually — some are near-misses for
+a class that already exists and does the job (`btn-primary` for `.btn`,
+`field-label` for the `.form-row label` rule, `report-table` for `.ledger`),
+which should be corrected in the template rather than given a second definition.
+Others (`ph-sub`, `callout`, `head-actions`) look like genuine components that
+were never written and should be defined in `app.css`.
+
+**The general lesson.** A missing CSS class is silent by construction: the page
+loads, the markup is valid, and the only symptom is that a screen quietly looks
+unfinished. No render test, no status-code check and no review of the diff will
+show it, because nothing is wrong with the template — the definition is missing
+somewhere else entirely. This class of defect needs a test that compares the two
+sides, which is what `core.test_css_contract` now does.
+
+---
+
+## 133. The demo seed creates payables but no suppliers — OPEN — NEW
+
+`seed_demo` creates open payables (e.g. "Mwangi Hardware") as free text with no
+`Vendor` rows behind them, so `Vendor.objects.count()` is zero on a fresh demo
+database. Two consequences:
+
+* The supplier selector added to `/payables/` in v3.20.0 renders with nothing to
+  choose from, so the feature cannot be seen or demonstrated on a fresh install.
+* The "N open bills are not linked to a supplier" warning fires on the seeded
+  data by construction, which reads as a fault in the demo rather than a
+  deliberate illustration.
+
+Seeding three or four suppliers with different payment terms, linking most of the
+seeded payables to them and leaving exactly one unlinked, would demonstrate the
+register, the terms-driven due date and the unlinked warning all at once.
+
+---
+
+## 134. The board report and executive overview bypass the Semantic Reporting Layer — OPEN — NEW
+
+Instrumenting `ReportContext.__init__` during a render shows `/reports/board/`
+and `/executive/` each create **zero** contexts. They call `reports.services.*`
+and `core.services.*` directly instead of going through the layer, which is
+contrary to the project's own rule that every financial figure reaches a report
+through the Semantic Reporting Layer and the Financial Metrics Registry.
+
+The practical cost is that nothing memoises. `ReportContext.metric()` caches per
+(name, args) for the life of a render, and `core.perfcache.cached()` adds a
+request-scoped memo on top; a view that never builds a context gets neither.
+That is why `/executive/` still repeats eighteen *exactly identical* queries
+(`RecurringExpense` six times from `core/services/forecast.py`, `Pledge` four
+times) and `/reports/board/` eighteen. Both pages are flat with respect to
+funds, transactions and users — this is redundancy, not an N+1 — so it is a
+correctness-of-architecture issue with a performance symptom, not urgent.
+
+Migrating them is roadmap item 4 (Board Report implementation) and item 5
+(migration of remaining reports). It should be a deliberate change with accuracy
+tests comparing every figure before and after, not folded into a performance
+pass. Recorded here so the reason is on file when that work is scheduled.
+
+**A caution for whoever does it.** While auditing this I nearly "fixed"
+repetition on the board report that was not repetition at all: normalising
+digits out of the SQL made three *different months* of a trend look like one
+query run three times. Duplicate-query analysis has to compare fully-bound SQL,
+including parameters, or it will invent work that does not exist.
+
+---
+
+## 135. Remaining lazy foreign keys on three screens — OPEN — NEW
+
+The v3.21.0 audit added a probe that flags queries issued from
+`related_descriptors` during a render — i.e. a foreign key fetched per row
+because the queryset did not select it. After the fixes in that release, three
+screens still show them:
+
+* ~~`/envelopes/` — `giving_transaction` ×10~~ — **fixed in v3.21.1.** The list
+  prefetched `lines__department` but not `lines__transaction`, while
+  `Envelope.is_voided` walks every line's transaction to decide whether to
+  strike a receipt through. 30 → 21 queries.
+* `/benevolent/` — `membershipexemption` ×2, `memberadjustment` ×2
+* `/expenses/`, `/budget/` — one each
+
+The three remaining entries were re-probed in v3.21.1 and are single bounded
+fetches rather than per-row patterns, so they are not worth a change on their
+own; fold them in if those views are touched for another reason.
+
+None grows with the fund register (the guards in `core.test_query_growth` cover
+that axis), so these are bounded and low priority. Each is the same shape as the
+`/reports/expenses/` fault fixed in v3.21.0: a queryset handed to a template
+that then reads a related object per row. The fix in each case is a
+`select_related` on the queryset in the view.
+
+Note that a per-row FK lookup does **not** always show up as query growth: if
+the added rows all share one parent, the SQL is identical every time and a
+naive duplicate count hides it. Reproducing this class of fault needs test data
+spread across parents, which is why the probe looks at the *call stack* rather
+than at the SQL text.

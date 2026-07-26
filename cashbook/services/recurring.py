@@ -69,9 +69,16 @@ def generate_schedule(sched, upto=None, user=None):
             # all later dates pending so they regenerate once the period unlocks.
             hit_locked_gap = True
             continue
-        if not Expense.objects.filter(recurring=sched, date=d).exists():
+        # Keyed on the instalment, not on the date the cash moved. An
+        # instalment settled early sits under an earlier `date` but carries
+        # `recurring_due_date=d`, so it is recognised here and the schedule does
+        # not raise a second charge for the same period. Before this, paying
+        # early meant recording the expense by hand — invisible to a
+        # date-based check — and the fund was charged twice.
+        if not Expense.objects.filter(recurring=sched, recurring_due_date=d).exists():
             Expense.objects.create(
-                date=d, sabbath_week=sabbath_week_of(d), department=sched.department,
+                date=d, recurring_due_date=d,
+                sabbath_week=sabbath_week_of(d), department=sched.department,
                 description=sched.description, amount=sched.amount, category=sched.category,
                 # Taken from the schedule rather than hardcoded: a monthly
                 # instalment on a capital purchase is scheduled but is not a
@@ -120,3 +127,86 @@ def next_due(sched, after=None):
         last_generated=None, created_by_id=sched.created_by_id)
     dates = due_dates(peek, horizon)
     return dates[0] if dates else None
+
+
+def upcoming_instalments(sched, count=3, after=None):
+    """The next few unsettled due dates for a schedule, soonest first.
+
+    "Unsettled" means no expense yet carries that `recurring_due_date` — so an
+    instalment already paid early drops out of the list and cannot be paid twice.
+    """
+    after = after or dt.date.today()
+    horizon = after + dt.timedelta(days=400)
+    settled = set(Expense.objects.filter(recurring=sched)
+                  .values_list("recurring_due_date", flat=True))
+    peek = RecurringExpense(
+        description=sched.description, department=sched.department,
+        amount=sched.amount, frequency=sched.frequency,
+        day_of_month=sched.day_of_month, start_date=sched.start_date,
+        end_date=sched.end_date, last_generated=None,
+        created_by_id=sched.created_by_id)
+    out = [d for d in due_dates(peek, horizon) if d not in settled]
+    return out[:count]
+
+
+def pay_early(sched, due_date, on=None, user=None):
+    """Settle a scheduled instalment before its due date.
+
+    A church pays ahead more often than the schedule allowed for: the payee is
+    travelling, the office closes over a holiday, or a quarter's rent is settled
+    with one cheque. There was no way to do that through the schedule, so it was
+    done by hand — and because generation deduplicated on the expense *date*, a
+    hand-written early payment was invisible and the schedule raised the charge
+    again on the due date. The fund was debited twice with nothing to flag it.
+
+    Two dates are involved and they mean different things:
+
+      * `date` is when the money leaves. Fund balances are kept on a cash basis,
+        so this has to be the real payment date or the fund reads wrong for the
+        period in between.
+      * `recurring_due_date` is the instalment being settled. It keeps the
+        schedule's own accounting straight and stops the double charge.
+
+    Refuses a due date that is already settled, and refuses to post into a
+    locked period. Returns the created Expense.
+    """
+    on = on or dt.date.today()
+    if sched.end_date and due_date > sched.end_date:
+        raise ValueError("That instalment falls after the schedule ends.")
+    if due_date not in due_dates(
+            RecurringExpense(
+                description=sched.description, department=sched.department,
+                amount=sched.amount, frequency=sched.frequency,
+                day_of_month=sched.day_of_month, start_date=sched.start_date,
+                end_date=sched.end_date, last_generated=None,
+                created_by_id=sched.created_by_id),
+            due_date):
+        raise ValueError("That date is not one of this schedule's due dates.")
+    if Expense.objects.filter(recurring=sched, recurring_due_date=due_date).exists():
+        raise ValueError("That instalment has already been recorded.")
+    if period_locked(on):
+        raise ValueError("That accounting period is closed.")
+
+    cfg = SiteConfig.get()
+    threshold = cfg.dual_approval_threshold or 0
+    high_value = threshold and sched.amount >= threshold
+    # Paying early does not lower the bar for approval: an amount that needs
+    # sign-off on its due date still needs it a fortnight sooner.
+    auto = (not cfg.require_expense_approval) and not high_value
+    status = Expense.Status.APPROVED if auto else Expense.Status.PENDING
+    actor = user or sched.created_by
+    return Expense.objects.create(
+        date=on, recurring_due_date=due_date, sabbath_week=sabbath_week_of(on),
+        department=sched.department, description=sched.description,
+        amount=sched.amount, category=sched.category,
+        expenditure_type=(sched.expenditure_type
+                          or Expense.ExpenditureType.RECURRENT),
+        claimant=sched.claimant, method=sched.method, status=status,
+        vendor=sched.vendor,
+        payee=(sched.payee or (sched.vendor.name if sched.vendor else ""))[:160],
+        voucher_no=sched.voucher_no,
+        paid_from_petty_cash=sched.paid_from_petty_cash,
+        budget_line=sched.budget_line,
+        recorded_by=actor, recurring=sched,
+        approved_by=(sched.created_by if status == Expense.Status.APPROVED else None),
+        paid_date=None)

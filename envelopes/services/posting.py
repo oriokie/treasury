@@ -44,6 +44,20 @@ def _trailing_number(name):
     return int(m.group(1)) if m else None
 
 
+def _shape_subgroups(children):
+    """Order and label a fund's sub-account children.
+
+    The ordering rule lives here alone so the single-fund path
+    (`subgroups_for`) and the whole-register path (`column_catalog`) cannot
+    disagree about what a subgroup list looks like. They differ only in how the
+    children are fetched — one query for one fund, or one query for all of them.
+    """
+    out = [{"id": k.id, "label": k.name, "number": _trailing_number(k.name)}
+           for k in children]
+    out.sort(key=lambda r: (r["number"] is None, r["number"] or 0, r["label"]))
+    return out
+
+
 def subgroups_for(dept):
     """A fund's own sub-account children (Department.parent — e.g. Trust Fund
     → Tithe, Camp Meeting, ...; or any fund set up with numbered subgroups,
@@ -62,15 +76,13 @@ def subgroups_for(dept):
     department itself) and must never engage for a Development fund even if
     that fund happens to also have Department.parent children for some other
     reason — Development keeps exactly its established behaviour.
+
+    One query. For every fund at once, use `column_catalog`, which fetches the
+    whole set in one go rather than calling this in a loop.
     """
     if dept.category == Department.Category.DEVELOPMENT:
         return []
-    kids = list(dept.subgroups.filter(active=True).order_by("name"))
-    out = []
-    for k in kids:
-        out.append({"id": k.id, "label": k.name, "number": _trailing_number(k.name)})
-    out.sort(key=lambda r: (r["number"] is None, r["number"] or 0, r["label"]))
-    return out
+    return _shape_subgroups(dept.subgroups.filter(active=True).order_by("name"))
 
 
 def column_catalog(for_import=False):
@@ -98,16 +110,29 @@ def column_catalog(for_import=False):
     from giving.models import SplitFund
     from departments.models import split_component_dept_ids
     skip_ids = split_component_dept_ids() if for_import else set()
+    funds = list(Department.objects.filter(active=True))
+    # Every fund's children in one query, grouped by parent. This used to call
+    # subgroups_for(d) inside the loop below — one query per fund, so the
+    # envelope grid and template cost two queries for every fund on the
+    # register and grew with it (148 queries at 79 funds). The ordering rule is
+    # unchanged: both paths go through _shape_subgroups.
+    children = {}
+    for kid in Department.objects.filter(active=True, parent__in=funds).order_by("name"):
+        children.setdefault(kid.parent_id, []).append(kid)
     cols = []
-    for d in Department.objects.filter(active=True):
+    for d in funds:
         if _is_building(d.name):
             continue
         if d.id in skip_ids:        # the 50% split halves — shown as one split column
             continue
+        # Development funds keep their own group mechanism and never carry
+        # subgroups here — the same exclusion subgroups_for applies.
+        subs = ([] if d.category == Department.Category.DEVELOPMENT
+                else _shape_subgroups(children.get(d.id, [])))
         cols.append({"key": str(d.id), "label": d.name, "name": d.name,
                      "kind": "dept", "trust": d.is_trust,
                      "is_development": d.category == Department.Category.DEVELOPMENT,
-                     "subgroups": subgroups_for(d)})
+                     "subgroups": subs})
     for s in SplitFund.objects.filter(active=True):
         cols.append({"key": f"split:{s.id}", "label": f"{s.name} (split)",
                      "name": s.name, "kind": "split", "trust": False,

@@ -9,13 +9,13 @@
 </div>
 
 {% if not sms_enabled %}
-<div class="panel u-mb" style="border-left:3px solid var(--amber)">
+<div class="panel panel-amber u-mb">
   <b>SMS is switched off in settings.</b> Confirming will record the attempt but
   no message will reach anyone.</div>
 {% endif %}
 
 {% if duplicate %}
-<div class="panel u-mb" style="border-left:3px solid var(--amber)">
+<div class="panel panel-amber u-mb">
   <b>This exact message already went to this group.</b>
   Sent {{ duplicate.sent_at|date:"d M Y H:i" }} by {{ duplicate.sent_by|default:"—" }},
   reaching {{ duplicate.sent_count }} member{{ duplicate.sent_count|pluralize }}.

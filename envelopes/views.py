@@ -55,8 +55,11 @@ class EnvelopeListView(ReadAccessMixin, View):
         range_start = saturdays[0] - dt.timedelta(days=6) if saturdays else dt.date(year, month, 1)
         range_end = saturdays[-1] if saturdays else dt.date(year, month, 1)
         envs = (Envelope.objects.filter(date__gte=range_start, date__lte=range_end)
-                .select_related("member")
-                .prefetch_related("lines__department"))
+                .select_related("member", "bank_transaction")
+                # `is_voided` walks linked_transactions to decide whether to
+                # strike a receipt through, which reads each line's transaction.
+                # Without this the list paid a query per line that had posted.
+                .prefetch_related("lines__department", "lines__transaction"))
         groups = {s: [] for s in saturdays}
         other = []
         for e in envs:
@@ -474,9 +477,12 @@ class EnvelopeTemplateView(DataEntryRequiredMixin, View):
         import openpyxl
         from openpyxl.styles import Font, PatternFill
         keys = [k for k in (request.GET.get("cols") or "").split(",") if k]
-        catalog = {c["key"]: c for c in column_catalog(for_import=True)}
+        # Built once. The catalogue walks the whole fund register, so calling it
+        # twice in one request doubled that work for no benefit.
+        columns = column_catalog(for_import=True)
+        catalog = {c["key"]: c for c in columns}
         chosen = [catalog[k] for k in keys if k in catalog] or \
-                 [c for c in column_catalog(for_import=True) if c["default"]]
+                 [c for c in columns if c["default"]]
         headers = ["No", "Contributor Name", "Phone", "Receipt No", "Channel", "Group"] + \
                   [c["label"] for c in chosen]
         wb = openpyxl.Workbook()
@@ -591,8 +597,9 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
         return unknown, None
 
     def _fund_label_map(self):
-        label_to_key = {c["label"].lower(): c["key"] for c in column_catalog(for_import=True)}
-        for c in column_catalog(for_import=True):
+        columns = column_catalog(for_import=True)
+        label_to_key = {c["label"].lower(): c["key"] for c in columns}
+        for c in columns:
             label_to_key.setdefault(c["name"].lower(), c["key"])
         return label_to_key
 

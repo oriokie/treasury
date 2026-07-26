@@ -719,9 +719,13 @@ class RecurringListView(ReadAccessMixin, ListView):
         return RecurringExpense.objects.select_related("department").all()
 
     def get_context_data(self, **kwargs):
-        from .services.recurring import next_due
+        from .services.recurring import next_due, upcoming_instalments
         ctx = super().get_context_data(**kwargs)
-        ctx["rows"] = [{"s": s, "next": next_due(s) if s.active else None}
+        # `upcoming` excludes instalments already settled — including any paid
+        # ahead of time — so the same period cannot be offered for payment twice.
+        ctx["rows"] = [{"s": s,
+                        "next": next_due(s) if s.active else None,
+                        "upcoming": upcoming_instalments(s, 3) if s.active else []}
                        for s in ctx["schedules"]]
         return ctx
 
@@ -768,6 +772,38 @@ class RecurringDelete(DataEntryRequiredMixin, View):
         s.delete()
         messages.success(request, f"Recurring schedule “{desc}” deleted. "
                                   f"Any expenses it already created remain in the ledger.")
+        return redirect("recurring_list")
+
+
+class RecurringPayEarly(DataEntryRequiredMixin, View):
+    """Settle a scheduled instalment before its due date.
+
+    The expense is dated today, because that is when the money leaves and fund
+    balances are kept on a cash basis; it records the instalment it settles
+    separately, so the schedule will not raise the same charge again when the
+    due date comes round.
+    """
+    def post(self, request, pk):
+        from .services.recurring import pay_early
+        from .models import RecurringExpense
+        import datetime as _dt
+        sched = get_object_or_404(RecurringExpense, pk=pk)
+        raw = request.POST.get("due_date") or ""
+        try:
+            due = _dt.date.fromisoformat(raw)
+        except ValueError:
+            messages.error(request, "Pick which instalment is being paid.")
+            return redirect("recurring_list")
+        try:
+            exp = pay_early(sched, due, on=_dt.date.today(), user=request.user)
+        except ValueError as err:
+            messages.error(request, str(err))
+            return redirect("recurring_list")
+        messages.success(
+            request,
+            f"Paid early: {sched.description} for {due:%d %b %Y}, recorded today. "
+            + ("Awaiting approval." if exp.status == Expense.Status.PENDING
+               else "Approved."))
         return redirect("recurring_list")
 
 
@@ -850,6 +886,21 @@ class PettyCashView(ReadAccessMixin, TemplateView):
             movements.append({"date": x.date, "desc": x.description
                               + (f" · {x.claimant}" if x.claimant else ""), "in": None,
                               "out": x.amount, "fund": x.department.name, "cat": x.get_category_display()})
+        # Cash physically handed back into the tin when an expense is refunded.
+        # `petty_balance_asof` — which the "Float on hand (today)" card reads —
+        # has always counted these, but the register did not list them, so the
+        # two disagreed by exactly the refunds falling inside the period. The
+        # opening balance comes from the same helper, so a refund before the
+        # period was counted and one during it silently vanished. It is a real
+        # movement of cash: whoever counts the box has to see it.
+        from .models import ExpenseRefund
+        for ref in (ExpenseRefund.objects.filter(to_petty_cash=True, date__gte=start,
+                    date__lte=end).select_related("expense", "expense__department")):
+            movements.append({"date": ref.date,
+                "desc": f"Refund returned to petty cash — {ref.expense.description}"
+                        + (f" · {ref.note}" if getattr(ref, "note", "") else ""),
+                "in": ref.amount, "out": None,
+                "fund": ref.expense.department.name, "cat": "Refund"})
         # petty-cash-funded staff advances: the float drops when issued and rises
         # again only if unspent cash is returned
         from .models import StaffAdvance, AdvanceTopUp

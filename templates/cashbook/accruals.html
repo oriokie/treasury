@@ -4,10 +4,19 @@
 <div class="page-head"><div><h1>Payables, accruals &amp; prepayments</h1>
 <div class="sub">Credit purchases owed, expenses incurred but unpaid, and amounts paid in advance</div></div></div>
 
-<div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="stat"><div class="kpi-label">Open payables</div><div class="kpi-val mono">{{ CURRENCY }} {{ open_payables|money }}</div></div>
-  <div class="stat"><div class="kpi-label">Open accruals</div><div class="kpi-val mono">{{ CURRENCY }} {{ open_accruals|money }}</div></div>
-  <div class="stat"><div class="kpi-label">Prepaid (unexpired)</div><div class="kpi-val mono">{{ CURRENCY }} {{ unexpired_prepay|money }}</div></div>
+{% comment %} `.lbl`/`.val` are the classes `.stat` actually styles. This block used
+   `kpi-label`/`kpi-val`, which are defined nowhere, so all three figures rendered
+   as unstyled body text inside an otherwise styled card. {% endcomment %}
+<div class="kpi-grid u-mb">
+  <div class="stat accent"><div class="lbl">Open payables</div>
+    <div class="val mono">{{ CURRENCY }} {{ open_payables|money }}</div>
+    <div class="foot">Owed to suppliers on credit</div></div>
+  <div class="stat brass"><div class="lbl">Open accruals</div>
+    <div class="val mono">{{ CURRENCY }} {{ open_accruals|money }}</div>
+    <div class="foot">Incurred, not yet invoiced</div></div>
+  <div class="stat"><div class="lbl">Prepaid (unexpired)</div>
+    <div class="val mono">{{ CURRENCY }} {{ unexpired_prepay|money }}</div>
+    <div class="foot">Paid in advance, not yet used</div></div>
 </div>
 <div class="info-panel">Fund balances are kept on a cash basis. These items are an accrual overlay shown as memoranda on the Statement of Financial Position. Settling a payable or accrual records the actual payment in its fund; a prepayment records the cash paid now and shows the unexpired portion as a prepaid asset.</div>
 
@@ -21,10 +30,11 @@
 <!-- Payables -->
 <div class="card u-mt"><div class="hd">Accounts payable <span class="muted">— purchased on credit</span></div><div class="bd u-pad-cell">
 {% if unlinked_payables %}
-<div class="panel u-mb no-print" style="border-left:3px solid var(--brass)">
+<div class="panel panel-brass u-mb no-print">
   <b>{{ unlinked_payables }} open bill{{ unlinked_payables|pluralize }} {{ unlinked_payables|pluralize:"is,are" }} not linked to a supplier.</b>
   <span class="muted">They will not show on any supplier's account. Edit a bill to
-    choose its supplier, or <a class="link" href="{% url 'vendor_list' %}">open the register</a>.</span>
+    choose its supplier, or <a class="link" href="{% url 'vendor_list' %}">open the register</a>.
+    New bills can be linked as you enter them, using the supplier selector below.</span>
 </div>
 {% endif %}
 <table class="ledger compact"><thead><tr><th>Date</th><th>Supplier / description</th><th>Fund</th><th>Due</th><th class="num">Amount</th><th class="num">Paid</th><th class="num">Balance</th><th></th></tr></thead><tbody>
@@ -60,15 +70,30 @@
   </tr>{% empty %}<tr><td colspan="8" class="empty">No payables recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
-  <form method="post" action="{% url 'payable_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;align-items:end">{% csrf_token %}
-    <div class="form-row u-m-0"><label>Date</label>{{ payable_form.date }}</div>
-    <div class="form-row u-m-0"><label>Vendor</label>{{ payable_form.vendor }}</div>
-    <div class="form-row u-m-0"><label>Description</label>{{ payable_form.description }}</div>
-    <div class="form-row u-m-0"><label>Fund</label>{{ payable_form.department }}</div>
-    <div class="form-row u-m-0"><label>Category</label>{{ payable_form.category }}</div>
-    <div class="form-row u-m-0"><label>Amount</label>{{ payable_form.amount }}</div>
-    <div class="form-row u-m-0"><label>Due date</label>{{ payable_form.due_date }}</div>
-    <div style="grid-column:span 5;display:flex;align-items:end"><button class="btn">＋ Add payable</button></div>
+  {% comment %} The supplier selector is rendered here deliberately, and first.
+     `PayableForm` has always defined it, but this form only ever rendered the
+     free-text `vendor` field — so every bill added from this page was saved with
+     no supplier, which is exactly what the "not linked to a supplier" warning
+     above counts. The page was generating the problem it complains about, and
+     the supplier's payment terms (which set the due date) never applied either. {% endcomment %}
+  <div class="section-title">Add a payable</div>
+  <form method="post" action="{% url 'payable_create' %}" class="entry-grid">{% csrf_token %}
+    <div class="form-row u-m-0"><label for="{{ payable_form.date.id_for_label }}">Date incurred</label>{{ payable_form.date }}</div>
+    <div class="form-row u-m-0 span-2"><label for="{{ payable_form.supplier.id_for_label }}">Supplier</label>
+      {{ payable_form.supplier }}
+      <div class="hint">Choose from the register to put this bill on the supplier's
+        account and take its payment terms. Leave blank for a one-off.</div></div>
+    <div class="form-row u-m-0 span-2"><label for="{{ payable_form.vendor.id_for_label }}">Name on the invoice</label>
+      {{ payable_form.vendor }}
+      <div class="hint">Filled from the supplier if left blank. Change only if the
+        invoice reads differently.</div></div>
+    <div class="form-row u-m-0"><label for="{{ payable_form.due_date.id_for_label }}">Due date</label>{{ payable_form.due_date }}
+      <div class="hint">From the supplier's terms if left blank.</div></div>
+    <div class="form-row u-m-0 span-2"><label for="{{ payable_form.description.id_for_label }}">Description</label>{{ payable_form.description }}</div>
+    <div class="form-row u-m-0 span-2"><label for="{{ payable_form.department.id_for_label }}">Charge to fund / ministry</label>{{ payable_form.department }}</div>
+    <div class="form-row u-m-0"><label for="{{ payable_form.category.id_for_label }}">Category</label>{{ payable_form.category }}</div>
+    <div class="form-row u-m-0"><label for="{{ payable_form.amount.id_for_label }}">Amount</label>{{ payable_form.amount }}</div>
+    <div class="entry-submit"><button class="btn">＋ Add payable</button></div>
   </form>
 </div>{% endif %}</div>
 </div>
@@ -101,13 +126,14 @@
   </tr>{% empty %}<tr><td colspan="7" class="empty">No accruals recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
-  <form method="post" action="{% url 'accrual_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;align-items:end">{% csrf_token %}
-    <div class="form-row u-m-0"><label>Period end</label>{{ accrual_form.date }}</div>
-    <div class="form-row u-m-0"><label>Description</label>{{ accrual_form.description }}</div>
-    <div class="form-row u-m-0"><label>Fund</label>{{ accrual_form.department }}</div>
-    <div class="form-row u-m-0"><label>Category</label>{{ accrual_form.category }}</div>
-    <div class="form-row u-m-0"><label>Amount</label>{{ accrual_form.amount }}</div>
-    <div style="grid-column:span 5"><button class="btn">＋ Add accrual</button></div>
+  <div class="section-title">Add an accrual</div>
+  <form method="post" action="{% url 'accrual_create' %}" class="entry-grid">{% csrf_token %}
+    <div class="form-row u-m-0"><label for="{{ accrual_form.date.id_for_label }}">Period end</label>{{ accrual_form.date }}</div>
+    <div class="form-row u-m-0 span-2"><label for="{{ accrual_form.description.id_for_label }}">Description</label>{{ accrual_form.description }}</div>
+    <div class="form-row u-m-0 span-2"><label for="{{ accrual_form.department.id_for_label }}">Charge to fund / ministry</label>{{ accrual_form.department }}</div>
+    <div class="form-row u-m-0"><label for="{{ accrual_form.category.id_for_label }}">Category</label>{{ accrual_form.category }}</div>
+    <div class="form-row u-m-0"><label for="{{ accrual_form.amount.id_for_label }}">Amount</label>{{ accrual_form.amount }}</div>
+    <div class="entry-submit"><button class="btn">＋ Add accrual</button></div>
   </form>
 </div>{% endif %}</div>
 </div>
@@ -126,15 +152,16 @@
   </tr>{% empty %}<tr><td colspan="7" class="empty">No prepayments recorded.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if can_enter_data %}<div class="bd u-bt">
-  <form method="post" action="{% url 'prepayment_create' %}" class="form-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem;align-items:end">{% csrf_token %}
-    <div class="form-row u-m-0"><label>Date paid</label>{{ prepayment_form.date }}</div>
-    <div class="form-row u-m-0"><label>Description</label>{{ prepayment_form.description }}</div>
-    <div class="form-row u-m-0"><label>Fund</label>{{ prepayment_form.department }}</div>
-    <div class="form-row u-m-0"><label>Category</label>{{ prepayment_form.category }}</div>
-    <div class="form-row u-m-0"><label>Amount</label>{{ prepayment_form.amount }}</div>
-    <div class="form-row u-m-0"><label>Months</label>{{ prepayment_form.months }}</div>
-    <div class="form-row u-m-0"><label>First month</label>{{ prepayment_form.start_date }}</div>
-    <div style="grid-column:span 5;display:flex;align-items:end"><button class="btn">＋ Add prepayment</button></div>
+  <div class="section-title">Add a prepayment</div>
+  <form method="post" action="{% url 'prepayment_create' %}" class="entry-grid">{% csrf_token %}
+    <div class="form-row u-m-0"><label for="{{ prepayment_form.date.id_for_label }}">Date paid</label>{{ prepayment_form.date }}</div>
+    <div class="form-row u-m-0 span-2"><label for="{{ prepayment_form.description.id_for_label }}">Description</label>{{ prepayment_form.description }}</div>
+    <div class="form-row u-m-0 span-2"><label for="{{ prepayment_form.department.id_for_label }}">Charge to fund / ministry</label>{{ prepayment_form.department }}</div>
+    <div class="form-row u-m-0"><label for="{{ prepayment_form.category.id_for_label }}">Category</label>{{ prepayment_form.category }}</div>
+    <div class="form-row u-m-0"><label for="{{ prepayment_form.amount.id_for_label }}">Amount</label>{{ prepayment_form.amount }}</div>
+    <div class="form-row u-m-0"><label for="{{ prepayment_form.months.id_for_label }}">Months</label>{{ prepayment_form.months }}</div>
+    <div class="form-row u-m-0"><label for="{{ prepayment_form.start_date.id_for_label }}">First month</label>{{ prepayment_form.start_date }}</div>
+    <div class="entry-submit"><button class="btn">＋ Add prepayment</button></div>
   </form>
 </div>{% endif %}</div>
 </div>

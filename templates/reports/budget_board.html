@@ -20,11 +20,11 @@
   <div class="rule"></div>
 </div>
 
-<div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="stat"><div class="kpi-label">Total budget {{ year }}</div><div class="kpi-val mono">{{ CURRENCY }} {{ totals.budget|money }}</div></div>
-  <div class="stat"><div class="kpi-label">Funded by Local Church Budget</div><div class="kpi-val mono" style="color:var(--brass)">{{ CURRENCY }} {{ totals.lcb|money }}</div></div>
-  <div class="stat"><div class="kpi-label">Departments' own funds</div><div class="kpi-val mono">{{ CURRENCY }} {{ totals.own|money }}</div></div>
-  {% if totals.other %}<div class="stat"><div class="kpi-label">Other funds</div><div class="kpi-val mono">{{ CURRENCY }} {{ totals.other|money }}</div></div>{% endif %}
+<div class="kpi-grid u-mb">
+  <div class="stat"><div class="lbl">Total budget {{ year }}</div><div class="val mono">{{ CURRENCY }} {{ totals.budget|money }}</div></div>
+  <div class="stat"><div class="lbl">Funded by Local Church Budget</div><div class="val mono" style="color:var(--brass)">{{ CURRENCY }} {{ totals.lcb|money }}</div></div>
+  <div class="stat"><div class="lbl">Departments' own funds</div><div class="val mono">{{ CURRENCY }} {{ totals.own|money }}</div></div>
+  {% if totals.other %}<div class="stat"><div class="lbl">Other funds</div><div class="val mono">{{ CURRENCY }} {{ totals.other|money }}</div></div>{% endif %}
 </div>
 
 <div class="card"><div class="hd">Budget by department &amp; source of funds</div><div class="bd u-pad-cell">

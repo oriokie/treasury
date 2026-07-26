@@ -23,7 +23,7 @@
     <td data-label="Sent">{{ r.submitted_at|date:"d M Y"|default:"—" }}</td>
     <td data-label="Status"><span class="pill {% if r.status == 'APPROVED' %}pill-green{% elif r.status == 'DECLINED' %}pill-red{% elif r.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.get_status_display }}</span></td></tr>
   {% empty %}
-  <tr><td colspan="5"><div class="pt-empty">You have not asked for anything yet.</div></td></tr>
+  <tr><td colspan="5"><div class="pt-empty"><div class="big">You have not asked for anything yet.</div><div class="sm">Use the buttons above to raise a request with the office.</div></div></td></tr>
   {% endfor %}
   </tbody>
 </table>

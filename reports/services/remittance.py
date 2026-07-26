@@ -33,13 +33,35 @@ def days_outstanding(dept):
 
 
 def repost_to_ledger(expenses=None):
-    """After a bulk .update() (which bypasses post_save signals), rebuild the
-    general ledger so it always reflects batch approve/remit and stays
-    reconciled."""
+    """After a bulk `.update()` (which bypasses post_save signals), bring the
+    general ledger back in step so it always reflects batch approve/remit.
+
+    Given the expenses that changed, only those are reposted. `post_expense`
+    begins with `_replace_entries("expense", pk)`, so it is idempotent and also
+    withdraws the entries when a status moves back out of APPROVED/PAID —
+    reposting the affected rows is therefore complete, not a partial fix.
+
+    This used to accept `expenses` and ignore it, calling `posting.rebuild()`
+    instead: deleting every non-manual journal entry in the database and
+    re-posting every transaction, expense, refund, transfer, asset acquisition,
+    disposal and depreciation run the church has ever recorded — to approve one
+    batch. On the seeded demo (214 transactions) that was 3,349 queries and 1.6
+    seconds; on a real register with years of history it is minutes, twice per
+    batch, which is what made approving a batch look like the page had hung.
+    The work also grew every year the church kept using the system.
+
+    Called with no argument it still rebuilds, so any caller that genuinely
+    wants the whole ledger regenerated keeps that behaviour.
+    """
     try:
         from ledger.services import posting
-        if posting.chart_ready():
+        if not posting.chart_ready():
+            return
+        if expenses is None:
             posting.rebuild()
+            return
+        for exp in expenses:
+            posting.post_expense(exp)
     except Exception:
         from core.utils import log_exception as _lx
         _lx("reports/services/remittance.py")

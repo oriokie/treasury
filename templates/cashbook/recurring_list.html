@@ -7,7 +7,7 @@
   {% if can_enter_data %}<form method="post" action="{% url 'recurring_generate' %}" class="u-inline" onsubmit="return confirm('Generate all due recurring expenses up to today?');">{% csrf_token %}<button class="btn btn-brass">⟳ Generate due</button></form>
   <a class="btn" href="{% url 'recurring_create' %}">+ New schedule</a>{% endif %}
 </div></div>
-<div class="info-panel">A schedule doesn't change balances on its own — pressing <strong>Generate due</strong> creates real expense entries on each due date (every Sabbath, or the chosen day each month), which then go through approval and post to the ledger like any expense. Locked months are skipped, and an entry is never created twice.</div>
+<div class="info-panel">A schedule doesn't change balances on its own — pressing <strong>Generate due</strong> creates real expense entries on each due date (every Sabbath, or the chosen day each month), which then go through approval and post to the ledger like any expense. Locked months are skipped, and an entry is never created twice. An instalment can also be settled ahead of its due date with <strong>Pay early</strong>: the expense is dated the day the money leaves, but records which instalment it settles, so the schedule will not charge that period again.</div>
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Description</th><th>Fund</th><th>Frequency</th><th class="num">Amount</th><th>Claimant</th><th>Next due</th><th>Status</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
   <tbody>
@@ -21,6 +21,20 @@
       <td class="mono">{% if r.next %}{{ r.next|date:"d M Y" }}{% else %}—{% endif %}</td>
       <td>{% if r.s.active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-grey">Paused</span>{% endif %}</td>
       {% if can_enter_data %}<td class="u-nowrap">
+        {% if r.upcoming %}
+        {% comment %} Paying ahead is normal — a payee travelling, an office closed
+           over a holiday, a quarter settled with one cheque. The instalment is
+           named explicitly so the schedule records which period was settled and
+           does not raise the charge again on the due date. Instalments already
+           paid are not offered. {% endcomment %}
+        <form method="post" action="{% url 'recurring_pay_early' r.s.id %}" class="u-inline"
+              onsubmit="return confirm('Record this instalment as paid today?');">{% csrf_token %}
+          <select name="due_date" class="field field-xs" aria-label="Instalment to pay">
+            {% for d in r.upcoming %}<option value="{{ d|date:'Y-m-d' }}">{{ d|date:"d M Y" }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-xs btn-ghost">Pay early</button>
+        </form>
+        {% endif %}
         <a class="link" href="{% url 'recurring_edit' r.s.id %}">Edit</a>
         <form method="post" action="{% url 'recurring_toggle' r.s.id %}" class="u-inline">{% csrf_token %}<button class="link">{% if r.s.active %}Pause{% else %}Resume{% endif %}</button></form>
         <form method="post" action="{% url 'recurring_delete' r.s.id %}" class="u-inline" onsubmit="return confirm('Delete this recurring schedule? Expenses it already created remain in the ledger.');">{% csrf_token %}<button class="link link-danger">Delete</button></form>

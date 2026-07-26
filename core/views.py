@@ -345,7 +345,16 @@ class SettingsView(TreasurerRequiredMixin, View):
         from core.roles import role_label
         mine = TelegramProfile.objects.filter(user=request.user).first()
         tg_users = []
-        for u in User.objects.filter(is_active=True).order_by("username"):
+        # Two queries for the whole list, not two per user: `telegram_profile`
+        # is a reverse one-to-one that was being fetched per row, and
+        # `role_label` reads the user's groups. This page grows with the staff
+        # list, so on a church with real user accounts it was the fund register
+        # problem again in a different place.
+        staff = (User.objects.filter(is_active=True)
+                 .select_related("telegram_profile")
+                 .prefetch_related("groups")
+                 .order_by("username"))
+        for u in staff:
             prof = getattr(u, "telegram_profile", None)
             tg_users.append({"name": u.get_full_name() or u.username,
                              "role": role_label(u),
@@ -356,9 +365,12 @@ class SettingsView(TreasurerRequiredMixin, View):
             import datetime as _dt
             rows = _camp_goal_records(_dt.date.today().year)
             camp_progress = next((r for r in rows if r["kind"] == "Offering (trust)"), None)
+        # Bound once. The form carries several fund selectors, so building it
+        # twice ran every one of those querysets twice for the same result.
+        form = SiteConfigForm(instance=cfg)
         return render(request, self.template_name, {
-            "form": SiteConfigForm(instance=cfg),
-            "unplaced_settings": _unplaced_setting_fields(SiteConfigForm(instance=cfg)),
+            "form": form,
+            "unplaced_settings": _unplaced_setting_fields(form),
             "recent_sms": SmsLog.objects.all()[:10],
             "cbs_webhook_url": request.build_absolute_uri(reverse("cbs_webhook")),
             "my_telegram_pin": mine.pin if mine else "",

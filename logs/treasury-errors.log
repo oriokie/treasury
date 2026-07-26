@@ -1690,3 +1690,2726 @@ Traceback (most recent call last):
   File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
     raise RuntimeError("assistant off")
 RuntimeError: assistant off
+2026-07-24 23:17:31,457 ERROR django.request: Internal Server Error: /portal/standing/
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 892, in _resolve_lookup
+    raise TypeError
+TypeError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 903, in _resolve_lookup
+    current = getattr(current, bit)
+              ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Check' object has no attribute 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 909, in _resolve_lookup
+    current = current[int(bit)]
+                      ^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/base.py", line 220, in _get_response
+    response = response.render()
+               ^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 114, in render
+    self.content = self.rendered_content
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 92, in rendered_content
+    return template.render(context, self._request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/backends/django.py", line 107, in render
+    return self.template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 172, in render
+    return self._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1077, in render
+    output = self.filter_expression.resolve(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 744, in resolve
+    arg_vals.append(arg.resolve(context))
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 856, in resolve
+    value = self._resolve_lookup(context)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 916, in _resolve_lookup
+    raise VariableDoesNotExist(
+django.template.base.VariableDoesNotExist: Failed lookup for key [name] in Check(code='waiting_period', label='Waiting period served', passed=False, detail='0 day(s) from reinstatement to the event; 60 required.', blocking=True)
+2026-07-24 23:18:02,031 ERROR django.request: Internal Server Error: /portal/standing/
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 892, in _resolve_lookup
+    raise TypeError
+TypeError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 903, in _resolve_lookup
+    current = getattr(current, bit)
+              ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Check' object has no attribute 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 909, in _resolve_lookup
+    current = current[int(bit)]
+                      ^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/base.py", line 220, in _get_response
+    response = response.render()
+               ^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 114, in render
+    self.content = self.rendered_content
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 92, in rendered_content
+    return template.render(context, self._request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/backends/django.py", line 107, in render
+    return self.template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 172, in render
+    return self._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1077, in render
+    output = self.filter_expression.resolve(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 744, in resolve
+    arg_vals.append(arg.resolve(context))
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 856, in resolve
+    value = self._resolve_lookup(context)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 916, in _resolve_lookup
+    raise VariableDoesNotExist(
+django.template.base.VariableDoesNotExist: Failed lookup for key [name] in Check(code='waiting_period', label='Waiting period served', passed=False, detail='0 day(s) from reinstatement to the event; 60 required.', blocking=True)
+2026-07-24 23:23:41,564 ERROR django.request: Internal Server Error: /portal/standing/
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 892, in _resolve_lookup
+    raise TypeError
+TypeError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 903, in _resolve_lookup
+    current = getattr(current, bit)
+              ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Check' object has no attribute 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 909, in _resolve_lookup
+    current = current[int(bit)]
+                      ^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/base.py", line 220, in _get_response
+    response = response.render()
+               ^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 114, in render
+    self.content = self.rendered_content
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 92, in rendered_content
+    return template.render(context, self._request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/backends/django.py", line 107, in render
+    return self.template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 172, in render
+    return self._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 164, in _render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1077, in render
+    output = self.filter_expression.resolve(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 744, in resolve
+    arg_vals.append(arg.resolve(context))
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 856, in resolve
+    value = self._resolve_lookup(context)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 916, in _resolve_lookup
+    raise VariableDoesNotExist(
+django.template.base.VariableDoesNotExist: Failed lookup for key [name] in Check(code='waiting_period', label='Waiting period served', passed=False, detail='0 day(s) from reinstatement to the event; 60 required.', blocking=True)
+2026-07-24 23:44:46,014 ERROR django.request: Internal Server Error: /portal/standing/
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 892, in _resolve_lookup
+    raise TypeError
+TypeError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 903, in _resolve_lookup
+    current = getattr(current, bit)
+              ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Check' object has no attribute 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 909, in _resolve_lookup
+    current = current[int(bit)]
+                      ^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/base.py", line 220, in _get_response
+    response = response.render()
+               ^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 114, in render
+    self.content = self.rendered_content
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 92, in rendered_content
+    return template.render(context, self._request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/backends/django.py", line 107, in render
+    return self.template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 172, in render
+    return self._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1077, in render
+    output = self.filter_expression.resolve(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 744, in resolve
+    arg_vals.append(arg.resolve(context))
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 856, in resolve
+    value = self._resolve_lookup(context)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 916, in _resolve_lookup
+    raise VariableDoesNotExist(
+django.template.base.VariableDoesNotExist: Failed lookup for key [name] in Check(code='waiting_period', label='Waiting period served', passed=False, detail='0 day(s) from enrolment to the event; 365 required.', blocking=True)
+2026-07-24 23:44:47,326 ERROR django.request: Internal Server Error: /portal/standing/
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 892, in _resolve_lookup
+    raise TypeError
+TypeError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 903, in _resolve_lookup
+    current = getattr(current, bit)
+              ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Check' object has no attribute 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 909, in _resolve_lookup
+    current = current[int(bit)]
+                      ^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/base.py", line 220, in _get_response
+    response = response.render()
+               ^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 114, in render
+    self.content = self.rendered_content
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 92, in rendered_content
+    return template.render(context, self._request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/backends/django.py", line 107, in render
+    return self.template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 172, in render
+    return self._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1077, in render
+    output = self.filter_expression.resolve(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 744, in resolve
+    arg_vals.append(arg.resolve(context))
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 856, in resolve
+    value = self._resolve_lookup(context)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 916, in _resolve_lookup
+    raise VariableDoesNotExist(
+django.template.base.VariableDoesNotExist: Failed lookup for key [name] in Check(code='waiting_period', label='Waiting period served', passed=False, detail='0 day(s) from enrolment to the event; 365 required.', blocking=True)
+2026-07-24 23:44:48,056 ERROR django.request: Internal Server Error: /portal/standing/
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 892, in _resolve_lookup
+    raise TypeError
+TypeError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 903, in _resolve_lookup
+    current = getattr(current, bit)
+              ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'Check' object has no attribute 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 909, in _resolve_lookup
+    current = current[int(bit)]
+                      ^^^^^^^^
+ValueError: invalid literal for int() with base 10: 'name'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/exception.py", line 55, in inner
+    response = get_response(request)
+               ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/core/handlers/base.py", line 220, in _get_response
+    response = response.render()
+               ^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 114, in render
+    self.content = self.rendered_content
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/response.py", line 92, in rendered_content
+    return template.render(context, self._request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/backends/django.py", line 107, in render
+    return self.template.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 172, in render
+    return self._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 159, in render
+    return compiled_parent._render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/test/utils.py", line 114, in instrumented_test_render
+    return self.nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/loader_tags.py", line 65, in render
+    result = block.nodelist.render(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 327, in render
+    return nodelist.render(context)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1018, in render
+    return SafeString("".join([node.render_annotated(context) for node in self]))
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/defaulttags.py", line 243, in render
+    nodelist.append(node.render_annotated(context))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 979, in render_annotated
+    return self.render(context)
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 1077, in render
+    output = self.filter_expression.resolve(context)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 744, in resolve
+    arg_vals.append(arg.resolve(context))
+                    ^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 856, in resolve
+    value = self._resolve_lookup(context)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/django/template/base.py", line 916, in _resolve_lookup
+    raise VariableDoesNotExist(
+django.template.base.VariableDoesNotExist: Failed lookup for key [name] in Check(code='waiting_period', label='Waiting period served', passed=False, detail='0 day(s) from enrolment to the event; 365 required.', blocking=True)
+2026-07-25 00:04:35,190 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 00:05:00,327 ERROR treasury: Handled exception in cashbook/views.py
+Traceback (most recent call last):
+  File "/home/claude/treasury/cashbook/views.py", line 3690, in post
+    created = expense_svc.record_batch(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/contextlib.py", line 81, in inner
+    return func(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/cashbook/services/expenses.py", line 181, in record_batch
+    if not description or not amount or Decimal(str(amount)) <= 0:
+                                        ^^^^^^^^^^^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.ConversionSyntax'>]
+2026-07-25 07:49:36,366 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 07:53:17,705 ERROR treasury: Handled exception in cashbook/views.py
+Traceback (most recent call last):
+  File "/home/claude/treasury/cashbook/views.py", line 3690, in post
+    created = expense_svc.record_batch(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/contextlib.py", line 81, in inner
+    return func(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/cashbook/services/expenses.py", line 181, in record_batch
+    if not description or not amount or Decimal(str(amount)) <= 0:
+                                        ^^^^^^^^^^^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.ConversionSyntax'>]
+2026-07-25 08:11:58,450 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:11:59,235 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:11:59,952 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:12:00,645 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:12:14,972 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:12:29,748 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:30:00,216 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:30:01,212 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:30:02,034 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:30:02,839 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:30:19,578 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:30:36,541 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:35:16,158 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:35:16,994 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:35:17,833 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:35:18,699 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:35:35,487 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:35:52,963 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:54:56,130 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:54:56,420 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:54:56,623 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:54:56,631 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:55:08,660 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:55:08,870 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:55:09,034 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 08:55:09,042 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:18,935 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:19,188 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:19,389 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:19,394 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:26,307 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:26,461 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:26,583 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:26,589 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:40,367 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:40,521 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:40,641 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:40,647 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:46,609 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:46,767 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:46,889 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:35:46,896 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:00,862 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:01,023 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:01,143 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:01,149 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:14,060 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:14,210 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:14,325 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:36:14,331 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:46,640 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:47,063 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:47,478 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:47,888 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:48,630 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:49,142 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:49,549 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:49,958 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:50,369 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:50,782 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:50,785 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:51,376 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:52,547 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:53,000 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:53,004 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:53,674 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:54,219 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:54,764 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:55,312 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:56,328 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:56,743 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:56,747 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:57,263 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:57,266 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:57,804 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:46:57,810 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:04,255 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:04,679 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:05,102 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:05,516 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:05,938 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:06,347 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:06,756 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:07,173 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:07,176 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:07,700 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:07,703 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:08,237 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:08,685 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:09,196 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:09,583 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:09,963 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:09,967 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:10,459 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:11,205 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:11,209 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:11,756 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:11,759 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:12,302 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:12,305 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:12,850 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:12,853 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:13,411 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:47:13,791 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:49:56,742 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:49:57,128 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:52:28,236 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:52:46,579 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:53:01,665 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 09:53:30,032 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:21:07,671 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:21:08,079 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:21:08,483 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:21:08,888 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:21:17,472 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:21:25,408 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:27,872 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:28,056 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:28,199 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:28,207 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:35,826 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:36,019 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:36,153 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:36,159 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:50,982 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:51,160 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:51,308 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:51,315 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:57,845 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:58,032 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:58,176 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:28:58,183 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:12,843 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:13,036 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:13,176 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:13,183 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:27,882 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:28,073 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:28,217 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:29:28,224 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:00,629 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:01,130 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:01,642 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:02,193 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:03,155 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:03,719 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:04,287 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:04,840 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:05,342 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:05,822 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:05,826 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:06,530 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:07,834 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:08,340 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:08,346 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:09,245 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:09,985 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:10,686 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:11,389 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:12,600 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:13,051 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:13,055 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:13,643 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:13,647 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:14,237 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:14,244 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:21,105 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:21,567 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:22,020 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:22,485 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:22,956 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:23,440 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:23,890 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:24,351 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:24,355 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:24,938 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:24,941 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:25,542 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:26,055 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:26,605 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:27,019 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:27,462 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:27,466 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:28,007 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:28,871 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:28,875 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:29,562 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:29,567 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:30,167 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:30,171 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:30,802 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:30,806 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:31,427 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:33:31,850 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:36:31,377 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:36:31,785 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:36:43,152 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:37:01,885 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:37:17,535 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:37:46,636 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 12:50:50,405 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:50:50,922 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:51,231 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:51,542 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:51,848 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:51,849 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:51,857 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:51,858 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:52,470 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:50:52,778 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:53,084 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:53,396 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:53,699 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:53,700 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:53,708 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:53,709 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:54,652 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:50:54,965 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:55,263 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:55,562 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:55,886 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:55,887 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:55,895 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:55,896 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:55,903 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:55,904 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:56,958 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:50:57,293 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:57,637 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:57,952 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:58,284 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:58,285 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:58,293 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:58,294 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:50:58,302 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:50:58,303 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:52:47,925 ERROR treasury: Asset import could not read notes.xlsx
+Traceback (most recent call last):
+  File "/home/claude/treasury/assets/views.py", line 787, in _read_workbook
+    wb = openpyxl.load_workbook(upload, data_only=True, read_only=True)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 346, in load_workbook
+    reader = ExcelReader(filename, read_only, keep_vba,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 123, in __init__
+    self.archive = _validate_archive(fn)
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 95, in _validate_archive
+    archive = ZipFile(filename, 'r')
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1365, in __init__
+    self._RealGetContents()
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1432, in _RealGetContents
+    raise BadZipFile("File is not a zip file")
+zipfile.BadZipFile: File is not a zip file
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/assets/views.py", line 908, in post
+    mapping, rows = self._read(upload)
+                    ^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/assets/views.py", line 817, in _read
+    rows = self._read_workbook(upload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/assets/views.py", line 792, in _read_workbook
+    wb = openpyxl.load_workbook(upload, data_only=True)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 346, in load_workbook
+    reader = ExcelReader(filename, read_only, keep_vba,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 123, in __init__
+    self.archive = _validate_archive(fn)
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 95, in _validate_archive
+    archive = ZipFile(filename, 'r')
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1365, in __init__
+    self._RealGetContents()
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1432, in _RealGetContents
+    raise BadZipFile("File is not a zip file")
+zipfile.BadZipFile: File is not a zip file
+2026-07-25 12:55:51,081 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:55:51,572 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:51,892 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:52,197 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:52,508 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:52,509 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:52,517 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:52,517 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:53,135 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:55:53,441 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:53,749 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:54,058 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:54,376 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:54,377 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:54,386 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:54,387 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:55,324 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:55:55,639 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:55,956 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:56,283 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:56,603 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:56,603 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:56,611 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:56,612 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:56,620 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:56,620 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:57,569 WARNING axes.handlers.database: AXES: New login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Created new record in the database.
+2026-07-25 12:55:57,885 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:58,203 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:58,516 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:58,825 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:58,826 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:58,836 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:58,837 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 12:55:58,845 WARNING axes.handlers.database: AXES: Repeated login failure by {username: "********************", ip_address: "********************", path_info: "/accounts/login/"}. Updated existing record in the database.
+2026-07-25 12:55:58,846 WARNING axes.handlers.database: AXES: Locking out {username: "********************", ip_address: "********************", path_info: "/accounts/login/"} after repeated login failures.
+2026-07-25 13:00:20,702 ERROR treasury: Asset import could not read notes.xlsx
+Traceback (most recent call last):
+  File "/home/claude/treasury/assets/views.py", line 787, in _read_workbook
+    wb = openpyxl.load_workbook(upload, data_only=True, read_only=True)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 346, in load_workbook
+    reader = ExcelReader(filename, read_only, keep_vba,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 123, in __init__
+    self.archive = _validate_archive(fn)
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 95, in _validate_archive
+    archive = ZipFile(filename, 'r')
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1365, in __init__
+    self._RealGetContents()
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1432, in _RealGetContents
+    raise BadZipFile("File is not a zip file")
+zipfile.BadZipFile: File is not a zip file
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/claude/treasury/assets/views.py", line 908, in post
+    mapping, rows = self._read(upload)
+                    ^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/assets/views.py", line 817, in _read
+    rows = self._read_workbook(upload)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/assets/views.py", line 792, in _read_workbook
+    wb = openpyxl.load_workbook(upload, data_only=True)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 346, in load_workbook
+    reader = ExcelReader(filename, read_only, keep_vba,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 123, in __init__
+    self.archive = _validate_archive(fn)
+                   ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/.venv/lib/python3.12/site-packages/openpyxl/reader/excel.py", line 95, in _validate_archive
+    archive = ZipFile(filename, 'r')
+              ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1365, in __init__
+    self._RealGetContents()
+  File "/usr/lib/python3.12/zipfile/__init__.py", line 1432, in _RealGetContents
+    raise BadZipFile("File is not a zip file")
+zipfile.BadZipFile: File is not a zip file
+2026-07-25 13:04:40,480 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 13:05:07,781 ERROR treasury: Handled exception in cashbook/views.py
+Traceback (most recent call last):
+  File "/home/claude/treasury/cashbook/views.py", line 3690, in post
+    created = expense_svc.record_batch(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/contextlib.py", line 81, in inner
+    return func(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/cashbook/services/expenses.py", line 181, in record_batch
+    if not description or not amount or Decimal(str(amount)) <= 0:
+                                        ^^^^^^^^^^^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.ConversionSyntax'>]
+2026-07-25 21:07:44,048 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:40:28,486 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:40:58,502 ERROR treasury: Handled exception in cashbook/views.py
+Traceback (most recent call last):
+  File "/home/claude/treasury/cashbook/views.py", line 3741, in post
+    created = expense_svc.record_batch(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/contextlib.py", line 81, in inner
+    return func(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/claude/treasury/cashbook/services/expenses.py", line 181, in record_batch
+    if not description or not amount or Decimal(str(amount)) <= 0:
+                                        ^^^^^^^^^^^^^^^^^^^^
+decimal.InvalidOperation: [<class 'decimal.ConversionSyntax'>]
+2026-07-25 23:53:20,004 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:20,384 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:20,757 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:21,132 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:21,806 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:22,207 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:22,577 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:22,930 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:23,288 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:23,659 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:23,663 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:24,188 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:25,243 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:25,662 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:25,667 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:26,438 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:26,954 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:27,462 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:28,019 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:28,954 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:29,331 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:29,335 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:29,818 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:29,822 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:30,311 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:30,318 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:36,237 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:36,623 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:37,001 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:37,378 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:37,757 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:38,150 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:38,531 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:38,929 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:38,933 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:39,420 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:39,423 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:39,916 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:40,318 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:40,785 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:41,112 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:41,447 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:41,451 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:41,857 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:42,504 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:42,508 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:43,002 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:43,006 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:43,515 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:43,519 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:44,023 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:44,026 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:44,542 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:53:44,896 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:54:15,132 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:59:37,391 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:59:37,776 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-25 23:59:47,179 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:00:03,073 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:00:16,590 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:00:41,393 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:29,103 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:29,503 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:29,884 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:30,278 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:30,956 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:31,373 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:31,784 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:32,181 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:32,559 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:32,942 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:32,946 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:33,483 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:34,548 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:34,955 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:34,959 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:35,595 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:36,105 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:36,606 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:37,113 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:38,006 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:38,370 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:38,373 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:38,838 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:38,842 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:39,326 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:39,334 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:45,052 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:45,455 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:45,843 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:46,221 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:46,620 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:47,004 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:47,391 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:47,787 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:47,791 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:48,312 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:48,316 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:48,810 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:49,220 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:49,716 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:50,078 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:50,425 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:50,429 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:50,892 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:51,687 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:51,693 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:52,295 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:52,298 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:52,791 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:52,795 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:53,379 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:53,383 ERROR treasury: Handled exception in monthly treasurer narratives
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 528, in _ai_narratives
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:53,882 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:03:54,226 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off
+2026-07-26 00:04:23,322 ERROR treasury: Handled exception in monthly treasurer ai
+Traceback (most recent call last):
+  File "/home/claude/treasury/reports/views/treasurer_report.py", line 489, in _ai_summary
+    raise RuntimeError("assistant off")
+RuntimeError: assistant off

@@ -14,10 +14,10 @@
 </div>
 {% include "ui/period_selector.html" %}
 
-<div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-  <div class="stat"><div class="kpi-label">Float on hand (today)</div><div class="kpi-val mono">{{ CURRENCY }} {{ balance_now|money }}</div></div>
-  {% if float_target %}<div class="stat"><div class="kpi-label">Imprest / float</div><div class="kpi-val mono">{{ CURRENCY }} {{ float_target|money }}</div></div>
-  <div class="stat {% if to_topup %}kpi-warn{% endif %}"><div class="kpi-label">Top-up to reach float</div><div class="kpi-val mono">{{ CURRENCY }} {{ to_topup|money }}</div></div>{% endif %}
+<div class="kpi-grid u-mb">
+  <div class="stat"><div class="lbl">Float on hand (today)</div><div class="val mono">{{ CURRENCY }} {{ balance_now|money }}</div></div>
+  {% if float_target %}<div class="stat"><div class="lbl">Imprest / float</div><div class="val mono">{{ CURRENCY }} {{ float_target|money }}</div></div>
+  <div class="stat {% if to_topup %}kpi-warn{% endif %}"><div class="lbl">Top-up to reach float</div><div class="val mono">{{ CURRENCY }} {{ to_topup|money }}</div></div>{% endif %}
 </div>
 <div class="info-panel">Petty cash is a cash location, not a fund. Top-ups add physical cash to the box; each disbursement is charged to the fund/ministry it was for (so fund balances stay correct) and reduces the float. Reconcile the float on hand against the actual cash in the box.</div>
 
@@ -88,5 +88,5 @@
 </div>
 {% endif %}
 </div></div>
-<style>.ledger .open td,.ledger .close td{background:var(--card-head)}.ledger .close td{border-top:2px solid var(--forest)}.kpi-warn .kpi-val{color:var(--amber)}</style>
+<style>.ledger .open td,.ledger .close td{background:var(--card-head)}.ledger .close td{border-top:2px solid var(--forest)}.kpi-warn .val{color:var(--amber)}</style>
 {% endblock %}

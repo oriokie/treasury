@@ -23,7 +23,7 @@
     <td data-label="What for">{{ c.get_kind_display }}</td>
     <td data-label="Period">{{ c.period_label|default:"—" }}</td>
     <td data-label="Amount" class="num mono">{{ CURRENCY }} {{ c.amount|money }}</td></tr>
-  {% empty %}<tr><td colspan="5"><div class="pt-empty">Nothing recorded for this period.</div></td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="5"><div class="pt-empty"><div class="big">Nothing recorded for this period.</div><div class="sm">Choose another year above, or tell the office if this looks wrong.</div></div></td></tr>{% endfor %}
   </tbody>
   <tfoot><tr><th colspan="4">Total</th><th class="num mono">{{ CURRENCY }} {{ total|money }}</th></tr></tfoot>
 </table>

@@ -45,6 +45,11 @@ ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp"}
 class PortalBase(PortalAccessMixin, TemplateView):
     """Shared context every portal page needs for its chrome."""
     log_action = None
+    # The browser tab. `portal/_base.html` has always rendered
+    # `{{ portal_title|default:"My scheme" }}`, but no view ever set it, so every
+    # page in the portal shared one title and a member with three tabs open could
+    # not tell them apart. Declared per view below.
+    portal_title = ""
 
     def scope(self):
         return portal_svc.scope(self.account)
@@ -55,6 +60,7 @@ class PortalBase(PortalAccessMixin, TemplateView):
         sc = self.scope()
         ctx["account"] = account
         ctx["member"] = account.member
+        ctx["portal_title"] = self.portal_title or "My scheme"
         ctx["memberships"] = sc.memberships()
         ctx["open_request_count"] = sc.requests().filter(
             status__in=list(PortalRequest.OPEN_STATUSES)).count()
@@ -79,6 +85,7 @@ class PortalBase(PortalAccessMixin, TemplateView):
 
 class PortalHomeView(PortalBase):
     template_name = "benevolent/portal/home.html"
+    portal_title = "My scheme"
     log_action = Action.SIGN_IN
 
     def nav_key(self):
@@ -113,6 +120,7 @@ class PortalUnavailableView(TemplateView):
 
 class PortalContributionsView(PortalBase):
     template_name = "benevolent/portal/contributions.html"
+    portal_title = "My contributions"
     log_action = Action.VIEW_CONTRIBUTIONS
 
     def nav_key(self):
@@ -133,6 +141,12 @@ class PortalContributionsView(PortalBase):
         ctx["years"] = _contribution_years(self.scope())
         ctx["total"] = rows.aggregate(s=Sum("transaction__amount"))["s"] or Decimal("0")
         ctx["count"] = rows.count()
+        # The date of the most recent gift in the current selection. A member's
+        # first question about their own record is nearly always "did my last
+        # payment land", so it is answered on the page rather than left to be
+        # inferred from the top row of the table.
+        ctx["last_on"] = rows.order_by("-transaction__date").values_list(
+            "transaction__date", flat=True).first()
 
         paginator = Paginator(rows, 25)
         ctx["page"] = paginator.get_page(self.request.GET.get("page"))
@@ -149,6 +163,7 @@ class PortalStatementView(PortalBase):
     the same rows cannot disagree about what a column means.
     """
     template_name = "benevolent/portal/statement.html"
+    portal_title = "Contribution statement"
 
     def nav_key(self):
         return "contributions"
@@ -197,6 +212,7 @@ class PortalStatementView(PortalBase):
 class PortalReceiptView(PortalBase):
     """The receipt for one contribution."""
     template_name = "benevolent/portal/receipt.html"
+    portal_title = "Receipt"
 
     def nav_key(self):
         return "contributions"
@@ -228,6 +244,7 @@ class PortalStandingView(PortalBase):
     honour.
     """
     template_name = "benevolent/portal/standing.html"
+    portal_title = "My standing"
     log_action = Action.VIEW_STANDING
 
     def nav_key(self):
@@ -281,6 +298,7 @@ class PortalStandingView(PortalBase):
 
 class PortalHouseholdView(PortalBase):
     template_name = "benevolent/portal/household.html"
+    portal_title = "My household"
     log_action = Action.VIEW_HOUSEHOLD
 
     def nav_key(self):
@@ -304,6 +322,7 @@ class PortalHouseholdView(PortalBase):
 
 class PortalCaseListView(PortalBase):
     template_name = "benevolent/portal/cases.html"
+    portal_title = "My cases"
 
     def nav_key(self):
         return "cases"
@@ -316,6 +335,7 @@ class PortalCaseListView(PortalBase):
 
 class PortalCaseDetailView(PortalBase):
     template_name = "benevolent/portal/case_detail.html"
+    portal_title = "Case"
 
     def nav_key(self):
         return "cases"
@@ -344,6 +364,7 @@ class PortalCaseDetailView(PortalBase):
 
 class PortalRequestListView(PortalBase):
     template_name = "benevolent/portal/requests.html"
+    portal_title = "My requests"
 
     def nav_key(self):
         return "requests"
@@ -371,6 +392,7 @@ class PortalRequestCreateView(PortalBase):
     form with a dropdown serves neither.
     """
     template_name = "benevolent/portal/request_new.html"
+    portal_title = "New request"
 
     def nav_key(self):
         return "requests"
@@ -467,6 +489,7 @@ class PortalRequestCreateView(PortalBase):
 
 class PortalRequestDetailView(PortalBase):
     template_name = "benevolent/portal/request_detail.html"
+    portal_title = "Request"
 
     def nav_key(self):
         return "requests"
@@ -549,6 +572,7 @@ def _attach_uploads(request, account, req=None):
 
 class PortalDocumentListView(PortalBase):
     template_name = "benevolent/portal/documents.html"
+    portal_title = "My documents"
 
     def nav_key(self):
         return "documents"
@@ -604,6 +628,7 @@ class PortalDocumentActionView(PortalAccessMixin, View):
 
 class PortalNotificationsView(PortalBase):
     template_name = "benevolent/portal/notifications.html"
+    portal_title = "Messages"
 
     def nav_key(self):
         return "notifications"
@@ -625,6 +650,7 @@ class PortalNotificationsView(PortalBase):
 
 class PortalProfileView(PortalBase):
     template_name = "benevolent/portal/profile.html"
+    portal_title = "My details"
 
     def nav_key(self):
         return "profile"

@@ -8,7 +8,7 @@
 {% block portal_content %}
 
 {% if pending %}
-<div class="panel u-mb" style="border-left:3px solid var(--brass)">
+<div class="panel panel-brass u-mb">
   <b>Waiting on the church office</b>
   {% for r in pending %}
   <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_request_detail' r.pk %}">{{ r.reference }}</a> · {{ r.subject }}</span>
@@ -39,7 +39,7 @@
       <td data-label="" class="no-print">
         <a class="link" href="{% url 'portal_request_new' 'HOUSEHOLD' %}?dependant={{ d.pk }}&op=update">Correct</a></td></tr>
     {% empty %}
-    <tr><td colspan="5"><div class="pt-empty">Nobody else is registered under your membership.</div></td></tr>
+    <tr><td colspan="5"><div class="pt-empty"><div class="big">Nobody else is registered under your membership.</div><div class="sm">Ask the office to add a member of your household.</div></div></td></tr>
     {% endfor %}
     </tbody>
   </table>

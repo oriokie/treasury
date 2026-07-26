@@ -54,7 +54,14 @@
         <td data-label="Indication">
           {% if b.result and b.result.eligible %}<span class="pill pill-green">Would be considered</span>
           {% elif b.result %}<span class="pill pill-amber">Something is in the way</span>
-            {% for f in b.result.blocking_failures %}<div class="muted" style="font-size:.8rem">{{ f.message|default:f.name }}</div>{% endfor %}
+            {% comment %} Keys come from eligibility.Check: code, label, passed, detail,
+               blocking. Written against that dataclass rather than guessed at — the
+               earlier version asked for `message` and `name`, neither of which exists,
+               and because a missing variable used as a FILTER ARGUMENT raises in Django
+               rather than rendering blank, this page returned 500 for any member with a
+               blocking failure. Exactly the fault fixed in the schedule loop above; it
+               survived here because a member has to be ineligible to reach this line. {% endcomment %}
+            {% for f in b.result.blocking_failures %}<div class="chk-why">{{ f.detail|default:f.label }}</div>{% endfor %}
           {% else %}<span class="pill pill-grey">Cannot say</span>{% endif %}</td>
         <td data-label="Benefit" class="num mono">{% if b.result and b.result.entitlement %}{{ CURRENCY }} {{ b.result.entitlement.amount|default_if_none:0|money }}{% else %}—{% endif %}</td></tr>
     {% endfor %}</tbody>
