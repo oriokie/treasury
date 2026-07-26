@@ -871,6 +871,10 @@ class UserPreference(models.Model):
         ROWS = "ROWS", "Row lines only"
         GRID = "GRID", "Full grid"
 
+    class Negatives(models.TextChoices):
+        MINUS = "MINUS", "Minus sign  −1,234.50"
+        PARENS = "PARENS", "Parentheses  (1,234.50)"
+
     # preset accent palette (key -> hex). CUSTOM uses accent_custom.
     ACCENT_PRESETS = {
         "forest": "#1f5f4f", "brass": "#b07d2c", "blue": "#2c5d86",
@@ -905,6 +909,11 @@ class UserPreference(models.Model):
     heading_font = models.CharField(max_length=6, choices=HeadingFont.choices,
         default=HeadingFont.SERIF,
         help_text="Typeface for page titles and section headings.")
+    negatives = models.CharField(max_length=6, choices=Negatives.choices,
+        default=Negatives.MINUS,
+        help_text="How negative figures are shown. Accounting convention puts "
+                  "them in parentheses; the parentheses are real characters, so "
+                  "they survive Word, Excel, PDF and print.")
     figure_font = models.CharField(max_length=5, choices=FigureFont.choices,
         default=FigureFont.MONO,
         help_text="How monetary figures are set. Tabular monospace keeps "

@@ -82,6 +82,12 @@
         <button type="button" data-val="BODY" {% if pref.figure_font == 'BODY' %}class="on"{% endif %}>1,234.50</button>
       </div></div>
 
+    <div class="pref-row"><div class="pl"><label>Negative figures</label><div class="ph">Accounting convention writes a negative in parentheses rather than with a minus sign. The brackets are real characters, so they survive Word, Excel, PDF and print.</div></div>
+      <div class="seg" data-pref="negatives">
+        <button type="button" data-val="MINUS" {% if pref.negatives == 'MINUS' %}class="on"{% endif %} style="font-family:'IBM Plex Mono',monospace">-1,234.50</button>
+        <button type="button" data-val="PARENS" {% if pref.negatives == 'PARENS' %}class="on"{% endif %} style="font-family:'IBM Plex Mono',monospace">(1,234.50)</button>
+      </div></div>
+
     <div class="pref-row"><div class="pl"><label>Layout width</label><div class="ph">Constrain content or use the full screen.</div></div>
       <div class="seg" data-pref="layout_width">
         <button type="button" data-val="BOXED" {% if pref.layout_width == 'BOXED' %}class="on"{% endif %}>Boxed</button>

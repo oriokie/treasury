@@ -45,7 +45,14 @@ class IncomeExpenditureStatementSection(ComponentSection):
                         "expense_by_category")
 
     def render(self, ctx, filters):
-        rows = ctx.fund_summary(consolidated=False)
+        # Honours the report's "Consolidate sub-accounts" filter. This was
+        # pinned to False, so a treasurer who asked for consolidation still got
+        # every sub-account itemised on the revenue list while the rest of the
+        # report rolled them up — the same report disagreeing with itself about
+        # what a fund is. Consolidation moves a child's receipts onto its
+        # parent's line, so the total is the same either way; only the number
+        # of lines changes.
+        rows = ctx.fund_summary(consolidated=filters.get("consolidated", True))
         # revenue = local (non-trust) receipts per fund
         income = [{"name": r["department"].name, "amount": _n(r["receipts"])}
                   for r in rows if not r.get("is_trust") and _n(r["receipts"])]
@@ -109,6 +116,8 @@ registry.register(Report(
                 "Income Statement.",
     category="Financial statements",
     permission=_can_view_reports,
+    filters=[Filter("consolidated", "Consolidate sub-accounts", kind="bool",
+                    default=True)],
     sections=[
         NarrativeComponent("executive_summary",
                            layout=LayoutMeta(order=10, priority=90)),
@@ -213,22 +222,32 @@ class FinancialPositionSummarySection(ComponentSection):
         total_assets = cash + pending + prepaid
         total_liabilities = trust_payable + loan_total + pending + payables + accruals
         net_assets = total_assets - total_liabilities
+        # Grouped under headings, with the two subtotals and the bottom line
+        # marked as what they are. The figures are unchanged: previously every
+        # line — bank, petty cash, total assets, loans, net assets — arrived in
+        # one undifferentiated column, so a reader had to know the statement's
+        # shape already to find the three numbers it exists to give.
         pairs = [
+            ("Assets", None, "heading"),
             ("Bank (funds on hand)", bank),
             ("Petty cash float", petty),
             ("Staff advances (receivable)", advances),
             ("Receipts pending allocation", pending),
             ("Prepayments (unexpired)", prepaid),
-            ("Total assets", total_assets, True),
+            ("Total assets", total_assets, "subtotal"),
+            ("Liabilities", None, "heading"),
             ("Trust funds payable", trust_payable),
             ("Outstanding loans", loan_total),
             ("Accounts payable", payables),
             ("Accrued expenses", accruals),
             ("Pending receipts (unallocated)", pending),
-            ("Total liabilities", total_liabilities, True),
-            ("Net assets", net_assets, True),
+            ("Total liabilities", total_liabilities, "subtotal"),
+            ("Net assets", net_assets, "grand"),
         ]
-        return Section.keyvalue(self.key, self.title, pairs)
+        return Section.keyvalue(
+            self.key, self.title, pairs,
+            note="Net assets is total assets less total liabilities — what the "
+                 "church would be left holding if every fund were settled today.")
 
 
 registry.register(Report(

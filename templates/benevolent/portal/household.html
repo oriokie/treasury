@@ -37,7 +37,12 @@
       <td data-label="Scheme">{{ d.membership.scheme.name }}</td>
       <td data-label="Registered">{{ d.registered_on|date:"d M Y" }}</td>
       <td data-label="" class="no-print">
-        <a class="link" href="{% url 'portal_request_new' 'HOUSEHOLD' %}?dependant={{ d.pk }}&op=update">Correct</a></td></tr>
+        {% comment %} Carries the person's id so the form opens knowing who is
+           meant and showing what the church currently holds for them — the
+           member changes the one field that is wrong rather than copying four
+           correct ones across. {% endcomment %}
+        <a class="btn btn-xs btn-ghost" href="{% url 'portal_request_new' 'HOUSEHOLD' %}?dependant={{ d.pk }}&amp;op=update">Correct details</a>
+        <a class="btn btn-xs btn-ghost" href="{% url 'portal_request_new' 'HOUSEHOLD' %}?dependant={{ d.pk }}&amp;op=remove">Remove from cover</a></td></tr>
     {% empty %}
     <tr><td colspan="5"><div class="pt-empty"><div class="big">Nobody else is registered under your membership.</div><div class="sm">Ask the office to add a member of your household.</div></div></td></tr>
     {% endfor %}

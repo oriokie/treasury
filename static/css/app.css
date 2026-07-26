@@ -1356,3 +1356,50 @@ html[data-grid="grid"] table:is(.ledger,.table) th:last-child,
 html[data-grid="grid"] table:is(.ledger,.table) td:last-child{border-inline-end:none}
 /* Sticky table headers off */
 html[data-stickyhead="off"] table:is(.ledger,.table) th{position:static}
+
+/* ---------- Report statement rows ----------
+   `.row-emph` marks every subtotal and every grand-total footer the report
+   engine renders, and had never been defined — so on every engine report a
+   total was set exactly like the line items above it. A statement of financial
+   position listed bank, petty cash, advances, total assets, trust payable,
+   loans, total liabilities and net assets in one undifferentiated column of
+   figures, and left the reader to work out which three of those were the
+   answer. That is the whole of the complaint, and it was one missing rule.
+
+   The levels below exist because emphasis alone is not enough: a group heading,
+   a subtotal and the bottom line are three different things and were all
+   arriving as "emphasised". */
+table:is(.ledger,.table) tr.row-emph > td{
+  font-weight:700;color:var(--ink);
+  border-top:1px solid var(--line-strong);
+  background:rgba(31,95,79,.035)}
+table:is(.ledger,.table) tfoot tr.row-emph > td{
+  border-top:2px solid var(--forest);background:rgba(31,95,79,.05)}
+
+/* a group heading: ASSETS, LIABILITIES — structure, not a figure */
+table:is(.ledger,.table) tr.row-heading > td{
+  font-weight:700;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--brass-ink,var(--brass));background:transparent;
+  border-top:0;border-bottom:1px solid var(--brass);
+  padding-top:1.1rem}
+table:is(.ledger,.table) tr.row-heading + tr > td{border-top:0}
+
+/* a subtotal of the lines directly above it */
+table:is(.ledger,.table) tr.row-subtotal > td{
+  font-weight:700;border-top:1px solid var(--line-strong);
+  background:rgba(31,95,79,.035)}
+
+/* the figure the statement exists to give: net assets, surplus for the year */
+table:is(.ledger,.table) tr.row-grand > td{
+  font-weight:800;font-size:1.02rem;
+  border-top:2px solid var(--forest);
+  border-bottom:3px double var(--forest);
+  background:rgba(31,95,79,.06);padding-top:.7rem;padding-bottom:.7rem}
+
+@media print{
+  table:is(.ledger,.table) tr.row-emph > td,
+  table:is(.ledger,.table) tr.row-subtotal > td{background:transparent;border-top:1px solid #000}
+  table:is(.ledger,.table) tr.row-grand > td{
+    background:transparent;border-top:2px solid #000;border-bottom:3px double #000}
+  table:is(.ledger,.table) tr.row-heading > td{color:#000;border-bottom:1px solid #666}
+}

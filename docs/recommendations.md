@@ -1932,3 +1932,39 @@ the added rows all share one parent, the SQL is identical every time and a
 naive duplicate count hides it. Reproducing this class of fault needs test data
 spread across parents, which is why the probe looks at the *call stack* rather
 than at the SQL text.
+
+---
+
+## 136. The CSS contract test has a blind spot: reach is not repetition — OPEN — NEW
+
+`core.test_css_contract` fails when a class is used in three or more templates
+with nothing defining it. The threshold is there to keep the test quiet: a
+single-use class name is often a legitimate JavaScript hook that was never meant
+to carry style, and failing on those would make the suite noise.
+
+It missed `row-emph` completely. That class marks **every subtotal row and every
+grand-total footer the report engine renders**, and it was defined nowhere — so
+on every engine report a total was set exactly like the line items above it, and
+a statement of financial position gave no visual clue which of its lines were
+total assets, total liabilities and net assets. It went unnoticed for as long as
+it did because it appears in exactly one file: `templates/reports/engine_report.html`,
+the single template every engine report renders through.
+
+**The lesson: a class's blast radius is how many screens it reaches, not how
+many templates mention it.** One line in a shared template can style a hundred
+pages; three lines in three leaf templates style three. The current threshold
+measures the wrong thing for the case that matters most.
+
+Worth considering, in rough order of cost:
+
+1. Treat templates that are extended or included by many others as amplifiers —
+   a class used in one of those counts for as many templates as render through
+   it. The include/extends graph is already walked by `_styles_reachable_from`,
+   so the data is there.
+2. Failing that, keep a small explicit list of engine-emitted class names that
+   must always be defined. `reports.test_statement_readability` now pins
+   `row-emph`, `row-heading`, `row-subtotal` and `row-grand` this way, which
+   covers today's known cases but not tomorrow's.
+
+Until then the guard should be read as catching *widespread* gaps, not
+*high-impact* ones — and those are not the same thing.

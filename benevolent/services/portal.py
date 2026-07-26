@@ -245,6 +245,63 @@ def create_request(account, *, kind, subject, detail="", membership=None,
 
 
 @db_tx.atomic
+def update_request(req, *, actor=None, subject=None, detail=None, membership=None,
+                   event_type=None, event_date=None, dependant=None,
+                   deceased_name=None, payload=None, submit=False):
+    """Amend a request the member still holds.
+
+    Editing is allowed only while the request is theirs to edit — a draft they
+    have not sent, or one the office has handed back asking for more. Once it
+    has been submitted and nobody has asked for anything, changing it underneath
+    a reviewer would mean the office approving something other than what it
+    read; and once it is decided, editing would rewrite history. Both are
+    refused here rather than in the view, so the rule holds for any caller.
+
+    `kind` is deliberately not amendable. Each kind is a different form with
+    different fields and its own approval path, so changing it would leave the
+    payload describing one thing and the request claiming another; a member who
+    picked the wrong one withdraws it and starts the right one, which is one
+    click and leaves an honest trail.
+
+    Fields left as None are untouched, so a caller may amend one thing without
+    restating the rest.
+    """
+    if req.status not in PortalRequest.MEMBER_EDITABLE:
+        raise ValidationError(
+            "That request is with the church office and can no longer be "
+            "changed. Reply on it if you need to add anything.")
+
+    sc = scope(req.account)
+    if membership is not None:
+        membership = sc.membership(
+            membership.pk if hasattr(membership, "pk") else membership)
+        req.membership = membership
+    if dependant is not None:
+        # An explicitly cleared dependant arrives as False rather than None, so
+        # "leave alone" and "there is no longer one" stay distinguishable.
+        req.dependant = (None if dependant is False else sc.dependant(
+            dependant.pk if hasattr(dependant, "pk") else dependant))
+    if subject is not None:
+        req.subject = (subject or "").strip()[:140]
+    if detail is not None:
+        req.detail = detail or ""
+    if event_type is not None:
+        req.event_type = (None if event_type is False else event_type)
+    if event_date is not None:
+        req.event_date = (None if event_date is False else event_date)
+    if deceased_name is not None:
+        req.deceased_name = (deceased_name or "").strip()
+    if payload is not None:
+        req.payload = payload or {}
+
+    req.full_clean(exclude=["reference"])
+    req.save()
+    if submit:
+        submit_request(req, actor=actor)
+    return req
+
+
+@db_tx.atomic
 def submit_request(req, *, actor=None):
     """Member hands it to the office."""
     if req.status not in PortalRequest.MEMBER_EDITABLE:

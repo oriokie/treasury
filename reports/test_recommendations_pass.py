@@ -183,7 +183,10 @@ class StatementsPackTests(_ReportSeed):
         ctx = ReportContext.for_period(dt.date(2026, 1, 1),
                                        dt.date(2026, 12, 31))
         pos = FinancialPositionSummarySection().render(ctx, {})
-        by = {r.cells["label"]: Decimal(r.cells["value"]) for r in pos.rows}
+        # Group headings ("Assets", "Liabilities") carry no figure of their own,
+        # so only the lines that state an amount are read here.
+        by = {r.cells["label"]: Decimal(r.cells["value"])
+              for r in pos.rows if r.cells["value"] is not None}
         cash = sum((r["closing"] or Decimal(0) for r in ctx.fund_summary()),
                    Decimal(0))
         # v2.42 split "Cash & bank" into Local/Trust; v2.44 reverted that back

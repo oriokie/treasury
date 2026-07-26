@@ -416,13 +416,63 @@ class PortalRequestCreateView(PortalBase):
         ).order_by("name")
         ctx["today"] = _dt.date.today()
         ctx["form"] = self.request.POST or None
+        # `v` holds the values the form renders. Empty when starting a request
+        # from scratch, filled from the query string when the member arrived by
+        # asking to correct a particular person, and filled from the request
+        # itself when amending one — which is what lets one template serve all
+        # three instead of copies that would drift apart.
+        ctx.setdefault("v", self._prefill_from_query(kind, sc))
+        ctx.setdefault("is_edit", False)
         return ctx
 
-    def post(self, request, *args, **kwargs):
-        kind = self._kind()
-        sc = self.scope()
-        post = request.POST
+    def _prefill_from_query(self, kind, sc):
+        """Fill the form from `?dependant=…&op=…`, as the household page links.
 
+        "Correct" beside a person on the household page should open a form that
+        already knows who is meant and what their details currently are, so the
+        member changes the one field that is wrong instead of copying four
+        correct ones out of the page above. Without this the link carried the
+        person's id and the form ignored it, leaving them to retype everything
+        and leaving the office to guess which of the four values was the
+        correction.
+
+        A dependant the member is not entitled to see is dropped rather than
+        refused: the query string is a convenience, and a bad one should open an
+        ordinary blank form, not an error page.
+        """
+        params = self.request.GET
+        values = {}
+        if kind != PortalRequest.Kind.HOUSEHOLD:
+            return values
+        if params.get("op") in {"add", "update", "remove"}:
+            values["op"] = params["op"]
+        raw = params.get("dependant")
+        if not raw:
+            return values
+        try:
+            dep = sc.dependant(int(raw))
+        except (TypeError, ValueError, PermissionDenied):
+            return values
+        values.update({
+            "dependant": dep.pk,
+            # `display_name` so a dependant who is also on the church roll shows
+            # the name the church actually holds, which is the one being corrected.
+            "name": dep.display_name,
+            "relationship": dep.relationship,
+            "phone": (dep.phone or ""),
+            "date_of_birth": (dep.date_of_birth.isoformat()
+                              if dep.date_of_birth else ""),
+            "subject": f"Correction to {dep.display_name}'s details",
+        })
+        return values
+
+    def _fields_from(self, post, sc, kind):
+        """Read one submitted form into the arguments the services take.
+
+        Shared with the edit view so a field added to a form is picked up on
+        both paths; when only one of them knew about a field, a member editing a
+        draft would silently lose it.
+        """
         membership = None
         if post.get("membership"):
             try:
@@ -460,17 +510,26 @@ class PortalRequestCreateView(PortalBase):
         elif kind == PortalRequest.Kind.CORRECTION:
             payload = {"what": (post.get("what") or "").strip()}
 
+        return {
+            "subject": post.get("subject") or dict(PortalRequest.Kind.choices)[kind],
+            "detail": post.get("detail") or "",
+            "membership": membership, "event_type": event_type,
+            "event_date": _parse_date(post.get("event_date")),
+            "dependant": dependant,
+            "deceased_name": post.get("deceased_name") or "",
+            "payload": payload,
+        }
+
+    def post(self, request, *args, **kwargs):
+        kind = self._kind()
+        sc = self.scope()
+        post = request.POST
+
         try:
             req = portal_svc.create_request(
                 self.account, kind=kind,
-                subject=post.get("subject") or dict(PortalRequest.Kind.choices)[kind],
-                detail=post.get("detail") or "",
-                membership=membership, event_type=event_type,
-                event_date=_parse_date(post.get("event_date")),
-                dependant=dependant,
-                deceased_name=post.get("deceased_name") or "",
-                payload=payload,
-                submit=post.get("action") == "submit")
+                submit=post.get("action") == "submit",
+                **self._fields_from(post, sc, kind))
         except ValidationError as exc:
             ctx = self.get_context_data(**kwargs)
             ctx["error"] = "; ".join(
@@ -484,6 +543,98 @@ class PortalRequestCreateView(PortalBase):
             f"Request {req.reference} " +
             ("has been sent to the church office." if req.status ==
              PortalRequest.Status.SUBMITTED else "has been saved as a draft."))
+        return redirect("portal_request_detail", pk=req.pk)
+
+
+class PortalRequestEditView(PortalRequestCreateView):
+    """Amend a request the member still holds.
+
+    Subclasses the create view rather than copying it: the same template, the
+    same five form shapes, the same field parsing. The differences are only
+    that the kind comes from the request instead of the URL, the fields start
+    filled in, and saving amends rather than creates.
+
+    Scope is enforced by `scope().request(pk)`, which raises for a request that
+    is not this member's — a member cannot reach another member's draft by
+    guessing a number. Whether it may be edited *at all* is decided by
+    `portal_svc.update_request`, so the rule cannot be bypassed by posting
+    directly to this URL.
+    """
+    portal_title = "Edit request"
+
+    def _req(self):
+        return self.scope().request(self.kwargs["pk"])
+
+    def _kind(self):
+        return self._req().kind
+
+    def get_context_data(self, **kwargs):
+        req = self._req()
+        ctx = super().get_context_data(**kwargs)
+        ctx["req"] = req
+        ctx["is_edit"] = True
+        if not req.member_may_edit:
+            ctx["locked"] = True
+        payload = req.payload or {}
+        # Names here match the form's field names, so the template asks for the
+        # value under the same name it posts back.
+        ctx["v"] = {
+            "subject": req.subject, "detail": req.detail,
+            "membership": req.membership_id, "dependant": req.dependant_id,
+            "event_type": req.event_type_id,
+            "event_date": req.event_date.isoformat() if req.event_date else "",
+            "deceased_name": req.deceased_name,
+            "op": payload.get("op") or "add",
+            "relationship": payload.get("relationship") or "",
+            "name": payload.get("name") or "",
+            "phone": payload.get("phone") or "",
+            "date_of_birth": payload.get("date_of_birth") or "",
+            "new_name": payload.get("name") or "",
+            "new_phone": payload.get("phone") or "",
+            "what": payload.get("what") or "",
+        }
+        return ctx
+
+    def get(self, request, *args, **kwargs):
+        req = self._req()
+        if not req.member_may_edit:
+            messages.error(
+                request,
+                f"{req.reference} is with the church office and can no longer "
+                "be changed. You can still reply on it.")
+            return redirect("portal_request_detail", pk=req.pk)
+        return super().get(request, *args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        req = self._req()
+        sc = self.scope()
+        post = request.POST
+        fields = self._fields_from(post, sc, req.kind)
+        # `_fields_from` returns None for a cleared selector, which
+        # `update_request` reads as "leave alone". On an edit the member really
+        # has cleared it, so say so explicitly.
+        for key in ("dependant", "event_type", "event_date"):
+            if fields[key] is None:
+                fields[key] = False
+        try:
+            portal_svc.update_request(
+                req, actor=request.user,
+                submit=post.get("action") == "submit", **fields)
+        except ValidationError as exc:
+            ctx = self.get_context_data(**kwargs)
+            ctx["error"] = "; ".join(
+                m for msgs in getattr(exc, "message_dict", {"": exc.messages}).values()
+                for m in msgs)
+            return self.render_to_response(ctx)
+
+        _attach_uploads(request, self.account, req)
+        req.refresh_from_db()
+        messages.success(
+            request,
+            f"{req.reference} " +
+            ("has been sent to the church office."
+             if req.status == PortalRequest.Status.SUBMITTED
+             else "has been updated and is still a draft."))
         return redirect("portal_request_detail", pk=req.pk)
 
 

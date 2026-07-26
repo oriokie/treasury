@@ -103,9 +103,13 @@
       </tr>{% endfor %}</tbody></table>
 
     {% elif s.kind == 'keyvalue' %}
-      <table class="ledger"><tbody>{% for r in s.rows %}<tr {% if r.emphasis %}class="row-emph"{% endif %}>
+      {% comment %} `row-emph` keeps every existing caller working; the level
+         classes let a statement distinguish a group heading from a subtotal
+         from the bottom line, which reading a statement of financial position
+         requires and a single emphasis flag cannot express. {% endcomment %}
+      <table class="ledger"><tbody>{% for r in s.rows %}<tr class="{% if r.emphasis %}row-emph{% endif %}{% if r.meta.level %} row-{{ r.meta.level }}{% endif %}">
         <td>{{ r.cells.label }}</td>
-        <td class="num mono {% if r.cells.value|is_negative %}neg{% endif %}">{{ r.cells.value|money }}</td>
+        <td class="num mono {% if r.cells.value|is_negative %}neg{% endif %}">{% if r.meta.level == 'heading' %}&nbsp;{% else %}{{ r.cells.value|money }}{% endif %}</td>
       </tr>{% endfor %}</tbody></table>
 
     {% elif s.is_empty %}
@@ -119,7 +123,7 @@
       <div class="table-wrap {% if s.rows|length > 15 %}sticky{% endif %}"><table class="ledger">
         <thead><tr>{% for c in s.columns %}<th {% if c.numeric %}class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
         <tbody>
-        {% for r in s.rows %}<tr {% if r.emphasis %}class="row-emph"{% endif %}>
+        {% for r in s.rows %}<tr class="{% if r.emphasis %}row-emph{% endif %}{% if r.meta.level %} row-{{ r.meta.level }}{% endif %}">
           {% for c in s.columns %}
             {% with v=r.cells|get_item:c.key %}
             <td class="{% if c.numeric %}num mono{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}{% if v == None or v == '' %} cell-blank{% endif %}">
@@ -132,7 +136,7 @@
           {% endfor %}
         </tr>{% endfor %}
         </tbody>
-        {% if s.total %}<tfoot><tr class="row-emph">
+        {% if s.total %}<tfoot><tr class="row-emph{% if s.total.meta.level %} row-{{ s.total.meta.level }}{% endif %}">
           {% for c in s.columns %}{% with v=s.total.cells|get_item:c.key %}
           <td class="{% if c.numeric %}num mono{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}">
             {% if v == None or v == '' %}{% elif c.numeric %}{{ v|money }}{% else %}{{ v }}{% endif %}

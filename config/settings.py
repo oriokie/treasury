@@ -162,6 +162,7 @@ MIDDLEWARE = [
     # trust_summary, …) that flow through core.perfcache.cached compute at most
     # once per request. Placed last so it wraps view execution.
     "core.perfcache.RequestScopeMiddleware",
+    "core.numberstyle.NumberStyleMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

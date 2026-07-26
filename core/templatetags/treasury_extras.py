@@ -53,7 +53,26 @@ def money(value, places=2):
     `{{ None|money }}` -> "—"
 
     Drop-in for `{{ x|floatformat:2|intcomma }}` and
-    `{{ x|floatformat:0|intcomma }}`."""
+    `{{ x|floatformat:0|intcomma }}`.
+
+    Honours the reader's "negative figures" preference: a treasurer who has
+    chosen accounting style gets "(1,234.50)" here without every one of the
+    several hundred templates that call this filter having to be changed. Use
+    `money_acct` where the accounting convention is required regardless of who
+    is looking — a statutory statement, say — and `money_plain` where a minus
+    sign is required regardless.
+    """
+    from core.numberstyle import negatives_style
+    return _money(value, places, accounting=negatives_style() == "PARENS")
+
+
+@register.filter
+def money_plain(value, places=2):
+    """Always a minus sign, whatever the reader prefers.
+
+    For the few places where parentheses would be wrong or ambiguous — a
+    variance shown beside a signed chart axis, or a figure being copied into
+    something that parses it back."""
     return _money(value, places, accounting=False)
 
 

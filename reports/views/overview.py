@@ -486,6 +486,56 @@ class HistoricalYearManageView(TreasurerRequiredMixin, TemplateView):
                                   f"{len(years)} year(s). Yearly totals updated.")
         return redirect("historical_manage")
 
+def _audit_trace(name, h):
+    """The reference and money that make a history row traceable.
+
+    An audit line saying "Transaction changed by tabitha" is only useful if you
+    can then find the transaction. The detail column held `str(instance)`, which
+    for a bank receipt is a payer's name and little else, so an auditor holding
+    an M-Pesa code, a voucher number or an expense id had nothing to match on and
+    no way to search for it.
+
+    Read straight off the historical row's own columns rather than from
+    `h.instance`. Building the instance to read one field is what made this view
+    issue a query per row before (see the note in `_collect`), and the columns
+    are right there.
+
+    Returns (reference, amount, url) — any of which may be empty for a model
+    that has no such thing.
+    """
+    ref, amount, url = "", None, ""
+    pk = getattr(h, "id", None)
+    amount = getattr(h, "amount", None)
+
+    if name == "Transaction":
+        # The bank receipt is what a member quotes when they ring up about a
+        # payment ("UER2Q5NF2W"), so it comes first; core_ref is the bank's own
+        # unique id, and `reference` the paybill narration.
+        for field in ("bank_receipt", "core_ref", "reference"):
+            value = (getattr(h, field, "") or "").strip()
+            if value:
+                ref = value
+                break
+    elif name == "Expense":
+        voucher = (getattr(h, "voucher_no", "") or "").strip()
+        ref = f"Voucher {voucher}" if voucher else ""
+        if pk:
+            from django.urls import reverse
+            url = reverse("expense_detail", args=[pk])
+    elif name == "Member":
+        ref = (getattr(h, "phone", "") or "").strip()
+        if pk:
+            from django.urls import reverse
+            url = reverse("member_detail", args=[pk])
+    elif name == "Envelope batch":
+        if pk:
+            from django.urls import reverse
+            url = reverse("envelope_batch_detail", args=[pk])
+    elif name == "Allocation rule":
+        ref = (getattr(h, "reference", "") or "").strip()
+    return ref, amount, url
+
+
 class AuditLogView(ReportAccessMixin, TemplateView):
     template_name = "reports/audit.html"
 
@@ -557,11 +607,20 @@ class AuditLogView(ReportAccessMixin, TemplateView):
                     from core.utils import log_exception as _lx; _lx('reports/views.py')
                     obj = f"{name} #{h.id}"
                 uname = getattr(h.history_user, "username", "") or "system"
-                if q and q not in (obj + " " + uname + " " + name).lower():
+                ref, amount, url = _audit_trace(name, h)
+                pk = getattr(h, "id", None)
+                # The searchable text now carries the record id and its
+                # reference, so pasting an M-Pesa code or an expense number into
+                # the search box finds the history for that record — which is
+                # how somebody actually arrives at this page.
+                haystack = " ".join(str(x) for x in
+                                    (obj, uname, name, ref, pk, amount) if x)
+                if q and q not in haystack.lower():
                     continue
                 records.append({
                     "model": name, "when": h.history_date, "user": uname,
-                    "type": h.get_history_type_display(), "obj": obj})
+                    "type": h.get_history_type_display(), "obj": obj,
+                    "pk": pk, "ref": ref, "amount": amount, "url": url})
         records.sort(key=lambda r: r["when"], reverse=True)
         return records, sorted(users)
 
@@ -569,8 +628,10 @@ class AuditLogView(ReportAccessMixin, TemplateView):
         records, users = self._collect(request)
         if request.GET.get("export") == "csv":
             from reports.exports import csv_response
-            header = ["When", "Record type", "Change", "By", "Detail"]
+            header = ["When", "Record type", "Record ID", "Reference", "Amount",
+                      "Change", "By", "Detail"]
             rows = [[r["when"].strftime("%Y-%m-%d %H:%M:%S"), r["model"],
+                     r["pk"] or "", r["ref"], r["amount"] if r["amount"] is not None else "",
                      r["type"], r["user"], r["obj"]] for r in records]
             return csv_response("audit_log.csv", header, rows)
 

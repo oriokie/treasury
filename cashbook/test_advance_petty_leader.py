@@ -110,9 +110,24 @@ class AdvancePettyLeaderTests(TestCase):
         cc.post(f"/advances/{adv.id}/close/", {"returned_to_petty": "3000"})
         adv.refresh_from_db()
         self.assertEqual(adv.returned_to_petty, Decimal("3000"))
-        # float goes back up by the returned amount
-        self.assertEqual(_petty_balance_asof(dt.date(2026, 6, 30)) - before,
-                         Decimal("3000"))
+        # The float goes back up by the returned amount — from the day the cash
+        # actually came back, which `close` records as today, not before it.
+        #
+        # This assertion used to read the float as of 30 June and expect the
+        # 3,000 to be there already. It was checking the old behaviour, in which
+        # `petty_cash_out_asof` subtracted the return with no date test at all,
+        # so returned cash appeared to have been in the tin at every date in
+        # history — including before the advance was issued. The petty cash
+        # register has always credited the return on `settled_on`, so the float
+        # card and the register disagreed, which is the fault this was changed
+        # to fix. Money returned today was not in the box in June.
+        self.assertEqual(_petty_balance_asof(dt.date(2026, 6, 30)), before,
+                         "Cash returned today must not appear in June's float.")
+        adv.refresh_from_db()
+        self.assertEqual(_petty_balance_asof(adv.settled_on) - before,
+                         Decimal("3000"),
+                         "The float must rise by the returned amount from the "
+                         "date the cash came back.")
 
     def test_sofp_balances_with_advance(self):
         self._advance()

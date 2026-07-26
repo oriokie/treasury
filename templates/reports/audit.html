@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Audit log · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Audit log</h1><div class="sub">Who created, changed or deleted what · {{ total }} matching record{{ total|pluralize }}</div></div>
@@ -6,7 +6,7 @@
 </div>
 
 <form method="get" class="card u-mt"><div class="bd" style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:end">
-  <div><label class="lbl u-xs">Search</label><input type="text" name="q" value="{{ f.q }}" class="field" placeholder="detail or user…"></div>
+  <div><label class="lbl u-xs">Search</label><input type="text" name="q" value="{{ f.q }}" class="field" placeholder="M-Pesa ref, record #, voucher, user…"></div>
   <div><label class="lbl u-xs">Record</label><select name="model" class="field--select">
     <option value="">All</option>
     {% for m in models %}<option value="{{ m }}" {% if f.model == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
@@ -28,15 +28,25 @@
 </div></form>
 
 <div class="table-wrap u-mt"><table class="ledger">
-  <thead><tr><th>When</th><th>Record</th><th>Change</th><th>By</th><th>Detail</th></tr></thead>
+  <thead><tr><th>When</th><th>Record</th><th>Reference</th><th class="num">Amount</th>
+    <th>Change</th><th>By</th><th>Detail</th></tr></thead>
   <tbody>
   {% for r in records %}
     <tr><td class="mono u-nowrap">{{ r.when|date:"d/m/y H:i" }}</td>
-      <td>{{ r.model }}</td>
+      {% comment %} The record id and its reference are what let somebody holding
+         an M-Pesa code, a voucher number or an expense number find the history
+         for that one record, and follow it back to the record itself. Without
+         them an audit line names a change but not the thing changed. {% endcomment %}
+      <td>{{ r.model }}{% if r.pk %} <span class="muted mono u-xs">#{{ r.pk }}</span>{% endif %}</td>
+      <td class="mono u-xs">{% if r.url and r.ref %}<a class="link" href="{{ r.url }}">{{ r.ref }}</a>
+        {% elif r.ref %}{{ r.ref }}
+        {% elif r.url %}<a class="link" href="{{ r.url }}">Open</a>
+        {% else %}—{% endif %}</td>
+      <td class="num mono">{% if r.amount is not None %}{{ r.amount|money }}{% endif %}</td>
       <td><span class="pill {% if r.type == 'Created' %}pill-green{% elif r.type == 'Deleted' %}pill-red{% else %}pill-grey{% endif %}">{{ r.type }}</span></td>
       <td class="muted">{{ r.user }}</td>
       <td class="muted">{{ r.obj|truncatechars:64 }}</td></tr>
-  {% empty %}<tr><td colspan="5" class="empty">No matching history.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="7" class="empty">No matching history.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 

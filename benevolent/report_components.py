@@ -262,6 +262,20 @@ class BenevolentHouseholdComponent(ComponentSection):
                            note=f"{len(rows)} household registration(s).")
 
 
+def _dependant_phone(dep):
+    """A dependant's telephone number, if the church has one anywhere.
+
+    Preference goes to the number on the dependant row, which is the one
+    captured for this person in this household; the linked member record is the
+    fallback for a dependant who is also a registered member.
+    """
+    own = (getattr(dep, "phone", "") or "").strip()
+    if own:
+        return own
+    linked = getattr(dep, "member", None)
+    return ((getattr(linked, "phone", "") or "").strip() if linked else "")
+
+
 class BenevolentMemberDirectoryComponent(ComponentSection):
     key = "benevolent_member_directory"
     title = "Member directory"
@@ -304,7 +318,12 @@ class BenevolentMemberDirectoryComponent(ComponentSection):
                 "joined_on": m.joined_on, "dependant_count": len(deps),
                 "dependants": dep_text,
             }, url=f"/benevolent/members/{m.pk}/"))
-        note = f"{qs.count()} membership(s)"
+        # This list deliberately keeps deceased dependants, marked as such,
+        # because on screen the history is useful. The detailed section below
+        # counts only those currently covered, so the two figures answer
+        # different questions and each says which.
+        note = f"{qs.count()} membership(s); dependants listed include any who "
+        note += "have died, marked deceased"
         if active_filter == "1":
             note += " — active only"
         elif active_filter == "0":
@@ -313,6 +332,113 @@ class BenevolentMemberDirectoryComponent(ComponentSection):
             note += " (showing the first 2,000 — export for the rest)"
         return SectionData(key=self.key, title=self.title, columns=columns, rows=rows,
                            note=note + ".")
+
+
+class BenevolentMemberDependantDetailComponent(ComponentSection):
+    """One row per member, every living dependant in its own columns.
+
+    The directory above lists dependants as a single run of text in one cell,
+    which reads well on screen and is close to useless in a spreadsheet: you
+    cannot sort by a dependant's name, filter on a relationship, or pull a
+    column of telephone numbers out of it. This section carries the same
+    households in a shape a spreadsheet can work with — each dependant's name,
+    relationship and telephone number in their own columns — so an export can be
+    used for a call list, a coverage check or a mail merge.
+
+    **Deceased dependants are left out.** A directory answers "who is covered
+    now", and a person who has died is not; including them overstates the
+    household and puts a bereaved family's name on a call list. They remain on
+    the member's own record and in the case history, which is where the history
+    belongs. Dependants removed from cover for any other reason are likewise
+    absent, for the same reason.
+
+    The number of columns follows the largest household actually present, so a
+    scheme of couples does not carry twenty empty columns; a cap keeps a single
+    outsized household from making the sheet unreadable, and the note says so
+    when it bites.
+    """
+    key = "benevolent_member_dependant_detail"
+    title = "Members & dependants (detailed)"
+    declared_metrics = ()
+
+    #: most dependants given their own columns before the rest are summarised
+    MAX_DEPENDANT_COLUMNS = 12
+
+    def render(self, ctx, filters):
+        from benevolent.models import SchemeMembership
+        scheme = _scheme_filter_value(filters)
+        active_filter = (filters.get("active") or "").strip()
+
+        qs = (SchemeMembership.objects.select_related("member", "scheme")
+              .prefetch_related("dependants", "dependants__member"))
+        if scheme is not None:
+            qs = qs.filter(scheme=scheme)
+        if active_filter == "1":
+            qs = qs.filter(status=SchemeMembership.Status.ACTIVE)
+        elif active_filter == "0":
+            qs = qs.exclude(status=SchemeMembership.Status.ACTIVE)
+        qs = qs.order_by("scheme__name", "member__name")
+
+        households = []
+        widest = 0
+        overflowed = False
+        for m in qs[:2000]:
+            deps = [d for d in m.dependants.all() if d.active and not d.died_on]
+            deps.sort(key=lambda d: (d.get_relationship_display(), d.display_name))
+            if len(deps) > self.MAX_DEPENDANT_COLUMNS:
+                overflowed = True
+            widest = max(widest, min(len(deps), self.MAX_DEPENDANT_COLUMNS))
+            households.append((m, deps))
+
+        columns = [
+            Column("member", "Member", drilldown=True),
+            Column("scheme", "Scheme"), Column("number", "Number"),
+            Column("member_phone", "Member phone"),
+            Column("status", "Status"), Column("standing", "Standing"),
+            Column("joined_on", "Joined"),
+            Column("dependant_count", "Dependants covered", numeric=True),
+        ]
+        for i in range(1, widest + 1):
+            columns.append(Column(f"dep{i}_name", f"Dependant {i}"))
+            columns.append(Column(f"dep{i}_rel", f"Dependant {i} relationship"))
+            columns.append(Column(f"dep{i}_phone", f"Dependant {i} phone"))
+        if overflowed:
+            columns.append(Column("dep_overflow", "Further dependants"))
+
+        rows = []
+        for m, deps in households:
+            cells = {
+                "member": m.member.name, "scheme": m.scheme.code,
+                "number": m.number, "member_phone": m.member.phone or "",
+                "status": m.get_status_display(),
+                "standing": m.get_standing_display(),
+                "joined_on": m.joined_on, "dependant_count": len(deps),
+            }
+            for i, dep in enumerate(deps[:widest], start=1):
+                cells[f"dep{i}_name"] = dep.display_name
+                cells[f"dep{i}_rel"] = dep.get_relationship_display()
+                # A dependant registered as a member of the church has their own
+                # number on that record; an unregistered one may have a number
+                # captured against the dependant row. Either is worth having on
+                # a call list, so both are looked at, nearer record first.
+                cells[f"dep{i}_phone"] = _dependant_phone(dep)
+            if len(deps) > widest:
+                cells["dep_overflow"] = "; ".join(
+                    f"{d.display_name} ({d.get_relationship_display()})"
+                    for d in deps[widest:])
+            rows.append(Row(cells=cells, url=f"/benevolent/members/{m.pk}/"))
+
+        total = qs.count()
+        covered = sum(r.cells["dependant_count"] for r in rows)
+        note = (f"{total} membership(s), {covered} living dependant(s) currently "
+                f"covered. Deceased and withdrawn dependants are not listed.")
+        if overflowed:
+            note += (f" Households with more than {self.MAX_DEPENDANT_COLUMNS} "
+                     "dependants have the remainder in the final column.")
+        if total > 2000:
+            note += " Showing the first 2,000 memberships."
+        return SectionData(key=self.key, title=self.title, columns=columns,
+                           rows=rows, note=note)
 
 
 # ===========================================================================
@@ -613,7 +739,8 @@ def register_reports():
                     "place — filterable to active or inactive members only.",
         category="Benevolent", permission=_can_view_benevolent,
         filters=[SCHEME_FILTER, ACTIVE_FILTER], period_from_request=False,
-        sections=[BenevolentMemberDirectoryComponent()]))
+        sections=[BenevolentMemberDirectoryComponent(),
+                  BenevolentMemberDependantDetailComponent()]))
 
     registry.register(Report(
         key="benevolent_committee_report", title="Benevolent: Committee Report",

@@ -922,8 +922,21 @@ class StaffAdvance(models.Model):
         for t in self.topups.all():
             if t.date <= on:
                 out += t.amount
-        out -= (self.returned_to_petty or Decimal(0))
-        return out if out > 0 else Decimal(0)
+        # The return has no date of its own; the date the cash came back is
+        # `settled_on`, which is what the petty cash register uses when it
+        # credits the box. This used to subtract the return with no date test at
+        # all, while the issue and the top-ups above were both date-gated — so
+        # an advance that had been returned showed as never having left the box,
+        # at any as-of date, including dates before the money went out. Where
+        # the whole advance came back the two cancelled exactly and the float
+        # card simply did not acknowledge the advance, while the register did.
+        if self.returned_to_petty and self.settled_on and self.settled_on <= on:
+            out -= self.returned_to_petty
+        # Deliberately not clamped at zero. A return larger than the cash issued
+        # is a data error, and the register would carry it into the balance; if
+        # this clamped, the two would disagree again and the error would be
+        # hidden in the one place it is most visible.
+        return out
 
     def petty_outstanding_asof(self, on):
         """For a petty-cash-funded advance: cash that has left the petty-cash

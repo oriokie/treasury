@@ -1,3 +1,413 @@
+# v3.28.0 — A statement's totals now look like totals
+
+The report engine marks every subtotal row and every grand-total footer with a
+class called `row-emph`. That class was defined nowhere in the stylesheet.
+
+So on every report the engine renders, a total was set exactly like the lines
+above it. The statement of financial position listed bank, petty cash, staff
+advances, total assets, trust funds payable, loans, accounts payable, accrued
+expenses, total liabilities and net assets as one undifferentiated column of
+figures. A reader had to already know the statement's shape in order to find the
+three numbers it exists to give.
+
+A missing CSS class is silent by construction: the page loads, the markup is
+valid, and the only symptom is that a report quietly looks unfinished. This was
+one absent rule sitting behind a complaint about formatting.
+
+## Emphasis alone was not enough
+
+Sections were already marking rows as emphasised — but they used the same flag
+for a group heading, for a subtotal, and for the closing figure. Three different
+things arriving as one, so even once `row-emph` was styled a heading and a
+bottom line would have looked alike.
+
+Sections can now say which is which. A bare emphasis flag still means what it
+always did, so every existing caller is unchanged, and the statement of financial
+position uses the new levels:
+
+* **Assets** and **Liabilities** are group headings — small caps, a brass rule
+  under them, and no figure of their own
+* **Total assets** and **Total liabilities** are subtotals, ruled off from the
+  lines they sum
+* **Net assets** is the closing figure: larger, heavier, and double-ruled
+  beneath in the way a closing figure conventionally is
+
+The same treatment reaches every other engine report at once, because they all
+render through the same template.
+
+Print is handled separately: on paper the tints drop away and the rules become
+black, so a statement photocopied for a board meeting keeps its structure.
+
+## The figures did not move
+
+Assets less liabilities still equals net assets, and a test asserts it. A
+restyling that changes a total is not a restyling.
+
+One existing test did have to change. `test_pack_statements_reconcile` read every
+row of the statement and converted its value to a number; group headings do not
+carry one. The test now reads only the lines that state an amount, which is what
+it meant all along.
+
+## A note on the guard that missed this
+
+`core.test_css_contract`, added in v3.20.0 after `.panel` and `.table` were found
+undefined, fails on classes used in three or more templates. `row-emph` appears
+in exactly one — the single template every engine report renders through — so it
+slipped underneath.
+
+A class's blast radius is how many screens it reaches, not how many templates
+mention it. One line in a shared template can style a hundred pages. The four
+classes involved here are now pinned by name, and the general weakness is written
+up as recommendation #136 rather than left to be rediscovered the next time a
+widely-rendered class goes undefined.
+
+## Files
+
+* `static/css/app.css` — `.row-emph` and the three statement levels, screen and print
+* `core/reporting/engine.py` — `Section.keyvalue` carries a level
+* `templates/reports/engine_report.html` — emits the level classes
+* `reports/financial_statements.py` — the statement grouped and marked up
+* `reports/test_recommendations_pass.py` — reads only rows that state an amount
+* `reports/test_statement_readability.py` — new, 19 tests
+* `docs/recommendations.md` — #136
+
+No migrations. No accounting change: the same metrics, the same figures, set so
+they can be read.
+
+## Tests
+
+The engine and reporting-layer suites (95), the CSS contract, UI sweep, pages and
+namespace-parity guards (30), and the whole reports suite in four batches (428) —
+all passing, including the 19 new ones.
+
+# v3.27.0 — The audit log can be searched by the reference somebody is holding
+
+An audit line reading "Transaction changed by tabitha" is only useful if the
+transaction can then be found. The detail column held whatever the record printed
+as — for a bank receipt, a payer's name and little else — and the search box
+searched that same rendered string and nothing more.
+
+So the page could not answer the question it exists to answer. A member rings
+about a payment and quotes an M-Pesa code; an auditor asks what happened to
+voucher 77; a treasurer wants the history of one expense. None of those had
+anything to match on.
+
+Each line now carries the record's own number, the reference it is known by, and
+its amount:
+
+* a bank transaction shows its **M-Pesa or bank receipt** — the code a member
+  actually quotes — falling back to the bank's own unique reference and then to
+  the paybill narration
+* an expense shows its **voucher number**
+* a member shows their **telephone number**, which is what payments are matched
+  against
+
+All of it is searchable, so pasting a receipt code into the search box finds the
+history for that record and nothing else. All of it is in the CSV export. And
+where the record has a page of its own, the reference is a link to it, so the
+trail runs from the audit line back to the thing that changed.
+
+## Without costing a query per row
+
+The view already carried a note explaining that calling `str()` on a
+reconstructed historical row issued a fresh query each time, and that it had been
+written carefully to avoid it. Reading a reference off `h.instance` would have
+quietly undone that, and on a church with years of history the difference is a
+page or a timeout.
+
+The references are read straight off the historical row's own columns instead,
+and a test adds twenty more records and requires the query count not to move —
+so the promise the note makes is now enforced rather than described.
+
+## Files
+
+* `reports/views/overview.py` — `_audit_trace`; reference, id and amount on each
+  record; searchable; CSV columns
+* `reports/views/__init__.py` — the new helper re-exported
+* `templates/reports/audit.html` — Reference and Amount columns, drill-through
+* `reports/test_audit_traceability.py` — new, 16 tests
+
+No migrations. No accounting change: this reads history that was already being
+recorded and shows more of it.
+
+## Tests
+
+The audit, pages, performance and namespace-parity suites (47), including the 16
+new ones — all passing. The namespace guard added in v2.95.0 caught the new
+helper missing from the package exports before it reached anywhere.
+
+# v3.26.0 — Correcting a dependant starts from what the church already holds
+
+The household page has always offered "Correct" beside each person covered with
+the member, and that link has always carried the person's id. The form on the
+other end ignored it. The member arrived at an empty form and retyped the name,
+relationship, telephone number and date of birth of somebody whose details were
+printed on the page they had just left.
+
+The typing was the smaller half of it. What reached the office was four values
+with nothing to say which of them was the correction, so a registration officer
+comparing the request against the register had to work out for themselves what
+had changed — and a member who mistyped one of the three fields that were already
+right introduced a second error while fixing the first.
+
+The form now opens on the church's own record: the person already chosen, the
+kind of change already set, and their current name, relationship, telephone
+number and date of birth in place. The member changes the field that is wrong and
+the rest stays exactly as the church holds it. The subject line names the person,
+so the office sees whose record it concerns without opening the request.
+
+"Remove from cover" is offered the same way, since it is the same link with a
+different operation and the form already understood it.
+
+## One form, three ways in
+
+This is the prefill added in v3.25.0 doing a second job. The new-request form is
+now filled from nothing when a member starts from scratch, from the query string
+when they arrived by asking to correct a particular person, and from the request
+itself when they are amending a draft. One template, one set of five form shapes,
+one place where a field is defined — rather than copies that would drift the
+first time any of them was touched.
+
+## When the link is wrong
+
+A stale or mistyped link opens an ordinary blank form rather than an error page:
+the query string is a convenience, and losing it should cost the member nothing
+more than the typing they would have done anyway.
+
+A dependant belonging to somebody else is dropped in the same silent way, and
+there is a test asserting that neither their name nor their telephone number
+appears. A new parameter that takes a record id is a new way to read another
+household by guessing a number, and it is worth saying plainly that this one does
+not.
+
+## Files
+
+* `benevolent/views_portal.py` — `_prefill_from_query`
+* `templates/benevolent/portal/household.html` — the two actions, as buttons
+* `benevolent/test_household_prefill.py` — new, 18 tests
+
+No migrations. No accounting change: a request is still a claim, and approving
+one still calls the service that owns the change.
+
+## Tests
+
+The portal suites — pages (26), security and render contract (32), draft editing
+(22) — and the 18 new ones, all passing.
+
+# v3.25.0 — A member can correct a draft instead of starting again
+
+The portal has always known that some requests are still the member's to change.
+The model declares which statuses those are, exposes `member_may_edit`, and the
+submit service checks it. Nothing ever let a member change anything.
+
+So a draft could be written, saved, sent and withdrawn — but never corrected. A
+member who mistyped an amount, picked the wrong dependant or wrote the wrong date
+had one way out: withdraw the request and start a new one. That loses the
+reference they had already quoted to the office, the conversation on it, and any
+documents already attached, and it leaves a withdrawn request in the record
+looking like a change of mind rather than a typo.
+
+Requests now have an **Edit** action, offered on exactly the statuses the member
+still holds:
+
+* **Draft** — theirs, never sent.
+* **More information needed** — the office has handed it back and is waiting,
+  which is the moment a member most needs to change something.
+
+It is refused everywhere else, and refused in the service rather than in the
+page, so posting straight to the URL cannot get round it. A request that is with
+a reviewer stays as the reviewer read it — amending it underneath them would mean
+the office approving something other than what it saw, and the reply thread is
+already there for anything that needs adding. A decided request cannot be touched
+at all, because that would be rewriting history.
+
+The kind of request is deliberately not amendable. Each kind is a different form
+with different fields and its own approval path, so allowing a change would leave
+the stored payload describing one thing and the request claiming another. A
+member who started the wrong kind withdraws it and starts the right one — one
+click, and an honest trail.
+
+## One form, not two
+
+The edit page is the same page as the new-request page: the same template, the
+same five form shapes, the same parsing of what was typed. The create view now
+reads a submitted form through a single method that the edit view shares, and the
+template renders its values from a small dictionary that is empty when starting a
+request and filled when amending one.
+
+That is the whole reason it was built this way. A second copy of five forms would
+have drifted apart the first time either was touched, and the way it would have
+shown itself is a field added to the new-request page that a member editing a
+draft silently loses.
+
+A cleared selector needed care: the parser returns nothing for a field left
+empty, which on an amendment has to mean "the member has removed this" and not
+"leave it as it was". The two are now distinguishable, so a death report can have
+the wrong named person taken off it.
+
+## Files
+
+* `benevolent/services/portal.py` — `update_request`
+* `benevolent/views_portal.py` — `PortalRequestEditView`; the create view's field
+  parsing extracted for both to share
+* `benevolent/urls_portal.py`, `templates/benevolent/portal/request_new.html`,
+  `templates/benevolent/portal/request_detail.html`
+* `benevolent/test_portal_draft_editing.py` — new, 22 tests
+
+No migrations. No accounting change: a request is a claim, and approving one
+still calls the service that owns the change.
+
+## Tests
+
+The portal suites (80) and the adjacent benevolent suites (98), including the 22
+new ones — all passing.
+
+# v3.24.0 — The member directory exports a household you can actually work with
+
+The benevolent member directory listed each household's dependants as one run of
+text in a single cell: "Grace Momanyi (Child); Peter Momanyi (Spouse, deceased)".
+That reads well enough on screen and is close to useless in a spreadsheet. You
+cannot sort by a dependant's name, filter on a relationship, count children
+across the scheme, or lift a column of telephone numbers out of it to make a
+call list — the three facts about each person are welded into one string.
+
+The report now carries a second section, **Members & dependants (detailed)**,
+holding the same households in a shape a spreadsheet can work with: every
+dependant's name, relationship and telephone number in columns of their own,
+one row per member. It exports to CSV, Excel, Word and PDF with the rest of the
+report.
+
+Telephone numbers are included wherever the church has one. A dependant
+registered as a member of the church has a number on that record; one who is not
+may have a number captured against the dependant row. Both are looked at, the
+nearer record first, because either is worth having when someone needs to be
+reached.
+
+## Dependants who have died are left out
+
+A directory answers "who is covered now", and someone who has died is not.
+Listing them overstates the household, and it would put a bereaved family's name
+on a call list drawn from this export. The same goes for dependants withdrawn
+from cover for any other reason.
+
+The directory section above it keeps listing them, marked deceased, because on
+screen that history is worth seeing — so the two sections now say which question
+each is answering rather than leaving two different dependant counts in one
+report to be puzzled over. The count in the detailed section is labelled
+"Dependants covered".
+
+Nothing about the dependant's own record changes: a death is still recorded
+against the household and still visible on the member's page and in the case
+history, which is where that history belongs.
+
+## Column count follows the data
+
+The number of dependant columns is set by the largest household actually
+present, so a scheme of couples does not carry twenty empty columns. A cap stops
+one outsized family from making the sheet unreadable; beyond it the remaining
+dependants are summarised in a final column and the note says so.
+
+## Files
+
+* `benevolent/report_components.py` — `BenevolentMemberDependantDetailComponent`,
+  a `_dependant_phone` helper, and the directory note made explicit about
+  including the deceased
+* `benevolent/test_dependant_detail_export.py` — new, 18 tests
+
+No migrations. No accounting change: this report reads the membership register
+and touches no figure.
+
+## Tests
+
+benevolent directory, bugfix, export and CRUD suites (137) and the report engine
+and export suites (23) — all passing, including the new 18.
+
+# v3.23.0 — Returned cash comes back on the day it comes back
+
+Three fixes that share a shape: a figure or a setting that was right in one
+place and wrong, or missing, in another, with nothing comparing the two.
+
+## The petty cash float and the register disagreed about staff advances
+
+`petty_cash_out_asof` — the figure behind the "float on hand today" card —
+date-gated the advance itself and each top-up, then subtracted the cash returned
+to the box with no date test at all.
+
+The return has no date of its own. The day the cash actually comes back is
+`settled_on`, which is what the petty cash register has always used when it
+credits the box. So a returned advance appeared never to have left the box, at
+*any* as-of date, including dates before the money went out. Where the whole
+advance came back the two cancelled exactly, and the float card simply did not
+acknowledge the advance while the register did.
+
+The return is now credited from its settlement date, so the two figures agree by
+construction. The result is also no longer clamped at zero: more returned than
+was issued is a data error, the register would carry it into the running
+balance, and clamping here would put the two back out of step and bury the error
+in the one place a treasurer would have seen it.
+
+One existing test changed with this. It read the float as of 30 June and expected
+cash returned that day's *today* to be in it already — an assertion that only
+held under the old dateless arithmetic, and which the register never agreed with.
+Money returned in July was not in the box in June. The reasoning is recorded in
+the test rather than left to be rediscovered.
+
+## "Consolidate sub-accounts" now means the same thing in every section
+
+The statement of income & expenditure listed revenue fund by fund with
+consolidation pinned off. Tick the box and the rest of the report rolled
+sub-accounts into their parent while that one section went on itemising them —
+a single report disagreeing with itself about what a fund is.
+
+It honours the filter now. Consolidation moves a child's receipts onto its
+parent's line, so the total is identical either way and only the number of lines
+changes; a test asserts exactly that, because a regrouping that alters a total is
+not a regrouping. The engine's Income & Expenditure report had no such filter at
+all, so it has been given one rather than having its behaviour quietly switched.
+
+## Negative figures can be written the way the reader wants
+
+There was no setting. `money_acct` existed and put negatives in parentheses, but
+it was applied template by template — 88 uses against 433 plain ones in the
+report templates alone — so whether a figure followed the accounting convention
+depended on which page you happened to be looking at.
+
+Preferences now offers the choice, and the `money` filter honours it, so several
+hundred templates changed behaviour without being touched. A template filter
+cannot see the request, so the reader's choice travels in a `ContextVar` set by
+middleware for the life of the request — the same shape as the request-scoped
+memo the reporting layer already uses, and safe under threads, async and the test
+client, which a module-level global would not have been. Outside a request — a
+management command, a scheduled job — it falls back to a minus sign, so nothing
+that runs headless has to know about any of this.
+
+Two escape hatches remain for figures that must not vary by reader: `money_acct`
+is always parentheses, for a statutory statement; `money_plain` is always a
+minus, for a figure sitting beside a signed axis or destined to be parsed back.
+
+## Files
+
+* `cashbook/models.py` — `petty_cash_out_asof` dates the return, drops the clamp
+* `reports/financial_statements.py` — income & expenditure honours consolidation;
+  filter added to the engine's I&E report
+* `core/models.py`, `core/migrations/0056_userpreference_negatives.py` — the
+  preference
+* `core/numberstyle.py` — new; the request-scoped carrier and its middleware
+* `core/templatetags/treasury_extras.py` — `money` honours it; `money_plain` added
+* `config/settings.py`, `templates/preferences.html`
+* `cashbook/test_advance_consolidation_negatives.py` — new, 22 tests
+* `cashbook/test_advance_petty_leader.py` — one expectation corrected, with why
+
+One migration, additive. No figure changes for anything already recorded: the
+petty cash float was already right on the register and is now matched by the
+card, consolidation is proved to leave totals untouched, and negatives change
+only in how they are written.
+
+## Tests
+
+cashbook 511 including the 22 new, reports 425, and the core contract guards —
+all passing.
+
 # v3.22.0 — Approving a batch, counting the tin, and paying ahead
 
 Three faults reported together. Two turned out to be the same shape: a figure or

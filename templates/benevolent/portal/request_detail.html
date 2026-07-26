@@ -57,6 +57,13 @@
 
 {% if req.member_may_edit or req.is_open %}
 <div class="panel u-mt no-print">
+  {% comment %} Editing is offered on exactly the statuses the member still
+     holds — their own unsent draft, or one the office has handed back asking
+     for more. Once it is with a reviewer the page offers a reply instead, so
+     the member is never left with no way to add something. {% endcomment %}
+  {% if req.member_may_edit %}
+  <a class="btn btn-ghost u-mb" href="{% url 'portal_request_edit' req.pk %}">Edit this request</a>
+  {% endif %}
   <form method="post" class="pt-actions">{% csrf_token %}
     {% if req.member_may_edit %}<button class="btn" name="action" value="submit">Send to the church office</button>{% endif %}
     {% if req.is_open %}<button class="btn btn-ghost" name="action" value="withdraw">Withdraw this request</button>{% endif %}

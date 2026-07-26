@@ -38,7 +38,7 @@ from core.models import SiteConfig
 from ..services.goals import (sentence_fund_name as _sfund,      # noqa: E402
                              camp_goal_records as _camp_goal_records)
 from ._shared import PeriodMixin
-from .overview import ReportIndexView, MonthlyReportView, OfferingSummaryView, TitheReportView, GroupGivingView, ExpenseReportView, IncomeExpenditureView, CashBookView, ReconciliationView, AnnualSummaryView, HistoricalYearManageView, AuditLogView, _qs_without, MemberStatementView
+from .overview import ReportIndexView, MonthlyReportView, OfferingSummaryView, TitheReportView, GroupGivingView, ExpenseReportView, IncomeExpenditureView, CashBookView, ReconciliationView, AnnualSummaryView, HistoricalYearManageView, AuditLogView, _audit_trace, _qs_without, MemberStatementView
 from .funds import FundLedgerView, FundMembersView, FundThankSmsView, BankPositionView
 from .dev_groups import DevGroupUnassignedView, DevGroupProgressView, DevGroupBuilderView, DevGroupMembersView, DevGroupAllExcelView, DevGroupEmailAllView
 from .envelopes import EnvelopeSabbathView, EnvelopeSummaryView

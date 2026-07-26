@@ -36,6 +36,8 @@ urlpatterns = [
          name="portal_request_new"),
     path("requests/<int:pk>/", v.PortalRequestDetailView.as_view(),
          name="portal_request_detail"),
+    path("requests/<int:pk>/edit/", v.PortalRequestEditView.as_view(),
+         name="portal_request_edit"),
 
     # documents
     path("documents/", v.PortalDocumentListView.as_view(), name="portal_documents"),

@@ -121,16 +121,31 @@ class Section:
 
     @staticmethod
     def keyvalue(key, title, pairs, note=""):
-        """A simple label/value section (e.g. an income statement). ``pairs`` is
-        a list of ``(label, value)`` or ``(label, value, emphasis)`` tuples."""
+        """A simple label/value section (e.g. an income statement).
+
+        ``pairs`` is a list of ``(label, value)``, ``(label, value, emphasis)``
+        or ``(label, value, level)`` tuples, where ``level`` is one of:
+
+        ``"heading"``   a group heading such as ASSETS — no figure of its own
+        ``"subtotal"``  a total of the lines above it, e.g. Total liabilities
+        ``"grand"``     the figure the statement exists to give, e.g. Net assets
+
+        A bare ``True`` still means "emphasise this" and is treated as a
+        subtotal, so every existing caller keeps working unchanged. The levels
+        exist because a statement that renders a heading, a subtotal and the
+        bottom line identically leaves the reader to work out which is which —
+        which is the whole complaint about the statement of financial position.
+        """
         cols = [Column("label", "", numeric=False),
                 Column("value", "", numeric=True)]
         rows = []
         for pair in pairs:
             label, value = pair[0], pair[1]
-            emphasis = pair[2] if len(pair) > 2 else False
+            mark = pair[2] if len(pair) > 2 else False
+            level = mark if isinstance(mark, str) else ("subtotal" if mark else "")
             rows.append(Row(cells={"label": label, "value": value},
-                            emphasis=emphasis))
+                            emphasis=bool(level),
+                            meta={"level": level} if level else {}))
         return SectionData(key=key, title=title, columns=cols, rows=rows,
                            note=note, kind="keyvalue")
 
