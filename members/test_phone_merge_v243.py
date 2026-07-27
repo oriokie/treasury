@@ -126,8 +126,22 @@ class MemberDetailPhoneUiTests(TestCase):
         html = r.content.decode()
         self.assertIn("Other phone numbers", html)
 
-    def test_primary_only_member_shows_no_secondary_section(self):
+    def test_primary_only_member_is_told_there_are_none(self):
+        """The section stays, and says the list is empty.
+
+        This used to assert the section was hidden altogether, which was right
+        while the only way a second number could appear was as a side effect of
+        merging two duplicate records: there was nothing to show and nothing to
+        do. Since v3.30.0 a treasurer can add one directly, so hiding the
+        section would hide the only route to doing it — and a member with no
+        second number on file is exactly who needs that route.
+
+        What matters for this member is still asserted: no number is listed,
+        and the page says so rather than leaving an empty box.
+        """
         m = Member.objects.create(name="Single Number", phone="0712345678")
         r = self.client.get(reverse("member_detail", args=[m.pk]))
         html = r.content.decode()
-        self.assertNotIn("Other phone numbers", html)
+        self.assertIn("Other phone numbers", html)
+        self.assertIn("None recorded", html)
+        self.assertIn(reverse("member_phone_add", args=[m.pk]), html)

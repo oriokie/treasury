@@ -883,6 +883,32 @@ class StaffAdvance(models.Model):
             date__lte=on).aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
     @property
+    def awaiting_approval_total(self):
+        """Receipts handed in against this advance that nobody has approved yet.
+
+        `settled_total` counts only approved and paid receipts, which is right:
+        an unapproved receipt has not been accepted as accounting for anything,
+        and counting it would let an advance look settled before a single one
+        had been read.
+
+        But the advance page lists *every* receipt attached to it, so a holder
+        who has handed in more than has been approved sees a list totalling one
+        figure and a "settled by receipts" card showing a smaller one, with
+        nothing to say why. This is that difference, so the page can show it and
+        say what to do about it rather than leaving a treasurer to work out
+        whether they are looking at a bug or a backlog.
+        """
+        from django.db.models import Sum
+        return self.expenses.filter(
+            status=Expense.Status.PENDING
+        ).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+
+    @property
+    def receipts_submitted_total(self):
+        """Everything handed in, approved or not — what the page's list adds to."""
+        return self.settled_total + self.awaiting_approval_total
+
+    @property
     def balance(self):
         """Positive = surplus to recover from staff; negative = shortfall owed to staff."""
         return self.amount - self.settled_total - (self.returned_to_petty or Decimal(0))

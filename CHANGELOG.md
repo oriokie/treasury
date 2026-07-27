@@ -1,3 +1,370 @@
+# v3.33.0 — A restore finishes cleanly instead of failing on the way out
+
+Restoring a backup worked, and then threw a stack trace.
+
+The reason is that a restore replaces the database, and on a default Django
+installation both the session and the flash messages live in it. The treasurer's
+session row was written when they signed in, which is necessarily *after* the
+backup was taken — so it does not exist in the file that has just replaced the
+live one. Django's session middleware reaches the end of the request, tries to
+save that session, finds no row to update, and raises `SessionInterrupted`. That
+is a `BadRequest`, so the response is a 400 and the treasurer gets a debug page.
+
+The restore itself had already succeeded. Which is the worst part: the screen
+said something had gone badly wrong, the data was in fact fine, and there was
+nothing to tell the difference — at the exact moment somebody is least able to
+guess, having just deliberately overwritten their own records.
+
+## Signing out is the honest answer, not a workaround
+
+The account signed in a moment ago may not exist in the restored database. If it
+does, its password is whatever it was when the backup was taken, and its roles
+are whatever they were then too. Carrying that session forward would be
+pretending otherwise.
+
+So a successful restore now signs the user out. An empty session is what the
+middleware clears rather than saves, so there is nothing left to fail, and the
+state on screen matches the state in the database.
+
+## The result is shown, not flashed
+
+Flash messages are stored in the session too, so a redirect carrying "restore
+complete" would have written the message into the very thing just emptied and
+nobody would have seen it. The outcome is rendered directly instead, on a page
+that stands alone rather than extending the usual layout — that layout builds
+its navigation from the signed-in user's roles and reads site settings, all from
+a database that is now a different one.
+
+The page says the restore finished, says the user has been signed out and why,
+and names the file the replaced database was copied to before anything was
+overwritten — because if the restore was a mistake, that copy is the way back and
+it is the one thing worth knowing immediately.
+
+A restore that is refused, or one that is never confirmed, leaves the treasurer
+signed in exactly as before. Being logged out by a file uploaded in error would
+suggest something drastic had happened when nothing had.
+
+## Files
+
+* `core/views.py` — sign out on success, render the outcome directly
+* `templates/restore_done.html` — new, deliberately standalone
+* `core/test_restore_session.py` — new, 11 tests
+
+No migrations. No accounting change.
+
+## Tests
+
+The backup, offsite, restore/export and new session suites (37), and the
+navigation, UI sweep, CSS contract and rights guards (27) — all passing.
+
+# v3.32.0 — An advance page explains why its own figures differ
+
+The staff advance page shows a "settled by receipts" figure, and below it a list
+of every receipt handed in against that advance. The figure counts only receipts
+that have been approved; the list shows all of them. When a holder has handed in
+more than anyone has yet approved, the two disagree — and nothing on the page
+said why.
+
+So a treasurer read receipts adding to 59,747 and a card reading 40,000, with no
+way to tell whether the figure was broken or the paperwork was simply sitting in
+their own approval queue. Two numbers about the same thing, neither explained.
+
+**The filter itself was right and has not been changed.** An unapproved receipt
+has not been accepted as accounting for anything, and counting it would let an
+advance look settled before a single receipt had been read — which is the entire
+purpose of somebody approving them. The advance's balance still moves only when a
+receipt is approved.
+
+What was missing was the page saying so. It now shows what is waiting:
+
+* the summary card carries "of KSh X handed in" beneath the settled figure
+  whenever the two differ
+* a notice states the amount awaiting approval, says plainly that an unapproved
+  receipt has not been accepted yet, and links to the approvals queue
+* each waiting row in the receipts list is marked "not yet counted", so the row
+  that accounts for the difference can be picked out at a glance
+
+Nothing appears when nothing is waiting. A notice that is always on the page is a
+notice nobody reads.
+
+Rejected receipts are not counted as waiting either. Rejected is a decision, not a
+queue — it will never settle anything.
+
+## Files
+
+* `cashbook/models.py` — `awaiting_approval_total`, `receipts_submitted_total`
+* `templates/cashbook/advance_detail.html` — the notice, the card footnote, the
+  per-row marker
+* `cashbook/test_advance_pending_receipts.py` — new, 12 tests
+
+No migrations. No accounting change: the same receipts settle the same advance
+on the same approval, and a test holds the balance to exactly that.
+
+## Tests
+
+The advance suites — pending receipts, petty cash and leader, charges, reporting,
+settlement fixes, consolidation (69) — all passing, including the 12 new ones.
+
+# v3.31.0 — A backup you can actually restore, and an export of the whole church
+
+## Restore never worked on an ordinary installation
+
+The SQLite branch guarded itself with `isinstance(path, (str, bytes))`. Django's
+own settings template writes `NAME = BASE_DIR / "db.sqlite3"`, which is a
+`PosixPath` — and a Path fails that test. So restore reported "No on-disk SQLite
+database to restore into" while the database sat in exactly the place the message
+said it wasn't.
+
+Backup used `os.path.exists` and worked perfectly, which is the whole shape of the
+complaint: a backup you can take and cannot use is not a backup at all, and you
+only discover that on the day you need it.
+
+The path is coerced now rather than type-checked, which is what the backup side
+has always done. MySQL and PostgreSQL were already supported and are unchanged;
+both dump and load through their own client tools, and both take a safety copy of
+the current data before loading anything.
+
+## Nothing checked what was being restored
+
+The uploaded file was copied straight over the live database. A spreadsheet, a
+PDF, or a dump taken from a different kind of database would have destroyed the
+church's records — and the safety copy taken a moment earlier only helps somebody
+who realises what has happened.
+
+Restores are now checked before anything is written. A SQLite restore must
+actually be a SQLite database and big enough to plausibly be this system's; a
+MySQL or PostgreSQL restore must be a readable SQL dump rather than a binary
+file, and a SQLite backup uploaded to a server database is turned away with that
+explained rather than fed to the client. Every refusal says the data has not been
+touched, because that is the first thing anyone wants to know.
+
+What was uploaded is checked before where it would go, so somebody who has picked
+the wrong file is told that, rather than being told something about the server's
+configuration that they cannot act on.
+
+## The data export left out two of the church's own registers
+
+The spreadsheet export covered giving, expenses, funds and the rest, and omitted
+the benevolent scheme and the envelopes entirely — the two parts least
+reconstructible from a bank statement. A levy is only an amount until you know
+which case it settled, and an envelope total is only a figure until you can see
+the funds it was split across.
+
+**Benevolent** now exports as five sheets: the schemes, the memberships with
+their standing and joining dates, the dependants, the cases, and the
+contributions with the case and period each one settled. Dependants carry the
+registered and died-on dates as well as the current flag, because whether a claim
+was good is judged on the household as it stood at the time, not as it stands now.
+
+**Envelopes** export a month to a sheet, laid out the way they are counted: a row
+per contributor, a column per fund, a total across each row and down each column.
+A flat list of lines would hold the same numbers and be useless for the one thing
+anybody opens this for — checking the sheet against the paper it came from. The
+totals cross-foot, and there is a test that says so.
+
+## Files
+
+* `core/services/backup.py` — the path guard corrected, upload validation added,
+  five benevolent sheets, per-month envelope schedules
+* `core/test_backup_restore_export.py` — new, 18 tests
+
+No migrations. No accounting change: this reads the records and writes them out.
+
+## Tests
+
+The backup, offsite-backup and new restore/export suites (26), and the envelope
+and performance suites (64) — all passing.
+
+# v3.30.0 — A member paying from their second line is recognised as themselves
+
+People give from more than one number. An M-Pesa line and an airtime line, a work
+handset, a phone the household shares. The scheme has always had somewhere to
+record those, the member matcher has always used them, and the benevolent
+allocator has always had a signal for exactly this case.
+
+It had never once fired.
+
+The allocator asked the database for `phones__phone`. The field is called
+`number`, so every lookup raised a `FieldError` — and it sat inside an
+`except Exception` written to tolerate the table not existing, which instead
+swallowed a plain misspelling for the entire life of the feature. Nothing failed,
+nothing was logged, and every payment from a member's second line went to the
+review queue to be matched by hand, month after month, by a treasurer who had no
+way of knowing the system was supposed to be doing it for them.
+
+The handler is gone. If that lookup breaks again it will break loudly.
+
+## Weighting a second number the same as the first
+
+Fixing the lookup was not enough on its own. A second number scored 45 against an
+auto-allocation gate of 85, so even with the member's own name on the narration
+the total came to 75 and the payment still went to the queue — for a payment
+whose evidence is a number the church itself recorded against that member and a
+name that matches.
+
+"Primary" only decides which number a receipt is addressed to. Both numbers were
+put on the record by a treasurer, and the member matcher has always treated them
+as equally conclusive when identifying a person. They now carry the same weight
+here too, so a member paying from either line under their own name is allocated
+the same way.
+
+Numbers are matched in every form they may be written — "0722...", "254722...",
+"+254722..." — because a member's own number is normalised when it is saved while
+records entered by hand or imported keep whatever form the church used.
+
+## Somewhere to put a second number
+
+Until now one could only reach a member's record as a side effect of merging two
+duplicate rows. A member who had simply never been duplicated had no way to have
+their other line recognised at all, and the treasurer had no way to add it.
+
+The member's page now lists the other numbers held for them and takes new ones,
+with an optional label — "M-Pesa", "work" — so the reason it is on file is
+recorded alongside it. The number is stored on its own row rather than replacing
+the primary, because changing where receipts are addressed is a different
+decision from noting that she also pays from this one.
+
+A number already held for somebody else is refused rather than quietly
+duplicated, and says why: two members on one number makes every payment from it
+ambiguous, and the honest fix is a merge.
+
+One existing test changed with this. It asserted that the "other phone numbers"
+section was hidden for a member who had none — correct while a merge was the only
+way to get one, and wrong now, because hiding it would hide the only route to
+adding one from precisely the member who needs it.
+
+## Files
+
+* `benevolent/services/allocation.py` — the lookup corrected, the blanket
+  `except` removed, every phone form matched, second number weighted as the first
+* `members/views.py`, `members/urls.py`, `templates/members/detail.html` — adding
+  and removing a member's other numbers
+* `benevolent/test_alt_number_allocation.py` — new, 20 tests
+* `members/test_phone_merge_v243.py` — one expectation updated, with why
+
+No migrations. No accounting change: the same money, recognised as the same
+member's.
+
+## Tests
+
+members and the alternative-number guards (86), and the allocation-related
+benevolent suites (83) — all passing, including the 20 new ones.
+
+# v3.29.0 — A levy outlives the payout, and a spouse paying is still the member's money
+
+Three faults, all the same mistake in different clothes: a rule written for one
+stage of a process still being applied at a later stage where it no longer held.
+
+## A levy could not be collected once the family had been paid
+
+`OPEN_STATUSES` describes a case still being decided — drafted, submitted,
+assessed, approved, partly paid. Three separate places used it to decide whether
+a levy could be collected: the allocator's case list, the levy obligation, and
+the resolver, which refused the money outright as belonging to "a case that is
+already settled".
+
+But a case's status describes the payout **to the family**, and a levy is the
+collection **from the members** that replenishes the fund. The two do not end
+together, and in almost every scheme they cannot: the church pays a bereaved
+family promptly and levies the membership over the following weeks. By the time
+the money starts arriving the case is PAID.
+
+So the levy switched itself off at exactly the point it was owed. The case
+disappeared from the treasurer's list, stopped raising an obligation, and any
+attempt to record a payment against it was refused. The payout was settled; the
+levy was not.
+
+Cases now carry a separate notion of what a levy may still be collected against:
+everything except rejected and cancelled, because those are the only ones where
+no money ever left the fund and so there is nothing to replenish. Closed cases
+are included deliberately — a member who pays late is ordinary, and the cost of
+refusing them is that their money cannot be recorded at all.
+
+Where a scheme has exactly one case running, it is now chosen for the treasurer.
+There is nothing to choose between, and making somebody pick it every time is how
+levy money ends up unattributed.
+
+## A spouse paying was recognised and then ignored
+
+The allocator already scored a spouse's telephone number. It could never act on
+it. Automatic allocation requires an identity score of 85; a spouse's phone is
+worth 45, and nothing else in an ordinary payment made up the difference — so a
+completely routine payment went to the unmatched queue every month, and a
+treasurer resolved it by hand every month.
+
+The missing half was the name. When a wife pays, the bank narration carries
+**her** name, and names were only ever compared against members — so the
+evidence sitting right there was discarded, and could even fuzzily match some
+unrelated member who shared a surname. The household is now read as well, so the
+phone and the name corroborate each other and arrive at the same confidence
+(45 + 40) as a member paying from their own phone under their own name (55 + 30).
+It is the same quality of evidence reaching the same conclusion by a different
+route.
+
+Underneath that was a second fault that would have kept it broken anyway. A
+member's telephone number is normalised when it is saved; a dependant's is stored
+exactly as it was typed or imported. A Kenyan roster holds "0722..." and the bank
+sends "254722...", and the two were compared directly — so spouse recognition
+only ever worked for the handful of rows that happened to have been entered in
+international form. Every written form of a number now matches.
+
+### One case is deliberately left for a person
+
+A wife listed on her husband's household may also hold her own membership. A
+payment in her name from her phone then has two readings that are **both true** —
+her own dues, or her paying his — and the household evidence scores higher only
+because it draws on two signals rather than one. The margin test cannot catch
+that, because the two readings are not close; they are simply both right.
+Choosing between them automatically would be a guess dressed as a decision, and
+the money would land on the wrong person's record while both memberships looked
+perfectly healthy. These now go to the queue whatever the gap.
+
+## A roster import kept only the first three of each household
+
+The bulk importer counted to a fixed three dependants and ignored every column
+after that without a word. A church roster registers a spouse, both parents, both
+parents-in-law and the children — nine or ten people. On a roster of 224
+households, 519 of 1,123 dependants were discarded while the import reported
+success.
+
+Silent truncation is the worst possible way to lose this particular data: nothing
+fails, and the missing people are discovered when somebody dies and the family is
+told they were never covered. The importer now reads however many dependant
+columns a file actually carries, and the downloadable template offers ten.
+
+## Two things checked and found already right
+
+**Membership transfer on death** was already built, and built the way it should
+be: the successor receives a *new* membership that keeps the original joining
+date, so the years already paid in are not lost; the active dependants come
+across, because they were the household's rather than the deceased member's
+personally; and the deceased record stays DECEASED rather than being closed,
+because a claim on their own death is what they paid for and it can still be
+raised and paid. The two records are linked in both directions.
+
+**A member showing no levy obligation** turned out to be correct: they had
+already paid it, so it was settled and dropped off the list, exactly as intended.
+
+## Files
+
+* `benevolent/models.py` — `BenevolentCase.LEVIABLE_STATUSES`
+* `benevolent/services/engine.py`, `services/obligations.py`, `forms.py` — levy
+  keyed off it; a lone case pre-selected
+* `benevolent/services/allocation.py` — household name signals, every phone
+  form matched, and the payer-is-also-a-member guard
+* `benevolent/views_bulk_import.py` — all dependant columns read
+* `benevolent/test_levy_spouse_roster.py` — new, 20 tests
+
+No migrations. No accounting change: the same money, recorded against the case
+and the member it was always for.
+
+## Tests
+
+The benevolent suites, in batches: levy/allowlist/obligations/eligibility (56),
+phase 8–9 (63), bugfixes/CRUD (72), phase 10–11 and case creation (40),
+contributions/batch/fraud (44), portal and roster export (84) — all passing,
+including the 20 new ones.
+
 # v3.28.0 — A statement's totals now look like totals
 
 The report engine marks every subtotal row and every grand-total footer with a

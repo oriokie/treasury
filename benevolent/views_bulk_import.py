@@ -12,6 +12,7 @@ one-at-a-time Register screen uses), so nothing about how a membership
 behaves afterwards depends on how it was created.
 """
 import csv as _csv
+import re as _re
 import datetime as _dt
 import io as _io
 from decimal import Decimal
@@ -32,7 +33,31 @@ from .services import contributions as contrib_svc
 from .services import engine as engine_svc
 from .services import registry as reg_svc
 
-DEP_SLOTS = 3   # dependant1_*, dependant2_*, dependant3_* — see the template
+# How many dependant column-groups the downloadable template offers. It does
+# NOT cap what an upload may contain: `_dependant_slots` below reads however
+# many the file actually carries. A real church roster registers a spouse, both
+# parents, both parents-in-law and the children, which is nine or ten people —
+# the old fixed cap of three silently discarded the rest, and a roster of 224
+# households lost 519 of its 1,123 dependants without a word.
+DEP_SLOTS = 10
+
+
+def _dependant_slots(row):
+    """Every dependant number the row actually carries, in order.
+
+    Read from the file's own columns rather than counting to a fixed limit, so
+    a household larger than the template's width is imported in full instead of
+    being quietly truncated. Silent truncation is the worst way to lose this
+    particular data: nothing fails, the import reports success, and the missing
+    people are only discovered when somebody dies and the family is told they
+    were never covered.
+    """
+    numbers = set()
+    for key in row:
+        match = _re.fullmatch(r"dependant(\d+)_name", (key or "").strip())
+        if match:
+            numbers.add(int(match.group(1)))
+    return sorted(numbers)
 
 
 class BulkMembershipImportView(BenevolentRegistrationMixin, View):
@@ -123,7 +148,7 @@ class BulkMembershipImportView(BenevolentRegistrationMixin, View):
         household_name = (row.get("household_name") or "").strip()
 
         dependants = []
-        for i in range(1, DEP_SLOTS + 1):
+        for i in _dependant_slots(row):
             dname = (row.get(f"dependant{i}_name") or "").strip()
             if not dname:
                 continue

@@ -11,7 +11,8 @@ from django.views.generic import ListView, DetailView, CreateView, UpdateView, V
 from core.permissions import DataEntryRequiredMixin, ReadAccessMixin, TreasurerRequiredMixin
 from giving.models import Transaction
 from .forms import MemberForm
-from .models import Member, PossibleDuplicate
+from .models import Member, MemberPhone, PossibleDuplicate
+from .models import normalize_phone
 from .services.matching import MemberMergeConflict, merge_members
 
 
@@ -140,6 +141,75 @@ class MemberCreateView(DataEntryRequiredMixin, CreateView):
     def get_success_url(self):
         messages.success(self.request, "Member saved.")
         return reverse_lazy("member_detail", args=[self.object.pk])
+
+
+class MemberPhoneAddView(DataEntryRequiredMixin, View):
+    """Record another number a member gives from.
+
+    Members give from more than one line — an M-Pesa number, a work handset, a
+    number the family shares. Until now a second number could only reach the
+    record as a side effect of merging two duplicate member rows, so a member
+    who had never been duplicated had no way to have their other line
+    recognised, and every payment from it went to the review queue.
+
+    The number is stored on its own row rather than replacing the primary,
+    because the primary is what receipts are addressed to and changing that is
+    a different decision from "she also pays from this one".
+    """
+
+    def post(self, request, pk):
+        member = get_object_or_404(Member, pk=pk)
+        raw = (request.POST.get("number") or "").strip()
+        label = (request.POST.get("label") or "").strip()[:40]
+        number = normalize_phone(raw)
+        if not number:
+            messages.error(
+                request,
+                f"{raw!r} does not look like a phone number. Kenyan mobile "
+                "numbers are ten digits starting 07 or 01.")
+            return redirect("member_detail", pk=pk)
+        if number == member.phone or member.phones.filter(number=number).exists():
+            messages.info(request, f"{raw} is already on {member.name}'s record.")
+            return redirect("member_detail", pk=pk)
+        # A number already held for somebody else is refused rather than
+        # duplicated: two members sharing a number makes every payment from it
+        # ambiguous, and the honest fix is a merge, not a second copy.
+        clash = Member.objects.filter(
+            Q(phone=number) | Q(phones__number=number)).exclude(pk=member.pk).first()
+        if clash:
+            messages.error(
+                request,
+                f"{raw} is already held for {clash.name}. If these are the same "
+                "person, merge the two records; if they genuinely share a "
+                "handset, leave it on one of them so payments stay traceable.")
+            return redirect("member_detail", pk=pk)
+        MemberPhone.objects.create(member=member, number=number, label=label,
+                                   is_primary=False)
+        messages.success(
+            request,
+            f"{raw} added for {member.name}. Payments from it will now be "
+            "recognised as theirs.")
+        return redirect("member_detail", pk=pk)
+
+
+class MemberPhoneRemoveView(DataEntryRequiredMixin, View):
+    """Drop a number a member no longer uses.
+
+    The primary number is not removable here — that is an edit to the member,
+    not the withdrawal of an extra line.
+    """
+
+    def post(self, request, pk, phone_id):
+        member = get_object_or_404(Member, pk=pk)
+        phone = get_object_or_404(MemberPhone, pk=phone_id, member=member)
+        if phone.is_primary:
+            messages.error(request, "That is the member's main number — change "
+                                    "it by editing the member.")
+            return redirect("member_detail", pk=pk)
+        number = phone.number
+        phone.delete()
+        messages.success(request, f"{number} removed from {member.name}.")
+        return redirect("member_detail", pk=pk)
 
 
 class MemberUpdateView(DataEntryRequiredMixin, UpdateView):

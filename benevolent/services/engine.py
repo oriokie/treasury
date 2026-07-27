@@ -108,10 +108,13 @@ def validate(scheme, *, kind, membership=None, case=None, amount=None, date=None
 
     if case is not None and case.scheme_id != scheme.pk:
         problems.append(f"{case.number} belongs to a different scheme.")
-    if case is not None and case.status not in case.OPEN_STATUSES:
+    if case is not None and case.status not in case.LEVIABLE_STATUSES:
+        # Only a case that never paid out has no levy to collect. A paid or
+        # closed case is exactly when the levy money arrives, so refusing it
+        # here left a member's contribution with nowhere to go.
         problems.append(
-            f"{case.number} is {case.get_status_display().lower()} — money cannot be "
-            f"attributed to a case that is already settled.")
+            f"{case.number} was {case.get_status_display().lower()} — no money "
+            f"left the fund for it, so there is no levy to collect.")
 
     if amount is not None and Decimal(amount) <= 0:
         problems.append("A contribution must be a positive amount.")
@@ -370,7 +373,7 @@ def _maybe_auto_apply_obligations(item, membership, best, result, cfg):
     # A single open case the member has ALREADY fully paid: a second payment of
     # the levy amount is a probable duplicate/overpayment — never post it twice.
     open_cases = list(BenevolentCase.objects.filter(
-        scheme=item.scheme, status__in=BenevolentCase.OPEN_STATUSES))
+        scheme=item.scheme, status__in=BenevolentCase.LEVIABLE_STATUSES))
     if (cfg.auto_allocate_single_open_case and len(open_cases) == 1):
         the_case = open_cases[0]
         already_paid = contrib_svc.levy_paid_by(membership, the_case)

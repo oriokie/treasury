@@ -1,0 +1,42 @@
+{% load static %}<!doctype html>
+{% comment %}
+Deliberately standalone rather than extending base.html.
+
+By the time this renders, the database underneath the application has been
+replaced and the signed-in user has been logged out. base.html builds the
+navigation from the current user's roles and reads site settings, all of which
+query a database that is now a different one — and the account that was signed
+in a moment ago may not exist in it at all. A restore-complete page that cannot
+itself be rendered would be a poor way to announce success.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Restore complete · Church Treasury</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body style="background:var(--paper-2,#f7f5ef)">
+  <main style="max-width:640px;margin:8vh auto;padding:0 1.2rem">
+    <div class="panel panel-forest">
+      <h1 style="margin-top:0;font-size:1.35rem">Restore complete</h1>
+      <p>{{ message }}</p>
+
+      <p class="muted">You have been signed out. The database now in use is the
+        one from the backup, so your sign-in — and anything else recorded after
+        that backup was taken — is no longer part of it. Sign in again with the
+        password that was in force at the time of the backup.</p>
+
+      {% if safety %}
+      <p class="muted"><strong>The database that was replaced has not been
+        deleted.</strong> It was copied to <span class="mono">{{ safety }}</span>
+        on the server before anything was overwritten. If this restore turns out
+        to have been a mistake, that file is the way back — take a copy of it
+        before restoring anything else.</p>
+      {% endif %}
+
+      <p style="margin-bottom:0"><a class="btn" href="/accounts/login/">Sign in</a></p>
+    </div>
+  </main>
+</body>
+</html>

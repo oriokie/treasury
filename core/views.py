@@ -1288,11 +1288,39 @@ class RestoreView(TreasurerRequiredMixin, View):
             messages.error(request, "Choose a backup file to restore.")
             return redirect("settings")
         ok, msg = database_restore(f)
-        if ok:
-            messages.success(request, msg)
-        else:
+        if not ok:
             messages.error(request, msg)
-        return redirect("settings")
+            return redirect("settings")
+
+        # A successful restore has just replaced the database — and both the
+        # session and the flash messages live in it.
+        #
+        # This request's own session row was written when the treasurer signed
+        # in, which was necessarily AFTER the backup was taken, so it does not
+        # exist in the file that has just been put in its place. Django's
+        # session middleware then tries to save that session at the end of the
+        # request, finds no row to update, and raises SessionInterrupted — which
+        # Django renders as a 400. The restore had already succeeded, so the
+        # treasurer saw a stack trace on a screen and their data half-arrived,
+        # with nothing to say which.
+        #
+        # Signing out is not a workaround, it is the truth: the account that was
+        # signed in a moment ago may not exist in the restored database, and if
+        # it does its password is whatever it was when the backup was taken.
+        # Flushing leaves an empty session, which the middleware clears rather
+        # than saves, so there is nothing left to fail.
+        from django.contrib.auth import logout as auth_logout
+        auth_logout(request)
+
+        # Rendered directly rather than redirected with a flash message: those
+        # are stored in the session too, so the message would be written into
+        # the very thing just emptied and never seen.
+        safety = ""
+        marker = "was saved as "
+        if marker in msg:
+            safety = msg.split(marker, 1)[1].rstrip(".")
+        return render(request, "restore_done.html",
+                      {"message": msg, "safety": safety})
 
 
 class UpdateRunView(TreasurerRequiredMixin, View):

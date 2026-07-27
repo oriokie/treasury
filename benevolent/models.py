@@ -1477,6 +1477,29 @@ class BenevolentCase(models.Model):
     EDITABLE_STATUSES = [Status.DRAFT, Status.SUBMITTED]
     FINAL_STATUSES = [Status.PAID, Status.CLOSED, Status.REJECTED, Status.CANCELLED]
 
+    #: Cases a member's levy may still be collected against.
+    #:
+    #: The status of a case describes the payout **to the family**. A levy is a
+    #: collection **from the members** to replenish the fund, and the two do not
+    #: end together — in almost every scheme they cannot, because the church
+    #: pays a bereaved family promptly and then levies the membership over the
+    #: following weeks. By the time the money starts arriving the case is PAID.
+    #:
+    #: Keying the levy off OPEN_STATUSES therefore made a levy uncollectable at
+    #: exactly the point it was being collected: the case vanished from the
+    #: allocator's list, stopped raising an obligation, and `engine.resolve`
+    #: refused the money outright as belonging to "a case that is already
+    #: settled". The payout was settled; the levy was not.
+    #:
+    #: CLOSED is included deliberately. A member who pays late is ordinary, and
+    #: the cost of refusing them is that their money cannot be recorded at all —
+    #: far worse than a contribution landing on an old case, which is visible on
+    #: the case and can be moved. REJECTED and CANCELLED are excluded because no
+    #: money ever left the fund for them, so there is nothing to replenish.
+    LEVIABLE_STATUSES = [Status.DRAFT, Status.SUBMITTED, Status.ASSESSED,
+                         Status.APPROVED, Status.PARTLY_PAID, Status.PAID,
+                         Status.CLOSED]
+
     number = models.CharField(max_length=24, unique=True, editable=False,
                               help_text="Permanent case reference; assigned once, never reused.")
     external_reference = models.CharField(

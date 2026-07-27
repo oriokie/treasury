@@ -44,13 +44,26 @@
   <div class="u-mt-xs">{% for a in aliases %}<span class="pill pill-grey" style="margin:.15rem">{{ a.name }}</span>{% endfor %}</div>
 </div></div>
 {% endif %}
-{% if other_phones %}
+{% comment %} A member may give from more than one line — an M-Pesa number, a
+   work handset. Every number listed here is matched when a payment arrives, so
+   giving from a second line is recognised as theirs instead of going to the
+   review queue. The number above stays the one receipts are addressed to. {% endcomment %}
 <div class="card u-mb"><div class="bd">
   <strong>Other phone numbers</strong>
-  <span class="muted u-xs">— from a merged duplicate record; the number above is used for receipting</span>
-  <div class="u-mt-xs">{% for p in other_phones %}<span class="pill pill-grey mono" style="margin:.15rem" title="{{ p.label }}">{{ p.number|phone_for:user }}{% if p.label %} · {{ p.label }}{% endif %}</span>{% endfor %}</div>
+  <span class="muted u-xs">— also recognised when money arrives; the number above is used for receipting</span>
+  {% if other_phones %}
+  <div class="u-mt-xs">{% for p in other_phones %}<span class="pill pill-grey mono" style="margin:.15rem" title="{{ p.label }}">{{ p.number|phone_for:user }}{% if p.label %} · {{ p.label }}{% endif %}
+    {% if can_enter_data %}<form method="post" action="{% url 'member_phone_remove' member.pk p.pk %}" class="u-inline" onsubmit="return confirm('Remove {{ p.number }}?');">{% csrf_token %}<button class="btn-plain" title="Remove">×</button></form>{% endif %}
+  </span>{% endfor %}</div>
+  {% else %}<div class="muted u-xs u-mt-xs">None recorded. Payments from any other line this member uses will not be recognised as theirs.</div>{% endif %}
+  {% if can_enter_data %}
+  <form method="post" action="{% url 'member_phone_add' member.pk %}" class="u-mt-xs" style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">{% csrf_token %}
+    <input class="field field-xs" name="number" placeholder="07xx xxx xxx" maxlength="20" required>
+    <input class="field field-xs" name="label" placeholder="e.g. M-Pesa" maxlength="40">
+    <button class="btn btn-xs btn-ghost">Add another number</button>
+  </form>
+  {% endif %}
 </div></div>
-{% endif %}
 <div class="card"><div class="hd u-between"><strong>Giving</strong>
   <span class="muted u-xs">{{ CURRENCY }} {{ period_given|money }} in this period · {{ shown_count }} entr{{ shown_count|pluralize:"y,ies" }}</span></div>
 <div class="bd" style="padding-bottom:0">

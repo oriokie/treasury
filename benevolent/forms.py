@@ -979,14 +979,23 @@ class IntakeResolveForm(StyledFormMixin, forms.Form):
             self.fields["membership"].queryset = (
                 SchemeMembership.objects.filter(scheme=item.scheme)
                 .select_related("member").order_by("member__name"))
-            self.fields["case"].queryset = (
-                BenevolentCase.objects.filter(
-                    scheme=item.scheme, status__in=BenevolentCase.OPEN_STATUSES)
-                .order_by("-event_date"))
+            # Cases a levy can still be collected against — which includes
+            # paid and closed ones, because that is when members pay.
+            cases = (BenevolentCase.objects.filter(
+                        scheme=item.scheme,
+                        status__in=BenevolentCase.LEVIABLE_STATUSES)
+                     .order_by("-event_date"))
+            self.fields["case"].queryset = cases
             if item.suggested_membership_id:
                 self.fields["membership"].initial = item.suggested_membership_id
             if item.suggested_case_id:
                 self.fields["case"].initial = item.suggested_case_id
+            elif cases.count() == 1:
+                # With one case running there is nothing to choose between, and
+                # making the treasurer pick it every time is how levy money ends
+                # up unattributed. Still a normal field — it can be changed or
+                # cleared before saving.
+                self.fields["case"].initial = cases.first().pk
             if item.suggested_kind:
                 self.fields["kind"].initial = item.suggested_kind
         self._style()

@@ -66,7 +66,15 @@ WEIGHTS = {
     # — families share handsets, and a phone can be reassigned — but it is the best
     # everyday evidence there is.
     "member_phone":      55,
-    "member_alt_phone":  45,   # a second number recorded for the same member
+    # A second number carries the same weight as the first. "Primary" only
+    # decides which number a receipt is sent to; both were put on the record by
+    # a treasurer saying "this is also her line", and the member matcher has
+    # always treated them as equally conclusive when identifying the person.
+    # Scoring it lower meant a member paying from their M-Pesa line instead of
+    # their airtime line landed in the queue every time even when the name
+    # matched too (45 + 30 = 75, short of the 85 gate) — which is exactly the
+    # case this signal exists for.
+    "member_alt_phone":  55,
 
     # A spouse or grown child paying the member's dues from their OWN phone is
     # completely routine, and a system that cannot recognise it will send a
@@ -79,6 +87,17 @@ WEIGHTS = {
     # names freely.
     "name_exact":        30,
     "name_fuzzy":        20,
+
+    # The name on the bank record is a member of the household rather than the
+    # member themselves. When a spouse pays, the narration carries THEIR name,
+    # so matching only against members leaves the household's own evidence
+    # unused: the phone said "this household" and the name agreed, and the
+    # allocator could see only half of it. Weighted so that a spouse paying from
+    # their own phone under their own name (45 + 40) reaches the same confidence
+    # as a member paying from theirs under theirs (55 + 30) — which is the same
+    # quality of evidence, arriving by a different route.
+    "spouse_name":       40,
+    "dependant_name":    30,
 
     # The narration says which scheme, and often what kind of money. It identifies
     # the SCHEME well and the MEMBER not at all.
@@ -118,6 +137,7 @@ class Signal:
 # The auto-allocate threshold is checked against the identity score alone.
 _IDENTITY_SIGNALS = {
     "membership_number", "case_number", "household_id",
+    "spouse_name", "dependant_name",
     "member_phone", "member_alt_phone", "spouse_phone", "dependant_phone",
     "name_exact", "name_fuzzy",
 }
@@ -200,9 +220,48 @@ class AllocationResult:
         must say "I cannot tell these apart" rather than pick the one that happened
         to sort first — that is precisely the situation where a wrong automatic
         answer is most likely and least likely to be noticed."""
+        if self.payer_is_also_a_member:
+            return True
         if not self.runner_up:
             return False
         return (self.best.score - self.runner_up.score) < 15
+
+    @property
+    def payer_is_also_a_member(self):
+        """The payer is in someone's household AND enrolled in their own right.
+
+        A wife listed as her husband's spouse may also hold her own membership.
+        A payment in her name from her phone then has two perfectly good
+        readings — her own dues, or her paying his — and the household evidence
+        happens to score higher because it draws on two signals rather than one.
+
+        Picking the husband would be a guess dressed as a decision, and the
+        money would be credited to the wrong person's record while both
+        memberships looked fine. The margin test does not catch it, because the
+        two readings are not close: they are simply both true. So this is
+        reported as ambiguous whatever the gap, and a treasurer decides.
+        """
+        if not self.best:
+            return False
+        # Compared on the normalised name key, not the raw string: a Member's
+        # name is normalised when it is saved while a dependant's is stored as
+        # it was typed, so "Abigael Omoche" and "ABIGAEL OMOCHE" are the same
+        # person written twice and a plain comparison would miss it.
+        household = {name_key(sig.detail.split(" (")[0])
+                     for sig in self.best.signals
+                     if sig.code in ("spouse_name", "dependant_name",
+                                     "spouse_phone", "dependant_phone")}
+        household.discard("")
+        if not household:
+            return False
+        for other in self.candidates[1:]:
+            if other.membership_id == self.best.membership_id:
+                continue
+            for sig in other.signals:
+                if sig.code in ("name_exact", "member_phone", "member_alt_phone"):
+                    if name_key(sig.detail.split(" (")[0]) in household:
+                        return True
+        return False
 
     def as_dict(self):
         return {"confidence": self.confidence, "ambiguous": self.is_ambiguous,
@@ -419,6 +478,7 @@ def allocate(*, reference="", phone="", name="", amount=None, date=None,
     # --- names: corroborating, never conclusive ---------------------------
     if name:
         _name_signals(scheme, name, candidate_for, cfg)
+        _dependant_name_signals(scheme, name, candidate_for, cfg)
 
     # --- the amount corroborates ------------------------------------------
     if amount is not None:
@@ -456,6 +516,25 @@ def allocate(*, reference="", phone="", name="", amount=None, date=None,
     return result
 
 
+def _phone_forms(ph):
+    """Every way the same Kenyan number is written, so a stored one can match.
+
+    "254722123456", "0722123456", "722123456" and "+254722123456" are one
+    telephone. Records typed by hand or imported from a spreadsheet carry
+    whichever form the church happened to use.
+    """
+    digits = "".join(c for c in (ph or "") if c.isdigit())
+    if not digits:
+        return []
+    if digits.startswith("254") and len(digits) == 12:
+        local = "0" + digits[3:]
+    elif digits.startswith("0") and len(digits) == 10:
+        local, digits = digits, "254" + digits[1:]
+    else:
+        return [ph, digits]
+    return list({ph, digits, local, local[1:], "+" + digits})
+
+
 def _phone_signals(scheme, ph, candidate_for):
     """The member's own number, their other numbers, and — routinely — a spouse's.
 
@@ -473,21 +552,37 @@ def _phone_signals(scheme, ph, candidate_for):
             "member_phone", "Paid from the member's own number",
             WEIGHTS["member_phone"], ph))
 
-    # other numbers recorded for the same member (e.g. kept after a merge)
-    try:
-        for mem in Member.objects.filter(phones__phone=ph).distinct():
-            for m in SchemeMembership.objects.filter(
-                    scheme=scheme, member=mem).select_related("member"):
-                if not any(s.code == "member_phone" for s in candidate_for(m).signals):
-                    candidate_for(m).signals.append(Signal(
-                        "member_alt_phone", "Paid from another number held for the member",
-                        WEIGHTS["member_alt_phone"], ph))
-    except Exception:  # noqa: BLE001 — the multi-phone table is optional
-        pass
+    # other numbers recorded for the same member — a second line, an M-Pesa
+    # number, or a number kept when two records for one person were merged.
+    #
+    # This queried `phones__phone`; the field is `number`, so it raised a
+    # FieldError on every single payment. The `except Exception` around it had
+    # been written to tolerate the table not existing, and instead swallowed a
+    # plain misspelling — so a member paying from their second line was never
+    # once recognised, silently, for as long as the feature has existed. The
+    # handler is gone: if this breaks again it should be loud.
+    for mem in Member.objects.filter(
+            phones__number__in=_phone_forms(ph)).distinct():
+        for m in SchemeMembership.objects.filter(
+                scheme=scheme, member=mem).select_related("member"):
+            cand = candidate_for(m)
+            if not any(sig.code == "member_phone" for sig in cand.signals):
+                cand.signals.append(Signal(
+                    "member_alt_phone",
+                    "Paid from another number held for the member",
+                    WEIGHTS["member_alt_phone"], ph))
 
     # a spouse or dependant paying on the member's behalf
+    #
+    # Matched on every written form of the number, not just the normalised one.
+    # A Member's phone is normalised when it is saved; a dependant's is stored
+    # exactly as it was typed or imported, which for a Kenyan roster means
+    # "0722..." while the bank sends "254722...". Comparing the two directly
+    # never matched, so spouse recognition worked only for the handful of rows
+    # that happened to have been entered in international form — which is why
+    # a spouse's payment still went to the unmatched queue.
     for d in SchemeDependant.objects.filter(
-            membership__scheme=scheme, active=True, phone=ph
+            membership__scheme=scheme, active=True, phone__in=_phone_forms(ph)
     ).select_related("membership__member", "member"):
         spouse = d.relationship == SchemeDependant.Relationship.SPOUSE
         candidate_for(d.membership).signals.append(Signal(
@@ -539,6 +634,49 @@ def _name_signals(scheme, name, candidate_for, cfg):
             candidate_for(m).signals.append(Signal(
                 "name_fuzzy", "The name is a close match", WEIGHTS["name_fuzzy"],
                 f"{m.member.name} ({score}% similar)"))
+
+
+def _dependant_name_signals(scheme, name, candidate_for, cfg):
+    """The payer's name is somebody in the member's household.
+
+    A spouse or grown child paying on the member's behalf signs the transfer
+    with their own name, so matching the narration only against members throws
+    that away — and worse, can fuzzily match some unrelated member who happens
+    to share a surname. Reading the household as well means the phone and the
+    name corroborate each other, which is exactly the case a treasurer resolves
+    by hand every month.
+
+    Deceased and withdrawn dependants are not matched: they are not paying.
+    """
+    key = name_key(name)
+    if not key:
+        return
+    threshold = cfg.fuzzy_name_threshold or 82
+
+    for d in SchemeDependant.objects.filter(
+            membership__scheme=scheme, active=True, died_on__isnull=True
+    ).select_related("membership__member", "member"):
+        dk = name_key(d.display_name)
+        if not dk:
+            continue
+        spouse = d.relationship == SchemeDependant.Relationship.SPOUSE
+        code = "spouse_name" if spouse else "dependant_name"
+        cand = candidate_for(d.membership)
+        if any(sig.code in ("spouse_name", "dependant_name") for sig in cand.signals):
+            continue          # one household member is enough corroboration
+        if dk == key:
+            cand.signals.append(Signal(
+                code, f"The name is the member's {d.get_relationship_display().lower()}",
+                WEIGHTS[code], d.display_name))
+            continue
+        score = fuzzy(dk, key)
+        if score >= threshold:
+            # A fuzzy household match is weaker than an exact one; it corroborates
+            # a phone match but must not carry a payment on its own.
+            cand.signals.append(Signal(
+                code, f"The name is close to the member's "
+                      f"{d.get_relationship_display().lower()}",
+                WEIGHTS["name_fuzzy"], f"{d.display_name} ({score}% similar)"))
 
 
 def _amount_signals(cand, scheme, amount, case, date):

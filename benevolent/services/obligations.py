@@ -122,8 +122,12 @@ def obligations_for(membership, *, as_of=None, include_settled=False):
     leviable = (SchemePolicy.ContributionMode.PER_CASE_LEVY,
                 SchemePolicy.ContributionMode.HYBRID)
     if policy.contribution_mode in leviable:
+        # Leviable, not open: the church pays the family first and levies the
+        # membership afterwards, so a case is almost always PAID by the time a
+        # member's levy money arrives. Filtering on open cases stopped the
+        # obligation appearing at precisely the point it was owed.
         cases = (BenevolentCase.objects
-                 .filter(scheme=scheme, status__in=BenevolentCase.OPEN_STATUSES)
+                 .filter(scheme=scheme, status__in=BenevolentCase.LEVIABLE_STATUSES)
                  .order_by("event_date", "id"))   # oldest event first
         for case in cases:
             levy = _levy_due_for(membership, case, policy, as_of)

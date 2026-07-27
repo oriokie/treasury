@@ -518,12 +518,190 @@ def full_excel_export_response(year=None):
     except Exception:
         pass
 
+    # ---- Benevolent scheme -------------------------------------------------
+    # The benevolent module holds the church's welfare obligations — who is
+    # covered, who their household is, what has been paid in and what has been
+    # paid out. A data export that omits it is not a copy of the church's
+    # records, and it is the part least reconstructible from the bank statement:
+    # a levy is just an amount until you know which case it settled.
+    try:
+        from benevolent.models import (BenevolentCase, BenevolentContribution,
+                                       BenevolentScheme, SchemeDependant,
+                                       SchemeMembership)
+        _sheet("Benevolent Schemes",
+               ["ID", "Code", "Name", "Status", "Fund"],
+               [[sc.id, sc.code, sc.name, sc.get_status_display(),
+                 sc.fund.name if sc.fund_id else ""]
+                for sc in BenevolentScheme.objects.select_related("fund")
+                .order_by("code")],
+               title="Benevolent schemes")
+
+        _sheet("Benevolent Members",
+               ["ID", "Number", "Scheme", "Member", "Phone", "Joined", "Status",
+                "Standing", "Type", "Household", "Registration fee paid",
+                "Died on", "Left on"],
+               [[m.id, m.number, m.scheme.code, m.member.name,
+                 m.member.phone or "", m.joined_on.isoformat() if m.joined_on else "",
+                 m.get_status_display(), m.get_standing_display(),
+                 m.get_registration_type_display(), m.household_name or "",
+                 "Yes" if m.registration_fee_paid else "No",
+                 m.died_on.isoformat() if m.died_on else "",
+                 m.left_on.isoformat() if m.left_on else ""]
+                for m in SchemeMembership.objects
+                .select_related("scheme", "member")
+                .order_by("scheme__code", "member__name")],
+               title="Benevolent memberships")
+
+        # Living dependants and departed ones both, with the date: who was
+        # covered when is the question a past claim is judged on.
+        _sheet("Benevolent Dependants",
+               ["Membership", "Member", "Dependant", "Relationship", "Phone",
+                "Date of birth", "Registered", "Active", "Died on"],
+               [[d.membership.number, d.membership.member.name, d.display_name,
+                 d.get_relationship_display(), d.phone or "",
+                 d.date_of_birth.isoformat() if d.date_of_birth else "",
+                 d.registered_on.isoformat() if d.registered_on else "",
+                 "Yes" if d.active else "No",
+                 d.died_on.isoformat() if d.died_on else ""]
+                for d in SchemeDependant.objects
+                .select_related("membership__member", "member")
+                .order_by("membership__number", "relationship")],
+               title="Benevolent dependants")
+
+        _sheet("Benevolent Cases",
+               ["ID", "Number", "Scheme", "Member", "Event", "Event date",
+                "Status", "Beneficiary"],
+               [[c5.id, c5.number, c5.scheme.code,
+                 c5.membership.member.name if c5.membership_id else "",
+                 c5.event_type.name if c5.event_type_id else "",
+                 c5.event_date.isoformat() if c5.event_date else "",
+                 c5.get_status_display(), c5.beneficiary_display]
+                for c5 in BenevolentCase.objects
+                .select_related("scheme", "membership__member", "event_type")
+                .order_by("-event_date")],
+               title="Benevolent cases")
+
+        _sheet("Benevolent Contributions",
+               ["Date", "Scheme", "Member", "Kind", "Period", "Case", "Amount",
+                "Automatic", "Reversed", "Note"],
+               [[cb.date.isoformat() if cb.date else "", cb.scheme.code,
+                 cb.membership.member.name if cb.membership_id else cb.payer_name,
+                 cb.get_kind_display(), cb.period_label or "",
+                 cb.case.number if cb.case_id else "", float(cb.amount or 0),
+                 "Yes" if cb.allocated_automatically else "No",
+                 cb.reversed_at.date().isoformat() if cb.reversed_at else "",
+                 cb.note or ""]
+                for cb in BenevolentContribution.objects
+                .select_related("scheme", "membership__member", "case",
+                                "transaction")
+                .order_by("-id")[:20000]],
+               title="Benevolent contributions", money_cols=(7,))
+    except Exception:
+        pass
+
+    # ---- Envelopes, one sheet per month, as the counting schedule ----------
+    # Laid out the way the envelope sheet is worked on and downloaded: a row per
+    # contributor, a column per fund, a total down each. A flat list of lines
+    # would hold the same numbers but could not be checked against the paper it
+    # came from, which is the only reason anybody opens this.
+    try:
+        from envelopes.models import Envelope
+        from collections import OrderedDict
+        envs = list(Envelope.objects
+                    .select_related("member")
+                    .prefetch_related("lines__department")
+                    .order_by("date", "receipt_no"))
+        months = OrderedDict()
+        for e in envs:
+            months.setdefault(e.date.strftime("%Y-%m"), []).append(e)
+        for month, rows_for_month in months.items():
+            funds = []
+            for e in rows_for_month:
+                for ln in e.lines.all():
+                    label = ln.department.name if ln.department_id else "Unallocated"
+                    if label not in funds:
+                        funds.append(label)
+                        
+            funds.sort()
+            header = ["No", "Date", "Contributor Name", "Phone", "Receipt No",
+                      "Channel"] + funds + ["Total"]
+            body, totals = [], {f: 0.0 for f in funds}
+            for n, e in enumerate(rows_for_month, start=1):
+                by_fund = {f: 0.0 for f in funds}
+                for ln in e.lines.all():
+                    label = ln.department.name if ln.department_id else "Unallocated"
+                    by_fund[label] = by_fund.get(label, 0.0) + float(ln.amount or 0)
+                for f in funds:
+                    totals[f] += by_fund[f]
+                body.append([n, e.date.isoformat(),
+                             (e.member.name if e.member_id else e.contributor_name) or "",
+                             (e.member.phone if e.member_id else "") or "",
+                             e.receipt_no or "", e.get_channel_display()]
+                            + [by_fund[f] for f in funds]
+                            + [float(e.total or 0)])
+            grand = sum(totals.values())
+            _sheet(f"Envelopes {month}", header, body,
+                   title=f"Envelope schedule · {month}",
+                   money_cols=tuple(range(7, 7 + len(funds) + 1)),
+                   total_row=["", "", "Total", "", "", ""]
+                             + [totals[f] for f in funds] + [grand])
+    except Exception:
+        pass
+
     stamp = today.strftime("%Y%m%d")
     resp = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     resp["Content-Disposition"] = f'attachment; filename="treasury-data-{stamp}.xlsx"'
     wb.save(resp)
     return resp
+
+
+SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
+def _looks_like_sqlite(path):
+    """Is this actually a SQLite database? Returns (ok, why_not).
+
+    Restore copies the uploaded file straight over the live database. Without
+    this, uploading the wrong file — a spreadsheet, a PDF, a SQL dump meant for
+    a different engine — would destroy the church's data and only announce
+    itself the next time somebody opened a page. The safety copy taken a moment
+    later is no help if nobody realises anything happened.
+    """
+    import os
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        return False, "The uploaded file could not be read."
+    if head != SQLITE_MAGIC:
+        return False, (
+            "That file is not a SQLite database, so it has not been restored "
+            "and your data is untouched. A backup of this system downloads as "
+            "a .sqlite3 file — check you are uploading that rather than a "
+            "spreadsheet export or a dump from a different kind of database.")
+    if os.path.getsize(path) < 4096:
+        return False, ("That file is a SQLite database but far too small to be "
+                       "this system's — nothing has been restored.")
+    return True, ""
+
+
+def _looks_like_sql_dump(path):
+    """Is this a text SQL dump rather than a binary file? Returns (ok, why_not)."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(4096)
+    except OSError:
+        return False, "The uploaded file could not be read."
+    if head.startswith(SQLITE_MAGIC):
+        return False, (
+            "That is a SQLite backup, but this system runs on a different "
+            "database, so it cannot be loaded directly. Nothing has been "
+            "changed. Restore a dump taken from this system instead.")
+    if b"\x00" in head:
+        return False, ("That file is not a readable SQL dump, so nothing has "
+                       "been restored and your data is untouched.")
+    return True, ""
 
 
 def database_restore(uploaded_file):
@@ -555,18 +733,36 @@ def database_restore(uploaded_file):
         tmp.close()
 
         if engine.endswith("sqlite3"):
-            path = db["NAME"]
-            if not isinstance(path, (str, bytes)) or not os.path.exists(path):
-                return False, "No on-disk SQLite database to restore into."
-            # safety copy of current db
+            # `NAME` is whatever settings.py put there. Django's own template
+            # writes `BASE_DIR / "db.sqlite3"`, which is a PosixPath — and this
+            # asked `isinstance(path, (str, bytes))`, which a Path fails. So a
+            # perfectly ordinary installation was told there was no database to
+            # restore into while the file sat right there. Coerced instead of
+            # type-checked, which is what the backup side has always done.
+            # What was uploaded is checked before where it would go. Somebody
+            # who has just picked the wrong file needs to be told that, and it
+            # is true regardless of how this installation stores its data.
+            ok, why = _looks_like_sqlite(tmp.name)
+            if not ok:
+                return False, why
+            path = os.fspath(db["NAME"]) if db["NAME"] is not None else ""
+            if not path or path.startswith("file:") or not os.path.exists(path):
+                return False, (
+                    "This installation has no on-disk SQLite database to restore "
+                    "into — it is running in memory or from a URI. Restore needs "
+                    "a database file.")
             import shutil
-            shutil.copy2(path, f"{path}.pre-restore-{stamp}")
+            safety = f"{path}.pre-restore-{stamp}"
+            shutil.copy2(path, safety)
             connection.close()
             shutil.copy2(tmp.name, path)
             return True, (f"Database restored from backup. The previous database "
-                          f"was saved as {os.path.basename(path)}.pre-restore-{stamp}.")
+                          f"was saved as {os.path.basename(safety)}.")
 
         if engine.endswith("mysql"):
+            ok, why = _looks_like_sql_dump(tmp.name)
+            if not ok:
+                return False, why
             # safety dump of current state
             safety = f"/tmp/treasury-pre-restore-{stamp}.sql"
             defaults_file = _write_mysql_defaults_file(db)
@@ -598,6 +794,9 @@ def database_restore(uploaded_file):
                           f"previous data was saved to {safety} on the server.")
 
         if engine.endswith("postgresql"):
+            ok, why = _looks_like_sql_dump(tmp.name)
+            if not ok:
+                return False, why
             safety = f"/tmp/treasury-pre-restore-{stamp}.sql"
             env = dict(os.environ, PGPASSWORD=db.get("PASSWORD", ""))
             host = db.get("HOST") or "localhost"

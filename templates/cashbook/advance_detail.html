@@ -10,10 +10,25 @@
 
 <div class="grid cols-3 u-mb">
   <div class="stat"><div class="lbl">Advanced</div><div class="val mono">{{ CURRENCY }} {{ adv.amount|money }}</div></div>
-  <div class="stat"><div class="lbl">Settled by receipts</div><div class="val mono">{{ CURRENCY }} {{ adv.settled_total|money }}</div></div>
+  <div class="stat"><div class="lbl">Settled by receipts</div><div class="val mono">{{ CURRENCY }} {{ adv.settled_total|money }}</div>
+    {% if adv.awaiting_approval_total %}<div class="foot">of {{ CURRENCY }} {{ adv.receipts_submitted_total|money }} handed in</div>{% endif %}</div>
   <div class="stat"><div class="lbl">{% if adv.balance >= 0 %}Surplus to recover{% else %}Shortfall to reimburse{% endif %}</div>
     <div class="val mono" style="color:{% if adv.balance > 0 %}var(--brass){% elif adv.balance < 0 %}var(--red,#b00){% else %}var(--forest){% endif %}">{{ CURRENCY }} {{ adv.balance|money }}</div></div>
 </div>
+{% comment %} The card above counts only approved receipts, while the list below
+   shows every one handed in. When those differ the page has to say so, or a
+   treasurer is left deciding whether the figure is wrong or the paperwork is
+   simply waiting on them. {% endcomment %}
+{% if adv.awaiting_approval_total %}
+<div class="panel panel-amber u-mb">
+  <b>{{ CURRENCY }} {{ adv.awaiting_approval_total|money }} of receipts is waiting for approval.</b>
+  <span class="muted">The list below adds up to {{ CURRENCY }} {{ adv.receipts_submitted_total|money }},
+    but only the {{ CURRENCY }} {{ adv.settled_total|money }} already approved counts against this
+    advance — an unapproved receipt has not been accepted as accounting for anything yet.
+    Approve them on the <a class="link" href="{% url 'expense_list' %}?status=PENDING">expenses page</a>
+    and this advance will settle by that much.</span>
+</div>
+{% endif %}
 {% if adv.purpose %}<p class="help">Purpose: {{ adv.purpose }}{% if adv.reference %} · Ref {{ adv.reference }}{% endif %}</p>{% endif %}
 {% if adv.from_petty_cash %}<p class="help"><span class="pill pill-brass">Petty cash</span> This advance was issued from the petty-cash float, which it reduces until accounted for.</p>{% endif %}
 {% if adv.bank_charge %}<p class="help"><span class="pill">Sending charge</span> {{ CURRENCY }} {{ adv.bank_charge|money }} — the charge the church paid to send this advance. It's booked on {{ adv.department.name }} but does not reduce the holder's balance.</p>{% endif %}
@@ -34,7 +49,8 @@
 <table class="ledger compact"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="num">Amount</th><th>Status</th></tr></thead>
 <tbody>{% for x in expenses %}<tr><td>{{ x.date|date:"d M y" }}</td><td>{{ x.description }}</td>
   <td class="muted">{{ x.get_category_display }}</td><td class="num mono">{{ x.amount|money }}</td>
-  <td><span class="pill">{{ x.get_status_display }}</span></td></tr>
+  <td><span class="pill {% if x.status == 'PAID' or x.status == 'APPROVED' %}pill-green{% elif x.status == 'PENDING' %}pill-amber{% elif x.status == 'REJECTED' %}pill-red{% endif %}">{{ x.get_status_display }}</span>
+    {% if x.status == 'PENDING' %}<span class="muted u-xs"> · not yet counted</span>{% endif %}</td></tr>
 {% empty %}<tr><td colspan="5" class="empty">No settling expenses recorded yet.</td></tr>{% endfor %}</tbody>
 </table>
 
