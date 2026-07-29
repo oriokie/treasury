@@ -681,6 +681,17 @@ def refund(membership, *, amount, reason, date=None, user=None, method=None,
 
     scheme = membership.scheme
     given = contrib_svc.contributions_total(membership=membership)
+    # A registration fee buys enrolment; it is not money held on a member's
+    # behalf. `registration_fee_refundable` says whether the scheme gives it
+    # back, and nothing read it — so a scheme that keeps the fee would still
+    # refund it as part of "everything they contributed", and the leaver would
+    # be handed money the constitution says the scheme retains.
+    _pol = scheme.policy_on(date)
+    if _pol is not None and not _pol.registration_fee_refundable:
+        from benevolent.models import BenevolentContribution
+        fees = contrib_svc.contributions_total(
+            membership=membership, kinds=[BenevolentContribution.Kind.REGISTRATION])
+        given = given - (fees or Decimal(0))
     if amount > given:
         raise ValidationError(
             f"{membership.member.name} has contributed {given} in total, so {amount} "
@@ -688,6 +699,27 @@ def refund(membership, *, amount, reason, date=None, user=None, method=None,
             f"a refund — it is a benefit, and it goes through a case.")
 
     policy = scheme.policy_on(date)
+    # `refund_percent` is what the scheme's own rules say may be given back. It
+    # was stored, shown on the setup form, and never once consulted — so a
+    # scheme constituted to refund half of what a leaver had put in would hand
+    # back all of it, and the register would show the constitution being
+    # followed. Applied here as a ceiling rather than a fixed amount, because a
+    # treasurer may have good reason to refund less.
+    # 0 means unspecified, not "refund nothing" — the same convention every
+    # other numeric limit in this policy uses (max_dependants, min_age,
+    # max_levies_per_year all read 0 as no limit), and the field defaults to 0.
+    # Reading it as a hard zero would have refused every refund on every scheme
+    # that never set it, which is all of them.
+    if (policy is not None and policy.refund_percent
+            and 0 < policy.refund_percent < 100):
+        ceiling = (given * policy.refund_percent / Decimal(100)).quantize(Decimal("0.01"))
+        if amount > ceiling:
+            raise ValidationError(
+                f"Policy v{policy.version} refunds {policy.refund_percent}% of "
+                f"contributions on exit. {membership.member.name} has "
+                f"contributed {given}, so at most {ceiling} may be returned — "
+                f"{amount} is more than the scheme's own rules allow. Amend the "
+                f"policy if the scheme has decided otherwise.")
     if policy is not None and not policy.refund_contributions_on_exit:
         # a policy that does not refund on exit can still refund an overpayment, so
         # this is a warning carried on the voucher rather than a refusal — but it is

@@ -157,8 +157,8 @@ def _check_registration(policy, membership) -> Check:
     missing = []
     if not membership.registered_on:
         missing.append("not yet admitted")
-    if policy.registration_fee and not membership.registration_fee_paid:
-        missing.append(f"registration fee of {_money(policy.registration_fee)} unpaid")
+    if policy.fee_to_join and not membership.registration_fee_paid:
+        missing.append(f"registration fee of {_money(policy.fee_to_join)} unpaid")
     if policy.require_registration_form and not membership.registration_form_on_file:
         missing.append("no signed application form on file")
     if policy.require_id_document and not membership.id_document_on_file:

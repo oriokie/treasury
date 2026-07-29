@@ -63,6 +63,7 @@ class MembershipFacts:
     policy: Optional[SchemePolicy] = None
     arrears: Decimal = Decimal(0)
     months_idle: int = 0
+    had_something_to_pay: bool = True
     missed_cases: int = 0
     exemption: object = None          # the live MembershipExemption, if any
     age: Optional[int] = None
@@ -92,6 +93,32 @@ class MembershipFacts:
         member is COVERED — a grace period that did not cover would not be grace,
         it would just be a politer word for arrears."""
         return self.arrears > 0 and 0 < self.days_past_due <= self.grace_days
+
+
+def _had_something_to_pay(membership, policy, as_of):
+    """Was this member ever actually asked for money in the idle window?
+
+    A dues scheme always has something owing, so the answer is yes. A per-case
+    levy scheme only asks when there is a case, so a member who has paid nothing
+    for a year because the church buried nobody has done nothing wrong — and a
+    rule that cannot tell the difference punishes them for the congregation's
+    good fortune.
+
+    Hybrid schemes charge dues as well as levies, so they answer yes too.
+    """
+    if policy is None:
+        return True
+    if policy.contribution_mode != SchemePolicy.ContributionMode.PER_CASE_LEVY:
+        return True          # dues are owed whether or not anyone has died
+    window_start = as_of - _dt.timedelta(days=30 * (policy.inactivity_months or 0))
+    start = max(window_start, membership.cover_from or window_start)
+    return BenevolentCase.objects.filter(
+        scheme=membership.scheme, event_date__gte=start, event_date__lte=as_of,
+        status__in=[BenevolentCase.Status.APPROVED,
+                    BenevolentCase.Status.PARTLY_PAID,
+                    BenevolentCase.Status.PAID,
+                    BenevolentCase.Status.CLOSED],
+    ).exclude(membership=membership).exists()
 
 
 def missed_case_levies(membership, policy=None, as_of=None) -> int:
@@ -363,6 +390,7 @@ def facts_for(membership, policy=None, as_of=None, _batched=False) -> Membership
 
     f.months_idle = membership.months_since_contribution(as_of=as_of)
     f.missed_cases = missed_case_levies(membership, policy, as_of)
+    f.had_something_to_pay = _had_something_to_pay(membership, policy, as_of)
     f.renewal_due_on = membership.renewal_due_on(policy, as_of=as_of)
     f.renewal_overdue = membership.renewal_overdue(policy, as_of=as_of)
     return f
@@ -549,7 +577,13 @@ def assess(membership, policy=None, as_of=None) -> StandingResult:
             ["An automatic age exemption; no paperwork is needed."])
 
     # --- 3. inactive (before arrears: the bigger fact wins) ---------------
-    if policy.inactivity_months and facts.months_idle >= policy.inactivity_months:
+    # "Months since the last contribution" only means anything if there was
+    # something to contribute to. In a per-case levy scheme there are no monthly
+    # dues; money is asked for when somebody is bereaved. A quiet year with no
+    # cases would otherwise turn every faithful member in the scheme inactive
+    # on the same day, for the offence of not paying a levy nobody raised.
+    if (policy.inactivity_months and facts.months_idle >= policy.inactivity_months
+            and facts.had_something_to_pay):
         return StandingResult(
             Standing.INACTIVE,
             f"Inactive — {facts.months_idle} month(s) since the last contribution "

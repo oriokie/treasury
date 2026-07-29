@@ -30,7 +30,9 @@ class IntakeQueueView(BenevolentFinanceMixin, View):
     """
 
     def get(self, request):
+        from benevolent.models import BenevolentScheme
         f_status = request.GET.get("status") or ""
+        f_scheme = (request.GET.get("scheme") or "").strip()
         qs = (ContributionIntake.objects
               .select_related("transaction", "scheme", "suggested_membership__member",
                               "suggested_case", "duplicate_of__transaction")
@@ -39,6 +41,12 @@ class IntakeQueueView(BenevolentFinanceMixin, View):
             qs = qs.filter(status=f_status)
         else:
             qs = qs.filter(status__in=ContributionIntake.OPEN_STATUSES)
+        # A church running two schemes has one queue for both. Resolving intake
+        # is scheme-by-scheme work — the cases, the memberships and the levy
+        # amounts all differ — so without this a treasurer clearing the medical
+        # scheme reads past every bereavement receipt on every page.
+        if f_scheme:
+            qs = qs.filter(scheme__code__iexact=f_scheme)
 
         page = Paginator(qs, 30).get_page(request.GET.get("page"))
         counts = dict(ContributionIntake.objects.values_list("status")
@@ -47,10 +55,14 @@ class IntakeQueueView(BenevolentFinanceMixin, View):
                       .filter(status__in=ContributionIntake.OPEN_STATUSES)
                       .aggregate(t=Sum("transaction__amount"))["t"] or 0)
 
+        # Only offered where there is a choice to make: one scheme needs no filter.
+        schemes = list(BenevolentScheme.objects.order_by("code"))
         return render(request, "benevolent/intake_queue.html", {
             "page_obj": page, "items": page.object_list,
             "statuses": ContributionIntake.Status.choices,
             "f_status": f_status, "counts": counts,
+            "schemes": schemes if len(schemes) > 1 else [],
+            "f_scheme": f_scheme,
             "open_value": open_value,
             "open_count": sum(counts.get(s, 0)
                               for s in ContributionIntake.OPEN_STATUSES),

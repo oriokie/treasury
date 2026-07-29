@@ -1,3 +1,225 @@
+# v3.35.0 — Every scheme parameter now does something
+
+A treasurer setting up a benevolent scheme answers seventy-four questions. The
+wizard asks them, the scheme profiles pre-fill them, the policy form shows them,
+and the versioning machinery records every change to every one. Six of them were
+read by nothing at all.
+
+That is worse than a missing feature, because a missing feature is visible. A
+parameter that stores an answer and ignores it tells the treasurer their scheme
+is constituted one way while it behaves another — and the policy history, which
+exists so a church can show what its rules were, records a rule that was never in
+force.
+
+All six are now enforced.
+
+## What each one does
+
+**`refund_percent`** — a scheme constituted to return half of a leaver's
+contributions was returning all of it, and the register showed the constitution
+being followed. It is now a ceiling, and a refund beyond it is refused with the
+actual figure named. 0 means unspecified rather than "refund nothing", which is
+the convention every other numeric limit in this policy already uses.
+
+**`registration_fee_refundable`** — a registration fee buys enrolment; it is not
+money held on a member's behalf. Where a scheme keeps it, it is now excluded from
+what may be refunded rather than handed back as part of "everything they paid".
+
+**`funding_methods`** — the field's own help text calls it a rule rather than a
+note: it exists to stop a member-funded scheme being quietly subsidised from the
+church budget without the constitution being changed. It was a note. Money of a
+kind the scheme is not constituted to take is now refused, naming what the scheme
+is funded by. Declaring nothing still forbids nothing.
+
+**`max_levies_per_year`** — "the most levies one member can be asked for in a
+year, the protection against a bad year bankrupting the membership". A scheme
+promising at most six calls a year would raise twenty in a bad year. Counted over
+the twelve months to each case, and counting only cases that were genuinely calls
+on that member: their own bereavement, and anything before their cover began, no
+longer eat into the allowance that protects them.
+
+**`joining_fee`** — not an unenforced rule but a duplicate. The wizard asks for a
+joining fee and writes the answer to `registration_fee`, which is what everything
+charges against, leaving this field holding a number nothing read. One
+`fee_to_join` now answers the question, preferring the registration fee and
+falling back to the older field so a policy carrying only that one still charges
+it.
+
+**`household_mode`** — see below.
+
+## Household cover, and correcting the record before enforcing it
+
+`household_mode` defaulted to "each member enrols individually", and almost no
+scheme ever changed it — while registering spouses and children daily. The field
+said one thing and the register said another.
+
+Enforcing the field as it stood would have refused dependants on every scheme
+that had been covering households for years: the rule would have contradicted the
+books, and a treasurer would have been locked out of ordinary work by a setting
+nobody chose.
+
+So the register is treated as the evidence. Migration 0033 corrects any scheme
+with active dependants or a household enrolment to say it covers households —
+across all of its policies, including superseded ones, because a backdated
+registration is checked against the policy in force on its own date. Schemes with
+no such evidence are left alone: individual-only is a real way to run a scheme,
+and inventing household cover for one that has never used it would be the same
+mistake in the other direction.
+
+Only then is the rule enforced. A scheme still marked individual is one that has
+genuinely never covered a household, and it now refuses a household enrolment or
+a dependant with a message saying which setting to change. New schemes cover
+households by default, which is how church schemes actually run and why every one
+of them drifted into contradicting its own policy the first time somebody
+registered a spouse.
+
+The reverse migration deliberately does nothing. There is no record of which
+values were defaults and which were choices, so restoring "individual" would
+guess — and would re-break exactly what this corrected.
+
+## The guard
+
+`test_no_policy_parameter_is_silently_ignored` fails when a parameter is added to
+the policy and never consulted. Its list of known-inert parameters is now empty,
+and a second test fails if anything on that list turns out to be read after all,
+so the list cannot quietly grow or go stale.
+
+## Files
+
+* `benevolent/models.py` — `fee_to_join`; household default; help text
+* `benevolent/migrations/0033_household_mode_default_and_backfill.py` — the backfill
+* `benevolent/services/registry.py` — household cover enforced at enrolment and
+  at dependant registration
+* `benevolent/services/contributions.py` — funding methods; the yearly levy cap
+* `benevolent/services/engine.py` — the refund ceiling; the non-refundable fee
+* `benevolent/services/eligibility.py` — the joining fee read through one property
+* `benevolent/views_engine.py`, `templates/benevolent/intake_queue.html` — a scheme
+  filter on the intake queue, shown only where a church runs more than one
+* `benevolent/test_scheme_parameters.py` — new, 31 tests
+
+One migration, with a data backfill.
+
+## Tests
+
+The whole benevolent app, in batches: 154, 82, 101, 100, 120, 64, 92, 66 — all
+passing, including the 31 new ones.
+
+# v3.34.1 — The case page links to its own contribution report
+
+Both reports added in v3.34.0 were listed in the report library, alongside every
+other engine report. Neither was reachable from a case.
+
+"Who has paid towards this" is a question asked while looking at the case, not
+while browsing a library, and a report a treasurer has to go and find is a report
+they work around — they open the levy round and count down the column instead.
+The case page already linked the arrears report for dues-funded schemes; the
+levy card now links the per-case contribution report the same way, carrying the
+scheme and the case number so it opens on the case in front of them.
+
+Two tests were added with it: that the case page carries the link, and that both
+reports appear in the library. The second is worth having on its own — a report
+that is registered but listed nowhere exists only for somebody who already knows
+its URL.
+
+## Files
+
+* `templates/benevolent/case_detail.html` — the link
+* `benevolent/test_case_contribution_reports.py` — two discoverability tests
+
+No migrations. No accounting change.
+
+## Tests
+
+The case contribution, phase 5 and phase 6 suites (101), and the navigation, UI
+sweep, benevolent reports and engine UI guards (35) — all passing.
+
+# v3.34.0 — Who contributed to a case, who did not, and who was never asked
+
+Two reports and two rules, all turning on one distinction: being levied and not
+paying is a debt; never having been levied is not. Confusing the two either
+invents arrears for people who owe nothing, or loses the arrears of people who
+do.
+
+## Somebody who joins while a case is running is not levied for it
+
+They were not in the scheme when the family's need arose. A levy is the
+membership standing together at that moment, not a subscription the newest member
+inherits a bill for.
+
+The levy roster did not see it that way. It selected everybody active *today*,
+compared nothing against the date of the event, and put a member who joined last
+week on the list for a death from last year.
+
+What makes that a fault rather than a matter of taste is that the rest of the
+system already disagreed with it. The standing engine has always counted missed
+levies only from a member's own cover date onward — so the same system charged a
+new member for an old case and then declined to record it as a miss when they did
+not pay. One of the two had to be wrong, and it was the roster.
+
+Members in that position are now reported as *not levied — joined after the
+event*, rather than quietly dropped: a name missing from a list looks like an
+omission, and the reason belongs where the question is asked.
+
+## "Months since the last contribution" needs there to have been a contribution to make
+
+A per-case levy scheme has no monthly dues. It asks for money when somebody is
+bereaved. The inactivity rule counted the months since a member last paid and,
+past the limit, marked them inactive — without ever asking whether the church had
+raised a levy in that time.
+
+A quiet year would therefore have turned every faithful member in the scheme
+inactive on the same day, for failing to pay a levy nobody raised. The rule now
+applies only where money was actually sought, and a member's own case does not
+count as something they owed. Dues schemes are untouched: dues are owed whether
+or not anyone has died.
+
+The other inactivity rule — a run of missed case levies — already worked, and
+already offered the choice between an unbroken consecutive run and any misses
+within a rolling year.
+
+## Two reports
+
+**Who has contributed to a case** takes one case and sorts the membership into
+three: those who have contributed, those who are levied and have not, and those
+who were never levied at all — each of the last with its reason, whether a
+written exemption, their own bereavement, or cover that began after the event.
+Only the middle group is a follow-up list. Chasing somebody for money the church
+has already decided in writing they do not owe is worse than having no list,
+because now it is on file and being acted on.
+
+**Member contributions across cases** is a row per member and a column per case
+in the chosen period, carrying the membership number, the member's name and their
+spouse's. Each cell is one of three things, and they are deliberately not
+interchangeable:
+
+* an amount — what they gave towards that case
+* **0** — levied and unpaid; a debt, and it must read as one
+* **blank** — never levied, so there is nothing to chase
+
+A nought where nobody was ever asked would invent arrears across the whole
+scheme and put faithful members on a defaulters' list. A blank where somebody
+owes would lose the debt. That distinction is the entire point of the report, and
+there is a test for each of the three states.
+
+## Files
+
+* `benevolent/services/contributions.py` — the roster respects cover dates
+* `benevolent/services/standing.py` — `_had_something_to_pay`, and the idle-months
+  rule conditioned on it
+* `benevolent/report_components.py` — the two reports
+* `benevolent/test_case_contribution_reports.py` — new, 21 tests
+
+No migrations. The accounting change is deliberate and narrow: a member who
+joined after a case is no longer expected to pay its levy, so that case's
+expected total no longer counts them — a test asserts the total does not move
+when such a member joins.
+
+## Tests
+
+The levy, obligations and eligibility suites (71), standing and automation (83),
+phase 5 and reports (59), phase 6 and bugfixes (89), phases 7/10/11 (68) — all
+passing, including the 21 new ones.
+
 # v3.33.0 — A restore finishes cleanly instead of failing on the way out
 
 Restoring a backup worked, and then threw a stack trace.

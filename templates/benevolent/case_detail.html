@@ -157,6 +157,10 @@
 {% if levy %}
 <div class="card u-mb"><div class="hd u-between"><span>Levy for this case</span>
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_statement' case.id %}">WhatsApp statement</a>
+  {% comment %} Reached from the case rather than only from the report library:
+     "who has paid towards this" is a question asked while looking at the case,
+     and a report a treasurer has to go and find is a report they work around. {% endcomment %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'engine_report' 'benevolent_case_contribution_status' %}?scheme={{ case.scheme.code }}&amp;case={{ case.number }}">Who has contributed</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'benevolent_case_levy' case.id %}">Open the levy round</a></div><div class="bd">
   <p>{{ CURRENCY }} {{ levy.collected|money }} collected of
      {{ CURRENCY }} {{ levy.expected|money }} expected

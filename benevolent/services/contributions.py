@@ -421,6 +421,35 @@ def dues_schedule(membership, policy=None, as_of=None):
 # ---------------------------------------------------------------------------
 
 @db_tx.atomic
+def _check_funding_method(scheme, policy, kind):
+    """Refuse money the scheme's constitution does not permit it to take.
+
+    `funding_methods` says what a scheme may be funded by, and its own help text
+    calls it a rule rather than a note: it exists to stop a member-funded scheme
+    being quietly subsidised from the church budget, or a dues scheme collecting
+    levies it never adopted, without the constitution being changed first.
+    Nothing read it, so it was a note after all.
+
+    An empty list means nothing was declared, which is not the same as
+    forbidding everything — those schemes are left alone.
+    """
+    permitted = list(getattr(policy, "funding_methods", None) or [])
+    if not permitted or not kind:
+        return
+    if str(kind).upper() in {str(m).upper() for m in permitted}:
+        return
+    from benevolent.models import BenevolentContribution
+    label = dict(BenevolentContribution.Kind.choices).get(kind, kind)
+    allowed = ", ".join(
+        dict(BenevolentContribution.Kind.choices).get(m, m).lower()
+        for m in permitted)
+    raise ValidationError(
+        f"{scheme.name} is funded by {allowed} under policy v{policy.version}. "
+        f"It is not constituted to take {str(label).lower()}, so this cannot be "
+        f"recorded against it — amend the scheme's funding methods first if the "
+        f"church has decided otherwise.")
+
+
 def record_contribution(scheme, *, date, amount, user=None, membership=None,
                         member=None, channel=None, period_label=None, case=None,
                         note="", reference="", existing_transaction=None, fund=None,
@@ -474,6 +503,11 @@ def record_contribution(scheme, *, date, amount, user=None, membership=None,
             # voluntarily — which is not the same as a stranger's donation, and the
             # member's statement should not call it one
             kind = BenevolentContribution.Kind.VOLUNTARY
+
+    # Checked once the kind is settled, so it applies whether the caller named
+    # the kind or the scheme's own rules inferred it.
+    if policy is not None:
+        _check_funding_method(scheme, policy, kind)
 
     # only DUES carry a dues period; giving one to a levy or a fee would have it
     # settle a subscription it was never paid for
@@ -553,6 +587,32 @@ def _repost(txn):
         posting.post_transaction(txn)
 
 
+def _levy_cap_reached(membership, case, policy):
+    """Has this member already been levied as often as the scheme allows?
+
+    Counted over the twelve months ending at this case's event, and counting
+    only cases that were actually calls on this member — their own bereavement,
+    and anything before their cover began, were never asked of them and must not
+    use up the allowance that exists to protect them.
+
+    A cap of 0 means no limit, which is the default and how most schemes run.
+    """
+    cap = getattr(policy, "max_levies_per_year", 0) or 0
+    if not cap:
+        return False
+    from benevolent.models import BenevolentCase
+    window_start = case.event_date - _dt.timedelta(days=365)
+    earlier = (BenevolentCase.objects
+               .filter(scheme=case.scheme,
+                       status__in=BenevolentCase.LEVIABLE_STATUSES,
+                       event_date__gte=window_start,
+                       event_date__lt=case.event_date)
+               .exclude(membership=membership))
+    if membership.cover_from:
+        earlier = earlier.filter(event_date__gte=membership.cover_from)
+    return earlier.count() >= cap
+
+
 @db_tx.atomic
 def raise_case_levy(case, *, amount=None, user=None):
     """Prepare a per-case levy: who owes it, and how much.
@@ -597,8 +657,30 @@ def raise_case_levy(case, *, amount=None, user=None):
     members = (SchemeMembership.objects
                .filter(scheme=case.scheme, status=SchemeMembership.Status.ACTIVE)
                .select_related("member").order_by("member__name"))
-    rows, exempt = [], []
+    rows, exempt, not_yet_covered, over_cap = [], [], [], []
     for m in members:
+        # Somebody who joined after the event is not levied for it. They were
+        # not in the scheme when the family's need arose, and a levy is the
+        # membership standing together at that moment — not a subscription the
+        # newest member inherits a bill for.
+        #
+        # The standing engine has always agreed: `missed_case_levies` counts
+        # only cases from a member's own cover date onward. The roster did not,
+        # so a member who joined last week was put on the list for a case from
+        # last year and chased for it, while the same system declined to record
+        # it as a miss when they did not pay. One of the two had to be wrong,
+        # and it was this one.
+        if m.cover_from and case.event_date < m.cover_from:
+            not_yet_covered.append(m)
+            continue
+        # "The most levies one member can be asked for in a year — the
+        # protection against a bad year bankrupting the membership." That is the
+        # field's own help text, and nothing enforced it: a scheme promising at
+        # most six calls a year would raise twenty in a bad year, and the
+        # promise recorded in the policy history would never have been true.
+        if _levy_cap_reached(m, case, policy):
+            over_cap.append(m)
+            continue
         if case.membership_id == m.pk:
             weight = _bereaved_weight(policy, case)
             if weight <= 0 or policy.bereaved_deduct_own_levy:
@@ -624,7 +706,8 @@ def raise_case_levy(case, *, amount=None, user=None):
     expected = sum((r["due"] for r in rows), Decimal(0))
     collected = sum((r["paid"] for r in rows), Decimal(0))
     return {"case": case, "per_member": per_member, "rows": rows,
-            "exempt": exempt, "policy": policy,
+            "exempt": exempt, "not_yet_covered": not_yet_covered,
+            "over_cap": over_cap, "policy": policy,
             "expected": expected, "collected": collected,
             "outstanding": max(Decimal(0), expected - collected)}
 
@@ -668,7 +751,7 @@ def record_fee(membership, *, kind, amount=None, date=None, user=None,
         raise ValidationError("No policy is in force, so no fee is due.")
 
     if amount is None:
-        amount = (policy.registration_fee if kind == "REGISTRATION"
+        amount = (policy.fee_to_join if kind == "REGISTRATION"
                   else policy.renewal_fee)
     amount = Decimal(amount or 0)
     if amount <= 0:

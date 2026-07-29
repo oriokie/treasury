@@ -441,6 +441,243 @@ class BenevolentMemberDependantDetailComponent(ComponentSection):
                            rows=rows, note=note)
 
 
+CASE_FILTER = Filter("case", "Case number (e.g. BENC-2026-0001)", kind="text")
+
+
+def _levy_roster_for(case):
+    """The levy round for a case, or None where the policy raises no levy."""
+    from benevolent.services.contributions import levy_summary
+    return levy_summary(case)
+
+
+class CaseContributionStatusComponent(ComponentSection):
+    """Who has paid towards one case, and who has not.
+
+    The list a treasurer works from while collecting a levy, and the one a
+    committee asks for when a family's case is reviewed. It answers a question
+    the case page could not: not "how much has come in" but "from whom, and who
+    is still outstanding".
+
+    Three groups, and the distinction between them matters:
+
+    * **Contributed** — paid something towards this case.
+    * **Not contributed** — on the roster and owing. These are the people to
+      follow up, and only these.
+    * **Not levied** — on nobody's follow-up list. A member excused by a written
+      exemption, the bereaved member themselves where the policy does not levy
+      them for their own case, and anybody whose cover began after the event.
+
+    That last group is the reason this report says "not levied" rather than
+    lumping them in with the defaulters. Chasing somebody for money the church
+    has already decided in writing they do not owe — or for a death that
+    happened before they joined — is worse than having no list at all, because
+    now it is on file and being acted on.
+    """
+    key = "benevolent_case_contribution_status"
+    title = "Who has contributed to this case"
+    declared_metrics = ()
+
+    def render(self, ctx, filters):
+        from benevolent.models import BenevolentCase
+        number = (filters.get("case") or "").strip()
+        scheme = _scheme_filter_value(filters)
+
+        qs = BenevolentCase.objects.select_related(
+            "scheme", "membership__member", "event_type")
+        if scheme is not None:
+            qs = qs.filter(scheme=scheme)
+        case = (qs.filter(number__iexact=number).first() if number
+                else qs.order_by("-event_date").first())
+
+        columns = [
+            Column("member", "Member", drilldown=True),
+            Column("number", "Membership no."),
+            Column("spouse", "Spouse"),
+            Column("status", "Status"),
+            Column("due", "Levy due", numeric=True),
+            Column("paid", "Contributed", numeric=True),
+            Column("outstanding", "Outstanding", numeric=True),
+        ]
+        if case is None:
+            return SectionData(key=self.key, title=self.title, columns=columns,
+                               rows=[], note="No case found for that number.")
+
+        roster = _levy_roster_for(case)
+        if roster is None:
+            return SectionData(
+                key=self.key, title=f"{self.title} — {case.number}",
+                columns=columns, rows=[],
+                note=(f"{case.scheme.name} does not raise a levy per case, so "
+                      "there is no per-case contribution list. Contributions to "
+                      "this scheme are periodic dues."))
+
+        spouse = _spouse_names([r["membership"] for r in roster["rows"]]
+                              + list(roster.get("exempt", []))
+                              + list(roster.get("not_yet_covered", [])))
+        rows, paid_n, unpaid_n = [], 0, 0
+        for r in sorted(roster["rows"], key=lambda x: x["membership"].member.name):
+            m = r["membership"]
+            has_paid = r["paid"] > 0
+            paid_n += 1 if has_paid else 0
+            unpaid_n += 0 if has_paid else 1
+            rows.append(Row(cells={
+                "member": m.member.name, "number": m.number,
+                "spouse": spouse.get(m.pk, ""),
+                "status": "Contributed" if has_paid else "Not contributed",
+                "due": r["due"], "paid": r["paid"],
+                "outstanding": r["outstanding"],
+            }, url=f"/benevolent/members/{m.pk}/", emphasis=not has_paid))
+
+        for m in roster.get("exempt", []):
+            rows.append(Row(cells={
+                "member": m.member.name, "number": m.number,
+                "spouse": spouse.get(m.pk, ""),
+                "status": "Not levied — exempt", "due": None, "paid": None,
+                "outstanding": None}, url=f"/benevolent/members/{m.pk}/"))
+        for m in roster.get("not_yet_covered", []):
+            rows.append(Row(cells={
+                "member": m.member.name, "number": m.number,
+                "spouse": spouse.get(m.pk, ""),
+                "status": "Not levied — joined after the event", "due": None,
+                "paid": None, "outstanding": None},
+                url=f"/benevolent/members/{m.pk}/"))
+
+        note = (f"{case.number} · {case.event_type.name if case.event_type_id else ''} "
+                f"· {case.event_date:%d %b %Y} · "
+                f"{case.membership.member.name if case.membership_id else ''}. "
+                f"{paid_n} contributed, {unpaid_n} still to contribute, "
+                f"{len(roster.get('exempt', [])) + len(roster.get('not_yet_covered', []))} "
+                f"not levied. Collected {roster['collected']} of {roster['expected']}.")
+        total = Row(cells={"member": "Total", "number": "", "spouse": "",
+                           "status": "", "due": roster["expected"],
+                           "paid": roster["collected"],
+                           "outstanding": roster["outstanding"]},
+                    meta={"level": "grand"}, emphasis=True)
+        return SectionData(key=self.key, title=f"{self.title} — {case.number}",
+                           columns=columns, rows=rows, note=note, total=total)
+
+
+def _spouse_names(memberships):
+    """{membership pk: spouse's name} for a batch, in one query."""
+    from benevolent.models import SchemeDependant
+    out = {}
+    ids = [m.pk for m in memberships]
+    for d in (SchemeDependant.objects
+              .filter(membership_id__in=ids, active=True, died_on__isnull=True,
+                      relationship=SchemeDependant.Relationship.SPOUSE)
+              .select_related("member")):
+        out.setdefault(d.membership_id, d.display_name)
+    return out
+
+
+class MemberCaseContributionMatrixComponent(ComponentSection):
+    """Every member against every case in the period, and what they gave.
+
+    A row per member, a column per case. The three states are deliberately
+    different marks, because they are three different facts and a treasurer
+    acts differently on each:
+
+    * **an amount** — what they contributed towards that case
+    * **0** — they were levied and have not paid; this is a debt
+    * **blank** — they were never levied, so there is nothing to chase. Their
+      cover began after the event, the case was their own, or a written
+      exemption applies.
+
+    Showing a nought where somebody was never asked would invent an arrears
+    figure for the whole scheme and put faithful members on a defaulters' list.
+    Showing a blank where somebody owes would lose the debt. The distinction is
+    the entire point of the report.
+    """
+    key = "benevolent_member_case_matrix"
+    title = "Member contributions across cases"
+    declared_metrics = ()
+
+    MAX_CASES = 40
+
+    def render(self, ctx, filters):
+        from benevolent.models import BenevolentCase, SchemeMembership
+        scheme = _scheme_filter_value(filters)
+        start, end = ctx.start, ctx.end
+
+        cases = BenevolentCase.objects.select_related("membership__member")
+        if scheme is not None:
+            cases = cases.filter(scheme=scheme)
+        if start:
+            cases = cases.filter(event_date__gte=start)
+        if end:
+            cases = cases.filter(event_date__lte=end)
+        cases = list(cases.filter(
+            status__in=BenevolentCase.LEVIABLE_STATUSES
+        ).order_by("event_date", "id")[:self.MAX_CASES])
+
+        columns = [Column("member", "Member", drilldown=True),
+                   Column("number", "Membership no."),
+                   Column("spouse", "Spouse")]
+        for c in cases:
+            columns.append(Column(f"case_{c.pk}",
+                                  f"{c.number} · {c.event_date:%d %b %y}",
+                                  numeric=True))
+        columns.append(Column("total", "Total given", numeric=True))
+
+        if not cases:
+            return SectionData(key=self.key, title=self.title, columns=columns,
+                               rows=[], note="No cases in the selected period.")
+
+        # One roster per case rather than per member per case: the roster is the
+        # same list for everybody, and asking for it inside the member loop
+        # would run it once for every member of the scheme.
+        rosters = {}
+        for c in cases:
+            roster = _levy_roster_for(c)
+            if roster is None:
+                rosters[c.pk] = None
+                continue
+            rosters[c.pk] = {
+                "levied": {r["membership"].pk: r for r in roster["rows"]},
+            }
+
+        memberships = SchemeMembership.objects.select_related("member", "scheme")
+        if scheme is not None:
+            memberships = memberships.filter(scheme=scheme)
+        memberships = list(memberships.order_by("member__name")[:2000])
+        spouse = _spouse_names(memberships)
+
+        rows = []
+        column_totals = {c.pk: Decimal(0) for c in cases}
+        for m in memberships:
+            cells = {"member": m.member.name, "number": m.number,
+                     "spouse": spouse.get(m.pk, "")}
+            given = Decimal(0)
+            for c in cases:
+                roster = rosters.get(c.pk)
+                entry = roster["levied"].get(m.pk) if roster else None
+                if entry is None:
+                    cells[f"case_{c.pk}"] = None      # never levied — blank
+                else:
+                    cells[f"case_{c.pk}"] = entry["paid"]
+                    given += entry["paid"]
+                    column_totals[c.pk] += entry["paid"]
+            cells["total"] = given
+            rows.append(Row(cells=cells, url=f"/benevolent/members/{m.pk}/"))
+
+        total_cells = {"member": "Total", "number": "", "spouse": ""}
+        for c in cases:
+            total_cells[f"case_{c.pk}"] = column_totals[c.pk]
+        total_cells["total"] = sum(column_totals.values(), Decimal(0))
+        period = (f"{start:%d %b %Y} to {end:%d %b %Y}" if start and end
+                  else "all dates")
+        note = (f"{len(rows)} member(s) against {len(cases)} case(s), {period}. "
+                "A figure is what was contributed; 0 means levied and unpaid; a "
+                "blank means never levied — cover began after the event, the case "
+                "was their own, or an exemption applies.")
+        if len(cases) == self.MAX_CASES:
+            note += f" Showing the first {self.MAX_CASES} cases in the period."
+        return SectionData(key=self.key, title=self.title, columns=columns,
+                           rows=rows, note=note,
+                           total=Row(cells=total_cells, meta={"level": "grand"},
+                                     emphasis=True))
+
+
 # ===========================================================================
 # 4. Committee report
 # ===========================================================================
@@ -741,6 +978,24 @@ def register_reports():
         filters=[SCHEME_FILTER, ACTIVE_FILTER], period_from_request=False,
         sections=[BenevolentMemberDirectoryComponent(),
                   BenevolentMemberDependantDetailComponent()]))
+
+    registry.register(Report(
+        key="benevolent_case_contribution_status",
+        title="Benevolent: Who Has Contributed to a Case",
+        description="For one case: the members who have contributed, those who "
+                    "have not, and those who were never levied — with the reason.",
+        category="Benevolent", permission=_can_view_benevolent,
+        filters=[SCHEME_FILTER, CASE_FILTER], period_from_request=False,
+        sections=[CaseContributionStatusComponent()]))
+
+    registry.register(Report(
+        key="benevolent_member_case_matrix",
+        title="Benevolent: Member Contributions Across Cases",
+        description="A row per member, a column per case in the period: the amount "
+                    "contributed, 0 where levied and unpaid, blank where never levied.",
+        category="Benevolent", permission=_can_view_benevolent,
+        filters=[SCHEME_FILTER],
+        sections=[MemberCaseContributionMatrixComponent()]))
 
     registry.register(Report(
         key="benevolent_committee_report", title="Benevolent: Committee Report",

@@ -119,6 +119,23 @@ def register(scheme, member, *, joined_on=None, user=None,
     joined_on = joined_on or _dt.date.today()
     policy = scheme.policy_on(joined_on)
 
+    # `household_mode` says whether one enrolment covers a household or only the
+    # member. Enforced on the enrolment itself rather than on adding dependants:
+    # the field defaults to INDIVIDUAL, and almost every existing scheme is
+    # sitting on that default while registering dependants perfectly happily, so
+    # refusing dependants would break working schemes retroactively over a
+    # setting nobody chose. Refusing a *household enrolment* on a scheme that
+    # enrols individually is the same rule applied where existing data cannot be
+    # invalidated by it.
+    if (policy is not None
+            and registration_type == RegistrationType.HOUSEHOLD
+            and policy.household_mode == SchemePolicy.HouseholdMode.INDIVIDUAL):
+        raise ValidationError(
+            f"{scheme.name} enrols members individually under policy "
+            f"v{policy.version}, so a membership cannot be registered as a "
+            f"household. Set the scheme to household cover first if that is "
+            f"what the church has decided.")
+
     if registration_type == RegistrationType.HOUSEHOLD and not (household_name or "").strip():
         household_name = f"The {member.name.split()[-1]} household"
 
@@ -604,6 +621,19 @@ def add_dependant(membership, *, relationship, member=None, name="", phone="",
         if membership.dependants.filter(
                 relationship=SchemeDependant.Relationship.SPOUSE, active=True).exists():
             raise ValidationError("This membership already has a spouse registered.")
+
+    if (policy is not None
+            and policy.household_mode == SchemePolicy.HouseholdMode.INDIVIDUAL):
+        # Safe to enforce because migration 0033 corrected every scheme whose
+        # register already showed household cover. A scheme still marked
+        # individual has never registered a dependant or a household enrolment,
+        # so refusing one breaks nothing that was working — and the message says
+        # which setting to change rather than leaving a treasurer guessing.
+        raise ValidationError(
+            f"{membership.scheme.name} covers each member individually under "
+            f"policy v{policy.version}, so dependants cannot be registered "
+            f"against this membership. Change the scheme's household setting to "
+            f"'One enrolment covers the whole household' first.")
 
     if policy is not None and policy.max_household_size:
         # the principal member counts towards the household

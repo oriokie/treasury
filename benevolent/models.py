@@ -551,7 +551,28 @@ class SchemePolicy(models.Model):
     contribution_frequency = models.CharField(
         max_length=10, choices=Frequency.choices, default=Frequency.MONTHLY,
         help_text="How often fixed dues fall due.")
-    joining_fee = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    joining_fee = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Deprecated duplicate of the registration fee. The setup "
+                  "wizard asks for a joining fee and writes the answer to "
+                  "`registration_fee`, which is the field everything charges "
+                  "against; this one was left holding a number nothing read. "
+                  "Kept so existing policies are not silently altered, and now "
+                  "used as the fee where `registration_fee` is unset — see "
+                  "`SchemePolicy.fee_to_join`. Set the registration fee instead.")
+
+    @property
+    def fee_to_join(self):
+        """What a new member must pay to be enrolled.
+
+        One question with two fields behind it. `registration_fee` is what the
+        eligibility checks and the contribution defaults have always read;
+        `joining_fee` is an older duplicate that some scheme profiles still set.
+        A policy carrying only the old one would have charged nothing at all, so
+        it is honoured here rather than left as a number in the database that
+        contradicts what the scheme actually does.
+        """
+        return self.registration_fee or self.joining_fee or Decimal(0)
 
     # ---- Benefit rules ---------------------------------------------------
     benefit_mode = models.CharField(max_length=20, choices=BenefitMode.choices,
@@ -761,7 +782,11 @@ class SchemePolicy(models.Model):
 
     # ---- Household ----------------------------------------------------------
     household_mode = models.CharField(
-        max_length=10, choices=HouseholdMode.choices, default=HouseholdMode.INDIVIDUAL)
+        max_length=10, choices=HouseholdMode.choices, default=HouseholdMode.HOUSEHOLD,
+        help_text="Whether one enrolment covers a whole household or only the "
+                  "member. Individual-only schemes refuse household enrolments "
+                  "and dependants; set this before registering anyone under a "
+                  "scheme that is meant to cover families.")
     max_dependants = models.PositiveSmallIntegerField(
         default=0, help_text="The most dependants one membership may register. 0 = no limit.")
     dependant_age_limit = models.PositiveSmallIntegerField(

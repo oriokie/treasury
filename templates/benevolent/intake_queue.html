@@ -38,6 +38,14 @@
 <form method="get" class="filter-bar no-print u-mb">
   <select class="field--select" name="status"><option value="">Open items</option>
     {% for v,l in statuses %}<option value="{{ v }}" {% if f_status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select>
+  {% comment %} Shown only where the church runs more than one scheme. Resolving
+     intake is scheme-by-scheme work — different cases, different members,
+     different levy amounts — so mixing them makes the queue harder to clear,
+     while a lone scheme needs no filter at all. {% endcomment %}
+  {% if schemes %}
+  <select class="field--select" name="scheme"><option value="">All schemes</option>
+    {% for s in schemes %}<option value="{{ s.code }}" {% if f_scheme|upper == s.code|upper %}selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+  {% endif %}
   <button class="btn btn-sm">Filter</button>
 </form>
 
