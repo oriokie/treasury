@@ -38,6 +38,24 @@ class SplitFund(models.Model):
         comps = list(self.components.select_related("department").all())
         if not comps:
             return []
+        # The last component absorbing the remainder is right for rounding — a
+        # cent that cannot be divided has to land somewhere. It is wrong for a
+        # configuration error: a fund set up as 40/40 would put 40% in the first
+        # department and 60% in the second, and the split would still sum to the
+        # whole, so nothing downstream could tell that 20% had gone to the wrong
+        # fund. Money silently moved to a fund the church did not choose is the
+        # worst kind of error this system can make, because every total still
+        # reconciles.
+        total = sum((c.percent for c in comps), Decimal(0))
+        if total != Decimal(100):
+            from django.core.exceptions import ValidationError
+            raise ValidationError(
+                f"The split '{self.name}' is set up to divide "
+                f"{total}% of what it receives, not 100%. "
+                f"{'Only ' if total < 100 else ''}"
+                f"{', '.join(f'{c.department.name} {c.percent}%' for c in comps)}"
+                f" — correct the split before allocating money through it, or "
+                f"the remainder lands on whichever fund happens to be last.")
         out, running = [], Decimal(0)
         for i, c in enumerate(comps):
             if i == len(comps) - 1:

@@ -125,6 +125,22 @@ class CbsEventWebhookView(View):
             amount = None
         event_type = str(payload.get("EventType") or "").strip().upper()
 
+        # The bank states its balance on every event. Read out into columns
+        # rather than left inside the payload blob, so the account's position
+        # can actually be asked for — this is the only live figure the church
+        # has, and it arrives with every transaction.
+        def _money(raw):
+            try:
+                return Decimal(str(raw))
+            except (InvalidOperation, TypeError, ValueError):
+                return None
+
+        booked = _money(payload.get("BookedBalance"))
+        cleared = _money(payload.get("ClearedBalance"))
+        balance_at = _parse_date(payload.get("PostingDate"),
+                                 payload.get("ValueDate"),
+                                 payload.get("TransactionDate"))
+
         evt = BankEvent.objects.create(
             cbs_transaction_id=txn_id,
             acct_no=str(payload.get("AcctNo") or "")[:40],
@@ -132,6 +148,8 @@ class CbsEventWebhookView(View):
             event_type=event_type[:10],
             currency=str(payload.get("Currency") or "")[:8],
             payment_ref=str(payload.get("PaymentRef") or "")[:80],
+            booked_balance=booked, cleared_balance=cleared,
+            balance_at=balance_at,
             payload=json.dumps(payload)[:20000],
             status=BankEvent.Status.RECEIVED)
 

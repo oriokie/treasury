@@ -278,6 +278,23 @@ class BankEvent(models.Model):
     event_type = models.CharField(max_length=10, blank=True)   # DEBIT / CREDIT
     currency = models.CharField(max_length=8, blank=True)
     payment_ref = models.CharField(max_length=80, blank=True)
+    # The bank states its own balance on every event it pushes. It was being
+    # stored only inside the raw payload blob and read by nothing — so the one
+    # source that could answer "what is actually in the account today" was
+    # arriving continuously and being thrown away, while the treasurer's report
+    # had no live figure at all.
+    #
+    # Booked is what the bank has posted; cleared is what is available. Both are
+    # kept because they answer different questions, and a report that quietly
+    # picked one would be choosing for the reader.
+    booked_balance = models.DecimalField(max_digits=16, decimal_places=2,
+                                         null=True, blank=True,
+                                         help_text="The bank's BookedBalance at this event.")
+    cleared_balance = models.DecimalField(max_digits=16, decimal_places=2,
+                                          null=True, blank=True,
+                                          help_text="The bank's ClearedBalance at this event.")
+    balance_at = models.DateField(null=True, blank=True, db_index=True,
+                                  help_text="The date those balances applied to.")
     status = models.CharField(max_length=10, choices=Status.choices,
                               default=Status.RECEIVED, db_index=True)
     transaction = models.ForeignKey("giving.Transaction", null=True, blank=True,

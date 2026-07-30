@@ -793,3 +793,98 @@ def summary(account):
             kind=RegisterException.Kind.MISSING_IN_BANK).count(),
         "drift": balance_drift(account),
     }
+
+
+def balance_asof(on, account=None):
+    """What the bank itself said the account held, as at `on`.
+
+    Read from the register — the bank's own running-balance column on the last
+    line dated on or before `on` — rather than from anything the church has
+    computed. When a treasurer asks what was in the account at a month end, the
+    answer they want is the bank's, and the register is where the bank's answer
+    is kept.
+
+    Returns a dict, always, so a caller can tell the three cases apart without
+    guessing from a None:
+
+      * ``balance`` — the figure, or None if the register cannot answer
+      * ``as_at``   — the date of the line it came from, which is NOT `on`
+                      unless a line happens to fall exactly there
+      * ``stale_days`` — how far before `on` that line sits. A balance from
+                      three weeks earlier is still the bank's last word, but a
+                      treasurer reading a month-end report needs to know it is
+                      three weeks old rather than being shown it as though it
+                      were the closing position.
+      * ``account`` — which account answered
+
+    The register may simply have nothing: an account whose statements carry no
+    balance column, or one nobody has imported yet. That is reported rather than
+    papered over, because a fabricated bank balance is worse than none — it
+    would reconcile against itself and hide the very gap it was invented to fill.
+    """
+    import datetime as _dt
+    from statements.models import BankAccount, StatementLine
+
+    if account is None:
+        account = (BankAccount.objects.filter(is_default=True).first()
+                   or BankAccount.objects.first())
+    if account is None or on is None:
+        return {"balance": None, "as_at": None, "stale_days": None,
+                "account": account, "reason": "No bank account is set up."}
+
+    line = (StatementLine.objects
+            .filter(account=account, date__lte=on, bank_balance__isnull=False)
+            .order_by("-date", "-occurred_at", "-id").first())
+    if line is None:
+        return {"balance": None, "as_at": None, "stale_days": None,
+                "account": account,
+                "reason": ("The bank register holds no balance on or before "
+                           f"{on:%d %b %Y} — either no statement has been "
+                           "imported that far back, or this account's "
+                           "statements carry no running-balance column.")}
+    return {"balance": line.bank_balance, "as_at": line.date,
+            "stale_days": (on - line.date).days, "account": account,
+            "reason": ""}
+
+
+def live_balance_asof(on, account=None):
+    """What the bank last told us it held, on or before `on`.
+
+    Taken from the events the bank pushes in real time. Every one of them
+    carries the account's balance at that moment, so this is the freshest figure
+    the church has — usually fresher than the register, which waits on somebody
+    importing a statement.
+
+    Returns the same shape as `balance_asof`, plus `cleared`, because booked and
+    cleared answer different questions: booked is what the bank has posted,
+    cleared is what could be spent today. A report that silently picked one
+    would be choosing for the reader.
+    """
+    from statements.models import BankAccount, BankEvent
+
+    if account is None:
+        account = (BankAccount.objects.filter(is_default=True).first()
+                   or BankAccount.objects.first())
+    if on is None:
+        return {"balance": None, "cleared": None, "as_at": None,
+                "stale_days": None, "account": account,
+                "reason": "No date given."}
+
+    events = BankEvent.objects.filter(balance_at__lte=on,
+                                      booked_balance__isnull=False)
+    # Only narrow by account number when we have one to match on; a church with
+    # a single account has often never filled it in, and an over-strict filter
+    # would report "no live balance" while the events sit right there.
+    number = (getattr(account, "number", "") or "").strip() if account else ""
+    if number:
+        events = events.filter(acct_no=number)
+    evt = events.order_by("-balance_at", "-received_at").first()
+    if evt is None:
+        return {"balance": None, "cleared": None, "as_at": None,
+                "stale_days": None, "account": account,
+                "reason": ("The bank has pushed no balance on or before "
+                           f"{on:%d %b %Y}.")}
+    return {"balance": evt.booked_balance, "cleared": evt.cleared_balance,
+            "as_at": evt.balance_at,
+            "stale_days": (on - evt.balance_at).days,
+            "account": account, "reason": ""}

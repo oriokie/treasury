@@ -47,8 +47,23 @@
   <div class="btn-row u-mt">
     {% if step > 0 %}<button class="btn btn-ghost" name="back" value="1">← Back</button>{% endif %}
     <button class="btn">Continue →</button>
+    {% comment %} Offered once the scheme's shape is settled. A treasurer setting
+       up their first scheme should be able to get a working, honest policy in
+       place and come back to the fine print — the alternative is abandoning a
+       long form half way and having no scheme at all. Nothing is adopted
+       silently: the summary lists every defaulted setting with the reasoning
+       that produced it, and each can be changed there or afterwards. {% endcomment %}
+    {% if can_skip_rest %}
+    <button class="btn btn-ghost" name="skip_rest" value="1"
+            onsubmit="return true;">Accept the defaults for the rest →</button>
+    {% endif %}
     <button class="btn btn-ghost" name="restart" value="1">Start over</button>
   </div>
+  {% if can_skip_rest %}
+  <p class="muted u-xs u-mt-xs">Taking the defaults sets the remaining sections
+    to their safest reading — limits off, safeguards on. You will see every one
+    on the summary before anything is created.</p>
+  {% endif %}
 </form>
 </div></div>
 

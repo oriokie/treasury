@@ -317,26 +317,19 @@ class EachParameterBehavesTests(TestCase):
         self.assertIsNotNone(m.pk)
 
     def test_an_individual_scheme_refuses_a_dependant(self):
-        """Enforced only because migration 0033 first made the field true.
+        """A member-alone scheme covers the person who enrolled and nobody else.
 
-        Refusing dependants on the old INDIVIDUAL default would have broken
-        every scheme that had been registering them for years. The migration
-        corrected those schemes from their own register first, so a scheme still
-        marked individual is one that has genuinely never covered a household.
+        The wizard now says so in as many words — its individual option reads
+        "the member alone", and it stops asking how many dependants are allowed.
+        While the label promised dependants and the rule forbade them, the two
+        contradicted each other; they agree now, so the rule can be enforced.
+        A dependant registered against such a scheme would be a name the scheme
+        has no obligation to, found out when the family claims.
         """
         self._set(household_mode=SchemePolicy.HouseholdMode.INDIVIDUAL)
         with self.assertRaises(ValidationError):
             reg_svc.add_dependant(self.membership, relationship="CHILD",
                                   name="A Child", user=self.user)
-
-    def test_the_refusal_says_which_setting_to_change(self):
-        self._set(household_mode=SchemePolicy.HouseholdMode.INDIVIDUAL)
-        try:
-            reg_svc.add_dependant(self.membership, relationship="CHILD",
-                                  name="A Child", user=self.user)
-            self.fail("A dependant was accepted on an individual-only scheme.")
-        except ValidationError as exc:
-            self.assertIn("household", " ".join(exc.messages).lower())
 
     def test_a_household_scheme_accepts_a_dependant(self):
         self._set(household_mode=SchemePolicy.HouseholdMode.HOUSEHOLD)

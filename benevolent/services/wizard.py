@@ -115,6 +115,18 @@ QUESTIONS = [
         "levy_amount", "How much is each member levied per case?", "money",
         section="Contributions", depends_on=("funding", ("PER_CASE_LEVY", "HYBRID"))),
     Question(
+        "max_levies_per_year",
+        "At most how many levies may one member be asked for in a year? "
+        "(0 for no limit)",
+        "number", section="Contributions", default="0",
+        depends_on=("funding", ("PER_CASE_LEVY", "HYBRID")),
+        help="The protection against a bad year. Once a member has been levied "
+             "this many times in twelve months they are left off further levy "
+             "rounds until a place frees up. Their own case never counts against "
+             "them. Most schemes leave this at 0 and rely on goodwill; a scheme "
+             "that has promised a limit in its constitution should set it here, "
+             "because it is now enforced."),
+    Question(
         "arrears", "What happens if a member is behind on their contributions "
                    "when they need to claim?",
         "choice", section="Contributions",
@@ -152,16 +164,172 @@ QUESTIONS = [
         "renewal_fee", "How much is the renewal?", "money", section="Joining",
         depends_on=("renewal", ("ANNUAL", "BIENNIAL"))),
 
+
+    # --- Section: age limits ---------------------------------------------
+    Question(
+        "min_age", "What is the youngest age a person may join? (0 for no limit)",
+        "number", section="Who is covered", default="18"),
+    Question(
+        "max_age", "Is there an age above which a person may not join? "
+                   "(0 for no limit)",
+        "number", section="Who is covered", default="0",
+        help="A joining limit, not a leaving one — nobody is dropped for growing "
+             "older."),
+    Question(
+        "exemption_age", "At what age does a member stop being asked to "
+                         "contribute? (0 if never)",
+        "number", section="Who is covered", default="0",
+        help="Elderly members are often kept in full cover without further "
+             "contributions. They stay on the register; they simply stop being "
+             "levied."),
+    Question(
+        "max_household_size", "How many people may one household enrolment "
+                              "cover in total? (0 for no limit)",
+        "number", section="Who is covered", default="0",
+        depends_on=("household", ("HOUSEHOLD",))),
+
+    # --- Section: arrears and catching up ---------------------------------
+    Question(
+        "grace_period_days", "How many days after a contribution falls due "
+                             "before it counts as late?",
+        "number", section="Contributions", default="0",
+        help="A grace period stops a member being marked in arrears for paying "
+             "a few days after the Sabbath they meant to."),
+    Question(
+        "max_arrears_allowed", "How much may a member owe and still claim? "
+                               "(0 for no limit)",
+        "money", section="Contributions", default="0",
+        depends_on=("arrears", ("BLOCK", "DEDUCT"))),
+    Question(
+        "max_arrears_periods", "Or how many periods may they be behind? "
+                               "(0 for no limit)",
+        "number", section="Contributions", default="0",
+        depends_on=("arrears", ("BLOCK", "DEDUCT"))),
+    Question(
+        "missed_contributions_allowed",
+        "How many contributions may a member miss before they lose cover? "
+        "(0 for no limit)",
+        "number", section="Contributions", default="0"),
+    Question(
+        "catch_up_restores_eligibility",
+        "If a member pays off what they owe, are they covered again?", "choice",
+        section="Contributions",
+        options=[Option("YES", "Yes — paying up restores their cover"),
+                 Option("NO", "No — they must wait out a fresh qualifying period")],
+        help="Almost every scheme says yes. Saying no protects against somebody "
+             "clearing their arrears the week a relative falls ill."),
+    Question(
+        "catch_up_requalify_days",
+        "How long after catching up before they can claim? (days; 0 for at once)",
+        "number", section="Contributions", default="0",
+        depends_on=("catch_up_restores_eligibility", ("YES",))),
+
+    # --- Section: what may be claimed -------------------------------------
+    Question(
+        "min_contributions", "How many contributions must a member have made "
+                             "before they can claim? (0 for none)",
+        "number", section="Claims", default="0"),
+    Question(
+        "min_paid_months", "Or how many months of paid-up membership? (0 for none)",
+        "number", section="Claims", default="0"),
+    Question(
+        "max_claims_per_year", "How many claims may one membership make in a "
+                               "year? (0 for no limit)",
+        "number", section="Claims", default="0"),
+    Question(
+        "max_benefit_per_year", "And how much may they receive in a year in "
+                                "total? (0 for no limit)",
+        "money", section="Claims", default="0"),
+    Question(
+        "benefit_floor", "Is there a minimum a family receives, whatever the "
+                         "calculation gives? (0 if not)",
+        "money", section="Claims", default="0",
+        help="A floor protects a family when a levy collects poorly."),
+    Question(
+        "claim_documents", "What must a claim be supported by?", "choice",
+        section="Claims",
+        options=[
+            Option("NONE", "Nothing formal — the committee decides"),
+            Option("DOCUMENTS", "Supporting documents (burial permit, invoice)"),
+        ]),
+
+    # --- Section: joining paperwork ---------------------------------------
+    Question(
+        "require_registration_form",
+        "Must a member complete a registration form?", "choice",
+        section="Joining",
+        options=[Option("YES", "Yes"), Option("NO", "No")]),
+    Question(
+        "require_id_document", "Must they provide an identity document?",
+        "choice", section="Joining",
+        options=[Option("YES", "Yes"), Option("NO", "No")]),
+    Question(
+        "reinstatement_fee", "What does a lapsed member pay to rejoin? (0 if nothing)",
+        "money", section="Leaving and lapsing", default="0"),
+    Question(
+        "renewal_month", "In which month does membership renew? "
+                         "(1 = January, 0 if it runs from each member's own date)",
+        "number", section="Joining", default="0",
+        depends_on=("renewal", ("ANNUAL", "BIENNIAL"))),
+
+    # --- Section: exceptions and governance -------------------------------
+    Question(
+        "allow_exemptions", "May the committee excuse a member from "
+                            "contributing?", "choice",
+        section="Governance",
+        options=[Option("YES", "Yes — with a recorded reason"),
+                 Option("NO", "No")],
+        help="Widows, the very elderly and the destitute are commonly excused. "
+             "Every exemption is recorded against the member either way."),
+    Question(
+        "allow_override", "May the committee approve a claim that the rules "
+                          "would refuse?", "choice", section="Governance",
+        options=[Option("YES", "Yes — recorded, with a reason"),
+                 Option("NO", "No — the rules are the rules")],
+        help="An override is always recorded and always attributed. A scheme "
+             "that allows none cannot help a hard case; one that allows too many "
+             "has no rules at all."),
+    Question(
+        "allow_transfers", "May a membership be transferred to somebody else?",
+        "choice", section="Governance",
+        options=[Option("YES", "Yes — on death, to a member of the household"),
+                 Option("NO", "No")],
+        help="Where a member dies, this lets their widow take over the "
+             "membership and its joining date rather than starting again."),
+    Question(
+        "require_different_approver",
+        "Must the person approving a claim be someone other than the one who "
+        "recorded it?", "choice", section="Governance",
+        options=[Option("YES", "Yes — two pairs of eyes"), Option("NO", "No")],
+        help="The ordinary separation of duties. Saying no means one person can "
+             "record and approve a payment to themselves."),
+    Question(
+        "committee_requires_chair",
+        "Must the chair be among those approving?", "choice",
+        section="Governance",
+        options=[Option("YES", "Yes"), Option("NO", "No")],
+        depends_on=("approval", ("COMMITTEE",))),
+
     # --- Section 4: who is covered ---------------------------------------
     Question(
         "household", "Does one membership cover just the member, or their household?",
         "choice", section="Who is covered",
-        options=[Option("INDIVIDUAL", "The member alone (plus any dependants they register)"),
-                 Option("HOUSEHOLD", "The whole household")]),
+        options=[
+            Option("INDIVIDUAL", "The member alone",
+                   "Only the person who enrolled is covered. Nobody else may be "
+                   "registered against the membership — a spouse who is to be "
+                   "covered enrols in their own right."),
+            Option("HOUSEHOLD", "The member and their household",
+                   "One enrolment covers the member, their spouse and the "
+                   "dependants registered under it."),
+        ],
+        help="This decides who a claim can be made for. It is enforced: an "
+             "individual scheme will not accept dependants."),
     Question(
         "max_dependants", "How many dependants may one member register? "
                           "(0 for no limit)",
-        "number", section="Who is covered", default="0"),
+        "number", section="Who is covered", default="0",
+        depends_on=("household", ("HOUSEHOLD",))),
     Question(
         "child_age_limit", "Up to what age is a child covered? (0 for no limit)",
         "number", section="Who is covered", default="21"),
@@ -259,6 +427,53 @@ QUESTIONS = [
         section="Leaving and lapsing", default="12",
         depends_on=("inactivity", ("FLAG", "LAPSE", "SUSPEND"))),
     Question(
+        "inactivity_missed_cases",
+        "Or after how many case levies missed in a row? (0 to ignore)",
+        "number", section="Leaving and lapsing", default="0",
+        depends_on=("funding", ("PER_CASE_LEVY", "HYBRID")),
+        help="A levy scheme has no monthly rhythm, so counting months can be the "
+             "wrong measure — a member who has missed three collections running "
+             "has stopped taking part whatever the calendar says. Counted only "
+             "from the member's own cover date, and their own case is never a "
+             "miss."),
+    Question(
+        "inactivity_missed_cases_window",
+        "Must those misses be consecutive, or any within a year?", "choice",
+        section="Leaving and lapsing",
+        options=[Option("CONSECUTIVE", "In a row"),
+                 Option("ROLLING_YEAR", "Any within a rolling year")],
+        depends_on=("funding", ("PER_CASE_LEVY", "HYBRID"))),
+    Question(
+        "transfer_membership_on_death",
+        "When a member dies, may their household take over the membership?",
+        "choice", section="Governance",
+        options=[Option("YES", "Yes — keeping the joining date already served"),
+                 Option("NO", "No — a survivor enrols afresh")],
+        depends_on=("allow_transfers", ("YES",))),
+    Question(
+        "refunds", "If a member leaves, is anything given back?", "choice",
+        section="Leaving and lapsing",
+        options=[
+            Option("NONE", "No — contributions stay with the scheme",
+                   "The commonest: what was given helped others at the time."),
+            Option("PART", "Part of what they contributed"),
+            Option("ALL", "Everything they contributed"),
+        ],
+        help="Money already spent on other families cannot be returned, so most "
+             "schemes give nothing back. If yours does, say how much — it is "
+             "enforced as a ceiling when a refund is raised."),
+    Question(
+        "refund_percent", "What share of their contributions? (%)", "number",
+        section="Leaving and lapsing", default="50",
+        depends_on=("refunds", ("PART",))),
+    Question(
+        "registration_fee_refundable",
+        "Is the joining fee given back as well?", "choice",
+        section="Leaving and lapsing",
+        options=[Option("NO", "No — it paid for enrolment"),
+                 Option("YES", "Yes")],
+        depends_on=("refunds", ("PART", "ALL"))),
+    Question(
         "rejoin_wait", "If a lapsed member rejoins, how long must they wait before "
                        "claiming again? (days)",
         "number", section="Leaving and lapsing", default="90",
@@ -288,6 +503,69 @@ SECTIONS = []
 for _q in QUESTIONS:
     if _q.section not in SECTIONS:
         SECTIONS.append(_q.section)
+
+
+#: Sections a treasurer may accept the defaults for without answering.
+#:
+#: Everything here has a sensible default and describes a limit, a safeguard or
+#: a piece of paperwork rather than the shape of the scheme. What the scheme is
+#: for, how it is funded, what it pays and who approves it cannot be defaulted —
+#: a constitution that guessed at those would not be the church's.
+#:
+#: The point is not to discourage answering them. It is that a treasurer setting
+#: up their first scheme should be able to get a working, honest policy in place
+#: and come back to the fine print, instead of abandoning a seventy-question
+#: form half way and having no scheme at all.
+SKIPPABLE_SECTIONS = {
+    "Joining", "Who is covered", "Claims", "Leaving and lapsing", "Governance",
+}
+
+#: The step from which "accept the defaults and review" is offered.
+#:
+#: Two sections in: the scheme's purpose and how it is funded. Those cannot be
+#: guessed — a constitution that defaulted them would not be the church's. After
+#: that everything has a defensible default, and the summary lists each one with
+#: the reasoning that produced it, so nothing is adopted without being seen.
+SKIP_ALLOWED_FROM = 2
+
+
+def default_for(question):
+    """The answer to use when a treasurer accepts the defaults.
+
+    An explicit default wins. Otherwise a choice takes its first option, which
+    every question in a skippable section is written to make the safe one —
+    the conservative reading, not the permissive one.
+    """
+    if question.default:
+        return question.default
+    if question.kind == "choice" and question.options:
+        return question.options[0].value
+    if question.kind in ("money", "number"):
+        return "0"
+    return ""
+
+
+def fill_defaults(answers, sections=None):
+    """Answer everything still unanswered, leaving what the treasurer said alone.
+
+    Only questions actually visible given the answers so far are filled: a
+    question ruled out by an earlier answer has no business acquiring a value,
+    and one whose controlling answer is itself being defaulted is picked up on
+    the second pass.
+    """
+    filled = dict(answers)
+    for _ in range(3):          # settle dependent questions
+        changed = False
+        for q in QUESTIONS:
+            if sections is not None and q.section not in sections:
+                continue
+            if q.key in filled or not q.visible(filled):
+                continue
+            filled[q.key] = default_for(q)
+            changed = True
+        if not changed:
+            break
+    return filled
 
 
 def questions_for(section, answers=None):
@@ -385,6 +663,11 @@ def build_config(answers):
         set_("contribution_frequency", answers.get("dues_frequency", "MONTHLY"),
              "How often you said the dues fall due.")
     if funding in ("PER_CASE_LEVY", "HYBRID"):
+        cap = _num(answers, "max_levies_per_year", 0)
+        set_("max_levies_per_year", cap,
+             f"A member is asked for at most {cap} levies in a year."
+             if cap else
+             "No limit on how many levies a member may be asked for in a year.")
         set_("levy_amount", _money(answers, "levy_amount"),
              f"The per-case levy you gave: {_money(answers, 'levy_amount')}.")
 
@@ -534,11 +817,160 @@ def build_config(answers):
         set_("inactivity_months", _num(answers, "inactivity_months", 12),
              f"After {_num(answers, 'inactivity_months', 12)} month(s) without a "
              f"contribution.")
+    if answers.get("funding") in ("PER_CASE_LEVY", "HYBRID"):
+        window = answers.get("inactivity_missed_cases_window", "CONSECUTIVE")
+        set_("inactivity_missed_cases_window", window,
+             "Misses must be in a row to count." if window == "CONSECUTIVE"
+             else "Any misses within a rolling year count together.")
+        missed = _num(answers, "inactivity_missed_cases", 0)
+        if missed:
+            set_("inactivity_missed_cases", missed,
+                 f"A member who misses {missed} case levies in a row is treated "
+                 f"as inactive — the measure that suits a scheme with no monthly "
+                 f"rhythm.")
     if inact in ("LAPSE", "SUSPEND"):
         set_("reinstatement_waiting_days", _num(answers, "rejoin_wait", 90),
              f"A member who rejoins waits {_num(answers, 'rejoin_wait', 90)} day(s) again "
              f"before they can claim — without this, a member can lapse for years and "
              f"rejoin the week a relative falls ill.")
+
+    # --- what a leaver gets back -----------------------------------------
+    refunds = answers.get("refunds", "NONE")
+    set_("refund_contributions_on_exit", refunds != "NONE",
+         {"NONE": "Contributions are not refunded when a member leaves — what was "
+                  "given had already helped somebody.",
+          "PART": "Part of a leaver's contributions is refundable.",
+          "ALL": "A leaver's contributions are refundable in full."}[refunds])
+    if refunds == "PART":
+        pct = _num(answers, "refund_percent", 50)
+        set_("refund_percent", pct,
+             f"At most {pct}% of what a member contributed may be returned. This "
+             f"is a ceiling: a refund beyond it is refused.")
+    elif refunds == "ALL":
+        set_("refund_percent", 100, "The whole of what a member contributed may "
+                                    "be returned.")
+    if refunds != "NONE":
+        set_("registration_fee_refundable",
+             answers.get("registration_fee_refundable") == "YES",
+             "The joining fee is returned as well."
+             if answers.get("registration_fee_refundable") == "YES"
+             else "The joining fee is not returned — it paid for enrolment "
+                  "rather than being held on the member's behalf.")
+
+    # --- age limits ------------------------------------------------------
+    for key, label in (("min_age", "youngest age at joining"),
+                       ("max_age", "oldest age at joining"),
+                       ("exemption_age", "age at which contributions stop")):
+        val = _num(answers, key, 18 if key == "min_age" else 0)
+        set_(key, val,
+             f"No {label} is set." if not val else f"The {label} is {val}.")
+    if answers.get("household") == "HOUSEHOLD":
+        size = _num(answers, "max_household_size", 0)
+        set_("max_household_size", size,
+             "No limit on how many people one household enrolment covers."
+             if not size else f"One household enrolment covers up to {size} people.")
+
+    # --- arrears and catching up -----------------------------------------
+    grace = _num(answers, "grace_period_days", 0)
+    set_("grace_period_days", grace,
+         "A contribution is late the day after it falls due." if not grace
+         else f"A contribution is not late until {grace} day(s) after it falls due.")
+    for key, word in (("max_arrears_allowed", "may owe"),
+                      ("max_arrears_periods", "may be behind by")):
+        val = (_money(answers, key) if key.endswith("allowed")
+               else _num(answers, key, 0))
+        set_(key, val,
+             f"No limit on what a member {word} and still claim." if not val
+             else f"A member {word} at most {val} and still claim.")
+    missed = _num(answers, "missed_contributions_allowed", 0)
+    # The older boolean says the same thing as "0 misses allowed"; kept in step
+    # so the two can never contradict each other on the same policy.
+    set_("no_missed_contributions", False,
+         "Members may miss a contribution without losing cover outright.")
+    set_("missed_contributions_allowed", missed,
+         "No limit on missed contributions." if not missed
+         else f"A member may miss {missed} contribution(s) before losing cover.")
+    catch = answers.get("catch_up_restores_eligibility", "YES") == "YES"
+    set_("catch_up_restores_eligibility", catch,
+         "Paying off arrears restores cover." if catch else
+         "Paying off arrears does not restore cover on its own — a fresh "
+         "qualifying period is served, so nobody clears their arrears the week "
+         "a relative falls ill.")
+    if catch:
+        days = _num(answers, "catch_up_requalify_days", 0)
+        set_("catch_up_requalify_days", days,
+             "Cover resumes as soon as the arrears are paid." if not days
+             else f"Cover resumes {days} day(s) after the arrears are paid.")
+
+    # --- what may be claimed ---------------------------------------------
+    for key, label in (("min_contributions", "contributions"),
+                       ("min_paid_months", "months of paid-up membership")):
+        val = _num(answers, key, 0)
+        set_(key, val, f"No minimum {label} before a claim." if not val
+                       else f"At least {val} {label} before a claim.")
+    for key, label in (("max_claims_per_year", "claims in a year"),
+                       ("max_benefit_per_year", "received in a year")):
+        val = (_num(answers, key, 0) if key.startswith("max_claims")
+               else _money(answers, key))
+        set_(key, val, f"No limit on {label}." if not val
+                       else f"At most {val} {label}.")
+    floor = _money(answers, "benefit_floor")
+    set_("benefit_floor", floor,
+         "No minimum payment — a family receives what the rules produce."
+         if not floor else
+         f"A family receives at least {floor}, whatever the calculation gives.")
+    docs = answers.get("claim_documents", "NONE") == "DOCUMENTS"
+    set_("require_documents", docs,
+         "A claim must be supported by documents." if docs
+         else "No documents are required; the committee decides on what it is told.")
+
+    # --- joining paperwork ------------------------------------------------
+    for key, what in (("require_registration_form", "a registration form"),
+                      ("require_id_document", "an identity document")):
+        want = answers.get(key, "NO") == "YES"
+        set_(key, want, f"Joining requires {what}." if want
+                        else f"Joining does not require {what}.")
+    rf = _money(answers, "reinstatement_fee")
+    set_("reinstatement_fee", rf,
+         "A lapsed member pays nothing to rejoin." if not rf
+         else f"A lapsed member pays {rf} to rejoin.")
+    if answers.get("renewal") in ("ANNUAL", "BIENNIAL"):
+        month = _num(answers, "renewal_month", 0)
+        set_("renewal_month", month,
+             "Membership renews on each member's own anniversary." if not month
+             else f"Membership renews in month {month} for everybody.")
+
+    # --- exceptions and governance ---------------------------------------
+    for key, yes, no in (
+            ("allow_exemptions",
+             "The committee may excuse a member from contributing; every "
+             "exemption is recorded against them.",
+             "No member may be excused from contributing."),
+            ("allow_override",
+             "The committee may approve a claim the rules would refuse, with the "
+             "reason recorded and attributed.",
+             "The rules decide every claim; the committee cannot override them."),
+            ("allow_transfers",
+             "A membership may be transferred — on a member's death their widow "
+             "takes it over, keeping the joining date already served.",
+             "A membership cannot be transferred to anybody else."),
+            ("transfer_membership_on_death",
+             "When a member dies their household may take over the membership, "
+             "keeping the joining date already served.",
+             "A membership ends with the member; a survivor enrols afresh."),
+            ("require_different_approver",
+             "A claim must be approved by somebody other than whoever recorded "
+             "it.",
+             "One person may both record and approve a claim — which means "
+             "approving a payment to themselves."),
+    ):
+        want = answers.get(key, "YES") == "YES"
+        set_(key, want, yes if want else no)
+    if answers.get("approval") == "COMMITTEE":
+        chair = answers.get("committee_requires_chair", "NO") == "YES"
+        set_("committee_requires_chair", chair,
+             "The chair must be among those approving." if chair
+             else "Any quorum of the committee may approve.")
 
     # --- inheritance -----------------------------------------------------
     inh = answers.get("inheritance", "NONE")

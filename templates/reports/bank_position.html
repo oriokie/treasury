@@ -2,11 +2,17 @@
 {% block title %}Bank reconciliation · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Bank reconciliation</h1>
-  <div class="sub">Does the system's bank balance agree with the bank statement?</div></div>
+  <div class="sub">Does the system's bank balance agree with the bank?</div></div>
   <button class="btn btn-ghost no-print" onclick="window.print()">⎙ Print</button></div>
 
-{% if not stmt %}
-<div class="info-panel">No imported statement with a running balance yet. Import a bank statement to enable this check.</div>
+{% comment %} Gated on having a bank figure at all, not on a statement import.
+   The live feed states the balance with every transaction it pushes, so a
+   church using it can reconcile without importing anything — and gating on the
+   import meant that church saw "import a statement to enable this check" while
+   the bank was telling it the balance several times a day. {% endcomment %}
+{% if statement_balance == None %}
+<div class="info-panel">{% if balance_note %}{{ balance_note }}{% else %}No bank balance to compare against yet.{% endif %}
+  Import a bank statement, or turn on the bank feed so the balance arrives with each transaction.</div>
 {% else %}
 <div class="card"><div class="bd">
   <table class="ledger compact"><tbody>
@@ -15,7 +21,24 @@
     <tr><td>− Bank payments / debits</td><td class="num mono">{{ CURRENCY }} {{ bank_debits|money }}</td></tr>
     <tr><td>− Bank-paid expenses (not on a debit row)</td><td class="num mono">{{ CURRENCY }} {{ bank_expenses|money }}</td></tr>
     <tr style="border-top:2px solid var(--line)"><td><strong>System bank balance</strong></td><td class="num mono"><strong>{{ CURRENCY }} {{ system_balance|money }}</strong></td></tr>
-    {% if statement_balance != None %}<tr><td>Bank statement closing balance{% if stmt %} <span class="muted u-xs">({{ stmt.stmt_last_date|date:"d M Y" }})</span>{% endif %}</td><td class="num mono">{{ CURRENCY }} {{ statement_balance|money }}</td></tr>{% endif %}
+    {% comment %} The bank's own figure, and where it came from. Both sources
+       are the bank's word — the register from an imported statement, the live
+       balance pushed with each transaction — so the one nearer the date wins.
+       Saying which, and how old it is, is the difference between a balance a
+       treasurer can rely on and a number they have to go and check. {% endcomment %}
+    {% if statement_balance != None %}<tr><td>
+        {% if balance_source == 'live' %}Bank balance from the live feed
+        {% elif balance_source == 'register' %}Bank balance per the register
+        {% else %}Bank statement closing balance{% endif %}
+        {% if statement_date %} <span class="muted u-xs">(at {{ statement_date|date:"d M Y" }}{% if balance_stale_days %} · {{ balance_stale_days }} day{{ balance_stale_days|pluralize }} before this date{% endif %})</span>{% endif %}
+      </td><td class="num mono">{{ CURRENCY }} {{ statement_balance|money }}</td></tr>
+      {% if cleared_balance != None and cleared_balance != statement_balance %}
+      <tr><td class="muted">Of which cleared and available</td>
+        <td class="num mono muted">{{ CURRENCY }} {{ cleared_balance|money }}</td></tr>
+      {% endif %}
+    {% elif balance_note %}
+    <tr><td colspan="2" class="muted u-xs">{{ balance_note }}</td></tr>
+    {% endif %}
     {% if live_balance %}<tr><td>Live cleared balance <span class="muted u-xs">(bank feed · {{ live_balance.at|date:"d M Y H:i" }})</span></td><td class="num mono">{{ CURRENCY }} {{ live_balance.balance|money }}</td></tr>
     <tr><td>Difference vs live balance</td><td class="num mono"><strong class="{% if live_difference %}text-danger{% endif %}">{{ CURRENCY }} {{ live_difference|money }}</strong></td></tr>{% endif %}
     <tr style="border-top:2px solid var(--line)">

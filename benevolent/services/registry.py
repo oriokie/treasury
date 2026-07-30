@@ -624,16 +624,20 @@ def add_dependant(membership, *, relationship, member=None, name="", phone="",
 
     if (policy is not None
             and policy.household_mode == SchemePolicy.HouseholdMode.INDIVIDUAL):
-        # Safe to enforce because migration 0033 corrected every scheme whose
-        # register already showed household cover. A scheme still marked
-        # individual has never registered a dependant or a household enrolment,
-        # so refusing one breaks nothing that was working — and the message says
-        # which setting to change rather than leaving a treasurer guessing.
+        # An individual scheme covers the person who enrolled and nobody else,
+        # so a dependant registered against it would be a name the scheme has no
+        # obligation to — discovered at the worst possible moment, when the
+        # family claims for them.
+        #
+        # Safe to enforce because migration 0033 first corrected every scheme
+        # whose register already showed household cover, and because the wizard
+        # now says plainly which option allows dependants instead of promising
+        # them under both.
         raise ValidationError(
-            f"{membership.scheme.name} covers each member individually under "
-            f"policy v{policy.version}, so dependants cannot be registered "
-            f"against this membership. Change the scheme's household setting to "
-            f"'One enrolment covers the whole household' first.")
+            f"{membership.scheme.name} covers the member alone under policy "
+            f"v{policy.version}, so dependants cannot be registered against "
+            f"this membership. Change the scheme to cover the member and their "
+            f"household first, or enrol this person in their own right.")
 
     if policy is not None and policy.max_household_size:
         # the principal member counts towards the household

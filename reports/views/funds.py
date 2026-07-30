@@ -423,6 +423,15 @@ class BankPositionView(ReportAccessMixin, TemplateView):
         ctx["bank_expenses"] = pos["bank_expenses"]
         ctx["system_balance"] = pos["system_balance"]
         ctx["statement_balance"] = pos["statement_balance"]
+        # Where the bank's figure came from and how old it is. Copied through
+        # rather than recomputed: the service decides which source wins, and a
+        # view that worked it out again could disagree with the number it is
+        # printing beside.
+        for key in ("balance_source", "balance_stale_days", "balance_note",
+                    "cleared_balance", "statement_date",
+                    "register_balance", "register_as_at",
+                    "live_balance", "live_as_at"):
+            ctx[key] = pos.get(key)
         ctx["difference"] = pos["difference"]
 
         # real-time cleared balance from the CBS feed (independent of an imported

@@ -1,3 +1,228 @@
+# v3.38.0 — A department's spending is its own, and a split must add up
+
+Two faults, both of the kind that let a figure look right while being wrong.
+
+## The leader's expense page counted liabilities as spending
+
+A remittance to the conference or a repayment on a loan moves money the church
+was holding or already owed. It is not the ministry's expenditure, and a leader
+reading their own page should not see it charged against them.
+
+The leader dashboard had always known this — its spend total and its monthly
+chart both excluded liability vouchers. Three other places on the same journey
+did not: the recent-expenses list on the department page, the expense list with
+its total and count, and the download.
+
+So one department had two different spend figures depending on which screen you
+were looking at, and a twenty-five thousand shilling remittance appeared as
+though the youth ministry had spent it.
+
+All three exclude them now. The download matters as much as the page: a leader
+who exports the list and adds up the column has to arrive at the number the
+screen showed them, or neither can be trusted. The rule is the document class
+rather than the category, so a loan repayment is handled the same way without
+being named.
+
+## A split fund that did not add to 100% moved money quietly
+
+`SplitFund.split()` gives the last component whatever is left over. That is right
+for rounding — a cent that cannot be divided three ways has to land somewhere,
+and the alternative is a split that does not sum to what was given.
+
+Applied to a configuration error it is quite wrong. A fund set up as 40/40 put
+40% in the first department and **60%** in the second: the missing 20% was
+absorbed silently by whichever fund happened to be last. The split still summed
+to the whole, so the cash book balanced, the fund statements balanced, and every
+report reconciled — while a fifth of every combined offering went to a fund the
+church had never voted for.
+
+That is the worst kind of error this system can make, because nothing downstream
+can see it. A figure that is wrong and does not reconcile gets found; one that is
+wrong and reconciles perfectly does not.
+
+The percentages are now checked before any money is divided, and a split that
+does not total 100% is refused, naming the fund and what it actually adds up to.
+`percent_total` already existed for exactly this — it was being used to fill a
+column in the Django admin and to validate nothing. Correct splits are untouched:
+fifty-fifty of 100.01 still gives 50.01 and 50.00.
+
+## What else the giving module was checked for
+
+No silent exception handlers anywhere in it — the pattern that has hidden real
+faults elsewhere in this codebase. No duplicate receipts under either dedup key,
+no zero or negative amounts, nothing unconfirmed, and the undefined CSS classes
+on its templates are all single-file JavaScript hooks rather than missing
+styling. The three transactions sitting in review with no fund are the review
+queue doing its job.
+
+## Files
+
+* `leaders/views.py` — liabilities excluded from the list, its total and count,
+  the download, and the department page's recent expenses
+* `giving/models.py` — the split validates before it divides
+* `leaders/test_liability_and_splits.py` — new, 16 tests
+
+No migrations. The accounting change is a correction: a department's reported
+spending no longer includes money it never spent.
+
+## Tests
+
+leaders (74) and giving (288) — all passing, including the 16 new ones.
+
+# v3.37.0 — The bank has been telling us the balance all along
+
+Every event the bank pushes on the CBS feed carries the account's balance at
+that moment — `BookedBalance` and `ClearedBalance`, with each transaction. The
+webhook read the amount, the type, the currency, the reference and the dates,
+and not the balances. They were kept inside the raw payload and read by nothing.
+
+So the one live figure the church had was arriving several times a day and being
+thrown away, while the treasurer's report had no live balance at all and the
+bank position page said "import a bank statement to enable this check".
+
+They are stored now, and the history is not lost: the migration reads the
+balances back out of the payloads already received, so a church that has been
+running the feed for months gets its record back rather than starting from
+today. Booked and cleared are both kept — booked is what the bank has posted,
+cleared is what could be spent — because they answer different questions and a
+report that silently picked one would be choosing for the reader.
+
+## The balance now answers the date that was asked
+
+The bank position took the closing balance of whichever statement had been
+imported most recently, whatever date the report was run for. A report for 30
+June carried September's bank balance beside June's movements, and the
+difference between the two — the whole point of the page — meant nothing.
+
+Two sources can answer properly. The register holds the bank's own running
+balance line by line, and the live feed states it with every transaction. Both
+are the bank's word, so whichever is nearer the date being asked about wins: a
+register balance three weeks old should not beat a same-day one from the bank
+itself, and the feed is usually ahead because it does not wait on anybody
+importing anything.
+
+The page now says which source answered and how old the figure is. A balance ten
+days old is still the bank's last word, but a treasurer reading a month-end
+report needs to know it is ten days old rather than being shown it as the
+closing position. Where neither source can answer, it says so instead of
+producing a number: a fabricated bank balance would reconcile against itself and
+hide the very gap it was invented to fill.
+
+## Two further faults found while wiring it up
+
+The date used to ask the bank was the same one used to bound our own movements.
+That date is empty when nothing has been imported — which for movements sensibly
+means "everything", but for a balance means "no answer". A church running the
+feed and importing nothing therefore saw no bank balance at all, despite one
+arriving with every transaction. The two are now separate.
+
+And the page itself was gated on a statement import existing, so even with a
+live balance in hand it showed the "import a statement" notice. It is gated on
+having a balance now, whichever source provided it.
+
+## Files
+
+* `statements/models.py`, `statements/migrations/0016_bankevent_balances.py` —
+  the balance columns and the backfill from existing payloads
+* `statements/webhook.py` — the balances read out of each event
+* `statements/services/register.py` — `balance_asof`, `live_balance_asof`
+* `reports/services/balances.py` — the fresher source wins; balance date
+  separated from the movement window
+* `reports/views/funds.py`, `templates/reports/bank_position.html` — the source
+  and its age shown; the page opens without an import
+* `statements/test_bank_balance_sources.py` — new, 18 tests
+
+One migration, with a data backfill. No accounting change: the ledger side of the
+reconciliation is untouched. What changed is which of the bank's own figures it
+is compared against.
+
+## Tests
+
+statements (193) and reports (460) — all passing, including the 18 new ones.
+
+# v3.36.0 — The constitution wizard configures a scheme end to end
+
+The wizard set 39 of the 71 settings a policy holds. The other 32 were left at
+defaults the treasurer never saw and could only reach by leaving the wizard and
+opening the raw policy form — which rather defeats a wizard whose purpose is to
+turn a constitution into a working scheme.
+
+Every one of the 71 is now reachable, across roughly thirty new questions: the
+ages at which people may join and stop contributing, how much a member may owe
+and still claim, what happens when they catch up, how many claims and how much
+benefit in a year, what a claim must be supported by, the paperwork joining
+requires, and the governance questions that decide whether the committee may
+excuse a member, override the rules, transfer a membership, or approve a claim
+somebody else recorded.
+
+A test walks four scheme shapes — a levy scheme, a dues scheme, one paying a
+percentage and one paying a fixed amount — and fails if any setting cannot be
+reached by at least one of them. A setting added to the policy in future cannot
+quietly become unreachable again.
+
+## The wizard wrote a value the policy would not accept
+
+The same test does something more valuable than counting: it takes what the
+wizard produces and asks the policy to validate it. That immediately failed on
+`renewal_period`, which was being handed the string "YES" — not one of its three
+choices. The renewal-month question depended on an answer of "YES" to a question
+whose options are annual, biennial or none, so it could never have appeared and
+its value could never have been valid.
+
+A wizard that writes a value the model rejects is worse than one that omits it,
+because the omission surfaces at setup and the bad value surfaces when somebody
+tries to save.
+
+## Member alone means member alone
+
+The individual option read "the member alone (plus any dependants they
+register)". The field it writes had been made to refuse dependants outright. So
+the setup screen promised something the scheme would then refuse, and a treasurer
+would discover it the first time they tried to add a spouse.
+
+The option now reads "the member alone", and says plainly that anybody else to be
+covered enrols in their own right. The question about how many dependants are
+allowed no longer appears for a scheme that allows none — asking it there was the
+same contradiction in another place. With the label and the rule finally saying
+the same thing, the rule is enforced: a dependant registered against a
+member-alone scheme would be a name the scheme has no obligation to, discovered
+when the family claims for them.
+
+## Accepting the defaults
+
+Seventy questions is a long sitting for a treasurer who wants a scheme running
+this week. From the third section — once the scheme's purpose and funding are
+settled, which cannot be guessed — the wizard offers to take the defaults for
+everything else and go straight to the summary.
+
+The answers already given are kept; this fills the gaps. A question ruled out by
+an earlier answer is left alone rather than acquiring a value it has no business
+holding. The defaults are the safer reading: limits off, safeguards on — the
+approver must be somebody other than whoever recorded the claim, and no cap is
+invented that the church never agreed to.
+
+Nothing is adopted silently. Every defaulted setting appears on the summary with
+the reasoning that produced it, and each can be changed there or on the scheme's
+policy afterwards. The point is not to discourage answering the questions. It is
+that a treasurer setting up their first scheme should end the afternoon with a
+working, honest policy rather than an abandoned form and no scheme at all.
+
+## Files
+
+* `benevolent/services/wizard.py` — ~30 questions, their translation,
+  `fill_defaults`, `SKIP_ALLOWED_FROM`
+* `benevolent/views_config.py`, `templates/benevolent/wizard.html` — the offer
+* `benevolent/services/registry.py` — the dependant rule, now that the label agrees
+* `benevolent/test_wizard_coverage.py` — new, 21 tests
+
+No migrations.
+
+## Tests
+
+The wizard, parameter and registration suites (118), phases 2/4/5 (152),
+governance and refunds (156), and the remaining phases and reports (107) — all
+passing, including the 21 new ones.
+
 # v3.35.0 — Every scheme parameter now does something
 
 A treasurer setting up a benevolent scheme answers seventy-four questions. The

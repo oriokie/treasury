@@ -546,8 +546,10 @@ def bank_position(as_of=None):
     opening balance. The dict includes ``opening_configured`` so callers can
     surface that.
     """
+    import datetime as _dt
     from core.models import SiteConfig
     from statements.models import StatementImport
+    today = _dt.date.today()
     cfg = SiteConfig.get()
     opening = cfg.opening_bank_balance or Decimal(0)
 
@@ -579,8 +581,60 @@ def bank_position(as_of=None):
     bank_expenses = bank_exp_qs.aggregate(s=Sum("amount"))["s"] or Decimal(0)
     system_balance = opening + credits - debits - bank_expenses
 
-    statement_balance = stmt.stmt_closing_balance if stmt else None
+    # The bank's own figure, as at the date being asked about.
+    #
+    # This used to be the closing balance of whichever statement was imported
+    # most recently, whatever date the report was run for — so a report for 30
+    # June carried September's bank balance beside June's movements, and the
+    # difference between them was meaningless. The register holds the bank's
+    # running balance line by line, so it can answer the question actually
+    # asked; the latest import is kept only as the fallback for an account whose
+    # statements carry no balance column at all.
+    from statements.services import register as register_svc
+    # The date to ask the bank about is not the same as the window used to sum
+    # our own movements. `cutoff` is None when nothing has been imported, which
+    # for movements means "everything" — but asking the bank for its balance as
+    # at nothing returns nothing, so a church running the live feed and no
+    # statement imports saw no bank balance at all, despite one arriving with
+    # every transaction.
+    balance_on = as_of or cutoff or today
+    reg = register_svc.balance_asof(balance_on)
+    live = register_svc.live_balance_asof(balance_on)
+
+    # Both are the bank's own word, arriving by different routes: the register
+    # from an imported statement, the live figure pushed with each transaction.
+    # Whichever is nearer the date asked about wins — a register balance three
+    # weeks old should not beat a same-day one from the bank itself, and the
+    # live feed is usually ahead because it does not wait on anybody importing
+    # anything. The last import stays as the fallback for an account whose
+    # statements carry no balance column and which has no live feed.
+    candidates = [(reg["as_at"], reg["balance"], "register", reg),
+                  (live["as_at"], live["balance"], "live", live)]
+    candidates = [c for c in candidates if c[0] is not None and c[1] is not None]
+    if candidates:
+        as_at, statement_balance, balance_source, chosen = max(
+            candidates, key=lambda c: c[0])
+        statement_date = as_at
+        balance_stale_days = chosen["stale_days"]
+        balance_note = chosen["reason"]
+        cleared_balance = live.get("cleared") if balance_source == "live" else None
+    else:
+        statement_balance = stmt.stmt_closing_balance if stmt else None
+        statement_date = stmt.stmt_last_date if stmt else None
+        balance_source = "last_import" if stmt else "none"
+        balance_stale_days = None
+        cleared_balance = None
+        balance_note = reg["reason"] or live["reason"]
+
     return {
+        "balance_source": balance_source,
+        "balance_stale_days": balance_stale_days,
+        "balance_note": balance_note,
+        "cleared_balance": cleared_balance,
+        "register_balance": reg["balance"],
+        "register_as_at": reg["as_at"],
+        "live_balance": live["balance"],
+        "live_as_at": live["as_at"],
         "opening": opening,
         "opening_configured": bool(cfg.opening_bank_balance),
         "bank_credits": credits,
@@ -589,7 +643,7 @@ def bank_position(as_of=None):
         "system_balance": system_balance,
         "stmt": stmt,
         "statement_balance": statement_balance,
-        "statement_date": stmt.stmt_last_date if stmt else None,
+        "statement_date": statement_date,
         "difference": ((statement_balance - system_balance)
                        if statement_balance is not None else None),
     }

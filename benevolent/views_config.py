@@ -196,6 +196,13 @@ class WizardView(BenevolentSetupMixin, View):
         section = sections[step]
         return render(request, "benevolent/wizard.html", {
             "section": section, "step": step, "sections": sections,
+            # Offered once the scheme's shape is settled — what it is for and
+            # how it is funded. Everything after that has a defensible default,
+            # and the summary lists every one of them with its reasoning, so
+            # nothing is adopted silently. The skippable sections are not the
+            # last ones, so "are the rest optional" is never true; the honest
+            # offer is "take the defaults from here and let me read them".
+            "can_skip_rest": step >= wizard_svc.SKIP_ALLOWED_FROM,
             "questions": wizard_svc.questions_for(section, answers),
             "answers": answers,
             "progress": int(100 * step / max(1, len(sections))),
@@ -219,6 +226,20 @@ class WizardView(BenevolentSetupMixin, View):
                     answers[q.key] = request.POST.get(q.key, "").strip()
             request.session[SESSION_KEY] = answers
             request.session.modified = True
+            if request.POST.get("skip_rest"):
+                # Take the defaults for everything still unanswered and go
+                # straight to the summary. The answers already given are kept —
+                # this fills the gaps, it does not overwrite the treasurer.
+                answers = wizard_svc.fill_defaults(answers)
+                request.session[SESSION_KEY] = answers
+                request.session.modified = True
+                messages.info(
+                    request,
+                    "The remaining sections have been set to their defaults. "
+                    "They are listed on this summary with the reasoning, and "
+                    "every one can be changed here or on the scheme's policy "
+                    "afterwards.")
+                return redirect("benevolent_wizard", step=len(sections))
             nxt = step - 1 if request.POST.get("back") else step + 1
             return redirect("benevolent_wizard", step=max(0, nxt))
 

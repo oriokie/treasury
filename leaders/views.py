@@ -250,8 +250,15 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
             "phone": display_phone(self.request.user, t.member.phone if t.member_id else t.payer_phone),
             "reference": t.reference,
         } for t in txns]
+        # Liability vouchers are not this department's spending. A remittance to
+        # the conference or a loan repayment moves money the church was holding
+        # or owed; showing it here told a leader their ministry had spent it.
+        # The dashboard's own spend total has always excluded them, so the page
+        # was disagreeing with itself.
         ctx["expenses"] = (Expense.objects.filter(department=dept,
-                    date__gte=start, date__lte=end).order_by("-date")[:8])
+                    date__gte=start, date__lte=end)
+                 .exclude(doc_class=Expense.DocClass.LIABILITY)
+                 .order_by("-date")[:8])
 
         # which of these funds may actually carry expenses — used to hide the
         # expenses preview and columns for collection-only subgroups.
@@ -421,7 +428,9 @@ class LeaderExpensesView(LeaderRequiredMixin, TemplateView):
             from core.models import SiteConfig
             from cashbook.models import Expense
             exps = (Expense.objects.filter(department=self.dept,
-                        date__gte=start, date__lte=end).order_by("-date", "-id"))
+                        date__gte=start, date__lte=end)
+                    .exclude(doc_class=Expense.DocClass.LIABILITY)
+                    .order_by("-date", "-id"))
             header = ["Date", "Description", "Category", "Claimant", "Method",
                       "Status", "Amount"]
             data = [[e.date.isoformat(), e.description, e.get_category_display(),
@@ -445,8 +454,12 @@ class LeaderExpensesView(LeaderRequiredMixin, TemplateView):
         ctx["start"], ctx["end"] = start, end
         q = (self.request.GET.get("q") or "").strip()
         status = (self.request.GET.get("status") or "").strip()
+        # Same exclusion as the download and the dashboard: one page, one
+        # answer to "what has this department spent".
         exps = (Expense.objects.filter(department=self.dept,
-                    date__gte=start, date__lte=end).order_by("-date", "-id"))
+                    date__gte=start, date__lte=end)
+                .exclude(doc_class=Expense.DocClass.LIABILITY)
+                .order_by("-date", "-id"))
         if q:
             exps = exps.filter(Q(description__icontains=q) | Q(claimant__icontains=q)
                                | Q(voucher_no__icontains=q))
