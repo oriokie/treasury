@@ -3,7 +3,12 @@
 {% block content %}
 <div class="page-head"><div><h1>Cash count — {{ cs.date|date:"d M Y" }}</h1>
 <div class="sub">Recorded by {{ cs.recorded_by.username }} on {{ cs.created_at|date:"d M Y H:i" }}</div></div>
-<div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% url 'count_list' %}">All counts</a><button class="btn btn-ghost btn-sm no-print" onclick="window.print()">⎙ Print</button></div></div>
+<div class="btn-row">
+  {% if can_enter_data %}<a class="btn btn-sm no-print" href="{% url 'count_edit' cs.pk %}">Edit</a>
+  <form method="post" action="{% url 'count_delete' cs.pk %}" class="u-inline no-print"
+        onsubmit="return confirm('Delete this cash count? This cannot be undone.');">{% csrf_token %}
+    <button type="submit" class="btn btn-ghost btn-sm no-print" style="color:var(--danger,#b04a4a)">🗑 Delete</button></form>{% endif %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'count_list' %}">All counts</a><button class="btn btn-ghost btn-sm no-print" onclick="window.print()">⎙ Print</button></div></div>
 
 {% if can_enter_data %}
 <div class="card no-print" style="margin-bottom:1rem;border-left:3px solid {% if sabbath_closed %}var(--forest){% else %}var(--brass){% endif %}"><div class="bd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem">

@@ -72,14 +72,19 @@ class LedgerEditUrlTests(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertRedirects(r, reverse("envelope_batch_list"))
 
-    def test_someone_elses_draft_by_pk_does_not_leak(self):
+    def test_a_colleagues_draft_by_pk_is_openable(self):
+        """Any treasurer/assistant can open ANOTHER staff member's draft by its
+        explicit id (e.g. "Continue editing" from the review queue) — so a
+        receipt number locked inside someone else's draft can be freed up
+        even if that person is unavailable."""
         other = _assistant("fx_asst2")
         batch, _ = bsvc.get_or_create_draft(other, None, SAB)
         bsvc.autosave_rows(batch, [
             {"line_no": 1, "receipt_no": "PRIV9", "contributor_name": "Jane",
              "manual_total": "10", "amounts": {str(self.tithe.id): "10"}}])
         r = self.client.get(reverse("envelope_ledger_edit", args=[batch.pk]))
-        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"PRIV9", r.content)
 
     def test_submitted_batchs_edit_link_redirects_not_crashes(self):
         batch, _ = bsvc.get_or_create_draft(self.u, None, SAB)
@@ -117,11 +122,14 @@ class DeleteDraftUiTests(TestCase):
         self.assertEqual(r.status_code, 302)
         self.assertFalse(EnvelopeBatch.objects.filter(pk=self.batch.pk).exists())
 
-    def test_cannot_delete_someone_elses_draft(self):
+    def test_a_colleague_can_delete_someone_elses_draft(self):
+        """Any treasurer/assistant can discard a colleague's stuck draft —
+        e.g. to release a receipt number it's holding onto."""
         other = _assistant("fx_asst3")
         self.client.force_login(other)
         r = self.client.post(reverse("envelope_batch_delete", args=[self.batch.pk]))
-        self.assertTrue(EnvelopeBatch.objects.filter(pk=self.batch.pk).exists())
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(EnvelopeBatch.objects.filter(pk=self.batch.pk).exists())
 
     def test_cannot_delete_a_submitted_batch(self):
         bsvc.submit_batch(self.batch, self.u)

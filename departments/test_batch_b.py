@@ -19,10 +19,42 @@ class BatchBTests(TestCase):
         self.c = Client(); self.c.force_login(self.u)
 
     # #7
-    def test_envelope_list_collapsible(self):
-        b = self.c.get("/envelopes/").content.decode()
-        self.assertIn("sabbath-list-toggle", b)
-        self.assertIn("<summary", b)
+    def test_envelope_month_view_does_not_inline_the_receipts(self):
+        """Originally #7 kept the month page readable by collapsing each
+        Sabbath's receipts into a <details>. The receipts have since moved off
+        this page entirely onto a per-Sabbath page, which serves the same
+        requirement outright — so this now asserts the requirement (the month
+        view summarises and links) rather than the collapse widget that used
+        to implement it."""
+        from envelopes.models import Envelope
+        d = Department.objects.create(name="BBTithe", fund_type="TRUST")
+        sab = dt.date(2026, 6, 6)
+        env = Envelope.objects.create(
+            date=sab, receipt_no="BB-9001", contributor_name="ZORRO SAMPLE",
+            total=Decimal("50"), recorded_by=self.u)
+        env.lines.create(department=d, amount=Decimal("50"))
+
+        b = self.c.get("/envelopes/?month=2026-06").content.decode()
+        # the Sabbath is summarised, and links to its own entries page …
+        self.assertIn("/envelopes/sabbath/2026-06-06/", b)
+        self.assertIn("BBTithe", b)          # the fund breakdown is on the summary
+        # … but the individual receipts are not listed here any more
+        self.assertNotIn("BB-9001", b)
+        self.assertNotIn("ZORRO SAMPLE", b)
+
+    def test_the_per_sabbath_page_lists_the_receipts(self):
+        """The other half of the move: what left the month view has to be
+        somewhere, or #7 would have been 'fixed' by losing the data."""
+        from envelopes.models import Envelope
+        d = Department.objects.create(name="BBTithe2", fund_type="TRUST")
+        env = Envelope.objects.create(
+            date=dt.date(2026, 6, 6), receipt_no="BB-9002",
+            contributor_name="ZORRO SAMPLE", total=Decimal("50"), recorded_by=self.u)
+        env.lines.create(department=d, amount=Decimal("50"))
+
+        b = self.c.get("/envelopes/sabbath/2026-06-06/").content.decode()
+        self.assertIn("BB-9002", b)
+        self.assertIn("ZORRO SAMPLE", b)
 
     # #8
     def test_campaign_delete_guarded(self):

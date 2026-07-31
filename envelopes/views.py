@@ -30,8 +30,55 @@ from core.utils import (sabbath_bucket, sabbath_of, last_saturday as _last_satur
                         saturdays_of_month as _saturdays_of_month)
 
 
+def _fund_breakdown(items, rollup):
+    """Per-fund totals for one Sabbath's envelopes, trust funds first then by
+    size. Numbered sub-accounts ("Small Group 7", ...) roll up to their parent
+    so a church running a dozen of them gets one readable line instead of
+    twelve — the same rule reports.services.envelope_reports.sabbath_statement
+    applies, and, exactly as there, only the DISPLAY is grouped: the ledger
+    postings behind these figures still point at the precise sub-account.
+
+    Pure Python over the caller's already-prefetched lines, so this adds no
+    queries per Sabbath.
+    """
+    totals, objs = {}, {}
+    for e in items:
+        for l in e.lines.all():
+            d = rollup.get(l.department_id, l.department)
+            totals[d.id] = totals.get(d.id, Decimal(0)) + l.amount
+            objs[d.id] = d
+    funds = [{"fund": objs[fid], "amount": amt} for fid, amt in totals.items() if amt]
+    funds.sort(key=lambda f: (not f["fund"].is_trust, -f["amount"], f["fund"].name))
+    return funds
+
+
+def _sabbath_section(sabbath, items, rollup):
+    """One Sabbath's summary: totals, trust/local split, channel mix and the
+    per-fund breakdown. Shared by the month overview and the single-Sabbath
+    entries page so both always report the same figures."""
+    total = sum((e.total for e in items), Decimal(0))
+    trust = sum((l.amount for e in items for l in e.lines.all()
+                 if l.department.is_trust), Decimal(0))
+    cash = sum((e.total for e in items
+                if e.channel == Envelope.Channel.CASH), Decimal(0))
+    funds = _fund_breakdown(items, rollup)
+    top = max((f["amount"] for f in funds), default=Decimal(0))
+    for f in funds:
+        # width for the inline bar chart, relative to the biggest fund
+        f["pct"] = int(f["amount"] / top * 100) if top else 0
+    return {
+        "sabbath": sabbath, "items": items, "count": len(items),
+        "total": total, "trust": trust, "local": total - trust,
+        "cash": cash, "bank": total - cash, "funds": funds,
+    }
+
+
 class EnvelopeListView(ReadAccessMixin, View):
-    """Envelopes grouped by Sabbath within a chosen month."""
+    """Month overview: one summary card per Sabbath — totals, trust/local,
+    channel mix and the per-fund breakdown. The envelopes themselves live on
+    their own page (EnvelopeSabbathEntriesView), one Sabbath at a time, so
+    this page stays a scannable month-at-a-glance rather than a wall of
+    receipts."""
     template_name = "envelopes/list.html"
 
     def get(self, request):
@@ -55,58 +102,106 @@ class EnvelopeListView(ReadAccessMixin, View):
         range_start = saturdays[0] - dt.timedelta(days=6) if saturdays else dt.date(year, month, 1)
         range_end = saturdays[-1] if saturdays else dt.date(year, month, 1)
         envs = (Envelope.objects.filter(date__gte=range_start, date__lte=range_end)
-                .select_related("member", "bank_transaction")
-                # `is_voided` walks linked_transactions to decide whether to
-                # strike a receipt through, which reads each line's transaction.
-                # Without this the list paid a query per line that had posted.
-                .prefetch_related("lines__department", "lines__transaction"))
+                .select_related("member")
+                .prefetch_related("lines__department"))
         groups = {s: [] for s in saturdays}
-        other = []
         for e in envs:
             b = sabbath_bucket(e.date)
             if b in groups:
                 groups[b].append(e)
-        sections = []
-        for s in saturdays:
-            items = sorted(groups[s], key=lambda e: e.receipt_no)
-            total = sum((e.total for e in items), Decimal(0))
-            trust = sum((l.amount for e in items for l in e.lines.all()
-                         if l.department.is_trust), Decimal(0))
-            sections.append({"sabbath": s, "items": items, "total": total,
-                             "trust": trust, "local": total - trust,
-                             "count": len(items)})
+
+        from departments.models import numbered_subgroup_parent_map
+        rollup = numbered_subgroup_parent_map()
+        sections = [_sabbath_section(s, sorted(groups[s], key=lambda e: e.receipt_no),
+                                     rollup)
+                    for s in saturdays]
+
         from core.models import SabbathClose, period_locked
         closed_map = {c.sabbath: c for c in SabbathClose.objects.filter(
             sabbath__in=[s["sabbath"] for s in sections])}
         for s in sections:
             s["closed"] = closed_map.get(s["sabbath"])
-        # optional single-Sabbath filter (?sabbath=YYYY-MM-DD) so a busy month
-        # can be narrowed to one Sabbath's receipts
-        sel_sabbath = None
-        raw_sab = request.GET.get("sabbath")
-        if raw_sab:
-            try:
-                sel_sabbath = dt.datetime.strptime(raw_sab, "%Y-%m-%d").date()
-            except ValueError:
-                sel_sabbath = None
-        visible = ([s for s in sections if s["sabbath"] == sel_sabbath]
-                   if sel_sabbath else sections)
+
         first = dt.date(year, month, 1)
         prev = (first - dt.timedelta(days=1)).replace(day=1)
         nxt = (first + dt.timedelta(days=32)).replace(day=1)
+        month_total = sum((s["total"] for s in sections), Decimal(0))
+        month_trust = sum((s["trust"] for s in sections), Decimal(0))
+        # The month's own fund breakdown, folded up from the per-Sabbath ones
+        # already computed above rather than re-walking every line.
+        month_funds = {}
+        for s in sections:
+            for f in s["funds"]:
+                cur = month_funds.setdefault(
+                    f["fund"].id, {"fund": f["fund"], "amount": Decimal(0)})
+                cur["amount"] += f["amount"]
+        month_funds = sorted(month_funds.values(),
+                             key=lambda f: (not f["fund"].is_trust, -f["amount"],
+                                            f["fund"].name))
+        top = max((f["amount"] for f in month_funds), default=Decimal(0))
+        for f in month_funds:
+            f["pct"] = int(f["amount"] / top * 100) if top else 0
         return render(request, self.template_name, {
-            "sections": visible,
-            "all_sections": sections,
-            "sel_sabbath": sel_sabbath,
+            "sections": sections,
             "month_label": first.strftime("%B %Y"),
             "month_value": f"{year}-{month:02d}",
             "prev_month": f"{prev.year}-{prev.month:02d}",
             "next_month": f"{nxt.year}-{nxt.month:02d}",
-            "all_saturdays": saturdays,
-            "grand_total": sum((s["total"] for s in visible), Decimal(0)),
+            "grand_total": month_total,
+            "month_trust": month_trust,
+            "month_local": month_total - month_trust,
+            "month_funds": month_funds,
+            "envelope_count": sum(s["count"] for s in sections),
+            "active_sabbaths": sum(1 for s in sections if s["count"]),
             "month_locked": period_locked(first),
             "sms_enabled": SiteConfig.get().sms_enabled,
             "whatsapp_enabled": SiteConfig.get().whatsapp_enabled,
+        })
+
+
+class EnvelopeSabbathEntriesView(ReadAccessMixin, View):
+    """Every envelope recorded for ONE Sabbath, with the full set of per-receipt
+    actions (print, ETR, SMS/WhatsApp, edit, delete, move) and the Sabbath's own
+    summary above them. Split out of the month overview, which now carries only
+    the summaries — a busy Sabbath is a long table and it belongs on a page that
+    can give it room."""
+    template_name = "envelopes/sabbath_entries.html"
+
+    def get(self, request, date):
+        try:
+            sabbath = dt.date.fromisoformat(date)
+        except ValueError:
+            messages.error(request, "That is not a valid Sabbath date.")
+            return redirect("envelope_list")
+
+        lo = sabbath - dt.timedelta(days=6)
+        envs = (Envelope.objects.filter(date__gte=lo, date__lte=sabbath)
+                .select_related("member", "bank_transaction")
+                # `is_voided` walks linked_transactions to decide whether to
+                # strike a receipt through, which reads each line's transaction.
+                # Without this the table paid a query per line that had posted.
+                .prefetch_related("lines__department", "lines__transaction"))
+        items = sorted((e for e in envs if sabbath_bucket(e.date) == sabbath),
+                       key=lambda e: e.receipt_no)
+
+        from departments.models import numbered_subgroup_parent_map
+        from core.models import SabbathClose, period_locked
+        section = _sabbath_section(sabbath, items, numbered_subgroup_parent_map())
+        section["closed"] = SabbathClose.objects.filter(sabbath=sabbath).first()
+
+        cfg = SiteConfig.get()
+        return render(request, self.template_name, {
+            "sec": section,
+            "sabbath": sabbath,
+            "month_value": f"{sabbath.year}-{sabbath.month:02d}",
+            "all_saturdays": _saturdays_of_month(sabbath.year, sabbath.month),
+            "prev_sabbath": sabbath - dt.timedelta(days=7),
+            "next_sabbath": sabbath + dt.timedelta(days=7),
+            "voided_count": sum(1 for e in items if e.is_voided),
+            "entry_blocked": entry_blocked(sabbath),
+            "month_locked": period_locked(sabbath),
+            "sms_enabled": cfg.sms_enabled,
+            "whatsapp_enabled": cfg.whatsapp_enabled,
         })
 
 
@@ -162,10 +257,14 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
     """High-volume keyboard-driven envelope entry. Every keystroke auto-saves
     into a DRAFT EnvelopeBatch (see the autosave/submit views below) — nothing
     reaches the ledger until that batch is submitted, approved, and posted.
-    The GET here only decides which draft to resume: the caller's own most
-    recently touched editable (DRAFT/RETURNED) batch for the chosen Sabbath,
-    or a blank sheet (a batch is created on first autosave, not on page load,
-    so idly opening this page never litters the Review Queue with empties).
+    The GET here only decides which draft to resume: an explicit batch id
+    (its own creator, or ANY treasurer/assistant — e.g. via "Continue
+    editing" from the review queue, so a colleague can free up a receipt
+    number locked inside someone else's draft) takes priority; failing that,
+    the caller's own most recently touched editable (DRAFT/RETURNED) batch
+    for the chosen Sabbath; or a blank sheet (a batch is created on first
+    autosave, not on page load, so idly opening this page never litters the
+    Review Queue with empties).
     """
     template_name = "envelopes/ledger.html"
 
@@ -181,8 +280,14 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
         batch = None
         batch_id = pk or request.GET.get("batch")
         if batch_id:
+            # No created_by filter here: this view is already restricted to
+            # data-entry roles (Treasurer/Assistant) by DataEntryRequiredMixin,
+            # and any of them may continue a colleague's draft by its explicit
+            # id (e.g. "Continue editing" from the review queue) — see the
+            # class docstring. The IMPLICIT resume-by-date lookup below stays
+            # scoped to the caller's own drafts.
             batch = EnvelopeBatch.objects.filter(
-                pk=batch_id, created_by=request.user,
+                pk=batch_id,
                 status__in=EnvelopeBatch.EDITABLE_STATUSES).first()
             if batch is None and pk:
                 # the /ledger/<pk>/ link (e.g. "Continue editing" from the
@@ -283,16 +388,15 @@ class EnvelopeBatchAutosaveView(DataEntryRequiredMixin, View):
 
 
 class EnvelopeBatchSubmitView(DataEntryRequiredMixin, View):
-    """Draft/Returned -> Review. Only the batch's own creator may submit it;
-    validation is re-run server-side (never trust the client alone — the grid
-    already blocks the button, but this is the authoritative gate)."""
+    """Draft/Returned -> Review. Any treasurer or assistant may submit any
+    editable batch, not only its own creator — so a colleague can move a
+    draft along (e.g. one holding a receipt number someone needs freed up)
+    even if the person who started it is unavailable. Validation is re-run
+    server-side (never trust the client alone — the grid already blocks the
+    button, but this is the authoritative gate)."""
 
     def post(self, request, pk):
         batch = get_object_or_404(EnvelopeBatch, pk=pk)
-        if batch.created_by_id != request.user.id:
-            messages.error(request, "Only the person who created this batch "
-                                    "can submit it.")
-            return redirect("envelope_batch_list")
         if not batch.is_editable:
             messages.error(request, "This batch is no longer editable.")
             return redirect("envelope_batch_detail", pk=batch.pk)
@@ -313,13 +417,15 @@ class EnvelopeBatchSubmitView(DataEntryRequiredMixin, View):
 
 
 class EnvelopeBatchDeleteDraftView(DataEntryRequiredMixin, View):
-    """Discard a draft that's no longer wanted (e.g. started by mistake).
-    Only the creator, and only while still editable — once submitted, a batch
-    is only removable from the pipeline via Reject (an auditable decision)."""
+    """Discard a draft that's no longer wanted (e.g. started by mistake, or
+    stuck holding a receipt number someone else needs). Any treasurer or
+    assistant may delete any draft, not only its own creator; only while
+    still editable — once submitted, a batch is only removable from the
+    pipeline via Reject (an auditable decision)."""
 
     def post(self, request, pk):
         batch = get_object_or_404(EnvelopeBatch, pk=pk)
-        if batch.created_by_id != request.user.id or not batch.is_editable:
+        if not batch.is_editable:
             messages.error(request, "This batch can't be deleted.")
             return redirect("envelope_batch_list")
         batch.delete()
@@ -355,6 +461,7 @@ class EnvelopeBatchListView(ReadAccessMixin, View):
             "batches": batches, "status_filter": status_f,
             "statuses": EnvelopeBatch.Status.choices,
             "can_review": roles.can_approve(request.user),
+            "can_manage_batches": roles.can_enter_data(request.user),
         })
 
 
@@ -389,8 +496,8 @@ class EnvelopeBatchDetailView(ReadAccessMixin, View):
                 r.fund_breakdown.append((label, amt))
         return render(request, self.template_name, {
             "batch": batch, "rows": rows,
-            "can_edit": (batch.created_by_id == request.user.id and batch.is_editable),
-            "can_submit": (batch.created_by_id == request.user.id and batch.is_editable),
+            "can_edit": (roles.can_enter_data(request.user) and batch.is_editable),
+            "can_submit": (roles.can_enter_data(request.user) and batch.is_editable),
             "can_review": roles.can_approve(request.user) and
                 batch.status == EnvelopeBatch.Status.REVIEW,
             "can_post": roles.can_approve(request.user) and
@@ -935,40 +1042,40 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
                 if c >= 5 and isinstance(cell.value, (int, float)):
                     cell.number_format = "#,##0.00"
 
-        # ---- summary block ----
+        # ---- summary block (offset one column right, so it starts at B) ----
         ws.append([])
         summary_start = ws.max_row + 1
-        ws.append(["SUMMARY"]); ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
-        ws.append(["Trust fund items (remitted)"]); ws.cell(ws.max_row, 1).font = bold
-        ws.cell(ws.max_row, 1).fill = amber
+        ws.append(["", "SUMMARY"]); ws.cell(ws.max_row, 2).font = Font(bold=True, size=12)
+        ws.append(["", "Trust fund items (remitted)"]); ws.cell(ws.max_row, 2).font = bold
         ws.cell(ws.max_row, 2).fill = amber
+        ws.cell(ws.max_row, 3).fill = amber
         trust_total = Decimal(0)
         for f in funds:
             if f.is_trust:
-                ws.append([f.name, float(totals[f.id])]); trust_total += totals[f.id]
-        ws.append(["Total trust funds", float(trust_total)]); ws.cell(ws.max_row, 1).font = bold
-        ws.cell(ws.max_row, 2).font = bold; ws.cell(ws.max_row, 1).fill = grey
-        ws.cell(ws.max_row, 2).fill = grey
-        ws.append(["Local fund items (retained)"]); ws.cell(ws.max_row, 1).font = bold
-        ws.cell(ws.max_row, 1).fill = amber; ws.cell(ws.max_row, 2).fill = amber
+                ws.append(["", f.name, float(totals[f.id])]); trust_total += totals[f.id]
+        ws.append(["", "Total trust funds", float(trust_total)]); ws.cell(ws.max_row, 2).font = bold
+        ws.cell(ws.max_row, 3).font = bold; ws.cell(ws.max_row, 2).fill = grey
+        ws.cell(ws.max_row, 3).fill = grey
+        ws.append(["", "Local fund items (retained)"]); ws.cell(ws.max_row, 2).font = bold
+        ws.cell(ws.max_row, 2).fill = amber; ws.cell(ws.max_row, 3).fill = amber
         local_total = Decimal(0)
         for f in funds:
             if not f.is_trust:
-                ws.append([f.name, float(totals[f.id])]); local_total += totals[f.id]
-        ws.append(["Total local funds", float(local_total)]); ws.cell(ws.max_row, 1).font = bold
-        ws.cell(ws.max_row, 2).font = bold; ws.cell(ws.max_row, 1).fill = grey
-        ws.cell(ws.max_row, 2).fill = grey
-        ws.append(["GRAND TOTAL GIVEN", float(grand)])
-        ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
+                ws.append(["", f.name, float(totals[f.id])]); local_total += totals[f.id]
+        ws.append(["", "Total local funds", float(local_total)]); ws.cell(ws.max_row, 2).font = bold
+        ws.cell(ws.max_row, 3).font = bold; ws.cell(ws.max_row, 2).fill = grey
+        ws.cell(ws.max_row, 3).fill = grey
+        ws.append(["", "GRAND TOTAL GIVEN", float(grand)])
         ws.cell(ws.max_row, 2).font = Font(bold=True, size=12)
+        ws.cell(ws.max_row, 3).font = Font(bold=True, size=12)
         summary_end = ws.max_row
 
         # borders + number format on the summary table (both columns)
         for r in range(summary_start, summary_end + 1):
-            for c in (1, 2):
+            for c in (2, 3):
                 cell = ws.cell(r, c)
                 cell.border = border
-                if c == 2 and isinstance(cell.value, (int, float)):
+                if c == 3 and isinstance(cell.value, (int, float)):
                     cell.number_format = "#,##0.00"
 
         ws.column_dimensions["A"].width = 5
@@ -1451,15 +1558,12 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
         return render(request, self.template_name, {
             "denoms": self.DENOMS, "sabbath": sabbath,
             "expected": self._expected(sabbath),
-            "breakdown": self._breakdown(sabbath)})
+            "breakdown": self._breakdown(sabbath),
+            "witness_rows": [{"name": "", "role": "", "signed": False}] * 3})
 
-    def post(self, request):
-        from envelopes.models import CountSession, CountDenomination, CountWitness
-        try:
-            sabbath = sabbath_of(dt.date.fromisoformat(request.POST["date"]))
-        except (KeyError, ValueError):
-            messages.error(request, "Choose the Sabbath being counted.")
-            return redirect("count_new")
+    def _parse_denoms(self, request):
+        """Read the posted denomination quantities, returning (counted_total,
+        [(denomination, qty), ...]) — shared by create and edit."""
         counted = Decimal(0)
         denom_rows = []
         for d in self.DENOMS:
@@ -1470,6 +1574,27 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
             if qty:
                 denom_rows.append((Decimal(d), qty))
                 counted += Decimal(d) * qty
+        return counted, denom_rows
+
+    def _save_witnesses(self, cs, request):
+        from envelopes.models import CountWitness
+        names = request.POST.getlist("w_name")
+        roles = request.POST.getlist("w_role")
+        for i, nm in enumerate(names):
+            nm = (nm or "").strip()
+            if nm:
+                CountWitness.objects.create(session=cs, name=nm,
+                    role=(roles[i] if i < len(roles) else "")[:60],
+                    signed=bool(request.POST.get(f"w_signed_{i}")))
+
+    def post(self, request):
+        from envelopes.models import CountSession, CountDenomination
+        try:
+            sabbath = sabbath_of(dt.date.fromisoformat(request.POST["date"]))
+        except (KeyError, ValueError):
+            messages.error(request, "Choose the Sabbath being counted.")
+            return redirect("count_new")
+        counted, denom_rows = self._parse_denoms(request)
         expected = self._expected(sabbath)
         with db_tx.atomic():
             cs = CountSession.objects.create(
@@ -1477,20 +1602,77 @@ class CountSessionCreate(DataEntryRequiredMixin, View):
                 note=(request.POST.get("note") or "")[:200], recorded_by=request.user)
             for denom, qty in denom_rows:
                 CountDenomination.objects.create(session=cs, denomination=denom, count=qty)
-            names = request.POST.getlist("w_name")
-            roles = request.POST.getlist("w_role")
-            for i, nm in enumerate(names):
-                nm = (nm or "").strip()
-                if nm:
-                    CountWitness.objects.create(session=cs, name=nm,
-                        role=(roles[i] if i < len(roles) else "")[:60],
-                        signed=bool(request.POST.get(f"w_signed_{i}")))
+            self._save_witnesses(cs, request)
         if cs.has_discrepancy:
             messages.warning(request, f"Count saved with a discrepancy of "
                                       f"{cs.discrepancy:,.2f} vs expected {expected:,.2f}.")
         else:
             messages.success(request, "Count saved — it matches the expected receipts.")
         return redirect("count_detail", pk=cs.pk)
+
+
+class CountSessionUpdateView(CountSessionCreate):
+    """Correct a cash count already on file (wrong denomination keyed in,
+    a witness missed, a note to add) — treasurers/assistants need this since
+    a hand-count is inherently something that gets fixed after the fact, not
+    only entered once and left."""
+    template_name = "envelopes/count_form.html"
+
+    def get(self, request, pk):
+        from envelopes.models import CountSession
+        cs = get_object_or_404(CountSession, pk=pk)
+        denom_counts = {d.denomination: d.count for d in cs.denominations.all()}
+        witnesses = list(cs.witnesses.all())[:3]
+        witness_rows = [
+            {"name": w.name, "role": w.role, "signed": w.signed} for w in witnesses]
+        while len(witness_rows) < 3:
+            witness_rows.append({"name": "", "role": "", "signed": False})
+        return render(request, self.template_name, {
+            "denoms": self.DENOMS, "sabbath": cs.date,
+            "expected": cs.expected_total, "breakdown": self._breakdown(cs.date),
+            "cs": cs, "denom_counts": denom_counts,
+            "witness_rows": witness_rows})
+
+    @db_tx.atomic
+    def post(self, request, pk):
+        from envelopes.models import CountSession, CountDenomination
+        cs = get_object_or_404(CountSession, pk=pk)
+        try:
+            sabbath = sabbath_of(dt.date.fromisoformat(request.POST["date"]))
+        except (KeyError, ValueError):
+            messages.error(request, "Choose the Sabbath being counted.")
+            return redirect("count_edit", pk=cs.pk)
+        counted, denom_rows = self._parse_denoms(request)
+        cs.date = sabbath
+        cs.counted_total = counted
+        cs.expected_total = self._expected(sabbath)
+        cs.note = (request.POST.get("note") or "")[:200]
+        cs.save(update_fields=["date", "counted_total", "expected_total", "note"])
+        cs.denominations.all().delete()
+        for denom, qty in denom_rows:
+            CountDenomination.objects.create(session=cs, denomination=denom, count=qty)
+        cs.witnesses.all().delete()
+        self._save_witnesses(cs, request)
+        if cs.has_discrepancy:
+            messages.warning(request, f"Count updated with a discrepancy of "
+                                      f"{cs.discrepancy:,.2f} vs expected {cs.expected_total:,.2f}.")
+        else:
+            messages.success(request, "Count updated — it matches the expected receipts.")
+        return redirect("count_detail", pk=cs.pk)
+
+
+class CountSessionDeleteView(DataEntryRequiredMixin, View):
+    """Remove a cash count entered in error. The count is a standalone
+    verification record (denominations + witness signatures) and never posts
+    to the ledger, so deleting it has no accounting side effects to undo."""
+
+    def post(self, request, pk):
+        from envelopes.models import CountSession
+        cs = get_object_or_404(CountSession, pk=pk)
+        sab = cs.date
+        cs.delete()
+        messages.success(request, f"Cash count for {sab:%d %b %Y} deleted.")
+        return redirect("count_list")
 
 
 class CountSessionDetail(ReadAccessMixin, DetailView):

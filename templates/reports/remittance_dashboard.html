@@ -16,7 +16,7 @@
   <button class="btn btn-sm">Apply</button>
   {% if period_active %}<a class="btn btn-ghost btn-sm" href="{% url 'remittance_dashboard' %}">Clear</a>{% endif %}
 </form>
-{% if period_active %}<div class="callout u-mb">Showing trust collected{% if period_month %} for {{ period_month }}{% else %} from {{ period_start|date:'d M Y' }} to {{ period_end|date:'d M Y' }}{% endif %}. A batch created now will be stamped to this period and dated within it — the normal lump-sum-per-period workflow.</div>{% endif %}
+{% if period_active %}<div class="alert u-mb">Showing trust collected{% if period_month %} for {{ period_month }}{% else %} from {{ period_start|date:'d M Y' }} to {{ period_end|date:'d M Y' }}{% endif %}. A batch created now will be stamped to this period and dated within it — the normal lump-sum-per-period workflow.</div>{% endif %}
 
 <div class="kpi-row">
   <div class="kpi"><div class="kpi-label">Collected (trust)</div><div class="kpi-val">{{ total_collected|money:0 }}</div></div>

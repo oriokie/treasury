@@ -9,7 +9,7 @@
 </div></div>
 
 {% if return_reason %}
-<div class="callout callout-warn u-mb"><strong>Returned for correction:</strong> {{ return_reason }}</div>
+<div class="alert alert-amber u-mb"><strong>Returned for correction:</strong> {{ return_reason }}</div>
 {% endif %}
 
 <form id="envForm" onsubmit="return false">
@@ -19,6 +19,11 @@
     <div class="tb-spacer"></div>
     <button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Columns</button>
     <a class="btn btn-sm btn-ghost" id="tplLink" href="#">⬇ Template</a>
+  </div>
+
+  <div id="blockedBanner" class="alert alert-danger u-mb no-print" style="display:none">
+    <span id="blockedBannerText"></span>
+    <button type="button" class="btn btn-ghost btn-sm" id="blockedRetryBtn">Try again</button>
   </div>
 
   <div id="colPicker" class="col-picker">
@@ -113,6 +118,10 @@ let layout = null;          // {order:[keys], hidden:[keys], widths:{key:px}, pi
 let currentBatchId = INITIAL_BATCH_ID;
 let nextReceipt = null;
 let saveTimer = null, heartbeatTimer = null, saving = false, dirty = false;
+let blockedReason = null, blockedForDate = null;   // a hard, permanent save block
+                                                    // (closed Sabbath / locked period)
+                                                    // for the date it was seen on —
+                                                    // see saveNow()/showBlockedBanner()
 
 function selectedFundKeys(){ return Array.from(document.querySelectorAll(".colcb:checked")).map(cb=>cb.value); }
 function syncTemplateLink(){ document.getElementById("tplLink").href = tplUrl + "?cols=" + encodeURIComponent(selectedFundKeys().join(",")); }
@@ -512,25 +521,41 @@ function wireRowEvents(tr){
     // input. A direct child of <body> has no such ancestor to be trapped by.
     document.body.appendChild(box);
     tr._acBox = box;
-    let timer = null;
+    let timer = null, reqSeq = 0;
+    const hideBox = ()=>{ box.style.display = "none"; };
+    // Abandon any debounced-but-not-yet-sent lookup AND disown any request
+    // already in flight, by moving the sequence number past what those
+    // requests will compare against when they resolve.
+    const cancelLookup = ()=>{ clearTimeout(timer); reqSeq++; };
     nameI.addEventListener("input", ()=>{
       midI.value = ""; clearTimeout(timer);
       const q = nameI.value.trim();
       flagDuplicateName(tr);
       markDirtyAndSave();
-      if(q.length < 2){ box.style.display = "none"; return; }
+      if(q.length < 2){ hideBox(); return; }
+      const mySeq = ++reqSeq;
       timer = setTimeout(async ()=>{
         try{
           const d = await (await fetch(searchUrl + "?q=" + encodeURIComponent(q))).json();
+          // Stale-result guard. Showing the box is deferred twice — a 170ms
+          // debounce, then a network round trip — so without this it could
+          // open AFTER the cashier had already moved on to the amount or the
+          // next name. Blur's own hide had long since run by then, and
+          // nothing else fires to hide it again until that same field is
+          // focused and left once more, so the popup sat there over the
+          // following rows: the "popup won't go away if you ignore it" bug.
+          // Two ways to be stale: a newer lookup has superseded this one (it
+          // will render its own results), or the field no longer has focus.
+          if(mySeq !== reqSeq || document.activeElement !== nameI) return;
           box.innerHTML = "";
-          if(!d.results.length){ box.style.display = "none"; return; }
+          if(!d.results.length){ hideBox(); return; }
           d.results.forEach(m=>{
             const it = document.createElement("div"); it.className = "ac-item";
             it.textContent = m.name + (m.phone ? "  ·  " + m.phone : "");
             it.addEventListener("mousedown", e=>{
               e.preventDefault(); nameI.value = m.name; midI.value = m.id;
               if(m.phone) tr.dataset.phone = m.phone;
-              box.style.display = "none"; markDirtyAndSave();
+              cancelLookup(); hideBox(); markDirtyAndSave();
             });
             box.appendChild(it);
           });
@@ -538,10 +563,13 @@ function wireRowEvents(tr){
           box.style.left = r.left + "px"; box.style.top = r.bottom + "px";
           box.style.width = Math.max(r.width, 180) + "px";
           box.style.display = "block";
-        }catch(e){ box.style.display = "none"; }
+        }catch(e){ hideBox(); }
       }, 170);
     });
-    nameI.addEventListener("blur", ()=>setTimeout(()=>box.style.display = "none", 150));
+    // The delay lets a click on a suggestion land before the box goes away;
+    // cancelLookup() runs immediately, though, so a pending lookup can never
+    // reopen it behind the cashier's back.
+    nameI.addEventListener("blur", ()=>{ cancelLookup(); setTimeout(hideBox, 150); });
   }
 
   const rcptI = tr.querySelector(".rcpt");
@@ -852,9 +880,30 @@ function setSaveStatus(state, when){
   if(state === "saving") txt.textContent = "Saving…";
   else if(state === "saved") txt.textContent = "Saved " + (when || "");
   else if(state === "error") txt.textContent = "Couldn't save — will retry";
+  else if(state === "blocked") txt.textContent = "Not saved — see above";
   else if(state === "offline") txt.textContent = "Offline — will retry";
   else txt.textContent = "Not saved yet";
 }
+
+// A closed Sabbath or a locked accounting period is a PERMANENT block, not a
+// network hiccup — the generic "Couldn't save — will retry" status text is
+// easy to miss and, worse, the 15s heartbeat (see bottom of file) would
+// otherwise hammer the server with the same doomed request forever. Surface
+// the server's actual reason prominently instead, and stop retrying until
+// something actually changes (the date, or an explicit "Try again").
+function showBlockedBanner(msg){
+  document.getElementById("blockedBannerText").textContent = msg;
+  document.getElementById("blockedBanner").style.display = "";
+  document.getElementById("submitBtn").disabled = true;
+}
+function hideBlockedBanner(){
+  document.getElementById("blockedBanner").style.display = "none";
+  document.getElementById("submitBtn").disabled = false;
+}
+document.getElementById("blockedRetryBtn").addEventListener("click", ()=>{
+  blockedReason = null; blockedForDate = null;
+  saveNow();
+});
 
 function markDirtyAndSave(){
   dirty = true;
@@ -864,6 +913,8 @@ function markDirtyAndSave(){
 
 async function saveNow(){
   if(saving) return;
+  const dateNow = document.getElementById("sabDate").value;
+  if(blockedReason && dateNow === blockedForDate) return;   // known permanent block, unchanged
   if(!navigator.onLine){ setSaveStatus("offline"); return; }
   saving = true;
   setSaveStatus("saving");
@@ -877,9 +928,15 @@ async function saveNow(){
     if(d.ok){
       currentBatchId = d.batch_id;
       dirty = false;
+      blockedReason = null; blockedForDate = null;
+      hideBlockedBanner();
       applyServerErrors(d.errors || {});
       const t = new Date(d.saved_at);
       setSaveStatus("saved", t.toLocaleTimeString());
+    } else if(r.status === 409){
+      blockedReason = d.error; blockedForDate = dateNow;
+      showBlockedBanner(d.error || "This Sabbath can't be edited right now.");
+      setSaveStatus("blocked");
     } else {
       setSaveStatus("error");
     }
@@ -1170,7 +1227,7 @@ function rebuildHeaderOnly(){
 .save-dot{width:8px;height:8px;border-radius:50%;background:#ccc;display:inline-block}
 .save-dot.save-saving{background:var(--amber,#b07d2c);animation:pulse 1s infinite}
 .save-dot.save-saved{background:#2f8f5b}
-.save-dot.save-error,.save-dot.save-offline{background:var(--danger,#b04a4a)}
+.save-dot.save-error,.save-dot.save-offline,.save-dot.save-blocked{background:var(--danger,#b04a4a)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 .foot-totals td{position:sticky;bottom:0;background:var(--card-head,#f3efe5);border-top:2px solid var(--accent,#1f5f4f);
@@ -1197,8 +1254,6 @@ function rebuildHeaderOnly(){
 .row-errors-panel ul{margin:0;padding-left:1.2rem}
 .row-errors-panel li{margin:.2rem 0;line-height:1.4}
 .row-errors-panel b{font-weight:700}
-.callout{padding:.7rem 1rem;border-radius:8px;font-size:.88rem}
-.callout-warn{background:var(--amber-soft,#fdf3e0);border:1px solid var(--amber,#b07d2c)}
 @media(max-width:760px){
   .entry-summary{gap:1rem}.es-num{font-size:1.15rem}
   .es-funds{justify-content:flex-start;width:100%}

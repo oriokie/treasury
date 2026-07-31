@@ -2,7 +2,7 @@
 {% block title %}Envelopes · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
-  <div class="ws-titles"><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Envelopes</h1><div class="ws-sub">Grouped by Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
+  <div class="ws-titles"><div class="eyebrow">Giving · {{ SITE_NAME }}</div><h1>Envelopes</h1><div class="ws-sub">A summary per Sabbath · Sunday–Friday entries roll into the coming Sabbath</div></div>
   <div class="ws-actions">
     {% if can_enter_data %}<a class="btn" href="{% url 'envelope_ledger' %}">＋ Record</a>
     <a class="btn btn-ghost btn-sm" href="{% url 'envelope_import' %}">⬆ Import</a>
@@ -12,9 +12,15 @@
   </div>
 </div>
 
+{% if month_locked %}
+<div class="alert alert-amber u-mb"><strong>🔒 {{ month_locked }} is locked.</strong> Entries in this month can't be added, edited or deleted until an administrator unlocks the period.</div>
+{% endif %}
+
 <div class="ws-summary">
-  <div class="ws-metric is-primary"><span class="wm-l">{{ month_label }}</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ grand_total|money:0 }}</span><span class="wm-sub">received this month</span></div>
-  <div class="ws-metric"><span class="wm-l">Sabbaths</span><span class="wm-v">{{ all_sections|length }}</span><span class="wm-sub">counting periods</span></div>
+  <div class="ws-metric is-primary"><span class="wm-l">{{ month_label }}</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span> {{ grand_total|money:0 }}</span><span class="wm-sub">received this month</span></div>
+  <div class="ws-metric"><span class="wm-l">Trust</span><span class="wm-v">{{ month_trust|money:0 }}</span><span class="wm-sub">remitted to {{ FIELD_NAME }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Local</span><span class="wm-v">{{ month_local|money:0 }}</span><span class="wm-sub">retained by the church</span></div>
+  <div class="ws-metric"><span class="wm-l">Envelopes</span><span class="wm-v">{{ envelope_count }}</span><span class="wm-sub">across {{ active_sabbaths }} Sabbath{{ active_sabbaths|pluralize }}</span></div>
 </div>
 
 <div class="month-bar">
@@ -23,7 +29,6 @@
     <input type="month" name="month" value="{{ month_value }}" class="field" onchange="this.form.submit()">
   </form>
   <a class="btn btn-ghost btn-sm" href="?month={{ next_month }}">Next ›</a>
-  <span class="month-title">{{ month_label }}</span>
   <span class="grow"></span>
   {% if can_enter_data %}
   <form method="post" action="{% url 'envelope_pull_bank' %}" class="u-inline-flex" onsubmit="var s=prompt('Starting receipt number for these bank receipts?\n\nLeave blank to continue automatically from the last receipt.',''); if(s===null){return false;} this.querySelector('.startrcpt').value=s.trim(); var sb=this.querySelector('.sabpick').value; return confirm(sb ? ('Receipt bank giving for the Sabbath of '+sb+' as envelopes? Money is counted once.') : 'Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
@@ -34,91 +39,123 @@
   {% endif %}
 </div>
 
-{% if all_sections|length > 1 %}
-<div class="sabbath-filter" style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin:.2rem 0 1rem">
-  <span class="muted u-small">Sabbath:</span>
-  <a class="pill {% if not sel_sabbath %}pill-active{% endif %}" href="?month={{ month_value }}">All</a>
-  {% for s in all_sections %}
-    <a class="pill {% if sel_sabbath == s.sabbath %}pill-active{% endif %}" href="?month={{ month_value }}&sabbath={{ s.sabbath|date:'Y-m-d' }}">{{ s.sabbath|date:"d M" }} <span class="muted">({{ s.count }})</span></a>
-  {% endfor %}
-</div>
-{% endif %}
-
+<div class="sab-grid">
 {% for sec in sections %}
-<div class="sabbath-card">
-  <div class="sabbath-head">
-    <div><strong>Sabbath {{ sec.sabbath|date:"d M Y" }}</strong>
-      <span class="muted">· {{ sec.count }} envelope{{ sec.count|pluralize }}</span>
-      {% if sec.closed %}<span class="pill pill-green" title="Closed by {{ sec.closed.closed_by.username|default:'—' }}">🔒 Sabbath closed</span>{% endif %}
-      {% if month_locked %}<span class="pill pill-amber" title="The month is locked">🔒 {{ month_locked }} locked</span>{% endif %}</div>
-    <div class="sabbath-totals">
-      <span class="pill pill-amber" title="Trust">T {{ sec.trust|money:0 }}</span>
-      <span class="pill pill-grey" title="Local">L {{ sec.local|money:0 }}</span>
-      <span class="mono"><strong>{{ CURRENCY }} {{ sec.total|money }}</strong></span>
+  <div class="sab-card{% if not sec.count %} is-empty{% endif %}">
+    <div class="sab-top">
+      <div class="sab-when">
+        <a class="sab-date" href="{% url 'envelope_sabbath_entries' sec.sabbath|date:'Y-m-d' %}">{{ sec.sabbath|date:"d M Y" }}</a>
+        <span class="sab-meta">{{ sec.count }} envelope{{ sec.count|pluralize }}</span>
+      </div>
+      <div class="sab-badges">
+        {% if sec.closed %}<span class="pill pill-green" title="Closed by {{ sec.closed.closed_by.username|default:'—' }} — later giving rolls to the next open Sabbath">🔒 Closed</span>{% endif %}
+      </div>
+    </div>
+
+    {% if sec.count %}
+    <div class="sab-figure">
+      <span class="sf-cur">{{ CURRENCY }}</span><span class="sf-val">{{ sec.total|money }}</span>
+    </div>
+    <div class="sab-split">
+      <span class="chip chip-trust" title="Trust funds — remitted">Trust {{ sec.trust|money:0 }}</span>
+      <span class="chip chip-local" title="Local funds — retained">Local {{ sec.local|money:0 }}</span>
+      <span class="chip" title="Received as cash">Cash {{ sec.cash|money:0 }}</span>
+      <span class="chip" title="Received by bank / M-Pesa">Bank {{ sec.bank|money:0 }}</span>
+    </div>
+
+    <div class="sab-funds">
+      {% for f in sec.funds %}
+      <div class="fund-row" title="{{ f.fund.name }} · {{ CURRENCY }} {{ f.amount|money }}">
+        <span class="fund-name">{{ f.fund.name }}{% if f.fund.is_trust %} <span class="t-dot" title="Trust fund">T</span>{% endif %}</span>
+        <span class="fund-bar"><i style="width:{{ f.pct }}%" class="{% if f.fund.is_trust %}is-trust{% endif %}"></i></span>
+        <span class="fund-amt mono">{{ f.amount|money:0 }}</span>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="sab-actions">
+      <a class="btn btn-sm" href="{% url 'envelope_sabbath_entries' sec.sabbath|date:'Y-m-d' %}">View {{ sec.count }} envelope{{ sec.count|pluralize }} →</a>
+      <a class="btn btn-ghost btn-xs" href="{% url 'envelope_sabbath_excel' %}?date={{ sec.sabbath|date:'Y-m-d' }}">⬇ Excel</a>
+      <a class="btn btn-ghost btn-xs" href="{% url 'envelope_receipts_bulk' %}?date={{ sec.sabbath|date:'Y-m-d' }}" target="_blank" title="Print all receipts, several per A4 page (cut to separate)">🧾 Receipts</a>
       {% if can_enter_data %}
       <form method="post" action="{% url 'sabbath_close' %}" class="u-inline">{% csrf_token %}
         <input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}">
         <input type="hidden" name="next" value="{{ request.get_full_path }}">
-        {% if sec.closed %}{% if is_treasurer %}<button name="action" value="reopen" class="btn btn-xs btn-ghost" onclick="return confirm('Reopen this Sabbath? Later offerings will count against it again.')">🔓 Reopen Sabbath</button>{% endif %}
-        {% else %}<button name="action" value="close" class="btn btn-xs" title="Lock this Sabbath's count — later offerings roll to the next open Sabbath">🔒 Lock Sabbath</button>{% endif %}
+        {% if sec.closed %}{% if is_treasurer %}<button name="action" value="reopen" class="btn btn-ghost btn-xs" onclick="return confirm('Reopen this Sabbath? Later offerings will count against it again.')">🔓 Reopen</button>{% endif %}
+        {% else %}<button name="action" value="close" class="btn btn-ghost btn-xs" title="Lock this Sabbath's count — later offerings roll to the next open Sabbath">🔒 Lock</button>{% endif %}
       </form>
       {% endif %}
-      <a class="btn btn-xs" href="{% url 'envelope_sabbath_excel' %}?date={{ sec.sabbath|date:'Y-m-d' }}">⬇ Excel</a>
-      {% if sec.count %}<a class="btn btn-xs" href="{% url 'envelope_receipts_bulk' %}?date={{ sec.sabbath|date:'Y-m-d' }}" target="_blank" title="Print all receipts, several per A4 page (cut to separate)">🧾 Receipts (A4)</a>
-      <a class="btn btn-xs btn-ghost" href="{% url 'envelope_receipts_bulk' %}?date={{ sec.sabbath|date:'Y-m-d' }}&format=etr&print=1" target="_blank" title="Print all receipts on a thermal/ETR printer">ETR</a>
-      {% if sms_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="sms"><button class="btn btn-xs btn-ghost" title="Send all receipts by SMS">✉ SMS all</button></form>{% endif %}
-      {% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sec.sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="whatsapp"><button class="btn btn-xs btn-ghost" title="Send all receipts by WhatsApp">🟢 WhatsApp all</button></form>{% endif %}{% endif %}
     </div>
+    {% else %}
+    <div class="sab-none">No envelopes recorded
+      {% if can_enter_data %}<a class="link" href="{% url 'envelope_ledger' %}?date={{ sec.sabbath|date:'Y-m-d' }}">Record for this Sabbath →</a>{% endif %}
+    </div>
+    {% endif %}
   </div>
-  {% if sec.items %}
-  <details class="sabbath-list"{% if sel_sabbath == sec.sabbath %} open{% endif %}>
-    <summary class="sabbath-list-toggle">Show {{ sec.count }} envelope{{ sec.count|pluralize }} <span class="muted">· total {{ sec.total|money }}</span></summary>
-  <div class="table-wrap"><table class="ledger">
-    <thead><tr><th>Receipt</th><th>Contributor</th><th>Channel</th><th>Funds</th><th class="num">Total</th>{% if can_enter_data %}<th>Move to</th>{% endif %}</tr></thead>
-    <tbody>
-    {% for e in sec.items %}
-      <tr {% if e.is_voided %}class="u-strike" title="Reversed in the ledger"{% endif %}>
-        <td class="mono"><a href="{% url 'envelope_detail' e.id %}">{{ e.receipt_no }}</a>
-          {% if e.is_voided %}<span class="pill pill-red" style="font-size:.6rem;text-decoration:none">reversed</span>{% else %}
-          <a href="{% url 'envelope_receipt' e.id %}" target="_blank" title="Print receipt" class="u-nolink">🧾</a>
-          <a href="{% url 'envelope_receipt' e.id %}?format=etr&print=1" target="_blank" title="Print compact ETR receipt" style="text-decoration:none;font-size:.78rem">ETR</a>
-          {% if can_enter_data and e.member %}{% if sms_enabled %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="sms"><button class="link" title="Send receipt by SMS" class="u-nolink">✉</button></form>{% endif %}{% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="whatsapp"><button class="link" title="Send receipt by WhatsApp" class="u-nolink">🟢</button></form>{% endif %}{% endif %}{% endif %}</td>
-        <td>{% if e.member %}<a href="{% url 'member_detail' e.member.id %}">{{ e.contributor_name }}</a>{% else %}{{ e.contributor_name }}{% endif %}</td>
-        <td><span class="pill {% if e.channel == 'BANK' %}pill-amber{% else %}pill-grey{% endif %}">{{ e.get_channel_display }}</span></td>
-        <td class="muted u-small">{% for l in e.lines.all %}{{ l.department.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-        <td class="num mono">{{ e.total|money }}</td>
-        {% if can_enter_data %}
-        <td><form method="post" action="{% url 'envelope_reassign' e.id %}" class="u-m-0">{% csrf_token %}
-          <select name="sabbath" class="field--select" style="font-size:.8rem;padding:.2rem" onchange="this.form.submit()">
-            {% for s in all_saturdays %}<option value="{{ s|date:'Y-m-d' }}" {% if s == sec.sabbath %}selected{% endif %}>{{ s|date:"d M" }}</option>{% endfor %}
-          </select></form></td>
-        <td><a class="link" href="{% url 'envelope_edit' e.id %}" title="Edit envelope" class="u-mr-sm">Edit</a><form method="post" action="{% url 'envelope_delete' e.id %}" class="u-m-0 u-inline" onsubmit="return confirm('Delete this envelope and its ledger entries? This cannot be undone.');">{% csrf_token %}<button class="link link-danger" title="Delete envelope">✕</button></form></td>
-        {% endif %}
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  </details>
-  {% else %}
-  <div class="empty u-p">No envelopes this Sabbath.</div>
-  {% endif %}
-</div>
 {% empty %}
 <div class="empty"><div class="big">✉</div>No Sabbaths in this month.</div>
 {% endfor %}
+</div>
+
+{% if month_funds %}
+<div class="card u-mt"><div class="hd">{{ month_label }} — all funds</div><div class="bd">
+  <div class="table-wrap"><table class="ledger">
+    <thead><tr><th>Fund</th><th></th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for f in month_funds %}
+      <tr>
+        <td>{{ f.fund.name }} {% if f.fund.is_trust %}<span class="pill pill-amber pill-xs">T</span>{% endif %}</td>
+        <td style="width:45%"><span class="fund-bar"><i style="width:{{ f.pct }}%" class="{% if f.fund.is_trust %}is-trust{% endif %}"></i></span></td>
+        <td class="num mono">{{ f.amount|money }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th>Total</th><th></th><th class="num mono">{{ grand_total|money }}</th></tr></tfoot>
+  </table></div>
+</div></div>
+{% endif %}
 
 <style>
-.month-bar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem;padding:.5rem .2rem;border-bottom:1px solid var(--line)}
-.month-bar .month-title{font-weight:700;font-size:1.05rem}
+.month-bar{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1.1rem;padding:.5rem .2rem;border-bottom:1px solid var(--line)}
 .month-bar .grow{flex:1}
-.sabbath-card{border:1px solid var(--line);border-radius:10px;margin-bottom:1rem;overflow:hidden}
-.sabbath-list-toggle{cursor:pointer;padding:.55rem .8rem;font-size:.85rem;color:var(--brass);background:var(--surface-2,rgba(0,0,0,.02));border-top:1px solid var(--line);user-select:none;list-style:none}
-.sabbath-list-toggle::-webkit-details-marker{display:none}
-.sabbath-list-toggle::before{content:"▸ ";display:inline-block;transition:transform .15s}
-details[open]>.sabbath-list-toggle::before{content:"▾ "}
-.sabbath-list-toggle:hover{color:var(--forest)}
-.sabbath-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;padding:.6rem .9rem;background:var(--card-head,#faf7f0);border-bottom:1px solid var(--line)}
-.sabbath-totals{display:flex;align-items:center;gap:.5rem}
-.btn-xs{padding:.12rem .5rem;font-size:.78rem}
+
+.sab-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:1rem}
+.sab-card{border:1px solid var(--line);border-radius:12px;background:var(--card,#fff);
+  padding:.9rem 1rem 1rem;display:flex;flex-direction:column;gap:.6rem}
+.sab-card.is-empty{background:transparent;border-style:dashed;gap:.4rem}
+
+.sab-top{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem}
+.sab-when{display:flex;flex-direction:column;gap:.1rem;min-width:0}
+.sab-date{font-family:Fraunces,Georgia,serif;font-size:1.02rem;font-weight:600;
+  color:var(--forest);text-decoration:none}
+.sab-date:hover{text-decoration:underline}
+.sab-meta{font-size:.76rem;color:var(--muted)}
+.sab-badges{display:flex;gap:.3rem;flex-wrap:wrap;justify-content:flex-end}
+
+.sab-figure{display:flex;align-items:baseline;gap:.25rem;line-height:1}
+.sab-figure .sf-cur{font-size:.72rem;color:var(--muted);font-weight:700}
+.sab-figure .sf-val{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+
+.sab-split{display:flex;flex-wrap:wrap;gap:.3rem}
+.sab-split .chip{font-size:.7rem;padding:.1rem .45rem;border-radius:999px;
+  border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.sab-split .chip-trust{border-color:var(--amber,#b07d2c);color:#8a6013;background:#fbf5e9}
+.sab-split .chip-local{border-color:var(--forest);color:var(--forest);background:var(--forest-tint,#eef4f1)}
+
+.sab-funds{display:flex;flex-direction:column;gap:.22rem;margin-top:.1rem}
+.fund-row{display:grid;grid-template-columns:1fr 64px auto;align-items:center;gap:.45rem;font-size:.78rem}
+.fund-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink,#222)}
+.fund-name .t-dot{font-size:.6rem;font-weight:700;color:#8a6013;border:1px solid var(--amber,#b07d2c);
+  border-radius:3px;padding:0 .18rem;vertical-align:.05em}
+.fund-bar{display:block;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.fund-bar i{display:block;height:100%;background:var(--forest);border-radius:3px}
+.fund-bar i.is-trust{background:var(--amber,#b07d2c)}
+.fund-amt{font-size:.76rem;color:var(--muted);white-space:nowrap}
+
+.sab-actions{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:auto;padding-top:.5rem;
+  border-top:1px solid var(--line)}
+.sab-none{font-size:.8rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.4rem;align-items:center}
+.btn-xs{padding:.12rem .5rem;font-size:.75rem}
+.pill-xs{font-size:.6rem;padding:0 .3rem}
 </style>
 {% endblock %}

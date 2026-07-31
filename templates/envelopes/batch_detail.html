@@ -19,10 +19,10 @@
 </div></div>
 
 {% if batch.status == 'RETURNED' and batch.return_reason %}
-<div class="callout callout-warn u-mb"><strong>Returned for correction:</strong> {{ batch.return_reason }}</div>
+<div class="alert alert-amber u-mb"><strong>Returned for correction:</strong> {{ batch.return_reason }}</div>
 {% endif %}
 {% if batch.status == 'REJECTED' and batch.reject_reason %}
-<div class="callout callout-danger u-mb"><strong>Rejected:</strong> {{ batch.reject_reason }}</div>
+<div class="alert alert-danger u-mb"><strong>Rejected:</strong> {{ batch.reject_reason }}</div>
 {% endif %}
 
 <div class="entry-summary u-mb">
@@ -123,9 +123,6 @@ document.getElementById("rejectBtn").addEventListener("click",()=>{document.getE
 
 <style>
 .row-error td{background:var(--danger-soft,#fbeceb)}
-.callout{padding:.7rem 1rem;border-radius:8px;font-size:.88rem}
-.callout-warn{background:var(--amber-soft,#fdf3e0);border:1px solid var(--amber,#b07d2c)}
-.callout-danger{background:var(--danger-soft,#fbeceb);border:1px solid var(--danger,#b04a4a)}
 .modal-backdrop{position:fixed;inset:0;background:rgba(20,30,25,.45);z-index:1000;
   display:flex;align-items:center;justify-content:center}
 .modal-box{background:#fff;border-radius:10px;padding:1.2rem 1.4rem;max-width:420px;width:92%;

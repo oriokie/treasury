@@ -309,13 +309,19 @@ class EnvelopeSendButtonGatingTests(TestCase):
                                     amount=Decimal("100"))
         self.month = f"{sat.year}-{sat.month:02d}"
 
+    # The send-all buttons live on the per-Sabbath entries page: the month view
+    # now carries only each Sabbath's summary, so that is where these belong.
+    def _sabbath_url(self):
+        from core.utils import last_saturday
+        return f"/envelopes/sabbath/{last_saturday().isoformat()}/"
+
     def test_buttons_hidden_when_disabled(self):
         from django.test import Client
         from core.models import SiteConfig
         cfg = SiteConfig.get()
         cfg.sms_enabled = False; cfg.whatsapp_enabled = False; cfg.save()
         c = Client(); c.force_login(self.u)
-        html = c.get(f"/envelopes/?month={self.month}").content.decode()
+        html = c.get(self._sabbath_url()).content.decode()
         self.assertNotIn("SMS all", html)
         self.assertNotIn("WhatsApp all", html)
 
@@ -325,9 +331,19 @@ class EnvelopeSendButtonGatingTests(TestCase):
         cfg = SiteConfig.get()
         cfg.sms_enabled = True; cfg.whatsapp_enabled = False; cfg.save()
         c = Client(); c.force_login(self.u)
-        html = c.get(f"/envelopes/?month={self.month}").content.decode()
+        html = c.get(self._sabbath_url()).content.decode()
         self.assertIn("SMS all", html)
         self.assertNotIn("WhatsApp all", html)
+
+    def test_whatsapp_button_shown_when_enabled(self):
+        from django.test import Client
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.sms_enabled = False; cfg.whatsapp_enabled = True; cfg.save()
+        c = Client(); c.force_login(self.u)
+        html = c.get(self._sabbath_url()).content.decode()
+        self.assertNotIn("SMS all", html)
+        self.assertIn("WhatsApp all", html)
 
 
 class BankReceiptOneTests(TestCase):

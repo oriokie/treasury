@@ -44,7 +44,7 @@
   <td class="u-xs muted">{{ b.updated_at|date:"d M, H:i" }}</td>
   <td>
     {% if b.status == 'DRAFT' or b.status == 'RETURNED' %}
-      {% if b.created_by_id == request.user.id %}
+      {% if b.created_by_id == request.user.id or can_manage_batches %}
         <a class="link u-xs" href="{% url 'envelope_ledger_edit' b.pk %}">continue editing</a>
         <form method="post" action="{% url 'envelope_batch_delete' b.pk %}" class="u-inline"
               onsubmit="return confirm('Delete this draft? This cannot be undone.');">{% csrf_token %}

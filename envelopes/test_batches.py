@@ -453,13 +453,16 @@ class SubmitViewTests(_Seed):
             {"line_no": 1, "receipt_no": "SV1", "contributor_name": "Jane",
              "manual_total": "10", "amounts": {str(self.tithe.id): "10"}}])
 
-    def test_only_creator_can_submit(self):
+    def test_a_colleague_can_also_submit(self):
+        """Any treasurer/assistant may submit a colleague's draft, not only
+        its own creator — so a batch stuck holding a receipt number can be
+        moved along even if the person who started it is unavailable."""
         other = _assistant("eb_asst2")
         self.client.force_login(other)
         r = self.client.post(reverse("envelope_batch_submit", args=[self.batch.pk]))
         self.assertEqual(r.status_code, 302)
         self.batch.refresh_from_db()
-        self.assertEqual(self.batch.status, EnvelopeBatch.Status.DRAFT)
+        self.assertEqual(self.batch.status, EnvelopeBatch.Status.REVIEW)
 
     def test_creator_can_submit(self):
         self.client.force_login(self.assistant)

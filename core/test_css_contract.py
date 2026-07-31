@@ -46,7 +46,7 @@ SHARED_THRESHOLD = 3
 # Pre-existing gaps, outside the scope of the change that added this rule.
 # Tracked in docs/recommendations.md (#117). Shrink only.
 KNOWN_UNDEFINED = {
-    "btn-link", "btn-primary", "callout", "field-label", "form-check",
+    "btn-link", "btn-primary", "field-label", "form-check",
     "head-actions", "ph-sub", "report-table", "u-sm",
 }
 

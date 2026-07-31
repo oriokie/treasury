@@ -5,3 +5,8 @@ db.sqlite3
 .env
 media/
 staticfiles/
+# Real financial workbooks kept locally for imports (reporting sheets, bank
+# exports). DEPLOYMENT.md always said these were excluded; they were not.
+data/
+# Local editor / dev-server scaffolding.
+.claude/

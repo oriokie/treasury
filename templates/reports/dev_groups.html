@@ -11,7 +11,7 @@
 </div></div>
 {% include 'partials/period_filter.html' %}
 {% if unassigned_count %}
-<div class="callout callout-warn u-mb">⚠ {{ unassigned_count }} development offering(s) totalling {{ unassigned_total|money }} are on the parent fund with no group assigned — these aren't counted in any group's progress below. <a class="link" href="{% url 'dev_unassigned' %}">Review &amp; assign →</a></div>
+<div class="alert alert-amber u-mb">⚠ {{ unassigned_count }} development offering(s) totalling {{ unassigned_total|money }} are on the parent fund with no group assigned — these aren't counted in any group's progress below. <a class="link" href="{% url 'dev_unassigned' %}">Review &amp; assign →</a></div>
 {% endif %}
 <div class="table-wrap"><table class="ledger">
   <thead><tr><th>Group</th><th class="num">Collected</th><th class="num">Target</th><th class="num">Balance</th><th style="width:200px">Progress</th><th></th></tr></thead>

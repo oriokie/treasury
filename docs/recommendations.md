@@ -1819,12 +1819,13 @@ the code.
 
 ---
 
-## 132. Nine shared CSS classes are still used but never defined — OPEN — NEW
+## 132. Eight shared CSS classes are still used but never defined — OPEN
 
 `core.test_css_contract` was added in v3.20.0 after `.panel` and `.table` were
 found to be used across 38 templates with no definition anywhere. The same audit
-finds nine more classes used in three or more templates that nothing defines, so
-every screen using them renders that element unstyled and nothing complains:
+originally found nine more classes used in three or more templates that nothing
+defines (`callout` since fixed — see below), so every screen using the remaining
+eight renders that element unstyled and nothing complains:
 
 | class | templates | examples |
 |---|---|---|
@@ -1833,7 +1834,6 @@ every screen using them renders that element unstyled and nothing complains:
 | `btn-link` | 4 | `intelligence/workspace.html`, `reports/designer_edit.html` |
 | `btn-primary` | 4 | `cashbook/fund_budget.html`, `elder_dashboard.html` |
 | `form-check` | 4 | `cashbook/advance_form.html`, `cashbook/expense_detail.html` |
-| `callout` | 3 | `reports/dev_groups.html`, `reports/reconciliation.html` |
 | `field-label` | 3 | `accounts/profile_form.html`, `giving/campaign_list.html` |
 | `head-actions` | 3 | `assets/board.html`, `reports/collections_detail.html` |
 | `report-table` | 3 | `reports/changes_in_net_assets.html`, `reports/collections_summary.html` |
@@ -1843,8 +1843,19 @@ and must never grow. Each needs deciding individually — some are near-misses f
 a class that already exists and does the job (`btn-primary` for `.btn`,
 `field-label` for the `.form-row label` rule, `report-table` for `.ledger`),
 which should be corrected in the template rather than given a second definition.
-Others (`ph-sub`, `callout`, `head-actions`) look like genuine components that
+Others (`ph-sub`, `head-actions`) look like genuine components that
 were never written and should be defined in `app.css`.
+
+**`callout` — FIXED.** The ninth class, `callout`/`callout-warn`, was used in five
+templates (`envelopes/batch_detail.html`, `envelopes/ledger.html`,
+`reports/dev_groups.html`, `reports/reconciliation.html`,
+`reports/remittance_dashboard.html`). Two of those five had their own local
+`.callout` rule in an inline `<style>` block (so they weren't actually unstyled,
+just low-contrast and off the shared vocabulary); the other three had nothing at
+all. All five were switched to the app's existing `.alert`/`.alert-amber`/
+`.alert-danger` classes (already used this way elsewhere, e.g. the cash-count
+detail page), the two now-dead local `.callout` style blocks were removed, and
+`callout` was struck off `KNOWN_UNDEFINED`.
 
 **The general lesson.** A missing CSS class is silent by construction: the page
 loads, the markup is valid, and the only symptom is that a screen quietly looks

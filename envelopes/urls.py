@@ -1,8 +1,14 @@
-from django.urls import path
+from django.urls import path, re_path
 from . import views
 
 urlpatterns = [
     path("envelopes/", views.EnvelopeListView.as_view(), name="envelope_list"),
+    # A strict YYYY-MM-DD regex, not <str:date>: this route shares its prefix
+    # with envelopes/sabbath/close/ below, and a plain string converter would
+    # swallow "close" and break Sabbath closing depending purely on which line
+    # comes first. A date pattern can never match it, whatever the order.
+    re_path(r"^envelopes/sabbath/(?P<date>\d{4}-\d{2}-\d{2})/$",
+            views.EnvelopeSabbathEntriesView.as_view(), name="envelope_sabbath_entries"),
     path("envelopes/ledger/", views.EnvelopeLedgerCreate.as_view(), name="envelope_ledger"),
     path("envelopes/ledger/<int:pk>/", views.EnvelopeLedgerCreate.as_view(), name="envelope_ledger_edit"),
     path("envelopes/batches/autosave/", views.EnvelopeBatchAutosaveView.as_view(), name="envelope_batch_autosave"),
@@ -34,4 +40,6 @@ urlpatterns = [
     path("envelopes/counts/new/", views.CountSessionCreate.as_view(), name="count_new"),
     path("envelopes/sabbath/close/", views.SabbathCloseView.as_view(), name="sabbath_close"),
     path("envelopes/counts/<int:pk>/", views.CountSessionDetail.as_view(), name="count_detail"),
+    path("envelopes/counts/<int:pk>/edit/", views.CountSessionUpdateView.as_view(), name="count_edit"),
+    path("envelopes/counts/<int:pk>/delete/", views.CountSessionDeleteView.as_view(), name="count_delete"),
 ]

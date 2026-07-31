@@ -183,13 +183,18 @@ def validate_batch_for_post(batch):
 
 def get_or_create_draft(user, batch_id, sabbath_date):
     """Resolve the batch an autosave call should write to: the given id if it
-    still belongs to this user and is still editable, otherwise a fresh DRAFT.
-    Never silently writes into someone else's batch or a batch that has moved
-    past editing — that always starts a new draft instead, so a stale browser
-    tab can never corrupt a batch already sent for review."""
+    is still editable and belongs to this user OR this user has data-entry
+    rights (Treasurer/Assistant may continue a colleague's draft — see
+    EnvelopeLedgerCreate.get — so the same call must keep saving into THAT
+    batch rather than forking a new one), otherwise a fresh DRAFT. Never
+    writes into a batch that has moved past editing — that always starts a
+    new draft instead, so a stale browser tab can never corrupt a batch
+    already sent for review."""
     if batch_id:
+        from core import roles
         batch = EnvelopeBatch.objects.filter(pk=batch_id).first()
-        if (batch and batch.created_by_id == user.id and batch.is_editable
+        if (batch and (batch.created_by_id == user.id or roles.can_enter_data(user))
+                and batch.is_editable
                 and batch.source == EnvelopeBatch.Source.MANUAL):
             if batch.sabbath_date != sabbath_date:
                 batch.sabbath_date = sabbath_date

@@ -20,7 +20,7 @@
   <p class="help u-mt-sm">Bank charges are posted as an expense (in the cashbook), so they are <em>not</em> shown here as a reconciling item — including them in both places would double-count. {% if rec.notes %}{{ rec.notes }}{% endif %}</p>
 </div></div>
 {% else %}
-<div class="callout u-mb-lg">No bank reconciliation statement on file yet. The figures below summarise the bank-channel ledger for the selected period.</div>
+<div class="alert u-mb-lg">No bank reconciliation statement on file yet. The figures below summarise the bank-channel ledger for the selected period.</div>
 {% endif %}
 
 {% include 'partials/period_filter.html' %}

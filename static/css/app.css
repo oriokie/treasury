@@ -678,11 +678,16 @@ details.inline-edit summary::-webkit-details-marker{display:none}
 .ws-metric:hover{border-color:#cfe0d8;box-shadow:var(--shadow-sm);transform:translateY(-1px)}
 .ws-metric .wm-l{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;
   color:var(--muted);font-weight:700;display:flex;align-items:center;gap:.35rem}
-.ws-metric .wm-v{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+/* display:block is load-bearing, not decoration. Every one of these in the
+   templates is a <span>, so while they defaulted to inline the value and its
+   sub-label ran together on one line ("KSh 1,660received this month") and the
+   margin-top below them did nothing at all — the three-line stack the label,
+   value and sub-label were written to form only exists once they are blocks. */
+.ws-metric .wm-v{display:block;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
   font-size:1.4rem;font-weight:600;color:var(--ink);margin-top:.32rem;letter-spacing:-.02em;
   line-height:1.05}
 .ws-metric .wm-v .cur{font-size:.72rem;color:var(--muted);font-weight:600;margin-right:.18rem}
-.ws-metric .wm-sub{font-size:.74rem;color:var(--ink-soft);margin-top:.2rem}
+.ws-metric .wm-sub{display:block;font-size:.74rem;color:var(--ink-soft);margin-top:.2rem}
 .ws-metric.is-primary{border-top:2.5px solid var(--brass)}
 .ws-metric.is-positive .wm-v{color:var(--forest)}
 .ws-metric.is-negative .wm-v{color:var(--danger)}
