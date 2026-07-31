@@ -30,7 +30,12 @@
     <div class="foot">Closing, all scheme funds</div></div>
   <div class="stat"><div class="lbl">Contributions</div>
     <div class="val mono">{{ CURRENCY }} {{ totals.contributions|money }}</div>
-    <div class="foot">In the period</div></div>
+    {% comment %}Money RECEIVED into the scheme funds (ties to the income
+    statement). The contributions list shows money ATTRIBUTED to a member, which
+    is smaller while anything sits in the intake queue — so name the difference
+    here rather than leave two "Contributions" figures looking contradictory.
+    {% endcomment %}
+    <div class="foot">In the period{% if totals.unattributed %} · <a class="link" href="{% url 'benevolent_intake_queue' %}" title="Received into the fund but not yet credited to a member — clear these in the intake queue">{{ CURRENCY }} {{ totals.unattributed|money:0 }} not yet attributed</a>{% endif %}</div></div>
   <div class="stat"><div class="lbl">Benefits paid</div>
     <div class="val mono">{{ CURRENCY }} {{ totals.payouts|money }}</div>
     <div class="foot">In the period</div></div>

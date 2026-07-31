@@ -47,15 +47,44 @@ def scheme_balance(scheme):
 
 
 def contributions_total(start=None, end=None, scheme=None):
-    """Contributions received. Uses the registry's canonical income-credit
-    definition, filtered to the scheme's fund — so it agrees, to the shilling,
-    with what the income statement reports for that fund."""
+    """Contributions RECEIVED into the scheme funds. Uses the registry's
+    canonical income-credit definition, filtered to the scheme's fund — so it
+    agrees, to the shilling, with what the income statement reports for that
+    fund.
+
+    Deliberately NOT the same figure as
+    `benevolent.services.contributions.contributions_total`, which sums money
+    ATTRIBUTED to a member (the BenevolentContribution records). Money can sit
+    in the fund before anyone has said whose it is — that is exactly what the
+    intake queue holds — so this figure is the larger of the two whenever
+    intake is outstanding. `unattributed_total()` below is the difference, and
+    the dashboard shows it so the two numbers never look like a contradiction.
+    """
     from core.metrics import income_credits
     funds = [scheme.fund_id] if scheme is not None else scheme_funds()
     if not funds:
         return Decimal(0)
     return (income_credits(start, end, department_id__in=funds)
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+
+
+def unattributed_total(start=None, end=None, scheme=None):
+    """Money received into the scheme funds that no member is yet credited with
+    — i.e. contributions_total() (received) minus the attributed contributions.
+
+    This is the reconciling item between the dashboard's "Contributions" tile
+    and the contributions list, and it is worth surfacing rather than hiding:
+    unattributed money is work outstanding, not a rounding difference. It is
+    what the intake queue exists to clear.
+
+    Clamped at zero: a correction posted against a member but reversed in the
+    fund could in principle make the attributed side the larger of the two, and
+    a negative "not yet attributed" would read as nonsense on a dashboard.
+    """
+    from benevolent.services.contributions import contributions_total as attributed
+    gap = (contributions_total(start, end, scheme)
+           - attributed(scheme=scheme, start=start, end=end))
+    return gap if gap > 0 else Decimal(0)
 
 
 def payouts_total(start=None, end=None, scheme=None):
@@ -130,14 +159,28 @@ def scheme_summary(start=None, end=None):
                       .filter(status__in=BenevolentCase.OPEN_STATUSES)
                       .values_list("scheme").annotate(n=Count("id")))
 
+    # Money already attributed to a member, per scheme, in ONE grouped query —
+    # calling unattributed_total() per scheme would be two more queries each.
+    # The difference against the fund's receipts is money sitting in the intake
+    # queue with no member's name on it yet; showing it is what stops the
+    # dashboard's "Contributions" and the contributions list looking like they
+    # disagree.
+    from benevolent.services.contributions import contributions_qs
+    attributed = dict(contributions_qs(start=start, end=end)
+                      .values_list("scheme")
+                      .annotate(t=Sum("transaction__amount")))
+
     out = []
     for s in schemes:
         f = rows_by_fund.get(s.fund_id, {})
+        received = f.get("receipts", Decimal(0))
+        gap = received - (attributed.get(s.pk) or Decimal(0))
         out.append({
             "scheme": s,
             "fund": s.fund,
             "opening": f.get("opening", Decimal(0)),
-            "contributions": f.get("receipts", Decimal(0)),
+            "contributions": received,
+            "unattributed": gap if gap > 0 else Decimal(0),
             "payouts": f.get("expenses", Decimal(0)),
             "net_transfer": f.get("net_transfer", Decimal(0)),
             "closing": f.get("closing", Decimal(0)),
@@ -149,7 +192,8 @@ def scheme_summary(start=None, end=None):
 
 
 def totals(rows):
-    keys = ["opening", "contributions", "payouts", "closing", "committed"]
+    keys = ["opening", "contributions", "unattributed", "payouts", "closing",
+            "committed"]
     t = {k: sum((r[k] for r in rows), Decimal(0)) for k in keys}
     t["members"] = sum(r["members"] for r in rows)
     t["open_cases"] = sum(r["open_cases"] for r in rows)
