@@ -59,6 +59,7 @@
       {% else %}
       <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"><span class="ic">▦</span> Home</a>
       <a href="{% url 'executive' %}" class="{% if request.resolver_match.url_name == 'executive' %}active{% endif %}"><span class="ic">📊</span> Executive overview</a>
+      {% if is_treasurer %}<a href="{% url 'treasurer_workspace' %}" class="{% if request.resolver_match.url_name == 'treasurer_workspace' %}active{% endif %}"><span class="ic">🧭</span> Treasurer workspace</a>{% endif %}
       <a href="{% url 'assistant' %}" class="{% if request.resolver_match.url_name == 'assistant' %}active{% endif %}"><span class="ic">💬</span> Assistant</a>
 
       <details class="navgrp" data-grp="giving">

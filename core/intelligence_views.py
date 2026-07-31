@@ -66,11 +66,29 @@ class TreasurerWorkspaceView(ExecutiveAccessMixin, TemplateView):
         warnings = [i for i in insights if i.severity == Severity.WARNING]
         risk = min(100, len(criticals) * 25 + len(warnings) * 10)
 
+        # Severity bands, most serious first. The page previously rendered only
+        # `high_priority` (12 of them) and nothing else, so the remaining
+        # insights the engine had already computed were simply unreachable —
+        # `by_category` was built here and never used by the template.
+        by_severity = []
+        for key, label in ((Severity.CRITICAL, "Critical"),
+                           (Severity.WARNING, "Warning"),
+                           (Severity.NOTICE, "Notice"),
+                           (Severity.INFO, "Information")):
+            items = sorted([i for i in insights if i.severity == key],
+                           key=lambda i: -i.priority)
+            if items:
+                by_severity.append({"key": key, "label": label, "items": items,
+                                    "count": len(items)})
+
         ctx.update({
             "start": rc.start, "end": rc.end,
             "health": health,
             "risk_score": risk,
+            "risk_band": ("High" if risk >= 60 else
+                          "Moderate" if risk >= 30 else "Low"),
             "insights": insights,
+            "by_severity": by_severity,
             "high_priority": [i for i in insights if i.priority >= 60][:12],
             "recommendations": recs[:12],
             "critical_count": len(criticals),

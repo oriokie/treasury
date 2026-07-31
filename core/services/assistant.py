@@ -91,6 +91,137 @@ def _find_fund(text):
     return best
 
 
+def _previous_period(start, end):
+    """The equally-long window immediately before [start, end], for
+    period-on-period comparison. None when the question had no bounded period
+    (e.g. "all time"), which nothing can be compared against."""
+    if not start or not end:
+        return None, None
+    span = (end - start).days + 1
+    prev_end = start - dt.timedelta(days=1)
+    return prev_end - dt.timedelta(days=span - 1), prev_end
+
+
+def _delta_line(now, before, noun="Income"):
+    """'Income is up 12% on the previous period' — with the awkward cases
+    (no prior figure, no change) written out rather than shown as a stray
+    division by zero or a misleading 0%."""
+    if before is None:
+        return f"{noun} for the previous period isn't available to compare."
+    if not before:
+        return (f"{noun} was nil in the previous period, so there is no "
+                f"meaningful percentage to compare against.")
+    diff = now - before
+    pct = (abs(diff) / before * 100)
+    if not diff:
+        return f"{noun} is unchanged on the previous period."
+    return (f"{noun} is {'up' if diff > 0 else 'down'} {pct:.0f}% on the "
+            f"previous period ({_money(before)} → {_money(now)}).")
+
+
+def _intelligence_digest(start, end, label, limit=6):
+    """Answer "what needs my attention?" from the same IntelligenceEngine the
+    Treasurer workspace uses.
+
+    The engine already computes a health score, a risk score and prioritised,
+    explained insights — but the assistant, which is where a treasurer would
+    naturally ask, had no access to any of it and fell through to "I didn't
+    quite get that". This routes the question to the real analysis instead of
+    re-implementing a weaker version of it here.
+    """
+    from core.reporting import ReportContext
+    from core.intelligence import (IntelligenceEngine, compute_health_score,
+                                   Severity)
+    from core.models import InsightStatus
+
+    rc = ReportContext.for_period(start, end)
+    insights = IntelligenceEngine().analyse(rc)
+
+    # respect what the treasurer has already dismissed in the workspace, so
+    # the assistant doesn't keep raising something they've closed off
+    fps = [i.fingerprint for i in insights]
+    dismissed = set(InsightStatus.objects.filter(
+        fingerprint__in=fps, state="dismissed").values_list("fingerprint", flat=True))
+    insights = [i for i in insights if i.fingerprint not in dismissed]
+
+    health = compute_health_score(rc)
+    criticals = [i for i in insights if i.severity == Severity.CRITICAL]
+    warnings = [i for i in insights if i.severity == Severity.WARNING]
+    top = sorted(insights, key=lambda i: -i.priority)[:limit]
+
+    if not insights:
+        return {"text": f"Nothing is flagged for {label}. Financial health scores "
+                        f"{health.overall:.0f}/100 ({health.band}).",
+                "link": reverse("treasurer_workspace"),
+                "link_label": "Treasurer workspace"}
+
+    head = (f"Health {health.overall:.0f}/100 ({health.band}) for {label}. "
+            f"{len(criticals)} critical and {len(warnings)} warning "
+            f"item(s) are open.")
+    return {
+        "text": head,
+        "note": "Highest-priority items first — each one is explained in full on "
+                "the Treasurer workspace.",
+        "rows": [(i.title, f"priority {i.priority}") for i in top],
+        "link": reverse("treasurer_workspace"), "link_label": "Treasurer workspace",
+        "suggestions": ["What should I do about it?", "Are we in surplus this year?",
+                        "How does this month compare to last month?"],
+    }
+
+
+def _recommendation_digest(start, end, label, limit=6):
+    """The 'so what do I DO' counterpart to the digest above."""
+    from core.reporting import ReportContext
+    from core.intelligence import IntelligenceEngine, recommendations_from_insights
+
+    rc = ReportContext.for_period(start, end)
+    recs = recommendations_from_insights(IntelligenceEngine().analyse(rc))[:limit]
+    if not recs:
+        return {"text": f"No actions are recommended for {label} — controls appear "
+                        f"to be operating normally.",
+                "link": reverse("treasurer_workspace"),
+                "link_label": "Treasurer workspace"}
+    return {
+        "text": f"Recommended actions for {label}, highest priority first:",
+        "rows": [(r.action, f"priority {r.priority}") for r in recs],
+        "note": "Each recommendation traces back to the figures behind it.",
+        "link": reverse("treasurer_workspace"), "link_label": "Treasurer workspace",
+    }
+
+
+def _smart_fallback(question):
+    """When no rule matched, use whatever the question DID mention rather than
+    repeating the same static menu at everyone.
+
+    A treasurer who types a fund name, a member's name or a month has told us
+    a great deal even if the intent word was one we don't know; offering
+    questions about that thing is far more use than a generic list.
+    """
+    t = (question or "").lower()
+    fund = _find_fund(t)
+    if fund:
+        return {"text": f"I'm not sure what you're asking about {fund.name}. "
+                        f"Try one of these:",
+                "suggestions": [f"Balance of {fund.name}",
+                                f"Total collections for {fund.name} this year",
+                                f"Budget vs actual for {fund.name}"],
+                "link": reverse("report_fund", args=[fund.id]),
+                "link_label": f"Open {fund.name} ledger", "_fallback": True}
+
+    from members.models import Member
+    for m in Member.objects.all()[:400]:
+        first = (m.name or "").split()[0].lower() if m.name else ""
+        if len(first) > 3 and first in t:
+            return {"text": f"I'm not sure what you're asking about {m.name}. "
+                            f"Try one of these:",
+                    "suggestions": [f"How much did {m.name} give this year",
+                                    f"How much did {m.name} give last month"],
+                    "_fallback": True}
+
+    return {"text": "I didn't quite get that. Here are some things you can ask:",
+            "suggestions": SUGGESTIONS, "_fallback": True}
+
+
 # ---------- answers ----------
 
 def _fund_balance(dept):
@@ -521,6 +652,65 @@ def _answer_rules(question, user=None):
 
     start, end, label = parse_period(q)
 
+    # ---- intelligence: "what needs attention / any problems / how are we doing"
+    # Routed to the IntelligenceEngine that already backs the Treasurer
+    # workspace, rather than answered with a weaker re-implementation here.
+    # Checked before the generic money rules below, which would otherwise
+    # swallow phrasings like "are we in trouble" on the word "we".
+    if any(p in t for p in (
+            "needs attention", "need attention", "needs my attention",
+            "what should i worry", "anything to worry", "any problems",
+            "any issues", "any concerns", "what's wrong", "whats wrong",
+            "red flags", "risks", "risk score", "how are we doing",
+            "are we ok", "are we okay", "financial health", "health score",
+            "anything wrong", "alerts")):
+        return _intelligence_digest(start, end, label)
+
+    # the "so what do I do about it" counterpart
+    if any(p in t for p in (
+            "what should i do", "what do i do", "recommend", "recommendation",
+            "advice", "advise", "suggest an action", "action list",
+            "priorities", "what should i fix")):
+        return _recommendation_digest(start, end, label)
+
+    # ---- period-on-period comparison ----
+    # "how does this month compare to last month", "is giving up or down"
+    if any(p in t for p in ("compare", "comparison", "versus last", "vs last",
+                            "up or down", "trend", "better or worse",
+                            "more than last", "less than last", "growth")):
+        # "how does THIS month compare to LAST month" names two periods, and
+        # parse_period tests "last month" before "this month" — so without
+        # stripping the comparator the answer silently reports on the wrong
+        # (earlier) period. The comparison baseline is computed from the span
+        # anyway, so the trailing "...to last month" carries no extra meaning.
+        base = re.sub(r"\b(to|vs\.?|versus|with|against|than|and)\s+"
+                      r"(the\s+)?(last|previous|prior)\s+"
+                      r"(month|year|quarter|period|week)\b", " ", t)
+        c_start, c_end, c_label = parse_period(base)
+        start, end, label = c_start, c_end, c_label
+        prev_start, prev_end = _previous_period(start, end)
+        if prev_start:
+            fund = _find_fund(t)
+            f_now = _credit_filter(start, end)
+            f_prev = _credit_filter(prev_start, prev_end)
+            if fund:
+                f_now &= Q(department=fund)
+                f_prev &= Q(department=fund)
+            now = Transaction.objects.filter(f_now).aggregate(
+                t=Sum("amount"))["t"] or Decimal(0)
+            before = Transaction.objects.filter(f_prev).aggregate(
+                t=Sum("amount"))["t"] or Decimal(0)
+            where = f" for {fund.name}" if fund else ""
+            return {
+                "text": f"Income{where} in {label}: {_money(now)}.",
+                "note": _delta_line(now, before, "Income"),
+                "rows": [(label, _money(now)),
+                         (f"{prev_start:%d %b} – {prev_end:%d %b %Y}", _money(before)),
+                         ("Change", _money(now - before))],
+                "link": reverse("report_collections_summary"),
+                "link_label": "Collections summary",
+            }
+
     # fund balance
     if ("balance" in t or "how much is in" in t or "how much does" in t) and _find_fund(t):
         return _fund_balance(_find_fund(t))
@@ -829,8 +1019,7 @@ def _answer_rules(question, user=None):
         return {"text": f"Total received{where} in {label}: {_money(total)} across {agg['n'] or 0} entries.",
                 "link": reverse("report_collections_summary"), "link_label": "Collections summary"}
 
-    return {"text": "I didn't quite get that. Here are some things you can ask:",
-            "suggestions": SUGGESTIONS, "_fallback": True}
+    return _smart_fallback(q)
 
 
 SUGGESTIONS = [
@@ -865,7 +1054,33 @@ SUGGESTION_GROUPS = [
     {"label": "Trust & compliance", "icon": "⚖", "items": [
         "Trust funds to remit", "Are the books balanced?",
         "Are we in surplus this year?", "Budget vs actual this year"]},
+    {"label": "Advice & trends", "icon": "◎", "items": [
+        "What needs my attention?", "What should I do?",
+        "How does this month compare to last month?",
+        "Is giving up or down this year?"]},
 ]
+
+
+def suggestion_groups_for_site():
+    """SUGGESTION_GROUPS with the example fund name resolved to one that
+    actually exists here.
+
+    The menu hardcodes "Balance of Development" — on a church with no fund of
+    that name the chip looks like a supported question and answers "I didn't
+    quite get that", which is worse than not offering it. Substituting a real
+    fund keeps every advertised question answerable.
+    """
+    from departments.models import Department
+    groups = [dict(g, items=list(g["items"])) for g in SUGGESTION_GROUPS]
+    if Department.objects.filter(name__iexact="Development").exists():
+        return groups
+    fund = (Department.objects.filter(fund_type="LOCAL").order_by("name").first()
+            or Department.objects.order_by("name").first())
+    if fund is None:                      # nothing set up yet; leave the copy be
+        return groups
+    for g in groups:
+        g["items"] = [i.replace("Development", fund.name) for i in g["items"]]
+    return groups
 
 
 def board_report_narrative(context, period_label, cfg=None):

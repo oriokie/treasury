@@ -555,12 +555,12 @@ class AssistantView(ReadAccessMixin, View):
     element, q) let a report's 'Ask AI' button open the assistant already aware
     of what the user was looking at."""
     def get(self, request):
-        from .services.assistant import SUGGESTIONS, SUGGESTION_GROUPS
+        from .services.assistant import SUGGESTIONS, suggestion_groups_for_site
         from core.models import SiteConfig
         report_key = request.GET.get("report_key", "")
         ctx = {
             "suggestions": SUGGESTIONS,
-            "suggestion_groups": SUGGESTION_GROUPS,
+            "suggestion_groups": suggestion_groups_for_site(),
             "llm_on": SiteConfig.get().llm_enabled,
             "ctx_report_key": report_key,
             "ctx_start": request.GET.get("start", ""),
