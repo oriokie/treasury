@@ -200,7 +200,7 @@ class IntakeCaseScopingTests(Round9Fixture):
         self.assertIn(my_case.pk, case_ids)
         self.assertNotIn(other_case.pk, case_ids)
 
-    def test_case_dropdown_excludes_closed_cases(self):
+    def test_case_dropdown_still_offers_a_closed_case(self):
         self._publish_levy_policy()
         bereaved = self._enrol("Closed Bereaved")
         case = case_svc.create_case(
@@ -222,11 +222,20 @@ class IntakeCaseScopingTests(Round9Fixture):
             status=ContributionIntake.Status.REVIEW)
         form = IntakeResolveForm(item=item)
         case_ids = set(form.fields["case"].queryset.values_list("pk", flat=True))
-        self.assertNotIn(case.pk, case_ids)
+        # Deliberate, and the opposite of what this test originally asserted.
+        # BenevolentCase.LEVIABLE_STATUSES includes CLOSED: a member paying
+        # late is ordinary, and refusing them means their money cannot be
+        # recorded at all — worse than a contribution landing on an old case,
+        # which is visible there and can be moved. See the rationale on
+        # LEVIABLE_STATUSES in benevolent/models.py.
+        self.assertIn(case.pk, case_ids)
+        self.assertIn(BenevolentCase.Status.CLOSED,
+                      BenevolentCase.LEVIABLE_STATUSES)
 
-    def test_server_side_refuses_a_closed_case_even_if_posted_directly(self):
-        """Defense in depth beyond the form's queryset — a crafted POST must
-        also be refused at validate()."""
+    def test_server_side_accepts_a_closed_case_but_refuses_a_cancelled_one(self):
+        """validate() gates on LEVIABLE_STATUSES, so it accepts a CLOSED case
+        (late payment is ordinary) while still refusing a status where no money
+        ever left the fund and so there is nothing to replenish."""
         self._publish_levy_policy()
         bereaved = self._enrol("Server Side Bereaved")
         case = case_svc.create_case(
@@ -241,7 +250,14 @@ class IntakeCaseScopingTests(Round9Fixture):
         problems = engine_svc.validate(
             self.scheme, kind=BenevolentContribution.Kind.LEVY,
             membership=payer, case=case, amount=Decimal("100"), date=TODAY)
-        self.assertTrue(problems)
+        self.assertFalse(problems, f"a closed case should still take a late levy: {problems}")
+
+        # the guard is still real: a cancelled case has nothing to replenish
+        case.status = BenevolentCase.Status.CANCELLED
+        case.save(update_fields=["status"])
+        self.assertTrue(engine_svc.validate(
+            self.scheme, kind=BenevolentContribution.Kind.LEVY,
+            membership=payer, case=case, amount=Decimal("100"), date=TODAY))
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,12 @@
 const { JSDOM } = require("jsdom");
 const fs = require("fs");
+const path = require("path");
 
-const src = fs.readFileSync("/home/claude/treasury/static/js/member-search.js", "utf8");
+// Resolved from this file, not an absolute path. It used to point at
+// /home/claude/treasury/... — a path from the machine it was written on — so
+// the test could not run on any other checkout, including CI.
+const src = fs.readFileSync(
+  path.resolve(__dirname, "..", "..", "static", "js", "member-search.js"), "utf8");
 
 const dom = new JSDOM(`<!DOCTYPE html><body>
   <form><div class="form-row">
