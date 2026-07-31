@@ -3337,6 +3337,7 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
         return super().get(request, *args, **kwargs)
 
     def _pdf(self, request):
+        from decimal import Decimal
         from django.http import HttpResponse
         from core.models import SiteConfig
         from .services.supporting_pdf import build_receipt_grid_pdf, HAVE_PDF_LIBS
@@ -3353,8 +3354,15 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             messages.info(request, "No receipts to print in that period.")
             return redirect("receipt_archive")
         cfg = SiteConfig.get()
-        data, stats = build_receipt_grid_pdf(groups, church=cfg.church_name or "",
-                                             currency=cfg.currency_symbol or "KES")
+        # one expense can carry several attachments — sum each expense once,
+        # or the header total silently overstates the bundle
+        total = sum({a.expense_id: a.expense.amount for a in qs}.values(), Decimal(0))
+        data, stats = build_receipt_grid_pdf(
+            groups, church=cfg.church_name or "",
+            currency=cfg.currency_symbol or "KES",
+            period_label=f"{start:%d %b %Y} – {end:%d %b %Y}",
+            filters_label=self._filters_label(request),
+            total=total)
         resp = HttpResponse(data, content_type="application/pdf")
         resp["Content-Disposition"] = (
             f'attachment; filename="receipts_{start}_{end}.pdf"')
@@ -3379,12 +3387,81 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             start, end = parse_period(request)
         qs = (ExpenseAttachment.objects.filter(
                   expense__date__gte=start, expense__date__lte=end)
-              .select_related("expense", "expense__department")
+              .select_related("expense", "expense__department", "expense__vendor")
               .order_by("expense__date"))
         depts = self._scoped_department_ids(request)
         if depts is not None:
             qs = qs.filter(expense__department_id__in=depts)
+        qs = self._apply_filters(request, qs)
         return start, end, qs
+
+    # Applied AFTER the leader scoping above, never instead of it: a leader
+    # picking a department they don't lead must still see nothing, so this
+    # can only ever narrow what the scope already allowed.
+    FILTERS = {
+        "department": "expense__department_id",
+        "category": "expense__category",
+        "status": "expense__status",
+        "method": "expense__method",
+    }
+
+    def _apply_filters(self, request, qs):
+        for param, field in self.FILTERS.items():
+            raw = (request.GET.get(param) or "").strip()
+            if not raw:
+                continue
+            if field.endswith("_id"):
+                # a hand-edited ?department=abc would otherwise raise
+                # ValueError when the queryset is evaluated — a 500 on a
+                # URL a user can type. Ignore it instead.
+                try:
+                    raw = int(raw)
+                except ValueError:
+                    continue
+            qs = qs.filter(**{field: raw})
+        q = (request.GET.get("q") or "").strip()
+        if q:
+            from django.db.models import Q
+            qs = qs.filter(Q(expense__description__icontains=q)
+                           | Q(expense__payee__icontains=q)
+                           | Q(expense__voucher_no__icontains=q))
+        return qs
+
+    def _filters_label(self, request):
+        """Human-readable summary of the filters, printed in the PDF header —
+        without it a filtered bundle is indistinguishable from a complete one,
+        which is exactly the wrong thing to hand an auditor."""
+        from departments.models import Department
+        from .models import Expense
+        bits = []
+        dept = (request.GET.get("department") or "").strip()
+        if dept.isdigit():
+            d = Department.objects.filter(pk=dept).first()
+            if d:
+                bits.append(f"Department: {d.name}")
+        for param, choices, label in (
+                ("category", Expense.Category.choices, "Category"),
+                ("status", Expense.Status.choices, "Status"),
+                ("method", Expense.Method.choices, "Method")):
+            raw = (request.GET.get(param) or "").strip()
+            if raw:
+                bits.append(f"{label}: {dict(choices).get(raw, raw)}")
+        q = (request.GET.get("q") or "").strip()
+        if q:
+            bits.append(f'Search: "{q}"')
+        return "  ·  ".join(bits)
+
+    def _active_filters(self, request):
+        """The filters in force, as {param: value} — used to keep them on the
+        period-preset links and the PDF/ZIP download links, which would
+        otherwise silently drop them and export a different set of receipts
+        than the one on screen."""
+        keep = {}
+        for param in list(self.FILTERS) + ["q"]:
+            raw = (request.GET.get(param) or "").strip()
+            if raw:
+                keep[param] = raw
+        return keep
 
     def _scoped_department_ids(self, request):
         """None for treasurers/auditors (all departments); a list for leaders."""
@@ -3408,8 +3485,39 @@ class ReceiptArchiveView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
             groups.setdefault(key, []).append(a)
             if a.file:
                 n_files += 1
-        ctx.update({"start": start, "end": end, "groups": groups,
-                    "count": qs.count(), "file_count": n_files})
+        from urllib.parse import urlencode
+        from decimal import Decimal
+        from .models import Expense
+        req = self.request
+
+        # Departments offered in the picker are the ones this user may
+        # actually see — a leader is never shown funds they don't lead.
+        from departments.models import Department
+        dept_qs = Department.objects.order_by("name")
+        scoped = self._scoped_department_ids(req)
+        if scoped is not None:
+            dept_qs = dept_qs.filter(id__in=scoped)
+
+        active = self._active_filters(req)
+        # the period is carried on the filter links, and the filters on the
+        # period-preset links, so neither ever silently drops the other
+        period_qs = urlencode({"start": start.isoformat(), "end": end.isoformat()})
+        ctx.update({
+            "start": start, "end": end, "groups": groups,
+            "count": qs.count(), "file_count": n_files,
+            "total_amount": sum({a.expense_id: a.expense.amount
+                                 for a in qs}.values(), Decimal(0)),
+            "departments": dept_qs,
+            "categories": Expense.Category.choices,
+            "statuses": Expense.Status.choices,
+            "methods": Expense.Method.choices,
+            "f": {k: req.GET.get(k, "") for k in list(self.FILTERS) + ["q"]},
+            "has_filters": bool(active),
+            "filter_qs": urlencode(active),
+            "period_qs": period_qs,
+            "export_qs": urlencode({**active, "start": start.isoformat(),
+                                    "end": end.isoformat()}),
+        })
         return ctx
 
     def _zip(self, request):

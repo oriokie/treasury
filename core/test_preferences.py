@@ -75,6 +75,40 @@ class PreferenceViewTests(TestCase):
         self.assertEqual(self.c.post("/preferences/update/",
                          {"key": "evil", "value": "x"}).status_code, 400)
 
+    def test_negatives_toggle_saves(self):
+        """The accounting-parentheses toggle 400'd with "unknown key": it was
+        the one control on the page whose key was never added to
+        PreferenceUpdateView.ALLOWED, so every click failed."""
+        r = self.c.post("/preferences/update/",
+                        {"key": "negatives", "value": "PARENS"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["ok"])
+        self.assertEqual(UserPreference.get_for(self.u).negatives, "PARENS")
+        self.c.post("/preferences/update/", {"key": "negatives", "value": "MINUS"})
+        self.assertEqual(UserPreference.get_for(self.u).negatives, "MINUS")
+
+    def test_every_control_on_the_page_is_saveable(self):
+        """The general form of the bug above. The page and the endpoint keep
+        two separate lists of preference keys, and nothing tied them together —
+        adding a control while forgetting the whitelist yields a control that
+        looks fine and silently 400s on click. Assert the endpoint accepts
+        every key the template actually posts."""
+        import re
+        from pathlib import Path
+        from django.conf import settings
+        from core.views import PreferenceUpdateView
+
+        tpl = Path(settings.BASE_DIR, "templates", "preferences.html").read_text()
+        # `data-pref="..."` on segmented controls/selects, `key="..."` on the
+        # pref_toggle include — the two ways this page declares a control.
+        sent = set(re.findall(r'data-pref="([a-z_]+)"', tpl))
+        sent |= set(re.findall(r'\bkey="([a-z_]+)"', tpl))
+        sent.discard("dashboard_widgets")      # handled on its own branch
+        self.assertTrue(sent, "found no preference controls — check the regexes")
+        missing = sorted(sent - PreferenceUpdateView.ALLOWED)
+        self.assertEqual(missing, [],
+                         f"these controls post keys the endpoint rejects: {missing}")
+
     def test_widget_order_persists(self):
         data = [{"key": "recent", "visible": True}, {"key": "kpis", "visible": False}]
         r = self.c.post("/preferences/update/",

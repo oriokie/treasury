@@ -1484,7 +1484,7 @@ class PreferenceUpdateView(LoginRequiredMixin, View):
         "density", "high_contrast", "reduced_motion", "large_targets",
         "focus_indicators", "toasts_enabled", "toast_duration",
         "desktop_notifications",
-        "heading_font", "figure_font", "table_stripes", "table_grid",
+        "heading_font", "figure_font", "negatives", "table_stripes", "table_grid",
         "sticky_headers",
     }
     BOOLS = {"high_contrast", "reduced_motion", "large_targets",
