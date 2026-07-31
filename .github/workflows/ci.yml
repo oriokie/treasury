@@ -1,0 +1,75 @@
+name: CI
+
+# The suite is ~4,000 tests and takes over ten minutes end to end, so it is
+# split across parallel shards. The `apps:` lines below are what
+# core.test_ci_coverage reads back: it fails the build if an app with tests is
+# in no shard, is named twice, or does not exist — so this list cannot rot
+# unnoticed as apps are added.
+#
+# Shards are balanced by test count (benevolent alone is ~1,100 of them, so it
+# gets its own). Rebalance freely; only the coverage rules above are load-bearing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # No POSTGRES_* / MYSQL_* here on purpose: config.settings then falls back to
+  # SQLite, which is what the test runner wants and needs no service container.
+  DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+  DJANGO_DEBUG: "False"
+  DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+  DJANGO_SECURE_SSL_REDIRECT: "False"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  check:
+    name: Django checks & migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: System checks
+        run: python manage.py check
+      - name: Migrations are complete
+        # Fails if a model change was made without a matching migration.
+        run: python manage.py makemigrations --check --dry-run
+
+  test:
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: benevolent
+            apps: benevolent
+          - name: core
+            apps: core
+          - name: cashbook
+            apps: cashbook ledger
+          - name: reports
+            apps: reports departments pledges
+          - name: giving
+            apps: giving envelopes accounts
+          - name: the-rest
+            apps: statements assets loans leaders members vendors
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run tests
+        run: python manage.py test ${{ matrix.apps }} --verbosity 2

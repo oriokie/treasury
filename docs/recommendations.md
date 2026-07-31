@@ -1811,11 +1811,25 @@ tests would ever have run in CI. Added to the `the-rest` shard.
 
 A reminder that adding an app is not finished when its tests pass locally.
 
-**On the `ci.yml` not-found errors in the same run:** the file is present in the
-repository and is included in the packaged archive (verified). Those four errors
-indicate the working copy the suite ran against was missing `.github/`, most
-likely from an extraction that dropped dot-directories rather than anything in
-the code.
+**On the `ci.yml` not-found errors in the same run — the earlier diagnosis here
+was wrong, and worth keeping as the lesson.** This section previously recorded
+that "the file is present in the repository and is included in the packaged
+archive (verified)", and blamed the four errors on an extraction that dropped
+dot-directories. It was not present: `git log --all -- .github/workflows/ci.yml`
+returns nothing, so the workflow had **never been committed to this repository**
+at any point in its history. The guard was telling the truth for months and was
+read as an environment quirk.
+
+The consequence is the one the guard exists to prevent: there was no CI, so no
+shard ran anywhere, and `vendors` being "added to the `the-rest` shard" above
+fixed a list that nothing executed. The workflow now exists (six shards, chosen
+by test count), `core.test_ci_coverage` passes for the first time, and the
+`vendors` tests genuinely run.
+
+**The general lesson.** A failing guard that is inconvenient to believe attracts
+an explanation that lets the build stay red-but-ignored. "Must be the
+environment" is the most expensive of those explanations, because it is
+unfalsifiable until someone checks — and checking here was one `git log`.
 
 ---
 
