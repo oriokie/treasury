@@ -91,7 +91,21 @@ def duplicate_name_flags(rows):
     return [bool(k) and counts[k] > 1 for k in keys]
 
 
-HEADER = ["Date", "Phone", "Member", "Amount", "Fund", "Reference", "M-Pesa Reference"]
+# The on-page table still shows Fund (you can sort by it there); the downloads
+# deliberately do not. A pending-receipt sheet is worked through name by name
+# to issue receipts, and the fund is decided by the receipt itself, so the
+# column was a wide, rarely-read passenger on an already-wide landscape page.
+HEADER = ["Date", "Phone", "Member", "Amount", "Reference", "M-Pesa Reference"]
+
+
+def export_rows(rows):
+    """`rows` reduced to the download columns (Fund dropped), in HEADER order.
+
+    Shared by the Excel and PDF exports — and therefore by the PDF the Telegram
+    bot's /pending sends — so the three can't drift into different columns.
+    """
+    return [[date, phone, name, amount, ref, mpesa]
+            for (date, phone, name, amount, _fund, ref, mpesa) in rows]
 
 
 def pending_receipt_pdf_bytes(church=""):
@@ -100,12 +114,16 @@ def pending_receipt_pdf_bytes(church=""):
     other in-app PDF export (same fonts, same footer convention), rather
     than inventing a second PDF style for this one report.
 
-    Sorted by name (see pending_receipt_rows), and a name that repeats is
-    shaded AND marked with a "⚠ repeats" label — shading alone would be
-    invisible on a black-and-white printout, and this is a PDF people print or
-    forward, not just view on a screen. This is the exact PDF the Telegram
-    bot's /pending command sends too — one function, so the highlight shows up
-    wherever the PDF is read."""
+    Sorted by name (see pending_receipt_rows). A name that repeats is shaded
+    and set in bold — the highlight alone, with no "repeats" label, which is
+    what was asked for. Bold is kept deliberately: this is a PDF people print,
+    and a background tint can vanish on a black-and-white printer, so the row
+    would otherwise lose its only marker. Bold survives greyscale without
+    adding wording to the name.
+
+    This is the exact PDF the Telegram bot's /pending command sends — one
+    function, so the columns and the highlight are the same wherever it is
+    read."""
     import io
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
@@ -141,21 +159,21 @@ def pending_receipt_pdf_bytes(church=""):
         from members.models import name_key
         n_dup = len({name_key(r[2]) for r, f in zip(rows, dup_flags) if f})
         flow.append(Paragraph(
-            f"{n_dup} name(s) — shaded below, marked \u26a0 repeats — appear more than once.",
+            f"{n_dup} name(s) appear more than once — shaded and bold below.",
             styles["Normal"]))
     flow.append(Spacer(1, 6 * mm))
 
     table_data = [HEADER]
     total = Decimal(0)
-    for (date, phone, name, amount, fund, ref, mpesa), is_dup in zip(rows, dup_flags):
+    for (date, phone, name, amount, ref, mpesa) in export_rows(rows):
         total += amount
-        shown_name = f"{name} \u26a0 repeats" if is_dup else name
-        table_data.append([date.strftime("%d %b %Y"), phone, shown_name,
-                           f"{amount:,.2f}", fund, ref, mpesa])
-    table_data.append(["", "", "TOTAL", f"{total:,.2f}", "", "", ""])
+        table_data.append([date.strftime("%d %b %Y"), phone, name,
+                           f"{amount:,.2f}", ref, mpesa])
+    table_data.append(["", "", "TOTAL", f"{total:,.2f}", "", ""])
 
+    # Fund is gone, so the remaining columns get its width back.
     t = Table(table_data, repeatRows=1,
-             colWidths=[22*mm, 28*mm, 45*mm, 24*mm, 35*mm, 30*mm, 30*mm])
+             colWidths=[24*mm, 32*mm, 62*mm, 30*mm, 42*mm, 38*mm])
     style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), primary),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -169,10 +187,12 @@ def pending_receipt_pdf_bytes(church=""):
         ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]
     # duplicate-name rows override the zebra-stripe background (table row i is
-    # data row i-1, since row 0 is the header)
+    # data row i-1, since row 0 is the header) and set the name in bold, which
+    # is the part that still reads once the tint is printed in greyscale
     for i, is_dup in enumerate(dup_flags, start=1):
         if is_dup:
             style_cmds.append(("BACKGROUND", (0, i), (-1, i), dup_fill))
+            style_cmds.append(("FONTNAME", (2, i), (2, i), "Helvetica-Bold"))
     t.setStyle(TableStyle(style_cmds))
     flow.append(t)
     doc.build(flow, onFirstPage=_footer, onLaterPages=_footer)

@@ -37,6 +37,10 @@ class TrustPendingReceiptMpesaColumnTests(TestCase):
         self.member = Member.objects.create(name="Tx Page Giver", phone="254711222333")
         self.c = Client(); self.c.force_login(self.tr)
 
+    def _col(self, name):
+        from giving.services.pending_receipt import HEADER
+        return HEADER.index(name)
+
     def _rows(self, response):
         import io
         from openpyxl import load_workbook
@@ -46,8 +50,9 @@ class TrustPendingReceiptMpesaColumnTests(TestCase):
     def test_header_includes_mpesa_reference(self):
         rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
         header = next(r for r in rows if r and r[0] == "Date")
-        self.assertEqual(list(header), ["Date", "Phone", "Member", "Amount",
-                                        "Fund", "Reference", "M-Pesa Reference"])
+        from giving.services.pending_receipt import HEADER
+        self.assertEqual(list(header), HEADER)
+        self.assertIn("M-Pesa Reference", header)
 
     def test_mpesa_reference_populated(self):
         Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("1500"),
@@ -55,8 +60,8 @@ class TrustPendingReceiptMpesaColumnTests(TestCase):
             allocation_status="MANUAL", department=self.trust, member=self.member,
             payer_phone="254711222333", reference="txpage-ref", mpesa_ref="QZZ1234AB")
         rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
-        row = next(r for r in rows if r and r[5] == "txpage-ref")
-        self.assertEqual(row[6], "QZZ1234AB")
+        row = next(r for r in rows if r and r[self._col("Reference")] == "txpage-ref")
+        self.assertEqual(row[self._col("M-Pesa Reference")], "QZZ1234AB")
 
     def test_a_cash_gift_is_NOT_pending_receipt(self):
         """This used to assert the opposite — that a cash gift appears here with
@@ -68,7 +73,7 @@ class TrustPendingReceiptMpesaColumnTests(TestCase):
             direction="CREDIT", confirmed=True, channel="CASH",
             allocation_status="MANUAL", department=self.trust, reference="cash-ref")
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        self.assertFalse([r for r in rows if r and r[5] == "cash-ref"],
+        self.assertFalse([r for r in rows if r and r[self._col("Reference")] == "cash-ref"],
                          "a cash gift should not be listed as pending receipt")
 
     def test_mpesa_reference_blank_when_the_bank_gift_has_none(self):
@@ -79,8 +84,8 @@ class TrustPendingReceiptMpesaColumnTests(TestCase):
             direction="CREDIT", confirmed=True, channel="BANK",
             allocation_status="MANUAL", department=self.trust, reference="eft-ref")
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        row = next(r for r in rows if r and r[5] == "eft-ref")
-        self.assertIn(row[6], ("", None))
+        row = next(r for r in rows if r and r[self._col("Reference")] == "eft-ref")
+        self.assertIn(row[self._col("M-Pesa Reference")], ("", None))
 
 
 class TransactionsPageQuickTabsTests(TestCase):

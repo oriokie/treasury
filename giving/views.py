@@ -187,7 +187,7 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
 
     def _pending_receipt_export(self, request):
         """Credits in a RECEIPTABLE fund not yet formally receipted — Date,
-        Phone, Member, Amount, Fund, Reference.
+        Phone, Member, Amount, Reference, M-Pesa Reference.
 
         "Receiptable" is Trust funds AND the Local Church Budget family (the LCB
         funds configured in Settings, plus their subgroups) — the same "Trust +
@@ -209,18 +209,25 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         Sorted by name and a repeated name highlighted — same as the on-page
         view and the PDF (including the one the Telegram bot sends): one
         function decides the order and the duplicates, so none of these three
-        can quietly disagree."""
+        can quietly disagree.
+
+        The Fund column is deliberately absent from the downloads (it remains
+        on the page, where you can also sort by it): this sheet is worked
+        through name by name to issue receipts, and the fund is settled by the
+        receipt itself."""
         from reports.exports import xlsx_response
         from core.models import SiteConfig
         from giving.services.pending_receipt import (HEADER, duplicate_name_flags,
+                                                     export_rows,
                                                      pending_receipt_rows)
 
         pr_rows = pending_receipt_rows()
         dup_flags = duplicate_name_flags(pr_rows)
-        rows = [[d.isoformat(), phone, f"{name} \u26a0 repeats" if is_dup else name,
-                float(amount), fund, ref, mpesa]
-               for (d, phone, name, amount, fund, ref, mpesa), is_dup
-               in zip(pr_rows, dup_flags)]
+        # A repeated name is shown by the row highlight alone \u2014 no "repeats"
+        # label appended to the name, which also kept the Member column clean
+        # for anyone sorting or matching on it.
+        rows = [[d.isoformat(), phone, name, float(amount), ref, mpesa]
+               for (d, phone, name, amount, ref, mpesa) in export_rows(pr_rows)]
         return xlsx_response("pending_receipt.xlsx", HEADER, rows,
                              title="Items pending receipt",
                              church=SiteConfig.get().church_name,
@@ -443,12 +450,30 @@ class PendingReceiptView(ReadAccessMixin, View):
                             # kept explicit so a stable sort always holds even if
                             # pending_receipt_rows' own order ever changes
 
+        # When sorted by name the same giver's rows sit together, so mark where
+        # each new giver starts and how many rows/how much they account for.
+        # A flat list of 80+ highlighted rows is hard to work through; reading
+        # it as one block per giver is what a treasurer is actually doing.
+        if sort == "name":
+            for i, r in enumerate(rows):
+                prev = rows[i - 1]["name_key"] if i else None
+                r["group_start"] = r["name_key"] != prev
+            for r in rows:
+                if r["group_start"]:
+                    same = [x for x in rows if x["name_key"] == r["name_key"]]
+                    r["group_count"] = len(same)
+                    r["group_total"] = sum((x["amount"] for x in same), Decimal(0))
+        else:
+            for r in rows:
+                r["group_start"] = False
+
         total = sum((r["amount"] for r in rows), Decimal(0))
         duplicate_names = len({r["name_key"] for r in rows if r["is_duplicate_name"]})
 
         return render(request, self.template_name, {
             "rows": rows, "sort": sort, "total": total,
             "count": len(rows), "duplicate_names": duplicate_names,
+            "distinct_givers": len({r["name_key"] for r in rows if r["name_key"]}),
         })
 
 

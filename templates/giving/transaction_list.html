@@ -33,14 +33,8 @@
   {% if not cash_only %}<a href="{% url 'pending_receipt_view' %}" class="tx-qtab{% if request.resolver_match.url_name == 'pending_receipt_view' %} active{% endif %}" title="Credits in a receiptable fund — Trust, and the Local Church Budget family — with no formal receipt yet.">Pending receipt</a>{% endif %}
 </nav>
 <style>
-.tx-quicktabs{display:flex;gap:.35rem;flex-wrap:wrap;margin:.7rem 0 .9rem;border-bottom:1px solid var(--line);padding-bottom:.6rem}
-.tx-qtab{display:inline-flex;align-items:center;gap:.35rem;padding:.4rem .85rem;border-radius:999px;
-  font-size:.83rem;font-weight:600;color:var(--ink-soft);text-decoration:none;border:1px solid transparent;
-  transition:background .12s,color .12s}
-.tx-qtab:hover{background:var(--forest-soft);color:var(--forest-deep)}
-.tx-qtab.active{background:var(--forest);color:#fff}
-.tx-qtab-badge{background:rgba(0,0,0,.15);border-radius:999px;padding:0 .4rem;font-size:.74rem}
-.tx-qtab.active .tx-qtab-badge{background:rgba(255,255,255,.25)}
+/* .tx-quicktabs / .tx-qtab now live in app.css — shared with the
+   pending-receipt page, which used the same classes unstyled. */
 </style>
 
 <form method="get" class="ws-toolbar">

@@ -30,6 +30,13 @@ class TrustPendingReceiptExportTests(TestCase):
         self.member = Member.objects.create(name="Jane Giver", phone="254712000111")
         self.c = Client(); self.c.force_login(self.tr)
 
+    # Columns are looked up by HEADER name, not by a hard-coded position:
+    # dropping Fund from the downloads shifted every index after it, and
+    # positional assertions all broke at once. By name they don't.
+    def _col(self, name):
+        from giving.services.pending_receipt import HEADER
+        return HEADER.index(name)
+
     def _rows(self, response):
         import io
         from openpyxl import load_workbook
@@ -72,8 +79,9 @@ class TrustPendingReceiptExportTests(TestCase):
         self.assertEqual(row[1], "254712000111")
         self.assertEqual(row[2], "JANE GIVER")
         self.assertEqual(row[3], 2000)
-        self.assertEqual(row[4], "TPRTrust1")
-        self.assertEqual(row[5], "simple-ref")
+        # Fund is no longer a download column (it stays on the page); the
+        # label itself is still asserted at the service level below.
+        self.assertEqual(row[self._col("Reference")], "simple-ref")
 
     def test_receipted_trust_credit_excluded(self):
         Transaction.objects.create(date=dt.date(2026, 6, 11), amount=Decimal("500"),
@@ -110,11 +118,16 @@ class TrustPendingReceiptExportTests(TestCase):
             department=self.trust2, reference="splitref-tpr", core_ref="CBXTPR-S2",
             payer_phone="254799222333", payer_name="Peter Payer")
         rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
-        matching = [r for r in rows if r and r[5] == "splitref-tpr"]
+        ref = self._col("Reference")
+        matching = [r for r in rows if r and r[ref] == "splitref-tpr"]
         self.assertEqual(len(matching), 1)
         row = matching[0]
         self.assertEqual(row[3], 1000)
-        self.assertEqual(row[4], "Combined Trust Split TPR")
+        # the split fund's own name is still produced by the service, which
+        # is where the download stopped carrying it
+        from giving.services.pending_receipt import pending_receipt_rows
+        svc = next(r for r in pending_receipt_rows() if r[5] == "splitref-tpr")
+        self.assertEqual(svc[4], "Combined Trust Split TPR")
         self.assertEqual(row[1], "254799222333")
         self.assertEqual(row[2], "PETER PAYER")
 
@@ -129,17 +142,22 @@ class TrustPendingReceiptExportTests(TestCase):
             department=self.trust2, reference="no-rule-ref", core_ref="CBXNR-S2",
             payer_phone="254700111222")
         rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
-        matching = [r for r in rows if r and r[5] == "no-rule-ref"]
+        ref = self._col("Reference")
+        matching = [r for r in rows if r and r[ref] == "no-rule-ref"]
         self.assertEqual(len(matching), 1)
         self.assertEqual(matching[0][3], 500)
-        self.assertIn("TPRTrust1", matching[0][4])
-        self.assertIn("TPRTrust2", matching[0][4])
+        # the joined-fund-name fallback now lives only in the service
+        from giving.services.pending_receipt import pending_receipt_rows
+        svc = next(r for r in pending_receipt_rows() if r[5] == "no-rule-ref")
+        self.assertIn("TPRTrust1", svc[4])
+        self.assertIn("TPRTrust2", svc[4])
 
     def test_header_columns_exact(self):
         rows = self._rows(self.c.get("/transactions/?export=trust-pending-receipt"))
         header_row = next(r for r in rows if r and r[0] == "Date")
-        self.assertEqual(list(header_row), ["Date", "Phone", "Member", "Amount",
-                                            "Fund", "Reference", "M-Pesa Reference"])
+        from giving.services.pending_receipt import HEADER
+        self.assertEqual(list(header_row), HEADER)
+        self.assertNotIn("Fund", header_row)
 
     def test_excel_export_sorted_by_name(self):
         Transaction.objects.create(date=dt.date(2026, 6, 10), amount=Decimal("100"),
@@ -168,7 +186,10 @@ class TrustPendingReceiptExportTests(TestCase):
         rows = self._rows(b)
         dupe_rows = [r for r in rows if r and r[2] and "REPEAT PERSON" in str(r[2])]
         self.assertEqual(len(dupe_rows), 2)
-        self.assertTrue(all("repeats" in str(r[2]) for r in dupe_rows))
+        # A repeat is shown by the row highlight alone now — the name itself
+        # must stay clean so the column can be sorted/matched on.
+        self.assertTrue(all(str(r[2]) == "REPEAT PERSON" for r in dupe_rows))
+        self.assertFalse(any("repeats" in str(r[2]).lower() for r in dupe_rows))
 
 
 class PendingReceiptPdfTests(TestCase):

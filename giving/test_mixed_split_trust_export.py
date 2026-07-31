@@ -24,6 +24,11 @@ class MixedSplitTrustExportTests(TestCase):
         self.tr = _tr()
         self.c = Client(); self.c.force_login(self.tr)
 
+    # by-name column lookup: see the note in test_trust_pending_receipt.py
+    def _col(self, name):
+        from giving.services.pending_receipt import HEADER
+        return HEADER.index(name)
+
     def _rows(self, response):
         import io
         from openpyxl import load_workbook
@@ -54,9 +59,13 @@ class MixedSplitTrustExportTests(TestCase):
         self._make_split("ug44gartjd", "COMBINED", "TRUST", "LOCAL",
                          Decimal("20"), Decimal("20"))
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        match = next(r for r in rows if r and r[5] == "ug44gartjd")
+        match = next(r for r in rows if r and r[self._col("Reference")] == "ug44gartjd")
         self.assertEqual(match[3], 40)
-        self.assertEqual(match[4], "COMBINED")
+        # The split fund's own name is no longer a download column; the service
+        # still derives it, which is what this test is really about.
+        from giving.services.pending_receipt import pending_receipt_rows
+        svc = next(r for r in pending_receipt_rows() if r[5] == "ug44gartjd")
+        self.assertEqual(svc[4], "COMBINED")
 
     def test_a_split_whose_local_half_is_LCB_is_now_INCLUDED(self):
         """Behaviour deliberately changed. This split's halves are both LOCAL
@@ -72,7 +81,7 @@ class MixedSplitTrustExportTests(TestCase):
         self._make_split("purelocalref", "PureLocal", "LOCAL", "LOCAL",
                          Decimal("10"), Decimal("10"))
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        self.assertTrue(any(r and r[5] == "purelocalref" for r in rows),
+        self.assertTrue(any(r and r[self._col("Reference")] == "purelocalref" for r in rows),
                         "an unreceipted LCB gift must appear on the pending-receipt list")
 
     def test_a_gift_to_a_plain_local_fund_is_still_excluded(self):
@@ -87,13 +96,13 @@ class MixedSplitTrustExportTests(TestCase):
             confirmed=True, channel="BANK", allocation_status="MANUAL",
             department=d, reference="plainlocalref")
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        self.assertFalse(any(r and r[5] == "plainlocalref" for r in rows))
+        self.assertFalse(any(r and r[self._col("Reference")] == "plainlocalref" for r in rows))
 
     def test_pure_trust_split_unaffected(self):
         self._make_split("puretrustref", "PureTrust", "TRUST", "TRUST",
                          Decimal("300"), Decimal("200"))
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        match = next(r for r in rows if r and r[5] == "puretrustref")
+        match = next(r for r in rows if r and r[self._col("Reference")] == "puretrustref")
         self.assertEqual(match[3], 500)
 
     def test_standalone_trust_transaction_unaffected(self):
@@ -103,7 +112,7 @@ class MixedSplitTrustExportTests(TestCase):
             direction="CREDIT", confirmed=True, channel="BANK", allocation_status="MANUAL",
             department=d, reference="standaloneref")
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        match = next(r for r in rows if r and r[5] == "standaloneref")
+        match = next(r for r in rows if r and r[self._col("Reference")] == "standaloneref")
         self.assertEqual(match[3], 777)
 
     def test_standalone_local_transaction_excluded(self):
@@ -113,18 +122,18 @@ class MixedSplitTrustExportTests(TestCase):
             direction="CREDIT", confirmed=True, channel="CASH", allocation_status="MANUAL",
             department=d, reference="standalonelocalref2")
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        self.assertFalse(any(r and r[5] == "standalonelocalref2" for r in rows))
+        self.assertFalse(any(r and r[self._col("Reference")] == "standalonelocalref2" for r in rows))
 
     def test_fully_receipted_mixed_split_excluded(self):
         self._make_split("fullyreceiptedref", "FullyReceipted", "TRUST", "LOCAL",
                          Decimal("20"), Decimal("20"),
                          enf_receipted=True, lcb_receipted=True)
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        self.assertFalse(any(r and r[5] == "fullyreceiptedref" for r in rows))
+        self.assertFalse(any(r and r[self._col("Reference")] == "fullyreceiptedref" for r in rows))
 
     def test_partially_receipted_mixed_split_still_shows_full_total(self):
         self._make_split("partialreceiptref", "PartialReceipt", "TRUST", "LOCAL",
                          Decimal("15"), Decimal("15"), enf_receipted=True)
         rows = self._rows(self.c.get("/transactions/?export=pending-receipt"))
-        match = next(r for r in rows if r and r[5] == "partialreceiptref")
+        match = next(r for r in rows if r and r[self._col("Reference")] == "partialreceiptref")
         self.assertEqual(match[3], 30)
