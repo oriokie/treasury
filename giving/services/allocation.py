@@ -112,27 +112,20 @@ def _result(rule):
     return target, ("AUTO" if rule.source == AllocationRule.Source.SEED else "LEARNED")
 
 
-def allocate(reference, date=None):
-    """Return (resolver, status).
+def _step_dev_group_numbered(s, date, dev_hit):
+    if dev_hit and dev_hit[0] == "NUMBER":
+        return f"DEV_GROUP_{dev_hit[1]}", "AUTO"
+    return None
 
-    resolver: a Department, a 'DEV_GROUP_<n>'/'DEV_GROUP_NA' token, or 'UNALLOCATED'.
-    status:   'AUTO' | 'LEARNED' | 'REVIEW'.
-    Period-scoped rules that cover `date` take precedence over permanent rules.
+
+def _step_numbered_families(s, date, dev_hit):
+    """Church-configured numbered fund families, e.g. EXPENSE<n> -> "CAMP_<n>".
+
+    One config line covers every group; resolves only when that fund exists.
+    Prefixes may be plain words OR /regex/ patterns (for misspellings and
+    variations, e.g. /expen[sc]es?/). The number is captured by a NAMED group so
+    a user pattern containing its own groups can never shift it.
     """
-    raw = (reference or "").strip().lower()
-    s = normalize_reference(reference)
-    if not s:
-        return "UNALLOCATED", "REVIEW"
-
-    hit = detect_dev_group(s)
-    if hit and hit[0] == "NUMBER":
-        return f"DEV_GROUP_{hit[1]}", "AUTO"
-
-    # church-configured numbered fund families, e.g. EXPENSE<n> -> fund "CAMP_<n>".
-    # One config line covers every group; resolves only when that fund exists.
-    # Prefixes may be plain words OR /regex/ patterns (for misspellings and
-    # variations, e.g. /expen[sc]es?/). The number is captured by a NAMED group
-    # so a user pattern containing its own groups can never shift it.
     for prefixes, template in _numbered_fund_families():
         fm = re.search(r"(?:%s)[ _-]*0*(?P<famnum>\d+)" % "|".join(prefixes), s)
         if fm:
@@ -141,21 +134,24 @@ def allocate(reference, date=None):
             dept = Department.objects.filter(name__iexact=name).first()
             if dept:
                 return dept, "AUTO"
+    return None
 
-    # NOTE: the old "extra dev-group prefixes" setting was read here. It built
-    # exactly the regex a DevGroupPattern of kind NUMBERED builds, but could not
-    # be labelled, ordered, disabled or audited — two places to configure one
-    # behaviour, neither able to see the other. Migration 0025 turned anything a
-    # church had configured into real patterns, which _dev_patterns() above
-    # already reads. There is now one place.
 
-    exact = list(AllocationRule.objects.filter(reference=s, archived=False).select_related(
-        "department", "split_fund"))
+def _step_exact_rules(s, date, dev_hit):
+    # NOTE: the old "extra dev-group prefixes" setting was read around here. It
+    # built exactly the regex a DevGroupPattern of kind NUMBERED builds, but
+    # could not be labelled, ordered, disabled or audited — two places to
+    # configure one behaviour, neither able to see the other. Migration 0025
+    # turned anything a church had configured into real patterns, which
+    # _dev_patterns() already reads. There is now one place.
+    exact = list(AllocationRule.objects.filter(reference=s, archived=False)
+                 .select_related("department", "split_fund"))
     rule = _pick(exact, date)
-    if rule:
-        return _result(rule)
+    return _result(rule) if rule else None
 
-    # pattern rules (starts-with / ends-with / contains): most specific first
+
+def _step_pattern_rules(s, date, dev_hit):
+    """Starts-with / ends-with / contains / regex rules, most specific first."""
     patterns = list(AllocationRule.objects.filter(archived=False).exclude(
         match_type=AllocationRule.MatchType.EXACT).select_related(
         "department", "split_fund"))
@@ -186,10 +182,62 @@ def allocate(reference, date=None):
     perm_hits = [r for r in matched if not r.is_period]
     if perm_hits:
         return _result(perm_hits[0])
+    return None
 
-    # development without a usable number -> still clearly a dev-group gift
-    if hit and hit[0] == "WORD":
+
+def _step_dev_group_word(s, date, dev_hit):
+    """Development without a usable number — still clearly a dev-group gift."""
+    if dev_hit and dev_hit[0] == "WORD":
         return "DEV_GROUP_NA", "AUTO"
+    return None
+
+
+#: Each step tries to claim the reference and returns (resolver, status) or
+#: None. Keyed by the stage keys in core.services.allocation_priority, which is
+#: what lets a church reorder them without this module knowing the order.
+STEPS = {
+    "dev_group_numbered": _step_dev_group_numbered,
+    "numbered_families": _step_numbered_families,
+    "exact_rules": _step_exact_rules,
+    "pattern_rules": _step_pattern_rules,
+    "dev_group_word": _step_dev_group_word,
+}
+
+
+def allocate(reference, date=None, order=None):
+    """Return (resolver, status).
+
+    resolver: a Department, a 'DEV_GROUP_<n>'/'DEV_GROUP_NA' token, or 'UNALLOCATED'.
+    status:   'AUTO' | 'LEARNED' | 'REVIEW'.
+    Period-scoped rules that cover `date` take precedence over permanent rules.
+
+    The steps are tried in the order the church has configured (see
+    core.services.allocation_priority). `order` overrides that, which is how the
+    tester shows what a proposed order WOULD do without saving it first.
+    """
+    s = normalize_reference(reference)
+    if not s:
+        return "UNALLOCATED", "REVIEW"
+
+    # Resolved once and handed to the steps that need it: two of them ask the
+    # same question of the same reference, and it is the more expensive one.
+    dev_hit = detect_dev_group(s)
+
+    if order is None:
+        from core.services.allocation_priority import movable_order
+        from core.models import SiteConfig
+        try:
+            order = movable_order(SiteConfig.get().allocation_priority)
+        except Exception:      # noqa: BLE001 — config must never break banking
+            order = list(STEPS)
+
+    for key in order:
+        step = STEPS.get(key)
+        if step is None:
+            continue
+        result = step(s, date, dev_hit)
+        if result is not None:
+            return result
 
     return "UNALLOCATED", "REVIEW"
 

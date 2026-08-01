@@ -278,6 +278,18 @@ class SiteConfig(models.Model):
                   "= CAMP_{n}' also catches EXPENCE7 and EXPENSES7. Patterns match "
                   "the lowercased reference with punctuation removed; an invalid "
                   "pattern is ignored. Only applies when that fund exists.")
+    envelope_default_funds = models.TextField(blank=True, default="",
+        help_text="Which fund columns a new Sabbath envelope sheet opens with, "
+                  "one column key per line, in the order they should appear. "
+                  "Blank means the built-in list. Set from the Envelope "
+                  "columns page — a key naming a fund that no longer exists is "
+                  "ignored rather than leaving a blank column.")
+    allocation_priority = models.TextField(blank=True, default="",
+        help_text="The order allocation sources are tried in, one key per line. "
+                  "Blank means the built-in order. Set from the Allocation "
+                  "priority page rather than by hand — the keys are defined in "
+                  "core.services.allocation_priority, and an unknown one is "
+                  "ignored rather than obeyed.")
     # ---- Cheque printing (onto the actual bank leaf) -----------------------
     #
     # Printing onto a real cheque means putting ink at exact millimetre positions

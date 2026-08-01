@@ -1,0 +1,158 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Allocation priority · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Settings · {{ SITE_NAME }}</div>
+      <h1>Allocation priority</h1>
+      <div class="desc">Seven different things can decide which fund a contribution belongs to.
+        This is the order they get to claim it — and where money ends up in the wrong fund,
+        this is usually why.</div>
+    </div>
+    <div class="rpt-actions no-print">
+      <a class="btn btn-ghost btn-sm" href="{% url 'rule_list' %}">Allocation rules</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'settings' %}">Settings</a></div>
+  </div>
+  <div class="rule"></div>
+</div>
+
+{% if problems %}
+<div class="panel panel-amber u-mb">
+  <b>That order was not saved.</b>
+  {% for p in problems %}<div class="muted u-mt-sm">{{ p }}</div>{% endfor %}
+</div>
+{% endif %}
+
+{% comment %}The tester sits above the ordering deliberately. Reordering
+allocation blind is how a church fixes one wrong fund and creates two more; the
+workflow this page is for is "type the reference that went astray, see who
+claimed it, reorder, check again".{% endcomment %}
+<div class="card u-mb"><div class="hd"><b>Why did this money go there?</b>
+  <span class="muted u-xs">— reads the live rules and changes nothing</span></div>
+<div class="bd">
+  <form method="post" class="filter-bar">{% csrf_token %}
+    <input type="hidden" name="action" value="test">
+    <div class="f"><label class="lbl" for="ref">Reference on the statement</label>
+      <input class="field" id="ref" name="reference" value="{{ probe_reference }}"
+             placeholder="e.g. DEVGR7, CAMP EXPENSE 3, LOAN DEV"></div>
+    <div class="f"><label class="lbl" for="pname">Payer name <span class="muted u-xs">(optional)</span></label>
+      <input class="field" id="pname" name="name" value="{{ probe_name }}"></div>
+    <div class="f"><label class="lbl" for="pphone">Phone <span class="muted u-xs">(optional)</span></label>
+      <input class="field" id="pphone" name="phone" value="{{ probe_phone }}"></div>
+    <button class="btn btn-sm">Test</button>
+  </form>
+
+  {% if probe %}
+  <div class="u-mt">
+    {% if probe.winner %}
+      <p><b>{{ probe.winner.label }}</b> claims it{% if probe.normalised %},
+        reading the reference as <code>{{ probe.normalised }}</code>{% endif %}.</p>
+      {% if probe.contested %}
+      <div class="panel panel-amber u-mb">
+        <b>{{ probe.contested|length }} other source{{ probe.contested|length|pluralize }}
+          also claim{{ probe.contested|length|pluralize:"s," }} this money.</b>
+        <div class="muted">Nothing but the order below decides between them — which is
+          exactly the situation that puts money in the wrong fund. If the winner is wrong,
+          move the one you want above it.</div>
+      </div>
+      {% endif %}
+    {% else %}
+      <p>Nothing claims it, so it would go to the <a class="link" href="{% url 'queue' %}">review queue</a>
+        for someone to allocate by hand.</p>
+    {% endif %}
+    <table class="ledger compact">
+      <thead><tr><th>Source</th><th>Would send it to</th><th></th></tr></thead>
+      <tbody>
+      {% for row in probe.rows %}
+        <tr{% if row.wins %} class="row-hit"{% endif %}>
+          <td>{{ row.stage.label }}{% if row.stage.pinned %}
+            <span class="pill pill-grey u-xs" title="{{ row.stage.pinned_because }}">pinned</span>{% endif %}</td>
+          <td>{% if row.claims %}<b>{{ row.claims }}</b>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="muted u-xs">{% if row.wins %}<b>wins</b> — {% endif %}{{ row.detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div></div>
+
+<form method="post">{% csrf_token %}
+<div class="card u-mb"><div class="hd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+  <span><b>The order they are tried in</b>
+    <span class="muted u-xs">— the first one that recognises a contribution decides its fund
+      {% if not is_default %}· <span class="text-amber">changed from the built-in order</span>{% endif %}</span></span>
+  <span class="btn-row">
+    <button class="btn btn-sm">Save this order</button>
+    <button class="btn btn-ghost btn-sm" name="action" value="reset"
+            onclick="return confirm('Restore the built-in allocation order?')">Restore default</button>
+  </span>
+</div>
+<div class="bd u-pad-cell">
+  <ol class="alloc-order" id="allocOrder">
+  {% for s in stages %}
+    <li class="alloc-step{% if s.pinned %} is-pinned{% endif %}" data-key="{{ s.key }}">
+      <input type="hidden" name="order" value="{{ s.key }}">
+      <div class="as-move">
+        {% if s.pinned %}<span class="muted" title="{{ s.pinned_because }}">🔒</span>
+        {% else %}
+        <button type="button" class="btn btn-xs btn-ghost" data-dir="up" aria-label="Move {{ s.label }} earlier">▲</button>
+        <button type="button" class="btn btn-xs btn-ghost" data-dir="down" aria-label="Move {{ s.label }} later">▼</button>
+        {% endif %}
+      </div>
+      <div class="as-body">
+        <b>{{ s.label }}</b>
+        {% if s.pinned %}<span class="pill pill-grey u-xs">pinned</span>{% endif %}
+        <div class="muted u-xs">{{ s.what }}</div>
+        {% if s.pinned %}
+        {% comment %}The reason is on the page, not in a tooltip. A pin nobody
+        can read the reason for is just an unexplained refusal.{% endcomment %}
+        <div class="muted u-xs" style="border-left:3px solid var(--line);padding-left:.5rem;margin-top:.3rem">
+          <b>Cannot be moved.</b> {{ s.pinned_because }}</div>
+        {% endif %}
+      </div>
+    </li>
+  {% endfor %}
+  </ol>
+  <p class="muted u-xs u-mt">Saving changes how money is allocated from now on.
+    Contributions already recorded keep the fund they were given — nothing is re-allocated
+    retrospectively, so a change here can never quietly restate last month's accounts.</p>
+</div></div>
+</form>
+
+<style>
+.alloc-order{list-style:none;margin:0;padding:0;counter-reset:step}
+.alloc-step{display:flex;gap:.7rem;align-items:flex-start;padding:.6rem .2rem;
+  border-bottom:1px solid var(--line)}
+.alloc-step:last-child{border-bottom:0}
+.alloc-step.is-pinned{opacity:.85}
+.alloc-step::before{counter-increment:step;content:counter(step);
+  font-variant-numeric:tabular-nums;font-weight:600;color:var(--muted);
+  min-width:1.4rem;text-align:right}
+.as-move{display:flex;flex-direction:column;gap:.15rem;min-width:2.2rem}
+.as-body{flex:1}
+.row-hit td{background:var(--card-head)}
+</style>
+<script>
+(function(){
+  // Reordering moves the whole <li>, so the hidden input inside it travels with
+  // it and the posted order is simply the DOM order — no parallel list to keep
+  // in step with what is on screen.
+  var list = document.getElementById("allocOrder");
+  if(!list) return;
+  list.addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-dir]");
+    if(!btn) return;
+    var li = btn.closest(".alloc-step");
+    var dir = btn.dataset.dir;
+    var sib = dir === "up" ? li.previousElementSibling : li.nextElementSibling;
+    // A pinned step is a wall, not a thing to swap with: stepping over it would
+    // put the mover on the wrong side of a boundary the server will refuse.
+    if(!sib || sib.classList.contains("is-pinned")) return;
+    if(dir === "up") list.insertBefore(li, sib); else list.insertBefore(sib, li);
+    btn.focus();
+  });
+})();
+</script>
+{% endblock %}

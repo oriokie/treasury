@@ -196,6 +196,7 @@
           <a href="{% url 'profile_list' %}" class="{% if 'profile' in request.resolver_match.url_name %}active{% endif %}">Profiles &amp; rights</a>
           <a href="{% url 'controls' %}" class="{% if request.resolver_match.url_name == 'controls' %}active{% endif %}">Period locks &amp; controls</a>
           <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">Settings</a>
+          <a href="{% url 'allocation_priority' %}" class="{% if request.resolver_match.url_name == 'allocation_priority' %}active{% endif %}">Allocation priority</a>
           <a href="/admin/">Django admin</a>
         </div>
       </details>
