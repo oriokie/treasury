@@ -15,16 +15,84 @@ from giving.models import Transaction
 from pledges.models import Pledge, PledgePayment
 
 
+def applied_by_transaction():
+    """How much of each contribution has already been applied to some pledge."""
+    from django.db.models import Sum
+    return {row["transaction_id"]: row["t"] or Decimal("0")
+            for row in (PledgePayment.objects
+                        .filter(transaction__isnull=False)
+                        .values("transaction_id")
+                        .annotate(t=Sum("amount")))}
+
+
 def already_matched_txn_ids():
-    """Contribution ids already applied to any pledge (so we don't double-count)."""
-    return set(PledgePayment.objects.filter(transaction__isnull=False)
-               .values_list("transaction_id", flat=True))
+    """Contributions with nothing left to give — applied in FULL to some pledge.
+
+    This used to be every contribution touched by any pledge at all, which
+    stranded the remainder of a part-applied gift for good: a member who gave
+    10,000 against a 4,000 pledge had 6,000 of their own money made permanently
+    invisible to matching, and their pledge went on reading as unpaid however
+    much they gave afterwards. A treasurer would then chase somebody who had
+    already paid.
+
+    That it was wrong is visible in the code it fed: `suggest_matches_for_pledge`
+    computes how much of each candidate is still unapplied, and that
+    subtraction could never once have found anything to subtract, because every
+    such contribution had already been excluded here.
+    """
+    applied = applied_by_transaction()
+    if not applied:
+        return set()
+    amounts = dict(Transaction.objects.filter(id__in=applied)
+                   .values_list("id", "amount"))
+    return {tid for tid, used in applied.items()
+            if used >= amounts.get(tid, Decimal("0"))}
+
+
+def campaign_fund_ids(campaign):
+    """The funds a gift must land in to count toward this campaign: its target
+    fund and every sub-account under it.
+
+    The subtree is the whole point. A camp meeting appeal names CAMP MEETING as
+    its fund, but no gift is ever recorded against it — the money lands in
+    CAMP_1 … CAMP_30, the per-group sub-accounts. Comparing against the parent
+    id alone therefore excluded every real contribution and let through the
+    ones that were never meant for the appeal at all.
+
+    Returns an empty set when the campaign names no fund, which the callers
+    read as "this campaign cannot be scoped by fund" — not as "nothing
+    matches".
+    """
+    from departments.models import subtree_ids
+    # Memoised on the campaign instance. The bulk sweep asks this once per
+    # pledge, and every pledge of one campaign resolves the same subtree — two
+    # queries each, for the identical answer.
+    cached = getattr(campaign, "_pledge_fund_ids", None)
+    if cached is None:
+        cached = subtree_ids([campaign.target_department_id])
+        campaign._pledge_fund_ids = cached
+    return cached
+
+
+def _gift_is_for_campaign(txn, fund_ids):
+    """Whether one contribution counts toward a campaign scoped to `fund_ids`.
+
+    A gift with no fund on it does NOT count. It used to: the test read "if the
+    campaign names a fund AND the gift names one, they must agree", so an
+    unallocated credit skipped the check entirely and was applied to the
+    pledge. Unallocated means nobody has yet said what the money was for, which
+    is the opposite of evidence that it was for this appeal.
+    """
+    if not fund_ids:
+        return True                  # campaign names no fund; nothing to scope by
+    return txn.department_id in fund_ids
 
 
 def candidate_contributions(pledge, window_days=400):
     """Confirmed contributions from this pledge's member that could be applied to
     it: same member (by FK or name key), within the pledge's active window, in the
-    target fund when the campaign names one, not already matched, not reversed."""
+    campaign's fund or one of its sub-accounts, not already matched, not
+    reversed."""
     member = pledge.member
     start = pledge.start_date - dt.timedelta(days=7)
     end = (pledge.end_date or dt.date.today()) + dt.timedelta(days=window_days)
@@ -35,6 +103,7 @@ def candidate_contributions(pledge, window_days=400):
     # match the member by FK, or by name key when the gift wasn't linked
     nk = name_key(member.name)
     qs = qs.filter(Q(member=member) | Q(member__isnull=True, payer_name__isnull=False))
+    fund_ids = campaign_fund_ids(pledge.campaign)
     out = []
     for t in qs.select_related("department"):
         if t.member_id == member.id:
@@ -43,16 +112,19 @@ def candidate_contributions(pledge, window_days=400):
             ok = bool(nk) and name_key(t.payer_name or "") == nk
         if not ok:
             continue
-        # if the campaign names a target fund, prefer gifts to that fund
-        camp_dept = pledge.campaign.target_department_id
-        if camp_dept and t.department_id and t.department_id != camp_dept:
+        if not _gift_is_for_campaign(t, fund_ids):
             continue
         out.append(t)
     return out
 
 
 def suggest_matches_for_pledge(pledge):
-    """Return candidate contributions with how much of each is still unapplied."""
+    """Return candidate contributions with how much of each is still unapplied.
+
+    The subtraction here is what makes a part-applied gift usable again, so it
+    is also what stops one being applied twice: a gift already spent down to
+    nothing yields `free` of zero and drops out.
+    """
     cands = candidate_contributions(pledge)
     applied_by_txn = {}
     for pp in PledgePayment.objects.filter(transaction__in=[c.id for c in cands]):
@@ -83,10 +155,21 @@ def auto_match_pledge(pledge, user=None, max_apply=None):
             apply_amt = min(apply_amt, max_apply - applied_total)
             if apply_amt <= 0:
                 break
-        PledgePayment.objects.create(
-            pledge=pledge, transaction=row["txn"], amount=apply_amt,
-            date=row["txn"].date, source=PledgePayment.Source.AUTO,
-            matched_by=user, note="Auto-matched")
+        # One row per (pledge, contribution) — the model enforces it. So a
+        # pledge drawing MORE from a gift it has already partly used tops up
+        # the existing row rather than adding a second: before the remainder of
+        # a part-applied gift was reachable at all this path could never run,
+        # and reaching it with a plain create() raises IntegrityError.
+        existing = PledgePayment.objects.filter(
+            pledge=pledge, transaction=row["txn"]).first()
+        if existing is not None:
+            existing.amount += apply_amt
+            existing.save(update_fields=["amount"])
+        else:
+            PledgePayment.objects.create(
+                pledge=pledge, transaction=row["txn"], amount=apply_amt,
+                date=row["txn"].date, source=PledgePayment.Source.AUTO,
+                matched_by=user, note="Auto-matched")
         applied_total += apply_amt
         outstanding -= apply_amt
     return applied_total
@@ -95,12 +178,16 @@ def auto_match_pledge(pledge, user=None, max_apply=None):
 def auto_match_all(user=None, campaign=None):
     """Sweep all active, unpaid pledges and auto-match available contributions.
     Returns (pledges_touched, total_applied)."""
-    qs = Pledge.objects.filter(status=Pledge.Status.ACTIVE)
+    qs = Pledge.objects.filter(status=Pledge.Status.ACTIVE).select_related("campaign")
     if campaign:
         qs = qs.filter(campaign=campaign)
     touched = 0
     total = Decimal("0")
+    # One campaign object per campaign, shared by its pledges, so the fund
+    # subtree above is resolved once for the sweep rather than once per pledge.
+    shared = {}
     for pledge in qs:
+        pledge.campaign = shared.setdefault(pledge.campaign_id, pledge.campaign)
         applied = auto_match_pledge(pledge, user=user)
         if applied > 0:
             touched += 1
@@ -133,6 +220,7 @@ def active_pledges_for_contribution(txn, cfg=None):
     qs = Pledge.objects.filter(status=Pledge.Status.ACTIVE).select_related(
         "member", "campaign")
     out = []
+    fund_cache = {}
     same_fund_only = cfg.pledge_match_same_fund_only
     window = cfg.pledge_match_window_days or 400
     for p in qs:
@@ -152,10 +240,15 @@ def active_pledges_for_contribution(txn, cfg=None):
         end = (p.end_date or dt.date.today()) + dt.timedelta(days=window)
         if not (start <= txn.date <= end):
             continue
-        # fund match (optional)
+        # fund match (optional) — the campaign's fund OR any of its
+        # sub-accounts, and an unallocated gift is not evidence of intent.
+        # Cached per campaign: the sweep runs this for every active pledge, and
+        # the pledges of one campaign all resolve the same subtree.
         if same_fund_only:
-            camp_dept = p.campaign.target_department_id
-            if camp_dept and txn.department_id and txn.department_id != camp_dept:
+            camp_id = p.campaign_id
+            if camp_id not in fund_cache:
+                fund_cache[camp_id] = campaign_fund_ids(p.campaign)
+            if not _gift_is_for_campaign(txn, fund_cache[camp_id]):
                 continue
         out.append(p)
     return out

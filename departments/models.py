@@ -479,6 +479,32 @@ class DepartmentLeadership(models.Model):
         return f"{self.user} leads {self.department}"
 
 
+def subtree_ids(root_ids):
+    """A fund's id together with every sub-account beneath it, at any depth.
+
+    Church funds are a tree on purpose: CAMP MEETING is the fund, and CAMP_1 …
+    CAMP_30 are where the money actually lands. So "was this given to the camp
+    meeting fund" can only be answered by the whole subtree — asking about the
+    parent alone answers "no" for every gift a member actually made.
+
+    Level by level rather than recursively, so the number of queries is the
+    depth of the tree (two or three in practice) and not the number of funds.
+    """
+    root_ids = [r for r in (root_ids or []) if r]
+    if not root_ids:
+        return set()
+    all_ids = set(root_ids)
+    frontier = set(root_ids)
+    while frontier:
+        children = set(Department.objects.filter(parent_id__in=frontier)
+                       .exclude(id__in=all_ids).values_list("id", flat=True))
+        if not children:
+            break
+        all_ids |= children
+        frontier = children
+    return all_ids
+
+
 def departments_led_by(user):
     """The set of Department objects a leader may see: the departments they are
     assigned to, plus ALL their sub-accounts at any depth (children, grandchildren
@@ -490,14 +516,4 @@ def departments_led_by(user):
                    .values_list("department_id", flat=True))
     if not led_ids:
         return Department.objects.none()
-    # walk down the tree, level by level, until no new sub-accounts appear
-    all_ids = set(led_ids)
-    frontier = set(led_ids)
-    while frontier:
-        children = set(Department.objects.filter(parent_id__in=frontier)
-                       .exclude(id__in=all_ids).values_list("id", flat=True))
-        if not children:
-            break
-        all_ids |= children
-        frontier = children
-    return Department.objects.filter(id__in=all_ids).distinct()
+    return Department.objects.filter(id__in=subtree_ids(led_ids)).distinct()
