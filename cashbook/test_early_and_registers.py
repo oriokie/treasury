@@ -133,7 +133,12 @@ class PettyCashRegisterAgreesWithTheFloatCardTests(TestCase):
             fund_type=Department.FundType.LOCAL,
             category=Department.Category.MINISTRY)
         self.today = dt.date.today()
-        self.start = self.today.replace(day=1)
+        # Twenty days back, not the 1st: the register is asked for
+        # `start`..`today`, and the expense below sits at start+2 with a refund
+        # at start+5, so anchoring on the 1st pushed both past today whenever
+        # the suite ran early in a month — the refund row could not appear
+        # because the refund had not happened yet.
+        self.start = self.today - dt.timedelta(days=20)
         PettyCashTopUp.objects.create(date=self.start, amount=Decimal("5000"),
                                       recorded_by=self.user)
         self.expense = Expense.objects.create(

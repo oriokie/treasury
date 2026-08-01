@@ -382,8 +382,14 @@ class HistoricalAccuracyTests(Phase8Fixture):
         scheme_svc.publish_policy(v2, user=self.treasurer)
 
         self.client.force_login(self.treasurer)
-        body = self.client.get(reverse("engine_report", args=["benevolent_case_report"])
-                               ).content.decode()
+        # Ask for a period that actually contains the case. The report defaults
+        # to month-to-date, and this case is dated five days ago — so on the
+        # first days of a month the report was empty and the assertion below
+        # failed for a reason that had nothing to do with what it is testing.
+        body = self.client.get(
+            reverse("engine_report", args=["benevolent_case_report"]),
+            {"start": (TODAY - dt.timedelta(days=30)).isoformat(),
+             "end": TODAY.isoformat()}).content.decode()
         self.assertIn("10,000", body.replace("&nbsp;", " "))
         self.assertNotIn("99,999", body)
 

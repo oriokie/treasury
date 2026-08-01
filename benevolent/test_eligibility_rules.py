@@ -40,6 +40,26 @@ def _check(res, code):
     return next(c for c in res.checks if c.code == code)
 
 
+def _month_samples(days_back):
+    """One day inside every month from `days_back` ago through today.
+
+    The tests below used to walk this span in 28-day strides, which is shorter
+    than every month — so the final stride landed in the PREVIOUS month whenever
+    today fell in the first days of one, and the current month's dues were never
+    paid. A member who was supposed to be fully paid up was then genuinely one
+    period in arrears, and two catch-up tests failed. They passed mid-month and
+    failed on the 1st: the suite was red or green depending on the date it ran.
+
+    Today is always included, so the current period is always covered.
+    """
+    out, d = [], TODAY - dt.timedelta(days=days_back)
+    while d <= TODAY:
+        out.append(d)
+        d += dt.timedelta(days=28)
+    out.append(TODAY)
+    return out
+
+
 class EligibilityFixture(TestCase):
     def setUp(self):
         self.treasurer = User.objects.create_user("t_elig", password="x")
@@ -238,16 +258,14 @@ class CatchUpTests(EligibilityFixture):
         # re-qualification window exists to catch. Explicit period labels let a
         # recent-dated payment settle an old period.
         from benevolent.services.contributions import period_label_for
-        d = TODAY - dt.timedelta(days=200)
         seen = set()
-        while d <= TODAY:
-            lbl = period_label_for(d, SchemePolicy.Frequency.MONTHLY)
+        for day in _month_samples(200):
+            lbl = period_label_for(day, SchemePolicy.Frequency.MONTHLY)
             if lbl not in seen:
                 seen.add(lbl)
                 contrib_svc.record_contribution(
                     self.scheme, date=TODAY - dt.timedelta(days=2), amount=Decimal("100"),
                     user=self.treasurer, membership=mem, period_label=lbl)
-            d += dt.timedelta(days=28)
         res = evaluate(self.scheme, event_type=self.bereavement, event_date=TODAY,
                        membership=mem)
         c = _check(res, "catch_up")
@@ -273,16 +291,14 @@ class CatchUpTests(EligibilityFixture):
         mem = self._enrol("On Time Always", days_ago=200)
         # pay each month within its own period (on time), across the whole tenure
         from benevolent.services.contributions import period_label_for
-        d = TODAY - dt.timedelta(days=200)
         seen = set()
-        while d <= TODAY:
-            lbl = period_label_for(d, SchemePolicy.Frequency.MONTHLY)
+        for day in _month_samples(200):
+            lbl = period_label_for(day, SchemePolicy.Frequency.MONTHLY)
             if lbl not in seen:
                 seen.add(lbl)
                 contrib_svc.record_contribution(
-                    self.scheme, date=d, amount=Decimal("100"),
+                    self.scheme, date=day, amount=Decimal("100"),
                     user=self.treasurer, membership=mem, period_label=lbl)
-            d += dt.timedelta(days=28)
         res = evaluate(self.scheme, event_type=self.bereavement, event_date=TODAY,
                        membership=mem)
         c = _check(res, "catch_up")

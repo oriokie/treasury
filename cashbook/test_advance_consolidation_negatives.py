@@ -123,7 +123,13 @@ class PettyCashRegisterAndCardAgreeOnAdvancesTests(TestCase):
             fund_type=Department.FundType.LOCAL,
             category=Department.Category.MINISTRY)
         self.today = dt.date.today()
-        self.start = self.today.replace(day=1)
+        # Twenty days back rather than the 1st of the month — the same anchor the
+        # fixture above uses. The report is asked for `start`..`today`, and the
+        # advance below is dated start+2 with a settlement at start+5, so
+        # anchoring on the 1st put both in the FUTURE whenever the suite ran in
+        # the first days of a month: the advance fell outside the window and the
+        # float never moved. Green on the 20th, red on the 1st.
+        self.start = self.today - dt.timedelta(days=20)
         PettyCashTopUp.objects.create(date=self.start, amount=Decimal("20000"),
                                       recorded_by=self.user)
         self.client = Client()
