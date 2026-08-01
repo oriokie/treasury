@@ -1,0 +1,133 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Envelope columns · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Settings · {{ SITE_NAME }}</div>
+      <h1>Envelope columns</h1>
+      <div class="desc">The fund columns a new Sabbath envelope sheet opens with, and the order
+        they appear in.</div>
+    </div>
+    <div class="rpt-actions no-print">
+      <a class="btn btn-ghost btn-sm" href="{% url 'envelope_ledger' %}">Open a sheet</a>
+      <a class="btn btn-ghost btn-sm" href="{% url 'settings' %}">Settings</a></div>
+  </div>
+  <div class="rule"></div>
+</div>
+
+<div class="panel u-mb">
+  {% comment %}Said plainly because it is the thing that makes this setting safe
+  to change: nothing here can stop money reaching a fund.{% endcomment %}
+  Every fund stays available on the sheet whatever is chosen here — this only decides
+  what is already showing when the sheet opens, so a column left out can still be added
+  on the day. Sheets already started keep the columns they were opened with.
+  {% if is_default %}<div class="muted u-mt-sm">Currently using the built-in list:
+    {{ built_in }}.</div>{% endif %}
+</div>
+
+<form method="post">{% csrf_token %}
+<div class="grid cols-2">
+  <div class="card"><div class="hd" style="display:flex;justify-content:space-between;align-items:center;gap:.6rem">
+    <span><b>Opens with these</b> <span class="muted u-xs">— in this order</span></span>
+    <span class="btn-row">
+      <button class="btn btn-sm">Save</button>
+      <button class="btn btn-ghost btn-sm" name="action" value="reset"
+              onclick="return confirm('Restore the built-in envelope columns?')">Restore default</button>
+    </span>
+  </div>
+  <div class="bd u-pad-cell">
+    <ol class="col-list" id="chosen">
+    {% for c in selected %}
+      <li class="col-item" data-key="{{ c.key }}">
+        <input type="hidden" name="columns" value="{{ c.key }}">
+        <span class="ci-move">
+          <button type="button" class="btn btn-xs btn-ghost" data-dir="up" aria-label="Move {{ c.label }} earlier">▲</button>
+          <button type="button" class="btn btn-xs btn-ghost" data-dir="down" aria-label="Move {{ c.label }} later">▼</button>
+        </span>
+        <span class="ci-name">{{ c.label }}
+          {% if c.trust %}<span class="pill pill-brass u-xs">Trust</span>{% endif %}
+          {% if c.is_development %}<span class="pill pill-grey u-xs">Development</span>{% endif %}</span>
+        <button type="button" class="btn btn-xs btn-ghost ci-drop" aria-label="Remove {{ c.label }}">Remove</button>
+      </li>
+    {% empty %}
+      <li class="muted">Nothing chosen — a new sheet would open empty.</li>
+    {% endfor %}
+    </ol>
+  </div></div>
+
+  <div class="card"><div class="hd"><b>Available to add</b>
+    <span class="muted u-xs">— every other active fund and split offering</span></div>
+  <div class="bd u-pad-cell">
+    <ul class="col-list" id="available">
+    {% for c in available %}
+      <li class="col-item" data-key="{{ c.key }}">
+        <span class="ci-name">{{ c.label }}
+          {% if c.trust %}<span class="pill pill-brass u-xs">Trust</span>{% endif %}
+          {% if c.is_development %}<span class="pill pill-grey u-xs">Development</span>{% endif %}</span>
+        <button type="button" class="btn btn-xs ci-add" aria-label="Add {{ c.label }}">Add</button>
+      </li>
+    {% empty %}
+      <li class="muted">Every fund is already on the sheet.</li>
+    {% endfor %}
+    </ul>
+  </div></div>
+</div>
+</form>
+
+<style>
+.col-list{list-style:none;margin:0;padding:0;counter-reset:col}
+.col-item{display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;
+  border-bottom:1px solid var(--line)}
+.col-item:last-child{border-bottom:0}
+#chosen .col-item::before{counter-increment:col;content:counter(col);
+  font-variant-numeric:tabular-nums;color:var(--muted);min-width:1.4rem;text-align:right}
+.ci-move{display:flex;flex-direction:column;gap:.1rem}
+.ci-name{flex:1}
+</style>
+<script>
+(function(){
+  var chosen=document.getElementById("chosen"), avail=document.getElementById("available");
+  if(!chosen||!avail) return;
+  function moveBtns(){
+    return '<span class="ci-move">'
+      + '<button type="button" class="btn btn-xs btn-ghost" data-dir="up" aria-label="Move earlier">▲</button>'
+      + '<button type="button" class="btn btn-xs btn-ghost" data-dir="down" aria-label="Move later">▼</button>'
+      + '</span>';
+  }
+  // The hidden input travels inside its <li>, so the posted order is simply the
+  // DOM order of the chosen list — no second list to keep in step with it.
+  chosen.addEventListener("click", function(e){
+    var dir=e.target.closest("button[data-dir]");
+    if(dir){
+      var li=dir.closest(".col-item");
+      var sib=dir.dataset.dir==="up"?li.previousElementSibling:li.nextElementSibling;
+      if(sib&&sib.classList.contains("col-item")){
+        if(dir.dataset.dir==="up") chosen.insertBefore(li,sib); else chosen.insertBefore(sib,li);
+        dir.focus();
+      }
+      return;
+    }
+    var drop=e.target.closest(".ci-drop");
+    if(drop){
+      var li=drop.closest(".col-item");
+      li.querySelector("input[name=columns]").remove();
+      li.querySelector(".ci-move").remove();
+      drop.outerHTML='<button type="button" class="btn btn-xs ci-add" aria-label="Add">Add</button>';
+      avail.appendChild(li);
+    }
+  });
+  avail.addEventListener("click", function(e){
+    var add=e.target.closest(".ci-add");
+    if(!add) return;
+    var li=add.closest(".col-item");
+    var input=document.createElement("input");
+    input.type="hidden"; input.name="columns"; input.value=li.dataset.key;
+    li.insertAdjacentHTML("afterbegin", moveBtns());
+    li.appendChild(input);
+    add.outerHTML='<button type="button" class="btn btn-xs btn-ghost ci-drop" aria-label="Remove">Remove</button>';
+    chosen.appendChild(li);
+  });
+})();
+</script>
+{% endblock %}

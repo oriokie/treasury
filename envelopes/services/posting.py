@@ -137,6 +137,23 @@ def column_catalog(for_import=False):
         cols.append({"key": f"split:{s.id}", "label": f"{s.name} (split)",
                      "name": s.name, "kind": "split", "trust": False,
                      "is_development": False, "subgroups": []})
+    # Which columns open by default, and in what order. A church that collects
+    # under different headings than PREFERRED names had no way to say so: every
+    # new sheet opened on the wrong columns and someone re-picked them by hand,
+    # every Sabbath. Configured keys win; PREFERRED is the fallback for a church
+    # that has not said otherwise, so behaviour is unchanged until it does.
+    chosen = configured_default_keys()
+    if chosen:
+        rank_of = {key: i for i, key in enumerate(chosen)}
+
+        def rank(c):
+            return ((0, rank_of[c["key"]]) if c["key"] in rank_of
+                    else (1, c["label"].lower()))
+        cols.sort(key=rank)
+        for c in cols:
+            c["default"] = c["key"] in rank_of
+        return cols
+
     pref = [p.lower() for p in PREFERRED]
 
     def rank(c):
@@ -146,6 +163,27 @@ def column_catalog(for_import=False):
     for c in cols:
         c["default"] = c["name"].lower() in set(pref)
     return cols
+
+
+def configured_default_keys():
+    """The church's chosen default columns, in order, or [] if it has not set any.
+
+    Returns [] rather than raising on anything unreadable: this is called to
+    build the entry grid, and a broken setting must not be able to stop a
+    Sabbath's envelopes being entered.
+    """
+    try:
+        from core.models import SiteConfig
+        raw = SiteConfig.get().envelope_default_funds or ""
+    except Exception:      # noqa: BLE001
+        return []
+    seen, out = set(), []
+    for line in raw.replace(",", "\n").splitlines():
+        key = line.strip()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
 
 
 def rekey_to_subgroups(amounts, group_number, funds):
