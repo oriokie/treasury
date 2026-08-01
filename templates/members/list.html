@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% load rights_tags %}
 {% block title %}Members · {{ SITE_NAME }}{% endblock %}
 {% block content %}
@@ -11,7 +11,10 @@
     </div>
     <div class="rpt-actions no-print"><div class="btn-row">
   {% if dup_count %}<a class="btn btn-ghost" href="{% url 'member_duplicates' %}">⚑ Duplicates <span class="badge">{{ dup_count }}</span></a>{% endif %}
-  <a class="btn btn-ghost btn-sm" href="{% url 'member_export' %}">⬇ Export CSV</a>
+  {% comment %}Carries the current filter through, so the file matches the
+  screen it was downloaded from.{% endcomment %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'member_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
+     title="Downloads the members currently filtered, in the same order">⬇ Export CSV</a>
   {% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'member_sms' %}">✉ SMS members</a>{% endif %}
   {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'member_import' %}">⬆ Import</a>
   <a class="btn" href="{% url 'member_create' %}">＋ New member</a>{% endif %}
@@ -20,10 +23,39 @@
   <div class="rule"></div>
 </div>
 
+{% comment %}A register of givers that showed no giving. "How much has this
+member given, and when did they last give" is the question the page exists to
+answer, and answering it meant opening every member in turn.{% endcomment %}
+<div class="grid cols-4 u-mb">
+  <div class="stat accent"><div class="lbl">Members</div>
+    <div class="val mono">{{ sum_members|intcomma }}</div>
+    <div class="foot">{% if filters.q or filters.group or filters.source or filters.type %}matching this filter{% elif status == 'active' %}on the register{% else %}including inactive{% endif %}</div></div>
+  <div class="stat"><div class="lbl">Given by them</div>
+    <div class="val mono">{{ CURRENCY }} {{ sum_given|money:0 }}</div>
+    <div class="foot">all time, confirmed receipts</div></div>
+  <div class="stat {% if sum_no_phone %}warn{% endif %}"><div class="lbl">No phone number</div>
+    <div class="val mono">{{ sum_no_phone }}</div>
+    <div class="foot">cannot be texted or matched by number</div></div>
+  <div class="stat"><div class="lbl">Inactive</div>
+    <div class="val mono">{{ sum_inactive }}</div>
+    <div class="foot">{% if sum_inactive %}<a class="link" href="?status=inactive">See them</a>{% else %}none{% endif %}</div></div>
+</div>
+
 <form method="get" class="filters">
   <div class="f"><label>Search</label><input name="q" value="{{ filters.q }}" class="field" placeholder="Name, phone…"></div>
   <div class="f"><label>Group</label><select name="group" class="field--select"><option value="">All</option>{% for v,l in groups %}<option value="{{ v }}" {% if filters.group == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label>Type</label><select name="type" class="field--select"><option value="">All</option>{% for v,l in member_types %}<option value="{{ v }}" {% if filters.type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>Source</label><select name="source" class="field--select"><option value="">All</option>{% for v,l in sources %}<option value="{{ v }}" {% if filters.source == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  {% comment %}Status was settable in bulk from this page and visible nowhere,
+  so a member made inactive simply vanished with no way to find them.{% endcomment %}
+  <div class="f"><label>Status</label><select name="status" class="field--select">
+    <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+    <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option>
+    <option value="all" {% if status == 'all' %}selected{% endif %}>Active and inactive</option>
+  </select></div>
+  <div class="f"><label>Sort by</label><select name="sort" class="field--select">
+    {% for v,l in sorts %}<option value="{{ v }}" {% if sort == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </select></div>
   <button class="btn btn-sm">Filter</button>
 </form>
 
@@ -44,19 +76,27 @@
     <table class="ledger">
       <thead><tr>
         {% if can_enter_data %}<th style="width:34px"><input type="checkbox" id="selAll"></th>{% endif %}
-        <th>Name</th><th>Phone</th><th>Group</th><th>Type</th><th>Source</th><th></th></tr></thead>
+        <th>Name</th><th>Phone</th><th>Group</th><th>Type</th>
+        <th class="num">Given</th><th class="num">Gifts</th><th>Last gift</th>
+        <th>Source</th><th></th></tr></thead>
       <tbody>
       {% for m in members %}
         <tr>
           {% if can_enter_data %}<td><input type="checkbox" class="rowcb" name="ids" value="{{ m.id }}"></td>{% endif %}
-          <td><a href="{% url 'member_detail' m.id %}"><strong>{{ m.name }}</strong></a></td>
+          <td><a href="{% url 'member_detail' m.id %}"><strong>{{ m.name }}</strong></a>
+            {% if not m.active %}<span class="pill pill-grey u-xs">Inactive</span>{% endif %}</td>
           <td class="mono muted">{{ m.phone|phone_for:user|default:"—" }}</td>
           <td>{{ m.get_group_display|default:"—" }}</td>
           <td>{{ m.get_member_type_display|default:"—" }}</td>
+          <td class="num mono">{% if m.total_given %}{{ m.total_given|money:0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="num mono muted">{{ m.gift_count|default:"—" }}</td>
+          {% comment %}A member who has never given reads as "Never" rather than
+          a dash: it is a fact about them, not a missing value.{% endcomment %}
+          <td class="muted">{% if m.last_gift %}{{ m.last_gift|date:"d M Y" }}{% else %}Never{% endif %}</td>
           <td><span class="pill {% if m.source == 'AUTO_BANK' %}pill-amber{% else %}pill-grey{% endif %}">{{ m.get_source_display }}</span></td>
           <td class="num"><a class="link" href="{% url 'report_member' m.id %}">Statement</a></td>
         </tr>
-      {% empty %}<tr><td colspan="7" class="empty"><div class="big">☺</div>No members yet.</td></tr>{% endfor %}
+      {% empty %}<tr><td colspan="10" class="empty"><div class="big">☺</div>No members match this filter.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>

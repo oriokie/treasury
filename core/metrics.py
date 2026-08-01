@@ -157,7 +157,7 @@ metrics = _Registry()
 # Canonical shared filters (consolidated from duplicates found in the inventory)
 # ===========================================================================
 
-def income_credit_filter(start=None, end=None):
+def income_credit_filter(start=None, end=None, prefix=""):
     """THE definition of an "income credit": a confirmed, non-reversed CREDIT
     that is not excluded from income (so loan receipts, which raise fund cash
     but are financing not income, are excluded).
@@ -168,15 +168,23 @@ def income_credit_filter(start=None, end=None):
     apply excluded_from_income because it also serves cash-position queries
     where loan cash counts. That distinction is intentional and documented in
     the inventory — do not merge the two.
+
+    `prefix` names the relation to reach Transaction from whatever model is
+    being queried — "transaction__" when annotating Members, say. An aggregate's
+    `filter=` is resolved against the OUTER model, so without it the caller has
+    to restate the rule with its own prefixes, and a fourth copy of this
+    definition is exactly what this function exists to prevent.
     """
     from django.db.models import Q
     from giving.models import Transaction
-    f = Q(direction=Transaction.Direction.CREDIT, confirmed=True,
-          is_reversed=False, is_reversal=False, excluded_from_income=False)
+    p = prefix
+    f = Q(**{f"{p}direction": Transaction.Direction.CREDIT,
+             f"{p}confirmed": True, f"{p}is_reversed": False,
+             f"{p}is_reversal": False, f"{p}excluded_from_income": False})
     if start:
-        f &= Q(date__gte=start)
+        f &= Q(**{f"{p}date__gte": start})
     if end:
-        f &= Q(date__lte=end)
+        f &= Q(**{f"{p}date__lte": end})
     return f
 
 

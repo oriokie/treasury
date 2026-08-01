@@ -16,6 +16,86 @@ from .models import normalize_phone
 from .services.matching import MemberMergeConflict, merge_members
 
 
+#: How the member list may be ordered. A register of givers whose only order is
+#: alphabetical cannot answer either of the questions a treasurer actually
+#: brings to it — who gives most, and who has stopped.
+MEMBER_SORTS = {
+    "name": ("name", "Name (A–Z)"),
+    "given": ("-total_given", "Most given"),
+    "recent": ("-last_gift", "Gave most recently"),
+    "quiet": ("last_gift", "Longest since giving"),
+    "newest": ("-created_at", "Recently added"),
+}
+
+
+def filter_members(params):
+    """The member register, as narrowed and ordered by a request's parameters.
+
+    Shared by the list and the CSV export deliberately. The export used to
+    ignore the filters entirely, which was harmless while the only filters were
+    group and source and became a trap the moment the page could be narrowed
+    and sorted: you filter to a group, sort by giving, press Export, and get
+    every member in the church in alphabetical order.
+    """
+    from django.db.models import Count, Max, Sum
+
+    from core.metrics import income_credit_filter
+
+    # What each member has given, annotated rather than counted per row: a
+    # figure per member fetched in the template would be one query per member,
+    # and this page is the one that lists every member there is.
+    #
+    # The definition is the registry's own `income_credit_filter` — the same one
+    # the dashboard and every report count income with. A reversed or
+    # unconfirmed credit is not something a member has given, and a member's
+    # total has to mean the same thing here as everywhere else.
+    counted = income_credit_filter(prefix="transaction__")
+    qs = (Member.objects.select_related("dev_group")
+          .annotate(
+              total_given=Sum("transaction__amount", filter=counted),
+              last_gift=Max("transaction__date", filter=counted),
+              gift_count=Count("transaction", filter=counted)))
+    q = params.get("q")
+    group = params.get("group")
+    source = params.get("source")
+    member_type = params.get("type")
+    status = params.get("status")
+    sort = params.get("sort") or "name"
+    if q:
+        # Alternate numbers count. A member who pays from a second line is
+        # still that member — MemberPhone records exactly that, and the
+        # bank-statement matcher has always searched it. This screen did not,
+        # so searching the number a treasurer actually has in front of them
+        # found nobody.
+        qs = qs.filter(
+            Q(name__icontains=q) | Q(phone__icontains=q)
+            | Q(phones__number__icontains=q)).distinct()
+    if group:
+        qs = qs.filter(group=group)
+    if source:
+        qs = qs.filter(source=source)
+    if member_type:
+        qs = qs.filter(member_type=member_type)
+    # A member can be made inactive in bulk from this very page, and there was
+    # then no way to see or find them again — no column, no filter, and the list
+    # showed active and inactive mixed together with nothing to tell them apart.
+    # Default to active, which is what "the members" means.
+    if status == "inactive":
+        qs = qs.filter(active=False)
+    elif status != "all":
+        qs = qs.filter(active=True)
+    order, _label = MEMBER_SORTS.get(sort, MEMBER_SORTS["name"])
+    field = order.lstrip("-")
+    if field in ("total_given", "last_gift"):
+        # A member who has never given sorts last either way round, rather than
+        # heading the list on a NULL.
+        from django.db.models import F
+        direction = (F(field).desc(nulls_last=True) if order.startswith("-")
+                     else F(field).asc(nulls_last=True))
+        return qs.order_by(direction, "name")
+    return qs.order_by(order)
+
+
 class MemberListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     model = Member
     template_name = "members/list.html"
@@ -23,32 +103,31 @@ class MemberListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     paginate_by = 50
 
     def get_queryset(self):
-        qs = Member.objects.select_related("dev_group").order_by("name")
-        q = self.request.GET.get("q")
-        group = self.request.GET.get("group")
-        source = self.request.GET.get("source")
-        if q:
-            # Alternate numbers count. A member who pays from a second line is
-            # still that member — MemberPhone records exactly that, and the
-            # bank-statement matcher has always searched it. This screen did
-            # not, so searching the number a treasurer actually has in front of
-            # them found nobody.
-            qs = qs.filter(
-                Q(name__icontains=q) | Q(phone__icontains=q)
-                | Q(phones__number__icontains=q)).distinct()
-        if group:
-            qs = qs.filter(group=group)
-        if source:
-            qs = qs.filter(source=source)
-        return qs
+        return filter_members(self.request.GET)
 
     def get_context_data(self, **kwargs):
+        from django.db.models import Count, Q, Sum
+
         ctx = super().get_context_data(**kwargs)
         ctx["groups"] = Member.Group.choices
         ctx["member_types"] = Member.MemberType.choices
         ctx["sources"] = Member.Source.choices
         ctx["filters"] = self.request.GET
+        ctx["sorts"] = [(k, v[1]) for k, v in MEMBER_SORTS.items()]
+        ctx["sort"] = self.request.GET.get("sort") or "name"
+        ctx["status"] = self.request.GET.get("status") or "active"
         ctx["dup_count"] = PossibleDuplicate.objects.filter(resolved=False).count()
+        # Totals for the members this filter actually selected, not for the
+        # page of them being shown — a summary that changed when you turned to
+        # page two would be worse than no summary.
+        totals = self.get_queryset().aggregate(
+            n=Count("id"),
+            given=Sum("total_given"),
+            no_phone=Count("id", filter=Q(phone__isnull=True) | Q(phone="")))
+        ctx["sum_members"] = totals["n"] or 0
+        ctx["sum_given"] = totals["given"] or 0
+        ctx["sum_no_phone"] = totals["no_phone"] or 0
+        ctx["sum_inactive"] = Member.objects.filter(active=False).count()
         return ctx
 
 
@@ -348,8 +427,15 @@ class MemberExportView(ReadAccessMixin, View):
         resp = HttpResponse(content_type="text/csv")
         resp["Content-Disposition"] = 'attachment; filename="members.csv"'
         w = csv.writer(resp)
+        # The same columns the importer reads, so the file still round-trips —
+        # giving figures are deliberately NOT added here, as a column the
+        # importer does not know would break re-import.
         w.writerow(["id", "name", "phone", "group", "member_type", "dev_group_number", "active"])
-        for m in Member.objects.select_related("dev_group").order_by("name"):
+        # …but the same rows the screen is showing. Exporting the whole register
+        # regardless of the filter was tolerable when the only filters were
+        # group and source; with a status filter it would quietly hand back
+        # members the treasurer had deliberately filtered out.
+        for m in filter_members(request.GET):
             w.writerow([m.id, m.name, m.phone or "", m.group or "",
                         m.member_type or "",
                         m.dev_group.number if m.dev_group else "",
