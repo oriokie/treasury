@@ -32,6 +32,47 @@
   to record who belongs to which group.{% endif %}</p></div>
 {% endif %}
 
+{% if is_treasurer and groups and total_reachable %}
+{% comment %}Writing to the whole campaign in one press. Its own box above the
+groups, not a checkbox inside one: the count beside the button is the point,
+and a treasurer should see the size of what they are about to do before they
+compose it rather than on the confirmation screen afterwards.{% endcomment %}
+<div class="card u-mb"><div class="hd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
+  <span><b>Message everyone</b>
+    <span class="muted">— all {{ groups|length }} group{{ groups|length|pluralize }},
+      {{ total_reachable }} member{{ total_reachable|pluralize }} with a phone</span></span>
+  <button type="button" class="btn btn-xs btn-brass"
+          onclick="var b=document.getElementById('smsAll');b.hidden=!b.hidden">
+    Send one message to every group</button>
+</div>
+<div class="bd u-pad-cell">
+  <div id="smsAll" hidden>
+    {% if not sms_enabled %}
+    <p class="muted" style="border-left:3px solid var(--amber);padding-left:.6rem">
+      SMS is switched off in settings, so nothing will actually be delivered.
+      You can still compose and preview.</p>
+    {% endif %}
+    <form method="post" action="{% url 'campaign_group_sms' campaign.pk %}">{% csrf_token %}
+      <input type="hidden" name="group" value="{{ all_groups_token }}">
+      <label class="lbl" for="msgAll">Message to every group</label>
+      <textarea class="field" name="message" id="msgAll" rows="3" required
+        placeholder="Dear {name}, your group {group_no} meets at 9am…"></textarea>
+      <div class="help">You can use{% for token, meaning in placeholders.items %}
+        <code>{{ token }}</code> ({{ meaning }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        Each member gets their own group, so one message can still say
+        <code>{group_no}</code> and read correctly for all of them.</div>
+      <button class="btn btn-sm u-mt">Preview and send…</button>
+      <span class="muted u-xs">You will see exactly who it goes to before anything is sent.</span>
+    </form>
+  </div>
+  {% if all_groups_history %}
+  <div class="muted u-xs">Already sent to every group:
+    {% for m in all_groups_history %}{{ m.sent_at|date:"d M y" }} ({{ m.sent_count }} sent{% if m.is_incomplete %} of {{ m.intended_count }} — <span class="text-amber">interrupted</span>{% endif %}){% if not forloop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+</div></div>
+{% endif %}
+
 {% for g in groups %}
 <div class="card u-mb"><div class="hd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
   <span><b>{{ g.label }}</b>
@@ -57,6 +98,8 @@
       <label class="lbl" for="msg{{ forloop.counter }}">Message to {{ g.label }}</label>
       <textarea class="field" name="message" id="msg{{ forloop.counter }}" rows="3" required
         placeholder="Dear {name}, greetings from {campaign}…"></textarea>
+      {% if g.number %}<div class="muted u-xs">This group's number is
+        <code>{{ g.number }}</code> — <code>{group_no}</code> writes that.</div>{% endif %}
       <div class="help">You can use{% for token, meaning in placeholders.items %}
         <code>{{ token }}</code> ({{ meaning }}){% if not forloop.last %}, {% endif %}{% endfor %}.</div>
       <button class="btn btn-sm u-mt">Preview and send…</button>

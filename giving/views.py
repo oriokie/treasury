@@ -2468,6 +2468,13 @@ class CampaignDetailView(ReadAccessMixin, View):
             "raised": txns.aggregate(t=Sum("amount"))["t"] or 0,
             "placeholders": campaign_sms.PLACEHOLDERS,
             "sms_enabled": _sms_enabled(),
+            # Writing to the whole campaign at once. Worth its own box rather
+            # than a checkbox on a group's: it is a different-sized action, and
+            # the count beside the button is what makes that plain before the
+            # press rather than after it.
+            "all_groups_token": campaign_sms.ALL_GROUPS,
+            "all_groups_history": campaign_sms.recent_sends(
+                campaign, campaign_sms.ALL_GROUPS, limit=3),
         })
 
 
@@ -2501,11 +2508,18 @@ class CampaignGroupSmsView(TreasurerRequiredMixin, View):
             if not plan["count"]:
                 messages.error(
                     request,
+                    "Nobody on this campaign has a usable phone number, so "
+                    "there is nothing to send."
+                    if group == campaign_sms.ALL_GROUPS else
                     "Nobody in that group has a usable phone number, so there "
                     "is nothing to send.")
                 return redirect("campaign_detail", pk=pk)
             return render(request, self.template_name, {
                 "campaign": campaign, "group": group, "message": template,
+                "group_label": campaign_sms.group_label(group),
+                "all_groups": group == campaign_sms.ALL_GROUPS,
+                "group_breakdown": campaign_sms.breakdown(plan),
+                "gap_members": campaign_sms.gap_warning(plan, template),
                 "plan": plan,
                 # Not a block — a church may legitimately repeat a reminder —
                 # but the person about to press send should know they are
@@ -2516,7 +2530,8 @@ class CampaignGroupSmsView(TreasurerRequiredMixin, View):
             })
 
         result = campaign_sms.send(campaign, group, template, user=request.user)
-        parts = [f"{result['sent']} message(s) sent"]
+        parts = [f"{result['sent']} message(s) sent to "
+                 f"{campaign_sms.group_label(group)}"]
         if result["failed"]:
             parts.append(f"{result['failed']} failed")
         if result["skipped"]:

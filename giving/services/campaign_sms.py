@@ -20,16 +20,54 @@ So the design is deliberately cautious in three ways:
 Nothing here formats money or touches a fund; a campaign message is
 communication, not accounting.
 """
+from django.db.models import Q
+
 from members.models import normalize_phone
 
+
+#: The `group` argument that means "everyone on the sheet, whatever their
+#: group". It cannot be "" — that already means something else and specific:
+#: the members the sheet left ungrouped. A separate sentinel keeps the two
+#: apart everywhere they are stored, counted and shown in history.
+ALL_GROUPS = "*"
 
 #: Placeholders a sender may use in the message body. Kept short and obvious —
 #: a treasurer writing this on a phone should not need a reference card.
 PLACEHOLDERS = {
     "{name}": "the member's name as it appears on the sheet",
-    "{group}": "their group number or name",
+    "{group}": "their group as written on the sheet, e.g. CAMP_1",
+    "{group_no}": "just the number in it, e.g. 1",
     "{campaign}": "the campaign name",
 }
+
+
+def group_number(group_name):
+    """The number inside a group's name — "1" from "CAMP_1", "10" from
+    "Group 10".
+
+    A sheet's groups are named for filing, not for reading aloud, so a message
+    built from `{group}` says "your group CAMP_1 meets at 9" when what the
+    member should read is "your group 1 meets at 9".
+
+    The FIRST run of digits, not every digit in the name: "CAMP_1_B" is group
+    1, and joining all the digits in "CAMP_1_2" into "12" would invent a group
+    that does not exist. Digits are returned as written, so a sheet that
+    deliberately numbers its groups 01..30 keeps its own convention.
+
+    A group with no digits in it has no number, and the caller decides what to
+    do about that.
+    """
+    import re
+    m = re.search(r"\d+", group_name or "")
+    return m.group(0) if m else ""
+
+
+def _group_sort_key(name):
+    """Numeric groups sort as numbers — "Group 2" before "Group 10", which is
+    what a person expects and what a plain text sort gets wrong. Groups without
+    a number sort after, alphabetically."""
+    digits = group_number(name)
+    return (0 if digits else 1, int(digits) if digits else 0, name.lower())
 
 
 def groups_for(campaign):
@@ -46,17 +84,14 @@ def groups_for(campaign):
         key = (member.group or "").strip()
         buckets.setdefault(key, []).append(member)
 
-    def sort_key(name):
-        digits = "".join(ch for ch in name if ch.isdigit())
-        return (0 if digits else 1, int(digits) if digits else 0, name.lower())
-
     rows = []
-    for name in sorted(buckets, key=sort_key):
+    for name in sorted(buckets, key=_group_sort_key):
         members = buckets[name]
         reachable = [m for m in members if normalize_phone(m.phone)]
         rows.append({
             "name": name,
-            "label": name or "No group recorded",
+            "label": group_label(name),
+            "number": group_number(name),
             "members": members,
             "count": len(members),
             "reachable": len(reachable),
@@ -66,13 +101,38 @@ def groups_for(campaign):
 
 
 def render_message(template, *, member, campaign):
-    """Fill the placeholders for one member."""
+    """Fill the placeholders for one member.
+
+    `{group_no}` falls back to the group's full name when there is no number in
+    it. A church that names a group "Youth" should get "your group Youth", not
+    the hole in the sentence that an empty string would leave.
+
+    Longest token first, so a placeholder that starts with another one cannot
+    be half-substituted.
+    """
+    group = member.group or ""
     text = template or ""
-    for token, value in (("{name}", member.name),
-                         ("{group}", member.group or ""),
-                         ("{campaign}", campaign.name)):
+    for token, value in (("{group_no}", group_number(group) or group),
+                         ("{campaign}", campaign.name),
+                         ("{group}", group),
+                         ("{name}", member.name)):
         text = text.replace(token, str(value))
     return text
+
+
+def audience(campaign, group):
+    """The members one send is addressed to, in the order they will be written.
+
+    `ALL_GROUPS` means everyone on the sheet. Ordered by group before name so
+    that a whole-campaign send reads as a sequence of groups on the
+    confirmation screen rather than one undifferentiated list of four hundred
+    names — the sender is checking group coverage, not spelling.
+    """
+    qs = campaign.members.all()
+    if group != ALL_GROUPS:
+        qs = qs.filter(group=(group or "").strip())
+        return qs.order_by("name")
+    return qs.order_by("group", "name")
 
 
 def preview(campaign, group, template):
@@ -81,24 +141,78 @@ def preview(campaign, group, template):
     The same resolution `send` performs, so the confirmation screen cannot
     disagree with what actually happens.
     """
-    wanted = (group or "").strip()
     recipients, skipped = [], []
-    for member in campaign.members.filter(group=wanted).order_by("name"):
+    for member in audience(campaign, group):
         phone = normalize_phone(member.phone)
         row = {"member": member, "phone": phone,
+               "group": member.group or "",
                "message": render_message(template, member=member,
                                          campaign=campaign)}
         (recipients if phone else skipped).append(row)
     return {"recipients": recipients, "skipped": skipped,
-            "count": len(recipients), "skipped_count": len(skipped)}
+            "count": len(recipients), "skipped_count": len(skipped),
+            "groups": sorted({r["group"] for r in recipients})}
+
+
+def gap_warning(plan, template):
+    """Recipients for whom a group placeholder resolves to nothing.
+
+    `{group_no}` falls back to the group's name, which covers a group called
+    "Youth" — but a member the sheet never grouped has neither, and the message
+    goes out reading "Your group is . Please arrive by 4pm." That is not worth
+    blocking a send over; it IS worth the sender seeing before they press,
+    which is what a whole-campaign send makes likely for the first time (a
+    per-group send to the ungrouped is at least obviously that).
+    """
+    if not any(tok in (template or "") for tok in ("{group}", "{group_no}")):
+        return []
+    return [r["member"] for r in plan["recipients"] if not (r["group"] or "").strip()]
+
+
+def breakdown(plan):
+    """Per-group counts for a plan, in the same order the send will run.
+
+    A whole-campaign confirmation shows the first eight recipients, and on a
+    real sheet those are all from the first group — so the sample cannot answer
+    the question the sender has, which is whether every group is covered.
+    """
+    rows = {}
+    for row in plan["recipients"]:
+        rows.setdefault(row["group"], {"count": 0, "skipped": 0})["count"] += 1
+    for row in plan["skipped"]:
+        rows.setdefault(row["group"], {"count": 0, "skipped": 0})["skipped"] += 1
+    out = []
+    for name in sorted(rows, key=_group_sort_key):
+        out.append({"name": name, "label": group_label(name),
+                    "number": group_number(name), **rows[name]})
+    return out
+
+
+def group_label(group):
+    """How a group is named on screen. One place, so the confirmation screen,
+    the history line and the flash message cannot describe the same send
+    differently."""
+    if group == ALL_GROUPS:
+        return "every group"
+    return group or "No group recorded"
 
 
 def recent_sends(campaign, group=None, limit=10):
-    """What has already gone out, so a treasurer can see before sending again."""
+    """What has already gone out, so a treasurer can see before sending again.
+
+    Asking about one group also returns the whole-campaign sends, because those
+    reached this group too. Leaving them out would show Group 2 as never
+    written to on the day everybody was written to — which is precisely the
+    moment somebody sends the message a second time.
+    """
     from ..models import CampaignMessage
     qs = CampaignMessage.objects.filter(campaign=campaign).select_related("sent_by")
     if group is not None:
-        qs = qs.filter(group=(group or "").strip())
+        wanted = (group or "").strip()
+        if wanted != ALL_GROUPS:
+            qs = qs.filter(Q(group=wanted) | Q(group=ALL_GROUPS))
+        else:
+            qs = qs.filter(group=ALL_GROUPS)
     return list(qs[:limit])
 
 
@@ -116,10 +230,17 @@ def already_sent(campaign, group, template, *, within_hours=48):
 
     from ..models import CampaignMessage
     cutoff = timezone.now() - _dt.timedelta(hours=within_hours)
-    return (CampaignMessage.objects
-            .filter(campaign=campaign, group=(group or "").strip(),
-                    body=(template or "").strip(), sent_at__gte=cutoff)
-            .first())
+    wanted = (group or "").strip()
+    qs = CampaignMessage.objects.filter(
+        campaign=campaign, body=(template or "").strip(), sent_at__gte=cutoff)
+    # A whole-campaign send already reached this group, so the same words going
+    # out to one group afterwards is the same duplicate — and the one most
+    # likely to happen, since the two are composed on different screens.
+    if wanted != ALL_GROUPS:
+        qs = qs.filter(Q(group=wanted) | Q(group=ALL_GROUPS))
+    else:
+        qs = qs.filter(group=ALL_GROUPS)
+    return qs.first()
 
 
 def send(campaign, group, template, *, user=None):

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="rpt-mast">
   <div><div class="eyebrow">Giving · Campaigns</div>
-    <h1>Send to {{ group|default:"members with no group" }}?</h1>
+    <h1>Send to {{ group_label }}?</h1>
     <div class="desc">{{ campaign.name }}. Nothing has been sent yet.</div></div>
   <div class="rule"></div>
 </div>
@@ -14,9 +14,28 @@
   no message will reach anyone.</div>
 {% endif %}
 
+{% if all_groups %}
+<div class="panel panel-amber u-mb">
+  <b>This goes to the whole campaign — all {{ plan.groups|length }} group{{ plan.groups|length|pluralize }} at once.</b>
+  <div class="muted">Every member below is written to individually, so
+    <code>{group}</code> and <code>{group_no}</code> still say each person's own
+    group. Check the breakdown before sending.</div>
+</div>
+{% endif %}
+
+{% if gap_members %}
+<div class="panel panel-amber u-mb">
+  <b>{{ gap_members|length }} member{{ gap_members|length|pluralize }} on the sheet {{ gap_members|length|pluralize:"has,have" }} no group,
+    so their message will read “your group is ” with nothing in it.</b>
+  <div class="muted">{% for m in gap_members|slice:":6" %}{{ m.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if gap_members|length > 6 %} and {{ gap_members|length|add:"-6" }} more{% endif %}.
+    Either give them a group on the sheet, or word the message without
+    <code>{group}</code> and <code>{group_no}</code>.</div>
+</div>
+{% endif %}
+
 {% if duplicate %}
 <div class="panel panel-amber u-mb">
-  <b>This exact message already went to this group.</b>
+  <b>This exact message has already gone out{% if duplicate.group == "*" %} to every group{% else %} to this group{% endif %}.</b>
   Sent {{ duplicate.sent_at|date:"d M Y H:i" }} by {{ duplicate.sent_by|default:"—" }},
   reaching {{ duplicate.sent_count }} member{{ duplicate.sent_count|pluralize }}.
   <div class="muted">Sending again is allowed — a reminder is sometimes meant to
@@ -34,7 +53,7 @@
 <div class="grid cols-2 u-mb">
   <div class="stat accent"><div class="lbl">Will be sent to</div>
     <div class="val mono">{{ plan.count }}</div>
-    <div class="foot">member{{ plan.count|pluralize }} in this group</div></div>
+    <div class="foot">member{{ plan.count|pluralize }}{% if all_groups %} across {{ plan.groups|length }} group{{ plan.groups|length|pluralize }}{% else %} in this group{% endif %}</div></div>
   <div class="stat {% if plan.skipped_count %}warn{% endif %}"><div class="lbl">Cannot be reached</div>
     <div class="val mono">{{ plan.skipped_count }}</div>
     <div class="foot">no usable phone number</div></div>
@@ -44,16 +63,38 @@
   <h3>What each person will receive</h3>
   <p class="muted">Shown for the first few, with their own name and group filled in.</p>
   <table class="ledger compact">
-    <thead><tr><th>Name</th><th>Phone</th><th>Message</th></tr></thead>
+    <thead><tr><th>Name</th>{% if all_groups %}<th>Group</th>{% endif %}<th>Phone</th><th>Message</th></tr></thead>
     <tbody>
     {% for r in plan.recipients|slice:":8" %}
-      <tr><td>{{ r.member.name }}</td><td class="mono">{{ r.phone }}</td>
+      <tr><td>{{ r.member.name }}</td>
+        {% if all_groups %}<td>{{ r.group|default:"—" }}</td>{% endif %}
+        <td class="mono">{{ r.phone }}</td>
         <td>{{ r.message }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
   {% if plan.count > 8 %}<p class="muted">…and {{ plan.count|add:"-8" }} more.</p>{% endif %}
 </div>
+
+{% if all_groups %}
+{% comment %}Coverage per group. On a whole-campaign send the sample above shows
+the first eight names, which on a large sheet are all from the first group —
+so it cannot answer the question the sender actually has, which is whether
+every group is included.{% endcomment %}
+<div class="panel u-mb">
+  <h3>Groups this reaches</h3>
+  <table class="ledger compact">
+    <thead><tr><th>Group</th><th class="num">Will receive</th><th class="num">No phone</th></tr></thead>
+    <tbody>
+    {% for row in group_breakdown %}
+      <tr><td>{{ row.label }}{% if row.number %} <span class="muted u-xs">· <code>{group_no}</code> = {{ row.number }}</span>{% endif %}</td>
+        <td class="num mono">{{ row.count }}</td>
+        <td class="num mono{% if row.skipped %} text-amber{% endif %}">{{ row.skipped|default:"—" }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 {% if plan.skipped %}
 <div class="panel u-mb">

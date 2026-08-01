@@ -197,7 +197,9 @@ class CampaignSendHistoryTests(CampaignBase):
             reverse("campaign_group_sms", args=[self.campaign.pk]),
             {"group": "Group 2", "message": "Hello {name}"})
         self.assertIsNotNone(response.context["duplicate"])
-        self.assertContains(response, "already went to this group")
+        # The warning has to name WHICH audience already had it, now that a
+        # send can be addressed either to one group or to the whole campaign.
+        self.assertContains(response, "already gone out to this group")
 
     def test_a_repeat_is_warned_about_but_not_blocked(self):
         """A reminder is sometimes meant to be repeated. The decision belongs to
