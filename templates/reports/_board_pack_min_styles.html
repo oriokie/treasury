@@ -1,0 +1,218 @@
+{% comment %}
+Board pack — minimal presentation styling.
+
+One document, set like a printed statement: a restrained masthead, numbered
+sections, hairline tables and figures in tabular numerals. Nothing decorative
+carries meaning, so the pack survives a monochrome photocopier as well as it
+survives a projector. Screen and print share one source of truth; @media print
+only changes what pagination and ink require.
+{% endcomment %}
+<style>
+/* ===================================================================
+   Document shell
+   =================================================================== */
+.bpm{--bpm-rule:var(--line-strong);--bpm-hair:var(--line);
+  max-width:940px;margin:0 auto;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:2.6rem 2.8rem 2rem;box-shadow:var(--shadow)}
+.bpm *{font-variant-numeric:tabular-nums}
+
+/* ---- masthead ---- */
+.bpm-mast{margin-bottom:2.2rem}
+.bpm-org{font-size:.7rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--muted)}
+.bpm-title{font-family:var(--font-display);font-size:2rem;font-weight:600;line-height:1.1;
+  color:var(--ink);margin:.45rem 0 .3rem;letter-spacing:-.01em}
+.bpm-period{font-size:.95rem;color:var(--ink-soft);font-weight:500}
+.bpm-meta{margin-top:.5rem;font-size:.74rem;color:var(--muted);letter-spacing:.02em}
+.bpm-mast-rule{height:2px;background:var(--forest);margin-top:1.1rem;opacity:.85}
+
+/* ---- contents ---- */
+.bpm-contents{display:flex;flex-wrap:wrap;gap:.15rem 1.2rem;margin:-1.1rem 0 2rem;
+  padding:.85rem 0 0;font-size:.78rem}
+.bpm-contents a{color:var(--ink-soft);text-decoration:none;white-space:nowrap}
+.bpm-contents a:hover{color:var(--forest);text-decoration:underline}
+.bpm-contents .n{color:var(--muted);font-weight:600;margin-right:.25rem}
+
+/* ---- groups & sections ---- */
+.bpm-grp{margin:0 0 2.4rem;scroll-margin-top:1rem}
+.bpm-grp-head{display:flex;align-items:baseline;gap:.7rem;
+  border-bottom:1px solid var(--bpm-rule);padding-bottom:.4rem;margin-bottom:1.3rem}
+.bpm-grp-n{font-family:var(--font-display);font-size:.95rem;font-weight:600;color:var(--brass)}
+.bpm-grp-t{font-family:var(--font-display);font-size:1.18rem;font-weight:600;
+  color:var(--ink);margin:0;letter-spacing:-.005em}
+.bpm-row{display:flex;flex-wrap:wrap;gap:1.6rem 1.8rem;align-items:flex-start}
+.bpm-cell{min-width:min(100%,300px)}
+.bpm-sec{break-inside:avoid}
+.bpm-sec + .bpm-sec{margin-top:1.6rem}
+.bpm-sec-t{font-size:.78rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-soft);margin:0 0 .6rem}
+
+/* ---- headline figures ---- */
+.bpm-figs{display:flex;flex-wrap:wrap;gap:0;border-top:1px solid var(--bpm-hair);
+  border-bottom:1px solid var(--bpm-hair)}
+.bpm-fig{flex:1 1 160px;padding:.95rem 1.1rem .9rem;border-left:1px solid var(--bpm-hair)}
+.bpm-fig:first-child{border-left:0;padding-left:0}
+.bpm-fig-l{font-size:.66rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:.34rem}
+.bpm-fig-v{font-family:var(--font-display);font-size:1.42rem;font-weight:600;
+  line-height:1.1;color:var(--ink)}
+.bpm-fig-v .u{font-size:.72rem;font-weight:600;color:var(--muted);margin-right:.2rem}
+.bpm-fig-s{font-size:.7rem;color:var(--muted);margin-top:.22rem}
+
+/* ---- tables ---- */
+.bpm-tbl{width:100%;border-collapse:collapse;font-size:.83rem}
+.bpm-tbl th,.bpm-tbl td{padding:.4rem .55rem;text-align:left;vertical-align:baseline}
+.bpm-tbl thead th{font-size:.66rem;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--bpm-rule);
+  padding-bottom:.42rem;white-space:nowrap}
+.bpm-tbl td{border-bottom:1px solid var(--bpm-hair)}
+.bpm-tbl .num{text-align:right;font-family:"IBM Plex Mono","SF Mono",monospace;
+  font-size:.79rem;white-space:nowrap}
+.bpm-tbl th.num{font-family:inherit}
+.bpm-tbl .neg{color:var(--danger)}
+.bpm-tbl .blank{color:var(--line-strong)}
+.bpm-tbl tbody tr:last-child td{border-bottom:0}
+/* structural rows: a heading, a subtotal and the bottom line must not look
+   the same — a reader should find the three figures a statement exists to
+   give without already knowing the statement's shape. */
+.bpm-tbl .r-heading td{font-weight:700;font-size:.7rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-soft);padding-top:.9rem;border-bottom:0}
+.bpm-tbl .r-subtotal td{font-weight:600;border-top:1px solid var(--bpm-rule);
+  border-bottom:0;background:var(--paper-2)}
+.bpm-tbl .r-grand td{font-weight:700;border-top:2px solid var(--forest);
+  border-bottom:2px solid var(--forest);background:var(--forest-tint)}
+.bpm-tbl .emph td{font-weight:600;background:var(--paper-2)}
+.bpm-tbl tfoot td{font-weight:700;border-top:2px solid var(--forest);
+  border-bottom:0;background:var(--forest-tint);padding-top:.5rem;padding-bottom:.5rem}
+/* A two- or three-column table stretched across the page puts an inch of
+   white space between a label and its figure, which is exactly the gap the
+   eye loses a row in. */
+.bpm-tbl-narrow{max-width:min(100%,480px)}
+.bpm-scroll{overflow-x:auto}
+
+/* ---- caption (how the figures were arrived at) ---- */
+.bpm-caption{font-size:.72rem;line-height:1.5;color:var(--muted);margin:.45rem 0 0;
+  font-style:italic}
+
+/* ---- prose / commentary ---- */
+.bpm-prose{font-size:.88rem;line-height:1.62;color:var(--ink-soft)}
+.bpm-prose p{margin:0 0 .6rem}
+.bpm-prose p:last-child{margin-bottom:0}
+
+/* ---- the explanation block under every section ---- */
+.bpm-note{margin-top:.85rem;padding:.7rem 0 0 .9rem;border-left:2px solid var(--forest-soft);
+  position:relative}
+.bpm-note-body{font-size:.82rem;line-height:1.6;color:var(--ink-soft)}
+.bpm-note-body p{margin:0 0 .5rem}
+.bpm-note-body p:last-child{margin-bottom:0}
+.bpm-note-head{display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem}
+.bpm-note-lbl{font-size:.6rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted)}
+.bpm-note-tools{display:flex;gap:.3rem;margin-left:auto}
+.bpm-btn{font:inherit;font-size:.68rem;font-weight:600;color:var(--forest);background:none;
+  border:1px solid var(--forest-soft);border-radius:var(--radius-pill);
+  padding:.1rem .55rem;cursor:pointer;transition:all .15s;line-height:1.6}
+.bpm-btn:hover{background:var(--forest-soft);border-color:var(--forest)}
+.bpm-btn[disabled]{opacity:.5;cursor:default}
+.bpm-tag{font-size:.6rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--brass)}
+.bpm-note textarea{width:100%;min-height:6.5rem;font:inherit;font-size:.82rem;
+  line-height:1.6;color:var(--ink);background:var(--paper-2);border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);padding:.55rem .65rem;resize:vertical}
+.bpm-note-err{font-size:.74rem;color:var(--danger);margin-top:.35rem}
+.bpm-note-busy{font-size:.74rem;color:var(--muted);margin-top:.35rem}
+/* A commentary section IS its prose — no left rule, and set at reading size
+   rather than the smaller size used for a note beneath a table. */
+.bpm-note-prose{border-left:0;padding-left:0;padding-top:0;margin-top:0}
+.bpm-note-prose .bpm-note-body{font-size:.88rem;line-height:1.62}
+.bpm-note-prose .bpm-note-head{justify-content:flex-end;margin:-1.9rem 0 .5rem}
+
+/* ---- signatures ---- */
+.bpm-signs{display:flex;flex-wrap:wrap;gap:2.2rem;margin-top:1.4rem}
+.bpm-sign{flex:1 1 200px;min-width:180px}
+.bpm-sign-line{border-bottom:1px solid var(--ink-soft);height:2.6rem}
+.bpm-sign-role{font-size:.76rem;font-weight:600;margin-top:.32rem;color:var(--ink)}
+.bpm-sign-sub{font-size:.68rem;color:var(--muted)}
+
+/* ---- footer / misc ---- */
+.bpm-foot{margin-top:2.4rem;padding-top:.8rem;border-top:1px solid var(--bpm-hair);
+  display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;
+  font-size:.68rem;color:var(--muted)}
+.bpm-empty{font-size:.82rem;color:var(--muted);font-style:italic}
+.bpm-toolbar{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.9rem}
+.bpm-toolbar .sp{flex:1}
+.bpm-runner{display:none}
+
+@media(max-width:760px){
+  .bpm{padding:1.5rem 1.1rem;border-radius:0;border-left:0;border-right:0}
+  .bpm-title{font-size:1.5rem}
+  .bpm-row{gap:1.4rem}
+}
+
+/* ===================================================================
+   Print — an A4 document, not a screenshot of a web page
+   =================================================================== */
+@media print{
+  @page{size:A4 portrait;margin:20mm 14mm 16mm}
+  .bpm{max-width:none;margin:0;padding:0;border:0;border-radius:0;
+    box-shadow:none;background:#fff;color:#000;font-size:9.6pt}
+  .bpm-title{font-size:19pt;color:#000}
+  .bpm-org{color:#444}
+  .bpm-period{font-size:10.5pt;color:#000}
+  .bpm-meta{color:#555}
+  .bpm-mast{margin-bottom:9mm}
+  .bpm-mast-rule{background:#000;height:1.5pt;opacity:1}
+
+  /* the running head/foot: fixed elements repeat on every printed page, and
+     the @page margin above reserves the band they sit in. */
+  .bpm-runner{display:block;position:fixed;left:0;right:0;
+    font-size:7.6pt;color:#555;letter-spacing:.02em}
+  .bpm-runner-top{top:-12mm;border-bottom:.5pt solid #bbb;padding-bottom:1.5mm;
+    display:flex;justify-content:space-between;gap:6mm}
+  .bpm-runner-bot{bottom:-10mm;border-top:.5pt solid #bbb;padding-top:1.5mm;
+    display:flex;justify-content:space-between;gap:6mm}
+
+  .bpm-grp{margin-bottom:8mm}
+  .bpm-grp-head{border-bottom-color:#000;margin-bottom:4mm}
+  .bpm-grp-t{font-size:12.5pt;color:#000}
+  .bpm-grp-n{color:#666}
+  .bpm-row{gap:5mm 7mm}
+  .bpm-sec,.bpm-fig,.bpm-sign{break-inside:avoid}
+  .bpm-sec-t{color:#000;font-size:8.4pt}
+  .bpm-break{break-before:page}
+
+  .bpm-figs{border-color:#000}
+  .bpm-fig{border-left-color:#ccc;padding:2.5mm 3mm}
+  .bpm-fig-v{font-size:12.5pt;color:#000}
+  .bpm-fig-l,.bpm-fig-s{color:#444}
+
+  .bpm-tbl{font-size:8.6pt}
+  .bpm-tbl thead{display:table-header-group}
+  .bpm-tbl tfoot{display:table-row-group}
+  .bpm-tbl tr{break-inside:avoid}
+  .bpm-tbl th,.bpm-tbl td{padding:1.1mm 1.6mm}
+  .bpm-tbl thead th{color:#000;border-bottom-color:#000}
+  .bpm-tbl td{border-bottom-color:#ddd}
+  .bpm-tbl .num{font-size:8.4pt}
+  .bpm-tbl .neg{color:#000}
+  /* fills are unreliable on a mono printer; rules carry the structure */
+  .bpm-tbl .r-subtotal td,.bpm-tbl .emph td{background:none;border-top-color:#000}
+  .bpm-tbl .r-grand td,.bpm-tbl tfoot td{background:none;
+    border-top:1pt solid #000;border-bottom:2.5pt double #000}
+  .bpm-tbl .r-heading td{color:#000}
+  .bpm-scroll{overflow:visible}
+
+  .bpm-prose,.bpm-note-body{color:#222;font-size:8.8pt;line-height:1.5}
+  .bpm-caption{color:#555;font-size:7.6pt;margin-top:1.2mm}
+  .bpm-note{border-left:1pt solid #999;padding-left:3mm;margin-top:2.5mm}
+  .bpm-note-prose{border-left:0;padding-left:0;margin-top:1.5mm}
+  .bpm-note-prose .bpm-note-body{font-size:9.6pt}
+  .bpm-note-lbl{color:#666}
+  .bpm-note-tools,.bpm-note-err,.bpm-note-busy{display:none!important}
+  .bpm-contents{display:none}
+
+  .bpm-sign-line{border-bottom-color:#000;height:9mm}
+  .bpm-foot{border-top-color:#999;color:#555;margin-top:8mm}
+}
+</style>

@@ -53,6 +53,7 @@ class EngineReportView(ReportAccessMixin, TemplateView):
             raise PermissionDenied
         _render_ms = int((_time.monotonic() - _t0) * 1000)
         self._record_usage(request, key, _render_ms)
+        self._annotate_narrative(rendered, key)
 
         # dependency map endpoint (documentation / debugging / impact analysis)
         if request.GET.get("deps") == "json":
@@ -141,6 +142,18 @@ class EngineReportView(ReportAccessMixin, TemplateView):
         if getattr(rendered.report, "html_template", None):
             out.update(EngineReportView._cover_health(rendered))
         return out
+
+    @staticmethod
+    def _annotate_narrative(rendered, key):
+        """Give every section its explanation — generated from the section's own
+        figures, or the treasurer's stored wording where they have edited it.
+        Purely additive: a report that ignores the annotation renders exactly as
+        it did before, and a failure here never costs the reader the report."""
+        try:
+            from reports.services import narratives
+            narratives.annotate(rendered, key)
+        except Exception:  # noqa: BLE001
+            pass
 
     @staticmethod
     def _cover_health(rendered):

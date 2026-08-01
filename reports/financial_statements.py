@@ -148,10 +148,13 @@ class TrialBalanceSection(ComponentSection):
         rows = []
         for r in rows_data:
             acct = r["account"]
+            # An account sits in one column or the other; printing "0.00" in
+            # the empty one is the oldest way to make a trial balance hard to
+            # read, so the empty side stays blank.
             rows.append(Row(cells={"code": getattr(acct, "code", ""),
                                    "account": getattr(acct, "name", str(acct)),
-                                   "debit": _n(r["debit"]),
-                                   "credit": _n(r["credit"])}))
+                                   "debit": _n(r["debit"]) or None,
+                                   "credit": _n(r["credit"]) or None}))
         total = Row(cells={"code": "", "account": "TOTAL",
                            "debit": _n(totals["debit"]),
                            "credit": _n(totals["credit"])}, emphasis=True)
@@ -194,6 +197,18 @@ class FinancialPositionSummarySection(ComponentSection):
                         "payables_outstanding", "accruals_outstanding",
                         "prepayments_unexpired")
 
+    def __init__(self, *args, hide_nil_lines=False, **kwargs):
+        """``hide_nil_lines`` drops detail lines with no balance at the date.
+
+        Off by default: the standalone statement and the full pack are read as
+        accounting documents, where a nil line is a positive statement that the
+        church holds none of that thing. The board pack turns it on, because a
+        board reads for the shape of the position and every nil line is a line
+        it has to look past.
+        """
+        super().__init__(*args, **kwargs)
+        self.hide_nil_lines = hide_nil_lines
+
     def render(self, ctx, filters):
         from core.reporting.engine import Section
         rows = ctx.fund_summary()
@@ -227,7 +242,7 @@ class FinancialPositionSummarySection(ComponentSection):
         # line — bank, petty cash, total assets, loans, net assets — arrived in
         # one undifferentiated column, so a reader had to know the statement's
         # shape already to find the three numbers it exists to give.
-        pairs = [
+        detail = [
             ("Assets", None, "heading"),
             ("Bank (funds on hand)", bank),
             ("Petty cash float", petty),
@@ -244,10 +259,17 @@ class FinancialPositionSummarySection(ComponentSection):
             ("Total liabilities", total_liabilities, "subtotal"),
             ("Net assets", net_assets, "grand"),
         ]
-        return Section.keyvalue(
-            self.key, self.title, pairs,
-            note="Net assets is total assets less total liabilities — what the "
-                 "church would be left holding if every fund were settled today.")
+        note = ("Net assets is total assets less total liabilities — what the "
+                "church would be left holding if every fund were settled today.")
+        pairs = detail
+        if self.hide_nil_lines:
+            # A line the church does not have is not information here. Only
+            # detail lines go; the two subtotals and the bottom line always
+            # stand, because "total liabilities: nil" is itself the point.
+            pairs = [p for p in detail if len(p) > 2 or p[1]]
+            if len(pairs) < len(detail):
+                note += " Lines with no balance at this date are not shown."
+        return Section.keyvalue(self.key, self.title, pairs, note=note)
 
 
 registry.register(Report(
@@ -275,12 +297,34 @@ class CashFlowStatementSection(ComponentSection):
     """SDA three-category cash flow (operating, investing, financing) that
     reconciles the movement in total cash & bank. Every figure is a registry
     metric; the classification logic mirrors the legacy
-    StatementOfCashFlowsView exactly so figures are identical."""
+    StatementOfCashFlowsView exactly so figures are identical.
+
+    **Loans converted to donations (and write-offs).** A conversion moves no
+    money: the lender's claim is extinguished and income is recognised in its
+    place, recorded as a contra pair of ordinary documents. So it belongs in
+    *no* cash line of this statement, and it does **not** reduce loan receipts —
+    the borrowing was a real cash inflow (often in an earlier period) and
+    netting the gift against it would misstate financing, potentially to a
+    negative. Both legs are therefore removed: the income leg explicitly, via
+    ``loan_retirement_income``; the settlement leg automatically, because it is
+    a LOAN_REPAYMENT document and the operating-expense base excludes liability
+    documents. What the conversion *does* require is disclosure, so it is shown
+    as a non-cash memo below the statement rather than left invisible.
+    """
     key = "cash_flow_statement"
     title = "Statement of cash flows"
     declared_metrics = ("fund_summary", "operating_expense", "capital_expenditure",
                         "remittances_total", "financing_activity",
                         "loan_retirement_income", "receipts_by_department")
+
+    def __init__(self, *args, hide_nil_lines=False, **kwargs):
+        """``hide_nil_lines`` drops nil detail lines, and any activity with
+        neither movement nor a subtotal, so a quiet period reads as a short
+        statement rather than a long one of zeros. Off by default (the
+        statutory statement keeps its full shape); the board pack turns it on.
+        """
+        super().__init__(*args, **kwargs)
+        self.hide_nil_lines = hide_nil_lines
 
     def render(self, ctx, filters):
         rows = ctx.fund_summary()
@@ -311,30 +355,64 @@ class CashFlowStatementSection(ComponentSection):
 
         cols = [Column("line", "Line"), Column("amount", "Amount", numeric=True)]
 
-        def row(label, amount, emph=False):
-            return Row(cells={"line": label, "amount": amount}, emphasis=emph)
+        def row(label, amount, level=""):
+            return Row(cells={"line": label, "amount": amount},
+                       emphasis=bool(level),
+                       meta={"level": level} if level else {})
 
-        body = [
-            row("Local offerings & income received", local_operating_receipts),
-            row("Tithe & trust offerings received", trust_receipts),
-            row("Operating (recurrent) expenses paid", -operating_exp),
-            row("Remittances to the field paid", -remittances),
-            row("Net cash from operating activities", net_operating, True),
-            row("Purchase of property & equipment", -capital),
-            row("Net cash used in investing activities", net_investing, True),
-            row("Loan receipts (borrowings)", loan_receipts),
-            row("Loan principal repayments", -loan_repayments),
-            row("Net cash from financing activities", net_financing, True),
-            row("Net increase/(decrease) in cash", net_change, True),
-            row("Cash & bank at beginning of period", cash_open),
-            row("Cash & bank at end of period", cash_open + net_change, True),
+        blocks = [
+            ("Cash flows from operating activities", net_operating,
+             "Net cash from operating activities", [
+                 ("Local offerings & income received", local_operating_receipts),
+                 ("Tithe & trust offerings received", trust_receipts),
+                 ("Operating (recurrent) expenses paid", -operating_exp),
+                 ("Remittances to the field paid", -remittances)]),
+            ("Cash flows from investing activities", net_investing,
+             "Net cash used in investing activities", [
+                 ("Purchase of property & equipment", -capital)]),
+            ("Cash flows from financing activities", net_financing,
+             "Net cash from financing activities", [
+                 ("Loan receipts (borrowings)", loan_receipts),
+                 ("Loan principal repayments", -loan_repayments)]),
         ]
+        body = []
+        for heading, subtotal, subtotal_label, lines in blocks:
+            if self.hide_nil_lines:
+                # A church that borrowed nothing does not need two rows to say
+                # so. Any activity that did move keeps its heading and its
+                # subtotal, so the statement keeps its statutory three-part
+                # shape whenever there is a three-part story to tell.
+                lines = [(label, amount) for label, amount in lines if amount]
+                if not lines and not subtotal:
+                    continue
+            body.append(row(heading, None, "heading"))
+            body += [row(label, amount) for label, amount in lines]
+            body.append(row(subtotal_label, subtotal, "subtotal"))
+        body += [
+            row("Net increase/(decrease) in cash", net_change, "subtotal"),
+            row("Cash & bank at beginning of period", cash_open),
+            row("Cash & bank at end of period", cash_open + net_change, "grand"),
+        ]
+
+        # Non-cash disclosure. A loan turned into a gift changes the church's
+        # position without a shilling moving, so a board reading only the cash
+        # lines would never learn it happened.
+        if loan_noncash_income:
+            body.append(row("Non-cash transactions (memo)", None, "heading"))
+            body.append(row("Loans converted to donations / written off",
+                            loan_noncash_income))
+
         ties = (cash_open + net_change) == cash_close
+        note = ("Reconciles to the movement in cash & bank."
+                if ties else
+                "WARNING: cash flow does not reconcile to fund cash.")
+        if loan_noncash_income:
+            note += (" The memo item moved no money: the loan liability was "
+                     "retired against income. It is excluded from operating "
+                     "receipts and is not netted against loan receipts, which "
+                     "remain the cash actually borrowed.")
         return SectionData(key=self.key, title=self.title, columns=cols,
-                           rows=body, kind="table",
-                           note="Reconciles to the movement in cash & bank."
-                                if ties else
-                                "WARNING: cash flow does not reconcile to fund cash.")
+                           rows=body, kind="table", note=note)
 
 
 registry.register(Report(
@@ -364,45 +442,83 @@ class FundBalancesStatementSection(ComponentSection):
     title = "Statement of fund balances"
     declared_metrics = ("fund_summary",)
 
+    #: the money columns, in statement order; "fund" is the label column
+    FIGURES = ("opening", "receipts", "expenses", "net_transfer", "closing")
+
     def render(self, ctx, filters):
         rows = ctx.fund_summary(consolidated=filters.get("consolidated", True))
-        cols = [Column("fund", "Fund"),
-                Column("opening", "Opening", numeric=True),
-                Column("receipts", "Receipts", numeric=True),
-                Column("expenses", "Payments", numeric=True),
-                Column("net_transfer", "Transfers", numeric=True),
-                Column("closing", "Closing", numeric=True)]
 
-        def _block(block_rows, heading):
-            out = [Row(cells={"fund": heading}, emphasis=True)]
-            tot = {k: Decimal(0) for k in
-                   ("opening", "receipts", "expenses", "net_transfer", "closing")}
-            for r in block_rows:
-                cells = {"fund": "  " + r["department"].name,
-                         "opening": _n(r["opening"]), "receipts": _n(r["receipts"]),
-                         "expenses": _n(r["expenses"]),
-                         "net_transfer": _n(r.get("net_transfer")),
-                         "closing": _n(r["closing"])}
-                for k in tot:
-                    tot[k] += cells[k]
+        def _figures(r):
+            return {"opening": _n(r["opening"]), "receipts": _n(r["receipts"]),
+                    "expenses": _n(r["expenses"]),
+                    "net_transfer": _n(r.get("net_transfer")),
+                    "closing": _n(r["closing"])}
+
+        # A dormant fund — nothing brought forward, nothing moved, nothing left
+        # — tells the board nothing and pushes the funds that matter onto a
+        # second page. Anything with a balance or any movement is kept, so a
+        # fund that opened and closed at zero having moved money still appears.
+        live = [(r, _figures(r)) for r in rows]
+        live = [(r, f) for r, f in live if any(f[k] for k in self.FIGURES)]
+
+        # Transfers are the exception rather than the rule; when nothing moved
+        # between funds the column is five rows of zeros and a lost inch of
+        # page width, so it stands down entirely.
+        has_transfers = any(f["net_transfer"] for _, f in live)
+        figures = [k for k in self.FIGURES
+                   if k != "net_transfer" or has_transfers]
+
+        labels = {"opening": "Opening", "receipts": "Receipts",
+                  "expenses": "Payments", "net_transfer": "Transfers",
+                  "closing": "Closing"}
+        cols = [Column("fund", "Fund")] + [
+            Column(k, labels[k], numeric=True) for k in figures]
+
+        def _block(block, heading):
+            out = [Row(cells={"fund": heading}, emphasis=True,
+                       meta={"level": "heading"})]
+            tot = {k: Decimal(0) for k in figures}
+            # Largest fund first: a board reads the top of this table and stops,
+            # so the top of the table has to be where the money is.
+            for _r, f in sorted(block, key=lambda rf: -rf[1]["closing"]):
+                cells = {"fund": "  " + _r["department"].name}
+                for k in figures:
+                    tot[k] += f[k]
+                    # A fund that neither received nor paid anything says so
+                    # more clearly with a blank than with "0.00" — the eye then
+                    # goes straight to the funds that actually moved. Opening
+                    # and closing always print, even at nil.
+                    cells[k] = f[k] if (f[k] or k in ("opening", "closing")) \
+                        else None
                 out.append(Row(cells=cells))
             out.append(Row(cells={"fund": f"  Total {heading.lower()}", **tot},
-                           emphasis=True))
+                           emphasis=True, meta={"level": "subtotal"}))
             return out, tot
 
-        local = sorted((r for r in rows if not r.get("is_trust")),
-                      key=lambda r: r["department"].name.lower())
-        trust = sorted((r for r in rows if r.get("is_trust")),
-                      key=lambda r: r["department"].name.lower())
+        local = [(r, f) for r, f in live if not r.get("is_trust")]
+        trust = [(r, f) for r, f in live if r.get("is_trust")]
         body = []
-        lblock, ltot = _block(local, "Local funds")
-        tblock, ttot = _block(trust, "Trust funds")
-        body += lblock + tblock
-        grand = {k: ltot[k] + ttot[k] for k in ltot}
-        total = Row(cells={"fund": "TOTAL ALL FUNDS", **grand}, emphasis=True)
+        ltot = {k: Decimal(0) for k in figures}
+        ttot = {k: Decimal(0) for k in figures}
+        if local:
+            lblock, ltot = _block(local, "Local funds")
+            body += lblock
+        if trust:
+            tblock, ttot = _block(trust, "Trust funds")
+            body += tblock
+        grand = {k: ltot[k] + ttot[k] for k in figures}
+        total = Row(cells={"fund": "TOTAL ALL FUNDS", **grand}, emphasis=True,
+                    meta={"level": "grand"})
+        note = ("Opening + receipts − payments ± transfers = closing."
+                if has_transfers else
+                "Opening + receipts − payments = closing. No transfers were "
+                "made between funds this period.")
+        dropped = len(rows) - len(live)
+        if dropped:
+            note += f" {dropped} dormant fund(s) with no balance or movement " \
+                    "are not listed."
         return SectionData(key=self.key, title=self.title, columns=cols,
-                           rows=body, total=total, kind="table",
-                           note="Opening + receipts − payments ± transfers = closing.")
+                           rows=body, total=total, kind="table", note=note)
 
 
 registry.register(Report(

@@ -18,7 +18,7 @@ drill-down, filters, permissions and a dependency map.
 | Income & Expenditure | `income_statement_v2` | recurrent/capital/operating/net-surplus proven identical (Phase 6 tests) |
 | Trial Balance | `trial_balance_v2` | `trial_balance` metric (ledger); balances by construction |
 | Financial Position (summary) | `financial_position_v2` | assets/liabilities/net from registry metrics |
-| Board / Treasurer's Report | `board_report_v2` | rebuilt from components + narratives (Phase 6) |
+| Board / Treasurer's Report | `board_report_v2` | rebuilt from components + narratives (Phase 6); reduced to the board's own statement set with a print-first template and editable per-section commentary — see [BOARD_PACK.md](BOARD_PACK.md) |
 | **Cash Flow Statement** | `cash_flow_v2` | reconciles opening + net change == closing; classification mirrors legacy `StatementOfCashFlowsView` (Phase 7) |
 | **Statement of Fund Balances** | `fund_balances_v2` | total == total closing cash; from `fund_summary` (Phase 7) |
 | **Budget vs Actual** | `budget_vs_actual_v2` | totals equal the canonical `budget_vs_actual` service the legacy view uses (Phase 7) |

@@ -1,0 +1,325 @@
+{% extends 'base.html' %}{% load humanize treasury_extras static %}
+{% block title %}{{ report.title }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+
+{# ---- screen-only toolbar & period filter ---------------------------- #}
+<div class="bpm-toolbar no-print">
+  <button type="button" class="btn btn-sm" onclick="window.print()">🖶 Print / Save as PDF</button>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=pdf">PDF</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=docx">Word</a>
+  <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=xlsx">Excel</a>
+  <span class="sp"></span>
+  <form method="get" class="filter-bar" style="margin:0">
+    {% if rendered.context.start %}
+      <input type="date" name="start" value="{{ rendered.context.start|date:'Y-m-d' }}" class="field" title="From" aria-label="Period from">
+      <input type="date" name="end" value="{{ rendered.context.end|date:'Y-m-d' }}" class="field" title="To" aria-label="Period to">
+    {% endif %}
+    {% for f in report.filters %}{% if f.kind == 'bool' %}
+      <label class="u-inline"><input type="checkbox" name="{{ f.name }}" value="1" {% if filters|get_item:f.name %}checked{% endif %}> {{ f.label }}</label>
+    {% endif %}{% endfor %}
+    <button class="btn btn-sm">Apply</button>
+  </form>
+</div>
+
+<article class="bpm" id="bpm-doc"
+         data-report="{{ report.key }}"
+         data-start="{% if rendered.context.start %}{{ rendered.context.start|date:'Y-m-d' }}{% endif %}"
+         data-end="{% if rendered.context.end %}{{ rendered.context.end|date:'Y-m-d' }}{% endif %}"
+         data-can-edit="{% if is_treasurer %}1{% else %}0{% endif %}"
+         data-ai="{% if cfg.llm_enabled %}1{% else %}0{% endif %}">
+
+  {# ---- running head/foot: print only, repeats on every page ---- #}
+  <div class="bpm-runner bpm-runner-top" aria-hidden="true">
+    <span>{{ CHURCH_NAME }}</span><span>{{ report.title }}</span>
+  </div>
+  <div class="bpm-runner bpm-runner-bot" aria-hidden="true">
+    <span>{% if rendered.context.start %}{{ rendered.context.start|date:"d M Y" }} – {{ rendered.context.end|date:"d M Y" }}{% endif %}</span>
+    <span>Prepared {% now "d M Y" %}</span>
+  </div>
+
+  {# ============================== MASTHEAD ============================ #}
+  <header class="bpm-mast">
+    <div class="bpm-org">{{ CHURCH_NAME }}</div>
+    <h1 class="bpm-title">{{ report.title }}</h1>
+    {% if rendered.context.start %}
+      <div class="bpm-period">For the period {{ rendered.context.start|date:"d F Y" }} to {{ rendered.context.end|date:"d F Y" }}</div>
+    {% endif %}
+    <div class="bpm-meta">
+      Prepared {% now "d F Y" %}{% if request.user.is_authenticated %} by {{ request.user.get_full_name|default:request.user.get_username }}{% endif %}
+      · Presented to the Church Board
+      {% if health_band %} · Financial health {{ health_overall|floatformat:0 }}/100 ({{ health_band }}){% endif %}
+    </div>
+    <div class="bpm-mast-rule" aria-hidden="true"></div>
+  </header>
+
+  {# ============================== CONTENTS ============================ #}
+  {% if section_groups|length > 1 %}
+  <nav class="bpm-contents no-print" aria-label="Contents">
+    {% for g in section_groups %}
+      <a href="#{{ g.anchor }}"><span class="n">{{ forloop.counter }}</span>{{ g.name }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
+
+  {# ============================== SECTIONS ============================ #}
+  {% for g in section_groups %}
+  <section id="{{ g.anchor }}" class="bpm-grp{% if g.name in break_groups %} bpm-break{% endif %}">
+    <div class="bpm-grp-head">
+      <span class="bpm-grp-n">{{ forloop.counter }}</span>
+      <h2 class="bpm-grp-t">{{ g.name }}</h2>
+    </div>
+
+    <div class="bpm-row">
+    {% for s in g.sections %}
+      {% with layout=s.extra|get_item:'layout' explanation=s.extra|get_item:'explanation' %}
+      {% comment %} The basis subtracts the row gap: two half-width sections at a
+      flat 50% basis plus a gap overflow the row and wrap to full width, which is
+      how a side-by-side pair of statements quietly becomes a stack. {% endcomment %}
+      <div class="bpm-cell" style="flex:1 1 calc({% if layout %}{{ layout.width|default:12|pct_of_12 }}{% else %}100{% endif %}% - 1.8rem)">
+        <div class="bpm-sec">
+
+        {% if s.kind != 'kpi' and s.kind != 'signature' and s.title %}<h3 class="bpm-sec-t">{{ s.title }}</h3>{% endif %}
+
+        {# ---- headline figures ---- #}
+        {% if s.kind == 'kpi' %}
+          <div class="bpm-figs">
+          {% for r in s.rows %}
+            <div class="bpm-fig">
+              <div class="bpm-fig-l">{{ r.cells.label }}</div>
+              <div class="bpm-fig-v">{% with disp=r.cells|get_item:'display' %}{% if disp %}{{ disp }}{% else %}<span class="u">{{ CURRENCY }}</span>{{ r.cells.value|money:0 }}{% endif %}{% endwith %}</div>
+              {% with sub=r.cells|get_item:'sub' %}{% if sub %}<div class="bpm-fig-s">{{ sub }}</div>{% endif %}{% endwith %}
+            </div>
+          {% endfor %}
+          </div>
+
+        {% elif s.kind == 'commentary' or s.kind == 'info' %}{% comment %}
+          The prose is the section; the editable block below renders it.
+        {% endcomment %}
+
+        {# ---- signatures ---- #}
+        {% elif s.kind == 'signature' %}
+          <div class="bpm-signs">
+          {% for r in s.rows %}
+            <div class="bpm-sign">
+              <div class="bpm-sign-line"></div>
+              <div class="bpm-sign-role">{{ r.cells.role }}</div>
+              <div class="bpm-sign-sub">Name, signature &amp; date</div>
+            </div>
+          {% endfor %}
+          </div>
+
+        {# ---- label / figure statements ---- #}
+        {% elif s.kind == 'keyvalue' %}
+          <table class="bpm-tbl bpm-tbl-narrow"><tbody>
+          {% for r in s.rows %}
+            <tr class="{% if r.meta.level %}r-{{ r.meta.level }}{% elif r.emphasis %}emph{% endif %}">
+              <td>{{ r.cells.label }}</td>
+              <td class="num {% if r.cells.value|is_negative %}neg{% endif %}">{% if r.meta.level == 'heading' %}{% else %}{{ r.cells.value|money }}{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody></table>
+
+        {# ---- nothing to show ---- #}
+        {% elif s.is_empty %}
+          <p class="bpm-empty">Nothing to report for this period.</p>
+
+        {# ---- tables ---- #}
+        {% else %}
+          <div class="bpm-scroll"><table class="bpm-tbl{% if s.columns|length < 4 %} bpm-tbl-narrow{% endif %}">
+            <thead><tr>{% for c in s.columns %}<th scope="col" {% if c.numeric %}class="num"{% endif %}>{{ c.label }}</th>{% endfor %}</tr></thead>
+            <tbody>
+            {% for r in s.rows %}
+              <tr class="{% if r.meta.level %}r-{{ r.meta.level }}{% elif r.emphasis %}emph{% endif %}">
+              {% for c in s.columns %}{% with v=r.cells|get_item:c.key %}
+                <td class="{% if c.numeric %}num{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}{% if v == None or v == '' %} blank{% endif %}">
+                  {% if r.meta.level == 'heading' and c.numeric %}
+                  {% elif c.drilldown and r.url %}<a href="{{ r.url }}">{{ v }}</a>
+                  {% elif v == None or v == '' %}·
+                  {% elif c.numeric %}{{ v|money:c.places }}
+                  {% else %}{{ v }}{% endif %}
+                </td>
+              {% endwith %}{% endfor %}
+              </tr>
+            {% endfor %}
+            </tbody>
+            {% if s.total %}<tfoot><tr>
+              {% for c in s.columns %}{% with v=s.total.cells|get_item:c.key %}
+              <td class="{% if c.numeric %}num{% endif %}{% if c.numeric and v|is_negative %} neg{% endif %}">
+                {% if v == None or v == '' %}{% elif c.numeric %}{{ v|money:c.places }}{% else %}{{ v }}{% endif %}
+              </td>{% endwith %}{% endfor %}
+            </tr></tfoot>{% endif %}
+          </table></div>
+        {% endif %}
+
+        {% comment %} How the figures were arrived at — a caption, not
+        commentary. It sits under the table because a reader questions a basis
+        while looking at the numbers, not two paragraphs later. {% endcomment %}
+        {% if s.note and s.kind != 'commentary' and s.kind != 'signature' %}
+          <p class="bpm-caption">{{ s.note }}</p>
+        {% endif %}
+
+        {% comment %} The explanation: generated, AI-drafted or the treasurer's
+        own. Signature blocks and anything with nothing to say carry no
+        commentary box — an empty "What this shows" under a row of signature
+        lines is furniture, not information. {% endcomment %}
+        {% if explanation and s.kind != 'signature' %}
+        <div class="bpm-note{% if s.kind == 'commentary' %} bpm-note-prose{% endif %}" data-section="{{ s.key }}">
+          {% if s.kind != 'commentary' or is_treasurer or s.extra|get_item:'explanation_edited' %}
+          <div class="bpm-note-head no-print">
+            {% if s.kind != 'commentary' %}<span class="bpm-note-lbl">What this shows</span>{% endif %}
+            {% if s.extra|get_item:'explanation_edited' %}<span class="bpm-tag" data-role="tag">{% if s.extra|get_item:'explanation_source' == 'AI' %}AI draft{% else %}Edited{% endif %}</span>{% endif %}
+            {% if is_treasurer %}
+            <span class="bpm-note-tools">
+              <button type="button" class="bpm-btn" data-act="edit">Edit</button>
+              <button type="button" class="bpm-btn" data-act="ai" title="Draft this commentary with the AI assistant">✨ AI</button>
+            </span>
+            {% endif %}
+          </div>
+          {% endif %}
+          <div class="bpm-note-body" data-role="body">{{ explanation|linebreaks }}</div>
+        </div>
+        {% endif %}
+
+        </div>
+      </div>
+      {% endwith %}
+    {% endfor %}
+    </div>
+  </section>
+  {% empty %}
+    <p class="bpm-empty">This report has no sections your role can see.</p>
+  {% endfor %}
+
+  <footer class="bpm-foot">
+    <span>{{ CHURCH_NAME }} · {{ report.title }}</span>
+    <span>Figures from the Financial Metrics Registry; commentary is written from the same figures.</span>
+  </footer>
+</article>
+
+{% if is_treasurer %}
+<form id="bpm-csrf" style="display:none">{% csrf_token %}</form>
+<script>
+/* Inline commentary editing.
+   Each explanation block edits in place: Edit swaps the prose for a textarea,
+   Save posts it, and saving an empty box clears the override so the generated
+   text comes back. AI asks the assistant to draft the same block from the
+   section's own figures. Nothing here can change a figure. */
+(function(){
+  var doc = document.getElementById('bpm-doc');
+  if(!doc || doc.dataset.canEdit !== '1') return;
+  var token = document.querySelector('#bpm-csrf [name=csrfmiddlewaretoken]').value;
+  var urls = {save: "{% url 'report_narrative_save' %}", ai: "{% url 'report_narrative_ai' %}"};
+  var base = {report_key: doc.dataset.report, start: doc.dataset.start, end: doc.dataset.end};
+
+  function post(url, data){
+    var body = new URLSearchParams(Object.assign({}, base, data));
+    return fetch(url, {method: 'POST', credentials: 'same-origin',
+      headers: {'X-CSRFToken': token, 'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString()}).then(function(r){ return r.json(); });
+  }
+
+  function status(note, text, cls){
+    var old = note.querySelector('.bpm-note-err,.bpm-note-busy');
+    if(old) old.remove();
+    if(!text) return;
+    var el = document.createElement('div');
+    el.className = cls; el.textContent = text;
+    note.appendChild(el);
+  }
+
+  function setTag(note, source){
+    var head = note.querySelector('.bpm-note-head');
+    var tag = note.querySelector('[data-role=tag]');
+    if(!source || source === 'AUTO'){ if(tag) tag.remove(); return; }
+    if(!tag){
+      tag = document.createElement('span');
+      tag.className = 'bpm-tag'; tag.dataset.role = 'tag';
+      head.insertBefore(tag, head.querySelector('.bpm-note-tools'));
+    }
+    tag.textContent = (source === 'AI') ? 'AI draft' : 'Edited';
+  }
+
+  function render(body, text){
+    body.innerHTML = '';
+    (text || '').split(/\n{2,}/).forEach(function(par){
+      var p = document.createElement('p');
+      p.textContent = par.trim();
+      if(p.textContent) body.appendChild(p);
+    });
+  }
+
+  doc.addEventListener('click', function(ev){
+    var btn = ev.target.closest('.bpm-btn');
+    if(!btn) return;
+    var note = btn.closest('.bpm-note');
+    var body = note.querySelector('[data-role=body]');
+    var section = note.dataset.section;
+
+    if(btn.dataset.act === 'ai'){
+      status(note, 'Asking the assistant…', 'bpm-note-busy');
+      btn.disabled = true;
+      post(urls.ai, {section_key: section}).then(function(r){
+        btn.disabled = false;
+        if(!r.ok){ status(note, r.error, 'bpm-note-err'); return; }
+        status(note, '', '');
+        render(body, r.text);
+        setTag(note, 'AI');
+      }).catch(function(){
+        btn.disabled = false;
+        status(note, 'Could not reach the assistant.', 'bpm-note-err');
+      });
+      return;
+    }
+
+    if(btn.dataset.act === 'edit'){
+      var ta = document.createElement('textarea');
+      ta.value = Array.prototype.map.call(body.querySelectorAll('p'), function(p){
+        return p.textContent.trim(); }).join('\n\n') || body.textContent.trim();
+      body.replaceWith(ta);
+      btn.style.display = 'none';
+      var tools = note.querySelector('.bpm-note-tools');
+      var save = document.createElement('button');
+      save.type = 'button'; save.className = 'bpm-btn'; save.dataset.act = 'save';
+      save.textContent = 'Save';
+      var cancel = document.createElement('button');
+      cancel.type = 'button'; cancel.className = 'bpm-btn'; cancel.dataset.act = 'cancel';
+      cancel.textContent = 'Cancel';
+      tools.insertBefore(save, tools.firstChild);
+      tools.insertBefore(cancel, save.nextSibling);
+      ta.focus();
+      note._restore = function(text, source){
+        ta.replaceWith(body);
+        if(text !== null) render(body, text);
+        save.remove(); cancel.remove();
+        btn.style.display = '';
+        if(source !== undefined) setTag(note, source);
+      };
+      note._textarea = ta;
+      return;
+    }
+
+    if(btn.dataset.act === 'cancel'){ note._restore(null); status(note, '', ''); return; }
+
+    if(btn.dataset.act === 'save'){
+      var text = note._textarea.value;
+      status(note, 'Saving…', 'bpm-note-busy');
+      btn.disabled = true;
+      post(urls.save, {section_key: section, text: text}).then(function(r){
+        btn.disabled = false;
+        if(!r.ok){ status(note, r.error, 'bpm-note-err'); return; }
+        status(note, '', '');
+        if(r.edited){ note._restore(r.text, r.source); }
+        else { location.reload(); }   /* cleared — bring the generated text back */
+      }).catch(function(){
+        btn.disabled = false;
+        status(note, 'Could not save.', 'bpm-note-err');
+      });
+    }
+  });
+})();
+</script>
+{% endif %}
+
+{% include "reports/_board_pack_min_styles.html" %}
+{% endblock %}

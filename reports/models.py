@@ -136,3 +136,4 @@ from reports.models_admin import (  # noqa: E402,F401
     ReportBranding, ReportDefinition, ReportSchedule, ScheduleRun,
     ReportUsage, ReportFavourite,
 )
+from reports.models_narrative import ReportNarrative  # noqa: E402,F401

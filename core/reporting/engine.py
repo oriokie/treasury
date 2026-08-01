@@ -55,6 +55,11 @@ class Column:
     label: str
     numeric: bool = False           # right-align + number formatting in exports
     drilldown: bool = False         # render this cell as a link if row has a url
+    #: decimal places for a numeric column. Statements are read to the cent;
+    #: a summary of the year's collections is read to the shilling, and the
+    #: trailing ".00" on every line is noise a board has to look past. Default
+    #: 2 leaves every existing column exactly as it was.
+    places: int = 2
 
 
 @dataclass

@@ -8,6 +8,10 @@ urlpatterns = [
     path("metrics/", views.MetricsCatalogueView.as_view(), name="metrics_catalogue"),
     path("components/", views.ComponentCatalogueView.as_view(), name="component_catalogue"),
     path("r/<slug:key>/", views.EngineReportView.as_view(), name="engine_report"),
+    path("narrative/save/", views.NarrativeSaveView.as_view(),
+         name="report_narrative_save"),
+    path("narrative/ai/", views.NarrativeAiView.as_view(),
+         name="report_narrative_ai"),
     # Configuration-driven reporting platform
     path("library/", admin_views.ReportLibraryView.as_view(), name="report_library"),
     path("library/fav/<str:key>/", admin_views.ToggleFavouriteView.as_view(),

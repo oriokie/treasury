@@ -137,6 +137,132 @@ def collections_summary(year):
             "tot_net": tot_c - tot_e}
 
 
+def month_buckets(start, end):
+    """The calendar months spanned by [start, end], each clipped to the period.
+
+    Returns ``[{"key": (year, month), "label": "Jan 2026", "short": "Jan",
+    "start": date, "end": date}]``. A period inside one calendar month yields a
+    single bucket, which is what makes the board pack's collection and trust
+    tables read as "the month" for a one-month period and "month by month" for
+    a longer one, from the same code.
+    """
+    import datetime as _dt
+    if not start or not end or end < start:
+        return []
+    out = []
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        first = _dt.date(y, m, 1)
+        last = _dt.date(y, m, calendar.monthrange(y, m)[1])
+        out.append({
+            "key": (y, m),
+            "label": first.strftime("%b %Y"),
+            "short": calendar.month_abbr[m],
+            "start": max(first, start),
+            "end": min(last, end),
+        })
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+def _month_key(d):
+    return (d.year, d.month)
+
+
+def collections_summary_period(start, end):
+    """Collections, trust, local and expenditure per calendar month over any
+    period — the period-aware form of :func:`collections_summary`.
+
+    The definitions are exactly the ones the Collections Summary report uses
+    (confirmed credits with ``excluded_from_income=False``; trust = credits on
+    a trust fund; expenditure = effective expenses other than remittances), so
+    the board pack and that report can never disagree for the same dates.
+    """
+    buckets = month_buckets(start, end)
+    if not buckets:
+        return {"rows": [], "totals": {}, "multi_month": False}
+
+    base = (Transaction.objects.confirmed_credits()
+            .filter(excluded_from_income=False, date__gte=start, date__lte=end))
+    credit = (base.annotate(m=TruncMonth("date")).values("m")
+              .annotate(t=Sum("amount")))
+    trust = (base.filter(department__is_trust=True)
+             .annotate(m=TruncMonth("date")).values("m")
+             .annotate(t=Sum("amount")))
+    exp = (Expense.objects.exclude(category=Expense.Category.REMITTANCE)
+           .filter(date__gte=start, date__lte=end,
+                   status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+           .annotate(m=TruncMonth("date")).values("m")
+           .annotate(t=Sum("amount")))
+
+    def to_map(qs):
+        return {_month_key(r["m"]): (r["t"] or Decimal(0)) for r in qs if r["m"]}
+
+    cm, tm, em = to_map(credit), to_map(trust), to_map(exp)
+    rows = []
+    tot_c = tot_t = tot_e = Decimal(0)
+    for b in buckets:
+        c = cm.get(b["key"], Decimal(0))
+        t = tm.get(b["key"], Decimal(0))
+        e = em.get(b["key"], Decimal(0))
+        rows.append({"label": b["label"], "start": b["start"], "end": b["end"],
+                     "collections": c, "trust": t, "local": c - t,
+                     "expenditure": e, "net": c - e})
+        tot_c += c
+        tot_t += t
+        tot_e += e
+    return {
+        "rows": rows,
+        "multi_month": len(buckets) > 1,
+        "totals": {"collections": tot_c, "trust": tot_t, "local": tot_c - tot_t,
+                   "expenditure": tot_e, "net": tot_c - tot_e},
+    }
+
+
+def trust_monthly_period(start, end):
+    """Trust-fund collections per trust account per calendar month over any
+    period — the period-aware form of :func:`trust_monthly`.
+
+    Same credit basis as :func:`collections_summary_period`, so the trust
+    column there equals this table's grand total for the same dates. Funds with
+    no collection in the period are dropped: a board pack listing forty empty
+    trust accounts is a table nobody reads.
+    """
+    buckets = month_buckets(start, end)
+    if not buckets:
+        return {"months": [], "rows": [], "col_totals": [], "grand": Decimal(0)}
+
+    qs = (Transaction.objects.confirmed_credits()
+          .filter(excluded_from_income=False, department__is_trust=True,
+                  date__gte=start, date__lte=end)
+          .annotate(m=TruncMonth("date"))
+          .values("department_id", "m")
+          .annotate(t=Sum("amount")))
+    by_dept = defaultdict(lambda: defaultdict(Decimal))
+    for r in qs:
+        if r["department_id"] and r["m"]:
+            by_dept[r["department_id"]][_month_key(r["m"])] += r["t"] or Decimal(0)
+
+    depts = _ordered_departments(
+        Department.objects.filter(is_trust=True, id__in=list(by_dept)))
+    rows = []
+    col_totals = {b["key"]: Decimal(0) for b in buckets}
+    grand = Decimal(0)
+    for d in depts:
+        cells = [by_dept[d.id].get(b["key"], Decimal(0)) for b in buckets]
+        total = sum(cells, Decimal(0))
+        if not total:
+            continue
+        rows.append({"dept": d, "cells": cells, "total": total})
+        for b, v in zip(buckets, cells):
+            col_totals[b["key"]] += v
+        grand += total
+    rows.sort(key=lambda r: -r["total"])
+    return {"months": buckets, "rows": rows,
+            "col_totals": [col_totals[b["key"]] for b in buckets],
+            "grand": grand}
+
+
 def collections_detail(start, end):
     """Detailed collections for a given period, broken down by fund.
 

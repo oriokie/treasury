@@ -49,3 +49,4 @@ from .board import BoardReportSettingsView, BoardReportView, PastorReportView, C
 from .financial_statements import IncomeStatementView, FinancialPositionView, ChangesInNetAssetsView, StatementOfCashFlowsView
 from .treasurer_report import MonthlyTreasurerReportView, _monthly_report_context, MonthlyReportExcelView, MonthlyReportWordView
 from .engine import MetricsCatalogueView, EngineReportView, ComponentCatalogueView
+from .narrative import _date, NarrativeSaveView, NarrativeAiView

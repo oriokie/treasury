@@ -310,8 +310,20 @@ class PdfRenderer(Renderer):
                          [colors.white, colors.HexColor("#f4f1ea")]),
                     ]))
                     story.append(t)
+            # The section's commentary — generated, AI-drafted or the
+            # treasurer's own. A printed pack the board takes away must carry
+            # the same explanation the screen showed, so it travels with every
+            # export rather than living only in HTML. Commentary sections have
+            # already printed their text above.
             if s.note:
                 story.append(Paragraph(f"<i>{s.note}</i>", styles["Italic"]))
+            explanation = (s.extra.get("explanation") or "").strip()
+            if explanation and explanation != s.note \
+                    and s.kind not in ("commentary", "info"):
+                for para in explanation.split("\n\n"):
+                    if para.strip():
+                        story.append(Paragraph(
+                            para.strip().replace("\n", "<br/>"), styles["Normal"]))
             story.append(Spacer(1, 5 * mm))
         if brand.get("certification_statement"):
             story.append(Spacer(1, 6 * mm))
@@ -410,9 +422,19 @@ class DocxRenderer(Renderer):
                             else f"<td>{escape(_fmt_cell(c))}</td>" for c in r)
                             + "</tr>")
                     parts.append("</table>")
+            # The section's commentary travels with the Word export too, so a
+            # pack circulated before the meeting reads the same as the screen.
             if s.note:
                 parts.append(f"<p style='font-size:9pt;color:#555;font-style:italic'>"
                              f"{escape(s.note)}</p>")
+            explanation = (s.extra.get("explanation") or "").strip()
+            if explanation and explanation != s.note \
+                    and s.kind not in ("commentary", "info"):
+                for para in explanation.split("\n\n"):
+                    if para.strip():
+                        parts.append("<p style='font-size:10pt;color:#333'>"
+                                     + escape(para.strip()).replace("\n", "<br>")
+                                     + "</p>")
         if brand.get("certification_statement"):
             parts.append(f"<p style='margin-top:14pt'><i>"
                          f"{escape(brand['certification_statement'])}</i></p>")

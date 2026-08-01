@@ -201,9 +201,13 @@ class BackwardCompatTests(_Seed):
 
     def test_generic_report_still_renders(self):
         self.client.force_login(_treasurer("bp_bc"))
-        for key in ("income_statement_v2", "cash_flow_v2", "board_report_v2"):
+        # board_report_v2 has since taken a presentation template of its own
+        # (reports/board_pack_min.html); it is listed in the board-pack tests,
+        # not here. These are the reports that still use the engine grid.
+        for key in ("income_statement_v2", "cash_flow_v2"):
             r = self.client.get(reverse("engine_report", args=[key])
                                 + "?start=2026-01-01&end=2026-12-31")
             self.assertEqual(r.status_code, 200, key)
-            # generic reports render the flat engine grid, not the board pack
+            # generic reports render the flat engine grid, not a board pack
             self.assertNotIn("bp-cover", r.content.decode())
+            self.assertNotIn("bpm-doc", r.content.decode())

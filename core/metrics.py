@@ -247,6 +247,28 @@ metrics.register(Metric(
     lambda start=None, end=None: _b().offering_summary(start, end))
 
 metrics.register(Metric(
+    "collections_summary_monthly", "Collections summary by month", "Income",
+    "Per calendar month over the period: total collections, the trust and "
+    "local split, expenditure, and net (collections − expenditure). Same "
+    "credit and expense basis as the Collections Summary report, so the two "
+    "agree for identical dates. A period inside one month yields one row.",
+    "reports.services.monthly.collections_summary_period", inputs="start, end"),
+    lambda start=None, end=None:
+        __import__("reports.services.monthly", fromlist=["x"])
+        .collections_summary_period(start, end))
+
+metrics.register(Metric(
+    "trust_collections_monthly", "Trust collections by month", "Trust",
+    "Per trust fund per calendar month over the period: collections, with "
+    "column and row totals. Funds with no collection in the period are "
+    "omitted. The grand total equals the trust column of "
+    "collections_summary_monthly for the same dates.",
+    "reports.services.monthly.trust_monthly_period", inputs="start, end"),
+    lambda start=None, end=None:
+        __import__("reports.services.monthly", fromlist=["x"])
+        .trust_monthly_period(start, end))
+
+metrics.register(Metric(
     "receipts_by_department", "Receipts by fund", "Income",
     "All confirmed fund cash received per department INCLUDING loan receipts "
     "(this is a cash figure, not an income figure — see total_income for the "

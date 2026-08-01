@@ -15,6 +15,8 @@ class ReportsConfig(AppConfig):
         from core.reporting import narrative_library  # noqa: F401
         from . import component_demo  # noqa: F401
         from . import financial_statements  # noqa: F401
+        from . import board_sections
+        board_sections.register_components()
         from . import board_report  # noqa: F401
         from . import asset_reports  # noqa: F401
         from . import consistency_reports
