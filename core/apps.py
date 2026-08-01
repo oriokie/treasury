@@ -13,6 +13,15 @@ class CoreConfig(AppConfig):
             perf_signals.register()
         except Exception:
             pass
+        # `user_roles` memoises a user's groups for the life of a request. This
+        # is what keeps that memo honest: grant or revoke a role and every
+        # cached copy is invalidated at once.
+        from django.contrib.auth.models import User
+        from django.db.models.signals import m2m_changed
+        from core.roles import _bump_groups_generation
+        m2m_changed.connect(_bump_groups_generation,
+                            sender=User.groups.through,
+                            dispatch_uid="core.roles.groups_generation")
         # Only start the in-app Telegram poller in a real server process, never
         # during migrations/tests/shell. RUN_MAIN guards the autoreloader's
         # double-start in development.

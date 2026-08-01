@@ -251,3 +251,62 @@ class RolesUseThePrefetchCacheTests(TestCase):
         self.assertEqual(
             roles.user_roles(admin),
             {roles.TREASURER, roles.ASSISTANT, roles.AUDITOR})
+
+
+class RolesAreMemoisedTests(TestCase):
+    """One user, asked repeatedly, is one query.
+
+    The navigation asks whether the login is a treasurer, an assistant, a
+    leader, an elder and a portal member, and several views ask again — on a
+    portal render that was fourteen identical SELECTs against auth_user_groups
+    for a single `request.user`. The memo is per user INSTANCE, which is exactly
+    the lifetime of a request.
+
+    A cache of who may do what has to be wrong for no longer than an instant, so
+    the invalidation is the part that matters here, not the saving.
+    """
+
+    def setUp(self):
+        self.group = Group.objects.get_or_create(name=roles.TREASURER)[0]
+        self.user = User.objects.create_user("memo_user", password="x")
+
+    def test_repeated_questions_cost_one_query(self):
+        roles.user_roles(self.user)                     # first read pays for it
+        with CaptureQueriesContext(connection) as ctx:
+            for _ in range(10):
+                roles.is_treasurer(self.user)
+                roles.is_leader(self.user)
+        self.assertEqual(len(ctx.captured_queries), 0)
+
+    def test_granting_a_role_is_seen_at_once(self):
+        self.assertFalse(roles.is_treasurer(self.user))
+        self.user.groups.add(self.group)
+        self.assertTrue(roles.is_treasurer(self.user),
+                        "a role granted after the memo was warmed went unseen")
+
+    def test_revoking_a_role_is_seen_at_once(self):
+        self.user.groups.add(self.group)
+        self.assertTrue(roles.is_treasurer(self.user))
+        self.user.groups.remove(self.group)
+        self.assertFalse(roles.is_treasurer(self.user),
+                         "a revoked role was still being honoured from cache")
+
+    def test_a_clear_is_seen_at_once(self):
+        self.user.groups.add(self.group)
+        self.assertTrue(roles.is_treasurer(self.user))
+        self.user.groups.clear()
+        self.assertFalse(roles.is_treasurer(self.user))
+
+    def test_two_users_do_not_share_an_answer(self):
+        other = User.objects.create_user("memo_other", password="x")
+        self.user.groups.add(self.group)
+        self.assertTrue(roles.is_treasurer(self.user))
+        self.assertFalse(roles.is_treasurer(other))
+
+    def test_the_caller_gets_a_set_of_its_own(self):
+        """Callers have always been free to treat the result as theirs; a
+        shared set would let one of them edit everybody else's answer."""
+        self.user.groups.add(self.group)
+        first = roles.user_roles(self.user)
+        first.add("NOT A REAL ROLE")
+        self.assertEqual(roles.user_roles(self.user), {roles.TREASURER})

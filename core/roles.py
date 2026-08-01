@@ -34,17 +34,45 @@ ALL_ROLES = [TREASURER, ASSISTANT, AUDITOR, LEADER, ELDER, MEMBER]
 OFFICE_ROLES = {TREASURER, ASSISTANT, AUDITOR, LEADER, ELDER}
 
 
+_GROUPS_GENERATION = 0
+
+
+def _bump_groups_generation(**kwargs):
+    """Any change to a user's groups invalidates every memo, everywhere."""
+    global _GROUPS_GENERATION
+    _GROUPS_GENERATION += 1
+
+
 def user_roles(user):
     if not user.is_authenticated:
         return set()
     if user.is_superuser:
         return set([TREASURER, ASSISTANT, AUDITOR])  # admin is staff, not a leader
+    # Memoised on the user instance. Reading roles is the single most repeated
+    # query in the app — the navigation alone asks "is this a treasurer / a
+    # leader / an elder / a portal member" a dozen times per render, and each
+    # question used to be its own SELECT. `request.user` is one instance for the
+    # life of a request, so one query now answers all of them. The generation
+    # counter means a group added mid-request (the settings page granting a
+    # role, or a test) is still seen immediately.
+    # A copy on the way out: callers have always been handed a set of their own,
+    # and one that appended to it would otherwise be editing every later
+    # caller's answer. Copying half a dozen strings is nothing beside the query
+    # it replaces.
+    cached = getattr(user, "_treasury_roles", None)
+    if cached is not None and cached[0] == _GROUPS_GENERATION:
+        return set(cached[1])
     # `user.groups.all()` rather than `.values_list("name", flat=True)`: a
     # values_list issues its own query every time and ignores a prefetch cache,
     # so any caller listing users had to pay one query per user no matter how
     # carefully it built its queryset. Reading `.all()` uses the cache when the
     # caller has prefetched, and costs the same single query when it has not.
-    return {g.name for g in user.groups.all()}
+    names = {g.name for g in user.groups.all()}
+    try:
+        user._treasury_roles = (_GROUPS_GENERATION, set(names))
+    except AttributeError:      # a user model that forbids stray attributes
+        pass
+    return names
 
 
 def is_treasurer(user):
