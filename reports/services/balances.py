@@ -8,6 +8,41 @@ from departments.models import Department
 from giving.models import Transaction
 
 
+def _txn():
+    """The transaction rows this report is entitled to see.
+
+    Ordinarily every row, as it stands now. Inside an ``asat.as_reported``
+    block it is the rows as they stood at that moment — so a credit receipted
+    after the reporting date is still in suspense, and one entered afterwards
+    is not there at all. See ``reports.services.asat``."""
+    from reports.services import asat
+    return asat.transactions()
+
+
+def _exp():
+    """Expense rows on the same basis as ``_txn`` — a claim approved after the
+    reporting date was, on the date, still only a claim."""
+    from reports.services import asat
+    return asat.expenses()
+
+
+def _refunds():
+    """Expense refunds on the report's basis. A refund is a contra to
+    expenditure, so it has to be seen from the same moment the expense is."""
+    from cashbook.models import ExpenseRefund
+    from reports.services import asat
+    return asat.base(ExpenseRefund)
+
+
+def _transfers():
+    """Inter-fund transfers on the report's basis — they move a fund's closing
+    balance, so a transfer keyed in later must not appear in an earlier
+    position."""
+    from cashbook.models import FundTransfer
+    from reports.services import asat
+    return asat.base(FundTransfer)
+
+
 def _credit_filter(start=None, end=None):
     f = Q(direction=Transaction.Direction.CREDIT, confirmed=True,
           is_reversed=False, is_reversal=False)
@@ -27,7 +62,7 @@ def _receipted_q():
 
 
 def receipts_by_department(start=None, end=None, receipted=None):
-    qs = Transaction.objects.filter(_credit_filter(start, end))
+    qs = _txn().filter(_credit_filter(start, end))
     if receipted is True:
         qs = qs.filter(_receipted_q())
     elif receipted is False:
@@ -57,7 +92,7 @@ def expenses_by_department(start=None, end=None, only_effective=True,
         # (trust remittances, loan repayments, and any future liability
         # category) is kept out of the operating-expense view
         f &= ~Q(doc_class=Expense.DocClass.LIABILITY)
-    qs = (Expense.objects.filter(f).values("department").annotate(total=Sum("amount")))
+    qs = (_exp().filter(f).values("department").annotate(total=Sum("amount")))
     out = {r["department"]: (r["total"] or Decimal(0)) for r in qs}
     # refunds are contra-entries: money returned to the fund reduces the net
     # expense (and restores the fund balance). Date the reduction when received.
@@ -74,7 +109,7 @@ def refunds_by_department(start=None, end=None):
         f &= Q(date__gte=start)
     if end:
         f &= Q(date__lte=end)
-    qs = (ExpenseRefund.objects.filter(f, expense__status__in=[
+    qs = (_refunds().filter(f, expense__status__in=[
               Expense.Status.APPROVED, Expense.Status.PAID])
           .values("expense__department").annotate(total=Sum("amount")))
     return {r["expense__department"]: (r["total"] or Decimal(0)) for r in qs}
@@ -91,14 +126,14 @@ def _transfer_filter(start=None, end=None):
 
 def transfers_in_by_department(start=None, end=None):
     from cashbook.models import FundTransfer
-    qs = (FundTransfer.objects.filter(_transfer_filter(start, end))
+    qs = (_transfers().filter(_transfer_filter(start, end))
           .values("destination").annotate(total=Sum("amount")))
     return {r["destination"]: (r["total"] or Decimal(0)) for r in qs}
 
 
 def transfers_out_by_department(start=None, end=None):
     from cashbook.models import FundTransfer
-    qs = (FundTransfer.objects.filter(_transfer_filter(start, end))
+    qs = (_transfers().filter(_transfer_filter(start, end))
           .values("source").annotate(total=Sum("amount")))
     return {r["source"]: (r["total"] or Decimal(0)) for r in qs}
 
@@ -241,7 +276,7 @@ def offering_summary(start=None, end=None):
     the selected range (not month-ordinals 1..5), so a multi-month range shows
     every Sabbath separately instead of merging all 'week 1' Sabbaths together."""
     from core.utils import sabbath_of
-    qs = (Transaction.objects.filter(_credit_filter(start, end), excluded_from_income=False)
+    qs = (_txn().filter(_credit_filter(start, end), excluded_from_income=False)
           .values("department__name", "service_sabbath", "date").annotate(total=Sum("amount")))
     sabbaths = set()
     rows = {}
@@ -257,7 +292,7 @@ def offering_summary(start=None, end=None):
 
 
 def giving_by_group(start=None, end=None):
-    qs = (Transaction.objects.filter(_credit_filter(start, end), member__isnull=False,
+    qs = (_txn().filter(_credit_filter(start, end), member__isnull=False,
                                    excluded_from_income=False)
           .values("member__group")
           .annotate(total=Sum("amount"), count=Count("id")))
@@ -265,14 +300,14 @@ def giving_by_group(start=None, end=None):
 
 
 def income_by_channel(start=None, end=None):
-    qs = (Transaction.objects.filter(_credit_filter(start, end), excluded_from_income=False)
+    qs = (_txn().filter(_credit_filter(start, end), excluded_from_income=False)
           .values("channel")
           .annotate(total=Sum("amount"), count=Count("id")))
     return list(qs)
 
 
 def tithe_total(start=None, end=None):
-    return (Transaction.objects.filter(
+    return (_txn().filter(
         _credit_filter(start, end), excluded_from_income=False,
         department__name__icontains="tithe",
     ).aggregate(total=Sum("amount"))["total"] or Decimal(0))
@@ -289,7 +324,7 @@ def _effective_expense_qs(start=None, end=None):
         eff &= Q(date__gte=start)
     if end:
         eff &= Q(date__lte=end)
-    return (Expense.objects.filter(eff)
+    return (_exp().filter(eff)
             .exclude(doc_class=Expense.DocClass.LIABILITY))
 
 
@@ -325,7 +360,7 @@ def remittances_total(start=None, end=None):
         f &= Q(date__gte=start)
     if end:
         f &= Q(date__lte=end)
-    return (Expense.objects.filter(f).aggregate(t=Sum("amount"))["t"]
+    return (_exp().filter(f).aggregate(t=Sum("amount"))["t"]
             or Decimal(0))
 
 
@@ -355,7 +390,7 @@ def dev_group_progress(start=None, end=None):
         f["date__lte"] = end
     # one grouped query for every group, instead of an aggregate per group
     collected_map = {r["dev_group"]: (r["t"] or Decimal(0)) for r in
-                     Transaction.objects.filter(**f).values("dev_group")
+                     _txn().filter(**f).values("dev_group")
                      .annotate(t=Sum("amount"))}
     for grp in DevelopmentGroup.objects.filter(active=True):
         collected = collected_map.get(grp.id, Decimal(0))
@@ -380,13 +415,13 @@ def _trust_summary_impl(start=None, end=None):
     if end:
         remit_f &= Q(date__lte=end)
     remitted_map = {r["department"]: (r["total"] or Decimal(0)) for r in
-                    Expense.objects.filter(remit_f).values("department").annotate(total=Sum("amount"))}
+                    _exp().filter(remit_f).values("department").annotate(total=Sum("amount"))}
     # cumulative remitted through the period end (for the running balance)
     cum_remit_f = Q(remit_base)
     if end:
         cum_remit_f &= Q(date__lte=end)
     cum_remitted_map = {r["department"]: (r["total"] or Decimal(0)) for r in
-                        Expense.objects.filter(cum_remit_f).values("department").annotate(total=Sum("amount"))}
+                        _exp().filter(cum_remit_f).values("department").annotate(total=Sum("amount"))}
     # cumulative receipts split by whether a formal receipt has been issued.
     # Only RECEIPTED trust money is a firm liability to remit; unreceipted trust
     # money is still owed but shown on its own "pending receipting" line.
@@ -415,7 +450,7 @@ def dev_group_members(group, start=None, end=None):
     """Per-member contributions to a development group in a period, for the leader's
     reconciliation. Returns {'rows': [{member_name, phone, count, total}], 'total'}."""
     from collections import defaultdict
-    qs = Transaction.objects.filter(
+    qs = _txn().filter(
         dev_group=group, direction=Transaction.Direction.CREDIT, confirmed=True,
         is_reversed=False, is_reversal=False)
     if start:
@@ -469,25 +504,25 @@ def fund_balance_parts(dept, as_of=None):
         opening = (Department.objects.filter(pk=dept_id)
                    .values_list("opening_balance", flat=True).first() or Decimal(0))
 
-    receipts = (Transaction.objects.filter(
+    receipts = (_txn().filter(
         Q(department_id=dept_id, direction=Transaction.Direction.CREDIT,
           confirmed=True, is_reversed=False, is_reversal=False) & end)
         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
-    spent = (Expense.objects.filter(
+    spent = (_exp().filter(
         Q(department_id=dept_id,
           status__in=[Expense.Status.APPROVED, Expense.Status.PAID]) & end)
         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
     # refunds returned to this fund reduce net expense (restore the balance)
-    refunded = (ExpenseRefund.objects.filter(
+    refunded = (_refunds().filter(
         Q(expense__department_id=dept_id,
           expense__status__in=[Expense.Status.APPROVED, Expense.Status.PAID]) & end)
         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
-    tin = (FundTransfer.objects.filter(Q(destination_id=dept_id) & end)
+    tin = (_transfers().filter(Q(destination_id=dept_id) & end)
            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    tout = (FundTransfer.objects.filter(Q(source_id=dept_id) & end)
+    tout = (_transfers().filter(Q(source_id=dept_id) & end)
             .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
     return {"opening": opening, "receipts": receipts, "spent": spent,
@@ -521,7 +556,7 @@ def pending_receipts_total(as_of=None):
     f &= Q(processed_via_envelope=False, manual_receipt=False, excluded_from_income=False)
     if as_of:
         f &= Q(date__lte=as_of)
-    return Transaction.objects.filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+    return _txn().filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)
 
 
 def bank_position(as_of=None):
@@ -558,7 +593,7 @@ def bank_position(as_of=None):
             .order_by("-stmt_last_date", "-uploaded_at").first())
     cutoff = as_of or (stmt.stmt_last_date if stmt else None)
 
-    bank = Transaction.objects.filter(channel=Transaction.Channel.BANK,
+    bank = _txn().filter(channel=Transaction.Channel.BANK,
                                       confirmed=True, is_reversal=False,
                                       is_reversed=False)
     if cutoff:
@@ -573,7 +608,7 @@ def bank_position(as_of=None):
     # system bank balance, otherwise it overstates the cash at bank. Expenses
     # linked to a bank_transaction are excluded — they're already in `debits`.
     from cashbook.models import Expense
-    bank_exp_qs = Expense.objects.filter(
+    bank_exp_qs = _exp().filter(
         method=Expense.Method.BANK, status=Expense.Status.PAID,
         bank_transaction__isnull=True)
     if cutoff:
@@ -651,8 +686,12 @@ def bank_position(as_of=None):
 
 # --- cached public wrappers (see core.perfcache; no-op unless a TTL is set) ---
 def _k(*parts):
+    # The reporting basis is part of the key. Without it a restated figure and
+    # an as-reported one for the same period share a cache entry, and whichever
+    # was computed first silently answers for both.
+    from reports.services import asat
     return ":".join("" if p is None else (p.isoformat() if hasattr(p, "isoformat") else str(p))
-                    for p in parts)
+                    for p in parts) + asat.cache_key_part()
 
 
 def department_summary(start=None, end=None, consolidated=True):

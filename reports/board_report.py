@@ -56,6 +56,12 @@ registry.register(Report(
     filters=[
         Filter("consolidated", "Consolidate sub-accounts", kind="bool",
                default=True),
+        # The position as it stood on the closing date, rather than as it is
+        # now understood: a credit banked before the date but receipted after
+        # it stays in suspense, which is what a treasurer balancing on the day
+        # actually saw — and what makes the bank reconciliation explain itself.
+        Filter("as_reported", "Position as it stood on the date", kind="bool",
+               default=False),
     ],
     sections=[
         # ---- 1. Where the church stands ---------------------------------

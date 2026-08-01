@@ -190,9 +190,14 @@ def income_credit_filter(start=None, end=None, prefix=""):
 
 def income_credits(start=None, end=None, **extra):
     """Queryset of income credits over an optional period (the consolidated
-    replacement for the dashboard/assistant ``_credits`` helpers)."""
+    replacement for the dashboard/assistant ``_credits`` helpers).
+
+    Reads the rows on the report's current basis, so income and fund balances
+    can never be drawn on different ones — see ``reports.services.asat``."""
+    from reports.services import asat
     from giving.models import Transaction
-    return Transaction.objects.filter(income_credit_filter(start, end), **extra)
+    return asat.base(Transaction).filter(income_credit_filter(start, end),
+                                         **extra)
 
 
 # ===========================================================================

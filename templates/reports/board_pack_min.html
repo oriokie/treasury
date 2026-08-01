@@ -49,6 +49,11 @@
       · Presented to the Church Board
       {% if health_band %} · Financial health {{ health_overall|floatformat:0 }}/100 ({{ health_band }}){% endif %}
     </div>
+    {% if rendered.context.as_reported_at %}
+    <div class="bpm-basis">Position as it stood on {{ rendered.context.as_reported_at|date:"d F Y" }} — entries
+      made or receipted after that date are excluded, so items awaiting receipt on the day are shown
+      in suspense rather than in the fund they were later allocated to.</div>
+    {% endif %}
     <div class="bpm-mast-rule" aria-hidden="true"></div>
   </header>
 

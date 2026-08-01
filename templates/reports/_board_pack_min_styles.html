@@ -26,6 +26,11 @@ only changes what pagination and ink require.
 .bpm-period{font-size:.95rem;color:var(--ink-soft);font-weight:500}
 .bpm-meta{margin-top:.5rem;font-size:.74rem;color:var(--muted);letter-spacing:.02em}
 .bpm-mast-rule{height:2px;background:var(--forest);margin-top:1.1rem;opacity:.85}
+/* Which basis this pack was drawn on. Printed, not screen-only: a reader
+   holding the paper has to be able to tell, or two packs for the same date
+   with different figures look like an error rather than two questions. */
+.bpm-basis{margin-top:.7rem;padding:.5rem .7rem;border-left:3px solid var(--brass);
+  background:var(--brass-soft);font-size:.76rem;line-height:1.5;color:var(--ink-soft)}
 
 /* ---- contents ---- */
 .bpm-contents{display:flex;flex-wrap:wrap;gap:.15rem 1.2rem;margin:-1.1rem 0 2rem;
@@ -163,6 +168,8 @@ only changes what pagination and ink require.
   .bpm-meta{color:#555}
   .bpm-mast{margin-bottom:9mm}
   .bpm-mast-rule{background:#000;height:1.5pt;opacity:1}
+  .bpm-basis{background:none;border-left:1.5pt solid #000;color:#000;font-size:8.4pt;
+    padding:1mm 2.5mm;margin-top:3mm}
 
   /* the running head/foot: fixed elements repeat on every printed page, and
      the @page margin above reserves the band they sit in. */

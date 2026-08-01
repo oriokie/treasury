@@ -14,12 +14,24 @@ from cashbook.models import Expense
 from departments.models import Department
 from giving.models import Transaction
 
+def _credits():
+    """Confirmed credits on the report's basis — see reports.services.asat."""
+    from reports.services import asat
+    return asat.credits()
+
+
+def _exp():
+    """Expense rows on the report's basis — see reports.services.asat."""
+    from reports.services import asat
+    return asat.expenses()
+
+
 MONTHS = [(m, calendar.month_abbr[m]) for m in range(1, 13)]
 
 
 def _credit_month_map(year):
     """{department_id: {month: total}} of credits in the year."""
-    qs = (Transaction.objects.confirmed_credits()
+    qs = (_credits()
           .filter(date__year=year, excluded_from_income=False)
           .annotate(m=TruncMonth("date"))
           .values("department_id", "m")
@@ -32,7 +44,7 @@ def _credit_month_map(year):
 
 
 def _expense_month_map(year):
-    qs = (Expense.objects.exclude(category=Expense.Category.REMITTANCE).filter(
+    qs = (_exp().exclude(category=Expense.Category.REMITTANCE).filter(
             date__year=year,
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
           .annotate(m=TruncMonth("date"))
@@ -108,14 +120,14 @@ def collections_summary(year):
     Mirrors the church's collection definition exactly — excludes rows flagged
     excluded_from_income (e.g. bank M-Pesa lines that are also receipted as
     envelopes), so the same contribution is never counted twice."""
-    base = Transaction.objects.confirmed_credits().filter(excluded_from_income=False)
+    base = _credits().filter(excluded_from_income=False)
     credit = (base.filter(date__year=year)
               .annotate(m=TruncMonth("date")).values("m")
               .annotate(t=Sum("amount")))
     trust = (base.filter(date__year=year, department__is_trust=True)
              .annotate(m=TruncMonth("date")).values("m")
              .annotate(t=Sum("amount")))
-    exp = (Expense.objects.exclude(category=Expense.Category.REMITTANCE).filter(
+    exp = (_exp().exclude(category=Expense.Category.REMITTANCE).filter(
                 date__year=year,
                 status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .annotate(m=TruncMonth("date")).values("m")
@@ -182,14 +194,14 @@ def collections_summary_period(start, end):
     if not buckets:
         return {"rows": [], "totals": {}, "multi_month": False}
 
-    base = (Transaction.objects.confirmed_credits()
+    base = (_credits()
             .filter(excluded_from_income=False, date__gte=start, date__lte=end))
     credit = (base.annotate(m=TruncMonth("date")).values("m")
               .annotate(t=Sum("amount")))
     trust = (base.filter(department__is_trust=True)
              .annotate(m=TruncMonth("date")).values("m")
              .annotate(t=Sum("amount")))
-    exp = (Expense.objects.exclude(category=Expense.Category.REMITTANCE)
+    exp = (_exp().exclude(category=Expense.Category.REMITTANCE)
            .filter(date__gte=start, date__lte=end,
                    status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .annotate(m=TruncMonth("date")).values("m")
@@ -232,7 +244,7 @@ def trust_monthly_period(start, end):
     if not buckets:
         return {"months": [], "rows": [], "col_totals": [], "grand": Decimal(0)}
 
-    qs = (Transaction.objects.confirmed_credits()
+    qs = (_credits()
           .filter(excluded_from_income=False, department__is_trust=True,
                   date__gte=start, date__lte=end)
           .annotate(m=TruncMonth("date"))
@@ -277,7 +289,7 @@ def collections_detail(start, end):
     figures as the summary alongside the breakdown.
     """
     from django.db.models import Count, Sum as _Sum
-    base = (Transaction.objects.confirmed_credits()
+    base = (_credits()
             .filter(excluded_from_income=False, date__gte=start, date__lte=end))
     agg = (base.values("department", "department__name", "department__is_trust")
            .annotate(amount=_Sum("amount"), n=Count("id")))
@@ -297,7 +309,7 @@ def collections_detail(start, end):
     tot_trust = sum((x["amount"] for x in rows if x["is_trust"]), Decimal(0))
     tot_collections = sum((x["amount"] for x in rows), Decimal(0))
     tot_local = tot_collections - tot_trust
-    exp = (Expense.objects.exclude(category=Expense.Category.REMITTANCE)
+    exp = (_exp().exclude(category=Expense.Category.REMITTANCE)
            .filter(date__gte=start, date__lte=end,
                    status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .aggregate(t=Sum("amount"))["t"] or Decimal(0))

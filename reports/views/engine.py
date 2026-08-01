@@ -47,13 +47,22 @@ class EngineReportView(ReportAccessMixin, TemplateView):
             raise Http404("Unknown report")
         import time as _time
         _t0 = _time.monotonic()
+        # A report asked for "as reported" is rendered inside that basis, so
+        # every section of it answers as at the same moment. Entering the basis
+        # once here — rather than passing a flag to each aggregate — is what
+        # makes a mixed statement impossible: suspense and fund balances either
+        # both move or neither does.
+        from reports.services import asat
+        as_reported_at = self._as_reported_at(request, report)
         try:
-            rendered = report.render(request)
+            with asat.as_reported(as_reported_at):
+                rendered = report.render(request)
+                _render_ms = int((_time.monotonic() - _t0) * 1000)
+                self._record_usage(request, key, _render_ms)
+                self._annotate_narrative(rendered, key)
         except PermissionDenied_:
             raise PermissionDenied
-        _render_ms = int((_time.monotonic() - _t0) * 1000)
-        self._record_usage(request, key, _render_ms)
-        self._annotate_narrative(rendered, key)
+        rendered.context.as_reported_at = as_reported_at
 
         # dependency map endpoint (documentation / debugging / impact analysis)
         if request.GET.get("deps") == "json":
@@ -142,6 +151,23 @@ class EngineReportView(ReportAccessMixin, TemplateView):
         if getattr(rendered.report, "html_template", None):
             out.update(EngineReportView._cover_health(rendered))
         return out
+
+    @staticmethod
+    def _as_reported_at(request, report):
+        """The moment to report as at, or None for the ordinary restated basis.
+
+        Only reports that declare the ``as_reported`` filter offer it, so the
+        query parameter cannot quietly change the basis of a report that was
+        never designed for it.
+        """
+        if not any(getattr(f, "name", "") == "as_reported"
+                   for f in (getattr(report, "filters", None) or [])):
+            return None
+        raw = request.GET.get("as_reported", "")
+        if str(raw).lower() not in ("1", "true", "on", "yes"):
+            return None
+        from core.utils import parse_period
+        return parse_period(request)[1]
 
     @staticmethod
     def _annotate_narrative(rendered, key):

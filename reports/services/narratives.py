@@ -57,6 +57,14 @@ def _explain_collections_summary(ctx, section):
     if not t:
         return ""
     rows = d.get("rows") or []
+    if not t.get("collections") and not t.get("expenditure"):
+        # Nothing moved. Saying "collections exceeded spending by nil" three
+        # ways is worse than saying so once.
+        return ("Nothing was collected and nothing was spent in this period. "
+                "On the as-reported basis this can also mean the entries had "
+                "not yet been keyed in by the closing date."
+                if ctx.as_reported_at else
+                "Nothing was collected and nothing was spent in this period.")
     bits = [
         f"Collections for the period were {_m(t['collections'])}, made up of "
         f"{_m(t['local'])} of local funds and {_m(t['trust'])} of trust funds "
@@ -281,7 +289,10 @@ def annotate(rendered, report_key):
         if s.kind == "commentary":
             auto = s.extra.get("text", "")
         else:
-            auto = generate(s, ctx) or s.note or ""
+            # No fallback to ``note``: a note is the method caption printed
+            # under the table, so borrowing it here would print the same
+            # sentence twice with a heading between the copies.
+            auto = generate(s, ctx)
         if override is not None and override.text.strip():
             text, source, edited = override.text, override.source, True
         else:

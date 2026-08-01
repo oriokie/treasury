@@ -82,6 +82,11 @@ class ReportContext:
     end: Optional[Any] = None
     scope: Optional[frozenset] = None
     label: str = ""
+    #: When set, this render is on the "as reported" basis — the position as it
+    #: stood at this moment, rather than as it is now understood. Set by the
+    #: engine view; carried here so a section or template can say so on the
+    #: page. The basis itself is applied by ``reports.services.asat``.
+    as_reported_at: Optional[Any] = None
     _cache: dict = field(default_factory=dict, repr=False)
     _used: list = field(default_factory=list, repr=False)
 
