@@ -70,7 +70,31 @@ def pending_receipt_rows():
                      _combined_fund_label(members),
                      first.reference or first.mpesa_ref or first.core_ref or "", mpesa_ref))
 
-    rows.sort(key=lambda r: (name_key(r[2]) or "~", r[0]))
+    # Sorted by the name as it is DISPLAYED, grouped by the matching key.
+    #
+    # Those are two different things and using one for both is what made this
+    # list look unsorted. `name_key` sorts a name's words alphabetically so the
+    # same person recorded "ALAN OTIENO" and "OTIENO ALAN" matches either way —
+    # which is exactly right for grouping, and wrong for ordering: it files
+    # "WIDOW NYAMONGO" under N while the Member column shows a W. A treasurer
+    # working down the page to issue receipts then reads Z, A, W.
+    #
+    # So the key still decides who sits together, and the name on the page
+    # decides where that block goes. A giver recorded under two spellings is
+    # ordered by the earlier of them, so one block cannot land in two places.
+    display_for_key = {}
+    for row in rows:
+        key = name_key(row[2]) or ""
+        shown = (row[2] or "").strip().upper()
+        if key and (key not in display_for_key or shown < display_for_key[key]):
+            display_for_key[key] = shown
+
+    def _sort_key(row):
+        key = name_key(row[2]) or ""
+        shown = display_for_key.get(key) or (row[2] or "").strip().upper()
+        return (shown or "~", key, row[0])       # unnamed rows last
+
+    rows.sort(key=_sort_key)
     return rows
 
 
