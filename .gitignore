@@ -10,3 +10,9 @@ staticfiles/
 data/
 # Local editor / dev-server scaffolding.
 .claude/
+# Runtime logs. `logs/treasury-errors.log` was tracked, so every run — dev or
+# deploy — produced a large spurious diff and a merge conflict waiting to
+# happen, and stack traces went into the repo along with it. settings.py
+# creates the directory itself (os.makedirs on _LOG_DIR), so nothing needs the
+# folder to be in version control.
+logs/
