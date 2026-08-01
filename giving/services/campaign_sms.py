@@ -31,14 +31,87 @@ from members.models import normalize_phone
 #: apart everywhere they are stored, counted and shown in history.
 ALL_GROUPS = "*"
 
+#: "Only the groups still short of the target set on the fund's budget page."
+#: A second sentinel rather than a flag on the send: the audience it produces
+#: depends on money collected TODAY, so what it means changes between one press
+#: and the next, and the history has to record which it was.
+BEHIND_TARGET = "<behind>"
+
 #: Placeholders a sender may use in the message body. Kept short and obvious —
 #: a treasurer writing this on a phone should not need a reference card.
 PLACEHOLDERS = {
     "{name}": "the member's name as it appears on the sheet",
     "{group}": "their group as written on the sheet, e.g. CAMP_1",
     "{group_no}": "just the number in it, e.g. 1",
+    "{goal}": "their group's target from the fund's budget page",
+    "{collected}": "what their group has raised so far this year",
+    "{short}": "how much their group still needs",
     "{campaign}": "the campaign name",
 }
+
+
+def group_progress(campaign, year=None):
+    """Each group's fund, its target, and how far short it is.
+
+    The target is the `contribution_goal` on the group's own sub-account —
+    the same figure the fund's budget page shows and the same one it edits.
+    Read, never written, and never created: `Campaign.subgroup_department`
+    makes a fund on demand, which is right when money is arriving and quite
+    wrong when a treasurer is only asking who is behind.
+
+    A group whose fund does not exist yet, or which has no target set, is
+    reported with `has_target` False rather than as "behind" — nobody is behind
+    a target nobody set, and chasing them for it would be the church's error
+    showing up as the member's.
+    """
+    import datetime as _dt
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    from departments.models import Department
+    from giving.models import Transaction
+
+    year = year or _dt.date.today().year
+    parent = campaign.department
+    subs = {d.name.strip().lower(): d
+            for d in Department.objects.filter(parent=parent, active=True)}
+
+    def _fund_ids(d):
+        ids = [d.id]
+        for sub in d.subgroups.all():
+            ids.extend(_fund_ids(sub))
+        return ids
+
+    rows = []
+    for g in groups_for(campaign):
+        fund = subs.get((g["name"] or "").strip().lower())
+        goal = (fund.contribution_goal or Decimal(0)) if fund else Decimal(0)
+        collected = Decimal(0)
+        if fund is not None:
+            collected = (Transaction.objects.filter(
+                department_id__in=_fund_ids(fund),
+                direction=Transaction.Direction.CREDIT, confirmed=True,
+                is_reversal=False, is_reversed=False,
+                excluded_from_income=False, date__year=year)
+                .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        short = max(goal - collected, Decimal(0))
+        rows.append({
+            **g,
+            "fund": fund,
+            "goal": goal,
+            "collected": collected,
+            "short": short,
+            "has_target": bool(fund is not None and goal > 0),
+            "behind": bool(fund is not None and goal > 0 and short > 0),
+            "pct": int(min(collected / goal * 100, 100)) if goal else 0,
+        })
+    return rows
+
+
+def behind_target_groups(campaign, year=None):
+    """Just the group names still short of their target."""
+    return [r["name"] for r in group_progress(campaign, year) if r["behind"]]
 
 
 def group_number(group_name):
@@ -100,21 +173,40 @@ def groups_for(campaign):
     return rows
 
 
-def render_message(template, *, member, campaign):
+def _money(value):
+    """A figure as it should read in a text message: no decimals, thousands
+    separated. "5,000" rather than "5000.00" — this is a sentence, not a ledger."""
+    from decimal import Decimal
+    try:
+        return f"{Decimal(value):,.0f}"
+    except Exception:      # noqa: BLE001
+        return "0"
+
+
+def render_message(template, *, member, campaign, progress=None):
     """Fill the placeholders for one member.
 
     `{group_no}` falls back to the group's full name when there is no number in
     it. A church that names a group "Youth" should get "your group Youth", not
     the hole in the sentence that an empty string would leave.
 
+    `progress` maps group name -> the row from `group_progress`, which is what
+    lets one message tell each group its OWN shortfall. Absent, the money
+    placeholders resolve to 0 rather than being left as raw braces — a member
+    should never receive a text with "{short}" in it.
+
     Longest token first, so a placeholder that starts with another one cannot
     be half-substituted.
     """
     group = member.group or ""
+    row = (progress or {}).get(group) or {}
     text = template or ""
     for token, value in (("{group_no}", group_number(group) or group),
+                         ("{collected}", _money(row.get("collected", 0))),
                          ("{campaign}", campaign.name),
+                         ("{short}", _money(row.get("short", 0))),
                          ("{group}", group),
+                         ("{goal}", _money(row.get("goal", 0))),
                          ("{name}", member.name)):
         text = text.replace(token, str(value))
     return text
@@ -129,6 +221,8 @@ def audience(campaign, group):
     names — the sender is checking group coverage, not spelling.
     """
     qs = campaign.members.all()
+    if group == BEHIND_TARGET:
+        return qs.filter(group__in=behind_target_groups(campaign)).order_by("group", "name")
     if group != ALL_GROUPS:
         qs = qs.filter(group=(group or "").strip())
         return qs.order_by("name")
@@ -141,13 +235,20 @@ def preview(campaign, group, template):
     The same resolution `send` performs, so the confirmation screen cannot
     disagree with what actually happens.
     """
+    # Resolved once for the whole send rather than per member: a message naming
+    # each group's shortfall would otherwise re-total that group's fund for
+    # every member of it.
+    progress = {r["name"]: r for r in group_progress(campaign)} \
+        if any(t in (template or "") for t in ("{short}", "{goal}", "{collected}")) \
+        else {}
+
     recipients, skipped = [], []
     for member in audience(campaign, group):
         phone = normalize_phone(member.phone)
         row = {"member": member, "phone": phone,
                "group": member.group or "",
                "message": render_message(template, member=member,
-                                         campaign=campaign)}
+                                         campaign=campaign, progress=progress)}
         (recipients if phone else skipped).append(row)
     return {"recipients": recipients, "skipped": skipped,
             "count": len(recipients), "skipped_count": len(skipped),
@@ -194,6 +295,8 @@ def group_label(group):
     differently."""
     if group == ALL_GROUPS:
         return "every group"
+    if group == BEHIND_TARGET:
+        return "the groups behind target"
     return group or "No group recorded"
 
 

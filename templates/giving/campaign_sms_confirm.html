@@ -16,10 +16,19 @@
 
 {% if all_groups %}
 <div class="panel panel-amber u-mb">
+  {% if behind_send %}
+  <b>This goes to the {{ plan.groups|length }} group{{ plan.groups|length|pluralize }} still short of target —
+    and to nobody else.</b>
+  <div class="muted">Groups that have met their target are not written to. Every member
+    below is written to individually, so <code>{short}</code>, <code>{goal}</code> and
+    <code>{collected}</code> say each group's OWN figures — check them in the breakdown
+    before sending.</div>
+  {% else %}
   <b>This goes to the whole campaign — all {{ plan.groups|length }} group{{ plan.groups|length|pluralize }} at once.</b>
   <div class="muted">Every member below is written to individually, so
     <code>{group}</code> and <code>{group_no}</code> still say each person's own
     group. Check the breakdown before sending.</div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -82,7 +91,7 @@ the first eight names, which on a large sheet are all from the first group —
 so it cannot answer the question the sender actually has, which is whether
 every group is included.{% endcomment %}
 <div class="panel u-mb">
-  <h3>Groups this reaches</h3>
+  <h3>{% if behind_send %}Groups being chased{% else %}Groups this reaches{% endif %}</h3>
   <table class="ledger compact">
     <thead><tr><th>Group</th><th class="num">Will receive</th><th class="num">No phone</th></tr></thead>
     <tbody>

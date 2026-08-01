@@ -437,14 +437,17 @@ class PendingReceiptView(ReadAccessMixin, View):
                 "date": date, "phone": phone, "name": name, "amount": amount,
                 "fund": fund, "reference": reference, "mpesa_ref": mpesa_ref,
                 "name_key": name_key(name or ""), "is_duplicate_name": is_dup,
+                # What a reader sorts by is the name in front of them, not the
+                # order-insensitive key used to match two spellings together.
+                "sort_name": (name or "").strip().upper() or "~",
             })
 
         if sort == "date":
-            rows.sort(key=lambda r: (r["date"], r["name_key"]))
+            rows.sort(key=lambda r: (r["date"], r["sort_name"]))
         elif sort == "amount":
             rows.sort(key=lambda r: -r["amount"])
         elif sort == "fund":
-            rows.sort(key=lambda r: (r["fund"] or "", r["name_key"]))
+            rows.sort(key=lambda r: (r["fund"] or "", r["sort_name"]))
         else:
             sort = "name"   # rows are already in this order; re-sort is a no-op,
                             # kept explicit so a stable sort always holds even if
@@ -2451,7 +2454,9 @@ class CampaignDetailView(ReadAccessMixin, View):
 
         campaign = get_object_or_404(
             Campaign.objects.select_related("department"), pk=pk)
-        groups = campaign_sms.groups_for(campaign)
+        progress = campaign_sms.group_progress(campaign)
+        groups = progress
+        behind = [r for r in progress if r["behind"]]
         # What has already gone to each group, so a treasurer can see it before
         # composing another one.
         history = {g["name"]: campaign_sms.recent_sends(campaign, g["name"], limit=3)
@@ -2475,6 +2480,19 @@ class CampaignDetailView(ReadAccessMixin, View):
             "all_groups_token": campaign_sms.ALL_GROUPS,
             "all_groups_history": campaign_sms.recent_sends(
                 campaign, campaign_sms.ALL_GROUPS, limit=3),
+            # Chasing the groups still short of the target set on the fund's
+            # budget page. Computed here so the button can say how many groups
+            # and how much — a "remind the ones behind" button that does not
+            # say who is behind is asking for a blind press.
+            "behind_token": campaign_sms.BEHIND_TARGET,
+            "progress": progress,
+            "behind": behind,
+            "behind_short": sum((r["short"] for r in behind), 0),
+            "behind_reachable": sum(
+                (r["reachable"] for r in behind), 0),
+            "any_targets": any(r["has_target"] for r in progress),
+            "behind_history": campaign_sms.recent_sends(
+                campaign, campaign_sms.BEHIND_TARGET, limit=3),
         })
 
 
@@ -2517,7 +2535,13 @@ class CampaignGroupSmsView(TreasurerRequiredMixin, View):
             return render(request, self.template_name, {
                 "campaign": campaign, "group": group, "message": template,
                 "group_label": campaign_sms.group_label(group),
-                "all_groups": group == campaign_sms.ALL_GROUPS,
+                # "spans more than one group", not "is the all-groups send" —
+                # chasing the groups behind target is equally a multi-group
+                # send, and the confirmation screen has the same job for both:
+                # show which groups, and show each one's own figures.
+                "all_groups": group in (campaign_sms.ALL_GROUPS,
+                                        campaign_sms.BEHIND_TARGET),
+                "behind_send": group == campaign_sms.BEHIND_TARGET,
                 "group_breakdown": campaign_sms.breakdown(plan),
                 "gap_members": campaign_sms.gap_warning(plan, template),
                 "plan": plan,
