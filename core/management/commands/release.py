@@ -28,6 +28,35 @@ def _git(*args, check=True):
     return out.stdout.strip()
 
 
+def _git_ok(*args):
+    """Whether the command succeeded, for the questions whose answer IS the
+    exit code."""
+    return subprocess.run(["git", *args], capture_output=True, text=True,
+                          cwd=str(VERSION_FILE.parent)).returncode == 0
+
+
+def _remote_refs(pattern):
+    """Ask origin what it has, WITHOUT writing anything locally.
+
+    `git fetch` was the obvious way to compare against origin and the wrong one:
+    it creates local refs as a side effect, so merely *checking* whether a
+    release was possible could bring the very tag being checked for into the
+    repository. `ls-remote` answers the same question and changes nothing —
+    which is what `--check` promises.
+
+    A network failure returns nothing rather than raising: not being able to
+    reach GitHub should not stop someone tagging a release locally.
+    """
+    out = _git("ls-remote", "origin", pattern, check=False)
+    refs = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            sha, ref = parts
+            refs[ref.removesuffix("^{}")] = sha
+    return refs
+
+
 CHANGELOG_FILE = VERSION_FILE.parent / "CHANGELOG.md"
 
 
@@ -52,15 +81,19 @@ class Command(BaseCommand):
 
     # -- the checks ---------------------------------------------------------
 
-    def _problems(self, version, allow_dirty):
+    def _problems(self, version, allow_dirty, remote=True):
         """Everything wrong with releasing right now, in one pass.
 
         All of them, not the first — someone about to tag wants the whole list
         so they can fix it in one go, rather than discovering the next problem
         each time they re-run.
+
+        `remote=False` skips the questions that need origin, for tests and for
+        working offline.
         """
         problems = []
         tag = f"v{version}"
+        remote_tags = _remote_refs("refs/tags/*") if remote else {}
 
         if not cl.notes_for(version):
             problems.append(
@@ -70,8 +103,15 @@ class Command(BaseCommand):
 
         if _git("tag", "-l", tag):
             problems.append(
-                f"{tag} already exists. Bump VERSION, or delete the tag with "
-                f"`git tag -d {tag}` if it was never pushed.")
+                f"{tag} already exists locally. Bump VERSION, or delete the tag "
+                f"with `git tag -d {tag}` if it was never pushed.")
+        elif f"refs/tags/{tag}" in remote_tags:
+            # Worth its own message: the tag is not here, so `git tag -d` would
+            # report nothing to delete and leave someone puzzled.
+            problems.append(
+                f"{tag} is already released on origin, though not in this "
+                f"checkout. Bump VERSION — re-tagging would change what every "
+                f"hosted instance believes that version is.")
 
         if not allow_dirty and _git("status", "--porcelain"):
             problems.append(
@@ -86,23 +126,34 @@ class Command(BaseCommand):
                 f"the tag is reachable from what everyone else has.")
 
         # Behind origin is worth catching here rather than at push time, when
-        # the tag already exists locally and has to be unpicked.
-        _git("fetch", "--quiet", "origin", check=False)
-        behind = _git("rev-list", "--count", "HEAD..origin/main", check=False)
-        if behind and behind != "0":
-            problems.append(
-                f"{behind} commit(s) on origin/main are not in this checkout. "
-                f"Pull first, or the tag will miss them.")
+        # the tag already exists locally and has to be unpicked. Asked without
+        # fetching: if origin's main is not an ancestor of HEAD — including the
+        # case where we do not have that commit at all — we are behind it.
+        if remote:
+            remote_main = _remote_refs("refs/heads/main").get("refs/heads/main")
+            if remote_main and not _git_ok("merge-base", "--is-ancestor",
+                                           remote_main, "HEAD"):
+                problems.append(
+                    f"origin/main is at {remote_main[:8]}, which is not in this "
+                    f"checkout. Pull first, or the tag will miss those commits.")
 
-        latest = self._latest_tag()
+        latest = self._latest_tag(remote_tags)
         if latest and cl.parse_version(latest) >= cl.parse_version(version):
             problems.append(
                 f"VERSION is {version} but {latest} is already released. "
                 f"Bump VERSION before tagging.")
         return problems
 
-    def _latest_tag(self):
+    def _latest_tag(self, remote_tags=None):
+        """The newest released version, counting origin's tags as well as ours.
+
+        A fresh clone, or CI, may have no tags locally while origin has every
+        release — trusting only the local list there would report the newest
+        release as "the start" and happily re-tag a version already published.
+        """
         tags = [t for t in _git("tag", "-l", "v*").splitlines() if t.strip()]
+        tags += [r.removeprefix("refs/tags/")
+                 for r in (remote_tags or {}) if r.startswith("refs/tags/v")]
         return max(tags, key=cl.parse_version) if tags else ""
 
     def _commits_since(self, previous_tag):
@@ -115,6 +166,7 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         version = get_version()
         tag = f"v{version}"
+        remote_tags = _remote_refs("refs/tags/*")
         problems = self._problems(version, opts["allow_dirty"])
 
         if opts["check"]:
@@ -124,7 +176,7 @@ class Command(BaseCommand):
                 for p in problems:
                     self.stdout.write(f"  - {p}")
                 raise SystemExit(1)
-            previous = self._latest_tag()
+            previous = self._latest_tag(remote_tags)
             n = len(self._commits_since(previous))
             self.stdout.write(self.style.SUCCESS(
                 f"{tag} is ready: {n} commit(s) since {previous or 'the start'}."))
@@ -134,7 +186,7 @@ class Command(BaseCommand):
             raise CommandError(
                 f"{tag} is not ready to release:\n  - " + "\n  - ".join(problems))
 
-        previous = self._latest_tag()
+        previous = self._latest_tag(remote_tags)
         commits = self._commits_since(previous)
 
         # The changelog is rendered from WHATS_NEW every time rather than

@@ -139,34 +139,40 @@ class ReleaseCommandTests(TestCase):
         except Exception as exc:            # CommandError and friends
             return 1, f"{out.getvalue()}{exc}"
 
-    def test_check_does_not_create_the_tag(self):
+    def test_check_writes_nothing_to_the_repository(self):
         """--check is what someone runs to find out whether they CAN release,
-        so it must not be the thing that releases.
+        so it must not change the repository in the asking.
 
-        Asserted on THIS version's tag rather than on the whole tag list: the
-        check fetches from origin to see whether the version is already
-        released there, which legitimately brings other tags into the local
-        repository and would make a whole-list comparison flap.
+        This caught a real one. The check used `git fetch` to compare against
+        origin, and a fetch CREATES local refs — so once v3.39.0 existed on
+        GitHub, merely checking whether it could be released brought that very
+        tag into a checkout that did not have it. On CI, which clones without
+        tags, that turned every --check into a repository mutation. It asks
+        `ls-remote` now, which answers the same question and writes nothing.
         """
-        tag = f"v{get_version()}"
-        existed = self._tag_exists(tag)
+        before = self._tags()
         self._run("--check")
-        self.assertEqual(self._tag_exists(tag), existed,
-                         "--check created or removed the release tag")
+        self.assertEqual(self._tags(), before,
+                         "--check changed the repository's tags")
 
-    def _tag_exists(self, tag):
-        out = subprocess.run(["git", "tag", "-l", tag], capture_output=True,
-                             text=True, cwd=str(VERSION_FILE.parent))
-        return bool(out.stdout.strip())
+    def test_the_remote_checks_can_be_skipped(self):
+        """Tests and offline work must not depend on reaching GitHub."""
+        from core.management.commands.release import Command
+        problems = Command()._problems(get_version(), allow_dirty=True,
+                                       remote=False)
+        self.assertIsInstance(problems, list)
+
+    def _tags(self):
+        out = subprocess.run(["git", "tag"], capture_output=True, text=True,
+                             cwd=str(VERSION_FILE.parent))
+        return out.stdout
 
     def test_it_refuses_a_version_that_is_already_tagged(self):
         """Re-tagging an existing version would move what every hosted instance
         thinks that version IS."""
         from core.management.commands.release import Command
-        cmd = Command()
-        problems = cmd._problems(get_version(), allow_dirty=True)
-        # Whatever else is true of the checkout right now, the check itself has
-        # to be present and phrased usefully.
+        problems = Command()._problems(get_version(), allow_dirty=True,
+                                       remote=False)
         existing = subprocess.run(
             ["git", "tag", "-l", f"v{get_version()}"], capture_output=True,
             text=True, cwd=str(VERSION_FILE.parent)).stdout.strip()
@@ -177,7 +183,7 @@ class ReleaseCommandTests(TestCase):
         """Someone about to tag wants the whole list, not to discover the next
         one each time they re-run."""
         from core.management.commands.release import Command
-        problems = Command()._problems("0.0.1", allow_dirty=True)
+        problems = Command()._problems("0.0.1", allow_dirty=True, remote=False)
         self.assertIsInstance(problems, list)
         # 0.0.1 is older than the current VERSION, so at minimum that is caught.
         self.assertTrue(any("already released" in p or "WHATS_NEW" in p
