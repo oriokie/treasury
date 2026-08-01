@@ -14,6 +14,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Called by release.yml so a tag is published only if the same suite that
+  # guards main passes on it — a release gate that ran a different, weaker set
+  # of tests would be worse than none, because it would look like one.
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}

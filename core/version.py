@@ -38,7 +38,25 @@ def version_string():
 
 
 WHATS_NEW = {
-    "2.22.0": "A comprehensive review of the Transactions page. Critical fix: the Excel/CSV download was "
+    "3.39.0": "Member portal: fixed a page that would not open at all — a member clicking into their own "
+              "case got an error, and once past it the timeline never showed that they had been paid or "
+              "that their documents had arrived. The standing page now adds up: a dues payment entered "
+              "without a period was counted in \"owing now\" and nowhere else, so a member who had paid "
+              "still saw that month as owed, and the statement showed two debts under a headline naming "
+              "one. Members are also no longer told they are \"Auditor / Board\", their bell no longer "
+              "counts office notices about other members' cases, and two menu items that quietly did "
+              "nothing have gone. Campaigns: you can now write one message to every group at once instead "
+              "of composing it per group, and a new {group_no} placeholder writes just the number from a "
+              "group's name, so \"your group is 1\" rather than \"your group is CAMP_1\" — each member "
+              "still gets their own. Pledges: auto-match now counts only money given to the campaign's own "
+              "fund or one of its sub-accounts. It was doing the opposite in both directions — a member's "
+              "tithe could pay off their building pledge, while their actual building gift, recorded "
+              "against a sub-account, was ignored. The unused part of a large gift is no longer stranded "
+              "either, so a pledge no longer reads as unpaid when the money is already there. Members "
+              "list: shows what each member has given, how many gifts and when they last gave, sortable by "
+              "any of them — including who has gone quiet longest. Inactive members can now be seen and "
+              "filtered rather than silently vanishing, and the CSV download follows the filter on screen.",
+    "2.22.0":"A comprehensive review of the Transactions page. Critical fix: the Excel/CSV download was "
               "adding a reversed entry and its reversal together as if both were real income, doubling the "
               "reported total wherever a reversal existed - now correctly nets to zero. Split no longer "
               "appears once a contribution has already been receipted, preventing an already-issued receipt "

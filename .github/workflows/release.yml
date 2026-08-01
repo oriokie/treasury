@@ -1,0 +1,135 @@
+name: Release
+
+# Publishes a GitHub Release when a vX.Y.Z tag is pushed.
+#
+# The tag is what a hosted instance actually looks for: core.services.updates
+# asks GitHub for the newest release (falling back to the newest tag) and
+# compares it with the running VERSION, so an untagged repository can never tell
+# anyone an update exists. This is the job that makes that check mean something.
+#
+# The notes come from core.version.WHATS_NEW — the same words the app shows
+# under "What's new" — so the release a treasurer reads on GitHub and the one
+# they read in the app cannot drift apart. `python manage.py release` writes the
+# same text into CHANGELOG.md and into the tag's own message.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (e.g. v3.39.0)"
+        required: true
+
+permissions:
+  contents: write          # needed to create the Release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # never abandon a half-published release
+
+env:
+  DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+  DJANGO_DEBUG: "False"
+  DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+  DJANGO_SECURE_SSL_REDIRECT: "False"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  verify:
+    name: Tag matches VERSION
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # the notes need the previous tag
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      # A tag that disagrees with the VERSION file would leave every hosted
+      # instance comparing itself against a number the code does not carry, and
+      # offering an update that installs the version already running.
+      - name: The tag and the VERSION file agree
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          FILE="v$(cat VERSION)"
+          echo "tag=$TAG file=$FILE"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::Tag $TAG does not match VERSION ($FILE). One of them is wrong."
+            exit 1
+          fi
+
+      - name: A release note was written
+        run: |
+          python - <<'PY'
+          import os, sys, django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+          django.setup()
+          from core.services import changelog as cl
+          missing = cl.missing_note()
+          if missing:
+              print(f"::error::No WHATS_NEW entry for {missing} — the release "
+                    f"body and the app's What's new panel would both be blank.")
+              sys.exit(1)
+          print("Release note present.")
+          PY
+
+  test:
+    name: Full suite
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish the release
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Build the release notes
+        id: notes
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          PREV=$(git tag -l 'v*' --sort=-v:refname | grep -v "^${TAG}$" | head -n1)
+          echo "Previous tag: ${PREV:-none}"
+          if [ -n "$PREV" ]; then
+            git log --no-merges --pretty=format:'%s' "${PREV}..${TAG}" > commits.txt
+          else
+            # No previous tag: this is the first release of a repository with
+            # years of history behind it, so cap the list rather than paste
+            # every commit ever made into the release note.
+            git log --no-merges --pretty=format:'%s' -n 50 "${TAG}" > commits.txt
+          fi
+          python - <<'PY' > notes.md
+          import os, django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+          django.setup()
+          from core.services import changelog as cl
+          from core.version import get_version
+          commits = [l.strip() for l in open("commits.txt") if l.strip()]
+          print(cl.release_body(get_version(), commits))
+          PY
+          echo "prev=${PREV}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          # Idempotent: re-running the workflow for a tag updates the existing
+          # release rather than failing, so a transient error can be retried.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          fi
