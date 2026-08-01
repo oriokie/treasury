@@ -1339,9 +1339,13 @@ class UpdateRunView(TreasurerRequiredMixin, View):
         if not repo:
             diag = "No GITHUB_REPO is configured, so the app can't check for updates."
         elif rel is None:
-            diag = (f"Couldn't read releases or tags from '{repo}'. If the repository "
-                    f"is private, set GITHUB_TOKEN in the server's .env; check the repo "
-                    f"name is correct (owner/name).")
+            # What GitHub actually said, rather than a guess at it. The old
+            # message advised setting GITHUB_TOKEN even when one was set and
+            # being rejected, which is the least useful moment to be told that.
+            from core.services.updates import last_failure_reason
+            diag = last_failure_reason() or (
+                f"Couldn't read releases or tags from '{repo}', and GitHub gave "
+                f"no reason. Check the repository name (owner/name).")
         elif not tag:
             diag = f"Connected to '{repo}', but no releases or tags were found yet."
         else:
@@ -1579,3 +1583,152 @@ class CleanReceiptMessagesView(TreasurerRequiredMixin, View):
         messages.success(request, f"Cleaned {changed} saved receipt message(s) "
                          f"out of {qs.count()} checked.")
         return redirect("/settings/?tab=branding")
+
+
+class AllocationPriorityView(TreasurerRequiredMixin, View):
+    """The order allocation sources are tried in, and a tester for it.
+
+    Treasurer-level: this decides which fund money lands in, which is a
+    statement-of-accounts question rather than a data-entry one.
+
+    The tester is on the same page as the ordering on purpose. Reordering
+    allocation blind is how a church fixes one wrong fund and creates two more;
+    being able to type the reference that went astray, see which sources
+    claimed it, reorder, and check again before saving is the whole workflow.
+    """
+    template_name = "core/allocation_priority.html"
+
+    def _context(self, request, order=None, probe=None, problems=()):
+        from core.models import SiteConfig
+        from core.services import allocation_priority as ap
+
+        cfg = SiteConfig.get()
+        order = order or ap.parse_order(cfg.allocation_priority)
+        return {
+            "stages": [ap.STAGE_BY_KEY[k] for k in order],
+            "order": order,
+            "is_default": ap.is_default(cfg.allocation_priority),
+            "problems": list(problems),
+            "probe": probe,
+            "probe_reference": request.POST.get("reference", "") or
+                               request.GET.get("reference", ""),
+            "probe_name": request.POST.get("name", "") or request.GET.get("name", ""),
+            "probe_phone": request.POST.get("phone", "") or request.GET.get("phone", ""),
+        }
+
+    def get(self, request):
+        from core.services import allocation_priority as ap
+        probe = None
+        ref = request.GET.get("reference", "").strip()
+        if ref:
+            probe = ap.explain(ref, name=request.GET.get("name", ""),
+                               phone=request.GET.get("phone", ""))
+        return render(request, self.template_name, self._context(request, probe=probe))
+
+    def post(self, request):
+        from core.models import SiteConfig
+        from core.services import allocation_priority as ap
+
+        action = request.POST.get("action") or "save"
+
+        if action == "test":
+            ref = (request.POST.get("reference") or "").strip()
+            if not ref:
+                messages.error(request, "Type a reference to test first.")
+                return render(request, self.template_name, self._context(request))
+            probe = ap.explain(ref, name=request.POST.get("name", ""),
+                               phone=request.POST.get("phone", ""))
+            return render(request, self.template_name,
+                          self._context(request, probe=probe))
+
+        if action == "reset":
+            cfg = SiteConfig.get()
+            cfg.allocation_priority = ""
+            cfg.save(update_fields=["allocation_priority"])
+            messages.success(request, "Allocation order restored to the built-in one.")
+            return redirect("allocation_priority")
+
+        keys = [k for k in request.POST.getlist("order") if k]
+        problems = ap.validate(keys)
+        if problems:
+            # Re-rendered with what they tried, not with what is saved: being
+            # bounced back to the stored order would lose the work and hide
+            # which move was refused.
+            return render(request, self.template_name,
+                          self._context(request, order=ap.parse_order("\n".join(keys)),
+                                        problems=problems))
+        cfg = SiteConfig.get()
+        cfg.allocation_priority = "" if keys == ap.default_order() else "\n".join(keys)
+        cfg.save(update_fields=["allocation_priority"])
+        messages.success(
+            request, "Allocation order saved. It applies to money imported from "
+                     "now on — contributions already allocated are unchanged.")
+        return redirect("allocation_priority")
+
+
+class EnvelopeColumnsView(TreasurerRequiredMixin, View):
+    """Which fund columns a new Sabbath envelope sheet opens with.
+
+    The list was a constant in the source (`envelopes.services.posting.PREFERRED`),
+    so a church collecting under different headings re-picked its columns by
+    hand on every new sheet — every Sabbath, for as long as it had been using
+    the system.
+
+    Treasurer-level, and deliberately only about what a sheet OPENS with: every
+    column stays available on the sheet itself, so this can never stop money
+    being recorded against a fund. It only decides what is already there.
+    """
+    template_name = "core/envelope_columns.html"
+
+    def _context(self, chosen=None):
+        from envelopes.services.posting import (PREFERRED, column_catalog,
+                                                configured_default_keys)
+        cols = column_catalog()
+        chosen = chosen if chosen is not None else configured_default_keys()
+        by_key = {c["key"]: c for c in cols}
+        # Selected first, in the church's own order; then the rest to add from.
+        selected = [by_key[k] for k in chosen if k in by_key]
+        if not selected:
+            selected = [c for c in cols if c["default"]]
+        rest = [c for c in cols if c not in selected]
+        return {
+            "selected": selected,
+            "available": sorted(rest, key=lambda c: c["label"].lower()),
+            "is_default": not configured_default_keys(),
+            "built_in": ", ".join(PREFERRED),
+        }
+
+    def get(self, request):
+        return render(request, self.template_name, self._context())
+
+    def post(self, request):
+        from core.models import SiteConfig
+        from envelopes.services.posting import column_catalog
+
+        if request.POST.get("action") == "reset":
+            cfg = SiteConfig.get()
+            cfg.envelope_default_funds = ""
+            cfg.save(update_fields=["envelope_default_funds"])
+            messages.success(request, "Restored the built-in envelope columns.")
+            return redirect("envelope_columns")
+
+        valid = {c["key"] for c in column_catalog()}
+        keys, seen = [], set()
+        for k in request.POST.getlist("columns"):
+            if k in valid and k not in seen:
+                seen.add(k)
+                keys.append(k)
+        if not keys:
+            # An empty sheet is not a configuration, it is a mistake — and one
+            # nobody would notice until the next Sabbath's entry.
+            messages.error(request, "Choose at least one column for a new sheet.")
+            return render(request, self.template_name, self._context())
+
+        cfg = SiteConfig.get()
+        cfg.envelope_default_funds = "\n".join(keys)
+        cfg.save(update_fields=["envelope_default_funds"])
+        messages.success(
+            request, f"New envelope sheets will open with {len(keys)} "
+                     f"column{'' if len(keys) == 1 else 's'}. Sheets already "
+                     f"started are unchanged.")
+        return redirect("envelope_columns")

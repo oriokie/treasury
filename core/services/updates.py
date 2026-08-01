@@ -58,14 +58,22 @@ def latest_release(force=False):
     token = getattr(settings, "GITHUB_TOKEN", "") or ""
 
     result = None
+    # Why the last attempt failed, kept so the update page can say something a
+    # treasurer can act on. Both branches below used to swallow the exception
+    # entirely, so a bad token, a renamed repo, a rate limit and a dead network
+    # all produced the same sentence — one that guessed "set GITHUB_TOKEN" even
+    # when a token was set and being rejected. The answer was always in the
+    # response; nothing was looking at it.
+    reason = ""
     # 1) a published GitHub Release, if any
     try:
         data = _fetch_json(f"https://api.github.com/repos/{repo}/releases/latest", token)
         if data.get("tag_name"):
             result = {"tag": data["tag_name"], "url": data.get("html_url", ""),
                       "body": (data.get("body") or "")[:2000]}
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         result = None
+        reason = _explain_failure(exc, repo, token)
     # 2) fall back to tags (newest by semver) — works for a tag-only workflow
     if result is None:
         try:
@@ -78,12 +86,71 @@ def latest_release(force=False):
             if best:
                 result = {"tag": best, "body": "",
                           "url": f"https://github.com/{repo}/releases/tag/{best}"}
-        except Exception:  # noqa: BLE001
+                reason = ""          # tags answered; the release 404 was normal
+            elif not reason:
+                reason = ("Connected, but the repository has no tags or releases "
+                          "yet — nothing has been published to update to.")
+        except Exception as exc:  # noqa: BLE001
             result = None
+            reason = _explain_failure(exc, repo, token)
 
     _release_cache["at"] = now
     _release_cache["value"] = result
+    _release_cache["reason"] = reason
     return result
+
+
+def last_failure_reason():
+    """Why the most recent lookup found nothing, in words a treasurer can act
+    on. Empty when the last lookup succeeded."""
+    return _release_cache.get("reason", "")
+
+
+def _explain_failure(exc, repo, token):
+    """Turn an API failure into the one sentence that says what to do next.
+
+    GitHub answers 404 rather than 403 for a private repository the caller
+    cannot see, so "not found" and "not allowed" are the same status and have
+    to be told apart by whether a token was sent. That distinction is the whole
+    difference between "check the name" and "check the token".
+    """
+    import urllib.error
+
+    status = getattr(exc, "code", None)
+    detail = ""
+    try:
+        if isinstance(exc, urllib.error.HTTPError):
+            detail = (json.loads(exc.read().decode() or "{}").get("message") or "")
+    except Exception:  # noqa: BLE001
+        detail = ""
+
+    if status == 401:
+        return (f"GitHub rejected the access token{': ' + detail if detail else ''}. "
+                f"It is invalid, expired, or was revoked — issue a new one and "
+                f"set GITHUB_TOKEN in the server's .env.")
+    if status == 404:
+        if not token:
+            return (f"GitHub says '{repo}' does not exist. If it is PRIVATE, that "
+                    f"is also what it says to a caller with no token — set "
+                    f"GITHUB_TOKEN in the server's .env. Otherwise check the "
+                    f"repository name (owner/name).")
+        return (f"The token cannot see '{repo}'. GitHub answers 'not found' for a "
+                f"private repository the token has no access to, so either the "
+                f"name is wrong or the token lacks repository read access — a "
+                f"classic token needs the 'repo' scope, a fine-grained one needs "
+                f"Contents: Read on this repository.")
+    if status == 403:
+        return (f"GitHub refused the request{': ' + detail if detail else ''}. "
+                f"This is usually the hourly rate limit — an authenticated token "
+                f"raises it considerably — or a token blocked by an organisation "
+                f"policy.")
+    if status:
+        return (f"GitHub returned HTTP {status}"
+                f"{': ' + detail if detail else ''}. This is not a setting on "
+                f"this server — try the check again shortly, and if it persists "
+                f"see GitHub's status page.")
+    return (f"Could not reach GitHub ({type(exc).__name__}). The server may have "
+            f"no outbound internet access, or DNS is failing.")
 
 
 def update_available(force=False):
