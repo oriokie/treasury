@@ -111,9 +111,9 @@ _DEFAULTS = {
         "portal to see the details."),
     (NotificationEvent.PORTAL_REQUEST_UPDATED, "EMAIL"): (
         "Your request {reference} — {scheme}",
-        "Dear {member_name},\n\nYour {kind} \u2014 \"{subject}\" \u2014 reference "
-        "{reference}, {phrase}.\n\nSign in to the member portal to read the full "
-        "details and to reply if anything further is needed.\n\n{church}"),
+        "Dear {member_name},\n\nYour {kind} \u201c{subject}\u201d (reference "
+        "{reference}) {phrase}.\n\nSign in to the member portal to read the "
+        "full details and to reply if anything further is needed.\n\n{church}"),
     (NotificationEvent.PORTAL_INVITED, "SMS"): (
         "",
         "{church}: you can now see your {scheme} contributions, standing and "

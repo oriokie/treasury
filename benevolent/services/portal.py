@@ -345,7 +345,11 @@ def request_more_information(req, *, user, message):
     req.reviewed_by = user
     req.save(update_fields=["status", "reviewed_by", "updated_at"])
     add_message(req, body=message, user=user, from_member=False)
-    _notify_member(req, "we need a little more information")
+    # Every phrase passed here completes the sentence "Your request ... {phrase}."
+    # so they all have to be verb phrases. This one used to be a clause of its
+    # own ("we need a little more information"), which produced a comma splice
+    # in the email and the SMS the member actually received.
+    _notify_member(req, "needs a little more information from you")
     return req
 
 
@@ -603,7 +607,9 @@ def _notify_member(req, phrase):
                         membership=req.membership, case=req.case,
                         extra={"reference": req.reference, "phrase": phrase,
                                "subject": req.subject,
-                               "kind": req.get_kind_display()})
+                               # falls mid-sentence after "Your", so the display
+                               # label's leading capital reads as a proper noun
+                               "kind": req.get_kind_display().lower()})
     except Exception:
         # Never let a delivery problem roll back a decision that has been made.
         pass

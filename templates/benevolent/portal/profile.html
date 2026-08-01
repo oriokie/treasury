@@ -32,7 +32,11 @@
     <h3>My sign-in</h3>
     <div class="pt-row"><span class="k">Username</span><b class="mono">{{ account.user.username }}</b></div>
     <div class="pt-row"><span class="k">Portal access</span><b>{{ account.get_status_display }}</b></div>
-    <div class="pt-row"><span class="k">Member since</span><b>{{ account.activated_at|date:"d M Y"|default:"—" }}</b></div>
+    {% comment %}`activated_at` is when this LOGIN was switched on, not when the
+    member joined the scheme — and "Member since" is what the home page calls
+    the latter. Two different dates under one label is how a member ends up
+    believing their years of standing have been reset.{% endcomment %}
+    <div class="pt-row"><span class="k">Signing in since</span><b>{{ account.activated_at|date:"d M Y"|default:"—" }}</b></div>
     <div class="u-mt no-print"><a class="btn btn-ghost btn-sm" href="{% url 'password_change' %}">Change my password</a></div>
   </div>
   <div class="panel">

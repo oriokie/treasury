@@ -259,12 +259,19 @@ def _dues_rows(membership, as_of=None):
     # here, so this per-member aggregate is skipped. Same values either way — it
     # is the identical _effective_q()/DUES_KINDS query, asked once for the whole
     # scheme instead of once per member.
+    # Bounded to `start`..`end` — the SAME window `arrears_for` measures its
+    # total against. Without the bound this table counted money that the
+    # headline above it did not: a payment dated before the member's cover
+    # began, or after the date being reported on, cleared a month here while
+    # still being owed there. The two figures are read side by side on the
+    # member's own standing page, so they have to be cut from the same cloth.
     paid_by_period = getattr(membership, "_paid_by_period_cache", None)
     if paid_by_period is None:
         paid_by_period = dict(
             BenevolentContribution.objects
             .filter(membership=membership, kind__in=DUES_KINDS)
             .filter(_effective_q())
+            .filter(transaction__date__gte=start, transaction__date__lte=end)
             .values_list("period_label")
             .annotate(total=Sum("transaction__amount"))
         )
@@ -275,6 +282,31 @@ def _dues_rows(membership, as_of=None):
             r["due"] = Decimal(0)
         r["paid"] = paid_by_period.get(r["period"]) or Decimal(0)
         r["outstanding"] = max(Decimal(0), r["due"] - r["paid"])
+
+    # Dues money that carries no period on it — a lump sum, or a receipt entered
+    # without one. `arrears_for()` counts it (its rule is that what matters is
+    # the money, not how the payment happened to be labelled), and it is the
+    # single definition of what a member owes. This table never spent it, so the
+    # two disagreed on screen: a member who had paid saw the right figure in
+    # "owing now" and an extra unpaid month in the statement underneath it,
+    # with the payment itself appearing nowhere.
+    #
+    # Settled oldest period first, the way an arrears account is normally
+    # cleared, so the statement now adds up to the same answer arrears_for
+    # gives. Rows that took some are flagged so the template can say so rather
+    # than silently showing a period as paid that no receipt names.
+    unallocated = sum((total or Decimal(0))
+                      for label, total in paid_by_period.items() if not label)
+    if unallocated > 0:
+        for r in rows:
+            if unallocated <= 0:
+                break
+            take = min(unallocated, r["outstanding"])
+            if take > 0:
+                r["paid"] += take
+                r["outstanding"] -= take
+                r["from_unallocated"] = take
+                unallocated -= take
     return rows
 
 

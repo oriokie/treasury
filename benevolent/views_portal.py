@@ -29,8 +29,9 @@ from django.views.generic import TemplateView
 
 from core.permissions import PortalAccessMixin
 
-from .models import (BenevolentEventType, MemberAccount, PortalAccessLog,
-                     PortalDocument, PortalRequest, SchemeDependant)
+from .models import (BenevolentEventType, CaseEvent, MemberAccount,
+                     PortalAccessLog, PortalDocument, PortalRequest,
+                     SchemeDependant)
 from .services import portal as portal_svc
 
 Action = PortalAccessLog.Action
@@ -348,9 +349,17 @@ class PortalCaseDetailView(PortalBase):
         # internal notes and the fraud flags are the church's working papers;
         # what a claimant is owed is an honest account of where their claim has
         # got to and what it was decided.
-        ctx["timeline"] = case.events.filter(
-            kind__in=["RAISED", "SUBMITTED", "ASSESSED", "APPROVED", "REJECTED",
-                      "PAID", "CLOSED", "DOCUMENT"]).order_by("at")
+        # Kinds referenced through the enum, not as loose strings. Two of the
+        # strings here were not real CaseEvent kinds at all — "PAID" (the value
+        # is PAY_PAID) and "DOCUMENT" (DOC_ADD) — so the two events a claimant
+        # most wants to see, that they were PAID and that their documents were
+        # received, were silently filtered out of their own timeline. A typo in
+        # a string list fails quietly; a typo on the enum fails loudly.
+        _K = CaseEvent.Kind
+        ctx["timeline"] = case.events.filter(kind__in=[
+            _K.RAISED, _K.SUBMITTED, _K.ASSESSED, _K.APPROVED, _K.REJECTED,
+            _K.PAYOUT_PAID, _K.CLOSED, _K.DOCUMENT_ADDED,
+        ]).order_by("on", "created_at")   # oldest first: this reads as progress
         ctx["documents"] = case.attachments.all()
         ctx["payouts"] = case.payouts.all()
         portal_svc.log_access(self.account, Action.VIEW_CASE, request=self.request,

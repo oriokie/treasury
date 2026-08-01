@@ -88,7 +88,11 @@ def site_context(request):
     except Exception:  # noqa: BLE001
         pass
     ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))
-    if user and user.is_authenticated:
+    # Every badge below counts something on an office page. A portal member can
+    # reach none of those pages, so computing them was six queries per portal
+    # render for numbers they must never be shown — `notif_badge` in particular
+    # counted broadcast notifications naming other members' benevolent cases.
+    if user and user.is_authenticated and not ctx["is_portal_member"]:
         if user.is_superuser or user.groups.filter(name="Treasurer").exists():
             try:
                 from core.services.updates import update_available

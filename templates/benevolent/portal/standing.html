@@ -36,7 +36,11 @@
       <tr><td data-label="Period">{{ d.period|default:"—" }}</td>
         <td data-label="Due" class="num mono">{{ CURRENCY }} {{ d.due|default_if_none:0|money }}</td>
         <td data-label="Paid" class="num mono">{{ CURRENCY }} {{ d.paid|default_if_none:0|money }}</td>
-        <td data-label="Status">{% if d.waived %}<span class="pill pill-grey">Waived</span>{% elif d.outstanding > 0 %}<span class="pill pill-amber">{{ CURRENCY }} {{ d.outstanding|money }} outstanding</span>{% else %}<span class="pill pill-green">Cleared</span>{% endif %}</td></tr>
+        <td data-label="Status">{% if d.waived %}<span class="pill pill-grey">Waived</span>{% elif d.outstanding > 0 %}<span class="pill pill-amber">{{ CURRENCY }} {{ d.outstanding|money }} outstanding</span>{% else %}<span class="pill pill-green">Cleared</span>{% endif %}{% if d.from_unallocated %}
+          {% comment %}Settled out of a payment that named no period. Say so —
+          otherwise the member sees a month marked paid that no receipt on their
+          contributions page appears to cover.{% endcomment %}
+          <span class="muted u-xs" title="Settled from a payment that did not name a period">from an unallocated payment</span>{% endif %}</td></tr>
     {% endfor %}</tbody>
   </table>
   {% endif %}

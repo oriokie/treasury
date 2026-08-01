@@ -236,27 +236,23 @@ def facts_for_scheme(scheme, as_of=None, memberships=None):
         status__in=[SchemePolicy.Status.ACTIVE, SchemePolicy.Status.SUPERSEDED]
     ).order_by("-effective_from", "-version"))
 
-    # (2) Dues paid per (member, period) — one grouped query for the whole scheme.
-    paid_by_member_period = {}
-    for row in (BenevolentContribution.objects
-                .filter(membership_id__in=mem_ids, kind__in=DUES_KINDS)
-                .filter(_effective_q())
-                .values_list("membership_id", "period_label")
-                .annotate(total=Sum("transaction__amount"))):
-        mid, label, total = row
-        paid_by_member_period.setdefault(mid, {})[label] = total
-
-    # (3) Dues paid TOTAL per member, WITHIN each member's own dues window — the
-    #     date-windowed sum arrears_for uses (which counts lump sums regardless of
-    #     period label). Loaded as dated rows once, windowed per member in Python.
+    # (2) Every dues payment, dated and labelled, loaded ONCE.
+    #
+    #     Both figures the arrears answer is built from come from this one list:
+    #     the windowed TOTAL that `arrears_for` measures against, and the
+    #     per-period breakdown the member's statement shows. They used to be two
+    #     separate queries, and only the total was windowed by date — so a
+    #     payment falling outside a member's own dues window counted towards the
+    #     statement and not towards the headline, and the page disagreed with
+    #     itself. One source, one window, applied per member below.
     dues_rows = list(BenevolentContribution.objects
                      .filter(membership_id__in=mem_ids, kind__in=DUES_KINDS)
                      .filter(_effective_q())
                      .values_list("membership_id", "transaction__date",
-                                  "transaction__amount"))
+                                  "transaction__amount", "period_label"))
     dues_by_member = {}
-    for mid, d, amt in dues_rows:
-        dues_by_member.setdefault(mid, []).append((d, amt or _Dec(0)))
+    for mid, d, amt, label in dues_rows:
+        dues_by_member.setdefault(mid, []).append((d, amt or _Dec(0), label))
 
     # (4) The case scan for missed-levy counting — per SCHEME, shared by all.
     case_scan = list(BenevolentCase.objects
@@ -308,21 +304,29 @@ def facts_for_scheme(scheme, as_of=None, memberships=None):
     for m in memberships:
         m._policy_versions = versions
         m._policy_cache_trusted = True
-        m._paid_by_period_cache = paid_by_member_period.get(m.pk, {})
         m._levy_paid_cache = levy_by_member.get(m.pk, {})
         m._last_contribution_date_cache = last_by_member.get(m.pk)  # None if never
         m._own_settled_cases_cache = own_cases_by_member.get(m.pk, [])
-        # windowed dues-paid total (mirrors arrears_for's start/end exactly)
+        drows = dues_by_member.get(m.pk, ())
+        # One window, both figures — mirrors arrears_for's start/end exactly, and
+        # the per-period breakdown is now cut to the same dates so the member's
+        # statement and their "owing now" cannot disagree.
+        total, by_period = _Dec(0), {}
         if first_policy is not None:
             start = max(m.cover_from, first_policy)
             end = min(as_of, m.left_on or as_of)
-            total = _Dec(0)
-            for d, amt in dues_by_member.get(m.pk, ()):
+            for d, amt, label in drows:
                 if start <= d <= end:
                     total += amt
-            m._dues_paid_total_cache = total
-        drows = dues_by_member.get(m.pk, ())
-        m._last_dues_date_cache = max((d for d, _ in drows), default=None)
+                    by_period[label] = by_period.get(label, _Dec(0)) + amt
+        # Set unconditionally. `_batched=True` tells facts_for the caches on this
+        # instance were warmed for THIS pass, so it does not clear them first —
+        # leaving one unset on a scheme with no published policy would hand the
+        # next pass a stale figure from the previous one. (A scheme with no
+        # versions has no dues rows at all, so both are read as zero anyway.)
+        m._dues_paid_total_cache = total
+        m._paid_by_period_cache = by_period
+        m._last_dues_date_cache = max((d for d, _, _ in drows), default=None)
         out.append((m, facts_for(m, as_of=as_of, _batched=True)))
     return out
 

@@ -236,13 +236,28 @@
       {% endif %}
 
       <div class="topbar-right">
+        {% comment %}The office bell and the member's bell are different bells.
+        /notifications/ is office-only — the confinement middleware bounces a
+        member straight back to /portal/ — and its count includes broadcasts
+        about other members' cases. Send members to their own messages instead,
+        badged with what actually wants them: requests the church has asked
+        them to complete.
+        {% endcomment %}
+        {% if is_portal_member %}
+        <a href="{% url 'portal_notifications' %}" class="iconbtn" title="Messages" aria-label="Messages{% if portal_action_needed %} ({{ portal_action_needed }} needing your reply){% endif %}">🔔{% if portal_action_needed %}<span class="dot">{{ portal_action_needed }}</span>{% endif %}</a>
+        {% else %}
         <a href="{% url 'notifications' %}" class="iconbtn" title="Notifications" aria-label="Notifications{% if notif_badge %} ({{ notif_badge }} unread){% endif %}">🔔{% if notif_badge %}<span class="dot">{{ notif_badge }}</span>{% endif %}</a>
+        {% endif %}
         <details class="dd dd-user">
           <summary>
             <span class="avatar">{{ user.get_full_name|default:user.username|first|upper }}</span>
             <span class="who-meta">
               <strong>{{ user.get_full_name|default:user.username }}</strong>
-              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% elif is_leader %}Department leader{% elif is_elder %}Elder{% else %}Read-only · Auditor / Board{% endif %}</span>
+              {% comment %}A member of the congregation is none of the office
+              roles, so without this branch they fell through to the catch-all
+              and were told they were "Auditor / Board" on their own portal.
+              {% endcomment %}
+              <span class="role">{% if user.is_superuser %}Administrator{% elif is_treasurer %}Treasurer{% elif can_enter_data %}Assistant treasurer{% elif is_leader %}Department leader{% elif is_elder %}Elder{% elif is_portal_member %}Member{% else %}Read-only · Auditor / Board{% endif %}</span>
             </span>
             <span class="chev">▾</span>
           </summary>
@@ -250,8 +265,14 @@
             <div class="dd-sec">{{ CHURCH_NAME }}</div>
             {% if is_treasurer %}<a href="{% url 'settings' %}">Settings</a>
             <a href="{% url 'controls' %}">Period locks</a>{% endif %}
-            <a href="{% url 'notifications' %}">Notifications</a>
-            <a href="{% url 'preferences' %}">Appearance &amp; preferences</a>
+            {% comment %}Both of these are office pages the confinement
+            middleware bounces a member away from, so for a member they were
+            menu items that appeared to do nothing at all. Their own messages
+            page takes the place of the first; the second has no portal
+            equivalent, so it is simply not offered.{% endcomment %}
+            {% if is_portal_member %}<a href="{% url 'portal_notifications' %}">Messages</a>
+            {% else %}<a href="{% url 'notifications' %}">Notifications</a>
+            <a href="{% url 'preferences' %}">Appearance &amp; preferences</a>{% endif %}
             <a href="{% url 'twofactor_setup' %}">Security &amp; 2FA</a>
             <a href="{% url 'password_change' %}">Change password</a>
             <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="dd-signout">Sign out</button></form>
