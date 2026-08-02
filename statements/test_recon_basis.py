@@ -48,13 +48,11 @@ class ReconciliationBasisTests(TestCase):
         _entered_on(self.txn, 2026, 8, 1, 9, 0)
 
     def _prepare(self):
-        """A worksheet for 31 July: bank says 100, book auto-filled."""
-        from statements.views import _ledger_bank_balance
-        rec = BankReconciliation.objects.create(
-            statement_date=JUL31, bank_balance=Decimal("100"),
-            book_balance=_ledger_bank_balance(JUL31), created_by=self.user)
-        _sync_managed_recon_items(rec)
-        return rec
+        """A worksheet for 31 July, built through the production path."""
+        from statements.views import start_reconciliation
+        return start_reconciliation(statement_date=JUL31,
+                                    bank_balance=Decimal("100"),
+                                    user=self.user)
 
     def test_prepared_on_the_day_it_balances(self):
         rec = self._prepare()

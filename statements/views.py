@@ -77,6 +77,31 @@ from .models import BankReconciliation, ReconciliationItem
 from .forms import BankReconciliationForm, ReconciliationItemForm
 
 
+def reconciliation_basis(on):
+    """Every figure on a reconciliation worksheet is read as the books stood on
+    its statement date.
+
+    Use this around ALL of them — the cash-book balance, suspense, the petty
+    float, advances, unpresented instruments — never around some of them. The
+    two failures this has already caused both came from reading one half of the
+    worksheet from one moment and the other half from another:
+
+      * suspense as at the statement date against a cash book as it stands now
+        counted a late-receipted credit twice, once in the fund it had by then
+        been given and again as pending;
+      * both read as they stand now lost the money altogether on the Sabbath
+        route, where marking a bank line as receipted detaches it from every
+        fund and the envelope that carries the fund is dated the next day.
+
+    Read from one moment, the money is in the books or in suspense — never both
+    and never neither — whichever route receipted it and whenever the worksheet
+    is prepared. It also makes a worksheet for a past date stable: nothing done
+    afterwards can move figures that were settled at the time.
+    """
+    from reports.services import asat
+    return asat.as_reported(on)
+
+
 def _ledger_bank_balance(up_to_date):
     """Cash-book balance per the books, as of a date — the same figure the
     Statement of Financial Position shows as "cash" for that date, computed
@@ -181,6 +206,25 @@ def suggested_bank_balance(on):
     return best["balance"], note + "."
 
 
+def start_reconciliation(*, statement_date, bank_balance, user,
+                         book_balance=None, notes=""):
+    """Create a reconciliation worksheet and populate its managed items.
+
+    The single path — the view calls this and so should anything else, because
+    the correctness of a worksheet is a property of ALL its figures being read
+    from one moment, and that is a property of this function rather than of
+    each caller remembering.
+    """
+    with reconciliation_basis(statement_date):
+        if book_balance is None:
+            book_balance = _ledger_bank_balance(statement_date)
+        rec = BankReconciliation.objects.create(
+            statement_date=statement_date, bank_balance=bank_balance,
+            book_balance=book_balance, notes=notes, created_by=user)
+    _sync_managed_recon_items(rec)
+    return rec
+
+
 class ReconciliationCreateView(DataEntryRequiredMixin, View):
     template_name = "statements/reconciliation_new.html"
 
@@ -210,12 +254,12 @@ class ReconciliationCreateView(DataEntryRequiredMixin, View):
     def post(self, request):
         form = BankReconciliationForm(request.POST)
         if form.is_valid():
-            rec = form.save(commit=False)
-            rec.created_by = request.user
-            if rec.book_balance is None:
-                rec.book_balance = _ledger_bank_balance(rec.statement_date)
-            rec.save()
-            _sync_managed_recon_items(rec)   # auto-add petty/advances/cheques now
+            draft = form.save(commit=False)
+            rec = start_reconciliation(
+                statement_date=draft.statement_date,
+                bank_balance=draft.bank_balance,
+                book_balance=draft.book_balance,
+                notes=draft.notes, user=request.user)
             messages.success(request, "Reconciliation started — add your items below.")
             return redirect("reconciliation_detail", pk=rec.pk)
         return render(request, self.template_name, {"form": form})
@@ -266,6 +310,11 @@ def _sync_managed_recon_items(rec):
     unpresented cheques (issued but not yet cleared — they SUBTRACT from the bank
     balance). Each is upserted when non-zero and removed when zero, so the
     treasurer never has to add them by hand."""
+    with reconciliation_basis(rec.statement_date):
+        _sync_managed_recon_items_inner(rec)
+
+
+def _sync_managed_recon_items_inner(rec):
     from decimal import Decimal
     from cashbook.views import (_petty_balance_asof, outstanding_bank_advances_total,
                                 outstanding_petty_advances_total,
@@ -314,6 +363,8 @@ def _sync_managed_recon_items(rec):
             _lx("recon pending receipts")
             return Decimal(0)
 
+    # Read every managed figure from the worksheet's own moment — see
+    # reconciliation_basis for why all of them and not some.
     managed = [
         ("Petty cash float (cash on hand)",
          _safe(_petty_balance_asof),
@@ -399,11 +450,14 @@ class ReconciliationDetailView(ReadAccessMixin, View):
         bank_advances = outstanding_bank_advances_total(rec.statement_date)
         advances_listed = rec.items.filter(
             description__icontains="staff advance").exists()
+        with reconciliation_basis(rec.statement_date):
+            _suggested_book = _ledger_bank_balance(rec.statement_date)
+            _diag = _recon_diagnostic(rec.statement_date)
         return render(request, self.template_name, {
             "rec": rec, "items": rec.items.all(),
             "item_form": ReconciliationItemForm(),
-            "suggested_book": _ledger_bank_balance(rec.statement_date),
-            "diag": _recon_diagnostic(rec.statement_date),
+            "suggested_book": _suggested_book,
+            "diag": _diag,
             "default_effects": ReconciliationItem.DEFAULT_EFFECT,
             "unpresented_cheques": unpresented,
             "unpresented_total": unpresented_cheques_total(rec.statement_date),
@@ -441,7 +495,8 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             # refresh the stored cash-book balance from the current ledger, as of
             # this reconciliation's statement date (older worksheets can go stale
             # after later edits/imports — this pulls the up-to-date figure).
-            rec.book_balance = _ledger_bank_balance(rec.statement_date)
+            with reconciliation_basis(rec.statement_date):
+                rec.book_balance = _ledger_bank_balance(rec.statement_date)
             rec.save(update_fields=["book_balance"])
             messages.success(request,
                 f"Cash-book balance recomputed from the ledger: "

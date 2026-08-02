@@ -51,12 +51,10 @@ class PendingReceiptItemTests(TestCase):
         _entered_on(self.txn, 2026, 7, 25, 10, 0)
 
     def _make(self):
-        from statements.views import _sync_managed_recon_items
-        rec = BankReconciliation.objects.create(
-            statement_date=AS_AT, bank_balance=Decimal("5000"),
-            book_balance=Decimal("0"), created_by=self.user)
-        _sync_managed_recon_items(rec)
-        return rec
+        from statements.views import start_reconciliation
+        return start_reconciliation(statement_date=AS_AT,
+                                    bank_balance=Decimal("5000"),
+                                    user=self.user)
 
     def _pending_item(self, rec):
         return rec.items.filter(description__startswith="Receipts pending").first()
@@ -73,33 +71,32 @@ class PendingReceiptItemTests(TestCase):
         self.assertEqual(rec.difference, Decimal("0"))
         self.assertTrue(rec.is_reconciled)
 
-    def test_once_receipted_it_moves_from_suspense_into_the_books(self):
-        """Reconciling July in August, after the receipting: the money is now
-        in the fund, so it belongs in the book balance and NOT in suspense.
-        Keeping it in both is what put the worksheet out by the full amount."""
-        from statements.views import _ledger_bank_balance
+    def test_receipting_later_does_not_change_what_the_date_shows(self):
+        """Reconciling July in August, after the receipting. On 31 July the
+        money was at the bank and in no fund, so the worksheet says so — and
+        goes on saying so however long afterwards it is prepared. What must
+        never happen is the money landing in both halves, or in neither."""
+        from statements.views import start_reconciliation
         self.txn.department = self.fund
         self.txn.allocation_status = "MANUAL"
         self.txn.save()
         _entered_on(self.txn, 2026, 8, 3, 9, 0)
 
-        rec = BankReconciliation.objects.create(
-            statement_date=AS_AT, bank_balance=Decimal("5000"),
-            book_balance=_ledger_bank_balance(AS_AT), created_by=self.user)
-        from statements.views import _sync_managed_recon_items
-        _sync_managed_recon_items(rec)
-
-        self.assertIsNone(self._pending_item(rec))
-        self.assertEqual(rec.book_balance, Decimal("5000"))
+        rec = start_reconciliation(statement_date=AS_AT,
+                                   bank_balance=Decimal("5000"),
+                                   user=self.user)
+        item = self._pending_item(rec)
+        self.assertIsNotNone(item)
+        self.assertEqual(item.amount, Decimal("5000"))
+        self.assertEqual(rec.book_balance, Decimal("0"))
+        self.assertEqual(rec.book_balance + item.amount, Decimal("5000"))
         self.assertEqual(rec.difference, Decimal("0"))
 
     def test_nothing_pending_at_that_date_means_no_such_line(self):
         """A date before the credit arrived has nothing in suspense."""
-        from statements.views import _sync_managed_recon_items
-        rec = BankReconciliation.objects.create(
-            statement_date=dt.date(2026, 6, 30), bank_balance=Decimal("0"),
-            book_balance=Decimal("0"), created_by=self.user)
-        _sync_managed_recon_items(rec)
+        from statements.views import start_reconciliation
+        rec = start_reconciliation(statement_date=dt.date(2026, 6, 30),
+                                   bank_balance=Decimal("0"), user=self.user)
         self.assertIsNone(self._pending_item(rec))
 
 
