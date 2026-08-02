@@ -319,18 +319,26 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # e.g. "your-org/church-treasur
 # git pull during an update uses the local git remote's own credentials (SSH key
 # or a stored credential helper).
 def _clean_secret(raw):
-    """Whitespace and stray quotes off a credential read from the environment.
+    """Strip anything off a credential that cannot be part of one.
 
-    A token pasted into a control panel, or exported from a shell script, very
-    often arrives with a trailing newline or wrapped in quotes. GitHub then
-    answers "Bad credentials", which is indistinguishable from a revoked token
-    and sends people off to issue a new one that fails in exactly the same way.
-    The .env reader already strips both; a real export does not go through it.
+    A token pasted into a control panel, copied from a web page, or exported
+    from a shell script arrives with all sorts of company: a trailing newline,
+    matched or UNMATCHED quotes, a stray comma, a zero-width space or a BOM
+    that a browser slipped into the copy. GitHub then answers "Bad
+    credentials", which reads exactly like a revoked token and sends people off
+    to issue a new one that fails in precisely the same way. It is worth being
+    thorough here, because the failure gives no hint of its own cause.
+
+    GitHub tokens are drawn from [A-Za-z0-9_] alone, so the rule is simply:
+    trim anything else from either end. That covers every case above, including
+    the ones ``strip()`` misses — a zero-width space is not whitespace as
+    Python counts it, and an unbalanced quote was never handled at all.
+    Interior characters are left alone: a token with junk in the MIDDLE is not
+    something to guess at.
     """
     val = (raw or "").strip()
-    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
-        val = val[1:-1].strip()
-    return val
+    return val.strip("".join(
+        c for c in set(val) if not (c.isascii() and (c.isalnum() or c == "_"))))
 
 
 GITHUB_TOKEN = _clean_secret(os.environ.get("GITHUB_TOKEN", ""))

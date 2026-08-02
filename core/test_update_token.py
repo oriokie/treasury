@@ -125,3 +125,83 @@ class FailureWordingTests(TestCase):
     def test_github_s_own_words_are_quoted_either_way(self):
         for token in ("github_pat_" + "a" * 82, "ghp_" + "a" * 36):
             self.assertIn("Bad credentials", self._explain(token))
+
+
+class WrongLengthTests(TestCase):
+    """A token of the wrong length is not a token GitHub ever issued.
+
+    The reported case: a classic token arrived 41 characters long. GitHub
+    answers "Bad credentials", which reads exactly like expiry — so the fix
+    that gets tried is issuing another token, which arrives 41 characters long
+    too. The length is the one signal that tells the two apart.
+    """
+    GOOD = "ghp_" + "a" * 36
+    FINE = "github_pat_" + "b" * 82
+
+    def test_a_good_classic_token_is_forty_characters(self):
+        self.assertEqual(len(self.GOOD), 40)
+        with override_settings(GITHUB_TOKEN=self.GOOD):
+            d = token_diagnosis()
+        self.assertNotIn("expected", d["shape"])
+        self.assertEqual(d["note"], "")
+
+    def test_one_character_too_many_is_named_and_explained(self):
+        with override_settings(GITHUB_TOKEN=self.GOOD + '"'):
+            d = token_diagnosis()
+        self.assertIn("41 characters", d["shape"])
+        self.assertIn("1 too many", d["shape"])
+        self.assertIn("too long", d["note"])
+        self.assertIn("Issuing another token will not help", d["note"])
+
+    def test_a_clipped_token_is_reported_as_short(self):
+        with override_settings(GITHUB_TOKEN="ghp_" + "a" * 30):
+            d = token_diagnosis()
+        self.assertIn("6 too few", d["shape"])
+        self.assertIn("clipped", d["note"])
+
+    def test_a_good_fine_grained_token_is_ninety_three(self):
+        self.assertEqual(len(self.FINE), 93)
+        with override_settings(GITHUB_TOKEN=self.FINE):
+            self.assertNotIn("expected", token_diagnosis()["shape"])
+
+    def test_an_unrecognised_prefix_is_not_length_checked(self):
+        """No expected length to compare against — say what IS known."""
+        with override_settings(GITHUB_TOKEN="not-a-token-at-all"):
+            d = token_diagnosis()
+        self.assertNotIn("expected", d["shape"])
+        self.assertIn("begin ghp_", d["note"])
+
+    def test_the_length_warning_still_never_leaks_the_token(self):
+        with override_settings(GITHUB_TOKEN=self.GOOD + ","):
+            blob = repr(token_diagnosis())
+        self.assertNotIn("a" * 36, blob)
+
+
+class CleanerCoversEveryPasteTests(TestCase):
+    """Every way the reported 41st character could have got there."""
+
+    GOOD = "ghp_" + "a" * 36
+
+    def test_each_stray_character_is_stripped(self):
+        from config.settings import _clean_secret
+        for label, raw in {
+            "trailing newline": self.GOOD + "\n",
+            "matched quotes": f'"{self.GOOD}"',
+            "unbalanced leading quote": '"' + self.GOOD,
+            "unbalanced trailing quote": self.GOOD + '"',
+            "single quotes": f"'{self.GOOD}'",
+            "trailing comma": self.GOOD + ",",
+            "trailing semicolon": self.GOOD + ";",
+            "zero-width space": self.GOOD + "\u200b",
+            "byte-order mark": "\ufeff" + self.GOOD,
+            "non-breaking space": self.GOOD + "\u00a0",
+            "everything at once": f'  "{self.GOOD}",\n',
+        }.items():
+            self.assertEqual(_clean_secret(raw), self.GOOD, label)
+
+    def test_the_interior_is_never_touched(self):
+        """Junk in the MIDDLE is not something to guess at — a token that is
+        wrong there should fail loudly, not be silently 'repaired'."""
+        from config.settings import _clean_secret
+        odd = "ghp_" + "a" * 17 + "-" + "a" * 18
+        self.assertEqual(_clean_secret(odd), odd)

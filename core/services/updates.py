@@ -48,11 +48,26 @@ def token_diagnosis():
                 "note": "No token is set. A private repository cannot be "
                         "checked without one."}
 
-    kind = ("classic (ghp_)" if token.startswith("ghp_")
-            else "fine-grained (github_pat_)" if token.startswith("github_pat_")
-            else "OAuth (gho_)" if token.startswith("gho_")
-            else "unrecognised prefix")
+    #: what GitHub issues, by prefix: (label, exact length)
+    KINDS = {"ghp_": ("classic (ghp_)", 40),
+             "github_pat_": ("fine-grained (github_pat_)", 93),
+             "gho_": ("OAuth (gho_)", 40)}
+    kind, expected = "unrecognised prefix", None
+    for prefix, (label, length) in KINDS.items():
+        if token.startswith(prefix):
+            kind, expected = label, length
+            break
     shape = f"{kind}, {len(token)} characters"
+    # A token of the wrong LENGTH is not a token GitHub ever issued, and the
+    # "Bad credentials" it comes back with looks identical to expiry — which is
+    # how somebody ends up issuing a third good token to fix a stray character.
+    # One too many usually means a quote, comma or zero-width space came along
+    # with the paste; one too few means it was clipped.
+    wrong_length = expected is not None and len(token) != expected
+    if wrong_length:
+        off = len(token) - expected
+        shape += (f" — expected {expected}"
+                  f" ({abs(off)} too {'many' if off > 0 else 'few'})")
 
     # Is a stale export beating the .env file? The loader uses setdefault, so
     # the environment wins — which is right, and invisible at the moment it
@@ -76,7 +91,21 @@ def token_diagnosis():
         pass
 
     note = ""
-    if overridden:
+    if wrong_length:
+        off = len(token) - expected
+        note = (f"This token is {abs(off)} character"
+                f"{'s' if abs(off) != 1 else ''} too "
+                f"{'long' if off > 0 else 'short'} for its kind, so GitHub "
+                f"cannot recognise it whatever its permissions are. "
+                + ("Something almost certainly came along with the paste — a "
+                   "quote, a comma, or an invisible character copied from a web "
+                   "page. Re-copy it from GitHub and paste it into .env with no "
+                   "quotes around it."
+                   if off > 0 else
+                   "It looks clipped — check the whole value made it into "
+                   ".env on one line.")
+                + " Issuing another token will not help until this is right.")
+    elif overridden:
         note = ("The token in .env is NOT the one being used — a GITHUB_TOKEN "
                 "in the server's environment is overriding it. Clear that "
                 "export (or update it) and restart the app.")

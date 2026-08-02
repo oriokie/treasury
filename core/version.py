@@ -38,6 +38,18 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.46.1": "Fixes an update check that kept rejecting good access tokens. A token pasted into the "
+              "server's .env very often arrives with company — a quote, a comma, or an invisible "
+              "character copied from a web page — and GitHub answers \"Bad credentials\" to that, "
+              "which reads exactly like an expired token. So the fix that gets tried is issuing "
+              "another token, which arrives with the same stray character and fails the same way. "
+              "Anything that cannot be part of a token is now stripped from either end of the value, "
+              "including the invisible characters that ordinary trimming misses. And because the "
+              "length is the one signal that tells a mangled token from an expired one, the update "
+              "page now checks it: a classic token is exactly 40 characters and a fine-grained one "
+              "93, so a token that is a character too long or short is reported as such, with what "
+              "to do about it — and told plainly that issuing another one will not help until it is "
+              "right.",
     "3.46.0": "Fixes tables missing from the Word download. Every table in a Word export came out as "
               "\"Nothing to report for this period\" — a mistake introduced with the new .docx "
               "writer in 3.45.0, where a check for an empty section was always answering yes. The "
