@@ -556,7 +556,47 @@ def pending_receipts_total(as_of=None):
     f &= Q(processed_via_envelope=False, manual_receipt=False, excluded_from_income=False)
     if as_of:
         f &= Q(date__lte=as_of)
-    return _txn().filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+    total = _txn().filter(f).aggregate(t=Sum("amount"))["t"] or Decimal(0)
+    return total + receipted_after(as_of)
+
+
+def receipted_after(as_of=None):
+    """Bank credits that were awaiting receipt ON ``as_of`` and were receipted
+    afterwards.
+
+    Money banked on Friday and receipted on Sabbath is the ordinary case here.
+    Receipting a bank line detaches it from every fund and marks it a memo,
+    because the income and the fund move to an envelope — one dated the Sabbath.
+    So on Friday night that money is at the bank, in no fund, and (once the
+    Sabbath comes) excluded from the pending set as well. It would be counted
+    nowhere, and a Friday reconciliation would be short by exactly that amount.
+
+    Only the row's OWN flag history is consulted, and only to answer "had this
+    been receipted yet". That is deliberately much narrower than rebuilding a
+    balance from history: a cash book is completed after the fact — July's
+    expenses are keyed in during August and belong in July — so the balances
+    themselves must always be read as they now stand. A row whose history does
+    not reach back that far is left out rather than guessed at.
+    """
+    if not as_of:
+        return Decimal(0)
+    from reports.services import asat
+    moment = asat.moment_for(as_of)
+    rows = Transaction.objects.filter(
+        channel=Transaction.Channel.BANK,
+        direction=Transaction.Direction.CREDIT,
+        is_reversed=False, is_reversal=False, date__lte=as_of,
+    ).filter(Q(manual_receipt=True) | Q(processed_via_envelope=True))
+    total = Decimal(0)
+    for t in rows:
+        was = (t.history.filter(history_date__lte=moment)
+               .order_by("-history_date", "-history_id").first())
+        if was is None:
+            continue          # no record that far back: do not invent one
+        if (not was.manual_receipt and not was.processed_via_envelope
+                and was.department_id is None and not was.is_reversed):
+            total += t.amount
+    return total
 
 
 def bank_position(as_of=None):

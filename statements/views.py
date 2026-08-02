@@ -77,29 +77,32 @@ from .models import BankReconciliation, ReconciliationItem
 from .forms import BankReconciliationForm, ReconciliationItemForm
 
 
+import contextlib
+
+
+@contextlib.contextmanager
 def reconciliation_basis(on):
-    """Every figure on a reconciliation worksheet is read as the books stood on
-    its statement date.
+    """Every figure on a reconciliation worksheet is read the same way: dated up
+    to the statement date, valued as the books now stand.
 
-    Use this around ALL of them — the cash-book balance, suspense, the petty
-    float, advances, unpresented instruments — never around some of them. The
-    two failures this has already caused both came from reading one half of the
-    worksheet from one moment and the other half from another:
+    "As the books now stand" is the part that took three attempts to get right.
+    A cash book is COMPLETED AFTER THE FACT — July's expenses are keyed in
+    during August and belong in July — so rebuilding the balance from what the
+    system happened to know on 31 July drops every one of them and leaves the
+    cash-book figure too high by exactly that much. That is what 3.41.2 did, and
+    why the reconciliation stopped agreeing with the dashboard.
 
-      * suspense as at the statement date against a cash book as it stands now
-        counted a late-receipted credit twice, once in the fund it had by then
-        been given and again as pending;
-      * both read as they stand now lost the money altogether on the Sabbath
-        route, where marking a bank line as receipted detaches it from every
-        fund and the envelope that carries the fund is dated the next day.
+    So the balances are never reconstructed. What IS asked of history is one
+    much smaller question, in ``balances.receipted_after``: had this particular
+    bank line been receipted yet on that date? That is a fact about one row's
+    flags, it is the only thing the Sabbath route needs, and a row whose history
+    does not reach back is left out rather than guessed at.
 
-    Read from one moment, the money is in the books or in suspense — never both
-    and never neither — whichever route receipted it and whenever the worksheet
-    is prepared. It also makes a worksheet for a past date stable: nothing done
-    afterwards can move figures that were settled at the time.
+    The invariant the worksheet has to keep, whichever route receipted the money
+    and whenever the sheet is prepared: the money is in the cash book or in
+    suspense — never both, never neither.
     """
-    from reports.services import asat
-    return asat.as_reported(on)
+    yield on
 
 
 def _ledger_bank_balance(up_to_date):

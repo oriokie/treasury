@@ -38,6 +38,19 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.41.3": "Fixes the cash-book balance on a reconciliation, which 3.41.2 left too high — it "
+              "stopped agreeing with the closing balance on the dashboard. 3.41.2 rebuilt the "
+              "balance from what the system knew on the statement date, and a cash book is completed "
+              "AFTER the fact: July's expenses are keyed in during August and belong in July, so "
+              "rebuilding July's balance from what was known on the 31st dropped every one of them. "
+              "Balances are no longer reconstructed at all; they are dated up to the statement date "
+              "and valued as the books now stand, which is what the dashboard, the statements and "
+              "the reconciliation all do again. The Sabbath case that 3.41.2 was fixing stays fixed, "
+              "by asking history one much smaller question instead: had this particular bank line "
+              "been receipted yet on that date? Money banked on Friday and receipted on Sabbath is "
+              "still shown as awaiting receipt on the Friday, because that is a fact about one row's "
+              "flags rather than a whole balance. A line whose history does not reach back that far "
+              "is left out rather than guessed at. Reconciliations correct themselves when opened.",
     "3.41.2": "Fixes a bank reconciliation that lost money receipted on Sabbath. Marking a bank line "
               "as receipted on paper detaches it from every fund and makes it a memo, and the "
               "envelope that carries the income and the fund is keyed in separately, dated the "
