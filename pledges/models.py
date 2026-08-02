@@ -75,6 +75,20 @@ class PledgeCampaign(models.Model):
                 .aggregate(s=Sum("amount"))["s"] or Decimal("0"))
 
     @property
+    def percent_pledged(self):
+        """Pledged as a share of the goal, capped at 100 for a progress bar.
+
+        The pledge form has shown a progress bar bound to this property since
+        3.44.0 — but the property did not exist, so the bar sat at 0% for every
+        campaign (the template's |default:0 swallowed the error). Bars cap at
+        100; the report states the real percentage as a figure where
+        over-subscription is worth seeing.
+        """
+        if not self.goal_amount:
+            return 0
+        return int(min(self.total_pledged * 100 / self.goal_amount, 100))
+
+    @property
     def total_outstanding(self):
         out = self.total_pledged - self.total_received
         return out if out > 0 else Decimal("0")

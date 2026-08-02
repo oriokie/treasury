@@ -5,21 +5,22 @@
 <div class="ws-head">
   <div class="ws-titles"><div class="eyebrow">Pledges · {{ SITE_NAME }}</div>
     <h1>{% if campaign %}{{ campaign.name }}{% else %}Campaign pledge report{% endif %}</h1>
-    <div class="ws-sub">Who pledged, what they have given, and what is left</div></div>
+    <div class="ws-sub">{% if campaign %}{{ campaign.get_status_display }}{% if campaign.start_date %} · from {{ campaign.start_date|date:"d M Y" }}{% endif %}{% if campaign.end_date %} to {{ campaign.end_date|date:"d M Y" }}{% endif %} · who pledged, what they have given, and what is left{% else %}Who pledged, what they have given, and what is left{% endif %}</div></div>
   <div class="btn-row no-print">
-    {% if campaign %}<a class="btn btn-sm btn-ghost" href="?{% if group_by_tag %}group=tag&{% endif %}export=csv">⬇ CSV</a>
-    <a class="btn btn-sm btn-ghost" href="?{% if group_by_tag %}group=tag&{% endif %}export=xlsx">⬇ Excel</a>
+    {% if campaign %}<a class="btn btn-sm btn-ghost" href="?campaign={{ campaign.id }}{% if tag %}&tag={{ tag|urlencode }}{% endif %}{% if sort != 'name' %}&sort={{ sort }}{% endif %}&export=csv">⬇ CSV</a>
+    <a class="btn btn-sm btn-ghost" href="?campaign={{ campaign.id }}{% if tag %}&tag={{ tag|urlencode }}{% endif %}{% if sort != 'name' %}&sort={{ sort }}{% endif %}&export=xlsx">⬇ Excel</a>
     <button class="btn btn-sm btn-ghost" onclick="window.print()">⎙ Print</button>{% endif %}
     <a class="btn btn-sm btn-ghost" href="{% url 'pledge_dashboard' %}">← Pledges</a>
   </div>
 </div>
 
-<form method="get" class="ws-toolbar no-print">
+<form method="get" class="ws-toolbar no-print" id="cprFilters">
   <div class="f"><label for="rCampaign">Campaign</label>
     <select id="rCampaign" name="campaign" class="field--select" onchange="this.form.submit()">
       <option value="">— choose —</option>
       {% for c in campaigns %}<option value="{{ c.id }}" {% if campaign and campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
     </select></div>
+  {% if campaign %}
   {% if all_tags %}
   <div class="f"><label for="rTag">Only tag</label>
     <select id="rTag" name="tag" class="field--select" onchange="this.form.submit()">
@@ -29,11 +30,45 @@
   <div class="f"><label class="check-row" for="rGroup">
     <input id="rGroup" type="checkbox" name="group" value="tag" {% if group_by_tag %}checked{% endif %} onchange="this.form.submit()"> Group by tag</label></div>
   {% endif %}
+  <div class="f"><label for="rSort">Order</label>
+    <select id="rSort" name="sort" class="field--select" onchange="this.form.submit()">
+      <option value="name" {% if sort == 'name' %}selected{% endif %}>By name</option>
+      <option value="outstanding" {% if sort == 'outstanding' %}selected{% endif %}>Largest balance first</option>
+      <option value="pledged" {% if sort == 'pledged' %}selected{% endif %}>Largest pledge first</option>
+      <option value="progress" {% if sort == 'progress' %}selected{% endif %}>Least paid first</option>
+    </select></div>
+  <div class="f"><label for="rFind">Find member</label>
+    <input id="rFind" type="search" class="field" placeholder="Type a name…" autocomplete="off"></div>
+  {% endif %}
 </form>
 
 {% if not campaign %}
-<div class="card"><div class="bd"><p class="help u-mt-0">Choose a campaign above to see who pledged to it.</p></div></div>
+<div class="card"><div class="bd">
+  <p class="help u-mt-0">Choose a campaign to see who pledged to it.</p>
+  {% if campaigns %}<div class="btn-row u-mt-sm">
+    {% for c in campaigns %}<a class="btn btn-sm btn-ghost" href="?campaign={{ c.id }}">{{ c.name }}</a>{% endfor %}
+  </div>{% endif %}
+</div></div>
 {% else %}
+
+{% comment %}The campaign band: one bar that says how the appeal is going.
+Received in forest, promised-but-unpaid in brass, and — when there is a goal —
+the unpledged remainder as empty track. The bar caps at 100%; the figures do
+not, because an over-subscribed campaign is worth seeing at 113%, not clipped
+to look merely complete.{% endcomment %}
+{% if goal.bar %}
+<div class="card u-mb cpr-band"><div class="bd">
+  <div class="cpr-bar" role="img" aria-label="Campaign progress">
+    <span class="seg-received" style="width:{{ goal.bar.received }}%"></span><span class="seg-pledged" style="width:{{ goal.bar.pledged }}%"></span>
+  </div>
+  <div class="cpr-legend">
+    <span><i class="sw sw-received"></i> Given {{ totals.paid|money:0 }}{% if goal.goal %} ({{ goal.pct_received }}% of goal){% endif %}</span>
+    <span><i class="sw sw-pledged"></i> Promised, not yet given {{ totals.outstanding|money:0 }}</span>
+    {% if goal.goal %}<span><i class="sw sw-track"></i> Goal {{ goal.goal|money:0 }} — {{ goal.pct_pledged }}% pledged{% if goal.short %}, {{ goal.short|money:0 }} still unpledged{% endif %}</span>{% endif %}
+    {% if goal.fulfilment is not None %}<span class="cpr-fulfil">{{ goal.fulfilment }}% of pledges honoured so far</span>{% endif %}
+  </div>
+</div></div>
+{% endif %}
 
 <div class="ws-summary u-mb">
   <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ totals.amount|money:0 }}</span></div>
@@ -43,18 +78,57 @@
 </div>
 
 {% if group_by_tag %}
-  {% comment %}A member holding two tags appears under both, so the group
-  subtotals deliberately do not sum to the campaign total. Said out loud rather
-  than left for someone to discover with a calculator.{% endcomment %}
   <p class="help no-print">Members holding more than one tag appear in each of their groups, so the group subtotals below add up to more than the campaign total.</p>
   {% for g in groups %}
-  <div class="card u-mb"><div class="hd"><h3>{{ g.name }}</h3>
-    <span class="muted u-xs">{{ g.totals.n }} member{{ g.totals.n|pluralize }} · {{ g.totals.amount|money:0 }} pledged · {{ g.totals.outstanding|money:0 }} outstanding</span></div>
+  <div class="card u-mb cpr-group"><div class="hd"><h3>{{ g.name }}</h3>
+    <span class="muted u-xs">{{ g.totals.n }} member{{ g.totals.n|pluralize }} · {{ g.totals.amount|money:0 }} pledged · {{ g.totals.paid|money:0 }} given · {{ g.totals.outstanding|money:0 }} outstanding</span></div>
     <div class="bd bd-flush">{% include "pledges/_campaign_report_rows.html" with rows=g.rows totals=g.totals %}</div>
   </div>
   {% empty %}<div class="card"><div class="bd"><p class="help u-mt-0">No pledges to group.</p></div></div>{% endfor %}
 {% else %}
-  <div class="card"><div class="bd bd-flush">{% include "pledges/_campaign_report_rows.html" with rows=rows totals=totals %}</div></div>
+  <div class="card cpr-group"><div class="bd bd-flush">{% include "pledges/_campaign_report_rows.html" with rows=rows totals=totals %}</div></div>
 {% endif %}
 {% endif %}
+
+<style>
+.cpr-bar{display:flex;height:14px;border-radius:999px;overflow:hidden;background:var(--paper-2);
+  border:1px solid var(--line)}
+.cpr-bar .seg-received{background:var(--forest)}
+.cpr-bar .seg-pledged{background:var(--brass-2)}
+.cpr-legend{display:flex;gap:.5rem 1.4rem;flex-wrap:wrap;margin-top:.55rem;font-size:.78rem;color:var(--ink-soft)}
+.cpr-legend .sw{display:inline-block;width:.65rem;height:.65rem;border-radius:3px;margin-right:.3rem;vertical-align:-1px}
+.sw-received{background:var(--forest)}.sw-pledged{background:var(--brass-2)}
+.sw-track{background:var(--paper-2);border:1px solid var(--line)}
+.cpr-fulfil{margin-left:auto;font-weight:600;color:var(--forest)}
+.cpr-group .ledger tbody tr:hover td{background:var(--paper-2)}
+.row-complete td{background:var(--forest-tint)}
+.row-complete:hover td{background:var(--forest-soft)!important}
+.pct-lbl{font-size:.68rem;color:var(--muted);margin-left:.35rem;font-family:"IBM Plex Mono",monospace}
+.pill-overdue{display:block;font-size:.62rem;color:var(--amber);font-weight:700;margin-top:2px}
+@media print{.cpr-fulfil{margin-left:0}.cpr-bar{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+</style>
+
+<script>
+// Find-as-you-type over the rows on screen. It is a finding aid, not a filter:
+// the printed report and the totals are untouched, which is why it lives in
+// the browser and not in the query string.
+(function(){
+  var input = document.getElementById("rFind");
+  if(!input) return;
+  input.addEventListener("input", function(){
+    var q = input.value.trim().toLowerCase();
+    document.querySelectorAll("[data-member-row]").forEach(function(tr){
+      tr.style.display = (!q || tr.dataset.name.indexOf(q) > -1) ? "" : "none";
+    });
+    // a group card with nothing left visible only adds noise
+    document.querySelectorAll(".cpr-group").forEach(function(card){
+      var any = false;
+      card.querySelectorAll("[data-member-row]").forEach(function(tr){
+        if(tr.style.display !== "none") any = true;
+      });
+      card.style.display = any || !q ? "" : "none";
+    });
+  });
+})();
+</script>
 {% endblock %}

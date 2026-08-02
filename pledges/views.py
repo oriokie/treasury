@@ -453,16 +453,66 @@ class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
               .exclude(status=Pledge.Status.CANCELLED)
               .select_related("member").prefetch_related("member__tags")
               .order_by("member__name"))
+        today = dt.date.today()
         rows = []
         for p in qs:
+            outstanding = p.outstanding
             rows.append({
                 "pledge": p, "member": p.member,
                 "tags": list(p.member.tags.all()),
                 "amount": p.amount, "paid": p.paid,
-                "outstanding": p.outstanding, "status": p.get_status_display(),
+                "outstanding": outstanding, "status": p.get_status_display(),
+                "overdue": bool(p.end_date and p.end_date < today
+                                and outstanding > 0),
                 "pct": (int(min(p.paid / p.amount * 100, 100))
                         if p.amount else 0)})
         return rows
+
+    @staticmethod
+    def _sort(rows, key):
+        """Name is the roll-call order; the others are working orders. Sorting
+        by outstanding puts the follow-up list at the top, progress puts the
+        least-paid first — ties broken by name so the order is stable."""
+        if key == "outstanding":
+            rows.sort(key=lambda r: (-r["outstanding"], r["member"].name))
+        elif key == "pledged":
+            rows.sort(key=lambda r: (-r["amount"], r["member"].name))
+        elif key == "progress":
+            rows.sort(key=lambda r: (r["pct"], r["member"].name))
+        return rows
+
+    def _screen_rows(self, campaign):
+        """Exactly what the page shows: tag filter and sort applied. The export
+        uses this too — a treasurer who filtered to the committee and pressed
+        Excel means the committee, not the whole roll."""
+        rows = self._rows(campaign)
+        tag = self.request.GET.get("tag")
+        if tag:
+            rows = [r for r in rows if any(t.name == tag for t in r["tags"])]
+        return self._sort(rows, self.request.GET.get("sort") or "name")
+
+    @staticmethod
+    def _goal_figures(campaign, totals):
+        """The campaign band: how far pledges and money have got toward the
+        goal. Bar segments are capped so the drawing never overflows; the
+        stated percentages are not, because over-subscription is worth seeing.
+        Without a goal the bar measures given against pledged instead — the
+        only yardstick there is."""
+        goal = campaign.goal_amount or Decimal("0")
+        base = goal or totals["amount"]
+        out = {"goal": goal}
+        if totals["amount"]:
+            out["fulfilment"] = int(totals["paid"] * 100 / totals["amount"])
+        if goal:
+            out["pct_pledged"] = int(totals["amount"] * 100 / goal)
+            out["pct_received"] = int(totals["paid"] * 100 / goal)
+            out["short"] = max(goal - totals["amount"], Decimal("0"))
+        if base:
+            received = int(min(totals["paid"] * 100 / base, 100))
+            pledged = int(min(totals["amount"] * 100 / base, 100)) - received
+            out["bar"] = {"received": max(received, 0),
+                          "pledged": max(pledged, 0)}
+        return out
 
     @staticmethod
     def _totals(rows):
@@ -504,22 +554,20 @@ class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
         ctx["campaigns"] = PledgeCampaign.objects.order_by("name")
         ctx["group_by_tag"] = self.request.GET.get("group") == "tag"
         ctx["all_tags"] = MemberTag.objects.filter(active=True)
+        ctx["sort"] = self.request.GET.get("sort") or "name"
         if campaign:
-            rows = self._rows(campaign)
-            tag = self.request.GET.get("tag")
-            if tag:
-                rows = [r for r in rows
-                        if any(t.name == tag for t in r["tags"])]
+            rows = self._screen_rows(campaign)
             ctx["rows"] = rows
             ctx["totals"] = self._totals(rows)
+            ctx["goal"] = self._goal_figures(campaign, ctx["totals"])
             ctx["groups"] = self._groups(rows) if ctx["group_by_tag"] else []
-            ctx["tag"] = tag
+            ctx["tag"] = self.request.GET.get("tag")
         return ctx
 
     def _export(self, campaign, fmt):
         from reports.exports import csv_response, xlsx_response
         from core.models import SiteConfig
-        rows = self._rows(campaign)
+        rows = self._screen_rows(campaign)
         header = ["Member", "Tags", "Pledged", "Given", "Balance", "Status"]
         data = [[r["member"].name, ", ".join(t.name for t in r["tags"]),
                  float(r["amount"]), float(r["paid"]),

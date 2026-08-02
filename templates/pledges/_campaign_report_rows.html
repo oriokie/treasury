@@ -1,15 +1,18 @@
 {% load humanize treasury_extras %}
 <table class="ledger compact">
-  <thead><tr><th>Member</th><th class="no-print">Tags</th><th class="num">Pledged</th><th class="num">Given</th><th class="num">Balance</th><th style="width:120px">Progress</th><th>Status</th></tr></thead>
+  <thead><tr><th>Member</th><th class="no-print">Tags</th><th class="num">Pledged</th><th class="num">Given</th><th class="num">Balance</th><th style="width:150px">Progress</th><th>Status</th></tr></thead>
   <tbody>
-  {% for r in rows %}<tr>
+  {% for r in rows %}<tr data-member-row data-name="{{ r.member.name|lower }}" {% if r.pct >= 100 %}class="row-complete"{% endif %}>
     <td>{{ r.member.name }}</td>
     <td class="no-print">{% for t in r.tags %}<span class="pill pill-grey u-xs">{{ t.name }}</span> {% empty %}<span class="muted u-xs">—</span>{% endfor %}</td>
     <td class="num mono">{{ r.amount|money:0 }}</td>
-    <td class="num mono">{{ r.paid|money:0 }}</td>
+    <td class="num mono">{% if r.paid %}{{ r.paid|money:0 }}{% else %}<span class="muted">—</span>{% endif %}</td>
     <td class="num mono">{{ r.outstanding|money:0 }}</td>
-    <td><div class="progress"><span style="width:{{ r.pct }}%"></span></div></td>
-    <td><span class="pill {% if r.pct >= 100 %}pill-green{% elif r.status == 'Draft' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.status }}</span></td>
+    {% comment %}The percentage prints where the bar may not — a mono printer
+    turns a coloured bar into a grey smudge, and the number is the figure a
+    reader wants anyway.{% endcomment %}
+    <td><span style="display:flex;align-items:center"><span class="progress" style="flex:1"><span style="width:{{ r.pct }}%"></span></span><span class="pct-lbl">{{ r.pct }}%</span></span></td>
+    <td><span class="pill {% if r.pct >= 100 %}pill-green{% elif r.status == 'Draft' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.status }}</span>{% if r.overdue %}<span class="pill-overdue" title="Past its own end date with a balance owing">overdue</span>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="7" class="muted">No pledges here yet.</td></tr>{% endfor %}
   </tbody>
   {% if rows %}<tfoot><tr class="total-row">

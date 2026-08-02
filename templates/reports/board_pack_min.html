@@ -9,7 +9,17 @@
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=docx">Word</a>
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=xlsx">Excel</a>
   <span class="sp"></span>
-  <form method="get" class="filter-bar" style="margin:0">
+  <form method="get" class="filter-bar" style="margin:0" id="bpmPeriod">
+    {% comment %}A pack is nearly always run for one of five periods; typing
+    two dates every month is friction with no information in it. The chips
+    fill the dates and submit — the inputs stay for the odd period.{% endcomment %}
+    <span class="bpm-presets" role="group" aria-label="Quick periods">
+      <button type="button" data-range="this-month">This month</button>
+      <button type="button" data-range="last-month">Last month</button>
+      <button type="button" data-range="quarter">Quarter</button>
+      <button type="button" data-range="ytd">Year to date</button>
+      <button type="button" data-range="last-year">Last year</button>
+    </span>
     {% if rendered.context.start %}
       <input type="date" name="start" value="{{ rendered.context.start|date:'Y-m-d' }}" class="field" title="From" aria-label="Period from">
       <input type="date" name="end" value="{{ rendered.context.end|date:'Y-m-d' }}" class="field" title="To" aria-label="Period to">
@@ -326,5 +336,51 @@
 </script>
 {% endif %}
 
+<script>
+// Quick periods: fill the two date inputs and submit. Dates are built by hand
+// rather than via toISOString, which shifts across midnight in UTC+3.
+(function(){
+  var form = document.getElementById("bpmPeriod");
+  if(!form) return;
+  function iso(d){
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+         + "-" + String(d.getDate()).padStart(2,"0");
+  }
+  form.querySelectorAll("[data-range]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var now = new Date(), s, e;
+      switch(btn.dataset.range){
+        case "this-month": s = new Date(now.getFullYear(), now.getMonth(), 1); e = now; break;
+        case "last-month": s = new Date(now.getFullYear(), now.getMonth()-1, 1);
+                           e = new Date(now.getFullYear(), now.getMonth(), 0); break;
+        case "quarter":    s = new Date(now.getFullYear(), Math.floor(now.getMonth()/3)*3, 1); e = now; break;
+        case "ytd":        s = new Date(now.getFullYear(), 0, 1); e = now; break;
+        case "last-year":  s = new Date(now.getFullYear()-1, 0, 1);
+                           e = new Date(now.getFullYear()-1, 11, 31); break;
+        default: return;
+      }
+      var si = form.querySelector('[name="start"]'), ei = form.querySelector('[name="end"]');
+      if(si && ei){ si.value = iso(s); ei.value = iso(e); form.submit(); }
+    });
+  });
+})();
+
+// Contents bar highlights the section in view, so a long pack keeps its map.
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll(".bpm-contents a"));
+  var groups = links.map(function(l){ return document.querySelector(l.getAttribute("href")); });
+  if(!("IntersectionObserver" in window) || !groups.length) return;
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(en){
+      if(en.isIntersecting){
+        links.forEach(function(l){ l.classList.remove("active"); });
+        var i = groups.indexOf(en.target);
+        if(i > -1) links[i].classList.add("active");
+      }
+    });
+  }, {rootMargin: "-15% 0px -75% 0px"});
+  groups.forEach(function(g){ if(g) obs.observe(g); });
+})();
+</script>
 {% include "reports/_board_pack_min_styles.html" %}
 {% endblock %}

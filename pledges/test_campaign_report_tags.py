@@ -157,3 +157,88 @@ class LeaderTaggingTests(_Campaign):
         self.client.post(self.page, {"action": "tag", "member": self.mary.pk,
                                      "tags": ["999"], "name": "Made Up"})
         self.assertEqual(MemberTag.objects.count(), before)
+
+
+class ReportScreenTests(_Campaign):
+    """The working orders, the campaign band, and an export that matches the
+    screen — a treasurer who filtered to the committee and pressed Excel means
+    the committee, not the whole roll."""
+
+    def test_sort_by_outstanding_puts_the_follow_up_list_first(self):
+        self._pay(self.asha, "45000")          # outstanding: 5,000
+        r = self.client.get(self.url, {"sort": "outstanding"})
+        names = [x["member"].name for x in r.context["rows"]]
+        self.assertEqual(names, ["PETER OTIENO", "MARY WANJIKU", "ASHA MUTUA"])
+
+    def test_sort_by_progress_puts_the_least_paid_first(self):
+        self._pay(self.asha, "20000")          # 40%
+        r = self.client.get(self.url, {"sort": "progress"})
+        names = [x["member"].name for x in r.context["rows"]]
+        # the two at 0% tie, broken by name, then the 40%
+        self.assertEqual(names, ["MARY WANJIKU", "PETER OTIENO", "ASHA MUTUA"])
+
+    def test_the_goal_band_states_the_uncapped_truth(self):
+        self.campaign.goal_amount = Decimal("100000")
+        self.campaign.save()
+        self._pay(self.asha, "20000")
+        r = self.client.get(self.url)
+        g = r.context["goal"]
+        self.assertEqual(g["pct_pledged"], 80)
+        self.assertEqual(g["pct_received"], 20)
+        self.assertEqual(g["fulfilment"], 25)
+        self.assertEqual(g["short"], Decimal("20000"))
+        self.assertEqual(g["bar"], {"received": 20, "pledged": 60})
+
+    def test_over_subscription_shows_over_100_but_the_bar_caps(self):
+        self.campaign.goal_amount = Decimal("50000")
+        self.campaign.save()
+        r = self.client.get(self.url)
+        g = r.context["goal"]
+        self.assertEqual(g["pct_pledged"], 160)          # the figure tells it
+        self.assertEqual(g["bar"]["received"] + g["bar"]["pledged"], 100)
+
+    def test_without_a_goal_the_bar_measures_given_against_pledged(self):
+        self._pay(self.asha, "40000")          # 40,000 of 80,000 pledged
+        r = self.client.get(self.url)
+        g = r.context["goal"]
+        self.assertNotIn("pct_pledged", g)
+        self.assertEqual(g["bar"], {"received": 50, "pledged": 50})
+
+    def test_the_export_matches_the_screen(self):
+        r = self.client.get(self.url, {"tag": "Finance Committee",
+                                       "export": "csv"})
+        body = r.content.decode()
+        self.assertIn("ASHA MUTUA", body)
+        self.assertNotIn("MARY WANJIKU", body)
+
+    def test_a_pledge_past_its_end_date_with_a_balance_is_overdue(self):
+        import datetime as dt
+        p = Pledge.objects.get(member=self.mary)
+        p.end_date = dt.date.today() - dt.timedelta(days=10)
+        p.save()
+        r = self.client.get(self.url)
+        flags = {x["member"].name: x["overdue"] for x in r.context["rows"]}
+        self.assertTrue(flags["MARY WANJIKU"])
+        self.assertFalse(flags["ASHA MUTUA"])
+
+    def test_paying_it_off_clears_the_overdue_flag(self):
+        import datetime as dt
+        p = Pledge.objects.get(member=self.mary)
+        p.end_date = dt.date.today() - dt.timedelta(days=10)
+        p.save()
+        self._pay(self.mary, "10000")
+        r = self.client.get(self.url)
+        flags = {x["member"].name: x["overdue"] for x in r.context["rows"]}
+        self.assertFalse(flags["MARY WANJIKU"])
+
+    def test_percent_pledged_finally_exists_for_the_form_s_progress_bar(self):
+        """The pledge form has bound a bar to this property since 3.44.0; it
+        rendered 0% for every campaign because the property was not there."""
+        self.campaign.goal_amount = Decimal("100000")
+        self.campaign.save()
+        self.assertEqual(self.campaign.percent_pledged, 80)
+        self.campaign.goal_amount = Decimal("40000")
+        self.campaign.save()
+        self.assertEqual(self.campaign.percent_pledged, 100)   # capped for the bar
+        self.campaign.goal_amount = None
+        self.assertEqual(self.campaign.percent_pledged, 0)

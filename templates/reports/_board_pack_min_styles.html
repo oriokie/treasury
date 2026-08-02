@@ -34,9 +34,16 @@ only changes what pagination and ink require.
 
 /* ---- contents ---- */
 .bpm-contents{display:flex;flex-wrap:wrap;gap:.15rem 1.2rem;margin:-1.1rem 0 2rem;
-  padding:.85rem 0 0;font-size:.78rem}
-.bpm-contents a{color:var(--ink-soft);text-decoration:none;white-space:nowrap}
+  padding:.85rem 0 .6rem;font-size:.78rem;
+  /* rides along on screen so a long pack keeps its map; the print CSS below
+     removes it entirely, as before */
+  position:sticky;top:0;z-index:6;background:var(--paper);
+  border-bottom:1px solid var(--line)}
+.bpm-contents a{color:var(--ink-soft);text-decoration:none;white-space:nowrap;
+  padding-bottom:.15rem;border-bottom:2px solid transparent}
 .bpm-contents a:hover{color:var(--forest);text-decoration:underline}
+.bpm-contents a.active{color:var(--forest);font-weight:600;
+  border-bottom-color:var(--forest);text-decoration:none}
 .bpm-contents .n{color:var(--muted);font-weight:600;margin-right:.25rem}
 
 /* ---- groups & sections ---- */
@@ -78,6 +85,7 @@ only changes what pagination and ink require.
 .bpm-tbl .neg{color:var(--danger)}
 .bpm-tbl .blank{color:var(--line-strong)}
 .bpm-tbl tbody tr:last-child td{border-bottom:0}
+@media screen{.bpm-tbl tbody tr:hover td{background:var(--paper-2)}}
 /* structural rows: a heading, a subtotal and the bottom line must not look
    the same — a reader should find the three figures a statement exists to
    give without already knowing the statement's shape. */
@@ -146,6 +154,12 @@ only changes what pagination and ink require.
   font-size:.68rem;color:var(--muted)}
 .bpm-empty{font-size:.82rem;color:var(--muted);font-style:italic}
 .bpm-toolbar{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-bottom:.9rem}
+.bpm-presets{display:inline-flex;gap:.25rem;flex-wrap:wrap;margin-right:.3rem}
+.bpm-presets button{font:inherit;font-size:.72rem;font-weight:600;color:var(--ink-soft);
+  background:var(--paper-2);border:1px solid var(--line);border-radius:999px;
+  padding:.22rem .65rem;cursor:pointer;transition:all .15s}
+.bpm-presets button:hover{color:var(--forest);border-color:var(--forest);
+  background:var(--forest-tint)}
 .bpm-toolbar .sp{flex:1}
 .bpm-runner{display:none}
 
