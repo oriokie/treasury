@@ -73,33 +73,34 @@ class PendingReceiptItemTests(TestCase):
         self.assertEqual(rec.difference, Decimal("0"))
         self.assertTrue(rec.is_reconciled)
 
-    def test_an_item_receipted_later_still_counts_as_pending_on_the_date(self):
-        """The reported bug: reconciling July in August lost the July suspense
-        because the item was no longer pending by then."""
+    def test_once_receipted_it_moves_from_suspense_into_the_books(self):
+        """Reconciling July in August, after the receipting: the money is now
+        in the fund, so it belongs in the book balance and NOT in suspense.
+        Keeping it in both is what put the worksheet out by the full amount."""
+        from statements.views import _ledger_bank_balance
         self.txn.department = self.fund
         self.txn.allocation_status = "MANUAL"
         self.txn.save()
         _entered_on(self.txn, 2026, 8, 3, 9, 0)
-        item = self._pending_item(self._make())
-        self.assertIsNotNone(item, "July's suspense vanished once it was receipted")
-        self.assertEqual(item.amount, Decimal("5000"))
+
+        rec = BankReconciliation.objects.create(
+            statement_date=AS_AT, bank_balance=Decimal("5000"),
+            book_balance=_ledger_bank_balance(AS_AT), created_by=self.user)
+        from statements.views import _sync_managed_recon_items
+        _sync_managed_recon_items(rec)
+
+        self.assertIsNone(self._pending_item(rec))
+        self.assertEqual(rec.book_balance, Decimal("5000"))
+        self.assertEqual(rec.difference, Decimal("0"))
 
     def test_nothing_pending_at_that_date_means_no_such_line(self):
-        """A date before the credit arrived has nothing in suspense. Deleting
-        the credit today would NOT do — on 31 July it was there, and the
-        as-reported basis is right to keep saying so."""
+        """A date before the credit arrived has nothing in suspense."""
         from statements.views import _sync_managed_recon_items
         rec = BankReconciliation.objects.create(
             statement_date=dt.date(2026, 6, 30), bank_balance=Decimal("0"),
             book_balance=Decimal("0"), created_by=self.user)
         _sync_managed_recon_items(rec)
         self.assertIsNone(self._pending_item(rec))
-
-    def test_a_credit_deleted_since_was_still_pending_on_the_day(self):
-        self.txn.delete()
-        item = self._pending_item(self._make())
-        self.assertIsNotNone(item)
-        self.assertEqual(item.amount, Decimal("5000"))
 
 
 class SuggestedBalanceTests(TestCase):

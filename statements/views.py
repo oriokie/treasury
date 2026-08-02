@@ -282,24 +282,33 @@ def _sync_managed_recon_items(rec):
             return Decimal(0)
 
     def _pending_at_the_date():
-        """Bank credits that had arrived but had not been receipted to a fund
-        as at the statement date.
+        """Bank credits that had arrived but are not yet in any fund.
 
         They are in the bank balance and not in the cash book (which is the sum
-        of the fund balances), so they are a reconciling item — and without them
-        a month with anything sitting in the review queue simply refused to
-        balance.
+        of the fund balances), so they are a reconciling item — without them a
+        month with anything sitting in the review queue could not balance at
+        all.
 
-        Read on the as-reported basis, because the question is what was pending
-        ON that date. Asked plainly, an item banked in July and receipted in
-        August is not pending "now", so a July reconciliation prepared in August
-        would show nil and leave the same gap unexplained.
+        **Read on the same basis as the book balance**, which is the ordinary
+        one: what the books say now. That coupling is the whole point, and
+        getting it wrong is not a rounding error. This was briefly computed on
+        the as-reported basis while the book balance stayed on the current one,
+        so tithe banked on 31 July and receipted on 1 August was counted twice
+        for a 31 July worksheet — once in the fund it had by then been given to,
+        and again in suspense — and the reconciliation was out by exactly that
+        amount.
+
+        Reading both sides from the same moment also makes the worksheet
+        self-correcting: while the credit is unallocated it sits in suspense and
+        the books do not have it; once it is receipted the books have it and
+        suspense drops away. Either way the two sides add to the same money, so
+        a reconciliation for 31 July balances whether it is prepared on the day,
+        the next morning, or in November.
         """
-        from reports.services import asat, balances
+        from reports.services import balances
         try:
-            with asat.as_reported(rec.statement_date):
-                return balances.pending_receipts_total(rec.statement_date) \
-                    or Decimal(0)
+            return balances.pending_receipts_total(rec.statement_date) \
+                or Decimal(0)
         except Exception:  # noqa: BLE001
             from core.utils import log_exception as _lx
             _lx("recon pending receipts")

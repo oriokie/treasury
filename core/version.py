@@ -38,6 +38,19 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.41.1": "Fixes a bank reconciliation that would not balance when it was prepared after the "
+              "receipting it covers. Tithe banked on 31 July and receipted on 1 August was counted "
+              "twice on a 31 July worksheet — once in the fund it had by then been allocated to, and "
+              "again as a receipt still pending — so the worksheet was out by exactly the amount "
+              "receipted late. The two halves were being read from different moments: suspense as it "
+              "stood on the statement date, the cash book as it stands now. Both now read from the "
+              "same moment, which also makes the worksheet self-correcting — while a credit is "
+              "unallocated it sits in suspense and the books do not have it; once it is receipted the "
+              "books have it and suspense drops away, so the same money is counted once either way "
+              "and a reconciliation for 31 July balances whether it is prepared on the day, the next "
+              "morning, or in November. Worksheets prepared under 3.41.0 correct themselves when "
+              "opened. Reading a report as at a date on what was known THEN is unaffected and stays "
+              "where it belongs, on the board report.",
     "3.41.0": "A loan converted to a donation is no longer reported as money spent. The lender lets "
               "the church keep the money and the debt is retired against the gift with no cash "
               "moving, but the Collections Summary, the dashboard and the treasurer's report each "
