@@ -21,9 +21,36 @@
   <a class="btn btn-sm btn-ghost" href="?export=xlsx">⬇ Excel</a>
 </div>
 
+{% comment %}A leader may record a pledge only while a campaign for this fund
+is still open — pledging to a closed target is not a thing, and offering the
+choice would invite an entry nobody can act on.{% endcomment %}
+{% if open_campaigns %}
+<div class="card u-mb no-print"><div class="hd"><h3>Record a pledge</h3></div><div class="bd">
+  <form method="post" class="form-grid xf-grid-2">{% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <div class="form-row"><label for="plCampaign">Campaign</label>
+      <select id="plCampaign" name="campaign" class="field" required>
+        {% for c in open_campaigns %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+      </select></div>
+    <div class="form-row"><label for="plMember">Member</label>
+      <select id="plMember" name="member" class="field" required>
+        <option value="">— choose —</option>
+        {% for m in members %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
+      </select></div>
+    <div class="form-row"><label for="plAmount">Amount pledged</label>
+      <input id="plAmount" type="number" step="0.01" min="0.01" name="amount" class="field" required></div>
+    <div class="form-row"><label for="plNote">Note <span class="muted u-xs">(optional)</span></label>
+      <input id="plNote" type="text" name="note" maxlength="200" class="field"></div>
+    <div class="btn-row" style="grid-column:1/-1"><button class="btn">Record pledge</button></div>
+  </form>
+  <p class="help">You can correct or remove a pledge you entered for one day. After
+    that, and once anything has been paid against it, ask the treasurer.</p>
+</div></div>
+{% endif %}
+
 <div class="card"><div class="bd bd-flush">
   <table class="ledger compact">
-    <thead><tr><th>Member</th><th>Phone</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th style="width:140px">Progress</th><th>Status</th></tr></thead>
+    <thead><tr><th>Member</th><th>Phone</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th style="width:140px">Progress</th><th>Status</th><th class="no-print"></th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
       <td>{{ r.member }}</td>
@@ -34,7 +61,14 @@
       <td class="num mono">{{ r.outstanding|money:0 }}</td>
       <td><div class="progress"><span style="width:{{ r.pct }}%"></span></div></td>
       <td><span class="pill {% if r.pct >= 100 %}pill-green{% else %}pill-grey{% endif %}">{{ r.status }}</span></td>
-    </tr>{% empty %}<tr><td colspan="8" class="muted">No pledges toward this department.</td></tr>{% endfor %}
+      <td class="no-print">{% if r.editable %}
+        <form method="post" class="u-inline" onsubmit="return confirm('Remove this pledge?')">{% csrf_token %}
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="pledge" value="{{ r.id }}">
+          <button class="btn btn-xs btn-ghost" title="Remove — only until tomorrow">Remove</button>
+        </form>
+      {% endif %}</td>
+    </tr>{% empty %}<tr><td colspan="9" class="muted">No pledges toward this department.</td></tr>{% endfor %}
     </tbody>
   </table>
 </div></div>

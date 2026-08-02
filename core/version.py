@@ -38,6 +38,20 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.42.0": "Leaders can now record pledges for their own fund. A leader knows who promised what "
+              "at their fund's own appeal, and routing every one of those through the treasurer is "
+              "how pledges get lost. The form appears on the fund's pledge page only while a "
+              "campaign for that fund is actually open — there is no pledging to a closed target, "
+              "and offering the choice would only invite an entry nobody could act on. A leader can "
+              "correct or withdraw a pledge they entered for one day, and not after: the record of a "
+              "promise is not theirs to revise once the church has acted on it. The door closes at "
+              "once, whatever the day, if any money has already been received against the pledge. "
+              "None of this rests on hiding buttons — a leader cannot pledge to a closed campaign, "
+              "to a campaign on another fund, or touch another fund's pledge, even by hand. "
+              "Separately, the reconciliation's cash-book balance is now pinned by test to the "
+              "closing balance the dashboard shows for the same date: the same figure from the same "
+              "service, checked across a late-entered expense, a late allocation and a Sabbath "
+              "receipting. That is the check whose absence let 3.41.2 ship.",
     "3.41.3": "Fixes the cash-book balance on a reconciliation, which 3.41.2 left too high — it "
               "stopped agreeing with the closing balance on the dashboard. 3.41.2 rebuilt the "
               "balance from what the system knew on the statement date, and a cash book is completed "

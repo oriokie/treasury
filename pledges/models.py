@@ -152,6 +152,27 @@ class Pledge(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 
+    #: How long a leader may correct their own entry. A pledge is a promise
+    #: someone made, and the record of it is not the leader's to revise once
+    #: the church has acted on it — but a name mistyped at the desk should not
+    #: need a treasurer either. A day covers the mistake and not the rewrite.
+    LEADER_EDIT_WINDOW = dt.timedelta(days=1)
+
+    def leader_editable(self, now=None):
+        """Whether a leader may still change or withdraw this pledge.
+
+        Only their own recent entries, and only while nothing has been paid
+        against them: money received against a pledge makes it part of the
+        church's records rather than the leader's draft.
+        """
+        from django.utils import timezone
+        if self.paid:
+            return False
+        if not self.created_at:
+            return True
+        now = now or timezone.now()
+        return (now - self.created_at) <= self.LEADER_EDIT_WINDOW
+
     class Meta:
         ordering = ["-start_date", "-id"]
         indexes = [models.Index(fields=["status"]),

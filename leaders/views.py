@@ -562,10 +562,98 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
                     "paid": p.paid, "outstanding": p.outstanding,
                     "status": p.get_status_display(), "pct": p.percent_paid
                     if hasattr(p, "percent_paid") else
-                    (int(min(p.paid / p.amount * 100, 100)) if p.amount else 0)})
+                    (int(min(p.paid / p.amount * 100, 100)) if p.amount else 0),
+                    # only the leader's own recent, unpaid entries may still be
+                    # corrected — see Pledge.leader_editable
+                    "id": p.pk, "note": p.note,
+                    "editable": (p.leader_editable()
+                                 and p.recorded_by_id == self.request.user.id)})
         except Exception:
             pass
         return out
+
+    def open_campaigns(self):
+        """Campaigns still taking pledges for this department.
+
+        A leader may only add against an open target — there is no such thing
+        as pledging to a campaign that has closed, and offering the choice
+        would invite an entry nobody can act on.
+        """
+        from django.db.models import Q
+        from pledges.models import PledgeCampaign
+        import datetime as _dt
+        today = _dt.date.today()
+        return (PledgeCampaign.objects
+                .filter(target_department=self.dept,
+                        status=PledgeCampaign.Status.ACTIVE)
+                .filter(Q(end_date__isnull=True) | Q(end_date__gte=today))
+                .order_by("name"))
+
+    def post(self, request, *args, **kwargs):
+        """Record a pledge, or correct one entered in the last day."""
+        from django.contrib import messages
+        from decimal import Decimal, InvalidOperation
+        from pledges.models import Pledge
+        from members.models import Member
+
+        self.dept = assert_department_allowed(request.user, kwargs["pk"])
+        if not self.dept:
+            return redirect("leader_dashboard")
+        action = request.POST.get("action", "add")
+
+        if action in ("edit", "delete"):
+            pledge = Pledge.objects.filter(
+                pk=request.POST.get("pledge") or 0,
+                campaign__target_department=self.dept).first()
+            if pledge is None:
+                messages.error(request, "That pledge is not on this fund.")
+            elif not pledge.leader_editable():
+                # The window is the whole point: say which rule stopped them,
+                # because "no" without a reason reads as a fault.
+                messages.error(request, (
+                    "That pledge already has money against it, so only the "
+                    "treasurer can change it now."
+                    if pledge.paid else
+                    "Pledges can only be changed on the day they are entered. "
+                    "Ask the treasurer to amend this one."))
+            elif action == "delete":
+                pledge.delete()
+                messages.success(request, "Pledge removed.")
+            else:
+                try:
+                    pledge.amount = Decimal(request.POST.get("amount") or "0")
+                except (InvalidOperation, TypeError):
+                    pledge.amount = Decimal(0)
+                if pledge.amount <= 0:
+                    messages.error(request, "Enter an amount greater than zero.")
+                else:
+                    pledge.note = (request.POST.get("note") or "")[:200]
+                    pledge.save(update_fields=["amount", "note"])
+                    messages.success(request, "Pledge updated.")
+            return redirect("leader_pledges", pk=self.dept.pk)
+
+        campaign = self.open_campaigns().filter(
+            pk=request.POST.get("campaign") or 0).first()
+        member = Member.objects.filter(pk=request.POST.get("member") or 0).first()
+        try:
+            amount = Decimal(request.POST.get("amount") or "0")
+        except (InvalidOperation, TypeError):
+            amount = Decimal(0)
+
+        if campaign is None:
+            messages.error(request, "Choose a campaign that is still open.")
+        elif member is None:
+            messages.error(request, "Choose the member making the pledge.")
+        elif amount <= 0:
+            messages.error(request, "Enter an amount greater than zero.")
+        else:
+            Pledge.objects.create(
+                campaign=campaign, member=member, amount=amount,
+                note=(request.POST.get("note") or "")[:200],
+                status=Pledge.Status.ACTIVE, recorded_by=request.user)
+            messages.success(
+                request, f"Pledge of {amount:,.2f} recorded for {member.name}.")
+        return redirect("leader_pledges", pk=self.dept.pk)
 
     def get_context_data(self, **kwargs):
         from decimal import Decimal
@@ -578,6 +666,12 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
         ctx["outstanding"] = sum((r["outstanding"] for r in rows), Decimal(0))
         ctx["pct"] = (int(min(ctx["paid"] / ctx["pledged"] * 100, 100))
                       if ctx["pledged"] else 0)
+        ctx["open_campaigns"] = list(self.open_campaigns())
+        # Anyone in the congregation may pledge to a fund, so the list is not
+        # scoped to the department — only the campaign is.
+        from members.models import Member
+        ctx["members"] = (Member.objects.filter(active=True).order_by("name")
+                          if ctx["open_campaigns"] else [])
         return ctx
 
 
