@@ -1335,7 +1335,8 @@ class UpdateRunView(TreasurerRequiredMixin, View):
     template_name = "update_run.html"
 
     def get(self, request):
-        from core.services.updates import update_status, update_available, latest_release
+        from core.services.updates import (update_status, update_available,
+                                           latest_release, token_diagnosis)
         from django.conf import settings
         # visiting the update page = an explicit "check now", so bypass the cache
         avail, tag, cur = update_available(force=True)
@@ -1350,9 +1351,16 @@ class UpdateRunView(TreasurerRequiredMixin, View):
             # message advised setting GITHUB_TOKEN even when one was set and
             # being rejected, which is the least useful moment to be told that.
             from core.services.updates import last_failure_reason
-            diag = last_failure_reason() or (
-                f"Couldn't read releases or tags from '{repo}', and GitHub gave "
-                f"no reason. Check the repository name (owner/name).")
+            _tok = token_diagnosis()
+            if _tok.get("note"):
+                # The reason GitHub gave, and then the thing it cannot know:
+                # which token the server actually sent.
+                diag = (last_failure_reason() or "") + " " + _tok["note"]
+                diag = diag.strip()
+            else:
+                diag = last_failure_reason() or (
+                    f"Couldn't read releases or tags from '{repo}', and GitHub "
+                    f"gave no reason. Check the repository name (owner/name).")
         elif not tag:
             diag = f"Connected to '{repo}', but no releases or tags were found yet."
         else:
@@ -1360,7 +1368,8 @@ class UpdateRunView(TreasurerRequiredMixin, View):
         return render(request, self.template_name, {
             "status": update_status(), "update_tag": tag,
             "current": cur, "available": avail,
-            "repo": repo, "token_set": token_set, "diag": diag})
+            "repo": repo, "token_set": token_set, "diag": diag,
+            "token_shape": token_diagnosis().get("shape", "")})
 
     def post(self, request):
         from core.services.updates import start_update

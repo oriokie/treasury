@@ -26,6 +26,66 @@ _release_cache = {"at": 0.0, "value": None}
 _RELEASE_TTL = 600  # seconds — re-check GitHub at most every 10 minutes
 
 
+def token_diagnosis():
+    """What the server is actually using as a token, without revealing it.
+
+    "Bad credentials" tells a treasurer the token is wrong but not WHICH token
+    is being used — and the hard part of this failure is exactly that: a new
+    token written into .env while a stale one is still exported wins silently,
+    because the .env reader defers to the real environment. So this reports the
+    shape of the token in force, and says plainly when .env is being overridden.
+
+    Never returns the token. Its kind and length are enough to tell one from
+    another, and both are things GitHub itself shows.
+    """
+    import os
+    from pathlib import Path
+    from django.conf import settings
+
+    token = getattr(settings, "GITHUB_TOKEN", "") or ""
+    if not token:
+        return {"set": False, "shape": "", "overridden": False,
+                "note": "No token is set. A private repository cannot be "
+                        "checked without one."}
+
+    kind = ("classic (ghp_)" if token.startswith("ghp_")
+            else "fine-grained (github_pat_)" if token.startswith("github_pat_")
+            else "OAuth (gho_)" if token.startswith("gho_")
+            else "unrecognised prefix")
+    shape = f"{kind}, {len(token)} characters"
+
+    # Is a stale export beating the .env file? The loader uses setdefault, so
+    # the environment wins — which is right, and invisible at the moment it
+    # matters most.
+    overridden = False
+    try:
+        env_path = Path(settings.BASE_DIR) / ".env"
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            if key.strip() != "GITHUB_TOKEN":
+                continue
+            val = val.strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1].strip()
+            overridden = bool(val) and val != token
+            break
+    except OSError:
+        pass
+
+    note = ""
+    if overridden:
+        note = ("The token in .env is NOT the one being used — a GITHUB_TOKEN "
+                "in the server's environment is overriding it. Clear that "
+                "export (or update it) and restart the app.")
+    elif kind == "unrecognised prefix":
+        note = ("This does not look like a GitHub token. Tokens begin ghp_, "
+                "github_pat_ or gho_.")
+    return {"set": True, "shape": shape, "overridden": overridden, "note": note}
+
+
 def _fetch_json(url, token, timeout=4):
     headers = {"Accept": "application/vnd.github+json",
                "User-Agent": "treasury-updater"}

@@ -26,7 +26,7 @@
     <p class="help u-mt-xs">{{ diag }}</p>
     <table class="ledger compact u-mt-sm"><tbody>
       <tr><td>Configured repository</td><td class="mono">{{ repo|default:"(none)" }}</td></tr>
-      <tr><td>Access token set</td><td>{% if token_set %}Yes{% else %}No{% endif %}</td></tr>
+      <tr><td>Access token set</td><td>{% if token_set %}Yes{% if token_shape %} <span class="muted">— {{ token_shape }}</span>{% endif %}{% else %}No{% endif %}</td></tr>
       <tr><td>Latest release seen</td><td class="mono">{{ update_tag|default:"(none)" }}</td></tr>
       <tr><td>This version</td><td class="mono">{{ current }}</td></tr>
     </tbody></table>
