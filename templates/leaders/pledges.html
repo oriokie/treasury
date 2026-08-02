@@ -68,7 +68,7 @@ choice would invite an entry nobody can act on.{% endcomment %}
 
 <div class="card"><div class="bd bd-flush">
   <table class="ledger compact">
-    <thead><tr><th>Member</th><th>Phone</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th style="width:140px">Progress</th><th>Status</th><th class="no-print"></th></tr></thead>
+    <thead><tr><th>Member</th><th>Phone</th><th>Campaign</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th style="width:140px">Progress</th><th>Status</th><th class="no-print">Tags / actions</th></tr></thead>
     <tbody>
     {% for r in rows %}<tr>
       <td>{{ r.member }}</td>
@@ -79,7 +79,15 @@ choice would invite an entry nobody can act on.{% endcomment %}
       <td class="num mono">{{ r.outstanding|money:0 }}</td>
       <td><div class="progress"><span style="width:{{ r.pct }}%"></span></div></td>
       <td><span class="pill {% if r.pct >= 100 %}pill-green{% elif r.status == 'Draft' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.status }}</span>{% if r.status == 'Draft' %}<div class="muted u-xs">awaiting treasurer</div>{% endif %}</td>
-      <td class="no-print">{% if r.editable %}
+      <td class="no-print">{% if all_tags %}
+        <details class="u-inline"><summary class="link u-xs">{% if r.tags %}{% for t in r.tags %}<span class="pill pill-grey u-xs">{{ t.name }}</span> {% endfor %}{% else %}+ tag{% endif %}</summary>
+          <form method="post" class="u-mt-sm" style="min-width:190px">{% csrf_token %}
+            <input type="hidden" name="action" value="tag">
+            <input type="hidden" name="member" value="{{ r.member_id }}">
+            {% for t in all_tags %}<label class="check-row u-xs"><input type="checkbox" name="tags" value="{{ t.pk }}" {% if t in r.tags %}checked{% endif %}> {{ t.name }}</label>{% endfor %}
+            <button class="btn btn-xs u-mt-sm">Save tags</button>
+          </form></details>
+      {% endif %}{% if r.editable %}
         <form method="post" class="u-inline" onsubmit="return confirm('Remove this pledge?')">{% csrf_token %}
           <input type="hidden" name="action" value="delete">
           <input type="hidden" name="pledge" value="{{ r.id }}">

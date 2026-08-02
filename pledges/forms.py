@@ -35,3 +35,13 @@ class PledgeForm(forms.ModelForm):
         self.fields["member"].queryset = Member.objects.filter(active=True)
         self.fields["installment_amount"].required = False
         self.fields["end_date"].required = False
+        # Most pledges are paid monthly, and the ones that are not are the
+        # exception a treasurer will notice and change. Optional as well as
+        # defaulted: a promise of an amount is a pledge whether or not anyone
+        # has decided how it will be paid, and refusing to record it until
+        # somebody picks a schedule loses the pledge.
+        self.fields["frequency"].required = False
+        self.fields["frequency"].initial = Pledge.Frequency.MONTHLY
+
+    def clean_frequency(self):
+        return self.cleaned_data.get("frequency") or Pledge.Frequency.MONTHLY

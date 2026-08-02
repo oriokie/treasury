@@ -110,6 +110,17 @@
         }
         item.innerHTML = html;
         var pick = function () {
+          // The <select> may be empty by design. A typeahead over a roll of
+          // thousands has no business rendering every member as an <option>,
+          // and assigning .value for an option that does not exist silently
+          // leaves the select blank — the form then rejects a member the user
+          // can plainly see they picked. So the chosen one is added first.
+          if (!select.querySelector('option[value="' + r.id + '"]')) {
+            var opt = document.createElement("option");
+            opt.value = r.id;
+            opt.textContent = label;
+            select.appendChild(opt);
+          }
           select.value = r.id;
           input.value = label;
           lastPicked = label;

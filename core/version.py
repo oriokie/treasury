@@ -38,6 +38,26 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.44.0": "Fixes a pledge form that rejected the member you had just picked. The typeahead "
+              "assigns the chosen member to a hidden field, and that field was deliberately left "
+              "empty — a roll of thousands has no business being rendered as a dropdown — but "
+              "assigning a value that is not in the list silently does nothing, so the form saw no "
+              "member at all. Testing it turned up a second one: phone numbers are stored "
+              "normalised, so searching 0712345678, the form anyone would actually type, matched "
+              "nobody. Both are fixed everywhere the member picker is used, not only on the pledge "
+              "page. Pledges now carry TAGS — church board, finance committee, Sabbath School — "
+              "which a member may hold several of, and which leaders can assign to anyone who has "
+              "pledged to their fund. A new per-campaign report lists who pledged, what they gave "
+              "and what is left, and can be grouped or filtered by tag, so \"how are the board "
+              "doing\" and \"have the committee paid\" are questions the system can answer. Where "
+              "someone holds two tags they appear in both groups and the page says so, rather than "
+              "picking one for them. Bulk pledge messaging gained the same tags as a target, and a "
+              "thank-you as an alternative to a reminder: a reminder goes to those with something "
+              "outstanding, a thank-you to everyone who pledged, paid or not. The new-pledge form is "
+              "grouped rather than nine fields in a column, shows the campaign's goal and progress "
+              "when you arrive from a campaign, and treats the payment schedule as what it usually "
+              "is — undecided at the moment of promising. Frequency defaults to monthly and is no "
+              "longer required.",
     "3.43.0": "Leaders can now import a batch of pledges for their own fund, with the member field a "
               "typeahead over the roll rather than a list to scroll. The import reuses the "
               "treasurer's template and review screen; what it adds is the constraint that matters, "

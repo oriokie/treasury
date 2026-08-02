@@ -3,6 +3,30 @@ from django.db import models
 from simple_history.models import HistoricalRecords
 
 
+def phone_search_variants(raw):
+    """Other forms of a typed number worth searching for.
+
+    Numbers are normalised on save, so 0712345678 is stored as 254712345678 —
+    and the local form is the one a treasurer is certain to type, from the
+    envelope or the screen in front of them. A complete number is normalised;
+    a partial one (which ``normalize_phone`` declines, rightly) has its leading
+    zero stripped so "0712" still reaches "254712…".
+    """
+    raw = (raw or "").strip()
+    if not raw or not any(c.isdigit() for c in raw):
+        return []
+    out = []
+    full = normalize_phone(raw)
+    if full and full != raw:
+        out.append(full)
+    digits = "".join(c for c in raw if c.isdigit())
+    if digits.startswith("0") and len(digits) > 1:
+        out.append(digits[1:])
+    elif digits and digits not in out and digits != raw:
+        out.append(digits)
+    return out
+
+
 def normalize_phone(raw):
     """All Kenyan forms -> '2547XXXXXXXX' / '2541XXXXXXXX'. None if implausible."""
     if not raw:
@@ -36,6 +60,33 @@ def mask_phone(raw, visible=3):
     return "*" * (len(s) - visible) + s[-visible:]
 
 
+class MemberTag(models.Model):
+    """A role or standing a member holds — board member, Sabbath School,
+    committee, elder.
+
+    Deliberately separate from ``Member.group``, which is the one ministry a
+    member belongs to (Youth, AWM, …) and is single-valued by design. A role is
+    not that: a person sits on the board AND the finance committee AND teaches
+    Sabbath School, and the church invents its own as it goes. So this is a
+    church-defined list with a many-to-many, not another fixed choice field.
+
+    Held on the member rather than on the pledge because it describes the
+    person, not the promise — which is what makes "what have the committee
+    pledged" answerable, and answerable the same way for anything else the
+    church later wants grouped this way.
+    """
+    name = models.CharField(max_length=60, unique=True)
+    description = models.CharField(max_length=160, blank=True)
+    active = models.BooleanField(default=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Member(models.Model):
     class Group(models.TextChoices):
         YOUTH = "YOUTH", "Youth"
@@ -59,6 +110,9 @@ class Member(models.Model):
     member_type = models.CharField(
         max_length=12, choices=MemberType.choices, blank=True, null=True,
         help_text="Optional: church member or Sabbath School member.")
+    tags = models.ManyToManyField(MemberTag, blank=True, related_name="members",
+        help_text="Roles this member holds — board, committee, Sabbath School. "
+                  "A member may hold several.")
     dev_group = models.ForeignKey(
         "departments.DevelopmentGroup", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="members",

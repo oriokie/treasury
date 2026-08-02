@@ -186,7 +186,16 @@ class PledgeCreateView(DataEntryRequiredMixin, View):
         if request.GET.get("member"):
             initial["member"] = request.GET["member"]
         form = PledgeForm(instance=obj, initial=initial)
-        return render(request, "pledges/pledge_form.html", {"form": form, "obj": obj})
+        # When the form is reached from a campaign, show what that campaign is
+        # trying to raise and how far along it is. Someone recording a pledge
+        # at an appeal is standing in front of that number; the form should not
+        # be the one place in the system that hides it.
+        campaign = None
+        cid = (obj.campaign_id if obj else None) or initial.get("campaign")
+        if cid:
+            campaign = PledgeCampaign.objects.filter(pk=cid).first()
+        return render(request, "pledges/pledge_form.html",
+                      {"form": form, "obj": obj, "campaign": campaign})
 
     def post(self, request, pk=None):
         obj = get_object_or_404(Pledge, pk=pk) if pk else None
@@ -380,7 +389,15 @@ class PledgeReminderBatchView(TreasurerRequiredMixin, TemplateView):
         ctx["campaign"] = campaign
         ctx["campaigns"] = PledgeCampaign.objects.filter(
             status=PledgeCampaign.Status.ACTIVE)
-        ctx["targets"] = rem_svc.reminder_targets(campaign=campaign)
+        kind = ("THANKS" if self.request.GET.get("kind") == "THANKS"
+                else "REMINDER")
+        tag = self.request.GET.get("tag") or None
+        ctx["kind"] = kind
+        ctx["tag"] = tag
+        from members.models import MemberTag
+        ctx["all_tags"] = MemberTag.objects.filter(active=True)
+        ctx["targets"] = rem_svc.reminder_targets(campaign=campaign, tag=tag,
+                                                  kind=kind)
         from core.models import SiteConfig
         cfg = SiteConfig.get()
         ctx["sms_enabled"] = cfg.sms_enabled
@@ -392,19 +409,132 @@ class PledgeReminderBatchView(TreasurerRequiredMixin, TemplateView):
         if request.POST.get("campaign"):
             campaign = PledgeCampaign.objects.filter(pk=request.POST["campaign"]).first()
         channel = request.POST.get("channel", "SMS")
-        targets = rem_svc.reminder_targets(campaign=campaign)
+        kind = "THANKS" if request.POST.get("kind") == "THANKS" else "REMINDER"
+        tag = request.POST.get("tag") or None
+        # Recomputed from the same arguments the page was showing, rather than
+        # trusting a list of ids from the form: what a treasurer approved was
+        # "everyone on this screen", and the screen is defined by these filters.
+        targets = rem_svc.reminder_targets(campaign=campaign, tag=tag,
+                                           kind=kind)
         sent = 0
         for p in targets:
-            log = rem_svc.send_pledge_reminder(p, channel=channel, user=request.user)
+            log = rem_svc.send_pledge_reminder(p, channel=channel,
+                                               user=request.user, kind=kind)
             if log.ok:
                 sent += 1
-        messages.success(request, f"Sent {sent} of {len(targets)} reminder(s).")
+        noun = "thank-you" if kind == "THANKS" else "reminder"
+        messages.success(request,
+                         f"Sent {sent} of {len(targets)} {noun} message(s).")
         return redirect("pledge_dashboard")
 
 
 # ===========================================================================
 # Reports & year-end statements
 # ===========================================================================
+class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
+    """Who pledged what to one campaign, what they have given, and the balance.
+
+    Optionally grouped by member tag, which is the question a treasurer
+    actually asks of a campaign: not "how much is outstanding" — the dashboard
+    says that — but "how are the board doing", "have the committee paid". A
+    member holding two tags appears under both, and the group subtotals
+    therefore do NOT sum to the campaign total. That is the honest presentation:
+    the alternative is picking one tag per person arbitrarily, which answers
+    neither question.
+    """
+    template_name = "pledges/campaign_report.html"
+
+    def _campaign(self):
+        return PledgeCampaign.objects.filter(
+            pk=self.kwargs.get("pk") or self.request.GET.get("campaign")).first()
+
+    def _rows(self, campaign):
+        qs = (Pledge.objects.filter(campaign=campaign)
+              .exclude(status=Pledge.Status.CANCELLED)
+              .select_related("member").prefetch_related("member__tags")
+              .order_by("member__name"))
+        rows = []
+        for p in qs:
+            rows.append({
+                "pledge": p, "member": p.member,
+                "tags": list(p.member.tags.all()),
+                "amount": p.amount, "paid": p.paid,
+                "outstanding": p.outstanding, "status": p.get_status_display(),
+                "pct": (int(min(p.paid / p.amount * 100, 100))
+                        if p.amount else 0)})
+        return rows
+
+    @staticmethod
+    def _totals(rows):
+        from decimal import Decimal
+        return {
+            "n": len(rows),
+            "amount": sum((r["amount"] for r in rows), Decimal(0)),
+            "paid": sum((r["paid"] for r in rows), Decimal(0)),
+            "outstanding": sum((r["outstanding"] for r in rows), Decimal(0)),
+        }
+
+    def _groups(self, rows):
+        """Rows bucketed by tag, plus everyone who carries none."""
+        buckets = {}
+        untagged = []
+        for r in rows:
+            if not r["tags"]:
+                untagged.append(r)
+            for t in r["tags"]:
+                buckets.setdefault(t.name, []).append(r)
+        out = [{"name": name, "rows": rs, "totals": self._totals(rs)}
+               for name, rs in sorted(buckets.items())]
+        if untagged:
+            out.append({"name": "Untagged", "rows": untagged,
+                        "totals": self._totals(untagged), "untagged": True})
+        return out
+
+    def get(self, request, *args, **kwargs):
+        campaign = self._campaign()
+        if campaign and request.GET.get("export") in ("csv", "xlsx"):
+            return self._export(campaign, request.GET["export"])
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        from members.models import MemberTag
+        ctx = super().get_context_data(**kwargs)
+        campaign = self._campaign()
+        ctx["campaign"] = campaign
+        ctx["campaigns"] = PledgeCampaign.objects.order_by("name")
+        ctx["group_by_tag"] = self.request.GET.get("group") == "tag"
+        ctx["all_tags"] = MemberTag.objects.filter(active=True)
+        if campaign:
+            rows = self._rows(campaign)
+            tag = self.request.GET.get("tag")
+            if tag:
+                rows = [r for r in rows
+                        if any(t.name == tag for t in r["tags"])]
+            ctx["rows"] = rows
+            ctx["totals"] = self._totals(rows)
+            ctx["groups"] = self._groups(rows) if ctx["group_by_tag"] else []
+            ctx["tag"] = tag
+        return ctx
+
+    def _export(self, campaign, fmt):
+        from reports.exports import csv_response, xlsx_response
+        from core.models import SiteConfig
+        rows = self._rows(campaign)
+        header = ["Member", "Tags", "Pledged", "Given", "Balance", "Status"]
+        data = [[r["member"].name, ", ".join(t.name for t in r["tags"]),
+                 float(r["amount"]), float(r["paid"]),
+                 float(r["outstanding"]), r["status"]] for r in rows]
+        t = self._totals(rows)
+        data.append(["TOTAL", "", float(t["amount"]), float(t["paid"]),
+                     float(t["outstanding"]), ""])
+        name = f"pledges_{campaign.pk}"
+        if fmt == "xlsx":
+            return xlsx_response(f"{name}.xlsx", header, data,
+                                 title=f"{campaign.name} — pledges",
+                                 church=SiteConfig.get().church_name)
+        return csv_response(f"{name}.csv", header, data)
+
+
 class PledgeReportView(ReadAccessMixin, TemplateView):
     """Campaign progress + per-status breakdown, exportable."""
     template_name = "pledges/report.html"

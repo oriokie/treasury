@@ -541,9 +541,17 @@ class LeaderMemberSearchView(LeaderRequiredMixin, View):
         q = (request.GET.get("q") or "").strip()
         if len(q) < 2:
             return JsonResponse({"results": []})
-        qs = (Member.objects.filter(active=True)
-              .filter(Q(name__icontains=q) | Q(phone__icontains=q)
-                      | Q(phones__number__icontains=q))
+        # Numbers are normalised on save, so a member keyed as 0712345678 is
+        # stored as 254712345678. Searching only the raw string finds nobody
+        # when the treasurer types the number exactly as it appears in front of
+        # them, which is the one form they are certain to type.
+        match = Q(name__icontains=q) | Q(phone__icontains=q) \
+            | Q(phones__number__icontains=q)
+        from members.models import phone_search_variants
+        for variant in phone_search_variants(q):
+            match |= (Q(phone__icontains=variant)
+                      | Q(phones__number__icontains=variant))
+        qs = (Member.objects.filter(active=True).filter(match)
               .distinct().prefetch_related("phones").order_by("name")[:8])
         return JsonResponse({"results": [
             {"id": m.id, "name": m.name,
@@ -659,7 +667,8 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
         try:
             pledges = (Pledge.objects.filter(campaign__target_department=self.dept)
                        .exclude(status=Pledge.Status.CANCELLED)
-                       .select_related("member", "campaign").order_by("-start_date"))
+                       .select_related("member", "campaign")
+                       .prefetch_related("member__tags").order_by("-start_date"))
             for p in pledges:
                 out.append({
                     "member": display_giver(self.request.user, p.member.name), "phone": display_phone(self.request.user, p.member.phone),
@@ -671,6 +680,8 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
                     # only the leader's own recent, unpaid entries may still be
                     # corrected — see Pledge.leader_editable
                     "id": p.pk, "note": p.note,
+                    "member_id": p.member_id,
+                    "tags": list(p.member.tags.all()),
                     "editable": (p.leader_editable()
                                  and p.recorded_by_id == self.request.user.id)})
         except Exception:
@@ -705,6 +716,29 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
         if not self.dept:
             return redirect("leader_dashboard")
         action = request.POST.get("action", "add")
+
+        if action == "tag":
+            # A leader knows who on their list sits on the board or the
+            # committee; the treasurer usually does not. So tagging is theirs
+            # to do — but only assigning tags the church has already defined,
+            # and only to members who have actually pledged to this fund.
+            # Inventing tags from a text box would produce four spellings of
+            # "Committee" inside a month and make the grouping worthless.
+            from members.models import Member, MemberTag
+            member = Member.objects.filter(
+                pk=request.POST.get("member") or 0,
+                pledges__campaign__target_department=self.dept).distinct().first()
+            if member is None:
+                messages.error(request, "That member has not pledged to this fund.")
+            else:
+                chosen = MemberTag.objects.filter(
+                    pk__in=request.POST.getlist("tags"), active=True)
+                member.tags.set(chosen)
+                messages.success(
+                    request,
+                    f"{member.name}: " + (", ".join(t.name for t in chosen)
+                                          if chosen else "tags cleared") + ".")
+            return redirect("leader_pledges", pk=self.dept.pk)
 
         if action in ("edit", "delete"):
             pledge = Pledge.objects.filter(
@@ -772,6 +806,8 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
         ctx["pct"] = (int(min(ctx["paid"] / ctx["pledged"] * 100, 100))
                       if ctx["pledged"] else 0)
         ctx["open_campaigns"] = list(self.open_campaigns())
+        from members.models import MemberTag
+        ctx["all_tags"] = list(MemberTag.objects.filter(active=True))
         # Anyone in the congregation may pledge to a fund, so the list is not
         # scoped to the department — only the campaign is.
         from members.models import Member

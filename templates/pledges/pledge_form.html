@@ -1,23 +1,87 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static humanize treasury_extras %}
 {% block title %}{% if obj %}Edit{% else %}New{% endif %} pledge · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="ws-head"><div class="ws-titles"><h1>{% if obj %}Edit pledge{% else %}New pledge{% endif %}</h1>
-  <div class="ws-sub">A commitment to give — recorded here, recognised as income only when received</div></div></div>
+<div class="ws-head"><div class="ws-titles">
+  <div class="eyebrow">Pledges · {{ SITE_NAME }}</div>
+  <h1>{% if obj %}Edit pledge{% else %}New pledge{% endif %}</h1>
+  <div class="ws-sub">A commitment to give — recorded here, recognised as income only when received</div></div>
+  <div class="btn-row"><a class="btn btn-ghost btn-sm" href="{% if campaign %}{% url 'pledge_campaign_detail' campaign.id %}{% else %}{% url 'pledge_dashboard' %}{% endif %}">← Back</a></div>
+</div>
+
+{% if campaign %}
+{% comment %}Someone recording a pledge at an appeal is standing in front of
+this number; the form should not be the one place that hides it.{% endcomment %}
+<div class="card u-narrow-md u-mb"><div class="bd" style="display:flex;gap:1.2rem;align-items:center;flex-wrap:wrap">
+  <div><div class="eyebrow">Campaign</div><strong>{{ campaign.name }}</strong></div>
+  {% if campaign.goal_amount %}
+  <div><div class="eyebrow">Goal</div><span class="mono">{{ CURRENCY }} {{ campaign.goal_amount|money:0 }}</span></div>
+  <div style="flex:1;min-width:140px"><div class="eyebrow">Pledged so far</div>
+    <div class="progress"><span style="width:{{ campaign.percent_pledged|default:0 }}%"></span></div></div>
+  {% endif %}
+</div></div>
+{% endif %}
+
 <form method="post" class="card u-narrow-md"><div class="bd">
   {% csrf_token %}
-  {% for field in form %}
-    <div class="form-row u-my-sm">
-      <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
-      {{ field }}
-      {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
-      {% if field.errors %}<div class="help text-danger">{{ field.errors|striptags }}</div>{% endif %}
-    </div>
-  {% endfor %}
-  <div class="btn-row u-mt-sm"><button class="btn">Save pledge</button><a class="btn btn-ghost" href="{% url 'pledge_dashboard' %}">Cancel</a></div>
+  {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors|striptags }}</div>{% endif %}
+
+  {% comment %}Grouped rather than a flat list of nine fields: who and how much
+  is the pledge, the schedule is a detail that is often not decided at the
+  moment of promising, and the rest is housekeeping.{% endcomment %}
+  <div class="form-sec"><h3 class="form-sec-h">Who and how much</h3>
+    {% for field in form %}{% if field.name in "campaign,member,amount" %}
+      <div class="form-row u-my-sm">
+        <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="req">*</span>{% endif %}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        {% if field.errors %}<div class="help text-danger">{{ field.errors|striptags }}</div>{% endif %}
+      </div>
+    {% endif %}{% endfor %}
+  </div>
+
+  <details class="form-sec" {% if obj.frequency or obj.end_date %}open{% endif %}>
+    <summary class="form-sec-h">Schedule <span class="muted u-xs">— optional, monthly unless you say otherwise</span></summary>
+    {% for field in form %}{% if field.name in "frequency,installment_amount,start_date,end_date" %}
+      <div class="form-row u-my-sm">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        {% if field.errors %}<div class="help text-danger">{{ field.errors|striptags }}</div>{% endif %}
+      </div>
+    {% endif %}{% endfor %}
+  </details>
+
+  <div class="form-sec"><h3 class="form-sec-h">Notes</h3>
+    {% for field in form %}{% if field.name in "note,reminders_opt_out" %}
+      <div class="form-row u-my-sm">
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        {% if field.errors %}<div class="help text-danger">{{ field.errors|striptags }}</div>{% endif %}
+      </div>
+    {% endif %}{% endfor %}
+  </div>
+
+  <div class="btn-row u-mt-sm"><button class="btn">Save pledge</button>
+    <a class="btn btn-ghost" href="{% url 'pledge_dashboard' %}">Cancel</a></div>
 </div></form>
-<p class="help" style="margin-top:1rem;max-width:640px">An assistant's pledge is saved as a draft for a treasurer to approve. A treasurer's pledge is active immediately. Either way, no money moves until contributions are matched.</p>
-<style>.form-row .field,.form-row select,.form-row input,.form-row textarea{width:100%}</style>
+
+<p class="help u-narrow-md" style="margin-top:1rem">An assistant's pledge is saved as a draft for a treasurer to approve. A treasurer's pledge is active immediately. Either way, no money moves until contributions are matched.</p>
+
+<style>
+.form-row .field,.form-row select,.form-row input,.form-row textarea{width:100%}
+.form-row input[type=checkbox]{width:auto}
+.form-sec{border-top:1px solid var(--line);padding-top:.9rem;margin-top:.9rem}
+.form-sec:first-of-type{border-top:0;padding-top:0;margin-top:0}
+.form-sec-h{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 .5rem;cursor:default}
+details.form-sec > summary{list-style:none;cursor:pointer}
+details.form-sec > summary::-webkit-details-marker{display:none}
+details.form-sec > summary::after{content:" ▾";color:var(--muted)}
+details.form-sec[open] > summary::after{content:" ▴"}
+.req{color:var(--danger)}
+</style>
 {% endblock %}
 {% block scripts %}
 <script src="{% static 'js/member-search.js' %}"></script>

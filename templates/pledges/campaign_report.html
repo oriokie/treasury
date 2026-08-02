@@ -1,0 +1,60 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}{% if campaign %}{{ campaign.name }} — pledges{% else %}Campaign pledge report{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+{% include "ui/print_header.html" with title="Campaign pledge report" %}
+<div class="ws-head">
+  <div class="ws-titles"><div class="eyebrow">Pledges · {{ SITE_NAME }}</div>
+    <h1>{% if campaign %}{{ campaign.name }}{% else %}Campaign pledge report{% endif %}</h1>
+    <div class="ws-sub">Who pledged, what they have given, and what is left</div></div>
+  <div class="btn-row no-print">
+    {% if campaign %}<a class="btn btn-sm btn-ghost" href="?{% if group_by_tag %}group=tag&{% endif %}export=csv">⬇ CSV</a>
+    <a class="btn btn-sm btn-ghost" href="?{% if group_by_tag %}group=tag&{% endif %}export=xlsx">⬇ Excel</a>
+    <button class="btn btn-sm btn-ghost" onclick="window.print()">⎙ Print</button>{% endif %}
+    <a class="btn btn-sm btn-ghost" href="{% url 'pledge_dashboard' %}">← Pledges</a>
+  </div>
+</div>
+
+<form method="get" class="ws-toolbar no-print">
+  <div class="f"><label for="rCampaign">Campaign</label>
+    <select id="rCampaign" name="campaign" class="field--select" onchange="this.form.submit()">
+      <option value="">— choose —</option>
+      {% for c in campaigns %}<option value="{{ c.id }}" {% if campaign and campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select></div>
+  {% if all_tags %}
+  <div class="f"><label for="rTag">Only tag</label>
+    <select id="rTag" name="tag" class="field--select" onchange="this.form.submit()">
+      <option value="">All members</option>
+      {% for t in all_tags %}<option value="{{ t.name }}" {% if tag == t.name %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+    </select></div>
+  <div class="f"><label class="check-row" for="rGroup">
+    <input id="rGroup" type="checkbox" name="group" value="tag" {% if group_by_tag %}checked{% endif %} onchange="this.form.submit()"> Group by tag</label></div>
+  {% endif %}
+</form>
+
+{% if not campaign %}
+<div class="card"><div class="bd"><p class="help u-mt-0">Choose a campaign above to see who pledged to it.</p></div></div>
+{% else %}
+
+<div class="ws-summary u-mb">
+  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ totals.amount|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Given</span><span class="wm-v">{{ totals.paid|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Balance</span><span class="wm-v">{{ totals.outstanding|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Members</span><span class="wm-v">{{ totals.n }}</span></div>
+</div>
+
+{% if group_by_tag %}
+  {% comment %}A member holding two tags appears under both, so the group
+  subtotals deliberately do not sum to the campaign total. Said out loud rather
+  than left for someone to discover with a calculator.{% endcomment %}
+  <p class="help no-print">Members holding more than one tag appear in each of their groups, so the group subtotals below add up to more than the campaign total.</p>
+  {% for g in groups %}
+  <div class="card u-mb"><div class="hd"><h3>{{ g.name }}</h3>
+    <span class="muted u-xs">{{ g.totals.n }} member{{ g.totals.n|pluralize }} · {{ g.totals.amount|money:0 }} pledged · {{ g.totals.outstanding|money:0 }} outstanding</span></div>
+    <div class="bd bd-flush">{% include "pledges/_campaign_report_rows.html" with rows=g.rows totals=g.totals %}</div>
+  </div>
+  {% empty %}<div class="card"><div class="bd"><p class="help u-mt-0">No pledges to group.</p></div></div>{% endfor %}
+{% else %}
+  <div class="card"><div class="bd bd-flush">{% include "pledges/_campaign_report_rows.html" with rows=rows totals=totals %}</div></div>
+{% endif %}
+{% endif %}
+{% endblock %}

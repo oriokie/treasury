@@ -10,7 +10,7 @@
   if(!ta) return;
   var timer = null;
   function refresh(){
-    fetch("{% url 'pledge_message_preview' %}?kind=REMINDER&template="
+    fetch("{% url 'pledge_message_preview' %}?kind={{ kind }}&template="
           + encodeURIComponent(ta.value), {credentials: "same-origin"})
       .then(function(r){ return r.json(); })
       .then(function(d){
@@ -37,7 +37,17 @@
 <div class="alert alert-warn u-mb">SMS and WhatsApp are both turned off in Settings → Messaging. Turn one on to send reminders.</div>
 {% endif %}
 
-<form method="get" class="ws-toolbar"><div class="f"><label>Campaign</label><select name="campaign" class="field--select" onchange="this.form.submit()"><option value="">All active</option>{% for c in campaigns %}<option value="{{ c.id }}" {% if campaign and campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div></form>
+<form method="get" class="ws-toolbar">
+  <div class="f"><label for="bCampaign">Campaign</label><select id="bCampaign" name="campaign" class="field--select" onchange="this.form.submit()"><option value="">All active</option>{% for c in campaigns %}<option value="{{ c.id }}" {% if campaign and campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select></div>
+  <div class="f"><label for="bKind">Message</label><select id="bKind" name="kind" class="field--select" onchange="this.form.submit()">
+    <option value="REMINDER" {% if kind == 'REMINDER' %}selected{% endif %}>Reminder (outstanding only)</option>
+    <option value="THANKS" {% if kind == 'THANKS' %}selected{% endif %}>Thank you for pledging (everyone)</option>
+  </select></div>
+  {% if all_tags %}<div class="f"><label for="bTag">Only tag</label><select id="bTag" name="tag" class="field--select" onchange="this.form.submit()">
+    <option value="">Everyone</option>
+    {% for t in all_tags %}<option value="{{ t.name }}" {% if tag == t.name %}selected{% endif %}>{{ t.name }}</option>{% endfor %}
+  </select></div>{% endif %}
+</form>
 
 <div class="ws-table"><table class="ledger compact">
   <thead><tr><th>Member</th><th>Campaign</th><th>Phone</th><th class="num">Outstanding</th></tr></thead><tbody>
@@ -53,7 +63,7 @@ in, against a real pledge, before the send button is anywhere near a finger —
 and the segment count is shown too, because a church pays per segment.{% endcomment %}
 <div class="card u-mb no-print"><div class="hd"><h3>What they will receive</h3></div><div class="bd">
   <div class="form-row"><label for="msgTemplate">Message</label>
-    <textarea id="msgTemplate" class="field" rows="3">{{ cfg.pledge_reminder_template }}</textarea>
+    <textarea id="msgTemplate" class="field" rows="3">{% if kind == 'THANKS' %}{{ cfg.pledge_thanks_template }}{% else %}{{ cfg.pledge_reminder_template }}{% endif %}</textarea>
     <p class="help">Placeholders: <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {church}</span>.
       Edit here to try wording out; save it for good under Settings → SMS.</p></div>
   <div class="u-mt-sm"><strong class="u-xs">Preview</strong>
@@ -63,9 +73,11 @@ and the segment count is shown too, because a church pays per segment.{% endcomm
 
 <form method="post" class="u-mt">{% csrf_token %}
   <input type="hidden" name="campaign" value="{{ campaign.id|default:'' }}">
+  <input type="hidden" name="kind" value="{{ kind }}">
+  <input type="hidden" name="tag" value="{{ tag|default:'' }}">
   <div class="btn-row">
-    {% if sms_enabled %}<button class="btn" name="channel" value="SMS" onclick="return confirm('Send an SMS reminder to all {{ targets|length }} member(s) listed?');">✉ Send SMS to all ({{ targets|length }})</button>{% endif %}
-    {% if whatsapp_enabled %}<button class="btn btn-ghost" name="channel" value="WHATSAPP" onclick="return confirm('Send a WhatsApp reminder to all {{ targets|length }} member(s)?');">Send WhatsApp to all</button>{% endif %}
+    {% if sms_enabled %}<button class="btn" name="channel" value="SMS" onclick="return confirm('Send this SMS to all {{ targets|length }} member(s) listed?');">✉ Send SMS to all ({{ targets|length }})</button>{% endif %}
+    {% if whatsapp_enabled %}<button class="btn btn-ghost" name="channel" value="WHATSAPP" onclick="return confirm('Send this WhatsApp message to all {{ targets|length }} member(s)?');">Send WhatsApp to all</button>{% endif %}
   </div>
 </form>
 <p class="help u-mt-sm">Members who opted out of reminders or have no phone on file are automatically skipped. Each reminder is logged.</p>

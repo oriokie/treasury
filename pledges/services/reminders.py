@@ -109,18 +109,28 @@ def send_pledge_reminder(pledge, channel="SMS", user=None, cfg=None,
     return log
 
 
-def reminder_targets(campaign=None, due_within_days=None):
-    """Active pledges with an outstanding balance that haven't opted out — the
-    list a treasurer would remind. Optionally limited to a campaign or to pledges
-    whose end date is within N days."""
+def reminder_targets(campaign=None, due_within_days=None, tag=None,
+                     kind="REMINDER"):
+    """Who a bulk pledge message would go to.
+
+    A REMINDER goes to pledges with something still outstanding — there is
+    nothing to remind a member of once they have paid. A THANKS goes to every
+    active pledge, paid or not, because thanking somebody for a promise they
+    have already kept is the whole point.
+
+    ``tag`` narrows to members holding a role — the board, the committee — so a
+    treasurer can address the group they mean rather than the whole roll.
+    """
     import datetime as dt
     from pledges.models import Pledge
     qs = Pledge.objects.filter(status=Pledge.Status.ACTIVE,
                                reminders_opt_out=False).select_related(
-        "member", "campaign")
+        "member", "campaign").prefetch_related("member__tags")
     if campaign:
         qs = qs.filter(campaign=campaign)
-    rows = [p for p in qs if p.outstanding > 0]
+    if tag:
+        qs = qs.filter(member__tags__name=tag).distinct()
+    rows = list(qs) if kind == "THANKS" else [p for p in qs if p.outstanding > 0]
     if due_within_days is not None:
         cutoff = dt.date.today() + dt.timedelta(days=due_within_days)
         rows = [p for p in rows if p.end_date and p.end_date <= cutoff]

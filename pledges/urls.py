@@ -26,6 +26,8 @@ urlpatterns = [
     path("pledges/campaigns/<int:pk>/delete/", views.CampaignDeleteView.as_view(), name="pledge_campaign_delete"),
     # reports
     path("pledges/report/", views.PledgeReportView.as_view(), name="pledge_report"),
+    path("pledges/campaigns/<int:pk>/report/",
+         views.CampaignPledgeReportView.as_view(), name="pledge_campaign_report"),
     path("pledges/member/<int:pk>/statement/", views.MemberPledgeStatementView.as_view(), name="pledge_member_statement"),
     # match suggestions (SUGGEST mode review)
     path("pledges/suggestions/", views.PledgeSuggestionListView.as_view(), name="pledge_suggestions"),

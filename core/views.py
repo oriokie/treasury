@@ -444,9 +444,16 @@ class MemberSearchView(DataEntryRequiredMixin, View):
         q = (request.GET.get("q") or "").strip()
         if len(q) < 2:
             return JsonResponse({"results": []})
-        qs = (Member.objects.filter(active=True)
-              .filter(Q(name__icontains=q) | Q(phone__icontains=q)
-                     | Q(phones__number__icontains=q))
+        # Numbers are normalised on save (0712… is stored as 254712…), so the
+        # form the treasurer is certain to type is the one that would not have
+        # matched. Both are tried.
+        match = Q(name__icontains=q) | Q(phone__icontains=q) \
+            | Q(phones__number__icontains=q)
+        from members.models import phone_search_variants
+        for variant in phone_search_variants(q):
+            match |= (Q(phone__icontains=variant)
+                      | Q(phones__number__icontains=variant))
+        qs = (Member.objects.filter(active=True).filter(match)
               .distinct()
               .prefetch_related("phones")
               .order_by("name")[:5])
