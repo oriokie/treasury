@@ -48,13 +48,36 @@
 
   {% if not rec.is_reconciled and rec.difference != None %}
   <div class="card no-print" style="margin-top:1rem;border-left:3px solid var(--amber)"><div class="hd">Why might this not balance?</div><div class="bd">
+    {% comment %}Written down because this is the question every treasurer asks
+    of this page, and the answer is a property of how giving actually arrives
+    rather than anything the software chose.{% endcomment %}
+    <details class="u-mb"><summary class="link">Why money at the bank may not be in a fund yet</summary>
+      <div class="help">
+        <p>A member sends 1,000 to the church account on Friday. On Sabbath they
+          write an envelope — sometimes under another name — splitting it 500 to
+          tithe and 500 to development. One bank line, several envelopes, a
+          different name: there is no one-to-one match to be made, and forcing
+          one would misstate both the giver and the funds.</p>
+        <p>So the bank line is marked as receipted and becomes a memo: it keeps
+          the money in the bank balance, and hands the income and the fund
+          allocation to the envelopes. Between the Friday and the Sabbath the
+          money is genuinely at the bank and in no fund, which is a real
+          reconciling item and not an error — it is listed below and carried on
+          the worksheet automatically.</p>
+        <p>The consequence worth knowing: the envelopes carry <em>their own</em>
+          date, so giving banked at a month end and receipted after it falls in
+          the later month. The reconciliation accounts for the timing; the
+          income statement follows the envelope.</p>
+      </div>
+    </details>
     <p class="help u-mt-0">The cash-book balance of <strong class="mono">{{ diag.book|money }}</strong> = opening {{ diag.opening|money }} + confirmed giving {{ diag.income|money }} − payments {{ diag.expenses|money }}. These bank receipts have <em>not</em> reached the cash book yet, and usually explain a difference right after an import:</p>
     <table class="ledger compact"><tbody>
       {% if diag.in_review %}<tr><td>In the review queue (unallocated)</td><td class="num mono">{{ diag.in_review|money }}</td><td><a class="link" href="{% url 'queue' %}">Allocate →</a></td></tr>{% endif %}
       {% if diag.sab_pending %}<tr><td class="muted">Awaiting Sabbath confirmation <span class="muted">(already in the cash book — Sabbath label only)</span></td><td class="num mono muted">{{ diag.sab_pending|money }}</td><td><a class="link" href="{% url 'sabbath_queue' %}">Review →</a></td></tr>{% endif %}
       {% if diag.unconfirmed %}<tr><td>Imported but not yet confirmed</td><td class="num mono">{{ diag.unconfirmed|money }}</td><td><span class="muted">confirm the import</span></td></tr>{% endif %}
       {% if diag.excluded %}<tr><td>Bank M-Pesa already receipted as envelopes <span class="muted">(detail, not double-counted)</span></td><td class="num mono">{{ diag.excluded|money }}</td><td></td></tr>{% endif %}
-      {% if not diag.in_review and not diag.sab_pending and not diag.unconfirmed %}<tr><td class="muted" colspan="3">All imported giving is confirmed and in the cash book. The difference is likely genuine timing — add an unpresented-cheque or cash-at-hand item above.</td></tr>{% endif %}
+      {% if diag.receipted_after %}<tr><td>Banked by this date, receipted afterwards <span class="muted">(in the bank on the day, in a fund only later)</span></td><td class="num mono">{{ diag.receipted_after|money }}</td><td><span class="muted">carried as a reconciling item</span></td></tr>{% endif %}
+      {% if not diag.in_review and not diag.sab_pending and not diag.unconfirmed and not diag.receipted_after %}<tr><td class="muted" colspan="3">All imported giving is confirmed and in the cash book. The difference is likely genuine timing — add an unpresented-cheque or cash-at-hand item above.</td></tr>{% endif %}
     </tbody></table>
     {% if diag.off_book_total %}<p class="help">Allocating &amp; confirming the items above moves <strong class="mono">{{ diag.off_book_total|money }}</strong> into the cash book — these are receipts already at the bank, so they will <em>reduce</em> this difference, not appear as reconciling items.</p>{% endif %}
   </div></div>

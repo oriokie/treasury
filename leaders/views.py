@@ -2,6 +2,8 @@ import datetime as dt
 from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+from django.views import View
 from django.views.generic import TemplateView
 
 from core.permissions import RoleRequiredMixin  # noqa (kept for symmetry)
@@ -522,6 +524,109 @@ class LeaderGroupDetailView(LeaderRequiredMixin, TemplateView):
         return ctx
 
 
+class LeaderMemberSearchView(LeaderRequiredMixin, View):
+    """JSON typeahead over the membership roll, for a leader recording a pledge.
+
+    The core member search sits behind data-entry rights, which a leader does
+    not have and should not be given for the sake of a lookup. This is the same
+    response shape against the same roll, and it honours the caller's own
+    right to see a phone number — a leader who may not see numbers gets names
+    only, exactly as everywhere else.
+    """
+    def get(self, request):
+        from django.db.models import Q
+        from django.http import JsonResponse
+        from core.rights import display_phone
+        from members.models import Member
+        q = (request.GET.get("q") or "").strip()
+        if len(q) < 2:
+            return JsonResponse({"results": []})
+        qs = (Member.objects.filter(active=True)
+              .filter(Q(name__icontains=q) | Q(phone__icontains=q)
+                      | Q(phones__number__icontains=q))
+              .distinct().prefetch_related("phones").order_by("name")[:8])
+        return JsonResponse({"results": [
+            {"id": m.id, "name": m.name,
+             "phone": display_phone(request.user,
+                                    m.receipt_phone or m.phone or ""),
+             "type": m.get_member_type_display() if m.member_type else ""}
+            for m in qs]})
+
+
+class LeaderPledgeImportView(LeaderRequiredMixin, View):
+    """Bulk pledge import for one of the leader's own funds.
+
+    The parsing, the template workbook and the review screen are the
+    treasurer's importer — a second implementation of spreadsheet parsing is
+    the last thing this needs. What differs is the only thing that should: the
+    campaign is fixed to one the leader's own department owns, chosen here and
+    re-checked on apply, so no column in a spreadsheet and no field in a POST
+    can move a pledge onto another fund.
+
+    Imports land as DRAFT, exactly as the treasurer's do. A leader may gather
+    the promises; making them count is still the treasurer's approval.
+    """
+    template_name = "leaders/pledge_import.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.dept = assert_department_allowed(request.user, kwargs["pk"])
+        if not self.dept:
+            return redirect("leader_dashboard")
+        return super().dispatch(request, *args, **kwargs)
+
+    def _campaigns(self):
+        from django.db.models import Q
+        from pledges.models import PledgeCampaign
+        import datetime as _dt
+        today = _dt.date.today()
+        return (PledgeCampaign.objects
+                .filter(target_department=self.dept,
+                        status=PledgeCampaign.Status.ACTIVE)
+                .filter(Q(end_date__isnull=True) | Q(end_date__gte=today))
+                .order_by("name"))
+
+    def _chosen(self, request):
+        """The campaign this import belongs to — always one of the leader's own
+        open ones, never whatever arrived in the request."""
+        raw = (request.POST.get("campaign") or request.GET.get("campaign")
+               or request.session.get("leader_import_campaign"))
+        return self._campaigns().filter(pk=raw or 0).first()
+
+    def get(self, request, *args, **kwargs):
+        from pledges.views import PledgeImportView
+        if request.GET.get("download"):
+            # the same workbook the treasurer downloads
+            return PledgeImportView._download(PledgeImportView(), request)
+        return render(request, self.template_name, {
+            "dept": self.dept, "stage": "upload",
+            "campaigns": list(self._campaigns())})
+
+    def post(self, request, *args, **kwargs):
+        from django.contrib import messages
+        from pledges.views import PledgeImportView
+        campaign = self._chosen(request)
+        if campaign is None:
+            messages.error(request, "Choose one of this fund's open campaigns.")
+            return redirect("leader_pledge_import", pk=self.dept.pk)
+        request.session["leader_import_campaign"] = campaign.id
+
+        # Borrow the treasurer view's parse/apply, with the campaign forced.
+        inner = PledgeImportView()
+        inner.campaign = campaign
+        inner.request = request
+        # The review screen is the treasurer's, pointed back at this fund.
+        inner.template_name = "pledges/import.html"
+        inner.extra_context = {
+            "back_url": reverse("leader_pledges", args=[self.dept.pk])}
+        if request.POST.get("apply"):
+            request.session["pledge_forced_campaign"] = campaign.id
+            response = inner._apply(request)
+            request.session.pop("leader_import_campaign", None)
+            return redirect("leader_pledges", pk=self.dept.pk) \
+                if getattr(response, "status_code", 302) == 302 else response
+        return inner._parse(request)
+
+
 class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
     """Full, downloadable pledge list for one of the leader's departments."""
     template_name = "leaders/pledges.html"
@@ -682,7 +787,6 @@ class LeaderPledgesView(LeaderRequiredMixin, TemplateView):
 # named as the claimant. Scope is enforced server-side via allowed_departments.
 # ---------------------------------------------------------------------------
 from django.contrib import messages  # noqa: E402
-from django.views import View  # noqa: E402
 from cashbook.models import StaffAdvance, Expense  # noqa: E402
 from .permissions import LeaderRequiredMixin  # noqa: E402
 

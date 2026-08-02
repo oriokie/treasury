@@ -15,6 +15,8 @@ urlpatterns = [
     path("pledges/payment/<int:pk>/delete/", views.PledgePaymentDeleteView.as_view(), name="pledge_payment_delete"),
     path("pledges/auto-match/", views.PledgeAutoMatchAllView.as_view(), name="pledge_auto_match_all"),
     path("pledges/reminders/", views.PledgeReminderBatchView.as_view(), name="pledge_reminder_batch"),
+    path("pledges/message-preview/", views.PledgeMessagePreviewView.as_view(),
+         name="pledge_message_preview"),
     # campaigns
     path("pledges/campaigns/", views.CampaignListView.as_view(), name="pledge_campaign_list"),
     path("pledges/campaigns/new/", views.CampaignCreateView.as_view(), name="pledge_campaign_create"),

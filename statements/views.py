@@ -156,9 +156,18 @@ def _recon_diagnostic(up_to_date):
     # is the authoritative figure; the components above are shown for
     # transparency and should already tie to it via +transfers
     book = current_cash_position(up_to_date)
+    # Banked on or before the date and receipted afterwards: in the bank that
+    # day, in a fund only later. The commonest cause of a month-end difference
+    # once everything else is confirmed.
+    from reports.services.balances import receipted_after
+    try:
+        late_receipted = receipted_after(up_to_date)
+    except Exception:  # noqa: BLE001 — a diagnostic must never break the page
+        late_receipted = Decimal(0)
     return {
         "opening": opening, "income": income, "expenses": expenses,
         "transfers": transfers, "book": book,
+        "receipted_after": late_receipted,
         "unconfirmed": unconfirmed, "in_review": in_review,
         "sab_pending": sab_pending, "excluded": excluded,
         # only genuinely off-book money widens a reconciliation gap

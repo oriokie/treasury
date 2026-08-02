@@ -1,9 +1,24 @@
-{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% extends 'base.html' %}{% load humanize treasury_extras static %}
 {% block title %}{{ dept.name }} pledges · {{ SITE_NAME }}{% endblock %}
+
+{% block scripts %}
+{% if open_campaigns %}
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+BenevolentSearch.enhance({
+  selectId: "plMember",
+  searchUrl: "{% url 'leader_member_search' %}",
+  placeholder: "Start typing the member's name or phone…",
+  renderLabel: function(r){ return r.name; },
+  renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); }
+});
+</script>
+{% endif %}
+{% endblock %}
 {% block content %}
 <div class="ws-head">
   <div class="ws-titles"><div class="eyebrow">Leaders · {{ SITE_NAME }}</div><h1>{{ dept.name }} — pledges</h1>
-    <div class="ws-sub">{{ rows|length }} pledge{{ rows|length|pluralize }} · read-only</div></div>
+    <div class="ws-sub">{{ rows|length }} pledge{{ rows|length|pluralize }}{% if open_campaigns %} · {{ open_campaigns|length }} campaign{{ open_campaigns|length|pluralize }} open{% else %} · no campaign open{% endif %}</div></div>
   <div class="btn-row">
     <a class="btn btn-ghost btn-sm" href="{% url 'leader_department_detail' dept.id %}">← {{ dept.name }}</a>
   </div>
@@ -17,6 +32,7 @@
 </div>
 
 <div class="btn-row no-print u-mb">
+  {% if open_campaigns %}<a class="btn btn-sm" href="{% url 'leader_pledge_import' dept.pk %}">⤒ Import a batch</a>{% endif %}
   <a class="btn btn-sm btn-ghost" href="?export=csv">⬇ CSV</a>
   <a class="btn btn-sm btn-ghost" href="?export=xlsx">⬇ Excel</a>
 </div>
@@ -32,10 +48,12 @@ choice would invite an entry nobody can act on.{% endcomment %}
       <select id="plCampaign" name="campaign" class="field" required>
         {% for c in open_campaigns %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
       </select></div>
+    {% comment %}Typeahead over the roll rather than a scrolling list — a
+    church with a thousand members makes a <select> unusable, and the same
+    picker is already used on the benevolent and receipting pages.{% endcomment %}
     <div class="form-row"><label for="plMember">Member</label>
       <select id="plMember" name="member" class="field" required>
         <option value="">— choose —</option>
-        {% for m in members %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
       </select></div>
     <div class="form-row"><label for="plAmount">Amount pledged</label>
       <input id="plAmount" type="number" step="0.01" min="0.01" name="amount" class="field" required></div>
@@ -60,7 +78,7 @@ choice would invite an entry nobody can act on.{% endcomment %}
       <td class="num mono">{{ r.paid|money:0 }}</td>
       <td class="num mono">{{ r.outstanding|money:0 }}</td>
       <td><div class="progress"><span style="width:{{ r.pct }}%"></span></div></td>
-      <td><span class="pill {% if r.pct >= 100 %}pill-green{% else %}pill-grey{% endif %}">{{ r.status }}</span></td>
+      <td><span class="pill {% if r.pct >= 100 %}pill-green{% elif r.status == 'Draft' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.status }}</span>{% if r.status == 'Draft' %}<div class="muted u-xs">awaiting treasurer</div>{% endif %}</td>
       <td class="no-print">{% if r.editable %}
         <form method="post" class="u-inline" onsubmit="return confirm('Remove this pledge?')">{% csrf_token %}
           <input type="hidden" name="action" value="delete">
@@ -68,7 +86,7 @@ choice would invite an entry nobody can act on.{% endcomment %}
           <button class="btn btn-xs btn-ghost" title="Remove — only until tomorrow">Remove</button>
         </form>
       {% endif %}</td>
-    </tr>{% empty %}<tr><td colspan="9" class="muted">No pledges toward this department.</td></tr>{% endfor %}
+    </tr>{% empty %}<tr><td colspan="9" class="muted">No pledges toward this fund yet.{% if open_campaigns %} Record one above, or import a batch.{% else %} A treasurer opens a campaign before pledges can be recorded.{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table>
 </div></div>

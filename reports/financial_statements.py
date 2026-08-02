@@ -635,12 +635,36 @@ class FundBalancesStatementSection(ComponentSection):
             tblock, ttot = _block(trust, "Trust funds")
             body += tblock
         grand = {k: ltot[k] + ttot[k] for k in figures}
+
+        # The bridge to "total receipts". A fund statement can only show money
+        # that has reached a fund, so it will read lower than the receipts total
+        # by whatever is still in suspense — and a reader with two different
+        # "total receipts" in front of them has no way to know that is the
+        # reason. Rather than force the two into agreement, the gap is named.
+        #
+        # It is a real and ordinary gap: money reaches the bank on Friday and is
+        # receipted on Sabbath, often as one credit split across several funds
+        # under a different payer's name, so no one-to-one match between the
+        # bank line and the envelopes exists to be made.
+        unallocated = _n(ctx.metric("pending_receipts_total", ctx.end))
+        if unallocated:
+            body.append(Row(cells={"fund": "Received, not yet allocated to a fund",
+                                   "receipts": unallocated},
+                            meta={"level": "subtotal"}))
+            grand = dict(grand)
+            grand["receipts"] = grand.get("receipts", Decimal(0)) + unallocated
+
         total = Row(cells={"fund": "TOTAL ALL FUNDS", **grand}, emphasis=True,
                     meta={"level": "grand"})
         note = ("Opening + receipts − payments ± transfers = closing."
                 if has_transfers else
                 "Opening + receipts − payments = closing. No transfers were "
                 "made between funds this period.")
+        if unallocated:
+            note += (" Receipts include money banked but not yet receipted to a "
+                     "fund, shown on its own line so this total agrees with "
+                     "total receipts; the closing balances above exclude it, "
+                     "because it belongs to no fund yet.")
         dropped = len(rows) - len(live)
         if dropped:
             note += f" {dropped} dormant fund(s) with no balance or movement " \

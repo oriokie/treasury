@@ -110,6 +110,24 @@ class SiteConfig(models.Model):
                 "(receipt {receipt}) on {date}. God bless you. - {church}",
         help_text="Placeholders: {name} {amount} {receipt} {date} {church}")
 
+    # Pledge messages. Both are editable for the same reason the receipt text
+    # is: a church's own words carry further than the software's, and the
+    # wording that suits a building appeal does not suit a camp meeting.
+    pledge_thanks_template = models.CharField(
+        max_length=320, blank=True,
+        default="Dear {name}, thank you for pledging KES {amount} to "
+                "{campaign}. Your promise is recorded. God bless you. "
+                "- {church}",
+        help_text="Sent when a pledge is recorded. Placeholders: {name} "
+                  "{amount} {campaign} {church} {paid} {outstanding} {due}")
+    pledge_reminder_template = models.CharField(
+        max_length=320, blank=True,
+        default="Dear {name}, thank you for your pledge of KES {amount} to "
+                "{campaign}. So far KES {paid} received; KES {outstanding} "
+                "outstanding. May God bless your faithfulness. - {church}",
+        help_text="Sent as a reminder. Placeholders: {name} {amount} "
+                  "{campaign} {church} {paid} {outstanding} {due}")
+
     class SmsReceiptScope(models.TextChoices):
         OFF = "OFF", "Don't send receipts"
         ALL = "ALL", "All envelope entries (with a phone)"

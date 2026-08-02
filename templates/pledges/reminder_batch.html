@@ -1,5 +1,34 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Send pledge reminders · {{ SITE_NAME }}{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var ta = document.getElementById("msgTemplate"),
+      out = document.getElementById("msgPreview"),
+      meta = document.getElementById("msgMeta");
+  if(!ta) return;
+  var timer = null;
+  function refresh(){
+    fetch("{% url 'pledge_message_preview' %}?kind=REMINDER&template="
+          + encodeURIComponent(ta.value), {credentials: "same-origin"})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(!d.ok){ out.textContent = d.error; meta.textContent = ""; return; }
+        out.textContent = d.text;
+        meta.textContent = d.length + " characters · " + d.segments
+          + " SMS segment" + (d.segments === 1 ? "" : "s")
+          + " · shown for " + d.example;
+      })
+      .catch(function(){ out.textContent = "Preview unavailable."; });
+  }
+  ta.addEventListener("input", function(){
+    clearTimeout(timer); timer = setTimeout(refresh, 250);
+  });
+  refresh();
+})();
+</script>
+{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>Send pledge reminders</h1><div class="ws-sub">Gentle reminders to members with an outstanding pledge</div></div>
   <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a></div></div>
@@ -18,6 +47,20 @@
   </tbody></table></div>
 
 {% if targets %}
+{% comment %}An SMS cannot be recalled, and a template full of {placeholders}
+reads nothing like the message a member receives. So the words are shown filled
+in, against a real pledge, before the send button is anywhere near a finger —
+and the segment count is shown too, because a church pays per segment.{% endcomment %}
+<div class="card u-mb no-print"><div class="hd"><h3>What they will receive</h3></div><div class="bd">
+  <div class="form-row"><label for="msgTemplate">Message</label>
+    <textarea id="msgTemplate" class="field" rows="3">{{ cfg.pledge_reminder_template }}</textarea>
+    <p class="help">Placeholders: <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {church}</span>.
+      Edit here to try wording out; save it for good under Settings → SMS.</p></div>
+  <div class="u-mt-sm"><strong class="u-xs">Preview</strong>
+    <blockquote id="msgPreview" class="help" style="border-left:3px solid var(--forest-soft);padding-left:.7rem;margin:.3rem 0 0;white-space:pre-wrap">Loading…</blockquote>
+    <div class="muted u-xs u-mt-sm" id="msgMeta"></div></div>
+</div></div>
+
 <form method="post" class="u-mt">{% csrf_token %}
   <input type="hidden" name="campaign" value="{{ campaign.id|default:'' }}">
   <div class="btn-row">

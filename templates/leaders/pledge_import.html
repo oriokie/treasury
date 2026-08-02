@@ -1,0 +1,41 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Import pledges · {{ dept.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><h1>Import pledges · {{ dept.name }}</h1>
+    <div class="ws-sub">Bulk-load pledges collected on paper — saved as drafts for the treasurer to approve</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'leader_pledges' dept.pk %}">← Back to pledges</a></div>
+</div>
+
+{% if campaigns %}
+<div class="card u-narrow-xl"><div class="hd">How it works</div><div class="bd">
+  <ol class="u-list-loose">
+    <li><strong>Download</strong> the template and fill one row per pledge. Leave
+      the Campaign column blank — every row goes to the campaign you choose below.</li>
+    <li>Members are matched by name or phone. Anything that doesn't match, you
+      map or create on the review screen before anything is saved.</li>
+    <li><strong>Upload</strong> it. Imported pledges are saved as
+      <strong>drafts</strong>; a treasurer approves them, exactly as with a
+      pledge you enter one at a time.</li>
+  </ol>
+  <div class="btn-row u-my"><a class="btn btn-ghost" href="?download=1">⤓ Download template (.xlsx)</a></div>
+  <form method="post" enctype="multipart/form-data" class="u-section-top">
+    {% csrf_token %}
+    <div class="form-row u-my-sm"><label for="impCampaign">Campaign</label>
+      <select id="impCampaign" name="campaign" class="field" required>
+        {% for c in campaigns %}<option value="{{ c.pk }}">{{ c.name }}</option>{% endfor %}
+      </select>
+      <p class="help">Only this fund's open campaigns — a spreadsheet cannot move a pledge elsewhere.</p></div>
+    <div class="form-row u-my-sm"><label for="impFile">Filled spreadsheet</label>
+      <input id="impFile" type="file" name="file" class="field" accept=".xlsx" required></div>
+    <button class="btn">Upload &amp; review</button>
+  </form>
+</div></div>
+{% else %}
+<div class="card u-narrow-xl"><div class="bd">
+  <p class="help u-mt-0">No campaign for {{ dept.name }} is open at the moment, so
+    there is nothing to import into. A treasurer opens a campaign before pledges
+    can be recorded against it.</p>
+</div></div>
+{% endif %}
+{% endblock %}

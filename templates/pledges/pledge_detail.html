@@ -1,5 +1,39 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Pledge · {{ pledge.member.name }}{% endblock %}
+
+{% block scripts %}
+<script>
+// Show the exact words before sending. An SMS cannot be recalled, so the
+// confirm carries the message itself rather than asking "are you sure?" about
+// something the sender has not read.
+(function(){
+  document.querySelectorAll("[data-preview]").forEach(function(btn){
+    btn.closest("form").addEventListener("submit", function(e){
+      if(btn.dataset.confirmed === "1") return;
+      e.preventDefault();
+      fetch("{% url 'pledge_message_preview' %}?pledge={{ pledge.id }}&kind="
+            + btn.dataset.preview, {credentials: "same-origin"})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          var body = d.ok ? d.text + "\n\n(" + d.length + " characters, "
+                            + d.segments + " segment" + (d.segments===1?"":"s") + ")"
+                          : "Send this message?";
+          if(confirm("Send to {{ pledge.member.name }}?\n\n" + body)){
+            btn.dataset.confirmed = "1";
+            btn.closest("form").submit();
+          }
+        })
+        .catch(function(){
+          if(confirm("Send this message?")){
+            btn.dataset.confirmed = "1";
+            btn.closest("form").submit();
+          }
+        });
+    });
+  });
+})();
+</script>
+{% endblock %}
 {% block content %}
 <div class="ws-head">
   <div class="ws-titles"><h1>{{ pledge.member.name }}</h1><div class="ws-sub">{{ pledge.campaign.name }} · {{ pledge.get_frequency_display }}</div></div>
@@ -69,7 +103,11 @@
 
 <div class="card u-mt"><div class="hd">Reminders &amp; actions</div><div class="bd">
   <div class="btn-row">
-    <form method="post" action="{% url 'pledge_remind' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="SMS"><button class="btn btn-sm btn-ghost" {% if not pledge.member.receipt_phone %}disabled title="No phone on file"{% endif %}>✉ SMS reminder</button></form>
+    {% comment %}Thanking someone for a promise is not the same act as chasing
+    them for it, and a church that only ever messages a member when they are
+    behind teaches them what a message from the treasurer means.{% endcomment %}
+    <form method="post" action="{% url 'pledge_remind' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="SMS"><input type="hidden" name="kind" value="THANKS"><button class="btn btn-sm" data-preview="THANKS" {% if not pledge.member.receipt_phone %}disabled title="No phone on file"{% endif %}>♡ Thank for pledging</button></form>
+    <form method="post" action="{% url 'pledge_remind' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="SMS"><button class="btn btn-sm btn-ghost" data-preview="REMINDER" {% if not pledge.member.receipt_phone %}disabled title="No phone on file"{% endif %}>✉ SMS reminder</button></form>
     <form method="post" action="{% url 'pledge_remind' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="channel" value="WHATSAPP"><button class="btn btn-sm btn-ghost" {% if not pledge.member.receipt_phone %}disabled{% endif %}>WhatsApp reminder</button></form>
     {% if pledge.status != 'CANCELLED' %}<form method="post" action="{% url 'pledge_approve' pledge.id %}" class="u-inline" onsubmit="return confirm('Cancel this pledge?');">{% csrf_token %}<input type="hidden" name="action" value="cancel"><button class="btn btn-sm btn-ghost link-danger">Cancel pledge</button></form>{% else %}<form method="post" action="{% url 'pledge_approve' pledge.id %}" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="reactivate"><button class="btn btn-sm btn-ghost">Reactivate</button></form>{% endif %}
   </div>

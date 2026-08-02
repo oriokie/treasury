@@ -94,7 +94,13 @@ def candidate_contributions(pledge, window_days=400):
     campaign's fund or one of its sub-accounts, not already matched, not
     reversed."""
     member = pledge.member
-    start = pledge.start_date - dt.timedelta(days=7)
+    # From the pledge date, not a week before it. A gift given before the
+    # promise was made cannot be payment of that promise — it was giving the
+    # member had already done, and counting it toward the pledge credits them
+    # twice while making the campaign look further along than it is. The grace
+    # window that used to sit here was silently doing exactly that for anyone
+    # who gave on the Sabbath and pledged the following week.
+    start = pledge.start_date
     end = (pledge.end_date or dt.date.today()) + dt.timedelta(days=window_days)
     qs = (Transaction.objects.filter(direction=Transaction.Direction.CREDIT,
             confirmed=True, is_reversal=False, is_reversed=False,

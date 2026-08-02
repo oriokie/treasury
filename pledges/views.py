@@ -319,15 +319,52 @@ class PledgeAutoMatchAllView(TreasurerRequiredMixin, View):
 # Reminders
 # ===========================================================================
 class PledgeReminderView(TreasurerRequiredMixin, View):
+    """Send one pledge message — a reminder, or a thank-you for pledging."""
+
     def post(self, request, pk):
         p = get_object_or_404(Pledge, pk=pk)
         channel = request.POST.get("channel", "SMS")
-        log = rem_svc.send_pledge_reminder(p, channel=channel, user=request.user)
+        kind = "THANKS" if request.POST.get("kind") == "THANKS" else "REMINDER"
+        log = rem_svc.send_pledge_reminder(p, channel=channel, user=request.user,
+                                           kind=kind)
+        noun = "Thank-you" if kind == "THANKS" else "Reminder"
         if log.ok:
-            messages.success(request, "Reminder sent.")
+            messages.success(request, f"{noun} sent.")
         else:
-            messages.warning(request, f"Reminder not sent: {log.message[:120]}")
+            messages.warning(request, f"{noun} not sent: {log.message[:120]}")
         return redirect("pledge_detail", pk=p.pk)
+
+
+class PledgeMessagePreviewView(TreasurerRequiredMixin, View):
+    """The message as this member would actually receive it.
+
+    A template with placeholders reads nothing like the text that goes out, and
+    an SMS cannot be recalled — so the words are shown filled in, against a
+    real pledge, before anyone presses send. Also reports the length, because
+    160 characters is a segment and a church pays per segment.
+    """
+    def get(self, request):
+        from django.http import JsonResponse
+        kind = "THANKS" if request.GET.get("kind") == "THANKS" else "REMINDER"
+        template = request.GET.get("template")
+        pledge = None
+        if request.GET.get("pledge"):
+            pledge = Pledge.objects.filter(pk=request.GET["pledge"]).first()
+        if pledge is None:
+            pledge = (Pledge.objects.exclude(status=Pledge.Status.CANCELLED)
+                      .select_related("member", "campaign").first())
+        if pledge is None:
+            return JsonResponse({"ok": False,
+                                 "error": "No pledge to preview against yet."})
+        text = rem_svc.build_pledge_text(pledge, kind=kind,
+                                          template=template or None)
+        n = len(text)
+        return JsonResponse({
+            "ok": True, "text": text, "length": n,
+            "segments": (n + 152) // 153 if n > 160 else 1,
+            "example": pledge.member.name,
+            "placeholders": list(rem_svc.PLACEHOLDERS),
+        })
 
 
 class PledgeReminderBatchView(TreasurerRequiredMixin, TemplateView):
@@ -641,6 +678,10 @@ class PublicPledgeThanksView(View):
 
 class PledgeImportView(TreasurerRequiredMixin, View):
     template_name = "pledges/import.html"
+    #: extra context for the review screen, so another view (the leader's
+    #: fund-scoped importer) can reuse this one's parsing and review UI while
+    #: pointing its own navigation at its own pages.
+    extra_context = None
 
     FREQ_LABELS = {
         "ONE OFF": "ONE_OFF", "ONEOFF": "ONE_OFF", "ONE-OFF": "ONE_OFF",
@@ -873,6 +914,7 @@ class PledgeImportView(TreasurerRequiredMixin, View):
                                    status=PledgeCampaign.Status.CLOSED).order_by("name")]
         return render(request, self.template_name, {
             "stage": "review", "plan": plan, "campaign": self.campaign,
+            **(self.extra_context or {}),
             "total": sum(p["amount"] for p in plan),
             "unmatched_members": unmatched_members,
             "unmatched_camps": unmatched_camps,

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="ws-head">
   <div class="ws-titles"><h1>Import pledges{% if campaign %} · {{ campaign.name }}{% endif %}</h1><div class="ws-sub">Bulk-load pledges collected on paper — saved as drafts for approval</div></div>
-  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% if campaign %}{% url 'pledge_campaign_detail' campaign.id %}{% else %}{% url 'pledge_dashboard' %}{% endif %}">← Back</a></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% if back_url %}{{ back_url }}{% elif campaign %}{% url 'pledge_campaign_detail' campaign.id %}{% else %}{% url 'pledge_dashboard' %}{% endif %}">← Back</a></div>
 </div>
 
 {% if campaign %}<div class="alert" style="background:var(--brass-soft);border:1px solid var(--line);margin-bottom:1rem">Every pledge in this file will be added to <strong>{{ campaign.name }}</strong> — you can leave the Campaign column blank.</div>{% endif %}
