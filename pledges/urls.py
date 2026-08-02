@@ -9,6 +9,8 @@ urlpatterns = [
     path("pledges/<int:pk>/", views.PledgeDetailView.as_view(), name="pledge_detail"),
     path("pledges/<int:pk>/edit/", views.PledgeCreateView.as_view(), name="pledge_edit"),
     path("pledges/<int:pk>/delete/", views.PledgeDeleteView.as_view(), name="pledge_delete"),
+    path("pledges/approvals/", views.PledgeApprovalQueueView.as_view(),
+         name="pledge_approvals"),
     path("pledges/<int:pk>/approve/", views.PledgeApproveView.as_view(), name="pledge_approve"),
     path("pledges/<int:pk>/match/", views.PledgeMatchView.as_view(), name="pledge_match"),
     path("pledges/<int:pk>/remind/", views.PledgeReminderView.as_view(), name="pledge_remind"),
@@ -34,5 +36,7 @@ urlpatterns = [
     path("pledges/suggestions/<int:pk>/", views.PledgeSuggestionActionView.as_view(), name="pledge_suggestion_action"),
     # public member pledge form (no login; off by default; writes unverified drafts)
     path("pledge/", views.PublicPledgeView.as_view(), name="public_pledge"),
+    path("pledge/<int:pk>/", views.PublicPledgeView.as_view(),
+         name="public_pledge_campaign"),
     path("pledge/thanks/", views.PublicPledgeThanksView.as_view(), name="public_pledge_thanks"),
 ]

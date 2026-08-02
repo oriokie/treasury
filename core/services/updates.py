@@ -185,9 +185,22 @@ def _explain_failure(exc, repo, token):
         detail = ""
 
     if status == 401:
-        return (f"GitHub rejected the access token{': ' + detail if detail else ''}. "
-                f"It is invalid, expired, or was revoked — issue a new one and "
-                f"set GITHUB_TOKEN in the server's .env.")
+        base = (f"GitHub rejected the access token"
+                f"{': ' + detail if detail else ''}. ")
+        if token.startswith("github_pat_"):
+            # Fine-grained tokens ALWAYS carry an expiry — 30 days by default,
+            # a year at most — so on one of these, "expired" is not one
+            # possibility among three, it is the likely one. Saying so saves a
+            # treasurer checking scopes and repository access that were never
+            # the problem.
+            return (base + "This is a fine-grained token, and those always "
+                    "expire — 30 days by default. Check its expiry date on "
+                    "GitHub first; if it has lapsed, issue a new one and set "
+                    "GITHUB_TOKEN in the server's .env. Scopes and repository "
+                    "access are not the cause — a token GitHub does not "
+                    "recognise never gets as far as being checked against them.")
+        return (base + "It is invalid, expired, or was revoked — issue a new "
+                "one and set GITHUB_TOKEN in the server's .env.")
     if status == 404:
         if not token:
             return (f"GitHub says '{repo}' does not exist. If it is PRIVATE, that "

@@ -220,18 +220,87 @@ class PledgeCreateView(DataEntryRequiredMixin, View):
         return render(request, "pledges/pledge_form.html", {"form": form, "obj": obj})
 
 
-class PledgeApproveView(TreasurerRequiredMixin, View):
-    """Approve a draft pledge, or cancel/reactivate. Mirrors expense approval."""
+class BasePledgeApprovalQueue(TemplateView):
+    """Drafts awaiting approval — the treasurer's whole list, or a leader's own.
+
+    The scope comes from ``approval.approvable_for``, which also decides what
+    the bulk POST accepts, so the page cannot offer a row the action would then
+    refuse. Two subclasses differ only in which door they open: staff reach it
+    under /pledges/, leaders under /leader/, because ReadAccessMixin
+    deliberately keeps leaders out of the unscoped office screens and widening
+    it for this page would be the wrong trade entirely.
+    """
+    template_name = "pledges/approval_queue.html"
+
+    def get_context_data(self, **kwargs):
+        from pledges.services import approval
+        ctx = super().get_context_data(**kwargs)
+        rows = list(approval.approvable_for(self.request.user))
+        campaign = self.request.GET.get("campaign")
+        if campaign:
+            rows = [p for p in rows if str(p.campaign_id) == campaign]
+        ctx["rows"] = rows
+        ctx["total"] = sum((p.amount for p in rows), Decimal("0"))
+        ctx["campaigns"] = sorted(
+            {(p.campaign_id, p.campaign.name)
+             for p in approval.approvable_for(self.request.user)},
+            key=lambda x: x[1])
+        ctx["campaign"] = campaign
+        from core import roles
+        ctx["is_wide"] = roles.can_approve(self.request.user)
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        from pledges.services import approval
+        ids = request.POST.getlist("pledge")
+        if not ids:
+            messages.error(request, "Tick the pledges you want to approve.")
+            return redirect(request.get_full_path())
+        approved, skipped = approval.approve_many(ids, request.user)
+        if approved:
+            messages.success(
+                request, f"{approved} pledge{'s' if approved != 1 else ''} "
+                         "approved and now active.")
+        if skipped:
+            messages.warning(
+                request, f"{skipped} could not be approved — they are not on a "
+                         "fund you approve for, or were already handled.")
+        return redirect(request.get_full_path())
+
+
+class PledgeApprovalQueueView(ReadAccessMixin, BasePledgeApprovalQueue):
+    """The office's door onto the approval queue."""
+
+
+class PledgeApproveView(View):
+    """Approve a draft pledge, or cancel/reactivate. Mirrors expense approval.
+
+    Approving honours the same scope as the queue, so a leader may approve one
+    of their own fund's pledges here as well as in bulk. Cancelling and
+    reactivating remain the treasurer's — undoing a pledge the church has been
+    counting on is a different act from confirming one was made.
+    """
+    def dispatch(self, request, *args, **kwargs):
+        from core.permissions import LoginRequiredMixin  # noqa: F401
+        if not request.user.is_authenticated:
+            from django.contrib.auth.views import redirect_to_login
+            return redirect_to_login(request.get_full_path())
+        return super().dispatch(request, *args, **kwargs)
+
     def post(self, request, pk):
+        from core import roles
+        from pledges.services import approval
         p = get_object_or_404(Pledge, pk=pk)
         action = request.POST.get("action")
         if action == "approve" and p.status == Pledge.Status.DRAFT:
-            p.status = Pledge.Status.ACTIVE
-            p.approved_by = request.user
-            p.approved_at = timezone.now()
-            p.save()
-            p.recompute_status()
+            if not approval.may_approve(request.user, p):
+                messages.error(request, "That pledge is not on a fund you "
+                                        "approve for.")
+                return redirect("pledge_detail", pk=p.pk)
+            approval.approve(p, request.user)
             messages.success(request, "Pledge approved and now active.")
+        elif action in ("cancel", "reactivate") and not roles.can_approve(request.user):
+            messages.error(request, "Only a treasurer can do that.")
         elif action == "cancel":
             p.status = Pledge.Status.CANCELLED
             p.save()
@@ -738,28 +807,46 @@ class PublicPledgeView(View):
         from core.models import SiteConfig
         return SiteConfig.get().pledge_public_form_enabled
 
-    def get(self, request):
+    def _open_campaigns(self):
+        import datetime as _d
+        from django.db.models import Q
+        today = _d.date.today()
+        return (PledgeCampaign.objects
+                .filter(status=PledgeCampaign.Status.ACTIVE)
+                .filter(Q(end_date__isnull=True) | Q(end_date__gte=today))
+                .order_by("name"))
+
+    def get(self, request, pk=None):
         if not self._enabled():
             return render(request, "pledges/public_disabled.html", status=404)
-        campaigns = PledgeCampaign.objects.filter(status=PledgeCampaign.Status.ACTIVE)
+        campaigns = self._open_campaigns()
+        campaign = campaigns.filter(pk=pk).first() if pk else None
+        if pk and campaign is None:
+            # a stale or wrong link should not silently become "pick one"
+            return render(request, "pledges/public_disabled.html", status=404)
         request.session["pledge_form_ts"] = time.time()
         from core.models import SiteConfig
         return render(request, self.template_name, {
-            "campaigns": campaigns, "cfg": SiteConfig.get(),
-            "frequencies": Pledge.Frequency.choices})
+            "campaigns": campaigns, "campaign": campaign,
+            "cfg": SiteConfig.get()})
 
-    def post(self, request):
+    def post(self, request, pk=None):
         if not self._enabled():
             return render(request, "pledges/public_disabled.html", status=404)
         from core.models import SiteConfig
         cfg = SiteConfig.get()
-        campaigns = PledgeCampaign.objects.filter(status=PledgeCampaign.Status.ACTIVE)
+        campaigns = self._open_campaigns()
+        # A campaign in the URL is the campaign, full stop — the form has no
+        # chooser to disagree with, and a posted field cannot redirect the
+        # pledge somewhere the giver never saw.
+        fixed = campaigns.filter(pk=pk).first() if pk else None
+        if pk and fixed is None:
+            return render(request, "pledges/public_disabled.html", status=404)
 
         def fail(msg):
             return render(request, self.template_name,
-                          {"campaigns": campaigns, "cfg": cfg,
-                           "frequencies": Pledge.Frequency.choices, "error": msg,
-                           "form": request.POST})
+                          {"campaigns": campaigns, "campaign": fixed,
+                           "cfg": cfg, "error": msg, "form": request.POST})
 
         # 1) honeypot — a hidden field real users never fill
         if (request.POST.get("website") or "").strip():
@@ -778,12 +865,11 @@ class PublicPledgeView(View):
         phone = (request.POST.get("phone") or "").strip()
         camp_id = request.POST.get("campaign")
         amount_raw = (request.POST.get("amount") or "").strip()
-        freq = request.POST.get("frequency") or Pledge.Frequency.ONE_OFF
         note = (request.POST.get("note") or "").strip()[:200]
 
         if not name or len(name) < 3:
             return fail("Please enter your full name.")
-        campaign = campaigns.filter(pk=camp_id).first()
+        campaign = fixed or campaigns.filter(pk=camp_id).first()
         if not campaign:
             return fail("Please choose a campaign.")
         try:
@@ -792,8 +878,10 @@ class PublicPledgeView(View):
             return fail("Please enter a valid amount.")
         if amount <= 0 or amount > self.MAX_AMOUNT:
             return fail("Please enter a valid amount.")
-        if freq not in dict(Pledge.Frequency.choices):
-            freq = Pledge.Frequency.ONE_OFF
+        # How it will be given is not asked. It is optional on the record, it
+        # is the question most likely to make somebody abandon the form, and a
+        # treasurer can set it later from something the giver actually said.
+        freq = Pledge.Frequency.MONTHLY
 
         # Resolve to a Member only by an exact, unambiguous match; otherwise leave
         # unlinked for the treasurer. We never reveal whether a match was found.

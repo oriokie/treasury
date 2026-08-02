@@ -38,6 +38,27 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.46.0": "Fixes tables missing from the Word download. Every table in a Word export came out as "
+              "\"Nothing to report for this period\" — a mistake introduced with the new .docx "
+              "writer in 3.45.0, where a check for an empty section was always answering yes. The "
+              "section headings were right, which is why it was easy to miss. Pledges: a campaign "
+              "can now have its own public form. Share that campaign's link and a member lands on a "
+              "page named after the appeal, with no list of campaigns to pick from and nothing to "
+              "fill in but their name, phone and what they promise — the question about how they "
+              "will give is gone, since it was optional and was the one most likely to make "
+              "somebody give up halfway. The campaign page carries the link, ready to copy. "
+              "Approving pledges is no longer the treasurer's alone: a department leader can "
+              "approve pledges made to campaigns for their own funds, one at a time or several at "
+              "once, from a new approvals page — the leader runs the appeal and knows who stood up, "
+              "and routing every promise through the office is how a campaign's figures end up a "
+              "fortnight behind the room. Treasurers get the same page for every fund. Cancelling a "
+              "pledge stays the treasurer's, because undoing something the church has been counting "
+              "on is a different act from confirming it was made. Leaders now have Pledges and "
+              "Approve pledges in their sidebar, the second carrying a count of what is waiting, "
+              "and both appear only when there is actually a campaign or a pledge on their funds. "
+              "And when the update check reports a rejected fine-grained token, it now says to "
+              "check the expiry date first — those always expire, thirty days by default — instead "
+              "of sending a treasurer off to audit permissions that were never the problem.",
     "3.45.0": "The Word download is now a real Word document. It has been an HTML file wearing a "
               ".doc extension all along — Word opened it, but in web view with no pages, no margins "
               "and no header, and Google Docs, phones and LibreOffice each mangled it their own way, "

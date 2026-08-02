@@ -452,7 +452,12 @@ class DocxRenderer(Renderer):
                                   "" if level == "heading" else money(v),
                                   level))
                 doc.keyvalue(pairs)
-            elif getattr(s, "is_empty", False):
+            # is_empty is a METHOD. Reading it as an attribute yields a bound
+            # method, which is always truthy — so every table section took this
+            # branch and printed "Nothing to report" in place of its data. The
+            # tests looked for section titles, which are written before this
+            # point, so they passed while the document had no tables in it.
+            elif s.is_empty():
                 doc.section_title(s.title)
                 doc.caption("Nothing to report for this period.")
             else:

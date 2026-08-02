@@ -2,13 +2,14 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>Make a pledge · {{ cfg.church_name }}</title>
+<title>{% if campaign %}{{ campaign.name }} · {% endif %}Pledge · {{ cfg.church_name }}</title>
 <style>
   body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f4f1e8;margin:0;color:#23271f}
   .wrap{max-width:520px;margin:0 auto;padding:2rem 1.2rem}
   .card{background:#fff;border:1px solid #e4ddcb;border-radius:14px;padding:1.6rem;box-shadow:0 6px 24px rgba(20,33,28,.06)}
   h1{font-family:Georgia,"Times New Roman",serif;font-size:1.5rem;margin:.2rem 0;color:#1f5f4f}
   .sub{color:#7a7768;margin-bottom:1.2rem}
+  .org{font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8a8775}
   label{display:block;font-weight:600;font-size:.85rem;margin:.9rem 0 .25rem}
   input,select,textarea{width:100%;box-sizing:border-box;padding:.6rem .7rem;border:1px solid #d8d0bf;border-radius:8px;font-size:1rem;background:#fdfcf9}
   .hp{position:absolute;left:-9999px}
@@ -17,23 +18,29 @@
   .note{font-size:.78rem;color:#8a8775;margin-top:1.1rem;line-height:1.5}
 </style></head>
 <body><div class="wrap"><div class="card">
+  {% if campaign %}
+  <div class="org">{{ cfg.church_name }}</div>
+  <h1>{{ campaign.name }}</h1>
+  <div class="sub">{% if campaign.description %}{{ campaign.description }}{% else %}Make your pledge{% endif %}</div>
+  {% else %}
   <h1>{{ cfg.church_name }}</h1>
   <div class="sub">Make a pledge</div>
+  {% endif %}
   {% if error %}<div class="err">{{ error }}</div>{% endif %}
   <form method="post" autocomplete="off">{% csrf_token %}
     <label for="name">Your full name</label>
     <input id="name" name="name" required value="{{ form.name|default:'' }}">
     <label for="phone">Phone number</label>
     <input id="phone" name="phone" inputmode="tel" placeholder="07XX XXX XXX" value="{{ form.phone|default:'' }}">
+    {% if not campaign %}
     <label for="campaign">Campaign</label>
     <select id="campaign" name="campaign" required>
       <option value="">— choose —</option>
       {% for c in campaigns %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
     </select>
+    {% endif %}
     <label for="amount">Amount you pledge (KES)</label>
     <input id="amount" name="amount" inputmode="decimal" required value="{{ form.amount|default:'' }}">
-    <label for="frequency">How will you give?</label>
-    <select id="frequency" name="frequency">{% for v,l in frequencies %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select>
     <label for="note">Note (optional)</label>
     <textarea id="note" name="note" rows="2"></textarea>
     <!-- honeypot: real people leave this empty -->

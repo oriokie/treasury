@@ -5,6 +5,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
+from pledges.views import BasePledgeApprovalQueue
 
 from core.permissions import RoleRequiredMixin  # noqa (kept for symmetry)
 from core.utils import parse_period, safe_json
@@ -522,6 +523,15 @@ class LeaderGroupDetailView(LeaderRequiredMixin, TemplateView):
         ctx["pct"] = (int(min(data_obj["total"] / g.target * 100, 100))
                       if g.target else None)
         return ctx
+
+
+class LeaderPledgeApprovalView(LeaderRequiredMixin, BasePledgeApprovalQueue):
+    """A leader's own approval queue.
+
+    Same page and same service as the treasurer's; the difference is only which
+    drafts ``approvable_for`` returns, and that is decided by which funds this
+    leader holds rather than by anything the request says.
+    """
 
 
 class LeaderMemberSearchView(LeaderRequiredMixin, View):

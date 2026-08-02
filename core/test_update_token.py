@@ -93,3 +93,35 @@ class SettingsCleanTests(TestCase):
         from config.settings import _clean_secret
         for raw in ("", None, "   ", '""'):
             self.assertEqual(_clean_secret(raw), "")
+
+
+class FailureWordingTests(TestCase):
+    """What a 401 says depends on which kind of token was sent."""
+
+    def _explain(self, token):
+        import urllib.error
+        from io import BytesIO
+        from core.services.updates import _explain_failure
+        exc = urllib.error.HTTPError(
+            "u", 401, "Unauthorized", {},
+            BytesIO(b'{"message": "Bad credentials"}'))
+        return _explain_failure(exc, "owner/repo", token)
+
+    def test_a_fine_grained_token_is_told_to_check_its_expiry_first(self):
+        msg = self._explain("github_pat_" + "a" * 82)
+        self.assertIn("always expire", msg)
+        self.assertIn("expiry date", msg)
+
+    def test_and_told_that_scopes_are_not_the_cause(self):
+        """A 401 never reached the permission check, so sending someone to
+        audit scopes wastes the one thing they have — patience."""
+        self.assertIn("not the cause", self._explain("github_pat_" + "a" * 82))
+
+    def test_a_classic_token_keeps_the_general_wording(self):
+        msg = self._explain("ghp_" + "a" * 36)
+        self.assertNotIn("always expire", msg)
+        self.assertIn("invalid, expired, or was revoked", msg)
+
+    def test_github_s_own_words_are_quoted_either_way(self):
+        for token in ("github_pat_" + "a" * 82, "ghp_" + "a" * 36):
+            self.assertIn("Bad credentials", self._explain(token))

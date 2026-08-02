@@ -2,7 +2,18 @@
 {% block title %}{{ campaign.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head"><div class="ws-titles"><h1>{{ campaign.name }}</h1><div class="ws-sub">{% if campaign.target_department %}Lands in {{ campaign.target_department.name }} · {% endif %}{{ campaign.get_status_display }}</div></div>
-  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_edit' campaign.id %}">Edit</a><a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_import' campaign.id %}">⬆ Import pledges</a><form method="post" action="{% url 'pledge_campaign_delete' campaign.id %}" class="u-inline" onsubmit="return confirm('Delete this campaign? Only possible when it has no pledges.');">{% csrf_token %}<button class="btn btn-ghost btn-sm link-danger">Delete</button></form>{% endif %}{% if can_enter_data %}<a class="btn" href="{% url 'pledge_create' %}?campaign={{ campaign.id }}">＋ Pledge</a>{% endif %}</div></div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_edit' campaign.id %}">Edit</a><a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_import' campaign.id %}">⬆ Import pledges</a><a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_report' campaign.id %}">📋 Who pledged</a><form method="post" action="{% url 'pledge_campaign_delete' campaign.id %}" class="u-inline" onsubmit="return confirm('Delete this campaign? Only possible when it has no pledges.');">{% csrf_token %}<button class="btn btn-ghost btn-sm link-danger">Delete</button></form>{% endif %}{% if can_enter_data %}<a class="btn" href="{% url 'pledge_create' %}?campaign={{ campaign.id }}">＋ Pledge</a>{% endif %}</div></div>
+{% if cfg.pledge_public_form_enabled and campaign.status == 'ACTIVE' %}
+{% comment %}This campaign's own public form. Share the link and a member lands
+on a page naming the appeal, with nothing to choose but what they promise.{% endcomment %}
+<div class="card u-mb no-print"><div class="bd" style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
+  <strong class="u-xs">Public pledge link</strong>
+  <input class="field mono" style="flex:1;min-width:240px" readonly
+         id="pubLink" value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_pledge_campaign' campaign.id %}">
+  <button type="button" class="btn btn-sm btn-ghost" onclick="var i=document.getElementById('pubLink');i.select();document.execCommand('copy');this.textContent='Copied';">Copy</button>
+  <a class="btn btn-sm btn-ghost" href="{% url 'public_pledge_campaign' campaign.id %}" target="_blank" rel="noopener">Preview</a>
+</div></div>
+{% endif %}
 
 <div class="ws-summary">
   {% if campaign.goal_amount %}<div class="ws-metric"><span class="wm-l">Goal</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ campaign.goal_amount|money:0 }}</span>{% if campaign.pct_to_goal is not None %}<span class="wm-sub">{{ campaign.pct_to_goal }}% reached</span>{% endif %}</div>{% endif %}

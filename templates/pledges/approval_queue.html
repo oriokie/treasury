@@ -1,0 +1,99 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Approve pledges · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles"><div class="eyebrow">Pledges · {{ SITE_NAME }}</div>
+    <h1>Approve pledges</h1>
+    <div class="ws-sub">{% if rows %}{{ rows|length }} draft{{ rows|length|pluralize }} awaiting approval · {{ CURRENCY }} {{ total|money:0 }}{% else %}Nothing waiting{% endif %}{% if not is_wide %} · your funds{% endif %}</div></div>
+  <div class="btn-row">
+    <a class="btn btn-ghost btn-sm" href="{% if is_wide %}{% url 'pledge_dashboard' %}{% else %}{% url 'leader_dashboard' %}{% endif %}">← Back</a>
+  </div>
+</div>
+
+{% if campaigns|length > 1 %}
+<form method="get" class="ws-toolbar">
+  <div class="f"><label for="aCampaign">Campaign</label>
+    <select id="aCampaign" name="campaign" class="field--select" onchange="this.form.submit()">
+      <option value="">All campaigns</option>
+      {% for cid, cname in campaigns %}<option value="{{ cid }}" {% if campaign == cid|stringformat:"s" %}selected{% endif %}>{{ cname }}</option>{% endfor %}
+    </select></div>
+</form>
+{% endif %}
+
+{% if rows %}
+{% comment %}A draft pledge is a promise the campaign is not yet counting.
+Approving is the act that makes it count, so it is deliberately explicit —
+tick and confirm — rather than a row of one-click buttons that a mis-aimed
+finger turns into a figure nobody meant.{% endcomment %}
+<form method="post">{% csrf_token %}
+<div class="card"><div class="bd bd-flush">
+  <table class="ledger compact">
+    <thead><tr>
+      <th style="width:2.2rem"><input type="checkbox" id="pickAll" aria-label="Select all"></th>
+      <th>Member</th><th>Campaign</th><th class="num">Amount</th>
+      <th>Recorded</th><th>Source</th>
+    </tr></thead>
+    <tbody>
+    {% for p in rows %}<tr>
+      <td><input type="checkbox" name="pledge" value="{{ p.pk }}" class="pick"></td>
+      <td><a class="link" href="{% url 'pledge_detail' p.pk %}">{{ p.member.name }}</a>
+        {% if p.note %}<div class="muted u-xs">{{ p.note|truncatechars:60 }}</div>{% endif %}</td>
+      <td>{{ p.campaign.name }}<div class="muted u-xs">{{ p.campaign.target_department.name }}</div></td>
+      <td class="num mono">{{ p.amount|money:0 }}</td>
+      <td class="muted u-xs">{{ p.created_at|date:"d M Y" }}{% if p.recorded_by %}<br>by {{ p.recorded_by.get_full_name|default:p.recorded_by.username }}{% endif %}</td>
+      <td>{% if p.self_submitted %}<span class="pill pill-amber u-xs">Member submitted</span>{% else %}<span class="pill pill-grey u-xs">Entered</span>{% endif %}</td>
+    </tr>{% endfor %}
+    </tbody>
+  </table>
+</div></div>
+<div class="btn-row u-mt">
+  <button class="btn" id="approveBtn" disabled>Approve selected</button>
+  <span class="help" id="pickCount">None selected</span>
+</div>
+</form>
+{% else %}
+<div class="card"><div class="bd">
+  <p class="help u-mt-0">No pledges are waiting for approval{% if not is_wide %} on your funds{% endif %}.
+    Drafts appear here when someone records a pledge or a member submits one themselves.</p>
+</div></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var all = document.getElementById("pickAll");
+  if(!all) return;
+  var picks = [].slice.call(document.querySelectorAll(".pick"));
+  var btn = document.getElementById("approveBtn");
+  var count = document.getElementById("pickCount");
+  function sync(){
+    var n = picks.filter(function(c){ return c.checked; }).length;
+    btn.disabled = n === 0;
+    count.textContent = n ? n + " selected" : "None selected";
+    all.checked = n === picks.length && n > 0;
+    all.indeterminate = n > 0 && n < picks.length;
+  }
+  all.addEventListener("change", function(){
+    picks.forEach(function(c){ c.checked = all.checked; }); sync();
+  });
+  picks.forEach(function(c){ c.addEventListener("change", sync); });
+  // the confirm names the number and the money, because "are you sure?" about
+  // an unread list is not a decision
+  document.querySelector("form[method=post]").addEventListener("submit", function(e){
+    var n = picks.filter(function(c){ return c.checked; }).length;
+    var sum = picks.filter(function(c){ return c.checked; })
+      .reduce(function(t, c){
+        var cell = c.closest("tr").querySelector(".num");
+        return t + parseFloat((cell.textContent||"0").replace(/[^0-9.-]/g,"")) || t;
+      }, 0);
+    if(!confirm("Approve " + n + " pledge" + (n===1?"":"s") +
+                " totalling {{ CURRENCY }} " + sum.toLocaleString() +
+                "?\n\nThey become active and start counting toward their campaign.")){
+      e.preventDefault();
+    }
+  });
+  sync();
+})();
+</script>
+{% endblock %}

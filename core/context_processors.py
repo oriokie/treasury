@@ -85,6 +85,28 @@ def site_context(request):
                 ctx["leader_has_loans"] = user_has_accessible_loans(user)
             except Exception:  # noqa: BLE001
                 ctx["leader_has_loans"] = False
+            # Pledges appear for a leader only when there is something to see:
+            # a campaign open on one of their funds, or pledges already made to
+            # one. An empty menu item is a promise the page cannot keep.
+            try:
+                from pledges.models import Pledge, PledgeCampaign
+                led_all = {d.id for d in led}
+                from departments.models import Department
+                led_all |= set(Department.objects
+                               .filter(parent_id__in=led_all)
+                               .values_list("id", flat=True))
+                ctx["leader_has_pledges"] = (
+                    PledgeCampaign.objects.filter(
+                        target_department_id__in=led_all,
+                        status=PledgeCampaign.Status.ACTIVE).exists()
+                    or Pledge.objects.filter(
+                        campaign__target_department_id__in=led_all).exists())
+                ctx["leader_pledge_approvals"] = Pledge.objects.filter(
+                    campaign__target_department_id__in=led_all,
+                    status=Pledge.Status.DRAFT).count()
+            except Exception:  # noqa: BLE001
+                ctx["leader_has_pledges"] = False
+                ctx["leader_pledge_approvals"] = 0
     except Exception:  # noqa: BLE001
         pass
     ctx["phone_full"] = ("view_member_phone_full" in _granted) or bool(getattr(user, "is_superuser", False))

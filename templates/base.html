@@ -48,6 +48,10 @@
       {% endif %}
       <a href="{% url 'leader_advances' %}" class="{% if 'advance' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">💵</span> Staff advances</a>
       {% if leader_has_loans %}<a href="{% url 'leader_loans' %}" class="{% if 'loan' in request.resolver_match.url_name %}active{% endif %}"><span class="ic">🤝</span> Loans</a>{% endif %}
+      {% if leader_has_pledges and leader_primary_dept %}
+      <a href="{% url 'leader_pledges' leader_primary_dept.id %}" class="{% if request.resolver_match.url_name == 'leader_pledges' or request.resolver_match.url_name == 'leader_pledge_import' %}active{% endif %}"><span class="ic">🤲</span> Pledges</a>
+      <a href="{% url 'leader_pledge_approvals' %}" class="{% if request.resolver_match.url_name == 'leader_pledge_approvals' %}active{% endif %}"><span class="ic">✅</span> Approve pledges{% if leader_pledge_approvals %}<span class="badge">{{ leader_pledge_approvals }}</span>{% endif %}</a>
+      {% endif %}
       <a href="{% url 'receipt_archive' %}" class="{% if request.resolver_match.url_name == 'receipt_archive' %}active{% endif %}"><span class="ic">🧾</span> Receipts</a>
       <a href="{% url 'missing_receipts' %}" class="{% if request.resolver_match.url_name == 'missing_receipts' %}active{% endif %}"><span class="ic">📌</span> Awaiting receipts</a>
       {% if can.allocate_dev_offering %}<a href="{% url 'dev_unassigned' %}" class="{% if request.resolver_match.url_name == 'dev_unassigned' %}active{% endif %}"><span class="ic">🎯</span> Allocate dev offering</a>{% endif %}

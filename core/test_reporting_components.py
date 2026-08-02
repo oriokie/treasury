@@ -205,6 +205,20 @@ class RendererTests(TestCase):
         self.assertEqual(resp["Content-Type"], "application/pdf")
         self.assertTrue(resp.content[:4] == b"%PDF")
 
+    def test_docx_carries_the_table_data_not_just_the_titles(self):
+        """The regression that shipped in 3.45.0: ``is_empty`` is a method, so
+        reading it as an attribute was always truthy and every table section
+        printed "Nothing to report" instead of its rows. The tests passed
+        because section TITLES are written before that branch — so this asserts
+        a figure from inside a table, which is the only thing that proves the
+        table is there."""
+        from core.reporting.wordml import docx_text
+        resp = renderer_registry.get("docx").render(self._rendered(), church="X")
+        text = docx_text(resp.content)
+        self.assertNotIn("Nothing to report", text)
+        self.assertIn("Development", text)       # a row label
+        self.assertIn("2,500.00", text)          # and its figure
+
     def test_docx_is_a_real_package(self):
         import io
         import zipfile
