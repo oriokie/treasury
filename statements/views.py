@@ -67,6 +67,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views import View
 from django.views.generic import ListView
 
@@ -143,11 +144,68 @@ class ReconciliationListView(ReadAccessMixin, ListView):
     context_object_name = "reconciliations"
 
 
+def suggested_bank_balance(on):
+    """What the bank said the account held as at `on`, for pre-filling a new
+    reconciliation. Returns ``(balance_or_None, note)``.
+
+    Typing the closing balance by hand is where a reconciliation goes wrong
+    before it starts — a transposed digit here sends the treasurer hunting for
+    a difference that was never in the books. The register already holds the
+    bank's own running balance, so when it can answer the date being
+    reconciled, it answers.
+
+    It is a suggestion and not a fact: the field stays editable, and the note
+    says which date the figure actually came from, because a balance three
+    weeks stale is still the bank's last word but must not be presented as the
+    closing position.
+    """
+    from statements.services import register as register_svc
+    try:
+        reg = register_svc.balance_asof(on)
+        live = register_svc.live_balance_asof(on)
+    except Exception:  # noqa: BLE001 — a suggestion must never break the form
+        from core.utils import log_exception as _lx
+        _lx("recon balance suggestion")
+        return None, ""
+    # Whichever of the two is nearer the date asked about, matching how the
+    # bank position elsewhere chooses between them.
+    options = [c for c in (reg, live) if c.get("balance") is not None
+               and c.get("as_at") is not None]
+    if not options:
+        return None, (reg.get("reason") or live.get("reason") or "")
+    best = max(options, key=lambda c: c["as_at"])
+    note = f"From the bank register, as at {best['as_at']:%d %b %Y}"
+    stale = best.get("stale_days") or 0
+    if stale:
+        note += f" — {stale} day(s) before the date you are reconciling"
+    return best["balance"], note + "."
+
+
 class ReconciliationCreateView(DataEntryRequiredMixin, View):
     template_name = "statements/reconciliation_new.html"
 
     def get(self, request):
-        return render(request, self.template_name, {"form": BankReconciliationForm()})
+        import datetime as _dt
+        # Default to the end of last month: a reconciliation is nearly always
+        # being prepared for the month just closed, and the date drives the
+        # balance suggested below.
+        today = _dt.date.today()
+        default_date = today.replace(day=1) - _dt.timedelta(days=1)
+        raw = request.GET.get("statement_date")
+        if raw:
+            try:
+                default_date = _dt.date.fromisoformat(raw)
+            except ValueError:
+                pass
+        balance, note = suggested_bank_balance(default_date)
+        form = BankReconciliationForm(initial={
+            "statement_date": default_date,
+            "bank_balance": balance,        # None leaves the field blank
+        })
+        return render(request, self.template_name, {
+            "form": form, "balance_note": note,
+            "balance_suggested": balance is not None,
+            "balance_url": reverse("reconciliation_balance")})
 
     def post(self, request):
         form = BankReconciliationForm(request.POST)
@@ -161,6 +219,29 @@ class ReconciliationCreateView(DataEntryRequiredMixin, View):
             messages.success(request, "Reconciliation started — add your items below.")
             return redirect("reconciliation_detail", pk=rec.pk)
         return render(request, self.template_name, {"form": form})
+
+
+class ReconciliationBalanceView(DataEntryRequiredMixin, View):
+    """AJAX: what the bank says the account held as at a date.
+
+    The suggested balance depends on the date being reconciled, so changing the
+    date on the form has to change the suggestion with it — otherwise the
+    convenience becomes a trap, silently offering last month's closing balance
+    for this month's worksheet.
+    """
+    def get(self, request):
+        import datetime as _dt
+        from django.http import JsonResponse
+        try:
+            on = _dt.date.fromisoformat(request.GET.get("date", ""))
+        except ValueError:
+            return JsonResponse({"ok": False, "note": ""})
+        balance, note = suggested_bank_balance(on)
+        return JsonResponse({
+            "ok": balance is not None,
+            "balance": str(balance) if balance is not None else "",
+            "note": note,
+        })
 
 
 class ReconciliationDeleteView(TreasurerRequiredMixin, View):
@@ -200,10 +281,37 @@ def _sync_managed_recon_items(rec):
             _lx("recon managed sync")
             return Decimal(0)
 
+    def _pending_at_the_date():
+        """Bank credits that had arrived but had not been receipted to a fund
+        as at the statement date.
+
+        They are in the bank balance and not in the cash book (which is the sum
+        of the fund balances), so they are a reconciling item — and without them
+        a month with anything sitting in the review queue simply refused to
+        balance.
+
+        Read on the as-reported basis, because the question is what was pending
+        ON that date. Asked plainly, an item banked in July and receipted in
+        August is not pending "now", so a July reconciliation prepared in August
+        would show nil and leave the same gap unexplained.
+        """
+        from reports.services import asat, balances
+        try:
+            with asat.as_reported(rec.statement_date):
+                return balances.pending_receipts_total(rec.statement_date) \
+                    or Decimal(0)
+        except Exception:  # noqa: BLE001
+            from core.utils import log_exception as _lx
+            _lx("recon pending receipts")
+            return Decimal(0)
+
     managed = [
         ("Petty cash float (cash on hand)",
          _safe(_petty_balance_asof),
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),
+        ("Receipts pending allocation (banked, not yet in a fund)",
+         _pending_at_the_date(),
+         ReconciliationItem.Kind.OTHER, SUB),
         ("Staff advances issued (not yet accounted)",
          _safe(outstanding_bank_advances_total),
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),

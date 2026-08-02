@@ -22,6 +22,7 @@ from reports.board_sections import (BankReconciliationComponent,
                                     CollectionsSummaryComponent,
                                     TrustFundSummaryComponent)
 from reports.financial_statements import (CashFlowStatementSection,
+                                          FinancialPositionStatementSection,
                                           FinancialPositionSummarySection,
                                           FundBalancesStatementSection)
 
@@ -231,7 +232,7 @@ class FinancialPositionTests(_Seed):
     def test_the_board_pack_asks_for_the_suppression(self):
         report = registry.get("board_report_v2")
         section = next(s for s in report.sections
-                       if s.key == "financial_position_summary")
+                       if s.key == "financial_position_statement")
         self.assertTrue(section.hide_nil_lines)
 
     def test_headings_subtotals_and_net_assets_always_stand(self):
@@ -246,6 +247,68 @@ class FinancialPositionTests(_Seed):
             v = {r.cells["label"]: r.cells["value"] for r in data.rows}
             self.assertEqual(v["Net assets"],
                              v["Total assets"] - v["Total liabilities"], kw)
+
+
+class FullFinancialPositionTests(_Seed):
+    """The board pack carries the statement itself, not a précis of it."""
+
+    def _rows(self, **kw):
+        data = FinancialPositionStatementSection(**kw).render(_ctx(), {})
+        return data, {r.cells["label"]: r.cells["value"] for r in data.rows}
+
+    def test_it_separates_current_assets_from_fixed(self):
+        _data, v = self._rows()
+        self.assertIn("Total current assets", v)
+        self.assertIn("Net book value", v)
+        self.assertIn("TOTAL ASSETS", v)
+
+    def test_it_splits_the_trust_liability_by_whether_it_was_receipted(self):
+        _data, v = self._rows()
+        self.assertIn("Trust funds payable — receipted", v)
+        self.assertIn("Trust funds payable — not yet receipted", v)
+
+    def test_it_splits_borrowings_current_against_long_term(self):
+        _data, v = self._rows()
+        self.assertIn("Loans payable — current", v)
+        self.assertIn("Loans payable — long term", v)
+
+    def test_it_shows_what_the_net_assets_consist_of(self):
+        _data, v = self._rows()
+        for line in ("Financed by", "Unallocated (general) funds",
+                     "Allocated (board-designated) funds",
+                     "Invested in property", "TOTAL FUNDS"):
+            self.assertIn(line, v)
+
+    def test_the_statement_balances(self):
+        _data, v = self._rows()
+        self.assertEqual(v["NET ASSETS"],
+                         v["TOTAL ASSETS"] - v["TOTAL LIABILITIES"])
+        self.assertEqual(v["TOTAL FUNDS"], v["NET ASSETS"])
+
+    def test_the_trust_split_sums_to_the_trust_payable(self):
+        ctx = _ctx()
+        _data, v = self._rows()
+        rows = ctx.fund_summary()
+        payable = sum((r["closing"] or Decimal(0)
+                       for r in rows if r.get("is_trust")), Decimal(0))
+        self.assertEqual(v["Trust funds payable — receipted"]
+                         + v["Trust funds payable — not yet receipted"], payable)
+
+    def test_nil_lines_drop_only_when_asked(self):
+        _full, v_full = self._rows()
+        _lean, v_lean = self._rows(hide_nil_lines=True)
+        self.assertIn("Loans payable — current", v_full)
+        self.assertNotIn("Loans payable — current", v_lean)
+        # the structure always stands
+        for required in ("Assets", "TOTAL ASSETS", "TOTAL LIABILITIES",
+                         "NET ASSETS", "TOTAL FUNDS"):
+            self.assertIn(required, v_lean)
+
+    def test_it_carries_a_generated_explanation(self):
+        from reports.services import narratives
+        ctx = _ctx()
+        section = FinancialPositionStatementSection().render(ctx, {})
+        self.assertTrue(narratives.generate(section, ctx))
 
 
 # ===========================================================================
@@ -351,22 +414,55 @@ class BankReconciliationTests(_Seed):
         # and prints no figure it cannot stand behind
         self.assertIsNone(data.rows[0].cells["value"])
 
-    def test_reconciles_against_a_bank_balance_when_one_exists(self):
-        from unittest.mock import patch
-        fake = {"statement_balance": Decimal("52000"),
-                "statement_date": dt.date(2026, 12, 31),
-                "system_balance": Decimal("52000"), "difference": Decimal(0),
-                "opening_configured": True, "balance_stale_days": 0}
-        ctx = _ctx()
-        with patch.object(ctx, "metric", side_effect=lambda name, *a, **k: (
-                fake if name == "bank_position" else Decimal(0))):
-            data = BankReconciliationComponent().render(ctx, {})
+    def _worksheet(self, when=dt.date(2026, 12, 31), bank="52000",
+                   book="50000"):
+        from statements.models import BankReconciliation, ReconciliationItem
+        rec = BankReconciliation.objects.create(
+            statement_date=when, bank_balance=Decimal(bank),
+            book_balance=Decimal(book), created_by=self.u)
+        ReconciliationItem.objects.create(
+            reconciliation=rec, kind=ReconciliationItem.Kind.UNPRESENTED,
+            description="Cheque 041 not yet cleared", amount=Decimal("2000"),
+            effect=ReconciliationItem.Effect.SUBTRACT)
+        return rec
+
+    def test_it_shows_the_worksheet_the_treasurer_prepared(self):
+        """Not a second reconciliation of its own — the one that was signed
+        off, with its own reconciling items."""
+        self._worksheet()
+        data = BankReconciliationComponent().render(_ctx(), {})
         v = {r.cells["label"]: r.cells["value"] for r in data.rows}
         self.assertEqual(v["Balance per bank statement at 31 Dec 2026"],
                          Decimal("52000"))
-        self.assertEqual(v["Adjusted bank balance"], Decimal("52000"))
+        self.assertEqual(v["  Less: Cheque 041 not yet cleared"],
+                         Decimal("-2000"))
+        self.assertEqual(v["Adjusted bank balance"], Decimal("50000"))
+        self.assertEqual(v["Balance per cash book"], Decimal("50000"))
         self.assertEqual(v["Unreconciled difference"], Decimal(0))
         self.assertIn("Reconciled", data.note)
+
+    def test_an_unresolved_difference_is_called_out(self):
+        self._worksheet(book="49000")
+        data = BankReconciliationComponent().render(_ctx(), {})
+        v = {r.cells["label"]: r.cells["value"] for r in data.rows}
+        self.assertEqual(v["Unreconciled difference"], Decimal("1000"))
+        self.assertIn("unexplained", data.note)
+
+    def test_the_newest_worksheet_on_or_before_the_period_end_is_used(self):
+        self._worksheet(when=dt.date(2026, 6, 30), bank="10000", book="10000")
+        self._worksheet(when=dt.date(2026, 9, 30), bank="33000", book="33000")
+        # a later one must not be pulled into an earlier period
+        self._worksheet(when=dt.date(2027, 1, 31), bank="99000", book="99000")
+        data = BankReconciliationComponent().render(
+            _ctx(dt.date(2026, 1, 1), dt.date(2026, 12, 31)), {})
+        labels = [r.cells["label"] for r in data.rows]
+        self.assertIn("Balance per bank statement at 30 Sep 2026", labels)
+
+    def test_a_stale_worksheet_says_the_period_end_is_unreconciled(self):
+        self._worksheet(when=dt.date(2026, 6, 30), bank="10000", book="10000")
+        data = BankReconciliationComponent().render(
+            _ctx(dt.date(2026, 1, 1), dt.date(2026, 12, 31)), {})
+        self.assertIn("has not itself", data.note)
 
 
 # ===========================================================================
@@ -384,9 +480,15 @@ class BoardPackCompositionTests(_Seed):
         keys = [s.key for s in report.sections]
         for expected in ("collections_summary", "trust_fund_summary",
                          "fund_balances_statement",
-                         "financial_position_summary", "cash_flow_statement",
+                         "financial_position_statement", "cash_flow_statement",
                          "trial_balance", "bank_reconciliation"):
             self.assertIn(expected, keys, expected)
+
+    def test_the_position_is_the_full_statement_not_the_summary(self):
+        """A board adopting accounts is handed the statement, not a précis."""
+        report = registry.get("board_report_v2")
+        keys = [s.key for s in report.sections]
+        self.assertNotIn("financial_position_summary", keys)
 
     def test_renders_for_a_treasurer(self):
         self.client.force_login(_treasurer())
@@ -439,7 +541,7 @@ class NarrativeTests(_Seed):
         rendered = narratives.annotate(self._rendered(), "board_report_v2")
         by_key = {s.key: s for s in rendered.sections}
         for key in ("collections_summary", "trust_fund_summary",
-                    "fund_balances_statement", "financial_position_summary",
+                    "fund_balances_statement", "financial_position_statement",
                     "cash_flow_statement", "trial_balance",
                     "bank_reconciliation"):
             self.assertTrue(by_key[key].extra.get("explanation"), key)

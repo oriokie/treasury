@@ -133,7 +133,7 @@ def lcb_expenditure(s, e):
         return {"rows": [], "total": Decimal(0)}
     qs = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=PAID,
                                  department_id__in=ids)
-          .exclude(category=Expense.Category.REMITTANCE)
+          .exclude(doc_class=Expense.DocClass.LIABILITY)
           .values("category").annotate(t=Sum("amount")).order_by("-t"))
     label = dict(Expense.Category.choices)
     rows = [{"label": label.get(r["category"], r["category"]), "total": r["t"]}
@@ -184,7 +184,7 @@ def yearly_trend(as_of, years=5):
         trust = (credits.filter(department_id__in=trust_ids)
                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         expense = (Expense.objects.filter(date__gte=ystart, date__lte=yend, status__in=PAID)
-                   .exclude(category=Expense.Category.REMITTANCE)
+                   .exclude(doc_class=Expense.DocClass.LIABILITY)
                    .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         source = "actual"
         if collection == 0:
@@ -209,7 +209,7 @@ def lcb_expense_categories(s, e):
     ids = [lcb.id] + list(lcb.subgroups.values_list("id", flat=True))
     qs = (Expense.objects.filter(date__gte=s, date__lte=e, status__in=PAID,
                                  department_id__in=ids)
-          .exclude(category=Expense.Category.REMITTANCE)
+          .exclude(doc_class=Expense.DocClass.LIABILITY)
           .values("category").annotate(t=Sum("amount")).order_by("-t"))
     label = dict(Expense.Category.choices)
     return [{"label": label.get(r["category"], r["category"]), "total": r["t"]}

@@ -3788,6 +3788,7 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         from core.models import SiteConfig
+        from core.services import idempotency
         from vendors.models import Vendor
         ctx = super().get_context_data(**kwargs)
         ctx.update({
@@ -3798,14 +3799,28 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
                 status=Vendor.Status.ARCHIVED).order_by("name"),
             "today": dt.date.today(),
             "auto_approve": not SiteConfig.get().require_expense_approval,
+            # A fresh token per render; the post claims it once. See
+            # core.services.idempotency.
+            "submit_token": ctx.get("submit_token") or idempotency.issue(),
         })
         return ctx
 
     def post(self, request, *args, **kwargs):
         from core.models import SiteConfig
+        from core.services import idempotency
         from departments.models import Department
         from vendors.models import Vendor
         from .services import expenses as expense_svc
+
+        # A batch sent twice — the double click on a slow save — is one batch.
+        # Nothing in the request distinguishes it from a genuine second batch
+        # (a church may pay the same claimant the same amount twice in a day),
+        # so the form's own token decides.
+        if not idempotency.claim(request, view="expense_batch"):
+            messages.info(request,
+                          "Those lines were already saved — nothing was "
+                          "recorded a second time.")
+            return redirect("expense_list")
 
         post = request.POST
         fund = Department.objects.filter(pk=post.get("department") or 0).first()

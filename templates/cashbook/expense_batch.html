@@ -11,7 +11,9 @@
   <div class="rule" aria-hidden="true"></div>
 </div>
 
-<form method="post" class="xb-shell">{% csrf_token %}
+<form method="post" class="xb-shell" id="xbForm">{% csrf_token %}
+  {# Claimed once on the server, so a second send of this same form saves nothing. #}
+  <input type="hidden" name="submit_token" value="{{ submit_token }}">
 <div class="card"><div class="bd">
   <div class="xf-group-h" style="margin-top:0"><span class="xf-n">1</span> Shared by every line</div>
   <div class="form-grid xf-grid-2">
@@ -88,7 +90,7 @@
     {% else %}These save as <b>pending</b> — a treasurer approves them before they touch the fund's balance.{% endif %}
     <br>Either every line is saved or none is.
   </div>
-  <div class="btn-row"><button class="btn">Save all lines</button>
+  <div class="btn-row"><button class="btn" id="xbSave">Save all lines</button>
     <a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a></div>
 </div></div>
 </form>
@@ -116,6 +118,17 @@ function total(){
   document.getElementById("xbTotal").textContent=fmt(a);
   document.getElementById("xbCharges").textContent=fmt(c);
 }
+// The save is a single act. Saving a stack of receipts takes a moment, and a
+// second click during that moment used to write the whole batch again — so the
+// first submit closes the door and says what is happening. The token in the
+// form is what actually guarantees it; this is so the treasurer can see why the
+// button stopped responding.
+document.getElementById("xbForm").addEventListener("submit",function(e){
+  const btn=document.getElementById("xbSave");
+  if(this.dataset.sent==="1"){ e.preventDefault(); return; }
+  this.dataset.sent="1";
+  btn.disabled=true; btn.textContent="Saving…";
+});
 document.getElementById("xbAdd").addEventListener("click",()=>addRow());
 document.addEventListener("input",e=>{ if(e.target.matches(".xb-amt,.xb-chg")) total(); });
 // A last row that is always empty, so there is always somewhere to type without

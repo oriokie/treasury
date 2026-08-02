@@ -272,6 +272,134 @@ class FinancialPositionSummarySection(ComponentSection):
         return Section.keyvalue(self.key, self.title, pairs, note=note)
 
 
+class FinancialPositionStatementSection(ComponentSection):
+    """The full Statement of Financial Position — the statement itself, not a
+    précis of it.
+
+    The summary above answers "roughly where do we stand"; a board adopting
+    accounts needs the document: current assets separated from fixed, the trust
+    liability split into what has been receipted and what has not, borrowings
+    split current against long-term, and the funds-employed section showing what
+    the net assets actually consist of. Every figure is a registry metric, and
+    it is the same set the standalone Statement of Financial Position reads, so
+    the two cannot drift apart.
+    """
+    key = "financial_position_statement"
+    title = "Statement of financial position"
+    declared_metrics = ("fund_summary", "trust_summary", "pending_receipts_total",
+                        "loans_outstanding", "petty_cash_balance",
+                        "staff_advances_outstanding", "payables_outstanding",
+                        "accruals_outstanding", "prepayments_unexpired",
+                        "net_book_value", "fixed_assets_cost",
+                        "accumulated_depreciation", "net_assets")
+
+    def __init__(self, *args, hide_nil_lines=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.hide_nil_lines = hide_nil_lines
+
+    def render(self, ctx, filters):
+        from core.reporting.engine import Section
+        as_of = ctx.end
+        rows = ctx.fund_summary()
+        cash = sum((_n(r["closing"]) for r in rows), Decimal(0))
+        trust_payable = sum((_n(r["closing"]) for r in rows if r.get("is_trust")),
+                            Decimal(0))
+        local_rows = [r for r in rows if not r.get("is_trust")]
+        local_funds = sum((_n(r["closing"]) for r in local_rows), Decimal(0))
+        allocated = sum(
+            (_n(r["closing"]) for r in local_rows
+             if getattr(r["department"], "category", "") == "DEVELOPMENT"),
+            Decimal(0))
+        unallocated = local_funds - allocated
+
+        # Trust money split by whether a receipt exists for it: what is firmly
+        # due to the field, and what is allocated to a trust fund but not yet
+        # receipted. The two sum to the trust payable that ties the statement.
+        trust_receipted = sum((_n(r.get("to_remit")) for r in ctx.trust_summary()),
+                              Decimal(0))
+        trust_unreceipted = trust_payable - trust_receipted
+
+        petty = _n(ctx.metric("petty_cash_balance", as_of))
+        advances = _n(ctx.metric("staff_advances_outstanding", as_of))
+        pending = _n(ctx.metric("pending_receipts_total", as_of))
+        prepaid = _n(ctx.metric("prepayments_unexpired", as_of))
+        payables = _n(ctx.metric("payables_outstanding", as_of))
+        accruals = _n(ctx.metric("accruals_outstanding", as_of))
+        bank = cash - petty - advances
+
+        cost = _n(ctx.metric("fixed_assets_cost", as_of))
+        depreciation = _n(ctx.metric("accumulated_depreciation", as_of))
+        nbv = _n(ctx.metric("net_book_value", as_of))
+
+        loans = ctx.loans_outstanding(as_of)
+        if isinstance(loans, dict):
+            loans_current = _n(loans.get("current"))
+            loans_long = _n(loans.get("long_term"))
+            loans_total = _n(loans.get("total"))
+        else:
+            loans_current, loans_long, loans_total = _n(loans), Decimal(0), _n(loans)
+
+        current_assets = bank + petty + advances + pending + prepaid
+        total_assets = current_assets + nbv
+        total_liabilities = (trust_payable + payables + accruals + pending
+                             + loans_total)
+        net_assets = total_assets - total_liabilities
+        # The fund balances are cash — what each fund has actually received and
+        # paid. The assets and liabilities above carry the accrual overlay:
+        # amounts prepaid are an asset the funds have already been charged for,
+        # and payables and accruals are costs the funds have not been charged
+        # for yet. That difference is real and has to appear, or the funds
+        # section is short of net assets by exactly the accrual adjustment and
+        # a reader is left to work out why.
+        accrual_adj = prepaid - payables - accruals
+        funds_employed = unallocated + allocated + nbv + accrual_adj - loans_total
+
+        detail = [
+            ("Assets", None, "heading"),
+            ("Bank (funds on hand)", bank),
+            ("Petty cash float", petty),
+            ("Staff advances (receivable)", advances),
+            ("Receipts pending allocation", pending),
+            ("Prepayments (unexpired)", prepaid),
+            ("Total current assets", current_assets, "subtotal"),
+            ("Property, plant & equipment at cost", cost),
+            ("Less: accumulated depreciation", -depreciation),
+            ("Net book value", nbv, "subtotal"),
+            ("TOTAL ASSETS", total_assets, "subtotal"),
+            ("Liabilities", None, "heading"),
+            ("Trust funds payable — receipted", trust_receipted),
+            ("Trust funds payable — not yet receipted", trust_unreceipted),
+            ("Loans payable — current", loans_current),
+            ("Loans payable — long term", loans_long),
+            ("Accounts payable", payables),
+            ("Accrued expenses", accruals),
+            ("Pending receipts (unallocated)", pending),
+            ("TOTAL LIABILITIES", total_liabilities, "subtotal"),
+            ("NET ASSETS", net_assets, "grand"),
+            ("Financed by", None, "heading"),
+            ("Unallocated (general) funds", unallocated),
+            ("Allocated (board-designated) funds", allocated),
+            ("Invested in property", nbv),
+            ("Accrual adjustments (prepaid less payables and accruals)",
+             accrual_adj),
+            ("Less: borrowings to repay", -loans_total),
+            ("TOTAL FUNDS", funds_employed, "subtotal"),
+        ]
+        note = ("Assets less liabilities equals net assets, and the funds "
+                "employed below show what those net assets consist of. Trust "
+                "money is the conference's and is carried as a liability until "
+                "remitted; the church's own worth is the funds section.")
+        pairs = detail
+        if self.hide_nil_lines:
+            pairs = [p for p in detail if len(p) > 2 or p[1]]
+            if len(pairs) < len(detail):
+                note += " Lines with no balance at this date are not shown."
+        if funds_employed != net_assets:
+            note = (f"WARNING: funds employed ({funds_employed:,.2f}) do not "
+                    f"equal net assets ({net_assets:,.2f}). " + note)
+        return Section.keyvalue(self.key, self.title, pairs, note=note)
+
+
 registry.register(Report(
     key="financial_position_v2",
     title="Financial Position summary (engine)",

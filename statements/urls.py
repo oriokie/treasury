@@ -14,6 +14,8 @@ urlpatterns = [
     path("statements/<int:pk>/review/excel/", views.AutoAllocationExcelView.as_view(), name="statement_auto_excel"),
     path("reconciliations/", views.ReconciliationListView.as_view(), name="reconciliation_list"),
     path("reconciliations/new/", views.ReconciliationCreateView.as_view(), name="reconciliation_new"),
+    path("reconciliations/balance/", views.ReconciliationBalanceView.as_view(),
+         name="reconciliation_balance"),
     path("reconciliations/<int:pk>/", views.ReconciliationDetailView.as_view(), name="reconciliation_detail"),
     path("reconciliations/<int:pk>/delete/", views.ReconciliationDeleteView.as_view(), name="reconciliation_delete"),
     path("reconciliations/auto/", views.AutoReconcileView.as_view(), name="auto_reconcile"),

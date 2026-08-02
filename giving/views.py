@@ -2457,6 +2457,7 @@ class CampaignDetailView(ReadAccessMixin, View):
         progress = campaign_sms.group_progress(campaign)
         groups = progress
         behind = [r for r in progress if r["behind"]]
+        met = [r for r in progress if r["has_target"] and not r["behind"]]
         # What has already gone to each group, so a treasurer can see it before
         # composing another one.
         history = {g["name"]: campaign_sms.recent_sends(campaign, g["name"], limit=3)
@@ -2493,6 +2494,17 @@ class CampaignDetailView(ReadAccessMixin, View):
             "any_targets": any(r["has_target"] for r in progress),
             "behind_history": campaign_sms.recent_sends(
                 campaign, campaign_sms.BEHIND_TARGET, limit=3),
+            # And the other half: the groups that got there. Same shape as the
+            # chase above, because thanking people who finished is the same
+            # sized action as chasing people who have not — and a church whose
+            # members only hear from the treasurer when they are short is
+            # teaching them what a message from the treasurer means.
+            "met_token": campaign_sms.TARGET_MET,
+            "met": met,
+            "met_raised": sum((r["collected"] for r in met), 0),
+            "met_reachable": sum((r["reachable"] for r in met), 0),
+            "met_history": campaign_sms.recent_sends(
+                campaign, campaign_sms.TARGET_MET, limit=3),
         })
 
 

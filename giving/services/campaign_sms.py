@@ -37,6 +37,16 @@ ALL_GROUPS = "*"
 #: and the next, and the history has to record which it was.
 BEHIND_TARGET = "<behind>"
 
+#: "Only the groups that have reached their target." The other half of the same
+#: question, and the half worth asking: a church that only ever writes to the
+#: people who are behind is a church whose members hear from the treasurer only
+#: when they have fallen short. A group that finished should be told so.
+#:
+#: Same reasoning as BEHIND_TARGET for being a sentinel — who it means depends
+#: on the money at the moment it is pressed, so the history must record which
+#: send it was rather than a list of names that was true once.
+TARGET_MET = "<met>"
+
 #: Placeholders a sender may use in the message body. Kept short and obvious —
 #: a treasurer writing this on a phone should not need a reference card.
 PLACEHOLDERS = {
@@ -112,6 +122,17 @@ def group_progress(campaign, year=None):
 def behind_target_groups(campaign, year=None):
     """Just the group names still short of their target."""
     return [r["name"] for r in group_progress(campaign, year) if r["behind"]]
+
+
+def target_met_groups(campaign, year=None):
+    """Just the group names that have reached their target.
+
+    A group with no target set is not "met" any more than it was "behind" —
+    both readings require a target to measure against, and inventing one would
+    thank a group for clearing a bar nobody put up.
+    """
+    return [r["name"] for r in group_progress(campaign, year)
+            if r["has_target"] and not r["behind"]]
 
 
 def group_number(group_name):
@@ -223,6 +244,8 @@ def audience(campaign, group):
     qs = campaign.members.all()
     if group == BEHIND_TARGET:
         return qs.filter(group__in=behind_target_groups(campaign)).order_by("group", "name")
+    if group == TARGET_MET:
+        return qs.filter(group__in=target_met_groups(campaign)).order_by("group", "name")
     if group != ALL_GROUPS:
         qs = qs.filter(group=(group or "").strip())
         return qs.order_by("name")
@@ -297,6 +320,8 @@ def group_label(group):
         return "every group"
     if group == BEHIND_TARGET:
         return "the groups behind target"
+    if group == TARGET_MET:
+        return "the groups that reached target"
     return group or "No group recorded"
 
 

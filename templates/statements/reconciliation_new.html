@@ -3,9 +3,41 @@
 {% block content %}
 <div class="page-head"><div><h1>New bank reconciliation</h1><div class="sub">Enter the bank statement closing balance to start</div></div></div>
 <div class="card u-narrow"><div class="bd">
-  <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
+  <form method="post" id="recNew"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
+    {% comment %}The closing balance is suggested from the bank's own running
+    balance in the register, and re-suggested whenever the date changes — a
+    suggestion left over from the previous date would be worse than none. It
+    stays editable: the register may be behind, and the treasurer holding the
+    statement is the authority.{% endcomment %}
+    <p class="help" id="recBalNote">{% if balance_note %}{{ balance_note }}{% if balance_suggested %} Overwrite it if your statement says otherwise.{% endif %}{% endif %}</p>
     <p class="help">Leave the book balance blank to auto-fill it from the cash book up to the statement date — you can adjust it later.</p>
     <div class="btn-row"><button class="btn">Start reconciliation</button><a class="btn btn-ghost" href="{% url 'reconciliation_list' %}">Cancel</a></div>
   </form>
 </div></div>
+
+<script>
+(function(){
+  var form = document.getElementById("recNew");
+  var date = form.querySelector('[name="statement_date"]');
+  var bal  = form.querySelector('[name="bank_balance"]');
+  var note = document.getElementById("recBalNote");
+  if(!date || !bal) return;
+  var touched = false;
+  bal.addEventListener("input", function(){ touched = true; });
+  date.addEventListener("change", function(){
+    if(!date.value) return;
+    fetch("{{ balance_url }}?date=" + encodeURIComponent(date.value),
+          {credentials: "same-origin"})
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        // Never overwrite a figure the treasurer typed themselves.
+        if(!touched) bal.value = d.balance || "";
+        note.textContent = d.note
+          ? d.note + ((d.ok && !touched) ? " Overwrite it if your statement says otherwise." : "")
+          : "No bank balance is on record for that date — enter the closing balance from your statement.";
+      })
+      .catch(function(){ /* a failed suggestion just leaves the field alone */ });
+  });
+})();
+</script>
 {% endblock %}

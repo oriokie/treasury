@@ -29,6 +29,44 @@ def _n(v):
 
 
 # ===========================================================================
+# Headline figures
+# ===========================================================================
+
+class BoardKpiComponent(ComponentSection):
+    """The four figures a board wants before it reads anything else: what came
+    in, how much of it was never ours, what went out, and what is still owed to
+    the conference.
+
+    Drawn from ``collections_summary_monthly`` — the same metric the collections
+    table below is built from — so the headline and the first table cannot
+    disagree. The generic ``KpiCardsComponent`` leads with income and tithe,
+    which suits a giving report; a board is being asked to approve spending, so
+    expenditure belongs in the top four and the tithe line does not.
+    """
+    key = "kpi_cards"
+    title = "Key figures"
+    declared_metrics = ("collections_summary_monthly", "trust_to_remit")
+
+    def render(self, ctx, filters):
+        totals = (ctx.metric("collections_summary_monthly") or {}).get("totals") or {}
+        cards = [
+            ("Total receipts", _n(totals.get("collections"))),
+            ("Total trust funds", _n(totals.get("trust"))),
+            ("Total expenditure", _n(totals.get("expenditure"))),
+            ("Trust still to remit", _n(ctx.trust_to_remit())),
+        ]
+        columns = [Column("label", "Metric"), Column("value", "Value",
+                                                     numeric=True, places=0)]
+        return SectionData(
+            key=self.key, title=self.title, columns=columns,
+            rows=[Row(cells={"label": label, "value": value})
+                  for label, value in cards],
+            kind="kpi",
+            note="Receipts and expenditure are cash for the period; trust funds "
+                 "are the share of receipts belonging to the conference.")
+
+
+# ===========================================================================
 # Collections summary (by month)
 # ===========================================================================
 
@@ -130,69 +168,78 @@ class TrustFundSummaryComponent(ComponentSection):
 # ===========================================================================
 
 class BankReconciliationComponent(ComponentSection):
-    """The bank reconciliation as at the period end: the bank's own balance for
-    that date, adjusted for items the bank has not yet seen, set against the
-    cash book.
+    """The bank reconciliation the treasurer actually prepared.
 
-    The bank's figure comes from ``bank_position``, which takes whichever of the
-    imported register or the live feed is nearer the date asked about. When
-    neither has a balance for that date there is nothing to reconcile against,
-    so the section prints no figure and says plainly that the account is
-    unreconciled — a difference computed against some other date's balance
-    reconciles nothing while looking as though it does.
+    This reads the worksheet from Banking → Bank reconciliation — the one that
+    was worked through and signed off, with its own reconciling items — rather
+    than computing a second reconciliation of its own from metrics. Two
+    reconciliations of the same account for the same date, reaching different
+    differences because one knew about a cash-at-hand item the other did not,
+    is worse than showing none: the board would be reading a check nobody
+    performed, and would have no way to tell which figure the treasurer stood
+    behind.
+
+    The newest worksheet dated on or before the period end is used. Where none
+    exists the section says the account is unreconciled and prints no figure,
+    rather than implying the work was done.
     """
     key = "bank_reconciliation"
     title = "Bank reconciliation"
-    declared_metrics = ("bank_position", "unpresented_payments_total",
-                        "cash_in_transit")
+    declared_metrics = ()      # the worksheet is the source, not a metric
 
     def render(self, ctx, filters):
+        from statements.models import BankReconciliation, ReconciliationItem
         as_of = ctx.end
-        pos = ctx.metric("bank_position", as_of)
-        stmt_balance = pos.get("statement_balance")
-        stmt_date = pos.get("statement_date")
-        system = _n(pos.get("system_balance"))
+        qs = BankReconciliation.objects.prefetch_related("items")
+        if as_of:
+            qs = qs.filter(statement_date__lte=as_of)
+        rec = qs.order_by("-statement_date", "-id").first()
 
-        if stmt_balance is None:
-            # No bank figure for this date means there is nothing to reconcile
-            # against, and a lone cash-book balance dressed up as a
-            # reconciliation would tell the board the account had been checked
-            # when it has not. Say so instead, and print no figure.
+        if rec is None:
             return Section.keyvalue(
                 self.key, self.title,
-                [("Not reconciled — no bank statement imported for "
-                  f"{as_of:%d %b %Y}" if as_of else
-                  "Not reconciled — no bank statement imported", None,
-                  "heading")],
-                note="Import the bank statement covering this period end to "
-                     "complete this section.")
+                [("Not reconciled — no reconciliation has been prepared"
+                  + (f" for {as_of:%d %b %Y} or earlier" if as_of else ""),
+                  None, "heading")],
+                note="Prepare one under Banking \u2192 Bank reconciliation. "
+                     "Reconciling the bank is the strongest single control over "
+                     "church cash, and the board is entitled to see it before "
+                     "adopting these accounts.")
 
-        unpresented = _n(ctx.metric("unpresented_payments_total", as_of))
-        in_transit = _n(ctx.metric("cash_in_transit", as_of))
-        adjusted = _n(stmt_balance) + in_transit - unpresented
-        difference = adjusted - system
+        pairs = [(f"Balance per bank statement at {rec.statement_date:%d %b %Y}",
+                  _n(rec.bank_balance))]
+        items = list(rec.items.all())
+        for item in [i for i in items
+                     if i.effect == ReconciliationItem.Effect.ADD]:
+            pairs.append((f"  Add: {item.description or item.get_kind_display()}",
+                          _n(item.amount)))
+        for item in [i for i in items
+                     if i.effect == ReconciliationItem.Effect.SUBTRACT]:
+            pairs.append((f"  Less: {item.description or item.get_kind_display()}",
+                          -_n(item.amount)))
+        pairs.append(("Adjusted bank balance", _n(rec.adjusted_balance),
+                      "subtotal"))
+        if rec.book_balance is not None:
+            pairs.append(("Balance per cash book", _n(rec.book_balance)))
+            pairs.append(("Unreconciled difference", _n(rec.difference),
+                          "grand"))
 
-        pairs = [
-            (f"Balance per bank statement at {stmt_date:%d %b %Y}"
-             if stmt_date else "Balance per bank statement", _n(stmt_balance)),
-            ("Add: deposits in transit", in_transit),
-            ("Less: unpresented payments", -unpresented),
-            ("Adjusted bank balance", adjusted, "subtotal"),
-            ("Balance per cash book", system),
-            ("Unreconciled difference", difference, "grand"),
-        ]
-        stale = pos.get("balance_stale_days")
-        note = ("Reconciled — the bank and the cash book agree."
-                if not difference else
-                "The difference above is unexplained and should be "
-                "investigated before this report is adopted.")
-        if stale:
-            note += (f" The bank's balance is dated {stmt_date:%d %b %Y}, "
-                     f"{stale} day(s) before the period end.")
-        if not pos.get("opening_configured"):
-            note += (" The opening bank balance has not been set in settings, "
-                     "so the cash-book figure understates the account by that "
-                     "amount.")
+        if rec.book_balance is None:
+            note = ("No cash-book balance was entered on this worksheet, so it "
+                    "shows the adjusted bank balance with nothing to compare "
+                    "it against.")
+        elif rec.is_reconciled:
+            note = ("Reconciled \u2014 the bank and the cash book agree at "
+                    f"{rec.statement_date:%d %b %Y}.")
+        else:
+            note = ("The difference above is unexplained and should be resolved "
+                    "before these accounts are adopted.")
+        if as_of and rec.statement_date < as_of:
+            gap = (as_of - rec.statement_date).days
+            note += (f" This is the most recent worksheet and it is dated {gap} "
+                     f"day(s) before the period end, so the closing bank "
+                     f"balance shown elsewhere in this pack has not itself "
+                     f"been reconciled.")
         return Section.keyvalue(self.key, self.title, pairs, note=note)
 
 

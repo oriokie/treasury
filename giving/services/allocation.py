@@ -35,12 +35,24 @@ def clear_pattern_cache():
 
 def _dev_patterns():
     """Return ([compiled numbered], [compiled word]) from the configured
-    DevGroupPattern rows, falling back to the built-in spellings if none exist."""
+    DevGroupPattern rows.
+
+    The built-in spellings stand in only for a church that has never set any
+    patterns up — a fresh database, where recognising 'DEVGRP7' out of the box
+    is a kindness. They must NOT stand in for a church that has patterns and has
+    deliberately turned them all off: "none configured yet" and "all switched
+    off" are opposite intentions, and treating them the same meant that turning
+    development detection off quietly re-enabled the built-in version of it.
+    A treasurer who disables every pattern is asking for no detection, and gets
+    none.
+    """
     if _PATTERN_CACHE["loaded"]:
         return _PATTERN_CACHE["numbered"], _PATTERN_CACHE["word"]
     numbered, word = [], []
+    configured = False
     try:
         from giving.models import DevGroupPattern
+        configured = DevGroupPattern.objects.exists()
         rows = list(DevGroupPattern.objects.filter(enabled=True)
                     .order_by("sort_order", "id"))
     except Exception:
@@ -51,8 +63,8 @@ def _dev_patterns():
         except re.error:
             continue
         (numbered if r.kind == "NUMBERED" else word).append(rx)
-    if not numbered and not word:
-        numbered, word = [DEV_NUM_RE], [DEV_WORD_RE]  # safe fallback
+    if not configured and not numbered and not word:
+        numbered, word = [DEV_NUM_RE], [DEV_WORD_RE]  # nothing set up yet
     _PATTERN_CACHE["numbered"] = numbered
     _PATTERN_CACHE["word"] = word
     _PATTERN_CACHE["loaded"] = True

@@ -1079,3 +1079,6 @@ class Organization(models.Model):
 # Financial Intelligence status persistence (insight dismissal audit trail).
 from core.models_intelligence import (  # noqa: E402,F401
     InsightStatus, InsightStatusHistory)
+
+# One-time form submission tokens (a double-clicked form saves once).
+from core.models_submission import FormSubmission  # noqa: E402,F401

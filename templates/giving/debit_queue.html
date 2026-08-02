@@ -3,7 +3,14 @@
 {% block content %}
 <div class="btn-row no-print" style="justify-content:flex-end;margin-bottom:.4rem"><a class="btn btn-ghost btn-sm" href="{% url 'auto_reconcile' %}">⟳ Try auto-reconciliation</a></div>
 <div class="page-head"><div><h1>Bank-statement debits</h1>
-<div class="sub">Money leaving the bank — classify each as a charge, an expense, a match, or a float</div></div></div>
+{% comment %} The count, stated the way the credit review queue states its own:
+a treasurer should be able to tell how much is waiting without counting cards.
+It is the whole queue, not this page of it, because "23 waiting" is the number
+that decides whether to sit down and work through them. {% endcomment %}
+<div class="sub">{% if page_obj.paginator.count %}<strong>{{ page_obj.paginator.count }}</strong>
+  debit{{ page_obj.paginator.count|pluralize }} awaiting classification — until each is
+  classified it is money out of the bank that no fund has been charged for.
+{% else %}Money leaving the bank — classify each as a charge, an expense, a match, or a float{% endif %}</div></div></div>
 
 <div class="info-panel">
   <strong>How to treat a debit:</strong> a <em>bank charge</em> records a small fee;

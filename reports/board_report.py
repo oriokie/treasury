@@ -28,14 +28,14 @@ from __future__ import annotations
 
 from core import roles
 from core.reporting import Filter, LayoutMeta, Report, registry
-from core.reporting.component_library import (KpiCardsComponent,
-                                              NarrativeComponent,
+from core.reporting.component_library import (NarrativeComponent,
                                               SignatureBlockComponent)
 from reports.board_sections import (BankReconciliationComponent,
+                                    BoardKpiComponent,
                                     CollectionsSummaryComponent,
                                     TrustFundSummaryComponent)
 from reports.financial_statements import (CashFlowStatementSection,
-                                          FinancialPositionSummarySection,
+                                          FinancialPositionStatementSection,
                                           FundBalancesStatementSection,
                                           TrialBalanceSection)
 
@@ -65,7 +65,7 @@ registry.register(Report(
     ],
     sections=[
         # ---- 1. Where the church stands ---------------------------------
-        KpiCardsComponent(layout=LayoutMeta(order=10, width=12, priority=100,
+        BoardKpiComponent(layout=LayoutMeta(order=10, width=12, priority=100,
                                             group="Overview")),
         NarrativeComponent("executive_summary", title="Executive summary",
                            layout=LayoutMeta(order=11, width=12, priority=95,
@@ -83,13 +83,18 @@ registry.register(Report(
         FundBalancesStatementSection(
             layout=LayoutMeta(order=30, width=12, priority=86,
                               group="Statements", page_break_before=True)),
-        FinancialPositionSummarySection(
+        # The statement in full, not a précis of it. A board adopting accounts
+        # needs the document — current against fixed assets, the trust
+        # liability split by whether it has been receipted, borrowings split
+        # current against long-term, and what the net assets consist of. Full
+        # width, because that is a statement and not a panel.
+        FinancialPositionStatementSection(
             hide_nil_lines=True,
-            layout=LayoutMeta(order=31, width=6, priority=84,
+            layout=LayoutMeta(order=31, width=12, priority=84,
                               group="Statements")),
         CashFlowStatementSection(
             hide_nil_lines=True,
-            layout=LayoutMeta(order=32, width=6, priority=84,
+            layout=LayoutMeta(order=32, width=12, priority=84,
                               group="Statements")),
 
         # ---- 4. Whether the books stand up ------------------------------

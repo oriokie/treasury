@@ -149,23 +149,36 @@ def _explain_fund_balances(ctx, section):
 
 def _explain_financial_position(ctx, section):
     rows = section.rows if section is not None else []
-    get = {r.cells.get("label"): _n(r.cells.get("value")) for r in rows}
-    assets = get.get("Total assets")
-    liabilities = get.get("Total liabilities")
-    net = get.get("Net assets")
+    # The summary and the full statement label their totals differently
+    # ("Total assets" against "TOTAL ASSETS"), so the lookup is case-blind —
+    # one commentary serves both rather than one of them silently getting none.
+    get = {str(r.cells.get("label")).strip().lower(): _n(r.cells.get("value"))
+           for r in rows}
+    assets = get.get("total assets")
+    liabilities = get.get("total liabilities")
+    net = get.get("net assets")
     if net is None:
         return ""
     bits = [
         f"The church held {_m(assets)} of assets against {_m(liabilities)} of "
         f"liabilities at the period end, leaving net assets of {_m(net)}.",
     ]
-    trust = get.get("Trust funds payable")
+    trust = (get.get("trust funds payable")
+             or (_n(get.get("trust funds payable — receipted"))
+                 + _n(get.get("trust funds payable — not yet receipted"))))
     if trust:
         bits.append(f"Of the liabilities, {_m(trust)} is trust money awaiting "
                     f"remittance to the conference.")
-    loans = get.get("Outstanding loans")
+    loans = (get.get("outstanding loans")
+             or (_n(get.get("loans payable — current"))
+                 + _n(get.get("loans payable — long term"))))
     if loans:
         bits.append(f"Borrowings outstanding are {_m(loans)}.")
+    property_ = get.get("net book value")
+    if property_:
+        bits.append(f"{_m(property_)} of that is the carrying value of "
+                    f"property and equipment, which is not money the church "
+                    f"can spend.")
     bits.append("Net assets is what would remain if every fund were settled "
                 "today.")
     return " ".join(bits)
@@ -246,6 +259,7 @@ BUILDERS = {
     "trust_fund_summary": _explain_trust_fund_summary,
     "fund_balances_statement": _explain_fund_balances,
     "financial_position_summary": _explain_financial_position,
+    "financial_position_statement": _explain_financial_position,
     "cash_flow_statement": _explain_cash_flow,
     "trial_balance": _explain_trial_balance,
     "bank_reconciliation": _explain_bank_reconciliation,

@@ -353,47 +353,108 @@ class DocxRenderer(Renderer):
         from django.utils.html import escape
         brand = resolve_branding(church)
         _pc = escape(brand.get("primary_colour") or "#1f5f4f")
+        # The document a reader opens should be the document they saw on
+        # screen. Word renders a usable subset of CSS, so the board pack's own
+        # visual language — a restrained masthead, numbered sections, hairline
+        # tables, figures in a mono face, commentary set off by a rule — is
+        # reproduced here rather than the generic blue-header table this used
+        # to emit. Structure carries the meaning, so it survives a mono printer.
         parts = ["<html xmlns:o='urn:schemas-microsoft-com:office:office' "
                  "xmlns:w='urn:schemas-microsoft-com:office:word'>",
                  "<head><meta charset='utf-8'>"
-                 "<style>body{font-family:Calibri,Arial,sans-serif;}"
-                 "table{border-collapse:collapse;width:100%;margin:6px 0 14px;}"
-                 "th,td{border:1px solid #999;padding:4px 8px;font-size:10pt;}"
-                 f"th{{background:{_pc};color:#fff;text-align:left;}}"
-                 f"td.num{{text-align:right;}} h1{{color:{_pc};}} h2{{color:{_pc};}}"
-                 ".tot td{font-weight:bold;background:#f4f1ea;}</style></head><body>"]
+                 "<style>"
+                 "@page{size:A4 portrait;margin:20mm 14mm 16mm;}"
+                 "body{font-family:'Public Sans',Calibri,Arial,sans-serif;"
+                 "font-size:10pt;color:#1b2420;}"
+                 ".org{font-size:8pt;font-weight:700;letter-spacing:2pt;"
+                 "text-transform:uppercase;color:#677770;}"
+                 "h1.doc{font-family:Georgia,'Times New Roman',serif;"
+                 "font-size:22pt;font-weight:600;margin:6pt 0 3pt;color:#1b2420;}"
+                 ".period{font-size:11pt;color:#3f4f48;}"
+                 ".meta{font-size:8pt;color:#677770;margin-top:3pt;}"
+                 f".rule{{border-bottom:2pt solid {_pc};margin:8pt 0 14pt;}}"
+                 "h1.grp{font-family:Georgia,serif;font-size:13pt;font-weight:600;"
+                 "color:#1b2420;border-bottom:1pt solid #d3cbb6;"
+                 "padding-bottom:3pt;margin:18pt 0 8pt;}"
+                 "h1.grp span.n{color:#b07d2c;margin-right:6pt;}"
+                 "h2{font-size:9pt;font-weight:700;letter-spacing:1pt;"
+                 "text-transform:uppercase;color:#3f4f48;margin:12pt 0 4pt;}"
+                 "table{border-collapse:collapse;width:100%;margin:4pt 0 8pt;}"
+                 "th,td{padding:3pt 5pt;font-size:9pt;text-align:left;"
+                 "border:none;border-bottom:0.5pt solid #e6e0d2;}"
+                 "th{font-size:7.5pt;font-weight:700;letter-spacing:0.6pt;"
+                 "text-transform:uppercase;color:#677770;background:none;"
+                 "border-bottom:1pt solid #1b2420;}"
+                 "td.num,th.num{text-align:right;font-family:Consolas,"
+                 "'Courier New',monospace;}"
+                 f".tot td{{font-weight:bold;border-top:1pt solid {_pc};"
+                 f"border-bottom:2pt double {_pc};background:none;}}"
+                 ".r-heading td{font-weight:700;font-size:7.5pt;"
+                 "letter-spacing:1pt;text-transform:uppercase;color:#3f4f48;"
+                 "border-bottom:none;padding-top:8pt;}"
+                 ".r-subtotal td{font-weight:600;border-top:0.75pt solid #1b2420;"
+                 "border-bottom:none;}"
+                 f".r-grand td{{font-weight:700;border-top:1pt solid {_pc};"
+                 f"border-bottom:2pt double {_pc};}}"
+                 ".note{border-left:1.5pt solid #d3cbb6;padding-left:6pt;"
+                 "font-size:9pt;color:#3f4f48;margin:4pt 0 10pt;}"
+                 ".foot{border-top:0.5pt solid #e6e0d2;padding-top:5pt;"
+                 "margin-top:18pt;font-size:7.5pt;color:#677770;}"
+                 ".sign{border-bottom:0.75pt solid #1b2420;width:60%;"
+                 "height:26pt;}"
+                 "</style></head><body>"]
+        # ---- masthead, set like the screen's ----
         if brand.get("header_text"):
-            parts.append(f"<p style='font-size:9pt'>{escape(brand['header_text'])}</p>")
+            parts.append(f"<p class='meta'>{escape(brand['header_text'])}</p>")
         if brand.get("church_name"):
-            parts.append(f"<p style='font-weight:bold;font-size:14pt'>"
-                         f"{escape(brand['church_name'])}</p>")
-        if brand.get("conference") or brand.get("region"):
-            parts.append("<p style='font-size:10pt'>" + escape(
-                " · ".join(x for x in (brand.get("conference"),
-                                       brand.get("region")) if x)) + "</p>")
-        parts.append(f"<h1>{escape(rendered.report.title)}</h1>")
+            parts.append(f"<div class='org'>{escape(brand['church_name'])}</div>")
+        parts.append(f"<h1 class='doc'>{escape(rendered.report.title)}</h1>")
         if rendered.context.start and rendered.context.end:
-            parts.append(f"<p>For the period {rendered.context.start:%d %B %Y} – "
-                         f"{rendered.context.end:%d %B %Y}</p>")
+            parts.append(f"<div class='period'>For the period "
+                         f"{rendered.context.start:%d %B %Y} to "
+                         f"{rendered.context.end:%d %B %Y}</div>")
+        meta = []
+        if brand.get("conference") or brand.get("region"):
+            meta.append(" · ".join(x for x in (brand.get("conference"),
+                                               brand.get("region")) if x))
         health_line = _cover_health_line(rendered)
         if health_line:
-            parts.append(f"<p style='font-weight:bold'>{escape(health_line)}</p>")
-        parts.append(f"<hr style='border:0;border-top:2px solid {_pc}'>")
+            meta.append(health_line)
+        if meta:
+            parts.append("<div class='meta'>" + escape(" · ".join(meta)) + "</div>")
+        if getattr(rendered.context, "as_reported_at", None):
+            parts.append(
+                "<p class='note'>Position as it stood on "
+                f"{rendered.context.as_reported_at:%d %B %Y} — entries made or "
+                "receipted after that date are excluded.</p>")
+        parts.append("<div class='rule'></div>")
         current_group = None
+        group_no = 0
         for s in rendered.sections:
             if not _visible_in(s, "docx"):
                 continue
             grp = _section_group(s)
             if grp and grp != current_group:
                 current_group = grp
+                group_no += 1
                 parts.append("<br style='page-break-before:always'>"
                              if _section_breaks(s) else "")
-                parts.append(f"<h1 style='border-bottom:1px solid {_pc};"
-                             f"padding-bottom:3px'>{escape(grp)}</h1>")
+                parts.append(f"<h1 class='grp'><span class='n'>{group_no}</span>"
+                             f"{escape(grp)}</h1>")
             if s.kind == "heading":
+                # A heading section is a document heading in its own right, not
+                # a section title — it keeps the h1 it has always had.
                 parts.append(f"<h1>{escape(s.extra.get('text', ''))}</h1>")
                 continue
-            parts.append(f"<h2>{escape(s.title)}</h2>")
+            if s.kind == "signature":
+                parts.append(f"<h2>{escape(s.title)}</h2>")
+                for r in s.rows:
+                    parts.append("<div class='sign'></div>"
+                                 f"<p class='meta'>{escape(str(r.cells.get('role','')))}"
+                                 " — name, signature &amp; date</p>")
+                continue
+            if s.kind != "kpi":
+                parts.append(f"<h2>{escape(s.title)}</h2>")
             if s.kind in ("commentary", "info"):
                 for para in (s.extra.get("text", "") or "").split("\n\n"):
                     if para.strip():
@@ -415,8 +476,16 @@ class DocxRenderer(Renderer):
                     parts.append("<table><tr>"
                                  + "".join(f"<th>{escape(str(h))}</th>" for h in header)
                                  + "</tr>")
-                    for r in rows:
-                        parts.append("<tr>" + "".join(
+                    body_rows = list(s.rows)
+                    for i, r in enumerate(rows):
+                        level = ""
+                        if i < len(body_rows):
+                            meta_ = getattr(body_rows[i], "meta", None) or {}
+                            level = meta_.get("level") or (
+                                "subtotal"
+                                if getattr(body_rows[i], "emphasis", False) else "")
+                        cls = f" class='r-{level}'" if level else ""
+                        parts.append(f"<tr{cls}>" + "".join(
                             f"<td class='num'>{_fmt_cell(c)}</td>"
                             if isinstance(c, (int, float, Decimal)) and not isinstance(c, bool)
                             else f"<td>{escape(_fmt_cell(c))}</td>" for c in r)
@@ -428,19 +497,23 @@ class DocxRenderer(Renderer):
                 parts.append(f"<p style='font-size:9pt;color:#555;font-style:italic'>"
                              f"{escape(s.note)}</p>")
             explanation = (s.extra.get("explanation") or "").strip()
+            if s.note and s.kind not in ("commentary", "info"):
+                parts.append(f"<p class='meta'>{escape(s.note)}</p>")
             if explanation and explanation != s.note \
                     and s.kind not in ("commentary", "info"):
-                for para in explanation.split("\n\n"):
-                    if para.strip():
-                        parts.append("<p style='font-size:10pt;color:#333'>"
-                                     + escape(para.strip()).replace("\n", "<br>")
-                                     + "</p>")
+                parts.append("<div class='note'>" + "".join(
+                    "<p>" + escape(para.strip()).replace("\n", "<br>") + "</p>"
+                    for para in explanation.split("\n\n") if para.strip())
+                    + "</div>")
         if brand.get("certification_statement"):
             parts.append(f"<p style='margin-top:14pt'><i>"
                          f"{escape(brand['certification_statement'])}</i></p>")
         if brand.get("footer_text"):
-            parts.append(f"<p style='font-size:9pt;color:#555'>"
-                         f"{escape(brand['footer_text'])}</p>")
+            parts.append(f"<p class='meta'>{escape(brand['footer_text'])}</p>")
+        parts.append(f"<div class='foot'>{escape(brand.get('church_name') or '')}"
+                     f" — {escape(rendered.report.title)}. Figures from the "
+                     "Financial Metrics Registry; commentary is written from "
+                     "the same figures.</div>")
         parts.append("</body></html>")
         resp = HttpResponse("".join(parts), content_type="application/msword")
         resp["Content-Disposition"] = \

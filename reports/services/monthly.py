@@ -44,7 +44,7 @@ def _credit_month_map(year):
 
 
 def _expense_month_map(year):
-    qs = (_exp().exclude(category=Expense.Category.REMITTANCE).filter(
+    qs = (_exp().exclude(doc_class=Expense.DocClass.LIABILITY).filter(
             date__year=year,
             status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
           .annotate(m=TruncMonth("date"))
@@ -127,7 +127,7 @@ def collections_summary(year):
     trust = (base.filter(date__year=year, department__is_trust=True)
              .annotate(m=TruncMonth("date")).values("m")
              .annotate(t=Sum("amount")))
-    exp = (_exp().exclude(category=Expense.Category.REMITTANCE).filter(
+    exp = (_exp().exclude(doc_class=Expense.DocClass.LIABILITY).filter(
                 date__year=year,
                 status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .annotate(m=TruncMonth("date")).values("m")
@@ -185,10 +185,18 @@ def collections_summary_period(start, end):
     """Collections, trust, local and expenditure per calendar month over any
     period — the period-aware form of :func:`collections_summary`.
 
-    The definitions are exactly the ones the Collections Summary report uses
-    (confirmed credits with ``excluded_from_income=False``; trust = credits on
-    a trust fund; expenditure = effective expenses other than remittances), so
-    the board pack and that report can never disagree for the same dates.
+    Expenditure is what the church SPENT: effective expenses excluding
+    liability documents. A liability document settles an obligation rather than
+    buying anything — a trust remittance hands the conference money that was
+    never the church's, and the contra raised when a loan is converted to a
+    donation retires the debt against the gift without a shilling moving. Both
+    would otherwise land here as spending the church never did, which is what
+    made this table disagree with the Income & Expenditure statement (whose
+    ``_effective_expense_qs`` has always excluded the whole liability class).
+
+    The credit side is the same basis the Collections Summary report uses —
+    confirmed credits with ``excluded_from_income=False``, trust being credits
+    on a trust fund — so the two can never disagree for the same dates.
     """
     buckets = month_buckets(start, end)
     if not buckets:
@@ -201,7 +209,7 @@ def collections_summary_period(start, end):
     trust = (base.filter(department__is_trust=True)
              .annotate(m=TruncMonth("date")).values("m")
              .annotate(t=Sum("amount")))
-    exp = (_exp().exclude(category=Expense.Category.REMITTANCE)
+    exp = (_exp().exclude(doc_class=Expense.DocClass.LIABILITY)
            .filter(date__gte=start, date__lte=end,
                    status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .annotate(m=TruncMonth("date")).values("m")
@@ -309,7 +317,7 @@ def collections_detail(start, end):
     tot_trust = sum((x["amount"] for x in rows if x["is_trust"]), Decimal(0))
     tot_collections = sum((x["amount"] for x in rows), Decimal(0))
     tot_local = tot_collections - tot_trust
-    exp = (_exp().exclude(category=Expense.Category.REMITTANCE)
+    exp = (_exp().exclude(doc_class=Expense.DocClass.LIABILITY)
            .filter(date__gte=start, date__lte=end,
                    status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
