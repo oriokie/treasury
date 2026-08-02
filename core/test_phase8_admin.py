@@ -223,7 +223,8 @@ class BrandingTests(TestCase):
         req = RequestFactory().get("/x?start=2026-01-01&end=2026-12-31")
         req.user = self.tr
         rendered = report.render(req)
-        out = renderer_registry.get("docx").render(rendered).content.decode()
+        from core.reporting.wordml import docx_text
+        out = docx_text(renderer_registry.get("docx").render(rendered).content)
         self.assertIn("Test Church", out)
         self.assertIn("Certified.", out)
         self.assertIn("DRAFT", out)

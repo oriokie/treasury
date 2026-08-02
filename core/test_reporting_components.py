@@ -205,10 +205,17 @@ class RendererTests(TestCase):
         self.assertEqual(resp["Content-Type"], "application/pdf")
         self.assertTrue(resp.content[:4] == b"%PDF")
 
-    def test_docx_produces_word_html(self):
+    def test_docx_is_a_real_package(self):
+        import io
+        import zipfile
+        from core.reporting.wordml import docx_text
         resp = renderer_registry.get("docx").render(self._rendered(), church="X")
-        self.assertEqual(resp["Content-Type"], "application/msword")
-        self.assertIn(b"Fund balances", resp.content)
+        self.assertEqual(resp["Content-Type"],
+                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as z:
+            self.assertIsNone(z.testzip())
+            self.assertIn("word/document.xml", z.namelist())
+        self.assertIn("Fund balances", docx_text(resp.content))
 
     def test_print_renderer_drops_print_hidden(self):
         # a component explicitly marked print_visible=False drops out of print
@@ -299,7 +306,7 @@ class ComponentDemoReportTests(TestCase):
         for fmt, ctype in (("csv", "text/csv"),
                            ("xlsx", "spreadsheet"),
                            ("pdf", "application/pdf"),
-                           ("docx", "application/msword")):
+                           ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")):
             r = self.client.get(base + f"?start=2026-01-01&end=2026-12-31&export={fmt}")
             self.assertEqual(r.status_code, 200, fmt)
             self.assertIn(ctype, r["Content-Type"], fmt)

@@ -38,6 +38,23 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.45.0": "The Word download is now a real Word document. It has been an HTML file wearing a "
+              ".doc extension all along — Word opened it, but in web view with no pages, no margins "
+              "and no header, and Google Docs, phones and LibreOffice each mangled it their own way, "
+              "so a treasurer mailing the pack to twelve board members could not know what any of "
+              "them would see. Every engine report's Word export is now a genuine .docx that opens "
+              "the same everywhere, in print layout: A4 with the pack's own margins, the church and "
+              "report title running along the top of every page, and a Page X of Y footer that Word "
+              "computes itself and keeps correct through editing. Table headings repeat on every "
+              "printed page and no row splits across one — the two things that make a forty-row "
+              "fund statement readable on paper, and the two things an HTML file could never "
+              "promise. The document keeps the pack's own face: the serif masthead, numbered "
+              "sections, hairline tables with figures in a mono face, the ruled subtotals and "
+              "double-ruled bottom lines, the amber basis banner when a pack is drawn as at a date, "
+              "signature lines side by side, and the treasurer's commentary set off by a rule "
+              "exactly as on screen. Charts embed as real pictures rather than riding along as "
+              "code. No new software on the server — the format is written directly, so nothing "
+              "changes about how the app installs or updates.",
     "3.44.0": "Fixes a pledge form that rejected the member you had just picked. The typeahead "
               "assigns the chosen member to a hidden field, and that field was deliberately left "
               "empty — a roll of thousands has no business being rendered as a dropdown — but "

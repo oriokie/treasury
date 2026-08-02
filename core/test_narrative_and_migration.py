@@ -217,7 +217,8 @@ class MigratedReportExportTests(TestCase):
         self.client.force_login(self.tr)
         base = reverse("engine_report", args=["income_statement_v2"])
         for fmt, ctype in (("csv", "text/csv"), ("xlsx", "spreadsheet"),
-                           ("pdf", "application/pdf"), ("docx", "application/msword")):
+                           ("pdf", "application/pdf"),
+                           ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")):
             r = self.client.get(base + f"?start=2026-01-01&end=2026-12-31&export={fmt}")
             self.assertEqual(r.status_code, 200, fmt)
             self.assertIn(ctype, r["Content-Type"], fmt)

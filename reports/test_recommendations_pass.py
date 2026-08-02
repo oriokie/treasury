@@ -142,8 +142,13 @@ class ChartExportTests(_ReportSeed):
         r = self.client.get(reverse("engine_report", args=["treasurer_report"])
                             + self.q + "&export=docx")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("data:image/png;base64",
-                      r.content.decode("utf-8", "ignore"))
+        import io
+        import zipfile
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            media = [n for n in z.namelist()
+                     if n.startswith("word/media/") and n.endswith(".png")]
+            self.assertGreaterEqual(len(media), 1)
+            self.assertTrue(z.read(media[0]).startswith(b"\x89PNG"))
 
 
 class CollapseToggleTests(_ReportSeed):

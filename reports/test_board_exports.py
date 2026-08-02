@@ -54,6 +54,8 @@ class BoardExportTests(TestCase):
         self.assertGreater(len(r.content), 3000)
 
     def test_word_export(self):
+        # the LEGACY board Word export (Word-compatible HTML) — untouched by
+        # the engine's real-.docx renderer, which has its own tests
         r = self.c.get("/reports/board/export/word/")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r["Content-Type"], "application/msword")

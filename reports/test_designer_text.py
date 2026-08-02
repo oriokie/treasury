@@ -77,10 +77,10 @@ class DesignerTextTests(TestCase):
         url = self._save("para_rep")
         h = self.client.get(url).content.decode()
         self.assertGreaterEqual(h.count("<p>For"), 1)
-        w = self.client.get(url + "?export=docx").content.decode(
-            "utf-8", errors="ignore")
-        self.assertIn("<h1>Part 1", w)
-        self.assertIn("<p>Period", w)
+        from core.reporting.wordml import docx_text
+        w = docx_text(self.client.get(url + "?export=docx").content)
+        self.assertIn("Part 1", w)
+        self.assertIn("Period", w)
 
     def test_tabular_export_skips_text_structure(self):
         url = self._save("csv_rep")
