@@ -38,6 +38,18 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.47.0": "A campaign can now show how it is doing on its own public pledge link. Tick "
+              "\"Show public progress\" when editing the campaign and anyone who opens the link "
+              "sees the number of pledges made, the amount pledged and the amount received, with a "
+              "bar against the goal — the standing that moves the next giver. It is off until you "
+              "turn it on, because whether an appeal's running total belongs outside the church is "
+              "the church's decision and not a default. Two things it will not do: it counts only "
+              "pledges that have been approved, so a promise someone typed into the form themselves "
+              "cannot raise the figure the next giver is looking at before anyone has checked it; "
+              "and it stays silent until there is something to report, since an appeal that opens "
+              "with \"0 pledges\" discourages the first giver rather than moving them. The campaign "
+              "page tells you exactly what the link publishes, so it is never a surprise to whoever "
+              "shares it.",
     "3.46.1": "Fixes an update check that kept rejecting good access tokens. A token pasted into the "
               "server's .env very often arrives with company — a quote, a comma, or an invisible "
               "character copied from a web page — and GitHub answers \"Bad credentials\" to that, "

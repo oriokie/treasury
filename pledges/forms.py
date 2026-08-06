@@ -6,7 +6,7 @@ class CampaignForm(forms.ModelForm):
     class Meta:
         model = PledgeCampaign
         fields = ["name", "description", "target_department", "goal_amount",
-                  "start_date", "end_date", "status"]
+                  "start_date", "end_date", "status", "show_public_progress"]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "start_date": forms.DateInput(attrs={"type": "date"}),

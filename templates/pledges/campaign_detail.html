@@ -12,6 +12,8 @@ on a page naming the appeal, with nothing to choose but what they promise.{% end
          id="pubLink" value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_pledge_campaign' campaign.id %}">
   <button type="button" class="btn btn-sm btn-ghost" onclick="var i=document.getElementById('pubLink');i.select();document.execCommand('copy');this.textContent='Copied';">Copy</button>
   <a class="btn btn-sm btn-ghost" href="{% url 'public_pledge_campaign' campaign.id %}" target="_blank" rel="noopener">Preview</a>
+  {# What the page publishes should never be a surprise to whoever shares the link. #}
+  <div class="muted u-xs" style="flex-basis:100%">{% if campaign.show_public_progress %}Anyone opening this link also sees the running total: {{ campaign.approved_pledge_count }} pledges, {{ CURRENCY }} {{ campaign.total_pledged|money:0 }} pledged, {{ CURRENCY }} {{ campaign.total_received|money:0 }} received. Drafts awaiting your approval are not counted.{% else %}The page shows the appeal and the form only. Edit the campaign and tick <em>Show public progress</em> to show the running total there too.{% endif %}</div>
 </div></div>
 {% endif %}
 

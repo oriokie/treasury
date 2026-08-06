@@ -52,6 +52,11 @@ class PledgeCampaign(models.Model):
     end_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=8, choices=Status.choices,
                               default=Status.ACTIVE, db_index=True)
+    show_public_progress = models.BooleanField(default=False,
+        help_text="Show how the campaign is doing — pledges made, amount "
+                  "pledged and amount received — to anyone who opens its "
+                  "public pledge link. Leave off for an appeal whose running "
+                  "total should stay inside the church.")
     created_by = models.ForeignKey("auth.User", null=True, blank=True,
                                    on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -109,6 +114,20 @@ class PledgeCampaign(models.Model):
     @property
     def pledge_count(self):
         return self.pledges.exclude(status=Pledge.Status.CANCELLED).count()
+
+    @property
+    def approved_pledge_count(self):
+        """How many pledges stand behind `total_pledged`.
+
+        `pledge_count` includes drafts awaiting review, which is what a
+        treasurer's queue wants. Anywhere a giver sees the tally it has to be
+        this one instead: a self-submitted pledge would otherwise raise the
+        public count the moment somebody typed it, before anyone checked that
+        the promise was real.
+        """
+        return self.pledges.filter(status__in=[
+            Pledge.Status.ACTIVE, Pledge.Status.FULFILLED,
+            Pledge.Status.LAPSED]).count()
 
 
 class Pledge(models.Model):

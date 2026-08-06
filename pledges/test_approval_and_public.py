@@ -256,3 +256,63 @@ class PublicFormTests(_Two):
         ids = set(approval.approvable_for(self.leader)
                   .values_list("pk", flat=True))
         self.assertEqual(len(ids), 1)
+
+
+class PublicStandingTests(_Two):
+    """What the public form says about how the appeal is doing.
+
+    The figure is the church's to publish, so it is off until a treasurer says
+    otherwise — and it counts only approved pledges, because a self-submitted
+    draft is a claim nobody has checked yet.
+    """
+
+    def setUp(self):
+        super().setUp()
+        cfg = SiteConfig.get()
+        cfg.pledge_public_form_enabled = True
+        cfg.save()
+        self.c_mine.goal_amount = Decimal("100000")
+        self.c_mine.show_public_progress = True
+        self.c_mine.save()
+
+    def _page(self):
+        return self.client.get(
+            reverse("public_pledge_campaign", args=[self.c_mine.pk])
+        ).content.decode()
+
+    def _active(self, amount="5000"):
+        return Pledge.objects.create(campaign=self.c_mine, member=self.member,
+                                     amount=Decimal(amount),
+                                     status=Pledge.Status.ACTIVE)
+
+    def test_an_opted_in_campaign_shows_its_standing(self):
+        self._active("40000")
+        body = self._page()
+        self.assertIn("Pledges", body)
+        self.assertIn("40,000", body)
+        self.assertIn("40% of the", body)
+        # A `{# #}` comment is single-line in Django; a multi-line one is served
+        # to the giver verbatim. This page has no template debris to spare.
+        self.assertNotIn("{#", body)
+
+    def test_a_campaign_that_did_not_opt_in_shows_nothing(self):
+        self._active("40000")
+        self.c_mine.show_public_progress = False
+        self.c_mine.save()
+        self.assertNotIn("40,000", self._page())
+
+    def test_a_draft_does_not_raise_the_public_tally(self):
+        """The whole point of holding self-submissions: an unreviewed promise
+        must not move a number the next giver is looking at."""
+        self._active("40000")
+        self._draft(self.c_mine, "60000")
+        self.assertEqual(self.c_mine.approved_pledge_count, 1)
+        body = self._page()
+        self.assertIn("40,000", body)          # the approved pledge, alone
+        self.assertNotIn("60,000", body)       # the draft, nowhere
+        self.assertNotIn(">2<", body)          # and the count still reads one
+
+    def test_an_appeal_with_nothing_yet_stays_quiet(self):
+        """Better silence than an opening line of "0 pledges"."""
+        self._draft(self.c_mine, "60000")
+        self.assertNotIn("Pledges", self._page())
