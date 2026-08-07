@@ -14,10 +14,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # Called by release.yml so a tag is published only if the same suite that
-  # guards main passes on it — a release gate that ran a different, weaker set
-  # of tests would be worse than none, because it would look like one.
-  workflow_call:
+  # No workflow_call. release.yml used to call this so a tag was published only
+  # if the same suite that guards main passed on it — the right rule, bought
+  # twice: the tag names a commit already pushed to main, so the run below had
+  # just answered the question when the release asked it again. release.yml now
+  # READS this run's verdict for that commit instead. Same suite, same SHA,
+  # same gate; one run.
 
 concurrency:
   group: ci-${{ github.ref }}

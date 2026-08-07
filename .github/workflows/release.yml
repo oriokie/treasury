@@ -7,6 +7,11 @@ name: Release
 # compares it with the running VERSION, so an untagged repository can never tell
 # anyone an update exists. This is the job that makes that check mean something.
 #
+# The tag is published only if CI passed on the commit it names. That verdict
+# is READ from the run CI already did on main, not produced by running the
+# suite again here — see the `test` job for why that distinction is worth a
+# workflow's worth of explanation.
+#
 # The notes come from core.version.WHATS_NEW — the same words the app shows
 # under "What's new" — so the release a treasurer reads on GitHub and the one
 # they read in the app cannot drift apart. `python manage.py release` writes the
@@ -20,9 +25,14 @@ on:
       tag:
         description: "Existing tag to publish (e.g. v3.39.0)"
         required: true
+      allow_untested:
+        description: "Publish even without a passing CI run (only when Actions itself is unavailable)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write          # needed to create the Release
+  actions: read            # to read CI's verdict on the tagged commit
 
 concurrency:
   group: release-${{ github.ref }}
@@ -77,10 +87,115 @@ jobs:
           print("Release note present.")
           PY
 
+  # This job used to be `uses: ./.github/workflows/ci.yml` — the whole suite,
+  # run a second time. The tag names a commit that is already on main, and CI
+  # runs on every push to main, so that second run tested the same tree the
+  # first one had just finished testing. Two full suites per release, ~101
+  # job-minutes, against a 2,000-minute monthly allowance: about twenty
+  # releases a month before Actions stops running at all, which is exactly
+  # what happened on 6 August 2026 — tags pushed, no runs created, jobs
+  # queued and killed without ever getting a runner.
+  #
+  # So this asks CI for its verdict on this exact commit instead of asking the
+  # same question again. The gate is unchanged in strength: it is the same
+  # suite, on the same SHA, and a release still cannot publish without a green
+  # answer. It just does not pay for the answer twice.
+  #
+  # It has to WAIT for that answer. `manage.py release --push` pushes main and
+  # then the tag seconds apart, so when this runs CI has usually only just
+  # started; a single check would find nothing and conclude the wrong thing.
   test:
-    name: Full suite
+    name: CI passed on this commit
     needs: verify
-    uses: ./.github/workflows/ci.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # tags, so a dispatched tag name resolves
+
+      # Skipping the gate has to be loud and it has to be a human's doing, so
+      # it is a dispatch-only input that defaults to off. It exists for the one
+      # case the gate cannot distinguish on its own: Actions being unavailable,
+      # where "no green run" means nobody was asked, not that anything is
+      # broken. It is not for getting a red build out of the door.
+      - name: Publishing WITHOUT a green suite, by explicit request
+        if: github.event.inputs.allow_untested == 'true'
+        run: |
+          echo "::warning::Publishing ${{ github.event.inputs.tag }} without" \
+               "checking CI, because allow_untested was ticked. Nothing has" \
+               "confirmed this tag's tests pass."
+
+      - name: CI's verdict on the tagged commit
+        if: github.event.inputs.allow_untested != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          # rev-list, not rev-parse: an annotated tag's own object is not the
+          # commit, and CI ran against the commit.
+          SHA=$(git rev-list -n1 "$TAG")
+          echo "Tag $TAG is commit $SHA"
+
+          # Every CI run for this SHA, not just the newest: a re-run after a
+          # flake creates another run, and one green pass on this exact tree
+          # is the thing being asked about.
+          # Only emit anything if the call actually succeeded. Two reasons, and
+          # the second is the nasty one: the step runs under `bash -e`, so an
+          # unguarded failure would end the gate outright when the right answer
+          # is to ask again in thirty seconds — and `gh` prints an error BODY
+          # to stdout, so a blipped call would otherwise hand back a 404 blob
+          # that reads as "runs exist, none of them green" and fail the
+          # release. Silence on error; the caller treats that as "not yet".
+          verdicts() {
+            local out
+            if out=$(gh api \
+                  "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=30" \
+                  --jq '[.workflow_runs[] | "\(.status)/\(.conclusion // "-")"] | join(" ")' \
+                  2>/dev/null); then
+              printf '%s' "$out"
+            fi
+          }
+
+          DEADLINE=$(( SECONDS + 45 * 60 ))
+          while :; do
+            LIST=$(verdicts)
+            echo "runs for this commit: ${LIST:-<none yet>}"
+
+            case " $LIST " in
+              *" completed/success "*)
+                echo "CI passed on $SHA. Publishing." ; exit 0 ;;
+            esac
+
+            # Nothing pending means every run there is has finished, and none
+            # of them passed. Waiting longer cannot change that.
+            if [ -n "$LIST" ] && ! printf '%s' "$LIST" \
+                 | grep -qE '(queued|in_progress|waiting|requested|pending)'; then
+              echo "::error::CI did not pass on $SHA (runs: $LIST). Fix the" \
+                   "failure and re-run this workflow — the release is not" \
+                   "published on a red suite."
+              exit 1
+            fi
+
+            if [ "$SECONDS" -ge "$DEADLINE" ]; then
+              if [ -z "$LIST" ]; then
+                # The case that bit on 6 August: no run was ever created. Say
+                # both causes, because "CI did not pass" would be a lie —
+                # CI was never asked.
+                echo "::error::No CI run exists for $SHA after 45 minutes." \
+                     "Either the tagged commit is not on main (CI runs on" \
+                     "pushes to main), or the account is out of Actions" \
+                     "minutes and GitHub is creating no runs at all. Check" \
+                     "the Actions tab and the billing page."
+              else
+                echo "::error::CI was still running on $SHA after 45 minutes" \
+                     "(runs: $LIST). Re-run this workflow once it settles."
+              fi
+              exit 1
+            fi
+            sleep 30
+          done
 
   publish:
     name: Publish the release
