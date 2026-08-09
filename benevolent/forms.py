@@ -68,98 +68,81 @@ class EventTypeForm(StyledFormMixin, forms.ModelForm):
         return obj
 
 
+# The policy form is grouped so the 54 rules read as a constitution rather than
+# a wall of fields. Each group is a chapter a church's document actually has.
+#
+# This lives at module level, above the form, for one reason: `Meta.fields` has
+# to be built from it, and a nested `class Meta` body cannot see names in the
+# enclosing class body. It used to be written out TWICE — once as
+# `PolicyForm.GROUPS` for rendering and once, copied, inside `Meta.fields` for
+# saving — and the two copies drifted exactly as a duplicated rule always does:
+# `funding_methods` was added to the rendering copy and not to the saving one,
+# so "What may fund this scheme" rendered, validated, and was thrown away on
+# every save. A treasurer ticked two boxes, the policy saved, and the scheme
+# permitted neither — while the wizard and the policy profiles DID write the
+# field, so editing any other rule on this screen silently wiped a rule the
+# church had adopted. One list now feeds both, so a rule that renders is a rule
+# that saves, and no future field can go the same way.
+POLICY_GROUPS = [
+    ("Membership & eligibility",
+     ["membership_required", "waiting_period_days", "min_contributions",
+      "min_paid_months", "no_missed_contributions", "missed_contributions_allowed",
+      "arrears_treatment", "max_arrears_allowed", "max_arrears_periods",
+      "arrears_block", "catch_up_restores_eligibility", "catch_up_requalify_days",
+      "grace_period_days"]),
+    ("Registration",
+     ["registration_required", "registration_approval", "registration_fee",
+      "registration_fee_refundable", "require_registration_form",
+      "require_id_document", "min_age", "max_age", "exemption_age"]),
+    ("Renewals",
+     ["renewal_required", "renewal_period", "renewal_fee", "renewal_month",
+      "renewal_grace_days", "lapse_on_non_renewal"]),
+    ("Contributions & funding",
+     ["contribution_mode", "contribution_amount", "contribution_frequency",
+      "levy_amount", "max_levies_per_year", "joining_fee", "funding_methods"]),
+    ("The benefit",
+     ["benefit_mode", "benefit_amount", "benefit_percent", "benefit_cap",
+      "benefit_floor", "benefit_rounding"]),
+    ("Approval",
+     ["approval_mode", "committee_threshold", "committee_quorum",
+      "committee_requires_chair", "require_different_approver"]),
+    ("The member a case is about",
+     ["bereaved_contribution_policy", "bereaved_reduction_percent",
+      "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
+    ("Inactivity & lapsing",
+     ["inactivity_months", "inactivity_missed_cases", "inactivity_missed_cases_window",
+      "inactivity_action", "reinstatement_fee", "reinstatement_waiting_days"]),
+    ("Household & dependants",
+     ["household_mode", "max_dependants", "dependant_age_limit",
+      "max_household_size", "spouse_auto_covered"]),
+    ("On a member's death",
+     ["inheritance_mode", "transfer_membership_on_death",
+      "refund_contributions_on_exit", "refund_percent"]),
+    ("Claims",
+     ["claim_window_days", "max_claims_per_year", "max_benefit_per_year",
+      "require_documents", "allow_override", "allow_exemptions",
+      "allow_transfers"]),
+]
+
+
 class PolicyForm(StyledFormMixin, forms.ModelForm):
     """Every rule the engine can enforce, on one form. Adding a rule to the
     engine means adding a field here and a check in the eligibility service —
     never a new code path per scheme."""
 
-    # The form is grouped so the 54 rules read as a constitution rather than a
-    # wall of fields. Each group is a chapter a church's document actually has.
-    GROUPS = [
-        ("Membership & eligibility",
-         ["membership_required", "waiting_period_days", "min_contributions",
-          "min_paid_months", "no_missed_contributions", "missed_contributions_allowed",
-          "arrears_treatment", "max_arrears_allowed", "max_arrears_periods",
-          "arrears_block", "catch_up_restores_eligibility", "catch_up_requalify_days",
-          "grace_period_days"]),
-        ("Registration",
-         ["registration_required", "registration_approval", "registration_fee",
-          "registration_fee_refundable", "require_registration_form",
-          "require_id_document", "min_age", "max_age", "exemption_age"]),
-        ("Renewals",
-         ["renewal_required", "renewal_period", "renewal_fee", "renewal_month",
-          "renewal_grace_days", "lapse_on_non_renewal"]),
-        ("Contributions & funding",
-         ["contribution_mode", "contribution_amount", "contribution_frequency",
-          "levy_amount", "max_levies_per_year", "joining_fee", "funding_methods"]),
-        ("The benefit",
-         ["benefit_mode", "benefit_amount", "benefit_percent", "benefit_cap",
-          "benefit_floor", "benefit_rounding"]),
-        ("Approval",
-         ["approval_mode", "committee_threshold", "committee_quorum",
-          "committee_requires_chair", "require_different_approver"]),
-        ("The member a case is about",
-         ["bereaved_contribution_policy", "bereaved_reduction_percent",
-          "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
-        ("Inactivity & lapsing",
-         ["inactivity_months", "inactivity_missed_cases", "inactivity_missed_cases_window",
-          "inactivity_action", "reinstatement_fee", "reinstatement_waiting_days"]),
-        ("Household & dependants",
-         ["household_mode", "max_dependants", "dependant_age_limit",
-          "max_household_size", "spouse_auto_covered"]),
-        ("On a member's death",
-         ["inheritance_mode", "transfer_membership_on_death",
-          "refund_contributions_on_exit", "refund_percent"]),
-        ("Claims",
-         ["claim_window_days", "max_claims_per_year", "max_benefit_per_year",
-          "require_documents", "allow_override", "allow_exemptions",
-          "allow_transfers"]),
-    ]
+    GROUPS = POLICY_GROUPS
 
     class Meta:
         model = SchemePolicy
-        fields = ["effective_from"] + [
-            f for _g, fs in [
-                ("Membership & eligibility",
-                 ["membership_required", "waiting_period_days", "min_contributions",
-                  "min_paid_months", "no_missed_contributions", "missed_contributions_allowed",
-                  "arrears_treatment", "max_arrears_allowed", "max_arrears_periods",
-                  "arrears_block", "catch_up_restores_eligibility", "catch_up_requalify_days",
-                  "grace_period_days"]),
-                ("Registration",
-                 ["registration_required", "registration_approval", "registration_fee",
-                  "registration_fee_refundable", "require_registration_form",
-                  "require_id_document", "min_age", "max_age", "exemption_age"]),
-                ("Renewals",
-                 ["renewal_required", "renewal_period", "renewal_fee", "renewal_month",
-                  "renewal_grace_days", "lapse_on_non_renewal"]),
-                ("Contributions & funding",
-                 ["contribution_mode", "contribution_amount", "contribution_frequency",
-                  "levy_amount", "max_levies_per_year", "joining_fee"]),
-                ("The benefit",
-                 ["benefit_mode", "benefit_amount", "benefit_percent", "benefit_cap",
-                  "benefit_floor", "benefit_rounding"]),
-                ("Approval",
-                 ["approval_mode", "committee_threshold", "committee_quorum",
-          "committee_requires_chair", "require_different_approver"]),
-                ("The member a case is about",
-                 ["bereaved_contribution_policy", "bereaved_reduction_percent",
-                  "bereaved_deduct_own_levy", "bereaved_dues_waiver_months"]),
-                ("Inactivity & lapsing",
-                 ["inactivity_months", "inactivity_missed_cases", "inactivity_missed_cases_window",
-                  "inactivity_action", "reinstatement_fee", "reinstatement_waiting_days"]),
-                ("Household & dependants",
-                 ["household_mode", "max_dependants", "dependant_age_limit",
-                  "max_household_size", "spouse_auto_covered"]),
-                ("On a member's death",
-                 ["inheritance_mode", "transfer_membership_on_death",
-                  "refund_contributions_on_exit", "refund_percent"]),
-                ("Claims",
-                 ["claim_window_days", "max_claims_per_year", "max_benefit_per_year",
-                  "require_documents", "allow_override", "allow_exemptions",
-                  "allow_transfers"]),
-            ] for f in fs
-        ] + ["notes"]
+        # Derived from POLICY_GROUPS, never listed again by hand: a ModelForm
+        # only writes the fields Meta names, so a rule missing from here is a
+        # rule the screen collects and discards. See the note on POLICY_GROUPS
+        # for the save that ate `funding_methods` for exactly that reason.
+        # `effective_from` and `notes` are outside the chapters — the first is
+        # rendered on its own by the template, the second is not a rule.
+        fields = (["effective_from"]
+                  + [f for _group, fs in POLICY_GROUPS for f in fs]
+                  + ["notes"])
         widgets = {
             "effective_from": forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(attrs={"rows": 3}),
@@ -178,6 +161,11 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
         if not self.instance.pk:
             self.fields["effective_from"].initial = dt.date.today()
         if self.instance.pk:
+            # A declared MultipleChoiceField, not the model field, so the tick
+            # boxes come back ticked from the saved list rather than from the
+            # JSONField's raw value — and `or []` because a row written before
+            # the column had a default holds NULL, which would render as the
+            # string "None" against every box.
             self.fields["funding_methods"].initial = self.instance.funding_methods or []
         self._style()
 
@@ -214,6 +202,11 @@ class PolicyForm(StyledFormMixin, forms.ModelForm):
         return out
 
     def clean_funding_methods(self):
+        # Coerced to a plain list because this value is now written straight
+        # into a JSONField and stored verbatim — whatever shape leaves here is
+        # the shape `_check_funding_method()` reads back and every case's
+        # policy_snapshot freezes. `None` from an untouched checkbox group must
+        # become [], meaning "nothing declared", not null.
         return list(self.cleaned_data.get("funding_methods") or [])
 
     def clean(self):

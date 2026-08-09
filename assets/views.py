@@ -144,14 +144,24 @@ class AssetDisposeView(TreasurerRequiredMixin, View):
         # the balancing gain/(loss) — so the proceeds are not double-counted and
         # the disposal is a proper journal.
         #
-        # All three writes are one atomic act. A disposal used to reach the
+        # All four writes are one atomic act. A disposal used to reach the
         # ledger only when someone next rebuilt it; now it posts here, and if
         # that posting cannot be written the register is not left claiming a
         # disposal the ledger has never heard of — the whole thing is rolled
         # back and the treasurer told, rather than half-recorded in silence.
+        # The status belongs inside the same block for the same reason: an
+        # asset shown as sold on its own page while the board still lists it
+        # under "Held for disposal" is the register disagreeing with itself.
         try:
             with db_tx.atomic():
                 a.save()
+                # The document reports the status; lifecycle owns what it may be.
+                # It is asked AFTER the save because it refuses to move an asset
+                # to DISPOSED that does not already carry a recorded disposal —
+                # which is what keeps its bare-status-change refusal meaningful.
+                lifecycle.mark_disposed(
+                    a, user=request.user,
+                    note=a.get_disposal_method_display().lower())
                 if proceeds and fund:
                     Transaction.objects.create(
                         date=on, channel=Transaction.Channel.BANK,
@@ -343,7 +353,9 @@ class DepreciationRunsView(_ReadMixin, View):
 
     Viewing is read-access; generating and posting are treasurer actions. The
     register↔ledger reconciliation is shown at the top so the treasurer can see
-    at a glance whether the control accounts agree with the register."""
+    at a glance whether the control accounts agree with the register — asked at
+    the month end this page can post a run for, which is the only date at which
+    the question has an answer this page can act on. See `get`."""
     template_name = "assets/depreciation_runs.html"
 
     def get(self, request):
@@ -356,10 +368,46 @@ class DepreciationRunsView(_ReadMixin, View):
                          if r.status != DepreciationRun.Status.DRAFT}
         # the next month that still needs a run (previous calendar month, if unposted)
         prev = today.replace(day=1) - _d.timedelta(days=1)
+        # THE CONTROL IS ASKED AT `prev`, NOT AT TODAY, and that is the whole of
+        # its honesty. The two sides of the comparison are cut off differently:
+        # the register charges a whole month from its FIRST day
+        # (depreciation.months_between counts the commissioning month in full),
+        # so on 9 August it already carries August; the ledger can only carry a
+        # run dated at that run's own month end (runs.generate_run), and the
+        # comparison filters entry__date__lte. Asked at today, the control
+        # therefore read RED by exactly one month's charge for the whole
+        # register on about thirty days in thirty-one — 662,000 against 636,000
+        # on a register that was perfectly correct — and prescribed "post any
+        # outstanding monthly runs below", which could not close it: the current
+        # month's run is dated after the date being asked about, and this page
+        # does not offer it anyway. A verdict that is red whatever you do is a
+        # verdict nobody reads, and a REAL break (register value the ledger has
+        # never heard of) would have been sitting in the same red panel,
+        # indistinguishable from the calendar.
+        #
+        # `prev` is exactly the month end of the run this page offers, so every
+        # break the control can now report is one the page itself can act on.
+        # The month-from-the-first convention is deliberately NOT touched: it
+        # decides net book value on the register, the carrying amount every
+        # disposal is struck against and every published statement, so moving it
+        # to settle an argument on one screen would restate figures the church
+        # has already reported.
+        control_as_of = prev
+        control = metrics.register_vs_ledger(control_as_of)
+        reconciled = all(v["diff"] == 0 for v in control.values())
+        # What the register says TODAY, so the page can name the part of the gap
+        # that is only the calendar rather than leave the treasurer to find the
+        # same difference elsewhere in the app and read it as a break. The
+        # template shows it only when it is positive: an asset disposed of since
+        # the control date leaves the register population altogether, taking its
+        # accumulated depreciation with it, and "the register has since charged
+        # minus 40,000" would explain nothing.
         rec = metrics.register_vs_ledger(today)
-        reconciled = all(v["diff"] == 0 for v in rec.values())
+        in_month_charge = rec["accdep"]["register"] - control["accdep"]["register"]
         return render(request, self.template_name, {
             "runs": runs, "rec": rec, "reconciled": reconciled,
+            "control": control, "control_as_of": control_as_of,
+            "as_of_today": today, "in_month_charge": in_month_charge,
             "suggest_year": prev.year, "suggest_month": prev.month,
             "suggest_pending": (prev.year, prev.month) not in posted_months,
             "can_manage": _roles.can_approve(request.user),

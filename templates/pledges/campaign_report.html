@@ -71,7 +71,15 @@ to look merely complete.{% endcomment %}
 {% endif %}
 
 <div class="ws-summary u-mb">
-  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ totals.amount|money:0 }}</span></div>
+  {% comment %}The "awaiting approval" line is not decoration: the table below
+     LISTS draft pledges (marked as such in their Status column) while every
+     figure in this row EXCLUDES them, so without it the Pledged column visibly
+     does not add up to its own total and the reader is left to guess whether
+     the report or their arithmetic is wrong. Saying the gap out loud is what
+     makes the two consistent. The figures exclude drafts deliberately — an
+     unreviewed promise must not move a total a board is given.{% endcomment %}
+  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v">{{ totals.amount|money:0 }}</span>
+    {% if totals.awaiting_n %}<span class="wm-sub">plus {{ totals.awaiting_amount|money:0 }} from {{ totals.awaiting_n }} awaiting approval, not counted</span>{% endif %}</div>
   <div class="ws-metric"><span class="wm-l">Given</span><span class="wm-v">{{ totals.paid|money:0 }}</span></div>
   <div class="ws-metric"><span class="wm-l">Balance</span><span class="wm-v">{{ totals.outstanding|money:0 }}</span></div>
   <div class="ws-metric"><span class="wm-l">Members</span><span class="wm-v">{{ totals.n }}</span></div>

@@ -73,6 +73,26 @@ def _sabbath_section(sabbath, items, rollup):
     }
 
 
+def _parse_month(raw):
+    """``(year, month)`` for a ``YYYY-MM`` string, or None if it is not one.
+
+    Written once and shared because two views read this same parameter — the
+    month overview and the "Receipt bank giving" form that posts back from it,
+    whose hidden field is filled from the overview's own month_value — and the
+    copy each of them carried inline had already drifted into accepting a
+    month it could not then show: `int()` is perfectly happy with "2026-13",
+    so the parse succeeded and the page died a few lines later inside
+    dt.date(2026, 13, 1) with a 500 instead of saying the month was wrong.
+    Building the 1st of the month here is the validation, not a formality.
+    """
+    try:
+        year, month = (int(x) for x in (raw or "").split("-"))
+        dt.date(year, month, 1)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return year, month
+
+
 class EnvelopeListView(ReadAccessMixin, View):
     """Month overview: one summary card per Sabbath — totals, trust/local,
     channel mix and the per-fund breakdown. The envelopes themselves live on
@@ -83,11 +103,41 @@ class EnvelopeListView(ReadAccessMixin, View):
 
     def get(self, request):
         today = dt.date.today()
-        raw = request.GET.get("month")
-        try:
-            year, month = (int(x) for x in raw.split("-")) if raw else (today.year, today.month)
-        except (ValueError, AttributeError):
-            year, month = today.year, today.month
+        raw_month = request.GET.get("month")
+        raw_date = request.GET.get("date")
+        picked = _parse_month(raw_month)
+
+        # ?date=<a single day> means "the month whose page that day's giving
+        # appears on". Half a dozen redirects in this file come back here that
+        # way after acting on one Sabbath's receipts — deleting an envelope,
+        # bulk-reversing a Sabbath, sending its receipts — and this view used
+        # to read `month` and nothing else, throwing `date` away without a
+        # word. Every one of those redirects therefore landed on TODAY's
+        # month: a success message about receipts, printed over a page that
+        # could not possibly contain them, and no clue that the parameter had
+        # been ignored. Resolved through sabbath_bucket rather than the raw
+        # day's own month because that is how this page files an envelope — a
+        # gift given on Sunday 28 June is counted on Saturday 4 July, so its
+        # receipts are on the JULY page, not June's.
+        if picked is None and raw_date:
+            try:
+                sab = sabbath_bucket(dt.date.fromisoformat(raw_date))
+                picked = (sab.year, sab.month)
+            except (TypeError, ValueError):
+                picked = None
+
+        if picked is None and (raw_month or raw_date):
+            # Falling back to the current month is fine; falling back to it in
+            # SILENCE is what let the ignored ?date= above survive unnoticed
+            # for as long as it did. If a caller asked for a month this page
+            # cannot show, the treasurer is told which month they are looking
+            # at instead of quietly being shown the wrong one.
+            messages.error(
+                request,
+                f"'{raw_month or raw_date}' is not a month this page can show "
+                f"— showing {today:%B %Y}.")
+
+        year, month = picked or (today.year, today.month)
 
         saturdays = _saturdays_of_month(year, month)
         # A real, separate bug found while reviewing "does any page load
@@ -573,7 +623,19 @@ class EnvelopeBatchPostView(TreasurerRequiredMixin, View):
             return redirect("envelope_batch_detail", pk=batch.pk)
         messages.success(request, f"Posted {count} envelope(s) for "
                                   f"{batch.sabbath_date:%d %b %Y}.")
-        return redirect(f"{reverse('envelope_list')}?date={batch.sabbath_date.isoformat()}")
+        # Land on the Sabbath's OWN entries page, not the month overview: the
+        # overview carries one summary card per Sabbath and deliberately shows
+        # no receipts at all, so a treasurer who has just posted a sheet and
+        # wants to check a name, reprint a receipt or correct a figure would
+        # have to navigate to this page by hand — and if the Sabbath fell
+        # outside the current month they were not even shown the right month
+        # to navigate from. This is the page the receipts just created are
+        # actually on. sabbath_of() because the entries page buckets by the
+        # Sabbath a gift is COUNTED on, and a batch may be dated a weekday
+        # (see _save_envelope, which files each envelope the same way): the
+        # raw batch date would open an empty page for a midweek batch.
+        return redirect("envelope_sabbath_entries",
+                        date=sabbath_of(batch.sabbath_date).isoformat())
 
 
 class EnvelopeTemplateView(DataEntryRequiredMixin, View):
@@ -1256,11 +1318,8 @@ class EnvelopePullBankView(DataEntryRequiredMixin, View):
             except ValueError:
                 one_sabbath = None
 
-        raw = request.POST.get("month")
-        try:
-            year, month = (int(x) for x in raw.split("-")) if raw else (today.year, today.month)
-        except (ValueError, AttributeError):
-            year, month = today.year, today.month
+        year, month = (_parse_month(request.POST.get("month"))
+                       or (today.year, today.month))
         if one_sabbath:
             year, month = one_sabbath.year, one_sabbath.month
 

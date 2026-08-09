@@ -481,6 +481,25 @@ class StandingResult:
     workings: list = field(default_factory=list)
 
     @property
+    def label(self):
+        """The one word, as a reader should see it.
+
+        Exists so that a screen showing a standing can take BOTH its wording and
+        its colour from this one object. Without it a template had no live text
+        to render — only the code — so it coloured the pill from the live
+        assessment and worded it from the cached column, and when the two
+        disagreed a member was shown a GREEN pill reading "In arrears" directly
+        above "Owing KSh 0.00 · Nothing outstanding". The cache is now refreshed
+        when dues are paid, which removed that particular contradiction, but the
+        cache can only ever be as fresh as the last event and standing moves with
+        the calendar — a grace period lapses at midnight with nothing to record —
+        so an element that reads two sources will disagree again eventually. One
+        element, one source.
+        """
+        from benevolent.models_registry import Standing
+        return Standing(self.standing).label if self.standing else ""
+
+    @property
     def covered(self):
         """Would this standing, on its own, let the member claim?
 

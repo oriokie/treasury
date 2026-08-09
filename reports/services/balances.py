@@ -217,7 +217,56 @@ def _department_summary_impl(start=None, end=None, consolidated=True):
                 op_only,                       # operating expenses (excl remittance)
                 full - op_only)                # remittances
 
-    all_depts = list(Department.objects.filter(active=True))
+    def _holds_or_moved(dept):
+        """Has this fund anything at all to report — a balance on either side
+        of the period, or movement inside it? A fund that answers no to every
+        one of these would print as a row of zeros."""
+        op, rcv, exp, ti, to, exp_op, remit = metrics(dept)
+        return any((op, rcv, exp, ti, to, exp_op, remit,
+                    op + rcv - exp + ti - to))
+
+    # Which funds get a row. NOT "the open ones". A closed fund does not stop
+    # existing, and the close screen promises as much in its own success
+    # message: "It stays in historical reports but won't accept new
+    # transactions." Filtering on `active` broke that promise at the one seam
+    # where a closed fund can still be holding money. The close gate tests the
+    # balance only at the moment of closing, and the #63 fix deliberately lets
+    # an APPROVED envelope batch post into a fund closed after it was approved
+    # — the money was given while the fund was open, and refusing it would
+    # lose cash already counted, receipted and sitting in the safe. A fund
+    # closed in that window ends the day with a balance and no row anywhere
+    # here: one Sabbath posted 23,700 in full, the Collections Summary said
+    # 23,700, and this report said 22,950 because the closed fund's 750 had no
+    # line at all. A fund missing from a report reads exactly like a fund that
+    # received nothing.
+    #
+    # So a fund earns its row by being open, or by having something to show.
+    # That second test is what keeps the register's dead wood off every
+    # statement: the ordinary closed fund is at zero with no movement — the
+    # close gate saw to that — and stays off the report exactly as before.
+    everyone = list(Department.objects.all())
+    by_id = {d.id: d for d in everyone}
+    included = {d.id for d in everyone if d.active or _holds_or_moved(d)}
+    if consolidated:
+        # A sub-account is only ever printed inside its parent's row, so a
+        # parent left out takes its children's money down with it. Closing a
+        # parent closes its sub-accounts too, so the window above lands on a
+        # sub just as readily as on a top-level fund — and then the sub holds
+        # the money while the parent, judged on its own figures, still has
+        # nothing to show. Dropping the parent would hide the sub as
+        # completely as filtering it out directly. Ancestors of anything
+        # already in are therefore pulled in as the row their children are
+        # reported on, however empty they are in themselves. Unconsolidated
+        # does not do this: there every fund prints its own row, so an empty
+        # parent would be nothing but a line of zeros.
+        for did in list(included):
+            parent = by_id.get(by_id[did].parent_id)
+            while parent is not None and parent.id not in included:
+                included.add(parent.id)
+                parent = by_id.get(parent.parent_id)
+    # rebuilt from `everyone` so the register's own ordering (fund type, then
+    # name) survives, rather than the order ancestors happened to be found in
+    all_depts = [d for d in everyone if d.id in included]
     if not consolidated:
         rows = []
         for dept in all_depts:

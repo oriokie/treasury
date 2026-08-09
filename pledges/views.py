@@ -88,6 +88,13 @@ class CampaignDetailView(ReadAccessMixin, TemplateView):
         ctx["q"] = q
         ctx["f_status"] = status or ""
         ctx["statuses"] = Pledge.Status.choices
+        # Off the campaign, not off `pledges`: the list above is whatever the
+        # treasurer last filtered to, and the headline metric is about the
+        # appeal. The headline states the promises the campaign counts, so the
+        # ones it does not count have to be said somewhere or a draft simply
+        # vanishes from the page a treasurer reviews drafts on.
+        ctx["awaiting_approval"] = c.pledges.filter(
+            status=Pledge.Status.DRAFT).count()
         ctx["fulfilled"] = sum(1 for p in pledges if p.status == Pledge.Status.FULFILLED)
         ctx["lapsed"] = sum(1 for p in pledges if p.status == Pledge.Status.LAPSED)
         return ctx
@@ -550,6 +557,19 @@ class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
             pk=self.kwargs.get("pk") or self.request.GET.get("campaign")).first()
 
     def _rows(self, campaign):
+        """Every promise on the campaign's books bar the cancelled ones.
+
+        Listing a draft is deliberate — a treasurer reading down this report
+        wants to see what is still waiting for her — but listing it and
+        *counting* it are two different questions, and only the second has one
+        right answer in this application. `counted` carries the campaign's own
+        answer (`PledgeCampaign.counted_pledges`, i.e. RECOGNISED_STATUSES)
+        down to `_totals` rather than the report deciding for itself: read from
+        the campaign, the report follows automatically if that definition ever
+        grows another condition, which is precisely how the two drifted apart
+        in the first place.
+        """
+        counted = set(campaign.counted_pledges.values_list("pk", flat=True))
         qs = (Pledge.objects.filter(campaign=campaign)
               .exclude(status=Pledge.Status.CANCELLED)
               .select_related("member").prefetch_related("member__tags")
@@ -563,6 +583,7 @@ class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
                 "tags": list(p.member.tags.all()),
                 "amount": p.amount, "paid": p.paid,
                 "outstanding": outstanding, "status": p.get_status_display(),
+                "counted": p.pk in counted,
                 "overdue": bool(p.end_date and p.end_date < today
                                 and outstanding > 0),
                 "pct": (int(min(p.paid / p.amount * 100, 100))
@@ -617,12 +638,34 @@ class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
 
     @staticmethod
     def _totals(rows):
-        from decimal import Decimal
+        """The figures, over the promises the campaign actually recognises.
+
+        A draft is a promise nobody has checked yet, and since the public
+        pledge link went in anyone with the URL can create one by typing it.
+        This row used to add up everything that was not CANCELLED, so 60,000
+        approved beside a 40,000 draft made the report state 100,000 pledged
+        while the campaign page, the public standing block and
+        `PledgeCampaign.total_pledged` all stated 60,000 — and it fed
+        `_goal_figures`, so the "% of goal pledged" band inherited the same
+        inflation. This is the copy that gets printed and carried to a board
+        meeting, which is the one place the figure is read with nothing beside
+        it to contradict it. Nothing here is money, which is why it survived so
+        long: no balance was wrong, only what the church believed it had been
+        promised.
+
+        `awaiting_*` keeps the drafts a stated figure rather than a silent
+        omission, so the difference between the rows and the total is
+        explainable rather than merely puzzling.
+        """
+        counted = [r for r in rows if r["counted"]]
+        waiting = [r for r in rows if not r["counted"]]
         return {
-            "n": len(rows),
-            "amount": sum((r["amount"] for r in rows), Decimal(0)),
-            "paid": sum((r["paid"] for r in rows), Decimal(0)),
-            "outstanding": sum((r["outstanding"] for r in rows), Decimal(0)),
+            "n": len(counted),
+            "amount": sum((r["amount"] for r in counted), Decimal(0)),
+            "paid": sum((r["paid"] for r in counted), Decimal(0)),
+            "outstanding": sum((r["outstanding"] for r in counted), Decimal(0)),
+            "awaiting_n": len(waiting),
+            "awaiting_amount": sum((r["amount"] for r in waiting), Decimal(0)),
         }
 
     def _groups(self, rows):
@@ -676,6 +719,14 @@ class CampaignPledgeReportView(ReadAccessMixin, TemplateView):
         t = self._totals(rows)
         data.append(["TOTAL", "", float(t["amount"]), float(t["paid"]),
                      float(t["outstanding"]), ""])
+        if t["awaiting_n"]:
+            # A workbook outlives the screen it came off, and whoever opens it
+            # next will add the Pledged column up by hand. The draft rows are
+            # in that column and not in the TOTAL, so the sheet has to say so
+            # itself rather than leave a difference nobody can account for.
+            data.append(["AWAITING APPROVAL — not in the TOTAL above", "",
+                         float(t["awaiting_amount"]), "", "",
+                         f"{t['awaiting_n']} draft pledge(s)"])
         name = f"pledges_{campaign.pk}"
         if fmt == "xlsx":
             return xlsx_response(f"{name}.xlsx", header, data,

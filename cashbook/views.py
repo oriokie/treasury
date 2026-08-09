@@ -67,6 +67,106 @@ def _fund_available(dept_id, as_of):
     return fund_balance(dept_id, as_of)
 
 
+# ---------------------------------------------------------------------------
+# Payments that settle a payable or an accrual
+#
+# An expense linked to an obligation is a payment on a debt, and two rules
+# follow from that. Both live here, once, because every screen in this module
+# that can create such a payment or move its status has to obey them, and the
+# last time one of them was left to "each screen remembering" a 100,000
+# invoice was paid twice — 200,000 out of the fund, no warning.
+# ---------------------------------------------------------------------------
+
+def _paid_obligation(expense):
+    """The payable or accrual this expense is an instalment on, or None."""
+    return expense.payable or expense.accrual
+
+
+def _refresh_paid_obligation(expense):
+    """Re-derive the settled flags on whatever obligation `expense` pays.
+
+    The `settled`/`settled_on` columns are a CACHE of what the *counted*
+    payments say (APPROVED or PAID — a claim nobody has authorised has not
+    discharged anything). So the cache goes stale the moment a payment's status
+    moves, and until this was called from the approval routes it never moved:
+    a bill paid in full through "Pay in detail" was recorded PENDING, refreshed
+    to `settled=False`, approved — and stayed False for ever, because approval
+    told nobody. `ExpenseCreate._settle_target` then offered the discharged
+    bill again and took a second payment of the whole invoice.
+
+    Called from every place in this module that changes an expense's status or
+    its obligation link, rather than from a `post_save` signal: `refresh_
+    settlement` is documented as the ONLY writer of those flags and a signal
+    would keep that true, but it would also fire on every expense save in the
+    application while silently missing the bulk `.update()` paths (the same
+    trap cashbook/signals.py already warns about for asset cost) — an
+    appearance of completeness that is worse than an explicit call.
+    """
+    obligation = _paid_obligation(expense)
+    if obligation is None:
+        return None
+    from .services import obligations as obligation_svc
+    obligation_svc.refresh_settlement(obligation)
+    return obligation
+
+
+def _oversettlement_refusal(obligation, amount):
+    """The sentence refusing `amount` as a payment on `obligation`, or None.
+
+    The rule `services.payables.settle` already applies — "that is more than is
+    still owed", refused rather than quietly capped, because paying past a bill
+    is either a typo or a credit the supplier now holds and only a human can
+    say which. The expense form reaches the same obligations by a different
+    door and never asked, so the rule is asked here and answered from
+    `balance_asof` — the one figure that decides what is owed, flag-only
+    legacy settlements included (see SettleableObligation).
+
+    Ask this at the moment a payment starts COUNTING, not when it is keyed. In
+    a church that requires approval a pending payment reduces nothing, so two
+    pending instalments of the whole invoice both look affordable at entry and
+    the arithmetic only goes wrong when the second one is approved. Entry is
+    therefore the wrong gate; the status change is the only one that can hold.
+    """
+    owed = obligation.balance_asof()
+    if amount <= owed:
+        return None
+    who = getattr(obligation, "vendor", "") or obligation.description
+    return (f"{who} is owed {_currency()}{owed:,.2f}, and this payment of "
+            f"{_currency()}{amount:,.2f} would take the total paid past the "
+            f"amount of the bill. Detach the payment from it, or correct the "
+            f"amount — paying twice for one debt cannot be undone by a report.")
+
+
+def _settlement_is_flag_only(obligation):
+    """A discharged obligation whose ONLY evidence is the cached flag.
+
+    Every settlement made before instalments existed looks like this: somebody
+    ticked it settled and no expense was ever linked, so `balance_asof`
+    believes the flag precisely because there is nothing better to believe.
+    That belief is fragile in a way the flag's other readers are not: attaching
+    ANY payment row — even one nobody has approved — makes `refresh_settlement`
+    re-derive the flag from the payments, find none that count, and write False.
+    The evidence is then gone and the debt looks open again.
+
+    So nothing is ever linked to such a row. The alternative (link it and rely
+    on the approval gate) destroys the record on the way past.
+    """
+    return not obligation.paid_asof() and obligation.balance_asof() <= 0
+
+
+def _refuses_as_overpayment(expense):
+    """The refusal for letting `expense` start counting against its obligation.
+
+    None when there is no obligation, when the expense already counts (marking
+    an approved payment PAID adds nothing to the debt and must not be blocked),
+    or when the obligation has room for it.
+    """
+    obligation = _paid_obligation(expense)
+    if obligation is None or expense.status in obligation.COUNTED_STATUSES:
+        return None
+    return _oversettlement_refusal(obligation, expense.amount)
+
+
 class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
     model = Expense
     template_name = "cashbook/list.html"
@@ -248,16 +348,25 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
     def _settle_target(self):
         """Resolve a ?settle=payable:5 / accrual:3 marker to the obligation being
         paid, so settling opens this form pre-filled and editable (method,
-        claimant, charges) instead of silently posting a fixed expense."""
+        claimant, charges) instead of silently posting a fixed expense.
+
+        Resolved WITHOUT `settled=False`. That filter read the cache to decide
+        whether a debt could be paid again, which is the fault it was meant to
+        prevent: the flag only counts approved payments, so a bill paid in full
+        and awaiting approval came back as unsettled and was offered a second
+        time. The row is resolved whatever the flag says, the payment is linked
+        to it, and `_refuses_as_overpayment` decides — from the balance — at
+        the moment the money would start counting.
+        """
         from .models import Payable, Accrual
         raw = self.request.GET.get("settle") or self.request.POST.get("settle") or ""
         kind, _, sid = raw.partition(":")
         if not sid.isdigit():
             return None, None
         if kind == "payable":
-            return "payable", Payable.objects.filter(pk=sid, settled=False).first()
+            return "payable", Payable.objects.filter(pk=sid).first()
         if kind == "accrual":
-            return "accrual", Accrual.objects.filter(pk=sid, settled=False).first()
+            return "accrual", Accrual.objects.filter(pk=sid).first()
         return None, None
 
     def get_initial(self):
@@ -276,8 +385,11 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                 "description": getattr(obj, "description", "")[:200],
                 # The balance, not the invoice total: a payable already part
                 # paid should open at what is left, or the treasurer has to
-                # work it out and retype it every instalment.
-                "amount": getattr(obj, "balance", None) or obj.amount,
+                # work it out and retype it every instalment. Left blank on a
+                # discharged obligation rather than falling back to the invoice
+                # total, which offered the whole bill again on a bill already
+                # paid — one Enter away from paying it twice.
+                "amount": obj.balance_asof() or None,
                 "category": obj.category,
                 "method": Expense.Method.BANK})
         return initial
@@ -289,6 +401,15 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
             ctx["settle"] = f"{kind}:{obj.pk}"
             ctx["settle_label"] = (f"Settling {kind}: {getattr(obj, 'vendor', '') or ''} "
                                    f"{obj.description}".strip())
+            if obj.balance_asof() <= 0:
+                # Reached by a bookmarked or hand-typed ?settle= link, and by
+                # the payables row in the moment before its cache catches up.
+                # Said on the way IN, because the alternative is a treasurer
+                # keying a full second payment and only being told at approval.
+                messages.warning(
+                    self.request,
+                    f"Nothing is owed on this {kind} — it is already paid in "
+                    f"full. A further payment against it cannot be approved.")
         from core.models import SiteConfig
         from core.roles import is_treasurer
         from statements.models import BankAccount
@@ -338,6 +459,28 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
         if auto or (issue_now and is_treasurer(self.request.user)):
             exp.status = Expense.Status.APPROVED
             exp.approved_by = self.request.user
+        # A payment that will COUNT against a payable/accrual the instant it is
+        # written — no approval required, or a treasurer issuing it at entry —
+        # has to be judged before anything is saved, because there is no later
+        # gate to judge it at. Where approval IS required the expense starts
+        # PENDING and discharges nothing, so it is recorded and judged at
+        # approval instead (see `_oversettlement_refusal`).
+        settle_kind, settle_obj = self._settle_target()
+        if settle_obj is not None:
+            refusal = None
+            if _settlement_is_flag_only(settle_obj):
+                who = getattr(settle_obj, "vendor", "") or settle_obj.description
+                refusal = (
+                    f"{who} is recorded as settled with no payment behind it. "
+                    f"That flag is the only evidence the debt was discharged, "
+                    f"and attaching a payment to the row would erase it. If it "
+                    f"was in fact never paid, correct the record on the "
+                    f"payables screen before paying it.")
+            elif exp.status in settle_obj.COUNTED_STATUSES:
+                refusal = _oversettlement_refusal(settle_obj, exp.amount)
+            if refusal:
+                messages.error(self.request, refusal)
+                return self.render_to_response(self.get_context_data(form=form))
         exp.save()
         # optional M-Pesa / bank transaction charge -> separate bank-charge expense
         charge = form.cleaned_data.get("charge")
@@ -384,26 +527,38 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                    f"{exp.amount:,.2f} ({exp.department.name})",
                    link=reverse("expense_list"))
         # if this expense settles a payable/accrual, link and close it
-        kind, obj = self._settle_target()
-        if obj and not obj.settled:
+        kind, obj = settle_kind, settle_obj
+        if obj:
             if kind in ("payable", "accrual"):
                 # A payable may be paid over several instalments, so the expense
                 # is LINKED and the service decides whether that clears it. The
                 # flags are never set here — services.payables.refresh_settlement
                 # is the only writer, which is what keeps them agreeing with the
                 # payments.
-                from .services import obligations as obligation_svc
+                #
+                # Linked whatever the flag said when the form opened. Gating the
+                # link on `not obj.settled` meant a payment keyed while an
+                # earlier instalment was still awaiting approval attached itself
+                # to nothing, and the debt it paid could never see it.
                 field = "accrual" if kind == "accrual" else "payable"
                 setattr(exp, field, obj)
                 exp.save(update_fields=[field])
-                obligation_svc.refresh_settlement(obj)
+                _refresh_paid_obligation(exp)
                 obj.refresh_from_db()
-                if obj.settled:
+                who = getattr(obj, "vendor", "") or obj.description
+                if exp.status == Expense.Status.PENDING:
+                    # Said plainly, because the figure a treasurer walks away
+                    # with has to be the one the books hold: an unapproved
+                    # payment has discharged nothing at all yet.
+                    messages.success(
+                        self.request,
+                        f"Payment against {who} recorded and sent for approval. "
+                        f"{obj.balance:,.2f} is still owing until it is approved.")
+                elif obj.settled:
                     messages.success(
                         self.request,
                         f"{kind.title()} settled in full and recorded as an expense.")
                 else:
-                    who = getattr(obj, "vendor", "") or obj.description
                     messages.success(
                         self.request,
                         f"Part payment recorded. {obj.balance:,.2f} still owing "
@@ -462,6 +617,11 @@ class ExpenseUpdate(DataEntryRequiredMixin, UpdateView):
                     "approval and must be re-approved.")
         exp.sabbath_week = sabbath_week_of(exp.date)
         exp.save()
+        # An edited payment changes what a bill has been paid — by its amount,
+        # by its date, or by being sent back to pending above, which stops it
+        # counting at all. Tell the obligation; a debt whose cached flag was
+        # left behind by an edit reads as settled and gets paid again.
+        _refresh_paid_obligation(exp)
         from core.models import reconciled_period_warning
         warn = reconciled_period_warning(exp.date)
         if warn:
@@ -510,6 +670,16 @@ class ExpenseApprove(TreasurerRequiredMixin, View):
         cfg = SiteConfig.get()
         threshold = cfg.dual_approval_threshold or 0
         needs_two = threshold and exp.amount >= threshold
+        # Approving or paying is the moment a payment on a payable/accrual
+        # starts counting against the debt, so it is the moment the debt has to
+        # be asked whether it has room. Nothing before this point can ask on its
+        # behalf: at entry the payment is PENDING and discharges nothing, which
+        # is exactly how one invoice came to be paid twice in full.
+        if action in ("approve", "pay"):
+            refusal = _refuses_as_overpayment(exp)
+            if refusal:
+                messages.error(request, refusal)
+                return redirect("expense_list")
         if action == "approve":
             if (cfg.require_different_approver
                     and exp.recorded_by_id == request.user.id):
@@ -538,6 +708,9 @@ class ExpenseApprove(TreasurerRequiredMixin, View):
             # do NOT set approved_by on a rejection — it corrupts the audit trail
             # (an auditor would otherwise read "approved by X" on a rejected claim).
             exp.save()
+            # A rejection takes a counted payment back OUT of a debt, so the
+            # obligation it paid has to be told as surely as an approval does.
+            _refresh_paid_obligation(exp)
             from core.services.notifications import notify
             reason = (request.POST.get("note") or "").strip()
             if exp.recorded_by_id and exp.recorded_by_id != request.user.id:
@@ -559,6 +732,7 @@ class ExpenseApprove(TreasurerRequiredMixin, View):
             if not exp.approved_by:
                 exp.approved_by = request.user
         exp.save()
+        _refresh_paid_obligation(exp)
         messages.success(request, f"Expense marked {exp.get_status_display()}.")
         return redirect("expense_list")
 
@@ -585,7 +759,15 @@ class ExpenseDeleteView(TreasurerRequiredMixin, View):
                 "instead of deleting it, so the audit trail shows what "
                 "happened rather than making it disappear.")
             return redirect(request.META.get("HTTP_REFERER") or "expense_list")
+        obligation = _paid_obligation(exp)
         exp.delete()
+        if obligation is not None:
+            # Only PENDING expenses reach here, so nothing counted has gone —
+            # but the flags are refreshed anyway rather than reasoned about, so
+            # that the one thing keeping this cache honest is "every change
+            # tells it", with no exceptions to remember.
+            from .services import obligations as obligation_svc
+            obligation_svc.refresh_settlement(obligation)
         messages.success(request, "Expense deleted.")
         return redirect(request.META.get("HTTP_REFERER") or "expense_list")
 
@@ -1353,6 +1535,40 @@ class AccrualUnlinkPayment(TreasurerRequiredMixin, View):
 
 
 # ============================ Staff advances / imprest ============================
+
+def _petty_float_refusal(on, amount, charge=None, *, available=None):
+    """The sentence refusing a petty-cash disbursement the tin cannot cover, or
+    None when it can.
+
+    The charge is part of the amount asked of the tin, not an afterthought.
+    `_sync_advance_charge` and `_sync_topup_charge` book the bank/M-Pesa sending
+    charge as a FURTHER petty disbursement whenever the advance came out of the
+    float (`paid_from_petty_cash=adv.from_petty_cash`), so a guard that weighs
+    only the cash handed over lets an advance for exactly the float leave the
+    box holding minus the charge. A physical box of notes cannot hold minus
+    anything — and worse, `petty_balance_asof` and the petty-cash register then
+    agree with each other about the impossible figure, so the two readings that
+    exist to cross-check one another both confirm it.
+
+    One function because this rule was written twice and was right once: the
+    top-up screen tested `amount + charge`, the issue screen next to it tested
+    `amount`, and nothing on either form hid the charge box from the other's
+    user. `available` is for the caller that has already worked out a different
+    figure for what the tin can spare (an edit nets out the advance's own
+    existing draw on the float).
+    """
+    from decimal import Decimal
+    amount = amount or Decimal(0)
+    charge = charge or Decimal(0)
+    avail = _petty_balance_asof(on) if available is None else available
+    if amount + charge <= avail:
+        return None
+    wanted = (f"KSh {amount:,.2f}" if not charge else
+              f"KSh {amount:,.2f} plus a KSh {charge:,.2f} sending charge")
+    return (f"The petty-cash float is only KSh {avail:,.2f} on {on:%d %b %Y}; "
+            f"top it up before taking {wanted} out of it.")
+
+
 class AdvanceListView(ReadAccessMixin, ListView):
     template_name = "cashbook/advance_list.html"
     context_object_name = "advances"
@@ -1414,11 +1630,9 @@ class AdvanceCreate(AdvanceAccessMixin, View):
             charge = Decimal(0)
         if from_petty:
             method = "CASH"   # petty cash is, by definition, cash
-            avail = _petty_balance_asof(issued)
-            if amount > avail:
-                messages.error(request,
-                    f"The petty-cash float is only KSh {avail:,.2f} on {issued:%d %b %Y}; "
-                    f"top it up before issuing an advance of KSh {amount:,.2f}.")
+            refusal = _petty_float_refusal(issued, amount, charge)
+            if refusal:
+                messages.error(request, refusal)
                 return redirect("advance_new")
         adv = StaffAdvance.objects.create(
             staff_name=name, department=dept, amount=amount, date_issued=issued,
@@ -1465,9 +1679,21 @@ def apply_advance_edit(adv, post, user, *, allow_petty_toggle=True):
     # own current contribution so an unchanged edit doesn't false-trip)
     if from_petty:
         avail = _petty_balance_asof(issued) + adv.petty_outstanding_asof(issued)
-        if amount - adv.settled_asof(issued) - (adv.returned_to_petty or Decimal(0)) > avail:
-            return False, (f"The petty-cash float can't cover that amount on "
-                           f"{issued:%d %b %Y}.")
+        # The charge already booked for this advance is one of the petty
+        # disbursements `petty_balance_asof` has taken out, and
+        # `_sync_advance_charge` is about to replace it with the new one. Add it
+        # back so the tin is asked about the NEW charge once rather than about
+        # both — the same rule the issue and top-up screens ask, on the figures
+        # an edit leaves standing.
+        old_charge = adv.charge_expense
+        if old_charge is not None and old_charge.paid_from_petty_cash \
+                and old_charge.date <= issued:
+            avail += old_charge.amount
+        still_out = (amount - adv.settled_asof(issued)
+                     - (adv.returned_to_petty or Decimal(0)))
+        refusal = _petty_float_refusal(issued, still_out, charge, available=avail)
+        if refusal:
+            return False, refusal
     adv.staff_name = name[:120]
     adv.department = dept
     adv.amount = amount
@@ -1852,10 +2078,9 @@ class AdvanceTopUpView(AdvanceAccessMixin, View):
         if _block_if_locked(request, d):
             return redirect("advance_detail", pk=pk)
         if adv.from_petty_cash:
-            avail = _petty_balance_asof(d)
-            if amount + charge > avail:
-                messages.error(request, f"The petty-cash float is only KSh {avail:,.2f} "
-                    f"on {d:%d %b %Y}; top it up before issuing more.")
+            refusal = _petty_float_refusal(d, amount, charge)
+            if refusal:
+                messages.error(request, refusal)
                 return redirect("advance_detail", pk=pk)
         tu = AdvanceTopUp.objects.create(advance=adv, date=d, amount=amount,
             charge=charge, note=(request.POST.get("note") or "")[:200],
@@ -2504,6 +2729,13 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
             if period_locked(exp.date):
                 skipped += 1
                 continue
+            # "the same guards as the single action" has to include the
+            # over-settlement guard, or a batch approval becomes the way round
+            # it: tick fifty claims and a second full payment on an already
+            # discharged bill sails through with them.
+            if action in ("approve", "pay") and _refuses_as_overpayment(exp):
+                skipped += 1
+                continue
             if action == "approve" and exp.status == S.PENDING:
                 if require_diff and exp.recorded_by_id == request.user.id:
                     skipped += 1
@@ -2511,11 +2743,13 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
                 exp.status = S.APPROVED
                 exp.approved_by = request.user
                 exp.save()
+                _refresh_paid_obligation(exp)
                 done += 1
             elif action == "reject" and exp.status in (S.PENDING, S.APPROVED):
                 exp.status = S.REJECTED
                 exp.approved_by = request.user
                 exp.save()
+                _refresh_paid_obligation(exp)
                 done += 1
             elif action == "pay" and exp.status == S.APPROVED:
                 needs_two = threshold and exp.amount >= threshold
@@ -2525,9 +2759,18 @@ class ExpenseBulkActionView(TreasurerRequiredMixin, View):
                 exp.status = S.PAID
                 exp.paid_date = dt.date.today()
                 exp.save()
+                _refresh_paid_obligation(exp)
                 done += 1
             elif action == "delete":
+                obligation = _paid_obligation(exp)
                 exp.delete()
+                if obligation is not None:
+                    # The debt outlives the payment row. Deleting the instalment
+                    # puts the money back on the bill, and the cache has to say
+                    # so or the bill reads as settled by a payment that no
+                    # longer exists.
+                    from .services import obligations as obligation_svc
+                    obligation_svc.refresh_settlement(obligation)
                 done += 1
             else:
                 skipped += 1
@@ -2908,7 +3151,11 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
 
     def get(self, request, kind, pk):
         obj = self._obj(kind, pk)
-        if not obj or obj.settled:
+        # `is_settled` — owes nothing — rather than the cached flag. The flag
+        # answers a slightly different question (has an approved payment
+        # cleared it) and the two disagreeing about the same row is what let a
+        # discharged bill be paid a second time.
+        if not obj or obj.is_settled:
             messages.error(request, "That item can't be settled.")
             return redirect("accruals")
         cands = (Expense.objects.filter(department=obj.department,
@@ -2920,11 +3167,19 @@ class SettleAgainstExpenseView(DataEntryRequiredMixin, View):
 
     def post(self, request, kind, pk):
         obj = self._obj(kind, pk)
-        if not obj or obj.settled:
+        if not obj or obj.is_settled:
             messages.error(request, "That item can't be settled.")
             return redirect("accruals")
         exp = get_object_or_404(Expense, pk=request.POST.get("expense"))
         if kind in ("payable", "accrual"):
+            # An expense picked off this list is usually already approved or
+            # paid, so linking it makes it count at once — the same moment an
+            # approval does, and judged by the same rule.
+            if exp.status in obj.COUNTED_STATUSES:
+                refusal = _oversettlement_refusal(obj, exp.amount)
+                if refusal:
+                    messages.error(request, refusal)
+                    return redirect("accruals")
             from .services import obligations as obligation_svc
             field = "accrual" if kind == "accrual" else "payable"
             setattr(exp, field, obj)
