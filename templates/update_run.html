@@ -52,7 +52,22 @@
         } else if(s.finished){
           spin.textContent="";
           if(s.ok){
-            result.innerHTML='<div class="flash success"><strong>Update complete.</strong> The app is reloading — <a href="{% url "settings" %}">refresh in a moment</a>.</div>';
+            /* s.ok means the new code reached the disk, and nothing more. Only
+               s.reload says whether this server was actually put onto it — see
+               core/services/updates.py. This banner used to congratulate every
+               successful run, so on a host the updater cannot restart (no
+               gunicorn master to signal, or the signal refused) a treasurer was
+               told the app was reloading while the old workers carried on
+               serving the version with the bug they had just updated to fix.
+               An undefined s.reload — a handoff file written by an older
+               release — falls to the warning too: telling someone to restart an
+               app that already did is a wasted minute, the other way round is a
+               false clean bill of health. */
+            if(s.reload){
+              result.innerHTML='<div class="flash success"><strong>Update complete.</strong> The app is restarting — <a href="{% url "settings" %}">refresh in a moment</a> and check the version at the foot of the sidebar.</div>';
+            } else {
+              result.innerHTML='<div class="flash warning"><strong>Update installed — but NOT live yet.</strong> The new code is on disk; this server is still serving the old version and will keep doing so until it is restarted. On the server run <code>sudo systemctl restart treasury</code> (systemd), or <code>touch tmp/restart.txt</code> (cPanel/Passenger).</div>';
+            }
           } else {
             result.innerHTML='<div class="flash error"><strong>Update failed.</strong> Your data and backup are safe. You can retry, or update from the server with <code>./update.sh</code>.</div>';
           }

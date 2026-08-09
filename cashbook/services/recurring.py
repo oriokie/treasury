@@ -9,6 +9,7 @@ from calendar import monthrange
 from core.models import SiteConfig, period_locked
 from core.utils import sabbath_week_of
 from cashbook.models import Expense, RecurringExpense
+from cashbook.services.expenses import new_expense_status
 
 
 def due_dates(sched, upto):
@@ -57,9 +58,31 @@ def generate_schedule(sched, upto=None, user=None):
     threshold = cfg.dual_approval_threshold or 0
     high_value = threshold and sched.amount >= threshold
     auto = (not cfg.require_expense_approval) and not high_value
-    status = Expense.Status.APPROVED if auto else Expense.Status.PENDING
     actor = user or sched.created_by          # who recorded the generation
-    approver = sched.created_by               # the schedule's owner approves, not the caller
+    # What state the generated row starts in is NOT decided here. That rule
+    # lives in `services.expenses.new_expense_status`, which the spreadsheet
+    # import and the batch screen both read through `expenses.record`; this
+    # path used to restate it as "APPROVED if auto else PENDING", which is the
+    # rule minus its first and most easily forgotten clause: money paid out of
+    # the petty cash tin has already left the drawer, so the row is PAID, not
+    # awaiting somebody's approval. A schedule with `paid_from_petty_cash` ticked
+    # therefore generated PENDING rows under the default configuration
+    # (`require_expense_approval` defaults on), and `petty_balance_asof` counts
+    # only APPROVED/PAID disbursements — so the float went on reporting cash
+    # the box no longer held, until someone approved a payment that had already
+    # happened.
+    #
+    # The dual-approval threshold still governs `auto` above, and still holds a
+    # high-value bank payment back for sign-off. It cannot hold back a
+    # petty-cash one: that money is spent, and recording it as pending would
+    # not un-spend it, only hide it from the float.
+    #
+    # `user=sched.created_by`, not the caller: the schedule's owner is the
+    # approver of record. Generation is often run by a cron job with no user at
+    # all, and whoever clicks "Generate" is not thereby approving anything.
+    status, approver, is_paid = new_expense_status(
+        paid_from_petty_cash=sched.paid_from_petty_cash,
+        auto_approve=auto, user=sched.created_by)
     n = 0
     new_last = sched.last_generated
     hit_locked_gap = False
@@ -95,8 +118,11 @@ def generate_schedule(sched, upto=None, user=None):
                 paid_from_petty_cash=sched.paid_from_petty_cash,
                 budget_line=sched.budget_line,
                 recorded_by=actor, recurring=sched,
-                approved_by=(approver if status == Expense.Status.APPROVED else None),
-                paid_date=None)
+                approved_by=approver,
+                # A petty-cash row is paid on the day the instalment falls due,
+                # which is the day the cash left the tin — the same pairing of
+                # status and paid_date `services.expenses.record` writes.
+                paid_date=(d if is_paid else None))
             n += 1
         if not hit_locked_gap:
             new_last = d if (new_last is None or d > new_last) else new_last
@@ -193,7 +219,14 @@ def pay_early(sched, due_date, on=None, user=None):
     # Paying early does not lower the bar for approval: an amount that needs
     # sign-off on its due date still needs it a fortnight sooner.
     auto = (not cfg.require_expense_approval) and not high_value
-    status = Expense.Status.APPROVED if auto else Expense.Status.PENDING
+    # Through the same single rule as generation — see the note in
+    # `generate_schedule`. This path had the identical copy of the status
+    # formula and the identical hole in it: an instalment paid early out of the
+    # petty cash tin came out PENDING and stayed outside the float's own
+    # arithmetic, though the money had already gone.
+    status, approver, is_paid = new_expense_status(
+        paid_from_petty_cash=sched.paid_from_petty_cash,
+        auto_approve=auto, user=sched.created_by)
     actor = user or sched.created_by
     return Expense.objects.create(
         date=on, recurring_due_date=due_date, sabbath_week=sabbath_week_of(on),
@@ -208,5 +241,7 @@ def pay_early(sched, due_date, on=None, user=None):
         paid_from_petty_cash=sched.paid_from_petty_cash,
         budget_line=sched.budget_line,
         recorded_by=actor, recurring=sched,
-        approved_by=(sched.created_by if status == Expense.Status.APPROVED else None),
-        paid_date=None)
+        approved_by=approver,
+        # `on`, not the due date: paid_date records when the money actually
+        # moved, and paying early is the whole point of this function.
+        paid_date=(on if is_paid else None))

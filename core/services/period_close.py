@@ -47,11 +47,23 @@ def period_close_checklist(year, month):
                   "ok": petty_ok, "detail": petty_detail})
 
     # 3. Advances cleared or explained (advisory — spanning months is normal)
+    #
+    # Judged as at the month-end, not as at today. This was a fourth, private
+    # copy of the "which advances were still open" rule, and it carried the same
+    # fault the other three did: `.exclude(status=CLOSED)` reads the status the
+    # row has NOW, so closing an advance in August retrospectively cleared it
+    # from July's checklist — a month could pass its own close review because of
+    # something done after the month ended. It now calls the one shared,
+    # date-aware rule, and reads the balance as at the month-end too (`balance`
+    # is a property over current totals, so a receipt keyed in later would
+    # otherwise settle an advance retrospectively as well).
     from cashbook.models import StaffAdvance
-    open_advances = [a for a in
-                     StaffAdvance.objects.filter(date_issued__lte=end)
-                     .exclude(status=StaffAdvance.Status.CLOSED)
-                     if a.balance and a.balance > 0]
+    from cashbook.services.treasury_position import advances_open_asof
+    open_advances = [
+        a for a in advances_open_asof(
+            StaffAdvance.objects.filter(date_issued__lte=end), end)
+        if (a.amount - a.settled_asof(end)
+            - (a.returned_to_petty or Decimal(0))) > 0]
     items.append({
         "key": "advances", "label": "Advances cleared or explained",
         "ok": not open_advances,

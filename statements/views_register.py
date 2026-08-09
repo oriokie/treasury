@@ -85,6 +85,12 @@ class RegisterView(ReadAccessMixin, View):
         account = _account(request)
         if account is None:
             return redirect("bank_register")
+        # Read-gated class (Auditors included), but this writes the figure the
+        # whole running balance is measured from. See ReconciliationDetailView.
+        if not can_enter_data(request.user):
+            messages.error(request, "You don't have permission to set the "
+                                    "register's opening balance.")
+            return redirect(f"/bank-register/?account={account.pk}")
         raw = (request.POST.get("register_opening_balance") or "").strip()
         raw_date = (request.POST.get("register_opening_date") or "").strip()
         from decimal import InvalidOperation
@@ -270,6 +276,17 @@ class RegisterExceptionsView(ReadAccessMixin, View):
 
     def post(self, request):
         account = _account(request)
+        # Every branch below writes: it re-opens/closes exception rows, or
+        # closes an exception outright. The class gate is read-only (Auditors
+        # included), and only the two `take_to_books` branches checked — so an
+        # auditor could close the very bank discrepancies they exist to
+        # scrutinise. One guard at the door covers all four; the checks inside
+        # `_take_single`/`_bulk_take` stay as belt-and-braces.
+        if not can_enter_data(request.user):
+            messages.error(request, "You don't have permission to change "
+                                    "register exceptions.")
+            return redirect(f"/bank-register/exceptions/"
+                            f"?account={account.pk if account else ''}")
         if request.POST.get("recheck"):
             result = reg_svc.recheck(account)
             messages.success(

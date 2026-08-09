@@ -18,6 +18,13 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
+# Aliased on import, never bare. Django's ValidationError is what a
+# misconfigured SplitFund throws out of `split()`, and this module already
+# defines its own posting-refusal exception a line-scan away
+# (`UnpostableAllocation`); a bare `ValidationError` here reads as "ours" and
+# that is exactly the confusion that let the split case go uncaught.
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from core.models import SiteConfig
 from core.services.sms import send_receipt_sms
 from core.utils import sabbath_of, sabbath_week_of
@@ -221,31 +228,104 @@ def _amount(raw):
         return None
 
 
+class UnpostableAllocation(Exception):
+    """A nonzero amount on a row could not be turned into ledger lines that
+    account for every cent of it, so nothing is posted at all.
+
+    This exists because of what ``_expand_lines`` used to do instead: `continue`.
+    A key that did not resolve to a fund was skipped in silence — the envelope
+    was still created, the receipt number was still consumed, and the money a
+    treasurer had physically counted simply was not in the ledger, with nothing
+    anywhere saying so. If it was the row's only fund, `recompute_total()` then
+    produced a ZERO-TOTAL envelope against a real receipt (see
+    docs/recommendations.md #63). Every total downstream still reconciled,
+    which is precisely what made it invisible.
+
+    Refusing to post is always the better failure here: an envelope that will
+    not post is a phone call, an envelope that posts short is a hole in the
+    accounts nobody finds. `post_batch` catches this, rolls the whole batch
+    back and tells the treasurer which row to fix.
+    """
+
+
+def _int_or_none(value):
+    """The int a fund key names, or None if it names no integer at all.
+    `amounts` keys arrive as JSON strings ("17", "split:3"), and a key that is
+    not a number must fall through to the caller's "resolved nothing" branch
+    rather than exploding with a ValueError halfway through a posting run."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _expand_lines(amounts, funds, splits, dev_group=None):
     """amounts: {key: raw}. Returns list of (Department, Decimal[, DevelopmentGroup]),
-    expanding splits. If `dev_group` is given it is attached to the Development line."""
+    expanding splits. If `dev_group` is given it is attached to the Development line.
+
+    The invariant, enforced once here for every caller: each nonzero amount
+    comes out the other side as lines summing to EXACTLY it, or nothing posts
+    and `UnpostableAllocation` is raised. That single check — rather than a
+    guard bolted onto each way a key can fail to resolve — is what closes the
+    whole class of the bug in #63, not just the deactivated-fund path that
+    exposed it. A fund id that no longer exists, a `split:` key naming a
+    deleted split, a key that is not a number at all, a split fund configured
+    with no components, and a split fund whose component percentages do not
+    total 100 are all the same failure and all raise the same exception — the
+    last of those used to escape as a django ValidationError instead, i.e. a
+    500 rather than a refusal anyone could act on.
+
+    A zero, blank or unparseable amount is still skipped, and deliberately so:
+    it creates no line because there is nothing to post, and it cannot hide
+    money either, because `recompute_row_total` parses the cell with this very
+    same `_amount` — so a cell the poster reads as nothing is a cell the
+    envelope-total check already read as nothing, and any real figure typed
+    there surfaces as a TOTAL_MISMATCH long before Post.
+    """
     lines = []
     for key, raw in amounts.items():
         amt = _amount(raw)
         if not amt:
             continue
         if str(key).startswith("split:"):
-            sf = splits.get(int(str(key).split(":", 1)[1]))
-            if sf:
-                for pdept, pamt in sf.split(amt):
-                    if pamt:
-                        lines.append((pdept, pamt))
-        else:
+            sf = splits.get(_int_or_none(str(key).split(":", 1)[1]))
+            # A split whose components don't total 100% refuses to divide at
+            # all rather than let the last component silently absorb the
+            # difference (see SplitFund.split — money moved to a fund the
+            # church did not choose is the worst error this system can make).
+            # That refusal is right; the way it left here was not. It arrives
+            # as *django's* ValidationError, which post_batch does not catch,
+            # so a 40/40 split used to turn Post into a 500: no problem list,
+            # no row named, and a treasurer left unsure whether the batch had
+            # gone in. It is the same failure as every other column that
+            # cannot be turned into lines summing to the whole, so it is
+            # reported the same way — the all-or-nothing refusal below.
             try:
-                fid = int(key)
-            except (ValueError, TypeError):
-                continue
-            if fid in funds:
-                dept = funds[fid]
-                if dev_group is not None and dept.category == "DEVELOPMENT":
-                    lines.append((dept, amt, dev_group))
-                else:
-                    lines.append((dept, amt))
+                expanded = ([(pd, pa) for pd, pa in sf.split(amt) if pa]
+                            if sf is not None else [])
+            except DjangoValidationError as exc:
+                raise UnpostableAllocation(
+                    f"{amt:,.2f} was allocated to fund column '{key}', but "
+                    f"that split cannot divide it: "
+                    f"{' '.join(exc.messages)}"
+                ) from exc
+        else:
+            dept = funds.get(_int_or_none(key))
+            if dept is None:
+                expanded = []
+            elif dev_group is not None and dept.category == "DEVELOPMENT":
+                expanded = [(dept, amt, dev_group)]
+            else:
+                expanded = [(dept, amt)]
+        allocated = sum((ln[1] for ln in expanded), Decimal(0))
+        if allocated != amt:
+            raise UnpostableAllocation(
+                f"{amt:,.2f} was allocated to fund column '{key}', but only "
+                f"{allocated:,.2f} of that can be posted — the column no "
+                f"longer resolves to a fund (a deleted fund, or a split fund "
+                f"with no components set up). Posting anyway would have "
+                f"quietly swallowed the difference.")
+        lines.extend(expanded)
     return lines
 
 

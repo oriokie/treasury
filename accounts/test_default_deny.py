@@ -45,6 +45,18 @@ PUBLIC_URL_NAMES = {
     # missing its `login_not_required` — so it was "protected", this test passed,
     # and the form was unreachable by the applicants it exists for.
     "benevolent_public_apply",
+    # Telegram machine-to-machine, on the same footing as `cbs_webhook`:
+    # Telegram's servers carry no session cookie, so the view authenticates on a
+    # bot token compared in constant time and nothing else. It was missing
+    # `login_not_required`, which meant LoginRequiredMiddleware answered every
+    # real update with a redirect to the login page before the token check ever
+    # ran — the integration was dead for as long as it had existed, and silently,
+    # because a 302 to /accounts/login/ is indistinguishable from "working
+    # security" unless you are Telegram. This list could not have caught that:
+    # `_all_named_no_arg_urls` skips any pattern containing `<`, and the bot
+    # token IS a path parameter. Recorded here so the posture is at least
+    # written down where the other public endpoints are reviewed.
+    "telegram_webhook",
 }
 
 

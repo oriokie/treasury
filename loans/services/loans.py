@@ -271,6 +271,44 @@ def record_interest(loan, *, date, amount, user, method=None, voucher_no="",
     return lt
 
 
+def _require_different_approver(loan, user, doing):
+    """Segregation of duties on the only two loan actions that turn a
+    liability into income without anybody paying anything back.
+
+    Recording a receipt, a repayment or an interest payment all leave a
+    counterparty and a bank movement behind; conversion and write-off do not —
+    they simply declare that the church keeps the money. Without this guard one
+    treasurer could open a loan, receipt the cash against it and then, alone,
+    convert the balance to a 'donation' that lands in contribution income. That
+    is precisely the sequence expense approval has refused since
+    SiteConfig.require_different_approver was introduced (cashbook's approve
+    action refuses when exp.recorded_by is the approver), and the envelope
+    batch and benevolent-case decisions read the same switch. This is the loan
+    module reading that ONE switch rather than growing a rule of its own.
+
+    Which actor it compares against: Loan.created_by, the person who put the
+    liability on the books. It is the loan module's analogue of
+    Expense.recorded_by — the only actor the loan itself records — and it is
+    the one that makes the abusive sequence above impossible. (Deliberately not
+    the receipt recorder: receipts are frequently entered by the bank importer
+    or a different clerk, so keying off them would block innocent conversions
+    while still letting the loan's own author retire it.)
+
+    It stays a no-op when the flag is off (the default — many installs have a
+    single active treasurer) and when the loan has no recorded creator, which
+    is the normal case for loans opened automatically from a bank narration:
+    exactly like the expense check, which never fires on a document with no
+    recorded_by.
+    """
+    from core.models import SiteConfig
+    if not SiteConfig.get().require_different_approver:
+        return
+    if user is not None and loan.created_by_id and loan.created_by_id == user.pk:
+        raise ValidationError(
+            f"You recorded {loan.number} yourself — {doing} must be done by a "
+            f"different treasurer (Settings → require a different approver).")
+
+
 def _retire(loan, kind, *, date, amount, user, note, as_contribution):
     """Shared shape for conversion and write-off: the lender lets the church
     keep the money, so the liability is retired against income with no cash
@@ -285,6 +323,10 @@ def _retire(loan, kind, *, date, amount, user, note, as_contribution):
     from core.models import service_sabbath_for
     from core.utils import sabbath_week_of
     _require_editable(loan)
+    _require_different_approver(
+        loan, user,
+        "converting it to a donation" if kind == LoanTransaction.Kind.CONVERSION
+        else "writing it off")
     amount = Decimal(amount)
     if amount <= 0:
         raise ValidationError("Amount must be positive.")

@@ -69,14 +69,37 @@ class PledgeCampaign(models.Model):
         return self.name
 
     @property
+    def counted_pledges(self):
+        """The pledges every published figure of this campaign is built from.
+
+        One definition, read by all three of `total_pledged`, `total_received`
+        and `approved_pledge_count`, because those three sit next to each other
+        on the campaign page AND on the public pledge page, and a giver reads
+        them as one sentence. They have to be about the same set of pledges.
+
+        They were not. `total_received` summed every PledgePayment in the
+        campaign with no reference to its pledge's status at all, so the
+        figures drifted apart from both ends. Cancel a pledge after money had
+        been matched to it and the campaign reported nothing pledged by nobody
+        and 50,000 received; record money against a draft nobody had approved
+        yet and it went straight into the public "Received" figure while the
+        promise behind it was still unchecked. Whatever the answer to "which
+        pledges does this campaign count", it is written here once.
+        """
+        return self.pledges.filter(status__in=Pledge.RECOGNISED_STATUSES)
+
+    @property
     def total_pledged(self):
-        return (self.pledges.filter(status__in=[Pledge.Status.ACTIVE,
-                Pledge.Status.FULFILLED, Pledge.Status.LAPSED])
-                .aggregate(s=Sum("amount"))["s"] or Decimal("0"))
+        return (self.counted_pledges.aggregate(s=Sum("amount"))["s"]
+                or Decimal("0"))
 
     @property
     def total_received(self):
-        return (PledgePayment.objects.filter(pledge__campaign=self)
+        # Money matched to a pledge the campaign no longer counts is not lost:
+        # the contribution is real, sits in the ledger untouched, and its
+        # PledgePayment link stays on the pledge as the record of what was
+        # matched. It simply stops being part of THIS campaign's standing.
+        return (PledgePayment.objects.filter(pledge__in=self.counted_pledges)
                 .aggregate(s=Sum("amount"))["s"] or Decimal("0"))
 
     @property
@@ -125,9 +148,7 @@ class PledgeCampaign(models.Model):
         public count the moment somebody typed it, before anyone checked that
         the promise was real.
         """
-        return self.pledges.filter(status__in=[
-            Pledge.Status.ACTIVE, Pledge.Status.FULFILLED,
-            Pledge.Status.LAPSED]).count()
+        return self.counted_pledges.count()
 
 
 class Pledge(models.Model):
@@ -147,6 +168,16 @@ class Pledge(models.Model):
         MONTHLY = "MONTHLY", "Monthly"
         QUARTERLY = "QUARTERLY", "Quarterly"
         ANNUAL = "ANNUAL", "Annual"
+
+    #: The statuses in which the church recognises this promise: somebody has
+    #: reviewed it and it has not since been withdrawn. Everything that treats
+    #: a pledge as real reads this one tuple — the campaign figures published
+    #: to a giver (see `PledgeCampaign.counted_pledges`) and whether money may
+    #: be recorded against the pledge at all (`accepts_payment`). The two
+    #: questions have the same answer for a reason: a figure counts a pledge
+    #: precisely when the church stands behind the promise, and money should
+    #: only ever be matched to a promise the church stands behind.
+    RECOGNISED_STATUSES = (Status.ACTIVE, Status.FULFILLED, Status.LAPSED)
 
     campaign = models.ForeignKey(PledgeCampaign, on_delete=models.PROTECT,
                                  related_name="pledges")
@@ -213,6 +244,22 @@ class Pledge(models.Model):
 
     def __str__(self):
         return f"{self.member.name} -> {self.campaign.name}: {self.amount}"
+
+    @property
+    def accepts_payment(self):
+        """Whether a contribution may be matched to this pledge at all.
+
+        A draft is a promise nobody has checked yet — most of them arrive from
+        the public form, where anyone may type one — and a cancelled pledge is
+        one the church has let go. Matching money to either put that amount
+        into the campaign's "Received" figure — the figure shown to the next
+        person who opens the public pledge link — with no approval anywhere
+        behind it. The matching service already refused both statuses; the
+        treasurer's own match/record-a-payment screen did not, and the
+        template offers that form whatever the status, so the check has to
+        live where every one of those paths passes.
+        """
+        return self.status in self.RECOGNISED_STATUSES
 
     @property
     def paid(self):

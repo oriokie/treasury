@@ -481,6 +481,20 @@ class ReconciliationDetailView(ReadAccessMixin, View):
 
     def post(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
+        # The class gate is ReadAccessMixin, which admits Auditors — a role that
+        # is read-only by definition. Reading a worksheet is exactly what an
+        # auditor is for; CHANGING one is not, and every write below (adding or
+        # deleting a reconciling item, overwriting the cash-book balance) would
+        # otherwise go through unchecked. The template already hides these
+        # controls behind `can_enter_data`, but a hidden button is not a
+        # permission — the POST has to be refused here too. `get()` already
+        # gates its own write side-effect this same way; this extends the same
+        # rule to the actions.
+        from core import roles
+        if not roles.can_enter_data(request.user):
+            messages.error(
+                request, "You don't have permission to change a reconciliation.")
+            return redirect("reconciliation_detail", pk=rec.pk)
         action = request.POST.get("action")
         if action == "add_item":
             form = ReconciliationItemForm(request.POST)

@@ -61,11 +61,55 @@ class _Seed(TestCase):
         _entered_on(self.txn, 2026, 7, 25, 10, 0)
 
     def receipt_it(self):
-        """What the treasurer did on 1 August."""
+        """What the treasurer did on 1 August: allocated it to a fund.
+
+        This is the plain allocation route, and it sets NEITHER receipt flag.
+        Say so out loud, because for a long time it was the only route any test
+        in this file used, and ``balances.receipted_after`` — the half of
+        ``pending_receipts_total`` these tests are meant to be watching — reads
+        nothing except ``manual_receipt`` and ``processed_via_envelope``. So it
+        returned zero in every case exercised here, and the assertions below
+        were passing against a function they had never once caused to run.
+        For the two routes that do set a flag, use ``receipt_via_envelope`` or
+        ``receipt_on_paper``.
+        """
         self.txn.department = self.fund
         self.txn.allocation_status = "MANUAL"
         self.txn.save()
         _entered_on(self.txn, 2026, 8, 1, 9, 0)
+
+    def receipt_via_envelope(self):
+        """Receipted through the app on 1 August — the envelope pull and the
+        receipt-this-contribution action both do this.
+
+        No second posting is made: the envelope is attached to the bank row and
+        the bank row keeps the money, so once the fund is set the bank row IS
+        the fund's income (see Transaction.is_bank_memo, which excludes exactly
+        this case from the memo treatment).
+        """
+        self.txn.department = self.fund
+        self.txn.allocation_status = "MANUAL"
+        self.txn.processed_via_envelope = True
+        self.txn.save()
+        _entered_on(self.txn, 2026, 8, 1, 9, 0)
+
+    def receipt_on_paper(self):
+        """Receipted by hand on 1 August — ``mark_manual_receipt``.
+
+        The mirror image of the envelope route: the bank row is detached from
+        every fund and turned into a zero-cash memo, and the income is keyed as
+        a separate envelope entry dated the Sabbath it was given — 1 August,
+        which is after the reporting date. On 30 July the money is at the bank
+        and in no fund at all, so suspense is the only line that can carry it.
+        """
+        self.txn.mark_manual_receipt(True)
+        _entered_on(self.txn, 2026, 8, 1, 9, 0)
+        env = Transaction.objects.create(
+            date=dt.date(2026, 8, 1), channel="ENVELOPE", direction="CREDIT",
+            amount=Decimal("5000"), department=self.fund, confirmed=True,
+            allocation_status="MANUAL")
+        _entered_on(env, 2026, 8, 1, 9, 5)
+        return env
 
 
 class MomentTests(TestCase):
@@ -112,10 +156,12 @@ class PendingReceiptsTests(_Seed):
                             if r["department"].name == "Building")
             self.assertEqual(building["closing"], Decimal("0"))
 
-    def test_suspense_and_fund_balances_move_together(self):
-        """The failure this basis exists to prevent: the same 5,000 counted
-        both in the fund and in suspense."""
-        self.receipt_it()
+    def _assert_counted_exactly_once(self):
+        """Whichever line ends up holding it, the fund balances and suspense
+        must add to the 5,000 that actually came in — on BOTH bases. 10,000
+        here is the same shilling reported twice; it nets off against itself in
+        net assets, so the bottom of the statement looks right while total
+        assets, total liabilities and the fund-balances bridge are all wrong."""
         for label, ctx_mgr in (("restated", asat.restated()),
                                ("as reported", asat.as_reported(AS_AT))):
             with self.subTest(label), ctx_mgr:
@@ -123,6 +169,41 @@ class PendingReceiptsTests(_Seed):
                 fund_cash = sum((r["closing"] for r in rows), Decimal(0))
                 pending = balances.pending_receipts_total(AS_AT)
                 self.assertEqual(fund_cash + pending, Decimal("5000"))
+
+    def test_suspense_and_fund_balances_move_together(self):
+        """The failure this basis exists to prevent: the same 5,000 counted
+        both in the fund and in suspense."""
+        self.receipt_it()
+        self._assert_counted_exactly_once()
+
+    def test_an_envelope_receipting_is_in_the_fund_or_in_suspense_never_both(self):
+        """The routine 'banked Friday, receipted Sabbath' flow, on the DEFAULT
+        basis — which is the basis every ordinary caller runs on: the standalone
+        Statement of Financial Position, the board pack's position sections, the
+        fund-balances bridge, the treasurer's report and the health checks.
+
+        None of them enters an ``as_reported`` block, and the add-back in
+        ``pending_receipts_total`` was applied whether or not one had been
+        entered. So a credit that had since been allocated and receipted was
+        counted in its fund AND added back to suspense: 5,000 in, 10,000 out."""
+        self.receipt_via_envelope()
+        self._assert_counted_exactly_once()
+        # the bank row is the money and it now has a fund, so the fund holds it
+        # and suspense is empty — not the other way round, and not both
+        self.assertEqual(balances.pending_receipts_total(AS_AT), Decimal(0))
+        rows = balances.department_summary(dt.date(2026, 1, 1), AS_AT)
+        building = next(r for r in rows if r["department"].id == self.fund.id)
+        self.assertEqual(building["closing"], Decimal("5000"))
+
+    def test_a_paper_receipting_is_still_carried_as_suspense(self):
+        """The opposite case, and the one the add-back exists for — pinned so
+        that fixing the double-count above cannot quietly delete it. The memo
+        row is in no fund on 30 July and its envelope is dated 1 August, so
+        without the add-back the 5,000 would be reported nowhere at all and a
+        30 July reconciliation would be short by exactly that much."""
+        self.receipt_on_paper()
+        self._assert_counted_exactly_once()
+        self.assertEqual(balances.pending_receipts_total(AS_AT), Decimal("5000"))
 
 
 class LaterEntryTests(_Seed):

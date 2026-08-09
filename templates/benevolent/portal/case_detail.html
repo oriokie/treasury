@@ -23,8 +23,18 @@
 <div class="grid cols-2">
   <div class="panel">
     <h3>Progress</h3>
+    {% comment %} The date is `on`, not `at`. CaseEvent has no `at` field at all: it
+       has `on` — the date the thing happened, which is what a claimant is asking
+       about — and `created_at`, the moment a clerk typed it in, which is not.
+       This is the other half of the fault the view's queryset had. There,
+       `.order_by("at")` hit the ORM and raised FieldError, so the page 500'd, so it
+       was found and fixed the same day; here the same wrong name sat in a plain
+       variable, where Django resolves what it cannot find to the empty string, and
+       so every line of every member's timeline simply rendered with no date beside
+       it and nothing anywhere said so. Loud on one side of the view, silent on the
+       other, from one typo — which is why only one of the two was ever noticed. {% endcomment %}
     {% for e in timeline %}
-    <div class="pt-row"><span class="k">{{ e.at|date:"d M Y" }}</span><span>{{ e.summary }}</span></div>
+    <div class="pt-row"><span class="k">{{ e.on|date:"d M Y" }}</span><span>{{ e.summary }}</span></div>
     {% empty %}<div class="pt-empty">Nothing recorded yet.</div>{% endfor %}
   </div>
   <div class="panel">
@@ -40,8 +50,41 @@
 {% if payouts %}
 <div class="panel u-mt">
   <h3>Payments made</h3>
+  {% comment %} There is no `p.get_method_display`, and never has been. A
+     BenevolentPayout carries the case, the payee, a note and — for a historical
+     import — its own amount and date; the payment METHOD sits on the
+     cashbook.Expense the payout indexes, which the model docstring says in so
+     many words ("the Expense is authoritative: it carries the money, the
+     approval, the voucher, the payment method"). So this row asked a payout for
+     another model's field, Django resolved the name it could not find to
+     nothing, and every paid case has shown the member a date followed by a
+     dangling " · " and no method for as long as the panel has existed. The
+     `|default:""` did not soften that, it disguised it: it reads as though the
+     blank were considered and permitted.
+
+     The method is NOT re-sourced from `p.expense.get_method_display`, which
+     would resolve, because it cannot be shown consistently. A historical payout
+     — money that left the church before this system, imported with its own
+     amount and date precisely because there is no Expense to point at — would
+     have nothing to show, so an imported case would list some payments with a
+     method and some without, and the member has no way to tell that apart from
+     the fault we are fixing. What a claimant came here to learn is when they
+     were paid, how much, and to whom; the office's own case screen
+     (`benevolent/case_detail.html`) has been answering with exactly
+     date/payee/amount, and no method, all along — the same "the screen next
+     door was already right" shape as the standing-page `reasons` fault.
+
+     Both halves are defaulted because both can legitimately be empty and a
+     blank cell is the very symptom being removed. `date` is a property, not a
+     column: it returns None for a payout whose Expense was deleted out from
+     under it, since that FK is SET_NULL and the payout deliberately survives
+     the voucher. `payee_name` is blank only when nobody named a third party,
+     which `record_payout` and `create_historical_case` both read as "paid to
+     the beneficiary" (each fills the field with `case.beneficiary_display` when
+     the caller leaves it empty), so showing the beneficiary here is that same
+     reading and not a guess. {% endcomment %}
   {% for p in payouts %}
-  <div class="pt-row"><span class="k">{{ p.date|date:"d M Y" }} · {{ p.get_method_display|default:"" }}</span>
+  <div class="pt-row"><span class="k">{{ p.date|date:"d M Y"|default:"—" }} · {{ p.payee_name|default:case.beneficiary_display }}</span>
     <span class="mono">{{ CURRENCY }} {{ p.amount|money }}</span></div>
   {% endfor %}
 </div>

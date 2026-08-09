@@ -57,7 +57,92 @@ def _group_split_siblings(transactions):
     export is filtered to a single fund, only the sibling(s) that fund's
     filter matches are grouped; a sibling excluded by the filter is not
     silently pulled back in, so the export always aggregates exactly what's
-    on screen, nothing more."""
+    on screen, nothing more.
+
+    What makes two rows siblings is deliberately confined to identifiers that
+    CANNOT be shared by two different gifts: the `split_of` link the split
+    itself recorded (resolved to the ROOT of the chain, so a split of a split
+    is still one gift — see _root), a bank-assigned unique identifier (the
+    core_ref base, or the M-Pesa reference for that day), or the issued
+    receipt number an envelope's fund lines share, which is admitted on that
+    one channel only and for the reasons set out below. A row with none of
+    those groups with nothing but itself.
+
+    That last rule is the point of this function's current shape, and it was
+    learned the hard way. It used to end in a "same reference text + same date
+    + same direction" fallback, which for a manually-entered CASH gift — no
+    core_ref, no mpesa_ref, and a reference field that is optional on
+    CashEntryForm and routinely left blank for a walk-in giver — meant any two
+    unrelated cash gifts recorded on the same day collapsed into ONE exported
+    row: the amounts summed, the funds joined into "Fund1 + Fund2", and only
+    the FIRST giver's name printed. Alice's 100 and Bob's 250 left the building
+    as a single 350 from ALICE, and Bob was not in the export at all. It is the
+    same false positive Transaction.strict_split_siblings() already refuses to
+    make ("a plain reference like tithe or offering is payer-entered free text,
+    not a unique identifier"), and the same reason EnvelopeReceiptOneBankView
+    keys its sibling gather on `core_ref base or mpesa_ref or str(id)`. Wrongly
+    showing one gift as two rows is visible and merely untidy; wrongly merging
+    two givers is invisible and loses a name — so the tie breaks toward not
+    grouping.
+
+    The one place a reference alone still groups is the ENVELOPE channel, and
+    that is deliberate. `_save_envelope` posts one ENVELOPE-channel row per
+    fund line of a receipt: no `split_of` link (nothing was split_into — each
+    line was entered as its own row), no core_ref, no mpesa_ref, no bank
+    receipt, and the only thing the lines of one receipt share is the
+    reference it stamps on every one of them, "envelope R001". Refuse that and
+    a two-fund envelope exports as two half-rows. It is safe here where free
+    text is not because the text is not free: it is Envelope.receipt_no, which
+    is unique=True, so no two envelopes can present the same reference and be
+    mistaken for one receipt. The branch is also gated on channel == ENVELOPE,
+    so no cash or bank row reaches it however its payer worded the reference,
+    and it sits LAST before "solo", so a row that does carry a real identifier
+    is already grouped by that instead — the legacy import's ENVELOPE-channel
+    bank rows all share the constant reference "Processed via envelope", and
+    they stay apart only because each one also carries its own core_ref.
+    The channel alone cannot prove a row came from an envelope — CashEntryForm
+    offers ENVELOPE as a channel with a free-text reference, so two hand-keyed
+    rows both saying "tithe" would have combined, the original defect surviving
+    on a narrower path. So the branch requires the reference to be one the
+    system ISSUED, in `_save_envelope`'s own "envelope <receipt_no>" form,
+    rather than any text that happens to sit on an envelope-channel row. A
+    hand-keyed reference falls through to "solo" and exports as its own row."""
+    # split_into() stamps `split_of` on the CHILDREN only — the original keeps
+    # its own id and points at nothing — so a parent is recognised by being
+    # pointed AT. Gathered once from the rows in hand instead of asking the
+    # database per row (this runs over a whole export), which costs nothing in
+    # correctness: grouping is confined to the rows passed in anyway, so a
+    # parent that the filter excluded has no sibling here to join.
+    parent_of = {t.pk: t.split_of_id for t in transactions if t.split_of_id}
+    parent_ids = set(parent_of.values())
+
+    def _root(pk):
+        """Walk to the TRUE root of a split chain, not merely the immediate
+        parent. A part of a split can be split again — split_into() sets
+        `split_of` to whatever row it was called on, so X -> X-S1 ->
+        X-S1-S1 is an ordinary two-level chain, not corruption — and keying
+        on the immediate parent gave the grandchild a key of its own: ONE
+        gift left the export as two rows with its amount torn between them,
+        the fund label on each naming only part of where the money went.
+        Nested splits are the whole reason the key is resolved rather than
+        read off the row.
+
+        The `seen` set guards against corrupt data only. `split_of` is a
+        nullable self-FK and nothing in the database forbids a cycle; an
+        unguarded walk would spin forever, and this function runs on the
+        transactions page and the pending-receipt export as well as here, so
+        one bad row would hang the whole surface instead of merely
+        mis-grouping. A cycle terminates at the row we re-enter, which
+        leaves its members in separate groups — the same direction every
+        other tie here breaks: showing one gift as two rows is untidy and
+        visible, merging two gifts is invisible and loses a name.
+        """
+        seen = set()
+        while pk in parent_of and pk not in seen:
+            seen.add(pk)
+            pk = parent_of[pk]
+        return pk
+
     def _key(t):
         # a reversal (or a reversed original) is a correction entry, never a
         # split sibling — it must never be silently combined with anything
@@ -65,11 +150,39 @@ def _group_split_siblings(transactions):
         # with some unrelated row, so it always gets its own unique key
         if t.is_reversed or t.is_reversal:
             return ("solo", t.pk)
+        # the `split_of` link FIRST, in the same order and for the same reason
+        # as Transaction.split_siblings(): two rows are siblings because the
+        # database says so, not because they look alike. It is also the only
+        # thing that can recognise a split of a CASH entry, which has no
+        # bank-assigned identifier of any kind to fall back on — so dropping
+        # the loose reference match costs genuine cash splits nothing.
+        base = t.split_of_id or (t.pk if t.pk in parent_ids else None)
+        if base:
+            # keyed on the ROOT of the chain so every generation of a nested
+            # split lands in one group. A chain whose middle row the filter
+            # excluded stops walking at that absent row rather than reaching
+            # the true root, so the surviving ends group separately — the
+            # same rule as everywhere else in here: only the rows actually
+            # passed in may be joined, never one the filter took out.
+            return ("split", _root(base))
         if t.core_ref:
             return ("core", t.core_ref.split("-S")[0], t.direction)
         if t.mpesa_ref:
             return ("mpesa", t.mpesa_ref, t.date, t.direction)
-        return ("ref", (t.reference or "").strip().lower(), t.date, t.direction)
+        ref = (t.reference or "").strip().lower()
+        # The reference must be one the SYSTEM issued, not merely one that
+        # arrived on an envelope-channel row. `_save_envelope` stamps exactly
+        # "envelope <receipt_no>" on every line of a receipt, and receipt_no is
+        # unique — that is the whole basis for trusting this text where free
+        # text is never trusted. The channel alone does not carry that promise:
+        # CashEntryForm offers ENVELOPE as a channel with a free-text
+        # reference, so two hand-keyed rows both saying "tithe" would have
+        # merged into one exported row and dropped a giver's name, which is the
+        # very defect this function was fixed for, surviving on a narrower path.
+        if (t.channel == Transaction.Channel.ENVELOPE
+                and ref.startswith("envelope ")):
+            return ("envelope", ref, t.direction)
+        return ("solo", t.pk)
 
     groups, order = {}, []
     for t in transactions:

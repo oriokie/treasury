@@ -302,9 +302,24 @@ class PledgeApproveView(View):
         elif action in ("cancel", "reactivate") and not roles.can_approve(request.user):
             messages.error(request, "Only a treasurer can do that.")
         elif action == "cancel":
+            paid = p.paid
             p.status = Pledge.Status.CANCELLED
             p.save()
-            messages.success(request, "Pledge cancelled.")
+            # Money already matched to it is left exactly where it is. The
+            # contributions are real, they stay in the ledger, and their
+            # PledgePayment links stay on the pledge as the record of what was
+            # matched to what — unlinking them here would quietly rewrite
+            # history to make a figure tidy. What changes is that a cancelled
+            # pledge is no longer one of the campaign's counted pledges, so
+            # neither the promise nor the money against it goes on propping up
+            # the campaign's standing. Say the amount out loud: the treasurer
+            # is about to watch that figure drop and should know why.
+            if paid:
+                messages.success(request, f"Pledge cancelled. The KES {paid:,.2f} "
+                    "already matched to it no longer counts toward the campaign "
+                    "total; those contributions remain in the ledger.")
+            else:
+                messages.success(request, "Pledge cancelled.")
         elif action == "reactivate" and p.status in (Pledge.Status.CANCELLED,
                                                       Pledge.Status.LAPSED):
             p.status = Pledge.Status.ACTIVE
@@ -322,6 +337,23 @@ class PledgeMatchView(TreasurerRequiredMixin, View):
     @db_tx.atomic
     def post(self, request, pk):
         p = get_object_or_404(Pledge, pk=pk)
+        # One gate in front of all three actions, because all three end in a
+        # PledgePayment and the pledge's status is the same objection to each.
+        # It cannot be left to the template: pledge_detail.html renders the
+        # "record a payment directly" form for any treasurer whatever the
+        # pledge's status, so before this a treasurer could put money against a
+        # self-submitted draft nobody had approved — and it landed in the
+        # campaign's public "Received" figure. The auto action was already
+        # refused, but by the matching service, which reported it back as "no
+        # unmatched contributions found" and told the treasurer nothing.
+        if not p.accepts_payment:
+            messages.error(request, (
+                "That pledge is still awaiting approval — approve it before "
+                "recording money against it."
+                if p.status == Pledge.Status.DRAFT else
+                f"That pledge is {p.get_status_display().lower()} — reactivate "
+                "it before recording money against it."))
+            return redirect("pledge_detail", pk=p.pk)
         action = request.POST.get("action")
         if action == "auto":
             applied = match_svc.auto_match_pledge(p, user=request.user)
@@ -746,6 +778,16 @@ class PledgeSuggestionActionView(TreasurerRequiredMixin, View):
         s = get_object_or_404(PledgeMatchSuggestion, pk=pk)
         action = request.POST.get("action")
         if action == "confirm" and s.status == PledgeMatchSuggestion.Status.PENDING:
+            # A suggestion is only ever raised against an active pledge, but it
+            # then waits in a queue — and the pledge can be cancelled while it
+            # waits. Confirming it afterwards would be the same defect by a
+            # slower route, so the same rule is asked here.
+            if not s.pledge.accepts_payment:
+                messages.error(request, f"{s.pledge.member.name}'s pledge is "
+                    f"{s.pledge.get_status_display().lower()} — nothing was "
+                    "matched. Dismiss the suggestion, or reactivate the pledge "
+                    "first.")
+                return redirect("pledge_suggestions")
             # apply the match (capped at outstanding and at the gift's free amount)
             already = (PledgePayment.objects.filter(transaction=s.transaction)
                        .aggregate(x=Sum("amount"))["x"] or Decimal("0"))

@@ -328,6 +328,76 @@ class PayableLegacySettlementTests(PayableTestBase):
 
         self.assertEqual(open_payables_total(dt.date(2026, 6, 10)), Decimal("3000"))
 
+    # --- the same rule, on the WRITE path ------------------------------------
+    #
+    # The class above only ever asked the balance sheet what it thought. The
+    # write path was never asked, and it disagreed: `settle()` guards on
+    # `balance`, which was pure arithmetic (`amount - payments`) and knew
+    # nothing of the flag — so a legacy row reported its full amount as still
+    # owing and accepted a second, complete payment for a bill already
+    # discharged. That posted real money to the ledger a second time and
+    # overwrote `settled_on`, destroying the only record of the original
+    # settlement. Both sides now read one definition.
+
+    def _legacy_row(self):
+        """A settlement made before instalments existed: the flag, and nothing
+        else. No payment rows, because its expense link was never recorded."""
+        self.payable.delete()
+        return Payable.objects.create(
+            date=dt.date(2026, 6, 1), vendor="Acme", description="Chairs",
+            amount=Decimal("5000"), department=self.fund,
+            recorded_by=self.treasurer,
+            settled=True, settled_on=dt.date(2026, 6, 20))
+
+    def test_a_flag_only_settlement_cannot_be_paid_a_second_time(self):
+        p = self._legacy_row()
+        before = Expense.objects.count()
+
+        with self.assertRaises(ValidationError):
+            payable_svc.settle(p, user=self.treasurer)
+
+        self.assertEqual(Expense.objects.count(), before,
+                         "a second payment expense was created for a debt "
+                         "already discharged")
+        p.refresh_from_db()
+        self.assertEqual(p.settled_on, dt.date(2026, 6, 20),
+                         "the original settlement date was overwritten")
+
+    def test_a_flag_only_settlement_owes_nothing_on_the_write_path_too(self):
+        """The write path's guard reads `balance`; it must agree with the
+        balance sheet, which has always treated this row as discharged."""
+        p = self._legacy_row()
+        self.assertEqual(p.balance, Decimal("0"))
+        self.assertTrue(p.is_settled)
+        self.assertEqual(p.status_label, "Settled")
+
+    def test_the_flag_is_not_believed_before_the_day_it_was_settled(self):
+        """As at a date, a settlement that had not happened yet cannot count —
+        the same rule the balance sheet applies via `settled_on__lte`."""
+        p = self._legacy_row()
+        self.assertEqual(p.balance_asof(dt.date(2026, 6, 10)), Decimal("5000"))
+        self.assertEqual(p.balance_asof(dt.date(2026, 6, 20)), Decimal("0"))
+
+    def test_a_part_paid_payable_can_still_be_settled(self):
+        """The narrowness of the rule, pinned: the flag is believed only where
+        there is NO payment evidence. A row with real payments still owes the
+        remainder and must still be payable — otherwise this fix would have
+        broken instalments, which is the whole feature."""
+        self.payable.delete()
+        p = Payable.objects.create(
+            date=dt.date(2026, 6, 1), vendor="Acme", description="Chairs",
+            amount=Decimal("5000"), department=self.fund,
+            recorded_by=self.treasurer)
+        payable_svc.settle(p, amount=Decimal("2000"), user=self.treasurer,
+                           on=dt.date(2026, 6, 10))
+        p.refresh_from_db()
+        self.assertEqual(p.balance, Decimal("3000"))
+
+        payable_svc.settle(p, user=self.treasurer, on=dt.date(2026, 6, 15))
+        p.refresh_from_db()
+        self.assertEqual(p.balance, Decimal("0"))
+        self.assertTrue(p.settled)
+
 
 class AccrualPartialSettlementTests(TestCase):
     """The same behaviour, on the other obligation.

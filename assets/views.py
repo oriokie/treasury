@@ -79,11 +79,25 @@ class AssetUpdate(TreasurerRequiredMixin, UpdateView):
 
 class AssetDisposeView(TreasurerRequiredMixin, View):
     def post(self, request, pk):
+        from django.db import transaction as db_tx
         from giving.models import Transaction
         from departments.models import Department
+        from ledger.services import posting
+        from .services import depreciation as dep
+        from .services import lifecycle
+        from . import signals as asset_signals
         a = get_object_or_404(FixedAsset, pk=pk)
         if a.disposed:
             messages.info(request, f"{a.name} is already disposed.")
+            return redirect("asset_detail", pk=pk)
+        # The same guard the lifecycle service applies to "held for disposal",
+        # asked here because a disposal never goes through transition(): without
+        # it the register could write off an asset that is still checked out,
+        # and leave its assignment open for ever with nobody able to return it.
+        try:
+            lifecycle.check_not_issued(a, "recording the disposal")
+        except lifecycle.TransitionError as exc:
+            messages.error(request, str(exc))
             return redirect("asset_detail", pk=pk)
         try:
             on = dt.date.fromisoformat(request.POST.get("disposed_on", ""))
@@ -104,28 +118,57 @@ class AssetDisposeView(TreasurerRequiredMixin, View):
             messages.error(request, "Choose the fund that receives the proceeds "
                                     "and carries the gain or loss.")
             return redirect("asset_detail", pk=pk)
-        nbv = a.net_book_value(on)
-        gain_loss = proceeds - nbv
+        # What the disposal is worth is decided HERE, once, and stored. The
+        # proceeds and the gain/(loss) between them pin down the carrying value
+        # it was struck against, and depreciation.accumulated_at_disposal reads
+        # that back for everyone who asks later — the ledger's disposal journal,
+        # the disposals report, the movement in fixed assets. Nothing downstream
+        # re-runs the depreciation engine at the disposal date any more, so a
+        # rate changed next week cannot restate a disposal recorded today.
+        #
+        # Both figures come from the depreciation service rather than from
+        # net_book_value(), which reports zero from the disposal date onwards —
+        # see carrying_value_at_disposal for what that costs the unwary.
+        nbv = dep.carrying_value_at_disposal(a, on)
+        gain_loss = dep.gain_or_loss_on_disposal(a, on, proceeds)
         a.disposed = True
         a.disposed_on = on
         a.disposal_proceeds = proceeds
         a.disposal_method = method
         a.disposal_gain_loss = gain_loss
         a.disposal_fund = fund
-        a.save()
         # The cash proceeds are recorded as a receipt into the nominated fund so
         # fund balances and cash reports reflect the money received. The general
-        # ledger then reclassifies that receipt on the next rebuild via
-        # post_disposal — removing the asset's cost and accumulated depreciation
-        # and recognising the balancing gain/(loss) — so the proceeds are not
-        # double-counted and the disposal is a proper journal.
-        if proceeds and fund:
-            Transaction.objects.create(
-                date=on, channel=Transaction.Channel.BANK, direction=Transaction.Direction.CREDIT,
-                amount=proceeds, department=fund, allocation_status=Transaction.Status.MANUAL,
-                excluded_from_income=True,
-                reference=f"Disposal of {a.name}"[:60],
-                payer_name=f"Asset disposal ({a.get_disposal_method_display()})"[:120])
+        # ledger entry then reclassifies that receipt via post_disposal —
+        # removing the asset's cost and accumulated depreciation and recognising
+        # the balancing gain/(loss) — so the proceeds are not double-counted and
+        # the disposal is a proper journal.
+        #
+        # All three writes are one atomic act. A disposal used to reach the
+        # ledger only when someone next rebuilt it; now it posts here, and if
+        # that posting cannot be written the register is not left claiming a
+        # disposal the ledger has never heard of — the whole thing is rolled
+        # back and the treasurer told, rather than half-recorded in silence.
+        try:
+            with db_tx.atomic():
+                a.save()
+                if proceeds and fund:
+                    Transaction.objects.create(
+                        date=on, channel=Transaction.Channel.BANK,
+                        direction=Transaction.Direction.CREDIT,
+                        amount=proceeds, department=fund,
+                        allocation_status=Transaction.Status.MANUAL,
+                        excluded_from_income=True,
+                        reference=f"Disposal of {a.name}"[:60],
+                        payer_name=f"Asset disposal ({a.get_disposal_method_display()})"[:120])
+                asset_signals.post_to_ledger(posting.post_disposal, a)
+        except Exception:  # noqa: BLE001 — the detail is for the log, not the treasurer
+            from core.utils import log_exception as _lx; _lx('assets/views.py')
+            messages.error(request, f"{a.name} was NOT disposed of — the disposal could "
+                                    f"not be posted to the general ledger, so nothing was "
+                                    f"recorded. Please try again, or tell whoever supports "
+                                    f"the system.")
+            return redirect("asset_detail", pk=pk)
         verb = {"SOLD": "sold", "SCRAPPED": "scrapped", "DONATED": "donated",
                 "LOST": "written off"}.get(method, "disposed")
         gl = (f"gain of {gain_loss}" if gain_loss > 0 else
@@ -557,10 +600,13 @@ class AssetTransferDecideView(TreasurerRequiredMixin, View):
     """Approve or reject a transfer. Approving is what actually moves the asset,
     and posts the inter-fund equity move when the owning fund changes."""
     def post(self, request, pk):
+        from django.db import transaction as db_tx
         from django.utils import timezone
         from core import roles
+        from ledger.services import posting
         from .models import AssetTransfer, AssetEvent
         from .services import lifecycle
+        from . import signals as asset_signals
         tr = get_object_or_404(AssetTransfer, pk=pk)
         if not roles.can_approve(request.user):
             messages.error(request, "Approving a transfer is restricted to Treasurers.")
@@ -579,19 +625,36 @@ class AssetTransferDecideView(TreasurerRequiredMixin, View):
             messages.error(request, "A transfer must be approved by someone other "
                                     "than the person who requested it.")
             return redirect("asset_detail", pk=tr.asset_id)
-        tr.status = AssetTransfer.Status.APPROVED
-        tr.approved_by = request.user
-        tr.approved_at = timezone.now()
-        tr.save()
         a = tr.asset
-        a.location_fk = tr.to_location
-        a.department = tr.to_fund
-        a.save(update_fields=["location_fk", "department"])
         where = tr.to_location.name if tr.to_location else ""
         fund = tr.to_fund.name if tr.to_fund else ""
-        lifecycle.log(a, AssetEvent.Kind.TRANSFERRED,
-                      f"Transferred to {' / '.join(x for x in (where, fund) if x)}",
-                      request.user)
+        # Approving is the accounting event: it moves the asset on the register
+        # AND, when the owning fund changes, moves its carrying value between the
+        # two funds' equity. Those used to be separated by however long it took
+        # somebody to rebuild the ledger — and nothing reported the gap, because
+        # an equity-only entry never disturbs the control accounts the
+        # register↔ledger reconciliation watches. They are now one act: if the
+        # journal cannot be written, the approval does not happen either.
+        try:
+            with db_tx.atomic():
+                tr.status = AssetTransfer.Status.APPROVED
+                tr.approved_by = request.user
+                tr.approved_at = timezone.now()
+                tr.save()
+                a.location_fk = tr.to_location
+                a.department = tr.to_fund
+                a.save(update_fields=["location_fk", "department"])
+                lifecycle.log(a, AssetEvent.Kind.TRANSFERRED,
+                              f"Transferred to {' / '.join(x for x in (where, fund) if x)}",
+                              request.user)
+                asset_signals.post_to_ledger(posting.post_asset_transfer, tr)
+        except Exception:  # noqa: BLE001 — the detail is for the log, not the treasurer
+            from core.utils import log_exception as _lx; _lx('assets/views.py')
+            messages.error(request, f"{a.name} was NOT transferred — the move could not be "
+                                    f"posted to the general ledger, so the transfer is "
+                                    f"still awaiting approval. Please try again, or tell "
+                                    f"whoever supports the system.")
+            return redirect("asset_detail", pk=tr.asset_id)
         messages.success(request, f"{a.name} transferred.")
         return redirect("asset_detail", pk=tr.asset_id)
 
