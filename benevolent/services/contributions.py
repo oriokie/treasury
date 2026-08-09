@@ -589,6 +589,32 @@ def record_contribution(scheme, *, date, amount, user=None, membership=None,
     # sees the final shape of the document (same belt-and-braces as loans)
     _repost(txn)
 
+    # Paying is the commonest thing that changes where a member stands, so the
+    # cached standing is recomputed here, exactly as registry.py does on every
+    # lifecycle event and engine.py on every adjustment. It was the one such
+    # event that did not: a member who had paid every month kept the ARREARS
+    # verdict written when she was admitted (dues accrue from the cover date and
+    # nothing had been paid yet) until the nightly job ran, and her own portal
+    # page then read "In arrears" above "Owing 0.00 — nothing outstanding",
+    # because the page takes the words from this column and the figures from the
+    # live assessment. The register lied to the office in the same way, and a
+    # historical dues import left a whole scheme in false arrears overnight.
+    #
+    # `refresh()` writes only the derived standing columns — never `status` — so
+    # receipting money can never disturb a lifecycle decision a treasurer made.
+    # Only a member can stand anywhere: a stranger's donation has no membership.
+    #
+    # Deliberately WITHOUT `user`, unlike registry.py and engine.py, so the
+    # logged change reads as automatic. There the person made a decision about
+    # the membership itself and the standing follows from it; here the clerk
+    # decided only to receipt money, and the verdict that follows is arithmetic
+    # the nightly job would have reached on its own. Putting her name against a
+    # conclusion she never formed would misread the audit trail the member is
+    # shown — and who took the money is already on the receipt.
+    if membership is not None:
+        from benevolent.services import standing as _standing
+        _standing.refresh(membership)
+
     if case is not None and case.funding_target:
         _maybe_announce_funding_reached(case)
     return contribution

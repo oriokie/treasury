@@ -315,15 +315,27 @@ class ReconciliationDeleteView(TreasurerRequiredMixin, View):
         return redirect("reconciliation_list")
 
 
+#: The one managed line that is the CASH BOOK's other half rather than a
+#: correction to the bank's side. Named once, because the sync writes it and
+#: `_refresh_book_for_moved_suspense` has to recognise the line it wrote.
+PENDING_RECEIPTS_ITEM = "Receipts pending allocation (banked, not yet in a fund)"
+
+
 def _sync_managed_recon_items(rec):
     """Keep the auto-managed reconciling items in step with their current values:
     the petty-cash float, outstanding bank-funded staff advances (both cash that
     has left the bank but the cash book still holds — they ADD back), and
     unpresented cheques (issued but not yet cleared — they SUBTRACT from the bank
     balance). Each is upserted when non-zero and removed when zero, so the
-    treasurer never has to add them by hand."""
+    treasurer never has to add them by hand.
+
+    Returns the cash-book balance if this sync had to move it (see
+    `_refresh_book_for_moved_suspense`), otherwise None — the detail view says
+    so out loud, because a stored figure rewritten during a page view with
+    nothing on screen to show for it is how this went wrong in the first place.
+    """
     with reconciliation_basis(rec.statement_date):
-        _sync_managed_recon_items_inner(rec)
+        return _sync_managed_recon_items_inner(rec)
 
 
 def _sync_managed_recon_items_inner(rec):
@@ -381,7 +393,7 @@ def _sync_managed_recon_items_inner(rec):
         ("Petty cash float (cash on hand)",
          _safe(_petty_balance_asof),
          ReconciliationItem.Kind.CASH_AT_HAND, ADD),
-        ("Receipts pending allocation (banked, not yet in a fund)",
+        (PENDING_RECEIPTS_ITEM,
          _pending_at_the_date(),
          ReconciliationItem.Kind.OTHER, SUB),
         ("Staff advances issued (not yet accounted)",
@@ -394,6 +406,14 @@ def _sync_managed_recon_items_inner(rec):
          _safe(unpresented_cheques_total),
          ReconciliationItem.Kind.UNPRESENTED, SUB),
     ]
+
+    def _suspense_on_the_sheet():
+        """What this worksheet currently carries in suspense, or None when it
+        carries no such line at all — the two are different facts, see below."""
+        it = rec.items.filter(description=PENDING_RECEIPTS_ITEM).first()
+        return it.amount if it else None
+
+    suspense_before = _suspense_on_the_sheet()
     for desc, amount, kind, effect in managed:
         existing = rec.items.filter(description=desc).first()
         if amount and amount > 0:
@@ -408,6 +428,70 @@ def _sync_managed_recon_items_inner(rec):
                     amount=amount, effect=effect, auto=True)
         elif existing and getattr(existing, "auto", False):
             existing.delete()
+    return _refresh_book_for_moved_suspense(rec, suspense_before,
+                                            _suspense_on_the_sheet())
+
+
+def _refresh_book_for_moved_suspense(rec, before, after):
+    """Move the stored cash-book balance whenever this sync moved the suspense
+    line, because the two are one figure cut in half.
+
+    `reconciliation_basis` states the invariant the 3.41.x fixes converged on:
+    the money is in the cash book or in suspense — never both, never neither.
+    The sync owns the suspense half and re-reads it from the books as they NOW
+    stand; `book_balance` is a stored number, read once when the worksheet was
+    prepared. Move one and leave the other and the invariant is broken by the
+    app's own hand — which is exactly what happened: a July worksheet balanced
+    at nil with 40,000 carried as "receipts pending allocation", the gift was
+    allocated in August, and merely OPENING July's sheet deleted the 40,000 line
+    and left the July cash-book figure behind it. A settled reconciliation
+    un-settled itself on a page view, and with auto-lock on, July had already
+    been closed on the strength of it.
+
+    Re-read from `_ledger_bank_balance` — the same call `recompute_book` and
+    `start_reconciliation` make, inside the same `reconciliation_basis` — so the
+    refreshed figure is still the dashboard's closing balance and the SOFP's
+    cash for that date. Nudging it by the delta instead would keep the sheet
+    balanced while quietly parting it from every other page, which is the 3.41.2
+    failure wearing a different hat.
+
+    Two deliberate silences:
+
+    * A line APPEARING for the first time (`before is None`) refreshes nothing.
+      That is the app learning of a credit it did not know about — a bank line
+      imported late, say. The books never held that money, so the book side must
+      not move; the sheet stops being out by it, which is the whole point of the
+      line. It also keeps the create path honest: `start_reconciliation` runs
+      this sync immediately, and a treasurer who typed their own cash-book
+      balance into the new-worksheet form must not have it overwritten a
+      millisecond later.
+    * An unchanged line refreshes nothing, so "Update book balance" survives its
+      own redirect and every later page view. That control exists so a treasurer
+      can hold a figure the ledger does not yet know about; a sync that
+      recomputed on every GET would make it unusable.
+
+    When the suspense line does move, a hand-typed balance IS replaced — by then
+    it is stale by construction, since the money it excluded has landed in the
+    books for that date. The caller reports the new figure so that is visible
+    rather than silent.
+    """
+    if before is None:
+        return None
+    after = Decimal(0) if after is None else after   # deleted == nothing pending
+    if after == before:
+        return None
+    if rec.book_balance is None:
+        # No book balance at all means there is no cash-book half to keep in
+        # step. A worksheet left that way has no difference and is not
+        # reconciled; filling the figure in from here would silently declare it
+        # settled on a page view, which is the disease and not the cure.
+        return None
+    fresh = _ledger_bank_balance(rec.statement_date)
+    if fresh == rec.book_balance:
+        return None
+    rec.book_balance = fresh
+    rec.save(update_fields=["book_balance"])
+    return fresh
 
 
 class ReconciliationDetailView(ReadAccessMixin, View):
@@ -446,7 +530,16 @@ class ReconciliationDetailView(ReadAccessMixin, View):
         # reconciling items, kept in step with their current values
         from core import roles
         if roles.can_enter_data(request.user):
-            _sync_managed_recon_items(rec)
+            refreshed = _sync_managed_recon_items(rec)
+            if refreshed is not None:
+                messages.info(
+                    request,
+                    f"The receipts this worksheet carries in suspense have "
+                    f"changed since it was prepared, so the cash-book balance "
+                    f"has been re-read for {rec.statement_date:%d %b %Y}: "
+                    f"KSh {refreshed:,.2f}. The two move together — that money "
+                    f"is in the cash book or in suspense, never both and never "
+                    f"neither.")
         if request.GET.get("export") in ("xlsx", "csv"):
             return self._export(request, rec)
         # as-at listing: judged on issue/cleared DATES so an instrument that

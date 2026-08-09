@@ -45,8 +45,16 @@
       {% if not p.supplier %}<span class="pill pill-grey u-xs" title="Not linked to the supplier register — this bill will not appear on any supplier's account">Unlinked</span>{% endif %}
       {% if p.is_part_paid %}<span class="pill pill-amber u-xs">Part paid · {{ p.percent_paid }}%</span>{% endif %}
       {% if p.payments.exists %}
+      {% comment %} The bank reference for an instalment is `voucher_no`, not
+         `reference`: `Expense` has no `reference` field at all, and the settle
+         form's reference is stored on the voucher number — services.payables.
+         settle says so at the line that does it. This list asked for
+         `pay.reference`, which Django resolves to the empty string in silence,
+         so every payment ever made showed a date and an amount and nothing to
+         tie either to a line on the bank statement, which is the one job the
+         list has. {% endcomment %}
       <div class="muted u-xs">
-        {% for pay in p.payments.all %}{{ pay.date|date:"d M y" }} · {{ pay.amount|money }}{% if pay.reference %} · {{ pay.reference }}{% endif %}{% if is_treasurer %}
+        {% for pay in p.payments.all %}{{ pay.date|date:"d M y" }} · {{ pay.amount|money }}{% if pay.voucher_no %} · {{ pay.voucher_no }}{% endif %}{% if is_treasurer %}
           <form method="post" action="{% url 'payable_unlink_payment' pay.id %}" class="u-inline" onsubmit="return confirm('Detach this payment from the payable? The expense itself is kept.');">{% csrf_token %}<button class="btn btn-xs btn-ghost text-amber" title="Detach (keeps the expense)">×</button></form>{% endif %}<br>{% endfor %}
       </div>{% endif %}</td>
     <td>{{ p.department.name }}</td>

@@ -132,6 +132,10 @@ INSTALLED_APPS = [
     "leaders",
     "loans",
     "benevolent",
+    # End-to-end business workflow tests. Holds no models — it is an app so
+    # that core.test_ci_coverage, which derives its shard list from
+    # INSTALLED_APPS, cannot let this suite go unrun (recommendations #131).
+    "e2e",
     # third party (must come after local apps)
     "axes",
 ]

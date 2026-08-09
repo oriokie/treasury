@@ -19,7 +19,15 @@ on a page naming the appeal, with nothing to choose but what they promise.{% end
 
 <div class="ws-summary">
   {% if campaign.goal_amount %}<div class="ws-metric"><span class="wm-l">Goal</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ campaign.goal_amount|money:0 }}</span>{% if campaign.pct_to_goal is not None %}<span class="wm-sub">{{ campaign.pct_to_goal }}% reached</span>{% endif %}</div>{% endif %}
-  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ campaign.total_pledged|money:0 }}</span><span class="wm-sub">{{ campaign.pledge_count }} pledges</span></div>
+  {% comment %}The count under the total has to be the count of the promises
+  that ARE the total. It was `pledge_count`, which excludes only cancellations
+  and so counts drafts: 60,000 approved beside a 40,000 draft rendered
+  "KES 60,000 · 2 pledges", one promise's money labelled with two — and six
+  lines above, the public-link note already used `approved_pledge_count` and
+  said 1, so the page contradicted itself on one screen. `pledge_count` stays
+  as it is; it is the right count for the campaign list, where the column is
+  the whole live queue rather than the figure beside it.{% endcomment %}
+  <div class="ws-metric is-primary"><span class="wm-l">Pledged</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ campaign.total_pledged|money:0 }}</span><span class="wm-sub">{{ campaign.approved_pledge_count }} pledges</span>{% if awaiting_approval %}<span class="wm-sub">{{ awaiting_approval }} awaiting approval</span>{% endif %}</div>
   <div class="ws-metric is-positive"><span class="wm-l">Received</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ campaign.total_received|money:0 }}</span><span class="wm-sub">{{ campaign.pct_received }}%</span></div>
   <div class="ws-metric is-warn"><span class="wm-l">Outstanding</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ campaign.total_outstanding|money:0 }}</span></div>
 </div>

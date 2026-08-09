@@ -18,7 +18,7 @@
     <h2 style="margin:0">{{ row.scheme.name }}</h2>
     {% if row.standing %}
       <span class="pill {% if row.standing.standing == 'GOOD' %}pill-green{% elif row.standing.standing == 'ARREARS' %}pill-red{% elif row.standing.standing == 'GRACE' %}pill-amber{% else %}pill-grey{% endif %}">
-        {{ row.membership.get_standing_display }}</span>
+        {{ row.standing.label }}</span>
     {% endif %}
   </div>
   <div class="pt-cards u-mt">

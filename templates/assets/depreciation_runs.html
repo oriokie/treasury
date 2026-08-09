@@ -13,20 +13,30 @@
     <div class="rpt-mast" style="margin-bottom:.75rem">
       <div class="eyebrow">Control · {{ SITE_NAME }}</div>
       <h2 style="margin:.1rem 0">Register &harr; ledger reconciliation</h2>
-      <div class="desc">The fixed-asset control accounts should equal the register once the opening balance and every monthly run to date are posted.</div>
+      <div class="sub">As at {{ control_as_of|date:"d M Y" }} — the last month end a run can cover</div>
+      <div class="desc">The fixed-asset control accounts should equal the register once the opening balance and every monthly run to that date are posted.</div>
     </div>
     <div class="table-wrap"><table class="ledger compact">
       <thead><tr><th></th><th class="num">Register</th><th class="num">Ledger</th><th class="num">Difference</th></tr></thead>
       <tbody>
-        <tr><td>Cost</td><td class="num mono">{{ rec.cost.register|money }}</td><td class="num mono">{{ rec.cost.ledger|money }}</td><td class="num mono">{{ rec.cost.diff|money_acct }}</td></tr>
-        <tr><td>Accumulated depreciation</td><td class="num mono">{{ rec.accdep.register|money }}</td><td class="num mono">{{ rec.accdep.ledger|money }}</td><td class="num mono">{{ rec.accdep.diff|money_acct }}</td></tr>
-        <tr class="total-row"><td>Net book value</td><td class="num mono">{{ rec.nbv.register|money }}</td><td class="num mono">{{ rec.nbv.ledger|money }}</td><td class="num mono">{{ rec.nbv.diff|money_acct }}</td></tr>
+        <tr><td>Cost</td><td class="num mono">{{ control.cost.register|money }}</td><td class="num mono">{{ control.cost.ledger|money }}</td><td class="num mono">{{ control.cost.diff|money_acct }}</td></tr>
+        <tr><td>Accumulated depreciation</td><td class="num mono">{{ control.accdep.register|money }}</td><td class="num mono">{{ control.accdep.ledger|money }}</td><td class="num mono">{{ control.accdep.diff|money_acct }}</td></tr>
+        <tr class="total-row"><td>Net book value</td><td class="num mono">{{ control.nbv.register|money }}</td><td class="num mono">{{ control.nbv.ledger|money }}</td><td class="num mono">{{ control.nbv.diff|money_acct }}</td></tr>
       </tbody>
     </table></div>
     {% if reconciled %}
-      <div class="info-panel" style="border-left-color:#1f5f4f">✓ Register and ledger agree.</div>
+      <div class="info-panel" style="border-left-color:#1f5f4f">✓ Register and ledger agree as at {{ control_as_of|date:"d M Y" }}.</div>
     {% else %}
-      <div class="info-panel">The register and ledger differ — post any outstanding monthly runs below to bring them into line.</div>
+      <div class="info-panel">The register and ledger differ as at {{ control_as_of|date:"d M Y" }} — post any outstanding monthly runs below to bring them into line.</div>
+    {% endif %}
+    {% comment %} Why the control is not asked at today: depreciation is charged by
+    whole months from the first of the month, so the register already carries the
+    current month, while a run is dated at its month end and cannot be posted until
+    the month is over. Read against each other today the two show a break that no
+    action on this page can close, so the difference is named here for what it is
+    instead of being left to look like a control failure. {% endcomment %}
+    {% if in_month_charge > 0 %}
+      <p class="help u-mt">The register has since charged <span class="mono">{{ in_month_charge|money }}</span> for {{ as_of_today|date:"F" }} — a whole month is charged from the 1st — bringing accumulated depreciation to <span class="mono">{{ rec.accdep.register|money }}</span> at {{ as_of_today|date:"d M Y" }}. The ledger cannot carry it until the {{ as_of_today|date:"F" }} run is posted, which is dated {{ as_of_today|date:"F" }} month end, so it is not part of the reconciliation above.</p>
     {% endif %}
   </div>
 </div>

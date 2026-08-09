@@ -6,10 +6,18 @@ never disagree about the rules.
 
 Two guards carry real weight:
 
-* **Disposal is a document, not a status.** Nothing here may set DISPOSED,
-  because a disposal has to record proceeds, a method and a fund, and post its
-  journal (gain/loss, and the asset leaving the control accounts). It is done
-  through the disposal flow, which then reports the status itself.
+* **Disposal is a document, not a status.** `transition()` may never set
+  DISPOSED, because a disposal has to record proceeds, a method and a fund, and
+  post its journal (gain/loss, and the asset leaving the control accounts). It
+  is done through the disposal flow, which then reports the status through
+  `mark_disposed()` — the one door to that status, and deliberately not a
+  destination in TRANSITIONS. For a long time the refusal existed and the door
+  did not, so DISPOSED was unreachable through the application: a projector
+  sold for 300,000 stayed in whatever column it was in, the board's "Disposed"
+  column was permanently empty, and — because HELD_SALE leads only back to
+  IN_SERVICE and IDLE, both refused once `disposed` is true, while ARCHIVED is
+  reachable only from DISPOSED — a sold asset could never be archived off the
+  board either.
 * **An asset in someone's hands cannot be sent for disposal.** It must be
   checked in first, so the register never writes off something still issued.
   That guard is `check_not_issued`, and it is deliberately a function of its
@@ -119,6 +127,52 @@ def transition(asset, target, user=None, note="", on=None):
     if note:
         summary = f"{summary} — {note}"[:200]
     log(asset, AssetEvent.Kind.STATUS, summary, user)
+    return asset
+
+
+def mark_disposed(asset, user=None, note=""):
+    """Report a recorded disposal on the register's face: move the asset to
+    DISPOSED. The ONLY way that status is ever reached.
+
+    `_check` refuses DISPOSED as a bare status change and must go on refusing
+    it — a Kanban drag cannot supply the date, method, proceeds and fund a
+    disposal needs, nor post its journal. But a refusal on its own left the
+    status unreachable, so the board went on showing a sold asset among the
+    ones still waiting to be sold and counted its (nil) book value in that
+    column's total.
+
+    So the DOCUMENT reports the status, and it does so here rather than in the
+    view, for the same reason every other rule in this module is here: the
+    register, the board and anything added later must not each decide for
+    themselves what a disposal does to the status.
+
+    Guarded rather than trusting: the row must already carry the disposal —
+    `disposed` and `disposed_on` — before the status can say so. That is what
+    stops this becoming the back door into DISPOSED that `_check` closes.
+    Callers therefore invoke it AFTER saving the disposal and inside the same
+    atomic block as the journal, so the register can never be left disposed
+    with the board still showing the asset in service.
+
+    Idempotent: recording a disposal twice, or a rebuild replaying one, leaves
+    one status and one timeline entry rather than a second.
+    """
+    if not (asset.disposed and asset.disposed_on):
+        raise TransitionError(
+            f"{asset.name} has no recorded disposal — record the disposal, with its "
+            f"date, method, proceeds and fund, rather than setting the status.")
+    if asset.status == S.DISPOSED:
+        return asset
+    previous = asset.get_status_display()
+    asset.status = S.DISPOSED
+    # update_fields deliberately narrow: the disposal's own figures were written
+    # by the caller's save, and assets.signals._freeze_disposal_figures skips a
+    # save that could not persist `disposal_gain_loss` — so this one cannot
+    # restate the gain/(loss) the disposal just froze.
+    asset.save(update_fields=["status"])
+    summary = f"{previous} → {asset.get_status_display()} on {asset.disposed_on:%d %b %Y}"
+    if note:
+        summary = f"{summary} — {note}"[:200]
+    log(asset, AssetEvent.Kind.DISPOSED, summary, user)
     return asset
 
 

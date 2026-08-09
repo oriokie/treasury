@@ -84,6 +84,11 @@ jobs:
             apps: giving envelopes accounts
           - name: the-rest
             apps: statements assets loans leaders members vendors
+          # Its own shard: these walk whole business processes through HTTP, so
+          # they are slower per test than any unit suite and would stretch
+          # whichever shard they joined.
+          - name: e2e
+            apps: e2e
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

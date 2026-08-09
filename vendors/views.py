@@ -1,11 +1,13 @@
 """Supplier register and account view."""
 import datetime as dt
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView
 
@@ -196,7 +198,42 @@ class VendorSaveView(DataEntryRequiredMixin, View):
                 m for msgs in getattr(exc, "message_dict", {"": exc.messages}).values()
                 for m in msgs))
 
+        # `vendor` is only a saved record on the edit path and after a create
+        # that succeeded; every other exit lands here holding None.
+        if vendor is None or vendor.pk is None:
+            return self._back_to_register(request, action)
         return redirect("vendor_detail", pk=vendor.pk)
+
+    @staticmethod
+    def _back_to_register(request, action):
+        """Where a rejected POST goes when no supplier account exists yet.
+
+        `vendor_detail` is the right destination for everything the profile
+        page posts, and for a create that worked. It is exactly wrong for a
+        create that did not: `_save_vendor` assigns `vendor` only on its last
+        line, so a record the model refused — a duplicate name, or the blank
+        one you get by pressing Save on the empty form — left `vendor` None and
+        this view's single exit redirect died on `None.pk`. The treasurer met a
+        500 in place of the sentence `Vendor.clean()` wrote for them, so the
+        one guard against an eleventh spelling of "Mwangi Hardware" was, from
+        the register's form, indistinguishable from the server falling over.
+
+        The register is where the add form lives, so returning there IS the
+        form re-rendered, with the flash sitting above it.
+
+        The rejected name is carried back as the register's search term, which
+        is what turns the message into the offer it was written to be:
+        `accounts.search` matches on `name_key`, the same normalisation
+        `Vendor.clean()` used to decide the two names are one supplier, so the
+        record it named is on the page as a link the treasurer can click. The
+        matching rule is not restated here — it is that one call. Only the
+        supplier form has a `name` worth searching for; the profile's smaller
+        forms send a contact's or an account's name under the same key, and
+        filtering the register by one of those would be a lie.
+        """
+        rejected = request.POST.get("name", "").strip() if action == "save" else ""
+        query = f"?{urlencode({'q': rejected})}" if rejected else ""
+        return redirect(f"{reverse('vendor_list')}{query}")
 
     @staticmethod
     def _may_edit_bank(request):
