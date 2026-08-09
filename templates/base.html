@@ -151,8 +151,28 @@
         <summary><span class="ic">◉</span> People <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'member_list' %}" class="{% if 'member' in request.resolver_match.url_name %}active{% endif %}">Members</a>
-          <a href="{% url 'pledge_dashboard' %}" class="{% if 'pledge' in request.resolver_match.url_name %}active{% endif %}">Pledges</a>
-          <a href="{% url 'campaign_list' %}" class="{% if 'campaign' in request.resolver_match.url_name %}active{% endif %}">Campaigns</a>
+          <a href="{% url 'pledge_dashboard' %}" class="{% if 'pledge' in request.resolver_match.url_name and request.resolver_match.url_name|slice:":15" != 'pledge_campaign' %}active{% endif %}">Pledges</a>
+          {% comment %} Two unrelated things are called a campaign in this app and both
+             belong in this group. `campaign_list` (giving.Campaign) is the allocation
+             fallback — trigger words and a member→group table. `pledge_campaign_list`
+             (pledges.PledgeCampaign) is the appeal members promise toward, and it is
+             the one that was missing: the list view, its template, the create/edit
+             form and its tests all shipped, and then nothing in any template ever
+             linked to /pledges/campaigns/, so a treasurer could only arrive by typing
+             the URL. It is the same door-less screen as the portal pair two groups
+             up, which recommendation #126 already counted as the fourth of its kind
+             (#121, #122 and #125 before it) — and in every one of them the tests
+             passed, because a test reverses a URL and requests it, which is exactly
+             the step a real user cannot take. So the guard is
+             pledges/test_campaign_nav.py and it reads this rendered sidebar.
+
+             The active tests are prefix comparisons rather than `in` because
+             'campaign' is a substring of 'pledge_campaign_list': opening a pledge
+             campaign already lit up the giving Campaigns link, and with a second
+             link here both siblings would highlight at once. Same reason 'pledge'
+             alone no longer claims the Pledges link on these pages. {% endcomment %}
+          <a href="{% url 'pledge_campaign_list' %}" class="{% if request.resolver_match.url_name|slice:":15" == 'pledge_campaign' %}active{% endif %}">Pledge campaigns</a>
+          <a href="{% url 'campaign_list' %}" class="{% if request.resolver_match.url_name|slice:":8" == 'campaign' %}active{% endif %}">Campaigns</a>
         </div>
       </details>
 
@@ -201,6 +221,7 @@
           <a href="{% url 'controls' %}" class="{% if request.resolver_match.url_name == 'controls' %}active{% endif %}">Period locks &amp; controls</a>
           <a href="{% url 'settings' %}" class="{% if request.resolver_match.url_name == 'settings' %}active{% endif %}">Settings</a>
           <a href="{% url 'allocation_priority' %}" class="{% if request.resolver_match.url_name == 'allocation_priority' %}active{% endif %}">Allocation priority</a>
+          <a href="{% url 'envelope_columns' %}" class="{% if request.resolver_match.url_name == 'envelope_columns' %}active{% endif %}">Envelope columns</a>
           <a href="/admin/">Django admin</a>
         </div>
       </details>

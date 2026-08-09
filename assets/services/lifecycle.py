@@ -12,6 +12,13 @@ Two guards carry real weight:
   through the disposal flow, which then reports the status itself.
 * **An asset in someone's hands cannot be sent for disposal.** It must be
   checked in first, so the register never writes off something still issued.
+  That guard is `check_not_issued`, and it is deliberately a function of its
+  own rather than a clause inside `_check`: the two ways an asset can leave the
+  register are the HELD_SALE transition and the disposal document, and for a
+  long time only the first of them asked. The disposal flow does not go through
+  `transition()` at all (see above), so it disposed of assets that were still
+  checked out — leaving the register showing something both written off and in
+  someone's hands, with an assignment that could never be closed.
 """
 import datetime as dt
 
@@ -47,6 +54,21 @@ def open_assignment(asset):
     return asset.assignments.filter(to_date__isnull=True).first()
 
 
+def check_not_issued(asset, before):
+    """Refuse to write an asset off while it is still in someone's hands.
+
+    `before` completes the sentence "check it back in before ..." so each caller
+    names its own act ("holding it for disposal", "recording a disposal") while
+    the rule itself — and the wording of the refusal — stays in one place.
+    """
+    held = open_assignment(asset)
+    if held:
+        raise TransitionError(
+            f"{asset.name} is still issued to {held.holder}. Check it back in "
+            f"before {before}.")
+    return True
+
+
 def allowed_transitions(asset):
     """Destinations this asset may move to right now, guards included."""
     current = asset.status or S.IN_SERVICE
@@ -75,11 +97,7 @@ def _check(asset, target):
             f"{asset.name} cannot go from {asset.get_status_display().lower()} to "
             f"{FixedAsset.Status(target).label.lower()}.")
     if target == S.HELD_SALE:
-        held = open_assignment(asset)
-        if held:
-            raise TransitionError(
-                f"{asset.name} is still issued to {held.holder}. Check it back in "
-                f"before holding it for disposal.")
+        check_not_issued(asset, "holding it for disposal")
     return True
 
 

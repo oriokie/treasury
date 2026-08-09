@@ -9,8 +9,26 @@
     <span class="pill {% if row.membership.standing == 'GOOD' %}pill-green{% elif row.membership.standing == 'ARREARS' %}pill-red{% elif row.membership.standing == 'GRACE' %}pill-amber{% else %}pill-grey{% endif %}">{{ row.membership.get_standing_display }}</span>
   </div>
 
-  {% if row.standing and row.standing.reasons %}
-  <ul class="u-mt">{% for reason in row.standing.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+  {% comment %} `reason`, singular, because that is what the engine returns.
+     standing.assess() hands back a StandingResult carrying one sentence — `reason`
+     — plus a list of `workings`. There is no `reasons` on it and there never was,
+     and a template `if` on a name that does not resolve is simply false, so this
+     block never rendered once, for any member, in any standing. Nobody saw a stack
+     trace to tell them: the pill said ARREARS and the sentence explaining what that
+     meant for this member, computed for precisely this purpose, was dropped on the
+     floor. The office screen (membership_detail.html) has read `reason` correctly
+     the whole time, which is the tell — the same fact, right in one place and
+     invented in the other.
+
+     `workings` is deliberately NOT shown here, and that is not an oversight to be
+     tidied up later. Those lines are the engine reasoning with a treasurer over its
+     shoulder; one of them, for a member ruled inactive, reads as a sentence about
+     someone who will not stand with a bereaved family and then expects the family
+     to stand with them. Fair enough as a note on a policy, indefensible addressed
+     to the member on their own page. The member is owed the finding, in plain
+     words. The working belongs on the office screen that already shows it. {% endcomment %}
+  {% if row.standing and row.standing.reason %}
+  <p class="u-mt">{{ row.standing.reason }}</p>
   {% endif %}
 
   <div class="pt-cards u-mt">

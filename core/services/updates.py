@@ -267,6 +267,7 @@ def update_available(force=False):
 
 # --- button-triggered, in-app update runner --------------------------------
 import os
+import signal
 import subprocess
 import threading
 import datetime as _dt
@@ -277,17 +278,71 @@ _update_state = {
     "running": False,
     "finished": False,
     "ok": None,
+    #: Which restart this run actually achieved: "gunicorn", "runserver", or
+    #: None for none at all. ok=True only ever meant "the new code reached the
+    #: disk", but the progress page had nothing else to read, so it printed
+    #: "Update complete. The app is reloading" over every successful run —
+    #: including the ones whose log said "STILL SERVING THE OLD VERSION" three
+    #: lines above the banner. A treasurer reads that banner to decide whether
+    #: the fix they just installed is live, and on a host where nothing could be
+    #: signalled the banner told them it was while the old workers went on
+    #: serving. The page branches on this key, so the two can no longer disagree.
+    "reload": None,
     "log": [],
     "started_at": None,
     "finished_at": None,
 }
 _update_lock = threading.Lock()
 
+#: Where a finished run leaves its outcome for the process that replaces it.
+#: logs/ is gitignored and the app already creates it, so nothing new has to be
+#: kept out of version control. Writing it is best-effort throughout: if the
+#: directory is not writable the page simply behaves as it did before.
+_STATE_FILE = _PROJECT_ROOT / "logs" / "last-update.json"
+#: How long a state file stays interesting, in seconds. Long enough to cover a
+#: worker restart and a treasurer reaching for the refresh button; short enough
+#: that the update page does not become a permanent monument to last month's
+#: upgrade instead of offering the "Update now" button.
+_STATE_FILE_TTL = 600
+
+
+def _persist_state(snapshot):
+    try:
+        _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _STATE_FILE.write_text(json.dumps(snapshot), encoding="utf-8")
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _recovered_state():
+    """What a previous process left behind, if it is still recent. Else None."""
+    try:
+        data = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+        finished_at = _dt.datetime.fromisoformat(data["finished_at"])
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
+    if (_dt.datetime.now() - finished_at).total_seconds() > _STATE_FILE_TTL:
+        return None
+    return data
+
 
 def update_status():
-    """Snapshot of the current/last update run, for the progress page."""
+    """Snapshot of the current/last update run, for the progress page.
+
+    When this process has never run an update, fall back to the outcome a
+    previous one recorded. That is not a nicety. A successful update ends by
+    restarting the workers, so by the time the progress page polls again the
+    process that did the work is gone and its log with it — the treasurer would
+    watch the log they were reading empty itself, the spinner stop, and nothing
+    say whether their finance system had just been upgraded or broken. The
+    handoff file carries the last few minutes across the restart we ourselves
+    caused; anything older is ignored so the page goes back to normal.
+    """
     with _update_lock:
-        return dict(_update_state, log=list(_update_state["log"]))
+        if _update_state["started_at"] is not None:
+            return dict(_update_state, log=list(_update_state["log"]))
+        blank = dict(_update_state, log=[])
+    return _recovered_state() or blank
 
 
 def _log(msg):
@@ -345,7 +400,141 @@ def _python_executable():
     return str(py) if py.exists() else sys.executable
 
 
+#: What a manual restart looks like, said once so the log, the "we could not do
+#: it" branch and the failed-signal branch cannot drift apart.
+_MANUAL_RESTART_HINT = (
+    "Restart the app to finish: 'sudo systemctl restart treasury' on a "
+    "systemd host, or 'touch tmp/restart.txt' under cPanel/Passenger.")
+
+
+def _reload_target():
+    """How — and whether — this process can get the server onto the new code.
+
+    Returns ("gunicorn", master_pid), ("runserver", None) or ("manual", None).
+    Pure inspection: it decides, it does not act.
+
+    For four releases the answer was assumed rather than worked out. The
+    updater touched config/wsgi.py and announced "Signalled the app to
+    restart", because gunicorn.conf.py listed that file in `reload_extra_files`
+    — a setting that does nothing unless `reload` is also on, and `reload` is a
+    development feature that was never enabled here. So the touch changed an
+    mtime nobody was watching, the workers went on serving the old code until
+    somebody happened to restart the service, and the one place that would have
+    told them said the opposite.
+
+    SIGHUP to the gunicorn master is the mechanism that actually exists in
+    production: the arbiter re-reads its config, forks fresh workers (which
+    import the application themselves, so they get the new code — this project
+    does not preload) and retires the old ones as they finish their requests.
+    No file watcher in every worker, no development setting in production.
+
+    The care taken identifying the master is the point of the rest of this
+    function. getppid() on a process whose parent has died is 1, and the only
+    thing worse than an update that fails to reload is one that sends SIGHUP to
+    init.
+    """
+    # Django's own dev server. The autoreloader runs the app in a child with
+    # RUN_MAIN set and watches every imported source file; settings.
+    # WSGI_APPLICATION makes config/wsgi.py one of them, so touching it there
+    # genuinely does restart the process.
+    if os.environ.get("RUN_MAIN") == "true":
+        return "runserver", None
+
+    # gunicorn's Arbiter.__init__ sets SERVER_SOFTWARE in os.environ before it
+    # forks, so every worker inherits it and nothing else in this project sets
+    # it. Workers are forked directly by the arbiter, so the master is our
+    # parent.
+    if not os.environ.get("SERVER_SOFTWARE", "").startswith("gunicorn"):
+        return "manual", None
+    ppid = os.getppid()
+    if ppid <= 1:
+        return "manual", None
+    # Where /proc is readable — every Linux host this is deployed on — confirm
+    # the parent really is gunicorn rather than trusting an inherited variable.
+    # Elsewhere (macOS in development) there is nothing to read and the check
+    # is skipped rather than failed.
+    try:
+        cmdline = Path(f"/proc/{ppid}/cmdline").read_bytes()
+    except OSError:
+        cmdline = None
+    if cmdline is not None and b"gunicorn" not in cmdline:
+        return "manual", None
+    return "gunicorn", ppid
+
+
+def _reload_notes(kind, pid):
+    """Everything the treasurer is told once the code is installed.
+
+    Phrased as intent, not achievement, because the restart can cut this thread
+    off between sending the signal and writing the next line — and because the
+    old wording ("Signalled the app to restart", "The app will reload
+    momentarily") was read live by someone deciding whether their books were
+    now on the new version, while nothing of the sort had happened.
+    """
+    if kind == "gunicorn":
+        return [f"→ Asking the web server to reload onto the new code "
+                f"(SIGHUP to the gunicorn master, process {pid}).",
+                "Update complete. The app restarts over the next few seconds — "
+                "the version at the foot of the sidebar changes once it has. "
+                "If it has not changed after a minute, the reload did not take: "
+                + _MANUAL_RESTART_HINT]
+    if kind == "runserver":
+        return ["→ Touching config/wsgi.py so the development server restarts "
+                "itself.",
+                "Update complete. The development server reloads in a moment."]
+    return ["! The new code is installed, but this process cannot restart the "
+            "web server, so it is STILL SERVING THE OLD VERSION.",
+            "Update complete on disk. " + _MANUAL_RESTART_HINT]
+
+
+def _apply_reload(kind, pid):
+    """Do the thing _reload_target decided on. May end this process."""
+    if kind == "gunicorn":
+        try:
+            os.kill(pid, signal.SIGHUP)
+        except OSError as exc:
+            # Still alive, so the log can be corrected — and must be, because
+            # the line above it says we were about to reload.
+            _log(f"✗ Could not signal the web server ({exc}). It is still "
+                 f"running the old version. {_MANUAL_RESTART_HINT}")
+            # And take the prediction back in the state as well as in the log.
+            # _do_update closed this run off as reload="gunicorn" a moment ago
+            # because after a SIGHUP that lands this thread may never run again;
+            # the signal was refused, so the machine-readable half has to be
+            # corrected too. The banner reads the state, not the log, and a
+            # correction only the log carries is one nobody making the decision
+            # will see.
+            _finish(ok=True, reload_kind=None)
+    elif kind == "runserver":
+        wsgi = _PROJECT_ROOT / "config" / "wsgi.py"
+        if wsgi.exists():
+            wsgi.touch()
+
+
+def _finish(ok, reload_kind=None):
+    """Close the run off and leave the outcome where the next process can read
+    it — see update_status().
+
+    reload_kind is the restart that was actually achieved, never the one that
+    was hoped for; None says the code is installed and the old version is still
+    being served. It is written under the lock alongside ok because those two
+    facts are read together by the progress page and by the process that
+    replaces us, and a snapshot that carried "ok" without saying whether ok
+    included getting onto the new code is exactly the half-truth this whole
+    handoff exists to stop.
+    """
+    with _update_lock:
+        _update_state["ok"] = ok
+        _update_state["reload"] = reload_kind
+        _update_state["running"] = False
+        _update_state["finished"] = True
+        _update_state["finished_at"] = _dt.datetime.now().isoformat()
+        snapshot = dict(_update_state, log=list(_update_state["log"]))
+    _persist_state(snapshot)
+
+
 def _do_update():
+    target = None
     try:
         _log("Starting update")
         _backup_db()
@@ -358,26 +547,36 @@ def _do_update():
                   [py, "manage.py", "migrate", "--noinput"])
         _run_step("Refreshing static files",
                   [py, "manage.py", "collectstatic", "--noinput"])
-        # signal the WSGI server to reload by touching the wsgi file
-        wsgi = _PROJECT_ROOT / "config" / "wsgi.py"
-        if wsgi.exists():
-            wsgi.touch()
-            _log("✓ Signalled the app to restart")
-        with _update_lock:
-            _update_state["ok"] = True
-        _log("Update complete. The app will reload momentarily.")
+        target = _reload_target()
+        for line in _reload_notes(*target):
+            _log(line)
+        # Record the reload we are about to perform, not the one we would like
+        # to. "manual" is not a reload this process does — it is the branch that
+        # tells a human to do it — so it is stored as no reload at all, which is
+        # what makes the page warn instead of congratulate. The outcome has to
+        # be written before the signal goes out (see below), so "gunicorn" here
+        # is still a prediction; _apply_reload takes it back if the kill fails.
+        _finish(ok=True,
+                reload_kind=None if target[0] == "manual" else target[0])
     except Exception as e:  # noqa: BLE001
-        with _update_lock:
-            _update_state["ok"] = False
+        target = None          # a run that failed must not restart anything
         _log(f"✗ Update failed: {e}")
         _log("No partial changes were applied to your data; "
              "your database backup is safe. You can retry or update from the "
              "server with ./update.sh")
+        _finish(ok=False)
     finally:
+        # Safety net for anything that is not an Exception (a SystemExit out of
+        # a subprocess call, say): a run left flagged as running blocks every
+        # later update, and the button gives no way back from that.
         with _update_lock:
-            _update_state["running"] = False
-            _update_state["finished"] = True
-            _update_state["finished_at"] = _dt.datetime.now().isoformat()
+            still_running = _update_state["running"]
+        if still_running:
+            _finish(ok=False)
+    # Only now, with the outcome written down where the process that replaces
+    # us can find it, hand over — this is the step that stops this worker.
+    if target is not None:
+        _apply_reload(*target)
 
 
 def start_update():
@@ -388,7 +587,12 @@ def start_update():
             return False
         if not (_PROJECT_ROOT / ".git").exists():
             return None  # not a git checkout — can't self-update
+        # reload=None as well: a second update in the same worker must not
+        # inherit the last run's restart, or a run that ends up unable to
+        # signal anything would be reported live on the strength of the one
+        # before it.
         _update_state.update(running=True, finished=False, ok=None, log=[],
+                             reload=None,
                              started_at=_dt.datetime.now().isoformat(),
                              finished_at=None)
     threading.Thread(target=_do_update, name="app-update", daemon=True).start()

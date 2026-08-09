@@ -52,6 +52,33 @@ def filtered_loans(*, start=None, end=None, fund=None, lender=None,
 
 # ---- 1. Loan Liability Schedule --------------------------------------------
 
+def _outstanding_interest_asof(loan, as_of):
+    """Accrued-but-unpaid interest on one loan AS AT a date.
+
+    Loan.outstanding_interest answers the same question, but only ever for
+    today, and it is not safe to use from a dated report: it calls
+    accrued_interest() with no argument (so the accrual always runs to
+    date.today()) and subtracts interest_paid, which sums every interest
+    payment ever recorded with no date bound at all. Used in a schedule 'as at'
+    an earlier date, it charged the liability with interest that had not
+    accrued yet — a loan taken 800 days ago and never repaid reported the same
+    interest at any as-of date, so every prior-period and comparative Loan
+    Liability Schedule (and the report totals built from these rows)
+    overstated what the church actually owed on that date.
+
+    Both halves have to be bounded by the SAME date for the figure to mean
+    anything, which is all this does: accrued_interest() already takes as_of,
+    and Loan._sum() is the model's one implementation of "the effective
+    transactions of this kind up to a date" — the same helper outstanding_asof
+    is built from — so the dated interest-paid figure is taken from there
+    rather than re-summed here, where it could drift from the effectiveness
+    rules.
+    """
+    return max(Decimal(0),
+               loan.accrued_interest(as_of)
+               - loan._sum(LoanTransaction.Kind.INTEREST, as_of))
+
+
 def liability_schedule(loans=None, as_of=None):
     """The full liability line per loan, as at a date (default today)."""
     as_of = as_of or _dt.date.today()
@@ -59,7 +86,8 @@ def liability_schedule(loans=None, as_of=None):
     rows = []
     for l in loans:
         outstanding = l.outstanding_asof(as_of)
-        interest_out = l.outstanding_interest if outstanding else Decimal(0)
+        interest_out = (_outstanding_interest_asof(l, as_of) if outstanding
+                        else Decimal(0))
         days = None
         if l.maturity_date:
             days = (l.maturity_date - as_of).days

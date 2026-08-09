@@ -549,7 +549,13 @@ def pending_receipts_total(as_of=None):
     A bank credit that has already been receipted through an envelope is NOT
     pending: its income and fund live on the envelope's own record, so the bank
     line is just a memo. Such credits (processed_via_envelope / manual_receipt)
-    are excluded here, otherwise they would be double-counted as suspense."""
+    are excluded here, otherwise they would be double-counted as suspense.
+
+    Money that was at the bank on ``as_of`` and was receipted only afterwards is
+    added back by ``receipted_after`` — it is at the bank on the day and in no
+    fund on the day, so suspense is the only line that can carry it. Read that
+    function before touching this sum: which rows qualify is the whole of the
+    difficulty, and getting it wrong reports one credit as two."""
     f = Q(channel=Transaction.Channel.BANK, direction=Transaction.Direction.CREDIT,
           is_reversed=False, is_reversal=False)
     f &= (Q(confirmed=False) | Q(department__isnull=True))
@@ -561,12 +567,12 @@ def pending_receipts_total(as_of=None):
 
 
 def receipted_after(as_of=None):
-    """Bank credits that were awaiting receipt ON ``as_of`` and were receipted
-    afterwards.
+    """Bank credits that were awaiting receipt ON ``as_of``, were receipted
+    afterwards, and whose money the books still do not carry on that date.
 
     Money banked on Friday and receipted on Sabbath is the ordinary case here.
-    Receipting a bank line detaches it from every fund and marks it a memo,
-    because the income and the fund move to an envelope — one dated the Sabbath.
+    Receipting a bank line BY HAND detaches it from every fund and marks it a
+    memo, because the income and the fund move to an envelope — dated the Sabbath.
     So on Friday night that money is at the bank, in no fund, and (once the
     Sabbath comes) excluded from the pending set as well. It would be counted
     nowhere, and a Friday reconciliation would be short by exactly that amount.
@@ -577,16 +583,58 @@ def receipted_after(as_of=None):
     expenses are keyed in during August and belong in July — so the balances
     themselves must always be read as they now stand. A row whose history does
     not reach back that far is left out rather than guessed at.
+
+    TWO KINDS OF ROW MUST NOT BE ADDED BACK, and both used to be. Each one
+    reported a single 5,000 credit as 10,000 — once in a fund, once in
+    suspense — which nets out at the bottom of a statement and so hid in the
+    one place nobody checks while every line above it was wrong.
+
+    * Not under an as-reported basis. There the queryset behind
+      ``pending_receipts_total`` is ALREADY the historical reconstruction, so
+      the row is sitting in suspense in it under its own steam. This function
+      exists to give the restated (default) basis the one fact it cannot
+      reconstruct; on the other basis it is a second helping of the same fact.
+
+    * Not once the row itself sits in a fund. Receipting through an envelope
+      (``processed_via_envelope``) leaves the money ON this bank row and merely
+      attaches an envelope to it — there is no second posting — so from the
+      moment a fund is set, the row's own amount is in that fund's closing
+      balance for every date from its own date onwards, ``as_of`` included. It
+      is in the book; it cannot also be in suspense. The memo route is the
+      exact opposite: ``mark_manual_receipt`` detaches the row from its fund
+      and zeroes its cash because the income turns up as a separate envelope
+      entry, and THAT is the row this function is for.
+
+    What it still cannot see: nothing links a memo row to the envelope entry
+    carrying its income. When that entry is dated on or before ``as_of`` —
+    paperwork caught up with weeks later and back-dated to the service Sabbath
+    — the book holds it and this function adds it back anyway. Closing that
+    gap needs a link between the two rows, not a cleverer guess from here.
     """
     if not as_of:
         return Decimal(0)
     from reports.services import asat
+    if asat.is_active():
+        # Nothing to add back on this basis. The queryset behind
+        # pending_receipts_total is ALREADY the historical reconstruction, so a
+        # row that was unreceipted on the day is sitting in its suspense under
+        # its own steam. Adding it a second time is one fact served twice — and
+        # it was, until this guard: a paper receipting read 10,000 against a
+        # true 5,000 on every "as reported" statement.
+        return Decimal(0)
     moment = asat.moment_for(as_of)
     rows = Transaction.objects.filter(
         channel=Transaction.Channel.BANK,
         direction=Transaction.Direction.CREDIT,
         is_reversed=False, is_reversal=False, date__lte=as_of,
-    ).filter(Q(manual_receipt=True) | Q(processed_via_envelope=True))
+    ).filter(
+        Q(manual_receipt=True) | Q(processed_via_envelope=True)
+    ).exclude(
+        # already in a fund's closing balance — the same test the fund
+        # balances themselves apply (see fund_balance_parts: department set,
+        # confirmed, unreversed, dated up to as_of; the date and the reversal
+        # flags are in the filter above)
+        Q(department__isnull=False) & Q(confirmed=True))
     total = Decimal(0)
     for t in rows:
         was = (t.history.filter(history_date__lte=moment)

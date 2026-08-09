@@ -301,6 +301,58 @@ class MemberUpdateView(DataEntryRequiredMixin, UpdateView):
         return reverse_lazy("member_detail", args=[self.object.pk])
 
 
+def _established_phone(member):
+    """The number a record actually carries, read back the way it was written.
+
+    ``Member.save`` stores ``normalize_phone(self.phone) or self.phone``, so a
+    number it cannot make sense of is kept verbatim rather than discarded.
+    Reading it back through the same normalisation — the matching service's own,
+    not a second copy of it — is what stops '0712 345 678' and '254712345678'
+    being mistaken for two different numbers, and therefore for two people.
+    """
+    return normalize_phone(member.phone) or (member.phone or "").strip()
+
+
+def merge_candidates(member):
+    """The same-name records `member` might be merged with, and the single one
+    — if there is one — that may be merged with nobody watching.
+
+    Returns ``(candidates, unattended)``. The review screen and the bulk-merge
+    endpoint both read this, and they have to read the same thing: "unambiguous"
+    must mean one thing on the page that offers the one-click merge and in the
+    view that carries it out, or the button promises something the endpoint does
+    not do.
+
+    Two conditions make a pair ambiguous:
+
+    * More than one same-name candidate — nothing here can say which of them is
+      the person, so a human must.
+    * Both records carrying a phone number, and the numbers differing. That is
+      not a detail: it is the exact condition under which
+      ``match_or_create_member`` REFUSED to attach the incoming payment to the
+      existing member, created a second record and raised the very
+      PossibleDuplicate flag being reviewed here (see
+      ``members/services/matching.py``, step 2 — ``if not ph or m.phone == ph``).
+      The system has already judged 'same name, different established number' to
+      be evidence of two different people; the queue that reviews that judgement
+      cannot quietly overturn it in bulk. Two real congregants called John Kamau
+      with two real numbers would have their pledges, envelopes, loans and
+      benevolent history permanently combined by one click on 'merge all', and
+      nothing in the merge is reversible.
+
+    So such a pair is withheld from the bulk action and left on the review
+    screen, where the treasurer is shown both numbers and chooses deliberately.
+    """
+    candidates = list(Member.objects.filter(name_key=member.name_key)
+                      .exclude(pk=member.pk))
+    unattended = None
+    if len(candidates) == 1:
+        mine, theirs = _established_phone(member), _established_phone(candidates[0])
+        if not (mine and theirs and mine != theirs):
+            unattended = candidates[0]
+    return candidates, unattended
+
+
 class DuplicateReviewView(ReadAccessMixin, ListView):
     template_name = "members/duplicates.html"
     context_object_name = "dups"
@@ -315,10 +367,16 @@ class DuplicateReviewView(ReadAccessMixin, ListView):
         data = []
         single = 0
         for d in ctx["dups"]:
-            candidates = list(Member.objects.filter(
-                name_key=d.member.name_key).exclude(pk=d.member.pk))
+            # `single` is what the template turns into a bare "Merge these two"
+            # button and what feeds `single_count` on the merge-all button, so
+            # it must mean "safe to merge without being asked", not merely
+            # "there is one of them". A pair whose phone numbers disagree falls
+            # through to the choose-a-record form instead, which spells out each
+            # candidate's number beside its name — the treasurer sees the
+            # conflict that kept the two records apart before deciding.
+            candidates, unattended = merge_candidates(d.member)
             row = {"flag": d, "member": d.member, "candidates": candidates,
-                   "single": len(candidates) == 1}
+                   "single": unattended is not None}
             if row["single"]:
                 single += 1
             data.append(row)
@@ -329,34 +387,48 @@ class DuplicateReviewView(ReadAccessMixin, ListView):
 
 class BulkMergeView(DataEntryRequiredMixin, View):
     """Merge every duplicate that has exactly one candidate, in one click.
-    Ambiguous ones (more than one candidate) are left for manual review."""
+    Ambiguous ones are left for manual review — see ``merge_candidates`` for
+    what makes a pair ambiguous, which is deliberately decided in that one place
+    so this endpoint and the review screen cannot come to differ about it."""
 
     def post(self, request):
         merged = 0
+        held = 0
         blocked = []
         for d in PossibleDuplicate.objects.filter(resolved=False).select_related("member"):
-            cands = list(Member.objects.filter(
-                name_key=d.member.name_key).exclude(pk=d.member.pk))
-            if len(cands) == 1:
-                # keep the older / manually-entered record where possible
-                keep, absorb = cands[0], d.member
-                if (keep.source == Member.Source.AUTO_BANK
-                        and absorb.source != Member.Source.AUTO_BANK):
-                    keep, absorb = absorb, keep
-                try:
-                    merge_members(keep, absorb)
-                except MemberMergeConflict as exc:
-                    # one unmergeable pair must not abort the whole run, and
-                    # must not leave a half-merged record behind
-                    blocked.append(f"{absorb.name}: {exc.reasons[0]}")
-                    continue
-                merged += 1
+            cands, unattended = merge_candidates(d.member)
+            if unattended is None:
+                # A lone candidate that is still not safe to merge means the two
+                # records' phones disagree. Count it, so the treasurer is told
+                # why the queue did not empty rather than being left to wonder.
+                if len(cands) == 1:
+                    held += 1
+                continue
+            # keep the older / manually-entered record where possible
+            keep, absorb = unattended, d.member
+            if (keep.source == Member.Source.AUTO_BANK
+                    and absorb.source != Member.Source.AUTO_BANK):
+                keep, absorb = absorb, keep
+            try:
+                merge_members(keep, absorb)
+            except MemberMergeConflict as exc:
+                # one unmergeable pair must not abort the whole run, and
+                # must not leave a half-merged record behind
+                blocked.append(f"{absorb.name}: {exc.reasons[0]}")
+                continue
+            merged += 1
         if merged:
             messages.success(request, f"Merged {merged} unambiguous duplicate(s). "
-                             "Any remaining ones have more than one candidate and "
-                             "need a manual choice.")
-        elif not blocked:
+                             "Any remaining ones need a person to look at them.")
+        elif not blocked and not held:
             messages.info(request, "No unambiguous duplicates to merge.")
+        if held:
+            messages.warning(
+                request,
+                f"{held} left for review: the two records have different phone "
+                "numbers on file, which is why they were not treated as the same "
+                "person when the payment came in. Merge them by hand if they "
+                "really are one person.")
         for reason in blocked[:5]:
             messages.warning(request, f"Not merged — {reason}")
         if len(blocked) > 5:

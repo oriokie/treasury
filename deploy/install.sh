@@ -103,6 +103,35 @@ v_email()     {
   [[ -z "$1" || "$1" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || {
     echo "Enter a valid email address (or leave blank)."; return 1; }; }
 
+# ---- SQL string literals ---------------------------------------------------
+# The one place a value becomes a quoted MySQL string. Everything the installer
+# sends to the mysql client goes through here; nothing interpolates a collected
+# answer straight into SQL any more.
+#
+# The password used to be pasted between two bare quotes — IDENTIFIED BY
+# '$DB_PASS' — so a password containing an apostrophe (an ordinary character in
+# a strong password, and one a password manager will happily produce) closed
+# the literal early and the rest of it was handed to a mysql client running as
+# root as further SQL. Rejecting the apostrophe would have been the wrong fix:
+# a good password should not have to be weakened to get through the installer.
+#
+# Two characters need escaping inside a single-quoted literal, and BOTH are
+# doubled rather than backslash-escaped:
+#   '  ->  ''    a doubled quote is a literal quote in every SQL mode
+#   \  ->  \\    MySQL treats backslash as an escape by default, so a password
+#                ending in one would otherwise escape the closing quote
+# Doubling the quote (rather than writing \') is what makes this safe even on a
+# server running with NO_BACKSLASH_ESCAPES, where a backslash escape would not
+# be honoured and \' would break straight back out of the literal.
+#
+# sed rather than ${var//…/…}: bash 3.2 does not double a backslash reliably in
+# a pattern substitution, and this has to be right on whatever bash the host
+# happens to ship. The value travels on a pipe, never in argv, so it does not
+# appear in the process list.
+sql_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/''/g")"
+}
+
 # ---------------------------------------------------------------------------
 clear 2>/dev/null || true
 step "Treasury deployment installer"
@@ -233,11 +262,15 @@ step "3/8  Database (MySQL)"
 if (( ROOT_OK )) && command -v mysql >/dev/null 2>&1; then
   if ask_yesno "Create/repair the MySQL database '$DB_NAME' (utf8mb4) and grant '$DB_USER'?
 (Existing data is preserved — this only ensures the DB exists with the right charset.)"; then
+    # DB_NAME is a backtick-quoted identifier, and v_dbident has already held it
+    # to [A-Za-z0-9_]. The three values that are string literals — user, host and
+    # the unvalidated password — go through sql_quote, which supplies the quotes
+    # itself; that is why there are none written around them here.
     mysql <<SQL && ok "Database ensured (utf8mb4_unicode_ci) and privileges granted." || warn "MySQL step failed — create the DB in cPanel and re-run."
 CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ALTER DATABASE \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '$DB_USER'@'$DB_HOST' IDENTIFIED BY '$DB_PASS';
-GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'$DB_HOST';
+CREATE USER IF NOT EXISTS $(sql_quote "$DB_USER")@$(sql_quote "$DB_HOST") IDENTIFIED BY $(sql_quote "$DB_PASS");
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO $(sql_quote "$DB_USER")@$(sql_quote "$DB_HOST");
 FLUSH PRIVILEGES;
 SQL
   else

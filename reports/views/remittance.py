@@ -59,6 +59,7 @@ class RemitTrustView(TreasurerRequiredMixin, View):
 
     def post(self, request):
         import datetime as _dt
+        from django.db import transaction
         from cashbook.models import (Expense, RemittanceBatch, PaymentInstrument)
         from core.models import SiteConfig
         from core.utils import sabbath_week_of
@@ -90,37 +91,51 @@ class RemitTrustView(TreasurerRequiredMixin, View):
             return redirect(f"{reverse('report_remittance')}?start={s}&end={e}")
 
         total = sum((amt for _, amt in outstanding), Decimal(0))
-        batch = RemittanceBatch.create_batch(
-            total_amount=total, status=RemittanceBatch.Status.REMITTED,
-            period_start=s, period_end=e, created_by=request.user,
-            approved_by=request.user, remitted_at=_tz.now())
+        # All of it or none of it. The batch, the instrument that settles it and
+        # the one expense per fund are a single payment written down in three
+        # places, and they only tell the truth together: if the fourth of six
+        # funds failed to save, what survived was a batch marked REMITTED,
+        # settled by an instrument for the FULL amount, with expenses raised
+        # against three funds. The trust liability then reads as cleared for
+        # money that was never charged to the funds it was collected for, and no
+        # page in the system shows the shortfall. Every other multi-row posting
+        # path (cashbook.services.expenses.record, payables.settle, the loan
+        # postings) is wrapped for the same reason.
+        #
+        # The redirect and the flash message stay OUTSIDE: nothing may be told
+        # to the treasurer until the rows are actually committed.
+        with transaction.atomic():
+            batch = RemittanceBatch.create_batch(
+                total_amount=total, status=RemittanceBatch.Status.REMITTED,
+                period_start=s, period_end=e, created_by=request.user,
+                approved_by=request.user, remitted_at=_tz.now())
 
-        # one settlement instrument for the whole field payment
-        inst = PaymentInstrument(
-            method=method, instrument_number=reference[:40],
-            payee=field, amount=total, date_issued=paid,
-            status=PaymentInstrument.Status.ISSUED,
-            source_kind=PaymentInstrument.SourceKind.REMITTANCE,
-            remittance_batch=batch, recorded_by=request.user)
-        if bank_id.isdigit():
-            from statements.models import BankAccount
-            inst.bank_account = BankAccount.objects.filter(pk=bank_id).first()
-        inst.save()
-        batch.payment = inst
-        if method == "CHEQUE":          # keep legacy fields in step for old reports
-            batch.cheque_no = reference[:30]
-            batch.cheque_date = paid
-        batch.save(update_fields=["payment", "cheque_no", "cheque_date"])
+            # one settlement instrument for the whole field payment
+            inst = PaymentInstrument(
+                method=method, instrument_number=reference[:40],
+                payee=field, amount=total, date_issued=paid,
+                status=PaymentInstrument.Status.ISSUED,
+                source_kind=PaymentInstrument.SourceKind.REMITTANCE,
+                remittance_batch=batch, recorded_by=request.user)
+            if bank_id.isdigit():
+                from statements.models import BankAccount
+                inst.bank_account = BankAccount.objects.filter(pk=bank_id).first()
+            inst.save()
+            batch.payment = inst
+            if method == "CHEQUE":      # keep legacy fields in step for old reports
+                batch.cheque_no = reference[:30]
+                batch.cheque_date = paid
+            batch.save(update_fields=["payment", "cheque_no", "cheque_date"])
 
-        for dept, amt in outstanding:
-            Expense.objects.create(
-                date=paid, sabbath_week=sabbath_week_of(paid), department=dept,
-                description=f"Remittance to {field} ({s:%d %b}-{e:%d %b %Y})",
-                amount=amt, category=Expense.Category.REMITTANCE,
-                claimant=field, method=Expense.Method.CHEQUE,
-                voucher_no=reference[:30], status=Expense.Status.PAID,
-                paid_date=paid, remittance_batch=batch,
-                recorded_by=request.user, approved_by=request.user)
+            for dept, amt in outstanding:
+                Expense.objects.create(
+                    date=paid, sabbath_week=sabbath_week_of(paid), department=dept,
+                    description=f"Remittance to {field} ({s:%d %b}-{e:%d %b %Y})",
+                    amount=amt, category=Expense.Category.REMITTANCE,
+                    claimant=field, method=Expense.Method.CHEQUE,
+                    voucher_no=reference[:30], status=Expense.Status.PAID,
+                    paid_date=paid, remittance_batch=batch,
+                    recorded_by=request.user, approved_by=request.user)
 
         messages.success(
             request, f"Remitted {len(outstanding)} trust fund(s) totalling "
@@ -214,26 +229,35 @@ class RemittanceBatchCreateView(TreasurerRequiredMixin, View):
         if not chosen:
             messages.error(request, "No outstanding trust funds to remit for that period.")
             return redirect("remittance_dashboard")
+        from django.db import transaction
         field = SiteConfig.get().field_name or "the field"
-        batch = RemittanceBatch.create_batch(
-            created_by=request.user, status=RemittanceBatch.Status.DRAFT,
-            period_start=start, period_end=end)
         today = _dt.date.today()
         # date the remittance expense within the period it covers, so it ties to
         # the right month's trust collection
         rdate = end or today
         plabel = (f" for {month}" if month else
                   f" for {start:%d %b %Y}–{end:%d %b %Y}" if (start and end) else "")
-        for r in chosen:
-            Expense.objects.create(
-                date=rdate, sabbath_week=sabbath_week_of(rdate), department=r["department"],
-                description=f"Trust remittance to {field} — {batch.batch_number}{plabel}",
-                amount=r["outstanding"], category=Expense.Category.REMITTANCE,
-                claimant=field, method=Expense.Method.CHEQUE,
-                status=Expense.Status.PENDING, recorded_by=request.user,
-                remittance_batch=batch)
-        batch.recompute_total()
-        batch.save(update_fields=["total_amount"])
+        # Same rule as RemitTrustView: a batch and its per-fund lines are one
+        # posting. A draft is less dangerous than a remitted batch — nothing is
+        # committed to the funds until it is approved — but a batch holding
+        # three of six funds and a total to match still walks through approval
+        # looking complete, and the funds left out stay outstanding with nobody
+        # looking for them. Cheaper to make it impossible than to detect it.
+        with transaction.atomic():
+            batch = RemittanceBatch.create_batch(
+                created_by=request.user, status=RemittanceBatch.Status.DRAFT,
+                period_start=start, period_end=end)
+            for r in chosen:
+                Expense.objects.create(
+                    date=rdate, sabbath_week=sabbath_week_of(rdate),
+                    department=r["department"],
+                    description=f"Trust remittance to {field} — {batch.batch_number}{plabel}",
+                    amount=r["outstanding"], category=Expense.Category.REMITTANCE,
+                    claimant=field, method=Expense.Method.CHEQUE,
+                    status=Expense.Status.PENDING, recorded_by=request.user,
+                    remittance_batch=batch)
+            batch.recompute_total()
+            batch.save(update_fields=["total_amount"])
         messages.success(request, f"Created remittance batch {batch.batch_number} "
                                   f"covering {len(chosen)} fund(s){plabel}.")
         return redirect("remittance_batch_detail", pk=batch.pk)

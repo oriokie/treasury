@@ -127,6 +127,63 @@ def dedup_keys(row):
     return [current] if current == legacy else [current, legacy]
 
 
+# ---------------------------------------------------------------------------
+# Identity: which ACCOUNT the bank is talking about
+# ---------------------------------------------------------------------------
+
+_ACCT_TAIL = 6
+
+
+def acct_no_q(field, number):
+    """A Q matching `field` against a bank account number the way the bank quotes it.
+
+    The number on an inbound event and the number typed into Settings are the
+    same account written by two different parties, and they do not always agree
+    character for character — a feed drops a leading zero, or quotes the account
+    without its branch prefix. Agreeing on the last six digits is the practical
+    test, and it is the one the webhook has always used to route an incoming
+    event to an account.
+
+    It lives here, as a Q, because two questions have to be answered by the SAME
+    rule: "which account did this event arrive on?" (the webhook, routing a
+    payment) and "which events are this account's?" (`live_balance_asof`, asking
+    what the bank last said the account held). Those two ran on separate rules
+    once, and the second one was broken for its whole life — it read a field
+    name that does not exist, so it never narrowed by account at all and quoted
+    the freshest balance across every account, under whichever account's name it
+    had been asked about. One rule, read by both, is why that cannot recur.
+
+    Returns None when there is no number to match on — the caller has to decide
+    what "cannot tell" means for the question it is asking, and quietly matching
+    everything is not a decision this function should make for it.
+    """
+    b = (number or "").strip()
+    if not b:
+        return None
+    q = Q(**{field: b})
+    if len(b) >= _ACCT_TAIL:
+        q |= Q(**{f"{field}__endswith": b[-_ACCT_TAIL:]})
+    return q
+
+
+def bank_account_for_acct_no(acct):
+    """The configured BankAccount an inbound event's AcctNo belongs to, or None.
+
+    An exact match always wins. `BankAccount.Meta.ordering` puts the default
+    account first, so a single OR'd query would let the default account take an
+    event that another account matched in full — the tail rule is a fallback for
+    when nothing matches exactly, never a competitor to an exact match.
+    """
+    from statements.models import BankAccount
+
+    acct = (acct or "").strip()
+    q = acct_no_q("account_number", acct)
+    if q is None:
+        return None
+    return (BankAccount.objects.filter(account_number=acct).first()
+            or BankAccount.objects.filter(q).first())
+
+
 _CHEQUE_RE = _re.compile(
     r"\b(?:CHQ|CHEQUE|CHK|CK)\b[.\s#:-]*(?:NO|NUM|NUMBER)?\b[.\s#:-]*0*(\d{3,10})\b",
     _re.I)
@@ -872,17 +929,56 @@ def live_balance_asof(on, account=None):
 
     events = BankEvent.objects.filter(balance_at__lte=on,
                                       booked_balance__isnull=False)
-    # Only narrow by account number when we have one to match on; a church with
-    # a single account has often never filled it in, and an over-strict filter
-    # would report "no live balance" while the events sit right there.
-    number = (getattr(account, "number", "") or "").strip() if account else ""
-    if number:
-        events = events.filter(acct_no=number)
+
+    # Narrowing to THIS account's events, which is the whole point and was the
+    # bug: this read `account.number`, a field BankAccount has never had (it is
+    # `account_number`), so the number it produced was always "" and the filter
+    # it guarded never once ran. Every caller got the freshest balance on the
+    # feed regardless of which account it asked about — a church with a
+    # Development account busier than its Current account saw Development's
+    # balance reported as Current's, both on the Bank Position report and
+    # pre-filled into a new reconciliation as the figure to reconcile to.
+    #
+    # Switching the filter on changes what every existing caller sees, so the two
+    # cases are treated differently on purpose:
+    #
+    #  * ONE account configured (the common case). Nothing is narrowed. There is
+    #    nowhere else the money could be, so every balance the feed has pushed is
+    #    this account's whatever the event happens to quote — and events often
+    #    quote a number that Settings does not hold at all, because nobody typed
+    #    the account number in. Narrowing here would turn a correct figure into
+    #    "no live balance", which is a worse answer, not a safer one.
+    #  * SEVERAL accounts configured. An event must be attributed before its
+    #    balance can be quoted, so the account number is required and the filter
+    #    is strict. An account the feed has said nothing about reports nothing
+    #    (below) rather than borrowing its neighbour's figure, because a wrong
+    #    balance under the right account's name is exactly what this bug was.
+    # "Is there another account its balances could be confused with?" — not
+    # "how many rows are in the table". An archived account is not a candidate
+    # for the feed's next balance, so a church that closed one and never typed
+    # a number into the survivor is still the single-account case and must keep
+    # getting its figure; counting rows would have quietly turned that into
+    # "no live balance".
+    several = (BankAccount.objects.filter(active=True)
+               .exclude(pk=account.pk).exists()) if account is not None else False
+    if account is not None and several:
+        number = (account.account_number or "").strip()
+        if not number:
+            return {"balance": None, "cleared": None, "as_at": None,
+                    "stale_days": None, "account": account,
+                    "reason": (f"{account} has no account number set, and there "
+                               "is more than one account, so the bank's balances "
+                               "cannot be told apart. Set the account number in "
+                               "Settings.")}
+        events = events.filter(acct_no_q("acct_no", number))
     evt = events.order_by("-balance_at", "-received_at").first()
     if evt is None:
         return {"balance": None, "cleared": None, "as_at": None,
                 "stale_days": None, "account": account,
-                "reason": ("The bank has pushed no balance on or before "
+                "reason": ("The bank has pushed no balance for "
+                           f"{account} on or before {on:%d %b %Y}."
+                           if account is not None else
+                           "The bank has pushed no balance on or before "
                            f"{on:%d %b %Y}.")}
     return {"balance": evt.booked_balance, "cleared": evt.cleared_balance,
             "as_at": evt.balance_at,

@@ -11,6 +11,7 @@ so every call is authenticated against the credentials configured in Settings
 a user session.
 """
 import base64
+import hmac
 import json
 import datetime as dt
 from decimal import Decimal, InvalidOperation
@@ -23,14 +24,29 @@ from django.views.decorators.csrf import csrf_exempt
 
 from core.models import SiteConfig
 from giving.models import Transaction
-from statements.models import BankAccount, BankEvent
+from statements.models import BankEvent
 from statements.services.parser import parse_narration
 from statements.services.ingest import ingest_event
+from statements.services.register import bank_account_for_acct_no
 
 
 def _reply(code, message, http_status):
     return JsonResponse({"MessageCode": str(code), "Message": message},
                         status=http_status)
+
+
+def _secret_eq(given, configured):
+    """Constant-time comparison of one credential.
+
+    Compared as UTF-8 bytes rather than as text: `hmac.compare_digest` refuses a
+    str containing anything outside ASCII, so a password with an accent or a
+    curly quote in it would raise TypeError inside the auth check instead of
+    simply failing to match — an exception on the one endpoint the bank calls.
+    Bytes have no such restriction, and None (an unset setting) is treated as the
+    empty string so the comparison still runs rather than blowing up.
+    """
+    return hmac.compare_digest((given or "").encode("utf-8"),
+                               (configured or "").encode("utf-8"))
 
 
 def _parse_date(*candidates):
@@ -75,9 +91,21 @@ class CbsEventWebhookView(View):
                 user, _, pwd = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
             except Exception:  # noqa: BLE001
                 return False
-            return user == cfg.bank_feed_username and pwd == cfg.bank_feed_password
+            # Constant time, exactly as the token branch below does it. This used
+            # to be a plain `==`, which stops at the first differing byte and so
+            # takes measurably longer the more of the password a caller has
+            # already guessed — enough, over many tries against an endpoint that
+            # by design accepts unauthenticated traffic from the internet, to
+            # recover the secret a character at a time. BASIC is the documented
+            # default, so this was the mode nearly every church runs.
+            #
+            # Both comparisons are evaluated before either is consulted: `and`
+            # would short-circuit on a wrong username and leak, by how quickly
+            # the 401 came back, whether the username itself was right.
+            user_ok = _secret_eq(user, cfg.bank_feed_username)
+            pwd_ok = _secret_eq(pwd, cfg.bank_feed_password)
+            return user_ok & pwd_ok
         if mode == SiteConfig.BankFeedAuth.TOKEN:
-            import hmac
             token = (cfg.bank_feed_token or "").strip()
             if not token:
                 return False
@@ -174,13 +202,15 @@ class CbsEventWebhookView(View):
         parsed = parse_narration(narration or memos)
         raw_narration = "\n".join(filter(None, [narration, memos]))
 
-        # match the destination account to a configured bank account by its number
+        # Match the destination account to a configured bank account by its
+        # number. The exact-then-last-six-digits rule used to be written out
+        # here; it now lives in `register.bank_account_for_acct_no`, because the
+        # same rule has to decide which events belong to an account when a report
+        # asks what the bank last said that account held. Written twice, the two
+        # drifted — the reporting side read a field name that does not exist and
+        # so matched nothing at all.
         acct = str(payload.get("AcctNo") or "").strip()
-        bank_account = None
-        if acct:
-            bank_account = (BankAccount.objects.filter(account_number=acct).first()
-                            or BankAccount.objects.filter(
-                                account_number__endswith=acct[-6:]).first())
+        bank_account = bank_account_for_acct_no(acct)
 
         try:
             txn, outcome = ingest_event(

@@ -13,9 +13,21 @@ time passes between them and the world can change underneath a batch (another
 batch claims a receipt number, a period gets locked, a fund is deactivated):
 
 * while editing (row-level, for the red-highlight/inline-error UI);
-* at Submit (row-level + duplicate receipts + "at least one active row");
-* at Approve and again at Post (everything Submit checks, re-run fresh, plus
-  — at Post only — the accounting-period lock).
+* at Submit and again at Approve (row-level + duplicate receipts + "at least
+  one active row" + every money-carrying column still being one the register
+  offers);
+* at Post (all of that re-run fresh EXCEPT the column check, plus the
+  accounting-period lock).
+
+That one asymmetry at Post is deliberate and is the whole of
+docs/recommendations.md #63. Deactivating a fund means "no NEW money against
+this", so the column check belongs where a row is created or accepted — Submit
+and Approve. It must NOT run at Post, because by then the row already exists
+and was already approved: re-checking there is what used to make an approved
+line vanish (or the batch refuse) over a fund closed in the days between
+approval and posting, for cash a treasurer had physically counted. The two
+halves are one rule read from both ends — new money can't go in, money already
+in doesn't come back out.
 """
 from __future__ import annotations
 
@@ -28,7 +40,8 @@ from core.models import SiteConfig, entry_blocked
 from departments.models import Department, DevelopmentGroup
 from members.models import Member
 
-from .posting import _amount, _expand_lines, _save_envelope
+from .posting import (UnpostableAllocation, _amount, _expand_lines,
+                      _save_envelope, column_catalog)
 from ..models import Envelope, EnvelopeBatch, EnvelopeBatchRow
 
 TOLERANCE = Decimal("0.01")   # matches CountSession.has_discrepancy elsewhere
@@ -150,9 +163,13 @@ def revalidate_batch_rows(batch):
     return dirty
 
 
-def validate_batch_for_submit(batch):
-    """Problems that must ALL be resolved before Draft/Returned -> Review.
-    Returns a list of human-readable strings (empty = ready to submit)."""
+def _row_and_receipt_problems(batch):
+    """The checks EVERY gate shares: row-level validity, duplicate receipts,
+    and the batch having something in it at all. Factored out of the two
+    validators below because they no longer differ only by addition — Post
+    runs this and the period lock but deliberately not the column gate (see
+    the module docstring), so Post can no longer be written as "Submit plus
+    something"."""
     problems = []
     dirty = revalidate_batch_rows(batch)
     active = [r for r in batch.rows.all()
@@ -167,10 +184,99 @@ def validate_batch_for_submit(batch):
     return problems
 
 
+def _column_names(keys):
+    """Display names for raw `amounts` keys ("17", "split:3"), for keys the
+    column catalogue no longer offers. The catalogue itself cannot supply
+    them — not being in it is the entire point — so the fund and split rows
+    are read directly, in one query each rather than one per row. A key naming
+    nothing at all keeps its raw form, which is then the most truthful thing
+    that can be said about it."""
+    keys = {str(k) for k in keys}
+    dept_ids = {int(k) for k in keys if k.isdigit()}
+    split_ids = {int(k.split(":", 1)[1]) for k in keys
+                 if k.startswith("split:") and k.split(":", 1)[1].isdigit()}
+    names = {}
+    if dept_ids:
+        names.update({str(d.id): d.name
+                     for d in Department.objects.filter(pk__in=dept_ids)})
+    if split_ids:
+        from giving.models import SplitFund
+        names.update({f"split:{s.id}": s.name
+                     for s in SplitFund.objects.filter(pk__in=split_ids)})
+    return {k: names.get(k, f"column '{k}'") for k in keys}
+
+
+def closed_or_unknown_columns(batch):
+    """Problems for money entered against a fund column the register does not
+    offer — a closed/deactivated fund, an inactive split, or a key naming a
+    fund that no longer exists.
+
+    The server-side half of "a deactivated fund cannot be chosen for a NEW
+    entry". Until this existed, that rule lived ONLY in the entry grid, which
+    builds its columns from `column_catalog()` — true of the browser, and
+    trivially untrue of anything else that reaches `autosave_rows`: a stale
+    tab whose columns were built before the fund was closed, the spreadsheet
+    importer resolving a sheet column onto a fund, or a replayed autosave POST.
+    Any of those could seat live money on a closed fund and walk it all the
+    way to POSTED, which is precisely the money-in-a-closed-fund the closing
+    was meant to prevent.
+
+    Compared against `column_catalog()` and nothing else, on purpose: whatever
+    the grid is willing to offer for a new entry is by definition the set of
+    columns a new entry may use, so the rule and the UI cannot drift apart.
+
+    Only money-carrying cells are considered. The grid posts a key for every
+    open column, most of them blank, and a blank cell against a closed fund is
+    not money — the same reason `_expand_lines` skips one. Called from Submit
+    and Approve ONLY; see the module docstring for why Post must not.
+    """
+    offered = {c["key"] for c in column_catalog()}
+    flagged = []
+    for r in batch.rows.order_by("line_no", "id"):
+        if not row_is_active(r.contributor_name, r.amounts):
+            continue
+        stale = [str(k) for k, raw in (r.amounts or {}).items()
+                 if _amount(raw) and str(k) not in offered]
+        if stale:
+            flagged.append((r, stale))
+    if not flagged:
+        return []
+
+    names = _column_names({k for _, stale in flagged for k in stale})
+    problems = []
+    for r, stale in flagged:
+        label = r.contributor_name or f"Row {r.line_no}"
+        which = ", ".join(names[k] for k in stale)
+        # "no longer an open fund column" rather than "is closed": a key that
+        # resolves to nothing at all lands here too, and telling a treasurer a
+        # fund they cannot find is "closed" sends them looking for something
+        # to reopen that was never there.
+        verb, noun = (("is", "that amount") if len(stale) == 1
+                      else ("are", "those amounts"))
+        problems.append(
+            f"{label} ({r.receipt_no or 'no receipt'}): {which} {verb} no "
+            f"longer an open fund column, and new giving cannot be recorded "
+            f"against a closed fund. Move {noun} to an open fund, or reopen "
+            f"the fund, then try again.")
+    return problems
+
+
+def validate_batch_for_submit(batch):
+    """Problems that must ALL be resolved before Draft/Returned -> Review, and
+    re-run at Approve. Returns a list of human-readable strings (empty = ready
+    to submit)."""
+    return _row_and_receipt_problems(batch) + closed_or_unknown_columns(batch)
+
+
 def validate_batch_for_post(batch):
-    """Everything Submit checks, re-run fresh, plus the accounting-period
-    lock — the last line of defence immediately before the ledger is touched."""
-    problems = validate_batch_for_submit(batch)
+    """Everything Submit checks EXCEPT the closed-column gate, re-run fresh,
+    plus the accounting-period lock — the last line of defence immediately
+    before the ledger is touched. The exclusion is #63 and is load-bearing:
+    the row was created and approved while its fund was open, so closing that
+    fund afterwards must not strand a Sabbath's counted cash. Post's job is to
+    write what was approved, not to re-litigate whether it could have been
+    entered today."""
+    problems = _row_and_receipt_problems(batch)
     why = entry_blocked(batch.sabbath_date)
     if why:
         problems.append(why)
@@ -331,9 +437,21 @@ def post_batch(batch, user):
     if problems:
         return problems, 0
 
-    funds = {d.id: d for d in Department.objects.filter(active=True)}
+    # Deliberately NOT filtered to active=True — see docs/recommendations.md
+    # #63. Days can pass between a batch being drafted and posted, and a fund
+    # deactivated in that window used to make its line vanish at Post: the
+    # envelope saved short, or (if it was the row's only fund) as a zero-total
+    # envelope with the receipt number consumed and no ledger entry, for cash
+    # a treasurer had physically counted and reconciled. Deactivating a fund
+    # is meant to stop NEW money being entered against it, and it still does —
+    # that gate is `closed_or_unknown_columns`, run at Submit and Approve
+    # against `column_catalog()`, the same catalogue the entry grid builds its
+    # columns from. It was never meant to un-post an approved batch that
+    # already references the fund; that money was given to it before it
+    # closed, which is why the gate is not repeated here.
+    funds = {d.id: d for d in Department.objects.all()}
     from giving.models import SplitFund
-    splits = {s.id: s for s in SplitFund.objects.filter(active=True)}
+    splits = {s.id: s for s in SplitFund.objects.all()}
 
     try:
         with db_tx.atomic():
@@ -360,8 +478,19 @@ def post_batch(batch, user):
                 if member is None and row.contributor_name:
                     member = Member.objects.filter(
                         name__iexact=row.contributor_name).first()
-                lines = _expand_lines(row.amounts, funds, splits,
-                                      dev_group=row.dev_group)
+                try:
+                    lines = _expand_lines(row.amounts, funds, splits,
+                                          dev_group=row.dev_group)
+                except UnpostableAllocation as exc:
+                    # re-raised only to name the row: the message a treasurer
+                    # gets has to say WHOSE envelope is stuck, and _expand_lines
+                    # sees a bare amounts dict with no idea who it belongs to
+                    label = row.contributor_name or f"Row {row.line_no}"
+                    raise UnpostableAllocation(
+                        f"{label} (receipt {row.receipt_no or 'none'}): {exc} "
+                        "Nothing was posted — fix that fund, or return the "
+                        "batch and correct the row, then post again."
+                    ) from exc
                 env = _save_envelope(
                     date=batch.sabbath_date, name=row.contributor_name,
                     receipt=row.receipt_no, channel=row.channel, lines=lines,
@@ -374,8 +503,12 @@ def post_batch(batch, user):
             locked.posted_by = user
             locked.posted_at = dt.datetime.now(dt.timezone.utc)
             locked.save(update_fields=["status", "posted_by", "posted_at"])
-    except _PostingConflict as exc:
+    except (_PostingConflict, UnpostableAllocation) as exc:
         # the atomic block above already rolled back everything in it —
-        # nothing was posted, and the batch is unchanged (still APPROVED)
+        # nothing was posted, and the batch is unchanged (still APPROVED).
+        # UnpostableAllocation joins _PostingConflict here for the same
+        # reason: both mean "this batch cannot be posted correctly right
+        # now", and an all-or-nothing refusal with a message beats posting
+        # part of a Sabbath's takings.
         return [str(exc)], 0
     return [], count

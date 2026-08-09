@@ -50,11 +50,28 @@ class PortalConfinementMiddleware:
 
     # Prefixes a confined member may still reach. Everything here is either
     # authentication itself or a page about their own login — never church data.
+    #
+    # These must be checked against config/urls.py, not against what Django's
+    # stock auth URLconf would have mounted. Two entries here were
+    # "/accounts/password_reset" and "/accounts/reset", which are exactly the
+    # stock names and match nothing in this application: the self-service flow
+    # lives under /accounts/forgot-password/ (self_reset_request, its /verify/
+    # step, and the emailed link's /email/confirm/<uidb64>/<token>/), and the
+    # only "reset" route in accounts/urls.py is the administrator-triggered
+    # /users/<pk>/reset-password/ — a different feature for a different role,
+    # and one a member must certainly not reach. The effect was that the people
+    # least able to ring the office for help got bounced back to the portal home
+    # page the moment they clicked "forgot my password".
+    #
+    # One prefix covers all three legs of the flow because they share a path
+    # root. Keep it that specific: broadening this to "/accounts/" would hand a
+    # confined member the entire user-administration module.
+    # core/test_portal_confinement_paths.py reverse()s the URL names and asks
+    # this table about the results, so a route that moves again is caught.
     ALLOWED_PREFIXES = (
         "/portal/",
         "/accounts/login", "/accounts/logout",
-        "/accounts/password_change", "/accounts/password_reset",
-        "/accounts/reset",
+        "/accounts/password_change", "/accounts/forgot-password",
         "/2fa/",
         "/static/", "/media/", "/healthz",
     )

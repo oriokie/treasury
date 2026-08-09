@@ -257,6 +257,34 @@ class PasswordResetCode(models.Model):
     expires_at = models.DateTimeField()
     used_at = models.DateTimeField(null=True, blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    # Wrong guesses made against THIS code. See MAX_VERIFY_ATTEMPTS below for
+    # why a counter on the row (rather than only in the guesser's session) is
+    # the part that actually binds.
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+    # How many wrong guesses one code will tolerate before it is dead.
+    #
+    # This was missing entirely, and its absence was the whole ballgame. The
+    # reset flow rate-limits how many codes are *issued* (three per account per
+    # fifteen minutes, so nobody's phone gets bombed) and that was mistaken for
+    # a limit on guessing. Anyone can cause a code to exist — the request form
+    # is public and answers identically for every username, by design — and for
+    # the ten minutes that code lived, ``verify`` would cheerfully check an
+    # unlimited number of POSTed candidates against it. Six digits is 1,000,000
+    # possibilities and django-axes does not help, because axes hooks
+    # ``authenticate()`` and this flow never calls it. That is account takeover
+    # without ever seeing the SMS.
+    #
+    # ``TwoFactor.verify_code`` above had already reasoned this out for its own
+    # 6-digit code and capped attempts on the row; this mirrors it deliberately
+    # rather than inventing a second scheme. The number lives here, once, and
+    # ``accounts.password_reset`` reads it for the session-level cap it applies
+    # on top — two layers, one rule, so they cannot drift apart.
+    #
+    # Five is the same allowance the two-factor gate gives, and is chosen to be
+    # survivable by somebody squinting at digits on a phone screen while being
+    # nowhere near enough to make guessing worthwhile.
+    MAX_VERIFY_ATTEMPTS = 5
 
     class Meta:
         indexes = [models.Index(fields=["user", "used_at", "expires_at"])]
@@ -289,18 +317,63 @@ class PasswordResetCode(models.Model):
         return obj, raw_code
 
     @classmethod
+    def _live_codes(cls, user):
+        """Every code for `user` that is still unused and unexpired, newest
+        first. The one definition of "live" — ``verify`` and
+        ``remaining_attempts`` must never disagree about which rows they are
+        talking about, or the count shown to the user describes a different
+        code from the one being checked."""
+        from django.utils import timezone
+        return cls.objects.filter(user=user, used_at__isnull=True,
+                                  expires_at__gte=timezone.now()
+                                  ).order_by("-created_at")
+
+    @classmethod
     def verify(cls, user, raw_code):
         """Return the matching, still-valid code row, or None. Always checks
         every recent candidate (not just the latest) so a code isn't rejected
         just because of ordering, but only ever the most-recently-issued one
-        is actually still valid (issue() invalidates earlier ones)."""
-        from django.utils import timezone
-        now = timezone.now()
-        for candidate in cls.objects.filter(user=user, used_at__isnull=True,
-                                            expires_at__gte=now).order_by("-created_at"):
+        is actually still valid (issue() invalidates earlier ones).
+
+        Every wrong answer is charged to the candidate it was wrong about, and
+        a candidate that has spent MAX_VERIFY_ATTEMPTS stops answering at all —
+        including to whoever holds the right code, because by then we can no
+        longer tell them apart from whoever was guessing. Getting a new code is
+        the way back, and that path is separately rate-limited.
+
+        Two deliberate differences from ``TwoFactor.verify_code``, which is
+        otherwise the model for this:
+
+        * A *correct* code costs nothing. Its caller checks the code before it
+          checks that the two password boxes agree, so charging for correct
+          answers would let somebody fumble the confirmation field a handful of
+          times and destroy a code they had typed perfectly. ``verify_code``
+          can charge for them because it consumes its code on success; this one
+          does not consume anything (the caller decides, via ``mark_used``).
+        * A blank code costs nothing either — an empty box is a submitted form,
+          not a guess."""
+        raw_code = (raw_code or "").strip()
+        if not raw_code:
+            return None
+        for candidate in cls._live_codes(user):
+            if candidate.attempts >= cls.MAX_VERIFY_ATTEMPTS:
+                continue
             if candidate.check_code(raw_code):
                 return candidate
+            candidate.attempts += 1
+            candidate.save(update_fields=["attempts"])
         return None
+
+    @classmethod
+    def remaining_attempts(cls, user):
+        """How many guesses `user`'s live code still has, so the person typing
+        can be told the code is about to die rather than discovering it. Zero
+        when there is no live code at all — an expired or spent code and one
+        that never existed look the same from here, and should."""
+        row = cls._live_codes(user).first()
+        if row is None:
+            return 0
+        return max(cls.MAX_VERIFY_ATTEMPTS - row.attempts, 0)
 
     def mark_used(self):
         from django.utils import timezone

@@ -1993,3 +1993,202 @@ Worth considering, in rough order of cost:
 
 Until then the guard should be read as catching *widespread* gaps, not
 *high-impact* ones — and those are not the same thing.
+
+---
+
+## 137. Two critical findings from the full-application audit — FIXED — NEW
+
+A comprehensive audit (10 parallel reviewers, every finding independently
+re-verified against the source) returned 31 confirmed defects. Two were
+critical and are fixed here; the rest are recorded in the audit report.
+
+**137a. A read-only Auditor could rewrite a bank reconciliation.**
+`ReconciliationDetailView` is gated by `ReadAccessMixin`, which admits the
+Auditor — correctly, since reading a worksheet is what an auditor is *for*. But
+the same class serves the POSTs that change one: add an item, delete an item,
+overwrite `book_balance` outright, recompute it. None of them re-checked the
+role, so the one account whose entire purpose is independent verification could
+alter the thing it was verifying. Worse, `_maybe_auto_lock_on_reconciled()`
+runs after every POST, so a manipulated balance could tip the worksheet into
+"reconciled" and auto-lock the accounting month *over* a real discrepancy.
+
+`post()` now refuses anyone failing `roles.can_enter_data`, exactly as `get()`
+already gated its own write side-effect.
+
+**Why it survived review.** The template had always hidden every one of those
+controls behind `{% if can_enter_data %}`, so the screen looked right to an
+auditor and to anyone reading the page. **A hidden button is not a permission**
+— and a view whose class-level mixin is named for *reading* will attract write
+actions precisely because the gate reads as already handled. Worth checking the
+other `ReadAccessMixin` views that define a `post()`.
+
+**137b. A payable settled before instalments existed could be paid again.**
+`settle()`'s only double-payment guard is `if payable.balance <= 0`, and
+`SettleableObligation.balance_asof` was pure arithmetic — `amount − payments` —
+with no reference to the cached `settled` flag. Some rows are flagged settled
+with **no payment rows at all**: that is how every settlement made under the
+old all-or-nothing button looks when its expense link was never recorded (#123
+records nearly shipping the balance-sheet half of this). For such a row
+`balance` returned the full original amount, the guard never fired, and the
+treasurer could record a second complete payment — a real Expense, posted to
+the ledger, reducing fund cash twice for one bill. `refresh_settlement()` then
+overwrote `settled_on` with the duplicate's date, destroying the only evidence
+of the original settlement.
+
+`balance_asof` now applies the same rule the balance sheet has always applied,
+and `is_settled` derives from it rather than recomputing.
+
+**The lesson, and it is the one this file keeps writing down.**
+`_open_obligation_total` — the balance-sheet SQL — had this rule, correctly,
+with a careful comment explaining it. The model did not. So the read path
+("what do we owe on this row?") and the write path ("may this be paid again?")
+answered *differently about the same row*, and only the read path was ever
+tested: `PayableLegacySettlementTests` asserted on `open_payables_total()` and
+never once called `settle()` against the same fixture. This is #10, #134 and
+the v3.10 net-assets series in a new costume — **a rule implemented twice will
+drift, and the copy nobody tested is the one that is wrong.** The rule now
+lives on the model, where both paths read it.
+
+**137c. The same hole, twice more, on the bank register.** Acting on 137a's
+own closing note — "worth checking the other `ReadAccessMixin` views that
+define a `post()`" — turned up two siblings, both fixed here:
+
+* `RegisterView.post` (`statements/views_register.py`) sets the register's
+  **opening balance**, the figure the entire running balance is measured from,
+  with no role check whatsoever.
+* `RegisterExceptionsView.post` left its `recheck` and `resolve` branches
+  unguarded while its two `take_to_books` branches were checked — so an auditor
+  could **close an unexplained bank discrepancy**, which is the one action that
+  role must never have. The partial guarding is the tell: the distinction was
+  understood and applied to the branches that looked heavy, and the branch that
+  merely closes an exception did not look heavy.
+
+An AST sweep for read-gated classes defining a write handler found nine in
+total. The other six are fine and worth naming so the next sweep is quicker:
+`TelegramSetPinView` and `ToggleFavouriteView` write only `request.user`'s own
+row (self-service, correctly read-gated); `FundThankSmsView` checks
+`is_treasurer` inside its own `post`; `RegisterImportView` is
+`DataEntryRequiredMixin`; `AssistantAskView` and `ExecutiveDashboardView` post
+no durable state. `InsightStatusView` (`ReportAccessMixin`) lets a report-access
+user dismiss an insight — fully audit-trailed and an annotation rather than a
+figure, so left alone, but noted. *Priority: Low.*
+
+**Worth keeping as a standing check.** That AST sweep — every class whose base
+is a read-only mixin and which defines `post`/`put`/`patch`/`delete` — is cheap
+and found three real holes in one run. It belongs as a guard test rather than
+something a reviewer remembers to do.
+
+All four fixes were confirmed by reverting them and watching the new tests fail
+(`statements/test_recon_write_access.py`, and the write-path cases added to
+`PayableLegacySettlementTests`), per the standing rule from #130.
+
+---
+
+## 138. The full audit remediation — 27 findings closed, and what the round taught
+
+The audit behind #137 confirmed 31 defects. #137 closed the two critical ones;
+this entry covers the remaining 29. **27 are fixed**; two are recorded below as
+the owner's to decide. Every fix carries a regression test that was proved to
+fail against the unfixed code, per #130.
+
+### The three lessons this round actually taught
+
+**138a. A comment describing a fix is not a fix, and it reads exactly like one.**
+Twice in this round an agent wrote an accurate, detailed explanation of the
+change it was making and never made it.
+
+* `live_balance_asof` gained two helper functions, a ten-test file and a
+  twenty-line comment explaining that it would now narrow by account — while
+  the buggy line, `getattr(account, "number", "")` against a field
+  `BankAccount` does not have, sat untouched three lines below. Its own tests
+  failed.
+* `receipted_after` gained a docstring bullet stating that the add-back is
+  skipped under an as-reported basis. No such guard was written; `grep
+  is_active` returned nothing. The suite was shipped red on it.
+
+Both were found by *running the tests and reading the code*, and neither would
+have been found by reading the diff, because the diff was persuasive. **The
+prose is the most convincing part of a wrong change.** Review by re-deriving
+from the code, never from the commentary — and treat an unusually well-argued
+comment as a reason to check the code harder, not less.
+
+**138b. A defect class is not closed until you have looked for its siblings.**
+Every hunt for a second instance found one:
+
+* the Auditor write hole (#137a) had two more on the bank register (#137c);
+* the advance-closure rule had a FOURTH private copy in
+  `core/services/period_close.py`, so closing an advance in August
+  retrospectively cleared **July's month-end checklist** — a month could pass
+  its own close review because of something done after it ended. It now calls
+  the one shared `advances_open_asof`, which was made public for the purpose;
+* the export-grouping fix left the same silent-name-loss reachable through
+  `CashEntryForm`, which offers ENVELOPE as a channel with a free-text
+  reference — so two hand-keyed rows saying "tithe" still merged. The branch now
+  requires the reference the system ISSUES (`envelope <receipt_no>`), not merely
+  the channel.
+
+**138c. Two fixes were wrong in the same direction: right rule, wrong actor.**
+Worth naming because both passed their own tests.
+
+* The live-feed reversal marked the incoming row `is_reversal`. But
+  `signed_cash_case` signs an `is_reversal` row negative *whatever its
+  direction* — correct for a mistaken credit clawed back by a debit, and
+  exactly wrong for a mistaken DEBIT refunded by a credit, where the refund
+  signed negative too and the pair read as **minus twice** the amount instead
+  of nothing. Both halves are now `is_reversed`, which carries no sign of its
+  own. The test that catches this asserts the pair's `signed_cash_total()` is
+  zero in BOTH shapes; the boolean assertions it replaced could not.
+* `live_balance_asof` decided "is there another account to confuse this with"
+  by counting rows, so a church that ARCHIVED an old account and never typed a
+  number into the survivor went from "here is your balance" to "no live
+  balance". It now asks whether another *active* account exists.
+
+### Two judgement calls worth preserving
+
+**The reports agent was right to refuse its brief.** It was told to gate the
+add-back on `asat.is_active()` being true; it measured the behaviour on both
+bases first and refused, because that is backwards — it would have broken
+`statements/test_recon_vs_dashboard`'s Sabbath-receipting invariant, which is on
+the DEFAULT basis, the one every real caller uses. Its reasoning was kept and
+the gate was written the other way round. **An agent that measures before
+following an instruction is worth more than one that complies.**
+
+**A petty-cash payment above `dual_approval_threshold` records as PAID.**
+`new_expense_status` tests petty cash before the high-value rule, so the
+threshold does not hold it back. This looks like a leak and is a decision:
+approval governs whether money MAY leave, and this money has already left the
+tin; recording the row as pending would not un-spend it, only make
+`petty_balance_asof` skip it, so the float on screen would disagree with the
+drawer by the largest payment — the exact discrepancy the rule exists to
+prevent. The remaining control is the size of the float and its top-up. Now
+pinned by a test, because it was the one deliberate change nothing asserted.
+
+### Documented residuals — narrower than the bugs they came from
+
+* **`pending_receipts_total`**: a paper-receipt memo whose envelope counterpart
+  is back-dated to on-or-before the report date still double-counts. Nothing
+  links a memo row to the envelope carrying its income (`mark_manual_receipt`
+  creates no `Envelope`), so closing it needs a new nullable FK and a migration.
+  The alternative — matching on member/amount/date — would silently delete
+  genuine suspense whenever two members give the same amount, so it was refused.
+* **FIX B does not restate history.** Recurring petty-cash rows already sitting
+  PENDING stay PENDING, so a church already running such a schedule keeps an
+  overstated float until each is approved. The fix stops new ones only.
+* **`benevolent/test_portal_render_contract.py`** installs exactly the
+  unresolved-variable sentinel that should have caught `p.get_method_display`
+  years ago, but sweeps only the ten argument-less portal URLs —
+  `portal_case_detail` takes a pk and is therefore absent, along with the
+  timeline and payment loops where all three of this file's defects lived.
+  Adding pk-bearing URLs to that sweep is the real fix. *Priority: Medium.*
+
+### The owner's, not the code's
+
+* **The exposed credentials are still live.** `.env.example` is scrubbed and
+  `config/settings.py` now refuses to boot on the `change-me` placeholder, but
+  `git show HEAD:.env.example` still yields the real SECRET_KEY and the MySQL
+  password. **Rotate both.** Rotating SECRET_KEY logs everyone out and, unless
+  `TREASURY_ENCRYPTION_KEY` is set first, makes encrypted settings and 2FA
+  secrets unreadable — so set that key before rotating.
+* **Real financial workbooks remain recoverable from git history** (#audit item
+  27). Scrubbing the working tree did not remove them. Rewriting history is
+  destructive and shared, so it was left for a deliberate decision.

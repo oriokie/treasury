@@ -660,10 +660,42 @@ class SettleableObligation(models.Model):
     def paid_total(self):
         return self.paid_asof()
 
+    def _flag_settled_asof(self, on=None):
+        """Whether the cached `settled` flag says this was discharged by `on`.
+
+        Reads the flag alone — what the payments say is the caller's business
+        (see `balance_asof`). As at a date, a settlement that had not happened
+        yet cannot count; "right now" trusts the flag outright, exactly as the
+        balance-sheet query's no-date path does.
+        """
+        if not self.settled:
+            return False
+        if on is None:
+            return True
+        return self.settled_on is not None and self.settled_on <= on
+
     def balance_asof(self, on=None):
         """What is still owed. Never negative: an overpayment is a matter for
-        the supplier's account, not a negative liability on the balance sheet."""
-        return max(self.amount - self.paid_asof(on), Decimal("0"))
+        the supplier's account, not a negative liability on the balance sheet.
+
+        An obligation flagged settled with NO payment to show for it owes
+        nothing. That is how every settlement made before instalments existed
+        looks when its expense link was never recorded, and the flag a
+        treasurer set is the only evidence there is. This rule already governs
+        the balance sheet (`treasury_position._open_obligation_total`); it
+        lives here as well so that the read path ("what do we owe?") and the
+        write path ("may this be paid again?") cannot answer differently about
+        the same row — the gap that let `settle()` take a second full payment
+        on a debt already discharged.
+
+        Narrow on purpose: the flag is believed only where there is no payment
+        evidence at all. Once payments exist they are the better record and the
+        arithmetic decides, so a flag can never override a real figure.
+        """
+        paid = self.paid_asof(on)
+        if not paid and self._flag_settled_asof(on):
+            return Decimal("0")
+        return max(self.amount - paid, Decimal("0"))
 
     @property
     def balance(self):
@@ -671,7 +703,10 @@ class SettleableObligation(models.Model):
 
     @property
     def is_settled(self):
-        return self.paid_total >= self.amount
+        # Nothing left owed — by payments, or by a flag-only settlement that
+        # `balance_asof` recognises. Derived from the one figure rather than
+        # recomputed, so "settled" and "owes nothing" cannot drift apart.
+        return self.balance_asof() <= 0
 
     @property
     def is_part_paid(self):

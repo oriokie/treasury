@@ -71,11 +71,21 @@ if not DEBUG:
     import warnings
     from django.core.exceptions import ImproperlyConfigured
 
-    if SECRET_KEY == _DEV_SECRET_KEY:
+    # Two ways to arrive here with a key everybody already has: never setting
+    # one, and copying .env.example without editing it. The second is the more
+    # likely of the two and used to pass silently, because the placeholder is
+    # not the dev key — so a template written to be shared became the signing
+    # key for sessions and password-reset tokens, and (unless
+    # TREASURY_ENCRYPTION_KEY is set) the Fernet key for the 2FA secrets too.
+    if SECRET_KEY == _DEV_SECRET_KEY or SECRET_KEY.startswith("change-me"):
         raise ImproperlyConfigured(
-            "DJANGO_SECRET_KEY is not set: the application is using the built-in "
-            "development key, which is public. Set DJANGO_SECRET_KEY to a long "
-            "random secret in the environment before running in production."
+            "DJANGO_SECRET_KEY is not set to a real secret: the application is "
+            "using the built-in development key or the placeholder shipped in "
+            ".env.example, both of which are public in every copy of this "
+            "repository. Generate one with:\n"
+            "  python -c 'import secrets; print(secrets.token_urlsafe(50))'\n"
+            "and set DJANGO_SECRET_KEY in the environment before running in "
+            "production."
         )
     if ALLOWED_HOSTS == ["*"]:
         warnings.warn(

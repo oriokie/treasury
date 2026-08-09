@@ -61,6 +61,52 @@ def petty_balance_asof(on):
 # Staff advances (receivables)
 # ===========================================================================
 
+def advances_open_asof(qs, as_of):
+    """Narrow a StaffAdvance queryset to the advances that were still open AS
+    AT `as_of`, judged on the date the closure happened rather than on today's
+    status. Shared by all three advance totals below, and the only place the
+    rule is written.
+
+    Closing an advance is a dated event: `AdvanceClose` stamps `settled_on`
+    when it sets the status to CLOSED. The three totals are point-in-time
+    figures, so the question they must ask is "was this advance still open
+    then?", not "is it open now?". They asked the second, and the answer moved
+    under them: a 5,000 bank advance outstanding on 31 July, on a worksheet
+    prepared and balanced that day, disappeared from every 31 July figure the
+    moment the advance was closed in August. The reconciliation worksheet
+    re-syncs its managed items on each page load, so the next visitor
+    recomputed that line as zero, the sync deleted it, and a worksheet that had
+    balanced in July was suddenly out by 5,000 with nothing on it to say what
+    had changed.
+
+    `_open_obligation_total` further down this module already judges payables
+    and accruals on `settled_on__lte=as_of` for exactly this reason. The rule
+    was known; it just never reached the advances.
+
+    An advance CLOSED with no `settled_on` is treated as closed at EVERY date.
+    Its closure has no date to test, so one of the two answers has to be
+    chosen: reading it as still open would resurrect a receivable a treasurer
+    has already retired — and would do so on every report, forever — whereas
+    treating it as always-closed loses nothing that the row itself records.
+
+    Note this is the OPPOSITE resolution to the one `_open_obligation_total`
+    reaches for a dateless payable, and deliberately so — the two are not the
+    same case, however alike they read. There, `settled_on__lte=as_of` is an
+    AND-condition on a flag-only settlement, so a NULL date fails the test and
+    the obligation stays on the balance sheet: a LIABILITY that cannot prove it
+    was discharged must keep being reported, because understating what the
+    church owes is the dangerous direction. An advance is the mirror image, a
+    RECEIVABLE, so the dangerous direction is reversed with it: carrying one
+    the treasurer has already retired overstates what the church is owed. Each
+    rule fails towards the same place, which is the more prudent statement of
+    position — not towards the same treatment of a null.
+    """
+    from django.db.models import Q
+    from cashbook.models import StaffAdvance
+    return qs.exclude(Q(status=StaffAdvance.Status.CLOSED)
+                      & (Q(settled_on__isnull=True) | Q(settled_on__lte=as_of)))
+
+
 def outstanding_bank_advances_total(as_of=None):
     """Outstanding advances issued from the BANK (not petty cash). These reduce
     the bank statement balance at issuance but are not yet an expense in the cash
@@ -72,9 +118,9 @@ def outstanding_bank_advances_total(as_of=None):
     from cashbook.models import Expense, StaffAdvance
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
-    for adv in StaffAdvance.objects.filter(date_issued__lte=as_of,
-                                           from_petty_cash=False
-            ).exclude(status=StaffAdvance.Status.CLOSED):
+    for adv in advances_open_asof(
+            StaffAdvance.objects.filter(date_issued__lte=as_of,
+                                        from_petty_cash=False), as_of):
         topups_after = (adv.topups.filter(date__gt=as_of)
                         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
         settled = (adv.expenses.filter(
@@ -98,8 +144,9 @@ def outstanding_petty_advances_total(as_of=None):
     from cashbook.models import StaffAdvance
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
-    for adv in StaffAdvance.objects.filter(from_petty_cash=True,
-            date_issued__lte=as_of).exclude(status=StaffAdvance.Status.CLOSED):
+    for adv in advances_open_asof(
+            StaffAdvance.objects.filter(from_petty_cash=True,
+                                        date_issued__lte=as_of), as_of):
         try:
             total += adv.petty_outstanding_asof(as_of)
         except Exception:  # noqa: BLE001
@@ -120,8 +167,8 @@ def outstanding_advances_total(as_of=None):
     from cashbook.models import Expense, StaffAdvance
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
-    for adv in StaffAdvance.objects.filter(date_issued__lte=as_of).exclude(
-            status=StaffAdvance.Status.CLOSED):
+    for adv in advances_open_asof(
+            StaffAdvance.objects.filter(date_issued__lte=as_of), as_of):
         # amount advanced as of the date: current total less any top-ups that
         # were only added after the reporting date
         topups_after = (adv.topups.filter(date__gt=as_of)
