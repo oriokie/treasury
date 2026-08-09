@@ -540,12 +540,17 @@ class DepartmentBalanceView(DataEntryRequiredMixin, View):
 
     def get(self, request):
         from departments.models import Department
-        from reports.services.balances import fund_balance_parts
+        from reports.services.balances import spendable_balance_parts
         try:
             dept = Department.objects.get(pk=request.GET.get("id"))
         except (Department.DoesNotExist, ValueError, TypeError):
             return JsonResponse({"ok": False})
-        p = fund_balance_parts(dept)
+        # SPENDABLE, not single-fund: sub-accounts that collect for this fund
+        # are rolled in, so this equals what the save-time overdraw guard
+        # (cashbook.views._fund_available) will enforce. Showing one figure and
+        # enforcing another is how a treasurer gets refused by a balance the
+        # page told them they had.
+        p = spendable_balance_parts(dept)
         return JsonResponse({
             "ok": True, "name": dept.name,
             "fund_type": "Trust" if dept.is_trust else "Local",
@@ -554,6 +559,10 @@ class DepartmentBalanceView(DataEntryRequiredMixin, View):
             "refunded": float(p["refunded"]),
             "transfers_in": float(p["transfers_in"]),
             "transfers_out": float(p["transfers_out"]),
+            "own_balance": float(p["own_balance"]),
+            "children": [{"name": c["department"].name,
+                          "balance": float(c["balance"])}
+                         for c in p["children"]],
             "balance": float(p["balance"])})
 
 

@@ -293,6 +293,60 @@ def current_cash_position(as_of=None):
     return sum((r["closing"] for r in rows), _Decimal(0))
 
 
+def is_directly_chargeable(dept, components=None):
+    """Can an operating expense be charged to THIS fund on its own?
+
+    The one definition of that rule. `expense_departments` builds the picker
+    from it and `collection_descendants` builds the balance roll-up from it,
+    so the fund a treasurer may choose and the fund whose money is counted as
+    spendable can never disagree — the two-copies drift this project keeps
+    recording (#137b, #10, the v3.10 net-assets series).
+
+    Pass `components` (the result of `split_component_dept_ids()`) when
+    calling this in a loop, so the component set is resolved once.
+    """
+    comp = split_component_dept_ids() if components is None else components
+    if not dept.active or not dept.show_in_expenses:
+        return False
+    if dept.id in comp or dept.is_trust or dept.collection_only:
+        return False
+    # a sub-account whose parent keeps spending at the parent level
+    if dept.parent_id and not (dept.parent and dept.parent.children_in_expenses):
+        return False
+    return True
+
+
+def collection_descendants(dept):
+    """Sub-accounts whose money can only ever be spent THROUGH `dept`.
+
+    A child that cannot be charged an expense on its own is collecting on its
+    parent's behalf — which is precisely what `children_in_expenses=False`
+    says ("expenses use the parent fund only; sub-accounts are for
+    collections") and what the `collection_only` flag says explicitly. Its
+    receipts are therefore part of what the parent has available to spend, and
+    without this the parent reads as overdrawn while the money sits one level
+    down.
+
+    Descent STOPS at a child that is itself directly chargeable: that child is
+    its own spending unit, so its money is available from itself and its own
+    sub-accounts roll into it, not into its grandparent. Counting it here too
+    would make the same balance spendable from two places.
+    """
+    comp = split_component_dept_ids()
+    out, seen, stack = [], {dept.id}, [dept]
+    while stack:
+        node = stack.pop()
+        for child in node.subgroups.select_related("parent"):
+            if child.id in seen:      # a cycle would otherwise loop forever
+                continue
+            seen.add(child.id)
+            if is_directly_chargeable(child, comp):
+                continue
+            out.append(child)
+            stack.append(child)
+    return out
+
+
 def expense_departments():
     """Departments that may be charged operating expenses. Excludes split-offering
     halves, sub-accounts whose parent keeps expenses at the parent level, funds
@@ -300,14 +354,9 @@ def expense_departments():
     liability and only remitted to the field, never spent on operations.
     (Remittance postings are created by the remittance flow, not this picker.)"""
     comp = split_component_dept_ids()
-    out = []
-    for d in Department.objects.filter(active=True, show_in_expenses=True).select_related("parent"):
-        if d.id in comp or d.is_trust or d.collection_only:
-            continue
-        if d.parent_id and not (d.parent and d.parent.children_in_expenses):
-            continue
-        out.append(d)
-    return out
+    return [d for d in Department.objects
+            .filter(active=True, show_in_expenses=True).select_related("parent")
+            if is_directly_chargeable(d, comp)]
 
 
 def income_departments():

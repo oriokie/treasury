@@ -59,12 +59,17 @@ from cashbook.services.advances import (
 
 
 def _fund_available(dept_id, as_of):
-    """A fund's available (closing) balance as at a date, or None if unknown.
-    Targeted single-fund aggregation (no full-portfolio loop)."""
+    """A fund's available balance as at a date, or None if unknown.
+
+    Spendable, not single-fund: a sub-account that cannot be charged an
+    expense on its own is collecting for this fund, so its money is part of
+    what this fund can spend (reports.services.balances.spendable_balance).
+    Charging the guard on the single-fund figure refused expenses against a
+    parent that held plenty across its collection accounts."""
     if not dept_id:
         return None
-    from reports.services.balances import fund_balance
-    return fund_balance(dept_id, as_of)
+    from reports.services.balances import spendable_balance
+    return spendable_balance(dept_id, as_of)
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +287,30 @@ class ExpenseListView(PrefPaginationMixin, ReadAccessMixin, ListView):
         ctx["statuses"] = Expense.Status.choices
         ctx["exp_types"] = Expense.ExpenditureType.choices
         ctx["categories"] = Expense.Category.choices
-        ctx["departments"] = Department.objects.filter(active=True)
+        # The fund dropdown is a FILTER, not an entry picker, so it is derived
+        # from the register's own rows rather than from Department.active. A
+        # fund closed or archived after its spending happened still holds every
+        # expense ever charged to it ("Closed/archived accounts stay in
+        # historical reports" — Department.status); listing only active funds
+        # would strand those rows with no way to reach them from the toolbar.
+        # Deriving from the rows also means the list never offers a fund with
+        # nothing to show.
+        #
+        # An IN-subquery rather than a join + .distinct(): under SELECT
+        # DISTINCT an ordering expression must also appear in the select list,
+        # which is a portability trap (this app runs on sqlite, MySQL and
+        # Postgres). Ordered so each option sits where its rendered label says
+        # it does — the model default (fund_type, name) files "Youth / Choir"
+        # under C. Department.objects select_relateds parent, so rendering that
+        # "Parent / Child" name costs no extra query per option.
+        from django.db.models import F
+        from django.db.models.functions import Coalesce
+        ctx["departments"] = Department.objects.filter(
+            id__in=(Expense.objects
+                    .filter(doc_class=Expense.DocClass.EXPENSE)
+                    .values("department_id"))
+        ).order_by(Coalesce("parent__name", "name"),
+                   F("parent_id").asc(nulls_first=True), "name")
         # As with the ledger (giving.TransactionListView): show what's
         # ACTUALLY being filtered, including the current-month default
         # applied on a bare visit, rather than leave the date inputs blank
@@ -2813,26 +2841,20 @@ class FundBudgetView(LoginRequiredMixin, View):
         from .models import BudgetLine, Expense
         year = int(request.GET.get("year") or dt.date.today().year)
 
-        lines = list(BudgetLine.objects.filter(department=dept, year=year))
-        # actual spend per budget item, from expenses tagged to that item
-        spend = {r["budget_line"]: r["t"] for r in (Expense.objects.filter(
-            budget_line__in=lines,
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-            .values("budget_line").annotate(t=Sum("amount")))}
-        # spend on this fund not tagged to any item (so nothing is hidden)
-        untagged = (Expense.objects.filter(department=dept, date__year=year,
-            budget_line__isnull=True,
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
-            .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+        # budget-vs-actual per item comes from the one shared definition, so
+        # the figures here and the ones the expense form's Budget item picker
+        # shows are the same arithmetic on the same rows
+        from .services.budget_items import budget_item_rows, untagged_spend
+        untagged = untagged_spend(dept, year)
         rows, tot_budget, tot_actual = [], Decimal(0), Decimal(0)
-        for b in lines:
-            actual = spend.get(b.id, Decimal(0))
-            tot_budget += b.amount; tot_actual += actual
+        for r in budget_item_rows(dept, year):
+            b = r["line"]
+            tot_budget += r["budget"]; tot_actual += r["spent"]
             rows.append({"id": b.id, "name": b.name,
                          "category": b.get_category_display() if b.category else "",
-                         "budget": b.amount, "actual": actual,
-                         "variance": b.amount - actual,
-                         "pct": int(min(actual / b.amount * 100, 999)) if b.amount else 0,
+                         "budget": r["budget"], "actual": r["spent"],
+                         "variance": r["remaining"],
+                         "pct": r["pct"],
                          "note": b.note})
 
         # --- collections aggregated across this fund AND its sub-accounts ---
@@ -3043,11 +3065,17 @@ class BudgetItemsPngView(LoginRequiredMixin, View):
 
 class BudgetItemsJSONView(DataEntryRequiredMixin, View):
     """Budget items for a fund + year, for the expense form's 'Budget item'
-    picker. Returns [] for funds that have no budget set."""
+    picker. Returns [] for funds that have no budget set.
+
+    Carries `spent` and `remaining` as well as the budgeted amount: the point
+    of choosing an item at entry is to charge spend against it, and the figure
+    that governs whether there is room for this expense is what is LEFT, not
+    what was budgeted at the start of the year. Same definition the fund's
+    Budget & goals page reports (cashbook.services.budget_items)."""
     def get(self, request):
         import datetime as dt
         from django.http import JsonResponse
-        from .models import BudgetLine
+        from .services.budget_items import budget_item_rows
         try:
             dept_id = int(request.GET.get("dept") or 0)
         except ValueError:
@@ -3057,11 +3085,12 @@ class BudgetItemsJSONView(DataEntryRequiredMixin, View):
             year = int(year) if year else dt.date.today().year
         except ValueError:
             year = dt.date.today().year
-        items = (BudgetLine.objects.filter(department_id=dept_id, year=year)
-                 .order_by("name"))
-        return JsonResponse({"items": [
-            {"id": b.id, "name": b.name, "category": b.category,
-             "amount": float(b.amount)} for b in items]})
+        return JsonResponse({"year": year, "items": [
+            {"id": r["line"].id, "name": r["line"].name,
+             "category": r["line"].category,
+             "amount": float(r["budget"]), "spent": float(r["spent"]),
+             "remaining": float(r["remaining"])}
+            for r in budget_item_rows(dept_id, year)]})
 
 
 # --- Payables / accruals / prepayments: edit, delete, settle-against-expense ---
