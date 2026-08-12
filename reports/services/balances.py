@@ -583,8 +583,61 @@ def fund_balance(dept, as_of=None):
     """Closing balance for a SINGLE fund as at a date, computed with targeted
     aggregations (no full-portfolio loop). Mirrors department_summary's basis:
     opening + active receipts − approved/paid expenses + refunds + transfers
-    in − out. The sum of ``fund_balance_parts``."""
+    in − out. The sum of ``fund_balance_parts``.
+
+    This is the per-fund figure the general ledger reconciles against
+    (``fund_balance_ledger``), so it deliberately does NOT roll sub-accounts
+    up. For "what can actually be spent from this fund", see
+    ``spendable_balance``.
+    """
     parts = fund_balance_parts(dept, as_of)
+    return None if parts is None else parts["balance"]
+
+
+def spendable_balance_parts(dept, as_of=None):
+    """What is available to spend FROM this fund: its own balance plus every
+    sub-account that collects on its behalf.
+
+    Why this exists separately from ``fund_balance``. Where a parent keeps
+    spending at the parent level, giving is allocated to the sub-accounts and
+    expenses are charged to the parent — so the parent's own receipts are zero
+    and it reads as overdrawn however much the family holds. The Statement of
+    Fund Balances never showed that, because ``department_summary`` has always
+    consolidated sub-accounts into their parent's row; only the single-fund
+    figure did, which is what the expense form and its overdraw guard read.
+    This closes that gap without touching ``fund_balance``, which the ledger
+    ties to per fund.
+
+    Internal transfers need no special handling: a transfer from child to
+    parent is a ``transfers_out`` on one and a ``transfers_in`` on the other,
+    so it nets to zero across the family exactly as it should.
+
+    Returns ``fund_balance_parts``' keys (already rolled up) plus:
+      ``own_balance`` — the fund's balance excluding sub-accounts
+      ``children``    — [{department, balance}] for each fund rolled in
+    """
+    parts = fund_balance_parts(dept, as_of)
+    if parts is None:
+        return None
+    from departments.models import Department, collection_descendants
+    if not isinstance(dept, Department):
+        dept = Department.objects.filter(pk=getattr(dept, "id", dept)).first()
+        if dept is None:
+            return {**parts, "own_balance": parts["balance"], "children": []}
+    rolled = {**parts, "own_balance": parts["balance"], "children": []}
+    for child in collection_descendants(dept):
+        cp = fund_balance_parts(child, as_of)
+        for key in ("opening", "receipts", "spent", "refunded",
+                    "transfers_in", "transfers_out", "balance"):
+            rolled[key] = rolled[key] + cp[key]
+        rolled["children"].append({"department": child, "balance": cp["balance"]})
+    return rolled
+
+
+def spendable_balance(dept, as_of=None):
+    """The sum of ``spendable_balance_parts`` — the figure the expense form
+    shows and its overdraw guard enforces."""
+    parts = spendable_balance_parts(dept, as_of)
     return None if parts is None else parts["balance"]
 
 

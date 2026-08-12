@@ -35,6 +35,7 @@
         <select name="budget_line" id="id_budget_line" class="field--select">
           <option value="">— not tied to a budget item —</option>
         </select>
+        <div class="help" id="budgetItemBal" style="display:none"></div>
         <div class="help">If this fund has a camp/budget set, pick the item this expense relates to, so spend is tracked per item.</div>
         {% for e in form.budget_line.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
       </div>
@@ -42,7 +43,7 @@
 
     <div class="xf-group"><div class="xf-group-h"><span class="xf-n">1</span> How much, and when</div>
       <div class="form-grid xf-grid-2">
-      {% for f in form %}{% if f.name in 'amount date charge' %}
+      {% for f in form %}{% if f.name in 'amount date' %}
         <div class="form-row{% if f.name == 'amount' %} xf-amount{% endif %}">
           <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
@@ -80,7 +81,10 @@
 
     <div class="xf-group"><div class="xf-group-h"><span class="xf-n">4</span> How it was paid</div>
       <div class="form-grid xf-grid-2">
-      {% for f in form %}{% if f.name in 'method voucher_no paid_from_petty_cash' %}
+      {% comment %} `charge` sits here, not with the amount: it is revealed by the
+         method (M-Pesa / Bank), so showing it three groups above the control
+         that triggers it made a field appear where the eye was not. {% endcomment %}
+      {% for f in form %}{% if f.name in 'method voucher_no paid_from_petty_cash charge' %}
         <div class="form-row">
           <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
@@ -167,18 +171,38 @@ const box=document.getElementById("balBox");
 const budgetUrl="{% url 'budget_items_json' %}";
 const biRow=document.getElementById("budgetItemRow"), biSel=document.getElementById("id_budget_line");
 const biPreset="{{ form.instance.budget_line_id|default:'' }}";
+const biBal=document.getElementById("budgetItemBal");
+let biItems={};
+// What is LEFT on the chosen budget item, shown under the field. The budgeted
+// amount alone doesn't answer the question being asked at entry ("is there
+// room for this?"); the same remaining figure the fund's Budget & goals page
+// reports is what does.
+function showBudgetItemBal(){
+  if(!biBal) return;
+  const it=biItems[biSel && biSel.value];
+  if(!it){ biBal.style.display="none"; return; }
+  const over=it.remaining<0;
+  biBal.innerHTML=`Remaining on this item <strong${over?' class="u-danger"':''}>KES ${fmt(it.remaining)}</strong>`
+    +` <span class="muted">(budget ${fmt(it.amount)} − spent ${fmt(it.spent)})</span>`
+    +(over?' <span class="u-danger">— already overspent</span>':'');
+  biBal.style.display="block";
+}
 async function loadBudgetItems(){
-  if(!biSel || !deptHidden.value){ if(biRow) biRow.style.display="none"; return; }
+  if(!biSel || !deptHidden.value){ if(biRow) biRow.style.display="none"; if(biBal) biBal.style.display="none"; return; }
   try{
     const d=await (await fetch(budgetUrl+"?dept="+deptHidden.value)).json();
     biSel.innerHTML='<option value="">— not tied to a budget item —</option>';
+    biItems={};
     (d.items||[]).forEach(it=>{ const o=document.createElement("option");
-      o.value=it.id; o.textContent=it.name+" (budget "+Number(it.amount).toLocaleString()+")";
+      biItems[String(it.id)]=it;
+      o.value=it.id; o.textContent=it.name+" — "+fmt(it.remaining)+" left of "+fmt(it.amount);
       if(String(it.id)===String(biPreset)) o.selected=true;
       biSel.appendChild(o); });
     biRow.style.display=(d.items&&d.items.length)?"":"none";
-  }catch(e){ biRow.style.display="none"; }
+    showBudgetItemBal();
+  }catch(e){ biRow.style.display="none"; if(biBal) biBal.style.display="none"; }
 }
+if(biSel) biSel.addEventListener("change", showBudgetItemBal);
 
 async function showBal(){
   if(!deptHidden.value){ box.style.display="none"; return; }
@@ -188,7 +212,18 @@ async function showBal(){
     if(d.refunded) parts+=` + refunds ${fmt(d.refunded)}`;
     if(d.transfers_in) parts+=` + transfers in ${fmt(d.transfers_in)}`;
     if(d.transfers_out) parts+=` − transfers out ${fmt(d.transfers_out)}`;
-    box.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong> <span class="muted">(${parts})</span>`;
+    let html=`Available balance <strong>KES ${fmt(d.balance)}</strong> <span class="muted">(${parts})</span>`;
+    // Say so when the figure includes collection sub-accounts. A treasurer
+    // comparing this against the fund's own line elsewhere would otherwise be
+    // reading two different things with no clue which.
+    const kids=d.children||[];
+    if(kids.length){
+      html+=`<div class="muted u-xs" style="margin-top:.3rem">Includes ${kids.length} collection `
+        +`sub-account${kids.length>1?"s":""} that can only be spent through this fund — `
+        +`this fund on its own holds ${fmt(d.own_balance)}. `
+        +kids.map(c=>`${c.name} ${fmt(c.balance)}`).join(" · ")+`</div>`;
+    }
+    box.innerHTML=html;
     box.style.display="block";
   }catch(e){ box.style.display="none"; }
 }

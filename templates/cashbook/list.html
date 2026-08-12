@@ -49,11 +49,12 @@
   <div class="f grow"><label>Search</label><input name="q" value="{{ filters.q }}" class="field" placeholder="Description, claimant, voucher…"></div>
   <div class="f"><label>Status</label><select name="status" class="field--select"><option value="">All</option>{% for v,l in statuses %}<option value="{{ v }}" {% if filters.status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
   <div class="f"><label>Category</label><select name="category" class="field--select"><option value="">All</option>{% for v,l in categories %}<option value="{{ v }}" {% if filters.category == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="f"><label for="id_department_filter">Fund</label><select name="department" id="id_department_filter" class="field--select"><option value="">All</option>{% for d in departments %}<option value="{{ d.id }}" {% if filters.department == d.id|stringformat:'s' %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
   <div class="f"><label>From</label><input type="date" name="start" value="{{ filters.start }}" class="field"></div>
   <div class="f"><label>To</label><input type="date" name="end" value="{{ filters.end }}" class="field"></div>
   <div class="ws-tb-actions">
     <button class="btn btn-sm">Apply filters</button>
-    {% if filters.q or filters.status or filters.category or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
+    {% if filters.q or filters.status or filters.category or filters.department or filters.start or filters.end %}<a class="btn btn-sm btn-ghost" href="{% url 'expense_list' %}">Clear</a>{% endif %}
     <span class="ws-divider"></span>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=xlsx">⤓ Excel</a>
     <a class="btn btn-sm btn-ghost" href="?{{ request.GET.urlencode }}{% if request.GET %}&{% endif %}export=support-pdf" title="One PDF: a voucher summary and the attached documents for every expense matching the current filters">🖨 Supporting documents</a>
@@ -85,7 +86,7 @@
       <td class="num mono row-debit">({{ e.amount|money }})</td>
       {% if can_enter_data %}<td class="actions"><a class="link" href="{% url 'expense_edit' e.id %}">Edit</a></td>{% endif %}
     </tr>
-  {% empty %}<tr><td colspan="10"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="10"><div class="ws-empty"><div class="we-mark">⊟</div><div class="we-title">No expenses yet</div><div class="we-hint">{% if filters.status or filters.category or filters.department or filters.start %}Nothing matches these filters — <a href="{% url 'expense_list' %}">clear them</a>.{% elif can_enter_data %}<a href="{% url 'expense_create' %}">Record the first expense</a> to start the ledger.{% else %}Expenses will appear here once recorded.{% endif %}</div></div></td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% if is_treasurer %}</form>
