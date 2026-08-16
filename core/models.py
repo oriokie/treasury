@@ -126,7 +126,26 @@ class SiteConfig(models.Model):
                 "{campaign}. So far KES {paid} received; KES {outstanding} "
                 "outstanding. May God bless your faithfulness. - {church}",
         help_text="Sent as a reminder. Placeholders: {name} {amount} "
-                  "{campaign} {church} {paid} {outstanding} {due}")
+                  "{campaign} {church} {paid} {outstanding} {due}. "
+                  "For a member with several pledges, one combined message is "
+                  "sent — {campaign} lists each, and the amounts are totals.")
+    pledge_fulfilled_template = models.CharField(
+        max_length=320, blank=True,
+        default="Dear {name}, thank you — your pledge of KES {amount} to "
+                "{campaign} is fully paid. May God bless your faithfulness. "
+                "- {church}",
+        help_text="Sent automatically when a pledge is fully paid. "
+                  "Placeholders: {name} {amount} {campaign} {church} "
+                  "{paid} {outstanding} {due}. Leave blank to use the default.")
+    pledge_send_fulfilled_thanks = models.BooleanField(
+        default=True,
+        help_text="When a pledge reaches paid in full, send the fulfilled "
+                  "thank-you SMS (if SMS is enabled and the member has a phone).")
+    pledge_send_submit_thanks = models.BooleanField(
+        default=True,
+        help_text="When a member submits a pledge on the public link, send the "
+                  "thank-you-for-pledging SMS (uses the wording above; requires "
+                  "SMS enabled and a phone on the form).")
 
     class SmsReceiptScope(models.TextChoices):
         OFF = "OFF", "Don't send receipts"
@@ -436,10 +455,34 @@ class SiteConfig(models.Model):
     pledge_match_window_days = models.PositiveIntegerField(default=400,
         help_text="How many days after a pledge's end date a contribution may "
                   "still be matched to it.")
+    pledge_match_fuzzy_threshold = models.DecimalField(
+        max_digits=3, decimal_places=2, default=Decimal("0.84"),
+        help_text="For cash/envelope receipts not linked to a member: suggest a "
+                  "match when the payer name is at least this similar to the "
+                  "pledgor (0.00–1.00). Exact name matches always count. Set to "
+                  "0 to turn fuzzy suggestions off. Used by the auto-match "
+                  "preview; the cron job applies exact matches only unless "
+                  "run with --fuzzy.")
     pledge_public_form_enabled = models.BooleanField(default=False,
-        help_text="Allow members to submit a pledge from a public link. Submissions "
-                  "are held as unverified drafts for a treasurer to review and "
-                  "approve — they never post anywhere until approved.")
+        help_text="Allow members to submit a pledge from a public link.")
+
+    class PledgePublicSubmitMode(models.TextChoices):
+        DRAFT = "DRAFT", "Hold as draft — treasurer must approve"
+        ACTIVE = "ACTIVE", "Accept immediately — counts at once"
+
+    pledge_public_submit_mode = models.CharField(
+        max_length=8,
+        choices=PledgePublicSubmitMode.choices,
+        default=PledgePublicSubmitMode.DRAFT,
+        help_text="What happens when a member submits via the public pledge "
+                  "link. Draft (default) waits for approval and does not count "
+                  "toward the campaign until then. Accept immediately makes the "
+                  "pledge active as soon as it is submitted.")
+    pledge_cron_auto_match = models.BooleanField(
+        default=False,
+        help_text="Allow the scheduled `pledge_auto_match` management command "
+                  "to apply matches unattended. Off by default — turn on after "
+                  "you have reviewed how auto-match behaves on this church.")
 
     # --- Backups -------------------------------------------------------------
     backup_email = models.CharField(max_length=200, blank=True, default="",

@@ -418,12 +418,55 @@ class PledgePaymentDeleteView(TreasurerRequiredMixin, View):
 
 
 class PledgeAutoMatchAllView(TreasurerRequiredMixin, View):
+    """Preview the matches the sweep would make, then apply only on confirm.
+
+    The dashboard button opens this page (GET). Applying still POSTs here —
+    with `confirm=1` — so a treasurer sees every proposed link before any
+    PledgePayment is written. Linking still never creates money.
+    """
+    template_name = "pledges/auto_match_preview.html"
+
+    def _campaign(self, request):
+        raw = request.POST.get("campaign") or request.GET.get("campaign")
+        if not raw:
+            return None
+        return PledgeCampaign.objects.filter(pk=raw).first()
+
+    def get(self, request):
+        campaign = self._campaign(request)
+        plan = match_svc.plan_auto_match_all(campaign=campaign)
+        total = sum((r["amount"] for r in plan), Decimal("0"))
+        pledges = {r["pledge"].id for r in plan}
+        return render(request, self.template_name, {
+            "campaign": campaign,
+            "campaigns": PledgeCampaign.objects.filter(
+                status=PledgeCampaign.Status.ACTIVE),
+            "plan": plan,
+            "total": total,
+            "pledge_count": len(pledges),
+            "match_count": len(plan),
+        })
+
     @db_tx.atomic
     def post(self, request):
-        campaign = None
-        if request.POST.get("campaign"):
-            campaign = PledgeCampaign.objects.filter(pk=request.POST["campaign"]).first()
-        touched, total = match_svc.auto_match_all(user=request.user, campaign=campaign)
+        campaign = self._campaign(request)
+        if not request.POST.get("confirm"):
+            # Accidental/empty POST — show the preview rather than apply.
+            return redirect(request.path + (
+                f"?campaign={campaign.pk}" if campaign else ""))
+        plan = match_svc.plan_auto_match_all(campaign=campaign)
+        # Honour unchecked rows: only apply the (pledge, txn) pairs the
+        # treasurer left ticked. An empty selection means cancel.
+        selected = set(request.POST.getlist("match"))
+        if selected:
+            plan = [r for r in plan
+                    if f"{r['pledge'].id}:{r['txn'].id}" in selected]
+        elif "match" in request.POST:
+            # Form submitted with every box unchecked.
+            messages.info(request, "No matches selected.")
+            return redirect("pledge_dashboard")
+        touched, total = match_svc.apply_planned_matches(
+            plan, user=request.user)
         if touched:
             messages.success(request, f"Auto-matched KES {total:,.2f} across "
                                       f"{touched} pledge(s).")
@@ -506,8 +549,11 @@ class PledgeReminderBatchView(TreasurerRequiredMixin, TemplateView):
         ctx["all_tags"] = MemberTag.objects.filter(active=True)
         ctx["targets"] = rem_svc.reminder_targets(campaign=campaign, tag=tag,
                                                   kind=kind)
+        ctx["batches"] = rem_svc.reminder_batches(campaign=campaign, tag=tag,
+                                                  kind=kind)
         from core.models import SiteConfig
         cfg = SiteConfig.get()
+        ctx["cfg"] = cfg
         ctx["sms_enabled"] = cfg.sms_enabled
         ctx["whatsapp_enabled"] = cfg.whatsapp_enabled
         return ctx
@@ -522,17 +568,19 @@ class PledgeReminderBatchView(TreasurerRequiredMixin, TemplateView):
         # Recomputed from the same arguments the page was showing, rather than
         # trusting a list of ids from the form: what a treasurer approved was
         # "everyone on this screen", and the screen is defined by these filters.
-        targets = rem_svc.reminder_targets(campaign=campaign, tag=tag,
+        # Batched by member so two pledges never produce two texts.
+        batches = rem_svc.reminder_batches(campaign=campaign, tag=tag,
                                            kind=kind)
         sent = 0
-        for p in targets:
-            log = rem_svc.send_pledge_reminder(p, channel=channel,
-                                               user=request.user, kind=kind)
-            if log.ok:
+        for batch in batches:
+            log = rem_svc.send_pledge_reminder(
+                pledges=batch["pledges"], channel=channel,
+                user=request.user, kind=kind)
+            if log and log.ok:
                 sent += 1
         noun = "thank-you" if kind == "THANKS" else "reminder"
         messages.success(request,
-                         f"Sent {sent} of {len(targets)} {noun} message(s).")
+                         f"Sent {sent} of {len(batches)} {noun} message(s).")
         return redirect("pledge_dashboard")
 
 
@@ -891,7 +939,8 @@ import time
 class PublicPledgeView(View):
     # Deliberately public (P1-1 exempt): a member-facing pledge form, gated by
     # SiteConfig.pledge_public_form_enabled (off by default) and heavily
-    # rate/bot-guarded below. Writes only unverified drafts; approval is manual.
+    # rate/bot-guarded below. Status follows pledge_public_submit_mode
+    # (draft for approval, or active immediately).
     template_name = "pledges/public_form.html"
     MAX_AMOUNT = Decimal("100000000")   # sanity ceiling
     MIN_SECONDS = 2                     # forms filled faster than this are bots
@@ -962,6 +1011,13 @@ class PublicPledgeView(View):
 
         if not name or len(name) < 3:
             return fail("Please enter your full name.")
+        if not phone:
+            return fail("Please enter your M-PESA phone number.")
+        from members.models import Member
+        from members.services.matching import name_key, normalize_phone
+        ph = normalize_phone(phone)
+        if not ph:
+            return fail("Please enter a valid M-PESA phone number.")
         campaign = fixed or campaigns.filter(pk=camp_id).first()
         if not campaign:
             return fail("Please choose a campaign.")
@@ -978,12 +1034,7 @@ class PublicPledgeView(View):
 
         # Resolve to a Member only by an exact, unambiguous match; otherwise leave
         # unlinked for the treasurer. We never reveal whether a match was found.
-        from members.models import Member
-        from members.services.matching import name_key, normalize_phone
-        member = None
-        ph = normalize_phone(phone)
-        if ph:
-            member = Member.objects.filter(phone=ph).first()
+        member = Member.objects.filter(phone=ph).first()
         if not member:
             nk = name_key(name)
             matches = Member.objects.filter(name_key=nk)[:2]
@@ -992,24 +1043,48 @@ class PublicPledgeView(View):
         if not member:
             # create a provisional member record (inactive until a treasurer
             # confirms) so the pledge always has an owner
-            member = Member.objects.create(name=name, phone=ph or None,
+            member = Member.objects.create(name=name, phone=ph,
                                            source=Member.Source.AUTO_BANK,
                                            active=False)
+        elif not member.phone:
+            member.phone = ph
+            member.save(update_fields=["phone"])
 
-        Pledge.objects.create(
+        auto_accept = (cfg.pledge_public_submit_mode
+                       == SiteConfig.PledgePublicSubmitMode.ACTIVE)
+        status = (Pledge.Status.ACTIVE if auto_accept else Pledge.Status.DRAFT)
+        pledge = Pledge.objects.create(
             campaign=campaign, member=member, amount=amount, frequency=freq,
-            start_date=dt.date.today(), status=Pledge.Status.DRAFT,
+            start_date=dt.date.today(), status=status,
             self_submitted=True,
             submitted_contact=f"{name} / {phone}"[:120],
-            note=note)
+            note=note,
+            approved_at=timezone.now() if auto_accept else None)
         request.session["pledge_submits"] = n + 1
+        request.session["pledge_thanks_accepted"] = auto_accept
 
-        # notify treasurers there's a self-submitted pledge to review
+        # Thank-you SMS to the member (best-effort; never blocks the redirect).
+        try:
+            from django.db import transaction
+            from pledges.services.reminders import maybe_send_submit_thanks
+            pledge_id = pledge.pk
+            transaction.on_commit(lambda: maybe_send_submit_thanks(pledge_id))
+        except Exception:
+            from core.utils import log_exception as _lx; _lx('pledges/views.py')
+
+        # notify treasurers
         try:
             from core.services.notifications import notify
-            notify("pledge", f"New member pledge submitted by {name} "
-                             f"(KES {amount:,.0f} to {campaign.name}) — review needed.",
-                   link="/pledges/list/?status=DRAFT")
+            if auto_accept:
+                notify("pledge", f"New member pledge from {name} "
+                                 f"(KES {amount:,.0f} to {campaign.name}) — "
+                                 "accepted automatically.",
+                       link=f"/pledges/{pledge.pk}/")
+            else:
+                notify("pledge", f"New member pledge submitted by {name} "
+                                 f"(KES {amount:,.0f} to {campaign.name}) — "
+                                 "review needed.",
+                       link="/pledges/list/?status=DRAFT")
         except Exception:
             from core.utils import log_exception as _lx; _lx('pledges/views.py')
             pass
@@ -1020,8 +1095,9 @@ class PublicPledgeView(View):
 class PublicPledgeThanksView(View):
     def get(self, request):
         from core.models import SiteConfig
+        accepted = bool(request.session.pop("pledge_thanks_accepted", False))
         return render(request, "pledges/public_thanks.html",
-                      {"cfg": SiteConfig.get()})
+                      {"cfg": SiteConfig.get(), "accepted": accepted})
 
 
 # ===========================================================================

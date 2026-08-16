@@ -7,6 +7,7 @@ the treasurer confirms. Nothing here creates or moves money.
 """
 import datetime as dt
 from decimal import Decimal
+from difflib import SequenceMatcher
 
 from django.db.models import Q
 
@@ -88,11 +89,49 @@ def _gift_is_for_campaign(txn, fund_ids):
     return txn.department_id in fund_ids
 
 
-def candidate_contributions(pledge, window_days=400):
+def _name_ratio(a, b):
+    """Similarity of two names after the same keying the rest of matching uses."""
+    ka, kb = name_key(a or ""), name_key(b or "")
+    if not ka or not kb:
+        return 0.0
+    if ka == kb:
+        return 1.0
+    return SequenceMatcher(None, ka, kb).ratio()
+
+
+def _fuzzy_threshold(cfg=None):
+    """0 disables fuzzy suggestions; otherwise a ratio in (0, 1]."""
+    from core.models import SiteConfig
+    cfg = cfg or SiteConfig.get()
+    raw = getattr(cfg, "pledge_match_fuzzy_threshold", None)
+    if raw is None:
+        return 0.84
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    return val if val > 0 else 0.0
+
+
+#: Cash and envelope receipts are typed by hand; bank credits usually arrive
+#: with a member link or an exact payer name. Fuzzy name matching is therefore
+#: only offered for these channels — the ones where a near-miss is common and
+#: a treasurer still reviews before anything is linked.
+_FUZZY_CHANNELS = (Transaction.Channel.CASH, Transaction.Channel.ENVELOPE)
+
+
+def candidate_contributions(pledge, window_days=400, allow_fuzzy=True, cfg=None):
     """Confirmed contributions from this pledge's member that could be applied to
     it: same member (by FK or name key), within the pledge's active window, in the
     campaign's fund or one of its sub-accounts, not already matched, not
-    reversed."""
+    reversed.
+
+    When ``allow_fuzzy`` is True and the fuzzy threshold is set, unlinked cash
+    and envelope receipts whose payer name is close enough to the pledgor are
+    also returned — tagged so the preview can show they are near-misses.
+    Returns a list of ``{"txn", "match"}`` where match is ``"exact"`` or
+    ``"fuzzy"``.
+    """
     member = pledge.member
     # From the pledge date, not a week before it. A gift given before the
     # promise was made cannot be payment of that promise — it was giving the
@@ -106,99 +145,178 @@ def candidate_contributions(pledge, window_days=400):
             confirmed=True, is_reversal=False, is_reversed=False,
             date__gte=start, date__lte=end)
           .exclude(id__in=already_matched_txn_ids()))
-    # match the member by FK, or by name key when the gift wasn't linked
+    # match the member by FK, or by name when the gift wasn't linked
     nk = name_key(member.name)
     qs = qs.filter(Q(member=member) | Q(member__isnull=True, payer_name__isnull=False))
     fund_ids = campaign_fund_ids(pledge.campaign)
+    threshold = _fuzzy_threshold(cfg) if allow_fuzzy else 0.0
     out = []
     for t in qs.select_related("department"):
+        match = None
         if t.member_id == member.id:
-            ok = True
-        else:
-            ok = bool(nk) and name_key(t.payer_name or "") == nk
-        if not ok:
+            match = "exact"
+        elif nk and name_key(t.payer_name or "") == nk:
+            match = "exact"
+        elif (threshold > 0
+              and t.member_id is None
+              and t.channel in _FUZZY_CHANNELS
+              and _name_ratio(member.name, t.payer_name) >= threshold):
+            match = "fuzzy"
+        if not match:
             continue
         if not _gift_is_for_campaign(t, fund_ids):
             continue
-        out.append(t)
+        out.append({"txn": t, "match": match})
+    # Exact before fuzzy so a clear link is preferred when both exist.
+    out.sort(key=lambda r: (0 if r["match"] == "exact" else 1, r["txn"].id))
     return out
 
 
-def suggest_matches_for_pledge(pledge):
+def suggest_matches_for_pledge(pledge, allow_fuzzy=True, cfg=None):
     """Return candidate contributions with how much of each is still unapplied.
 
     The subtraction here is what makes a part-applied gift usable again, so it
     is also what stops one being applied twice: a gift already spent down to
     nothing yields `free` of zero and drops out.
     """
-    cands = candidate_contributions(pledge)
+    cands = candidate_contributions(pledge, allow_fuzzy=allow_fuzzy, cfg=cfg)
     applied_by_txn = {}
-    for pp in PledgePayment.objects.filter(transaction__in=[c.id for c in cands]):
-        applied_by_txn[pp.transaction_id] = applied_by_txn.get(pp.transaction_id, Decimal("0")) + pp.amount
+    for pp in PledgePayment.objects.filter(
+            transaction__in=[c["txn"].id for c in cands]):
+        applied_by_txn[pp.transaction_id] = (
+            applied_by_txn.get(pp.transaction_id, Decimal("0")) + pp.amount)
     rows = []
-    for t in cands:
+    for c in cands:
+        t = c["txn"]
         free = t.amount - applied_by_txn.get(t.id, Decimal("0"))
         if free > 0:
-            rows.append({"txn": t, "free": free})
+            rows.append({"txn": t, "free": free, "match": c["match"]})
     return rows
 
 
-def auto_match_pledge(pledge, user=None, max_apply=None):
-    """Apply candidate contributions to a pledge up to its outstanding balance.
-    Used both for one-click "auto-match this pledge" and the bulk sweep. Returns
-    the total newly applied. Creates PledgePayment links only — never money."""
+def plan_auto_match_pledge(pledge, applied_by_txn=None, max_apply=None,
+                           allow_fuzzy=True, cfg=None):
+    """Propose matches for one pledge without writing. Returns
+    [{pledge, txn, amount, match}, …].
+
+    `applied_by_txn` is a mutable map of contribution_id → already-applied
+    amount. Callers that walk several pledges (the bulk preview) pass one map
+    so a gift's remainder stays visible to the next pledge — the same way a
+    real sweep would consume it.
+    """
     if pledge.status in (Pledge.Status.CANCELLED, Pledge.Status.DRAFT):
-        return Decimal("0")
-    applied_total = Decimal("0")
+        return []
     outstanding = pledge.outstanding
     if outstanding <= 0:
-        return Decimal("0")
-    for row in suggest_matches_for_pledge(pledge):
+        return []
+    if applied_by_txn is None:
+        applied_by_txn = applied_by_transaction()
+    rows = []
+    applied_total = Decimal("0")
+    for c in candidate_contributions(pledge, allow_fuzzy=allow_fuzzy, cfg=cfg):
+        t = c["txn"]
         if outstanding <= 0:
             break
-        apply_amt = min(row["free"], outstanding)
+        free = t.amount - applied_by_txn.get(t.id, Decimal("0"))
+        if free <= 0:
+            continue
+        apply_amt = min(free, outstanding)
         if max_apply is not None:
             apply_amt = min(apply_amt, max_apply - applied_total)
             if apply_amt <= 0:
                 break
+        rows.append({"pledge": pledge, "txn": t, "amount": apply_amt,
+                     "match": c["match"]})
+        applied_by_txn[t.id] = applied_by_txn.get(t.id, Decimal("0")) + apply_amt
+        outstanding -= apply_amt
+        applied_total += apply_amt
+    return rows
+
+
+def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
+    """Dry-run of the bulk sweep: what auto-match would link, without writing.
+
+    Same pledge order and gift-remainder rules as `auto_match_all`, so the
+    preview a treasurer commits is the plan that actually gets applied.
+    Returns [{pledge, txn, amount, match}, …].
+    """
+    qs = (Pledge.objects.filter(status=Pledge.Status.ACTIVE)
+          .select_related("campaign", "member", "campaign__target_department"))
+    if campaign:
+        qs = qs.filter(campaign=campaign)
+    applied_by_txn = applied_by_transaction()
+    shared = {}
+    plan = []
+    for pledge in qs:
+        pledge.campaign = shared.setdefault(pledge.campaign_id, pledge.campaign)
+        plan.extend(plan_auto_match_pledge(
+            pledge, applied_by_txn=applied_by_txn,
+            allow_fuzzy=allow_fuzzy, cfg=cfg))
+    return plan
+
+
+def apply_planned_matches(rows, user=None):
+    """Write PledgePayment links for a plan from `plan_auto_match_*`.
+
+    Re-caps each row against current outstanding and gift free balance so a
+    stale preview cannot over-apply if something changed since the page loaded.
+    Returns (pledges_touched, total_applied). Creates links only — never money.
+    """
+    touched = set()
+    total = Decimal("0")
+    # Outstanding can shrink as we write earlier rows of the same pledge.
+    outstanding_left = {}
+    free_left = dict(applied_by_transaction())  # tid → already applied in DB
+    for row in rows:
+        pledge, txn, want = row["pledge"], row["txn"], row["amount"]
+        if want <= 0:
+            continue
+        if pledge.id not in outstanding_left:
+            outstanding_left[pledge.id] = pledge.outstanding
+        out = outstanding_left[pledge.id]
+        if out <= 0:
+            continue
+        already = free_left.get(txn.id, Decimal("0"))
+        free = txn.amount - already
+        apply_amt = min(want, free, out)
+        if apply_amt <= 0:
+            continue
         # One row per (pledge, contribution) — the model enforces it. So a
         # pledge drawing MORE from a gift it has already partly used tops up
-        # the existing row rather than adding a second: before the remainder of
-        # a part-applied gift was reachable at all this path could never run,
-        # and reaching it with a plain create() raises IntegrityError.
+        # the existing row rather than adding a second.
         existing = PledgePayment.objects.filter(
-            pledge=pledge, transaction=row["txn"]).first()
+            pledge=pledge, transaction=txn).first()
         if existing is not None:
             existing.amount += apply_amt
             existing.save(update_fields=["amount"])
         else:
             PledgePayment.objects.create(
-                pledge=pledge, transaction=row["txn"], amount=apply_amt,
-                date=row["txn"].date, source=PledgePayment.Source.AUTO,
+                pledge=pledge, transaction=txn, amount=apply_amt,
+                date=txn.date, source=PledgePayment.Source.AUTO,
                 matched_by=user, note="Auto-matched")
-        applied_total += apply_amt
-        outstanding -= apply_amt
-    return applied_total
+        free_left[txn.id] = already + apply_amt
+        outstanding_left[pledge.id] = out - apply_amt
+        touched.add(pledge.id)
+        total += apply_amt
+    return len(touched), total
 
 
-def auto_match_all(user=None, campaign=None):
+def auto_match_pledge(pledge, user=None, max_apply=None, allow_fuzzy=True):
+    """Apply candidate contributions to a pledge up to its outstanding balance.
+    Used both for one-click "auto-match this pledge" and the bulk sweep. Returns
+    the total newly applied. Creates PledgePayment links only — never money."""
+    plan = plan_auto_match_pledge(pledge, max_apply=max_apply,
+                                  allow_fuzzy=allow_fuzzy)
+    _touched, total = apply_planned_matches(plan, user=user)
+    return total
+
+
+def auto_match_all(user=None, campaign=None, allow_fuzzy=True):
     """Sweep all active, unpaid pledges and auto-match available contributions.
     Returns (pledges_touched, total_applied)."""
-    qs = Pledge.objects.filter(status=Pledge.Status.ACTIVE).select_related("campaign")
-    if campaign:
-        qs = qs.filter(campaign=campaign)
-    touched = 0
-    total = Decimal("0")
-    # One campaign object per campaign, shared by its pledges, so the fund
-    # subtree above is resolved once for the sweep rather than once per pledge.
-    shared = {}
-    for pledge in qs:
-        pledge.campaign = shared.setdefault(pledge.campaign_id, pledge.campaign)
-        applied = auto_match_pledge(pledge, user=user)
-        if applied > 0:
-            touched += 1
-            total += applied
-    return touched, total
+    return apply_planned_matches(
+        plan_auto_match_all(campaign=campaign, allow_fuzzy=allow_fuzzy),
+        user=user)
 
 
 # ---------------------------------------------------------------------------
@@ -211,8 +329,9 @@ def auto_match_all(user=None, campaign=None):
 # ---------------------------------------------------------------------------
 def active_pledges_for_contribution(txn, cfg=None):
     """Active, unpaid pledges this contribution could plausibly fulfil: same
-    member (FK or name key), contribution dated within the pledge window, and — when the
-    setting requires it — the contribution's fund matching the campaign's target fund."""
+    member (FK or name key, or fuzzy cash/envelope name), contribution dated
+    within the pledge window, and — when the setting requires it — the
+    contribution's fund matching the campaign's target fund."""
     from core.models import SiteConfig
     cfg = cfg or SiteConfig.get()
     if txn.direction != Transaction.Direction.CREDIT or not txn.confirmed:
@@ -229,11 +348,17 @@ def active_pledges_for_contribution(txn, cfg=None):
     fund_cache = {}
     same_fund_only = cfg.pledge_match_same_fund_only
     window = cfg.pledge_match_window_days or 400
+    threshold = _fuzzy_threshold(cfg)
     for p in qs:
         # member match
         if member and p.member_id == member.id:
             ok = True
         elif nk and name_key(p.member.name) == nk:
+            ok = True
+        elif (threshold > 0
+              and not member
+              and txn.channel in _FUZZY_CHANNELS
+              and _name_ratio(p.member.name, txn.payer_name) >= threshold):
             ok = True
         else:
             ok = False

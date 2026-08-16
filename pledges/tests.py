@@ -277,6 +277,47 @@ class PublicPledgeFormTests(TestCase):
         self.assertTrue(p.self_submitted)
         self.assertFalse(p.member.active)   # provisional until a treasurer reviews
 
+    def test_phone_is_required(self):
+        import time
+        self.cfg.pledge_public_form_enabled = True; self.cfg.save()
+        c = Client(); c.get("/pledge/"); time.sleep(2.1)
+        before = Pledge.objects.count()
+        r = c.post("/pledge/", {"name": "No Phone", "campaign": self.camp.id,
+                                "amount": "5000"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "M-PESA")
+        self.assertEqual(Pledge.objects.count(), before)
+
+    def test_immediate_accept_mode_activates_without_approval(self):
+        import time
+        from core.models import SiteConfig
+        self.cfg.pledge_public_form_enabled = True
+        self.cfg.pledge_public_submit_mode = SiteConfig.PledgePublicSubmitMode.ACTIVE
+        self.cfg.save()
+        c = Client(); c.get("/pledge/"); time.sleep(2.1)
+        with self.captureOnCommitCallbacks(execute=True):
+            c.post("/pledge/", {"name": "Quick Accept", "phone": "0700111222",
+                "campaign": self.camp.id, "amount": "15000"})
+        p = Pledge.objects.get(submitted_contact__icontains="Quick Accept")
+        self.assertEqual(p.status, Pledge.Status.ACTIVE)
+        self.assertTrue(p.self_submitted)
+        self.assertIsNotNone(p.approved_at)
+
+    def test_submit_sends_thank_you_sms_when_enabled(self):
+        import time
+        self.cfg.pledge_public_form_enabled = True
+        self.cfg.sms_enabled = True
+        self.cfg.pledge_send_submit_thanks = True
+        self.cfg.save()
+        c = Client(); c.get("/pledge/"); time.sleep(2.1)
+        with self.captureOnCommitCallbacks(execute=True):
+            c.post("/pledge/", {"name": "Sms Member", "phone": "0700333444",
+                "campaign": self.camp.id, "amount": "8000"})
+        from pledges.models import PledgeReminderLog
+        log = PledgeReminderLog.objects.first()
+        self.assertIsNotNone(log)
+        self.assertIn("thank you for pledging", log.message.lower())
+
     def test_too_fast_submit_blocked(self):
         self.cfg.pledge_public_form_enabled = True; self.cfg.save()
         c = Client(); c.get("/pledge/")     # no wait

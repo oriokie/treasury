@@ -184,15 +184,14 @@ class AppealWorkflow(BusinessWorkflowTest):
         return txn
 
     def _auto_match(self, client=None):
-        """The treasurer presses "⚡ Auto-match contributions".
+        """The treasurer opens Auto-match, reviews the preview, and confirms.
 
-        Posted empty, because that is exactly what the button on the pledge
-        dashboard sends: the sweep is over every active pledge in the church.
-        The view accepts a `campaign` to narrow it, but no page offers that, and
-        a workflow test that posted it would be exercising a door with no
-        handle on it.
+        The dashboard button is now a GET to the preview. Applying requires
+        `confirm=1`. Omitting per-row `match` checkboxes applies the whole
+        plan — the same as leaving every box ticked.
         """
-        return self.submit(client or self.office, "pledge_auto_match_all", {})
+        return self.submit(client or self.office, "pledge_auto_match_all",
+                           {"confirm": "1"})
 
     # -- the public form, driven the way a browser drives it -------------------
 

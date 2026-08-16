@@ -288,7 +288,11 @@ class Pledge(models.Model):
 
     def recompute_status(self, save=True):
         """Keep the lifecycle status honest against payments and dates. Never
-        downgrades an explicit CANCELLED/DRAFT; only moves ACTIVE/FULFILLED/LAPSED."""
+        downgrades an explicit CANCELLED/DRAFT; only moves ACTIVE/FULFILLED/LAPSED.
+
+        When a pledge newly becomes FULFILLED, schedules the paid-in-full
+        thank-you SMS (if enabled) after the surrounding transaction commits.
+        """
         if self.status in (self.Status.CANCELLED, self.Status.DRAFT):
             return self.status
         if self.is_fully_paid:
@@ -298,9 +302,20 @@ class Pledge(models.Model):
         else:
             new = self.Status.ACTIVE
         if new != self.status:
+            became_fulfilled = (new == self.Status.FULFILLED
+                                and self.status != self.Status.FULFILLED)
             self.status = new
             if save:
                 self.save(update_fields=["status"])
+            if became_fulfilled and self.pk:
+                from django.db import transaction
+                pledge_id = self.pk
+
+                def _send():
+                    from pledges.services.reminders import maybe_send_fulfilled_thanks
+                    maybe_send_fulfilled_thanks(pledge_id)
+
+                transaction.on_commit(_send)
         return new
 
     def expected_installments(self):

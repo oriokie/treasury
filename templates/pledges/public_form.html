@@ -67,8 +67,8 @@
   <form method="post" autocomplete="off">{% csrf_token %}
     <label for="name">Your full name</label>
     <input id="name" name="name" required value="{{ form.name|default:'' }}">
-    <label for="phone">Phone number</label>
-    <input id="phone" name="phone" inputmode="tel" placeholder="07XX XXX XXX" value="{{ form.phone|default:'' }}">
+    <label for="phone">M-PESA Phone number</label>
+    <input id="phone" name="phone" inputmode="tel" required placeholder="07XX XXX XXX" value="{{ form.phone|default:'' }}">
     {% if not campaign %}
     <label for="campaign">Campaign</label>
     <select id="campaign" name="campaign" required>
@@ -84,5 +84,5 @@
     <div class="hp"><label>Website</label><input name="website" tabindex="-1" autocomplete="off"></div>
     <button type="submit">Submit my pledge</button>
   </form>
-  <div class="note">Your pledge is a commitment to give and will be confirmed by the church treasurer. It is not a payment. Thank you for your faithfulness.</div>
+  <div class="note">Your pledge is a commitment to give{% if cfg.pledge_public_submit_mode == 'ACTIVE' %} and is recorded at once{% else %} and will be confirmed by the church treasurer{% endif %}. It is not a payment. Thank you for your faithfulness.</div>
 </div></div></body></html>

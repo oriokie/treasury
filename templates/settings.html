@@ -90,6 +90,29 @@
           <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_match_fuzzy_threshold' %}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_cron_auto_match' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+      </div>
+    </div></div>
+
+    <div class="card u-mt"><div class="hd">Pledge SMS wording</div><div class="bd">
+      <div class="help u-mb-sm">These are the church's own words for pledge messages. Placeholders:
+        <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {church}</span>.</div>
+      <div class="form-grid">
+        {% for f in form %}{% if f.name in 'pledge_thanks_template pledge_reminder_template pledge_fulfilled_template' %}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_send_fulfilled_thanks' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
       </div>
     </div></div>
 
@@ -99,13 +122,21 @@
           <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_public_submit_mode' %}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'pledge_send_submit_thanks' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
       </div>
       {% if form.instance.pledge_public_form_enabled %}
       <div class="help u-mt-sm">Share this link with members (e.g. on a bulletin or WhatsApp):
         <div class="mono" style="margin-top:.3rem;padding:.5rem .7rem;background:var(--paper-2);border-radius:6px;word-break:break-all">{{ request.scheme }}://{{ request.get_host }}/pledge/</div>
       </div>
       {% endif %}
-      <div class="help u-mt-sm lh-loose"><strong>How it's kept safe:</strong> the link only lets a member <em>submit</em> a pledge — it never shows any member data, balances, or other pledges. Every submission is held as an <strong>unverified draft</strong> a treasurer must review and approve before it counts anywhere, and a draft can never touch a fund balance. Submissions are protected by a spam honeypot, a submit-rate limit, and a manual approval step.</div>
+      <div class="help u-mt-sm lh-loose"><strong>How it's kept safe:</strong> the link only lets a member <em>submit</em> a pledge — it never shows any member data, balances, or other pledges. Spam protection includes a honeypot and a submit-rate limit. With <em>Hold as draft</em>, every submission waits for approval before it counts; with <em>Accept immediately</em>, it becomes active at once (still never posts money — only a real contribution does that).</div>
     </div></div>
   </section>
   <section class="tabpane" data-pane="goals">

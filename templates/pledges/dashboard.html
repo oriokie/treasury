@@ -18,7 +18,7 @@
 
 {% if is_treasurer %}
 <div class="btn-row u-mb">
-  <form method="post" action="{% url 'pledge_auto_match_all' %}" onsubmit="return confirm('Scan all active pledges and match any existing contributions from those givers? This only links existing giving — it never creates money.');">{% csrf_token %}<button class="btn btn-sm btn-ghost">⚡ Auto-match contributions</button></form>
+  <a class="btn btn-sm btn-ghost" href="{% url 'pledge_auto_match_all' %}">⚡ Auto-match contributions</a>
   {% if suggestion_count %}<a class="btn btn-sm" href="{% url 'pledge_suggestions' %}">🔎 Review {{ suggestion_count }} match suggestion{{ suggestion_count|pluralize }}</a>{% endif %}
   {% if draft_count %}<a class="btn btn-sm btn-ghost" href="{% url 'pledge_list' %}?status=DRAFT">📝 {{ draft_count }} draft{{ draft_count|pluralize }} to approve</a>{% endif %}
   <a class="btn btn-sm btn-ghost" href="{% url 'pledge_approvals' %}">✅ Approve pledges</a>

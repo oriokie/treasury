@@ -147,3 +147,53 @@ class SendTests(_Pledged):
         self.member.save()
         rem.send_pledge_reminder(self.pledge, kind="THANKS", user=self.user)
         self.assertIn("no phone", PledgeReminderLog.objects.get().message)
+
+
+class AggregateReminderTests(_Pledged):
+    def test_two_pledges_become_one_batch(self):
+        other = PledgeCampaign.objects.create(
+            name="Camp Meeting", target_department=self.campaign.target_department,
+            status=PledgeCampaign.Status.ACTIVE)
+        Pledge.objects.create(
+            campaign=other, member=self.member, amount=Decimal("10000"),
+            status=Pledge.Status.ACTIVE)
+        batches = rem.reminder_batches(kind="REMINDER")
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(batches[0]["pledge_count"], 2)
+        self.assertEqual(batches[0]["outstanding"], Decimal("60000"))
+
+    def test_aggregated_wording_lists_each_campaign(self):
+        other = PledgeCampaign.objects.create(
+            name="Camp Meeting", target_department=self.campaign.target_department,
+            status=PledgeCampaign.Status.ACTIVE)
+        p2 = Pledge.objects.create(
+            campaign=other, member=self.member, amount=Decimal("10000"),
+            status=Pledge.Status.ACTIVE)
+        text = rem.build_pledge_text(kind="REMINDER",
+                                     pledges=[self.pledge, p2])
+        self.assertIn("Sanctuary Roof", text)
+        self.assertIn("Camp Meeting", text)
+        self.assertIn("60,000", text)
+
+
+class FulfilledThanksTests(_Pledged):
+    def test_fulfilling_a_pledge_sends_the_thank_you(self):
+        from giving.models import Transaction
+        from pledges.models import PledgePayment
+        self.cfg.sms_enabled = True
+        self.cfg.pledge_send_fulfilled_thanks = True
+        self.cfg.save()
+        txn = Transaction.objects.create(
+            date=self.pledge.start_date, amount=Decimal("50000"),
+            direction="CREDIT", channel="BANK", confirmed=True,
+            allocation_status="MANUAL",
+            department=self.campaign.target_department, member=self.member)
+        with self.captureOnCommitCallbacks(execute=True):
+            PledgePayment.objects.create(
+                pledge=self.pledge, transaction=txn, amount=Decimal("50000"),
+                date=txn.date)
+        self.pledge.refresh_from_db()
+        self.assertEqual(self.pledge.status, Pledge.Status.FULFILLED)
+        log = PledgeReminderLog.objects.first()
+        self.assertIsNotNone(log)
+        self.assertIn("fully paid", log.message.lower())

@@ -30,7 +30,7 @@
 </script>
 {% endblock %}
 {% block content %}
-<div class="ws-head"><div class="ws-titles"><h1>Send pledge reminders</h1><div class="ws-sub">Gentle reminders to members with an outstanding pledge</div></div>
+<div class="ws-head"><div class="ws-titles"><h1>Send pledge reminders</h1><div class="ws-sub">Gentle reminders to members with an outstanding pledge — one message per person, even if they pledged more than once</div></div>
   <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a></div></div>
 
 {% if not sms_enabled and not whatsapp_enabled %}
@@ -50,13 +50,19 @@
 </form>
 
 <div class="ws-table"><table class="ledger compact">
-  <thead><tr><th>Member</th><th>Campaign</th><th>Phone</th><th class="num">Outstanding</th></tr></thead><tbody>
-  {% for p in targets %}
-    <tr><td>{{ p.member.name }}</td><td>{{ p.campaign.name }}</td><td class="mono">{{ p.member.receipt_phone|default:"— none —" }}</td><td class="num mono row-debit">{{ p.outstanding|money:0 }}</td></tr>
-  {% empty %}<tr><td colspan="4"><div class="ws-empty"><div class="we-title">No one to remind</div><div class="we-hint">Everyone with a pledge is paid up, opted out, or has no balance.</div></div></td></tr>{% endfor %}
+  <thead><tr><th>Member</th><th>Campaign(s)</th><th>Phone</th><th class="num">Pledges</th><th class="num">Outstanding</th></tr></thead><tbody>
+  {% for b in batches %}
+    <tr>
+      <td>{{ b.member.name }}</td>
+      <td>{{ b.campaigns }}</td>
+      <td class="mono">{{ b.member.receipt_phone|default:"— none —" }}</td>
+      <td class="num mono">{{ b.pledge_count }}</td>
+      <td class="num mono row-debit">{{ b.outstanding|money:0 }}</td>
+    </tr>
+  {% empty %}<tr><td colspan="5"><div class="ws-empty"><div class="we-title">No one to remind</div><div class="we-hint">Everyone with a pledge is paid up, opted out, or has no balance.</div></div></td></tr>{% endfor %}
   </tbody></table></div>
 
-{% if targets %}
+{% if batches %}
 {% comment %}An SMS cannot be recalled, and a template full of {placeholders}
 reads nothing like the message a member receives. So the words are shown filled
 in, against a real pledge, before the send button is anywhere near a finger —
@@ -65,7 +71,7 @@ and the segment count is shown too, because a church pays per segment.{% endcomm
   <div class="form-row"><label for="msgTemplate">Message</label>
     <textarea id="msgTemplate" class="field" rows="3">{% if kind == 'THANKS' %}{{ cfg.pledge_thanks_template }}{% else %}{{ cfg.pledge_reminder_template }}{% endif %}</textarea>
     <p class="help">Placeholders: <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {church}</span>.
-      Edit here to try wording out; save it for good under Settings → SMS.</p></div>
+      When someone has several pledges, amounts are totals and {campaign} lists each. Edit here to try wording out; save it under Settings → Pledges.</p></div>
   <div class="u-mt-sm"><strong class="u-xs">Preview</strong>
     <blockquote id="msgPreview" class="help" style="border-left:3px solid var(--forest-soft);padding-left:.7rem;margin:.3rem 0 0;white-space:pre-wrap">Loading…</blockquote>
     <div class="muted u-xs u-mt-sm" id="msgMeta"></div></div>
@@ -76,10 +82,10 @@ and the segment count is shown too, because a church pays per segment.{% endcomm
   <input type="hidden" name="kind" value="{{ kind }}">
   <input type="hidden" name="tag" value="{{ tag|default:'' }}">
   <div class="btn-row">
-    {% if sms_enabled %}<button class="btn" name="channel" value="SMS" onclick="return confirm('Send this SMS to all {{ targets|length }} member(s) listed?');">✉ Send SMS to all ({{ targets|length }})</button>{% endif %}
-    {% if whatsapp_enabled %}<button class="btn btn-ghost" name="channel" value="WHATSAPP" onclick="return confirm('Send this WhatsApp message to all {{ targets|length }} member(s)?');">Send WhatsApp to all</button>{% endif %}
+    {% if sms_enabled %}<button class="btn" name="channel" value="SMS" onclick="return confirm('Send this SMS to all {{ batches|length }} member(s) listed?');">✉ Send SMS to all ({{ batches|length }})</button>{% endif %}
+    {% if whatsapp_enabled %}<button class="btn btn-ghost" name="channel" value="WHATSAPP" onclick="return confirm('Send this WhatsApp message to all {{ batches|length }} member(s)?');">Send WhatsApp to all</button>{% endif %}
   </div>
 </form>
-<p class="help u-mt-sm">Members who opted out of reminders or have no phone on file are automatically skipped. Each reminder is logged.</p>
+<p class="help u-mt-sm">Members who opted out of reminders or have no phone on file are automatically skipped. Each reminder is logged. A member with more than one pledge receives a single combined message.</p>
 {% endif %}
 {% endblock %}

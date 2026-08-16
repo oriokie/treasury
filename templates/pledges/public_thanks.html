@@ -5,6 +5,10 @@
 <body><div class="wrap"><div class="card">
   <div class="tick">✓</div>
   <h1>Thank you</h1>
+  {% if accepted %}
+  <p>Your pledge to {{ cfg.church_name }} has been recorded. Thank you for your faithfulness.</p>
+  {% else %}
   <p>Your pledge to {{ cfg.church_name }} has been received and will be confirmed by the treasurer.</p>
+  {% endif %}
   <p style="color:#7a7768;font-size:.9rem">“Each of you should give what you have decided in your heart to give.” — 2 Corinthians 9:7</p>
 </div></div></body></html>
