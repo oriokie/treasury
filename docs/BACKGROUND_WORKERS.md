@@ -39,6 +39,7 @@ in a row causes no harm, which decides how safely it can be automated.
 | # | Job | What exists now | Trigger today | Wants | Idempotent | Notes |
 |---|---|---|---|---|---|---|
 | 1 | **Auto-match contributions** | `giving.services.allocation.reallocate_pending()` | A button on the review queue only | Every 10–15 min, or after each statement import | **Yes** — re-running finds nothing new to match | The one you named. Highest value: money sits unallocated only until the next run instead of until someone remembers to press the button |
+| 1b | **Pledge auto-match** | `manage.py pledge_auto_match` → `pledges.services.matching` | Treasurer preview on `/pledges/auto-match/` | Every 30 min once enabled in Settings | **Yes** — re-running finds nothing new | Exact member/name matches only by default; `--fuzzy` for cash near-misses. Gated by **Settings → Pledges → Allow scheduled auto-match** |
 | 2 | **Nightly encrypted backup** | `backup_db` command, complete | Nothing — must be run by hand | Nightly, off-peak | Yes (rotates copies) | Already written, already documented with a cron line. This is the highest-value *unstarted* job and needs no new code at all |
 | 3 | **Benevolent standing / arrears** | `benevolent_automation` command | Nothing | Nightly | Yes — writes only a cache of a pure function | Also already written. Recommendation #56d wants the reminders that follow it |
 | 4 | **Scheduled reports** | `reports.services.scheduling.run_due_schedules()` | Nothing calls it on a timer | Hourly | Yes, if it marks runs done | Recommendation #39. Snapshot retention/pruning belongs with it |
@@ -64,6 +65,7 @@ something explicitly starts it. Three ways to arrange that.
 
 ```
 */15 * * * *  cd /path/to/treasury && .venv/bin/python manage.py match_contributions
+*/30 * * * *  cd /path/to/treasury && .venv/bin/python manage.py pledge_auto_match
 30  2 * * *   cd /path/to/treasury && .venv/bin/python manage.py backup_db --keep 30
 0   3 * * *   cd /path/to/treasury && .venv/bin/python manage.py benevolent_automation
 ```
@@ -165,10 +167,20 @@ runs, fails to read its environment, and logs nothing.
 2. **Write `match_contributions`** wrapping `reallocate_pending()`, with
    `--dry-run`, and schedule it every 15 minutes. Small, idempotent, immediately
    useful.
-3. **Add last-run tracking and a Settings panel**, before adding any further
+3. **Pledge auto-match is ready:** enable **Allow scheduled auto-match** under
+   Settings → Pledges, then add:
+
+   ```
+   */30 * * * *  cd /path/to/treasury && .venv/bin/python manage.py pledge_auto_match
+   ```
+
+   Try `python manage.py pledge_auto_match --dry-run` first. Use `--force` to
+   bypass the settings toggle while testing. Exact matches only unless you pass
+   `--fuzzy`.
+4. **Add last-run tracking and a Settings panel**, before adding any further
    jobs, so the schedule is observable.
-4. **Then** decide about #5/#6, which need a job lock and a queue, and are the
+5. **Then** decide about #5/#6, which need a job lock and a queue, and are the
    ones where getting it wrong costs money.
 
-Steps 1 and 2 are hours, not days. Step 4 is the one that deserves its own
+Steps 1–3 are hours, not days. Step 5 is the one that deserves its own
 design.

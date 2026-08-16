@@ -1,0 +1,71 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Auto-match preview · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <div class="eyebrow">People · Pledges</div>
+    <h1>Auto-match preview</h1>
+    <div class="ws-sub">Review what will be linked before anything is applied — this only links existing giving, never creates money</div>
+  </div>
+  <div class="ws-actions"><a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a></div>
+</div>
+
+<form method="get" class="ws-toolbar u-mb">
+  <div class="f"><label for="amCampaign">Campaign</label>
+    <select id="amCampaign" name="campaign" class="field--select" onchange="this.form.submit()">
+      <option value="">All active pledges</option>
+      {% for c in campaigns %}
+        <option value="{{ c.id }}" {% if campaign and campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+{% if plan %}
+<div class="ws-summary u-mb">
+  <div class="ws-metric is-primary"><span class="wm-l">Would apply</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ total|money:0 }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Matches</span><span class="wm-v">{{ match_count }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Pledges</span><span class="wm-v">{{ pledge_count }}</span></div>
+</div>
+
+<form method="post">{% csrf_token %}
+  {% if campaign %}<input type="hidden" name="campaign" value="{{ campaign.id }}">{% endif %}
+  <input type="hidden" name="confirm" value="1">
+  <div class="card u-mb"><div class="hd">Proposed matches</div><div class="bd bd-flush">
+    <table class="ledger compact">
+      <thead><tr>
+        <th><input type="checkbox" checked
+                   onclick="document.querySelectorAll('input[name=match]').forEach(c=>c.checked=this.checked)"
+                   title="Select all"></th>
+        <th>Date</th><th>Member</th><th>Campaign</th><th>Contribution</th><th class="num">Apply</th>
+      </tr></thead>
+      <tbody>
+      {% for r in plan %}
+        <tr>
+          <td><input type="checkbox" name="match" value="{{ r.pledge.id }}:{{ r.txn.id }}" checked></td>
+          <td class="mono">{{ r.txn.date|date:"d/m/y" }}</td>
+          <td><a class="link" href="{% url 'pledge_detail' r.pledge.id %}">{{ r.pledge.member.name }}</a></td>
+          <td>{{ r.pledge.campaign.name }}</td>
+          <td class="mono muted">{{ r.txn.department.name|default:"—" }} · {{ CURRENCY }} {{ r.txn.amount|money:0 }}{% if r.match == 'fuzzy' %} <span class="pill pill-amber" title="Payer name is similar, not exact">fuzzy name</span>{% endif %}</td>
+          <td class="num mono">{{ r.amount|money:0 }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  <div class="btn-row">
+    <button class="btn" type="submit">Apply selected matches</button>
+    <a class="btn btn-ghost" href="{% url 'pledge_dashboard' %}">Cancel</a>
+  </div>
+</form>
+{% else %}
+<div class="ws-empty u-mb">
+  <div class="we-mark">✓</div>
+  <div class="we-title">Nothing to auto-match</div>
+  <div class="we-hint">No unmatched contributions were found for active pledges{% if campaign %} in {{ campaign.name }}{% endif %}.</div>
+</div>
+<a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>
+{% endif %}
+
+<p class="help u-mt">Untick any row you do not want linked. Applying creates pledge–contribution links only — fund balances are unchanged.</p>
+{% endblock %}

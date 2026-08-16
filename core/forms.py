@@ -18,6 +18,9 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         exclude = ["id", "updated_at", "board_config"]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
                    "receipt_message": forms.Textarea(attrs={"rows": 3}),
+                   "pledge_thanks_template": forms.Textarea(attrs={"rows": 2}),
+                   "pledge_reminder_template": forms.Textarea(attrs={"rows": 2}),
+                   "pledge_fulfilled_template": forms.Textarea(attrs={"rows": 2}),
                    "telegram_envelope_funds": forms.CheckboxSelectMultiple(),
                    "lcb_departments": forms.CheckboxSelectMultiple()}
 

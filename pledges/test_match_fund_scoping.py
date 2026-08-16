@@ -25,7 +25,7 @@ import datetime as dt
 from decimal import Decimal
 
 from django.contrib.auth.models import Group, User
-from django.test import TestCase
+from django.test import Client, TestCase
 
 from core.roles import TREASURER
 from departments.models import Department
@@ -74,7 +74,7 @@ class _Appeal(TestCase):
             department=department, member=member or self.member)
 
     def _candidate_ids(self):
-        return {t.id for t in match_svc.candidate_contributions(self.pledge)}
+        return {c["txn"].id for c in match_svc.candidate_contributions(self.pledge)}
 
 
 class WhatCountsTests(_Appeal):
@@ -226,7 +226,7 @@ class PartApplifiedGiftTests(_Appeal):
             campaign=self.campaign, member=self.member, amount=Decimal("9000"),
             start_date=dt.date(2026, 1, 1), status=Pledge.Status.ACTIVE)
         self.assertNotIn(
-            gift.id, {t.id for t in match_svc.candidate_contributions(other)})
+            gift.id, {c["txn"].id for c in match_svc.candidate_contributions(other)})
 
     def test_suggestions_report_only_what_is_left(self):
         self.pledge.amount = Decimal("4000")
@@ -303,3 +303,88 @@ class SubtreeHelperTests(TestCase):
                                   category=Department.Category.MINISTRY)
         DepartmentLeadership.objects.create(user=user, department=root)
         self.assertEqual({d.id for d in departments_led_by(user)}, {root.id, kid.id})
+
+
+class AutoMatchPreviewTests(_Appeal):
+    """The bulk sweep shows its plan before writing any PledgePayment."""
+
+    def test_plan_matches_what_apply_would_write(self):
+        gift = self._gift("4000", self.group_fund)
+        plan = match_svc.plan_auto_match_all()
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]["txn"].id, gift.id)
+        self.assertEqual(plan[0]["amount"], Decimal("4000"))
+        self.assertFalse(PledgePayment.objects.exists())
+
+        touched, total = match_svc.apply_planned_matches(plan, user=self.user)
+        self.assertEqual((touched, total), (1, Decimal("4000")))
+        self.assertEqual(PledgePayment.objects.count(), 1)
+
+    def test_preview_page_lists_matches_without_applying(self):
+        from django.urls import reverse
+        self._gift("2500", self.group_fund)
+        c = Client()
+        c.force_login(self.user)
+        r = c.get(reverse("pledge_auto_match_all"))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Auto-match preview")
+        self.assertContains(r, "2,500")
+        self.assertFalse(PledgePayment.objects.exists())
+
+    def test_confirming_the_preview_writes_the_links(self):
+        from django.urls import reverse
+        gift = self._gift("2500", self.group_fund)
+        c = Client()
+        c.force_login(self.user)
+        r = c.post(reverse("pledge_auto_match_all"), {
+            "confirm": "1",
+            "match": f"{self.pledge.id}:{gift.id}",
+        })
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(PledgePayment.objects.count(), 1)
+        self.assertEqual(PledgePayment.objects.get().amount, Decimal("2500"))
+
+    def test_post_without_confirm_does_not_apply(self):
+        from django.urls import reverse
+        self._gift("2500", self.group_fund)
+        c = Client()
+        c.force_login(self.user)
+        r = c.post(reverse("pledge_auto_match_all"), {})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(PledgePayment.objects.exists())
+
+
+class FuzzyCashMatchTests(_Appeal):
+    """Near-miss cash/envelope payer names can be suggested against a pledge."""
+
+    def setUp(self):
+        super().setUp()
+        from core.models import SiteConfig
+        self.cfg = SiteConfig.get()
+        self.cfg.pledge_match_fuzzy_threshold = Decimal("0.84")
+        self.cfg.save()
+
+    def _cash(self, amount, payer_name):
+        return Transaction.objects.create(
+            date=TODAY, amount=Decimal(amount), direction="CREDIT",
+            channel="CASH", confirmed=True, allocation_status="MANUAL",
+            department=self.group_fund, member=None, payer_name=payer_name)
+
+    def test_a_near_miss_cash_name_is_suggested(self):
+        # Member is "PLEDGE GIVER"; a common misspelling should still surface.
+        gift = self._cash("3000", "Pledge Giverr")
+        rows = match_svc.suggest_matches_for_pledge(self.pledge)
+        ids = {r["txn"].id: r["match"] for r in rows}
+        self.assertIn(gift.id, ids)
+        self.assertEqual(ids[gift.id], "fuzzy")
+
+    def test_fuzzy_off_excludes_near_misses(self):
+        gift = self._cash("3000", "Pledge Giverr")
+        rows = match_svc.suggest_matches_for_pledge(
+            self.pledge, allow_fuzzy=False)
+        self.assertNotIn(gift.id, {r["txn"].id for r in rows})
+
+    def test_an_unrelated_cash_name_is_not_suggested(self):
+        gift = self._cash("3000", "Completely Different Person")
+        rows = match_svc.suggest_matches_for_pledge(self.pledge)
+        self.assertNotIn(gift.id, {r["txn"].id for r in rows})
