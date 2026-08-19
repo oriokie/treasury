@@ -76,17 +76,38 @@ class PledgeMatchingTests(TestCase):
             amount=Decimal("10000"), status="ACTIVE",
             start_date=dt.date(2026, 1, 1), end_date=dt.date(2026, 12, 31))
 
-    def test_auto_match_caps_at_outstanding(self):
-        # two gifts totalling 15,000 but the pledge is only 10,000
+    def test_auto_match_keeps_extra_giving_on_a_completed_pledge(self):
+        # two gifts totalling 15,000; the pledge is 10,000 and there is no
+        # other promise, so the extra still belongs on this tracker
         for amt, ref in [("6000", "R1"), ("9000", "R2")]:
             Transaction.objects.create(date=dt.date(2026, 6, 10), channel="BANK",
                 direction="CREDIT", amount=Decimal(amt), department=self.dept,
                 member=self.member, allocation_status="AUTO", confirmed=True,
                 core_ref=ref)
         applied = match_svc.auto_match_pledge(self.p, user=self.u)
-        self.assertEqual(applied, Decimal("10000"))  # never over-applies
+        self.assertEqual(applied, Decimal("15000"))
         self.p.refresh_from_db()
+        self.assertEqual(self.p.paid, Decimal("15000"))
         self.assertEqual(self.p.status, Pledge.Status.FULFILLED)
+
+    def test_extra_giving_fills_another_open_pledge_first(self):
+        other = Pledge.objects.create(
+            campaign=self.camp, member=self.member, amount=Decimal("4000"),
+            status="ACTIVE", start_date=dt.date(2026, 1, 1),
+            end_date=dt.date(2026, 12, 31))
+        Transaction.objects.create(date=dt.date(2026, 6, 10), channel="BANK",
+            direction="CREDIT", amount=Decimal("15000"), department=self.dept,
+            member=self.member, allocation_status="AUTO", confirmed=True,
+            core_ref="SPLIT1")
+        match_svc.auto_match_all(user=self.u)
+        self.p.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(self.p.paid + other.paid, Decimal("15000"))
+        self.assertEqual(self.p.outstanding, Decimal("0"))
+        self.assertEqual(other.outstanding, Decimal("0"))
+        # leftover beyond both promises stays on a completed pledge
+        self.assertEqual(self.p.paid + other.paid, Decimal("15000"))
+        self.assertGreaterEqual(max(self.p.paid, other.paid), Decimal("10000"))
 
     def test_unconfirmed_gift_not_matched(self):
         Transaction.objects.create(date=dt.date(2026, 6, 10), channel="BANK",
@@ -229,14 +250,31 @@ class InlineMatchingHookTests(TestCase):
         self.assertEqual(self.p.paid, Decimal("10000"))
         self.assertEqual(s.status, "CONFIRMED")
 
-    def test_auto_applies_immediately_capped(self):
+    def test_a_later_gift_after_fulfilment_stays_on_the_pledge(self):
         from core.models import SiteConfig
         from pledges.services.matching import handle_new_contribution
         cfg = SiteConfig.get(); cfg.pledge_match_mode = "AUTO"; cfg.save()
-        t = self._contrib("5000", "AUT1")
-        handle_new_contribution(t, user=self.u)
+        handle_new_contribution(self._contrib("30000", "AUT1"), user=self.u)
+        extra = self._contrib("5000", "AUT2")
+        handle_new_contribution(extra, user=self.u)
         self.p.refresh_from_db()
-        self.assertEqual(self.p.paid, Decimal("5000"))
+        self.assertEqual(self.p.paid, Decimal("35000"))
+        self.assertEqual(self.p.status, Pledge.Status.FULFILLED)
+
+    def test_auto_splits_a_gift_across_open_pledges(self):
+        from core.models import SiteConfig
+        from pledges.services.matching import handle_new_contribution
+        cfg = SiteConfig.get(); cfg.pledge_match_mode = "AUTO"; cfg.save()
+        other = Pledge.objects.create(
+            campaign=self.camp, member=self.member, amount=Decimal("20000"),
+            status="ACTIVE", start_date=dt.date(2026, 1, 1),
+            end_date=dt.date(2026, 12, 31))
+        handle_new_contribution(self._contrib("55000", "SPLIT"), user=self.u)
+        self.p.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(self.p.outstanding, Decimal("0"))
+        self.assertEqual(other.outstanding, Decimal("0"))
+        self.assertEqual(self.p.paid + other.paid, Decimal("55000"))
 
 
 class PublicPledgeFormTests(TestCase):

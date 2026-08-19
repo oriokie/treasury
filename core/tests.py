@@ -343,6 +343,26 @@ class SettingsSaveTests(TestCase):
         self.client.post(reverse("settings"), self._post_data(church_name="Berea SDA"))
         self.assertEqual(SiteConfig.get().church_name, "Berea SDA")
 
+    def test_pledge_modes_persist_and_are_not_duplicated_on_the_page(self):
+        """Regression: f.name == fields used to also render under Other, so
+        save posted the unchanged duplicate and the user's choice bounced back."""
+        from django.urls import reverse
+        from core.models import SiteConfig
+        html = self.client.get(reverse("settings")).content.decode()
+        self.assertEqual(
+            html.count('name="pledge_match_mode"'), 1,
+            "pledge_match_mode rendered more than once — save would revert it")
+        self.assertEqual(
+            html.count('name="pledge_public_submit_mode"'), 1,
+            "pledge_public_submit_mode rendered more than once — save would "
+            "revert it")
+        self.client.post(reverse("settings"), self._post_data(
+            pledge_match_mode="AUTO",
+            pledge_public_submit_mode="ACTIVE"))
+        cfg = SiteConfig.get()
+        self.assertEqual(cfg.pledge_match_mode, "AUTO")
+        self.assertEqual(cfg.pledge_public_submit_mode, "ACTIVE")
+
     def test_save_and_test_persists_before_testing(self):
         from django.urls import reverse
         from core.models import SiteConfig
