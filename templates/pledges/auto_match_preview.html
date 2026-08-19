@@ -46,7 +46,7 @@
           <td class="mono">{{ r.txn.date|date:"d/m/y" }}</td>
           <td><a class="link" href="{% url 'pledge_detail' r.pledge.id %}">{{ r.pledge.member.name }}</a></td>
           <td>{{ r.pledge.campaign.name }}</td>
-          <td class="mono muted">{{ r.txn.department.name|default:"—" }} · {{ CURRENCY }} {{ r.txn.amount|money:0 }}{% if r.match == 'fuzzy' %} <span class="pill pill-amber" title="Payer name is similar, not exact">fuzzy name</span>{% endif %}</td>
+          <td class="mono muted">{{ r.txn.department.name|default:"—" }} · {{ CURRENCY }} {{ r.txn.amount|money:0 }}{% if r.match == 'fuzzy' %} <span class="pill pill-amber" title="Payer name is similar, not exact">fuzzy name</span>{% endif %}{% if r.surplus %} <span class="pill pill-green" title="Beyond the pledged amount — the member has no other open pledge">beyond pledged</span>{% endif %}</td>
           <td class="num mono">{{ r.amount|money:0 }}</td>
         </tr>
       {% endfor %}

@@ -185,19 +185,22 @@ class PartApplifiedGiftTests(_Appeal):
                          Decimal("10000"))
 
     def test_a_raised_pledge_can_draw_on_what_is_left(self):
+        """When another pledge is opened after a gift overshot, leftover that
+        was kept on the completed promise is already applied — raising THIS
+        pledge's amount can still take unmatched remainder if any exists.
+
+        The case this originally guarded: a 4,000 pledge and a 10,000 gift,
+        then the promise is increased. With no other pledge, the extra 6,000
+        now stays on this tracker immediately.
+        """
         self.pledge.amount = Decimal("4000")
         self.pledge.save()
         self._gift("10000", self.group_fund)
-        match_svc.auto_match_pledge(self.pledge, user=self.user)
+        applied = match_svc.auto_match_pledge(self.pledge, user=self.user)
+        self.assertEqual(applied, Decimal("10000"))
         self.pledge.refresh_from_db()
+        self.assertEqual(self.pledge.paid, Decimal("10000"))
         self.assertEqual(self.pledge.outstanding, Decimal("0"))
-
-        self.pledge.amount = Decimal("10000")
-        self.pledge.save()
-        self.pledge.refresh_from_db()
-        again = match_svc.auto_match_pledge(self.pledge, user=self.user)
-        self.assertEqual(again, Decimal("6000"),
-                         "the rest of the member's own gift was unreachable")
 
     def test_a_gift_is_never_applied_beyond_its_amount(self):
         """The guard the old exclusion was there for. It still has to hold —
@@ -205,11 +208,10 @@ class PartApplifiedGiftTests(_Appeal):
         self.pledge.amount = Decimal("4000")
         self.pledge.save()
         gift = self._gift("5000", self.group_fund)
-        match_svc.auto_match_pledge(self.pledge, user=self.user)
-
         second = Pledge.objects.create(
             campaign=self.campaign, member=self.member, amount=Decimal("50000"),
             start_date=dt.date(2026, 1, 1), status=Pledge.Status.ACTIVE)
+        match_svc.auto_match_pledge(self.pledge, user=self.user)
         match_svc.auto_match_pledge(second, user=self.user)
 
         total = sum(pp.amount for pp in
@@ -232,10 +234,10 @@ class PartApplifiedGiftTests(_Appeal):
         self.pledge.amount = Decimal("4000")
         self.pledge.save()
         self._gift("10000", self.group_fund)
-        match_svc.auto_match_pledge(self.pledge, user=self.user)
         other = Pledge.objects.create(
             campaign=self.campaign, member=self.member, amount=Decimal("9000"),
             start_date=dt.date(2026, 1, 1), status=Pledge.Status.ACTIVE)
+        match_svc.auto_match_pledge(self.pledge, user=self.user)
         rows = match_svc.suggest_matches_for_pledge(other)
         self.assertEqual([r["free"] for r in rows], [Decimal("6000")])
 

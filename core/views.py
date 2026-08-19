@@ -312,9 +312,15 @@ def _unplaced_setting_fields(form):
     any tab — so the template can show them in a fallback "Other settings" panel
     rather than let them vanish (recommendation #74a). Self-maintaining: it reads
     the template and treats a field as placed if the template references it, in a
-    tab's ``f.name in '…'`` allowlist OR as an explicit ``form.<name>``. So a new
-    setting shows up automatically — in its proper tab once added there, in the
-    fallback panel until then — and is never silently unreachable.
+    tab's ``f.name in '…'`` allowlist, an ``f.name == '…'`` check, OR as an
+    explicit ``form.<name>``. So a new setting shows up automatically — in its
+    proper tab once added there, in the fallback panel until then — and is never
+    silently unreachable.
+
+    Detecting ``f.name ==`` matters: fields rendered that way used to be treated
+    as unplaced, so they appeared AGAIN under Other settings. On save the browser
+    posted both widgets and the later (unchanged) one won — pledge match mode
+    and public submit mode looked like they "reverted" after every save.
     """
     import functools
     import pathlib
@@ -327,6 +333,7 @@ def _unplaced_setting_fields(form):
         placed = set()
         for grp in re.findall(r"f\.name in '([^']+)'", text):
             placed |= set(grp.split())
+        placed |= set(re.findall(r"f\.name\s*==\s*'([a-z0-9_]+)'", text))
         placed |= set(re.findall(r"form\.([a-z0-9_]+)", text))
         return placed
 

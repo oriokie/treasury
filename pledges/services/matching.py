@@ -194,51 +194,124 @@ def suggest_matches_for_pledge(pledge, allow_fuzzy=True, cfg=None):
     return rows
 
 
+def _member_has_other_outstanding(pledge):
+    """Whether this member still has another recognised pledge to fill.
+
+    Surplus (giving beyond a completed promise) stays on that promise only when
+    there is nowhere else for it to go. If another pledge is still open, the
+    extra belongs there first.
+    """
+    for p in (Pledge.objects.filter(member_id=pledge.member_id,
+                                    status__in=Pledge.RECOGNISED_STATUSES)
+              .exclude(pk=pledge.pk)):
+        if p.outstanding > 0:
+            return True
+    return False
+
+
+def _members_still_owing(plan):
+    """Member ids who will still have an open balance after `plan` is applied."""
+    planned = {}
+    for row in plan:
+        if row.get("surplus"):
+            continue
+        pid = row["pledge"].id
+        planned[pid] = planned.get(pid, Decimal("0")) + row["amount"]
+    owing = set()
+    qs = (Pledge.objects.filter(status__in=Pledge.RECOGNISED_STATUSES)
+          .only("id", "member_id", "amount"))
+    for p in qs:
+        left = p.outstanding - planned.get(p.id, Decimal("0"))
+        if left > 0:
+            owing.add(p.member_id)
+    return owing
+
+
 def plan_auto_match_pledge(pledge, applied_by_txn=None, max_apply=None,
-                           allow_fuzzy=True, cfg=None):
+                           allow_fuzzy=True, cfg=None, allow_surplus=False,
+                           surplus_only=False):
     """Propose matches for one pledge without writing. Returns
-    [{pledge, txn, amount, match}, …].
+    [{pledge, txn, amount, match, surplus}, …].
 
     `applied_by_txn` is a mutable map of contribution_id → already-applied
     amount. Callers that walk several pledges (the bulk preview) pass one map
     so a gift's remainder stays visible to the next pledge — the same way a
     real sweep would consume it.
+
+    Outstanding is filled first. Leftover of a gift is then kept on this
+    pledge (`allow_surplus`) only when the member has no other open promise —
+    otherwise the remainder is left for those pledges.
     """
     if pledge.status in (Pledge.Status.CANCELLED, Pledge.Status.DRAFT):
         return []
-    outstanding = pledge.outstanding
-    if outstanding <= 0:
+    outstanding = Decimal("0") if surplus_only else pledge.outstanding
+    if outstanding <= 0 and not (allow_surplus or surplus_only):
         return []
     if applied_by_txn is None:
         applied_by_txn = applied_by_transaction()
+    if allow_surplus and not surplus_only and outstanding <= 0:
+        if _member_has_other_outstanding(pledge):
+            return []
     rows = []
     applied_total = Decimal("0")
-    for c in candidate_contributions(pledge, allow_fuzzy=allow_fuzzy, cfg=cfg):
-        t = c["txn"]
-        if outstanding <= 0:
-            break
-        free = t.amount - applied_by_txn.get(t.id, Decimal("0"))
-        if free <= 0:
-            continue
-        apply_amt = min(free, outstanding)
-        if max_apply is not None:
-            apply_amt = min(apply_amt, max_apply - applied_total)
-            if apply_amt <= 0:
-                break
+
+    def _take(t, apply_amt, match, surplus=False):
+        nonlocal applied_total
         rows.append({"pledge": pledge, "txn": t, "amount": apply_amt,
-                     "match": c["match"]})
+                     "match": match, "surplus": surplus})
         applied_by_txn[t.id] = applied_by_txn.get(t.id, Decimal("0")) + apply_amt
-        outstanding -= apply_amt
         applied_total += apply_amt
+
+    cands = candidate_contributions(pledge, allow_fuzzy=allow_fuzzy, cfg=cfg)
+    if outstanding > 0:
+        for c in cands:
+            if outstanding <= 0:
+                break
+            t = c["txn"]
+            free = t.amount - applied_by_txn.get(t.id, Decimal("0"))
+            if free <= 0:
+                continue
+            apply_amt = min(free, outstanding)
+            if max_apply is not None:
+                apply_amt = min(apply_amt, max_apply - applied_total)
+                if apply_amt <= 0:
+                    break
+            _take(t, apply_amt, c["match"], surplus=False)
+            outstanding -= apply_amt
+
+    do_surplus = surplus_only or (
+        allow_surplus and not _member_has_other_outstanding(pledge))
+    if do_surplus:
+        for c in cands:
+            t = c["txn"]
+            free = t.amount - applied_by_txn.get(t.id, Decimal("0"))
+            if free <= 0:
+                continue
+            apply_amt = free
+            if max_apply is not None:
+                apply_amt = min(apply_amt, max_apply - applied_total)
+                if apply_amt <= 0:
+                    break
+            # Same (pledge, txn) already in this plan: top up that row rather
+            # than emit a second, so the preview checkbox key stays unique.
+            existing = next((r for r in rows if r["txn"].id == t.id), None)
+            if existing is not None:
+                existing["amount"] += apply_amt
+                existing["surplus"] = True
+                applied_by_txn[t.id] = applied_by_txn.get(t.id, Decimal("0")) + apply_amt
+                applied_total += apply_amt
+            else:
+                _take(t, apply_amt, c["match"], surplus=True)
     return rows
 
 
 def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
     """Dry-run of the bulk sweep: what auto-match would link, without writing.
 
-    Same pledge order and gift-remainder rules as `auto_match_all`, so the
-    preview a treasurer commits is the plan that actually gets applied.
-    Returns [{pledge, txn, amount, match}, …].
+    Outstanding pledges are filled first (newest first). Gift remainder then
+    goes to any other open pledge of the same member; only when none remain is
+    leftover kept on a completed pledge so it still shows on the tracker.
+    Returns [{pledge, txn, amount, match, surplus}, …].
     """
     qs = (Pledge.objects.filter(status=Pledge.Status.ACTIVE)
           .select_related("campaign", "member", "campaign__target_department"))
@@ -251,16 +324,44 @@ def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
         pledge.campaign = shared.setdefault(pledge.campaign_id, pledge.campaign)
         plan.extend(plan_auto_match_pledge(
             pledge, applied_by_txn=applied_by_txn,
-            allow_fuzzy=allow_fuzzy, cfg=cfg))
-    return plan
+            allow_fuzzy=allow_fuzzy, cfg=cfg, allow_surplus=False))
+
+    owing = _members_still_owing(plan)
+    surplus_qs = (Pledge.objects.filter(
+                    status__in=(Pledge.Status.ACTIVE, Pledge.Status.FULFILLED))
+                  .select_related("campaign", "member",
+                                  "campaign__target_department"))
+    if campaign:
+        surplus_qs = surplus_qs.filter(campaign=campaign)
+    for pledge in surplus_qs:
+        if pledge.member_id in owing:
+            continue
+        pledge.campaign = shared.setdefault(pledge.campaign_id, pledge.campaign)
+        plan.extend(plan_auto_match_pledge(
+            pledge, applied_by_txn=applied_by_txn,
+            allow_fuzzy=allow_fuzzy, cfg=cfg, surplus_only=True))
+    merged = []
+    index = {}
+    for row in plan:
+        key = (row["pledge"].id, row["txn"].id)
+        if key in index:
+            prev = merged[index[key]]
+            prev["amount"] += row["amount"]
+            prev["surplus"] = prev.get("surplus") or row.get("surplus")
+        else:
+            index[key] = len(merged)
+            merged.append(row)
+    return merged
 
 
 def apply_planned_matches(rows, user=None):
     """Write PledgePayment links for a plan from `plan_auto_match_*`.
 
-    Re-caps each row against current outstanding and gift free balance so a
-    stale preview cannot over-apply if something changed since the page loaded.
-    Returns (pledges_touched, total_applied). Creates links only — never money.
+    Re-caps each row against current gift free balance so a stale preview
+    cannot over-apply a contribution. Fill rows are also capped at outstanding;
+    surplus rows (giving beyond a completed promise, with no other open pledge)
+    are not. Returns (pledges_touched, total_applied). Creates links only —
+    never money.
     """
     touched = set()
     total = Decimal("0")
@@ -269,16 +370,20 @@ def apply_planned_matches(rows, user=None):
     free_left = dict(applied_by_transaction())  # tid → already applied in DB
     for row in rows:
         pledge, txn, want = row["pledge"], row["txn"], row["amount"]
+        surplus = bool(row.get("surplus"))
         if want <= 0:
             continue
         if pledge.id not in outstanding_left:
             outstanding_left[pledge.id] = pledge.outstanding
         out = outstanding_left[pledge.id]
-        if out <= 0:
-            continue
         already = free_left.get(txn.id, Decimal("0"))
         free = txn.amount - already
-        apply_amt = min(want, free, out)
+        if surplus:
+            apply_amt = min(want, free)
+        else:
+            if out <= 0:
+                continue
+            apply_amt = min(want, free, out)
         if apply_amt <= 0:
             continue
         # One row per (pledge, contribution) — the model enforces it. So a
@@ -295,18 +400,26 @@ def apply_planned_matches(rows, user=None):
                 date=txn.date, source=PledgePayment.Source.AUTO,
                 matched_by=user, note="Auto-matched")
         free_left[txn.id] = already + apply_amt
-        outstanding_left[pledge.id] = out - apply_amt
+        if not surplus:
+            outstanding_left[pledge.id] = out - apply_amt
         touched.add(pledge.id)
         total += apply_amt
     return len(touched), total
 
 
-def auto_match_pledge(pledge, user=None, max_apply=None, allow_fuzzy=True):
-    """Apply candidate contributions to a pledge up to its outstanding balance.
-    Used both for one-click "auto-match this pledge" and the bulk sweep. Returns
-    the total newly applied. Creates PledgePayment links only — never money."""
+def auto_match_pledge(pledge, user=None, max_apply=None, allow_fuzzy=True,
+                      allow_surplus=None):
+    """Apply candidate contributions to a pledge.
+
+    Fills outstanding first. Leftover is kept on this pledge when the member
+    has no other open promise (so extra giving still shows on the tracker).
+    Returns the total newly applied. Creates PledgePayment links only — never
+    money."""
+    if allow_surplus is None:
+        allow_surplus = not _member_has_other_outstanding(pledge)
     plan = plan_auto_match_pledge(pledge, max_apply=max_apply,
-                                  allow_fuzzy=allow_fuzzy)
+                                  allow_fuzzy=allow_fuzzy,
+                                  allow_surplus=allow_surplus)
     _touched, total = apply_planned_matches(plan, user=user)
     return total
 
@@ -327,11 +440,15 @@ def auto_match_all(user=None, campaign=None, allow_fuzzy=True):
 #   AUTO     -> apply the match immediately (capped at the pledge's outstanding)
 # It NEVER moves money — money already moved via the contribution itself.
 # ---------------------------------------------------------------------------
-def active_pledges_for_contribution(txn, cfg=None):
-    """Active, unpaid pledges this contribution could plausibly fulfil: same
-    member (FK or name key, or fuzzy cash/envelope name), contribution dated
-    within the pledge window, and — when the setting requires it — the
-    contribution's fund matching the campaign's target fund."""
+def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
+    """Pledges this contribution could plausibly fulfil: same member (FK or
+    name key, or fuzzy cash/envelope name), contribution dated within the
+    pledge window, and — when the setting requires it — the contribution's
+    fund matching the campaign's target fund.
+
+    Open pledges only, unless ``include_fulfilled`` so leftover giving can
+    still land on a completed promise when the member has nothing else owing.
+    """
     from core.models import SiteConfig
     cfg = cfg or SiteConfig.get()
     if txn.direction != Transaction.Direction.CREDIT or not txn.confirmed:
@@ -342,7 +459,10 @@ def active_pledges_for_contribution(txn, cfg=None):
     nk = name_key(txn.payer_name or "")
     if not member and not nk:
         return []
-    qs = Pledge.objects.filter(status=Pledge.Status.ACTIVE).select_related(
+    statuses = [Pledge.Status.ACTIVE]
+    if include_fulfilled:
+        statuses.append(Pledge.Status.FULFILLED)
+    qs = Pledge.objects.filter(status__in=statuses).select_related(
         "member", "campaign")
     out = []
     fund_cache = {}
@@ -364,7 +484,7 @@ def active_pledges_for_contribution(txn, cfg=None):
             ok = False
         if not ok:
             continue
-        if p.outstanding <= 0:
+        if p.outstanding <= 0 and not include_fulfilled:
             continue
         # date window
         start = p.start_date - dt.timedelta(days=7)
@@ -396,27 +516,83 @@ def handle_new_contribution(txn, user=None, cfg=None):
         if mode == SiteConfig.PledgeMatchMode.OFF:
             return None
         pledges = active_pledges_for_contribution(txn, cfg)
-        if not pledges:
+        fulfilled = active_pledges_for_contribution(
+            txn, cfg, include_fulfilled=True)
+        owing = [p for p in pledges if p.outstanding > 0]
+        owing.sort(key=lambda p: (-p.outstanding, -p.id))
+        if not owing and not fulfilled:
             return None
-        # pick the best single pledge: the one with the largest outstanding that
-        # this gift can go toward (most likely the intended one)
-        pledge = max(pledges, key=lambda p: p.outstanding)
         if mode == SiteConfig.PledgeMatchMode.AUTO:
-            applied = auto_match_pledge(pledge, user=user, max_apply=txn.amount)
-            if applied > 0:
-                return f"auto-applied KES {applied:,.0f} to {pledge.member.name}'s pledge"
+            remaining = txn.amount
+            applied_total = Decimal("0")
+            last = None
+            for pledge in owing:
+                if remaining <= 0:
+                    break
+                applied = auto_match_pledge(
+                    pledge, user=user, max_apply=remaining, allow_surplus=False)
+                remaining -= applied
+                applied_total += applied
+                last = pledge
+            if remaining > 0:
+                target = last
+                if target is None or _member_has_other_outstanding(target):
+                    target = None
+                    for p in fulfilled:
+                        if p.outstanding <= 0 and not _member_has_other_outstanding(p):
+                            target = p
+                            break
+                if target is not None:
+                    applied = auto_match_pledge(
+                        target, user=user, max_apply=remaining,
+                        allow_surplus=True)
+                    applied_total += applied
+                    last = target
+            if applied_total > 0 and last is not None:
+                return (f"auto-applied KES {applied_total:,.0f} to "
+                        f"{last.member.name}'s pledge")
             return None
-        # SUGGEST: record a pending suggestion (deduped)
+        # SUGGEST: record pending suggestions (deduped), split across open
+        # pledges so one gift can fill more than one promise.
         from pledges.models import PledgeMatchSuggestion
         already_applied = (PledgePayment.objects.filter(transaction=txn)
                            .exists())
         if already_applied:
             return None
-        sug, created = PledgeMatchSuggestion.objects.get_or_create(
-            transaction=txn, pledge=pledge,
-            defaults={"amount": min(txn.amount, pledge.outstanding)})
-        if created:
-            return f"flagged a possible match to {pledge.member.name}'s pledge"
+        remaining = txn.amount
+        created_any = False
+        last = None
+        for pledge in owing:
+            if remaining <= 0:
+                break
+            take = min(remaining, pledge.outstanding)
+            if take <= 0:
+                continue
+            _sug, created = PledgeMatchSuggestion.objects.get_or_create(
+                transaction=txn, pledge=pledge, defaults={"amount": take})
+            remaining -= take
+            created_any = created_any or created
+            last = pledge
+        if remaining > 0:
+            target = last
+            if target is None:
+                for p in fulfilled:
+                    if p.outstanding <= 0 and not _member_has_other_outstanding(p):
+                        target = p
+                        break
+            elif _member_has_other_outstanding(target):
+                target = None
+            if target is not None:
+                sug, created = PledgeMatchSuggestion.objects.get_or_create(
+                    transaction=txn, pledge=target,
+                    defaults={"amount": remaining})
+                if not created:
+                    sug.amount += remaining
+                    sug.save(update_fields=["amount"])
+                created_any = True
+                last = target
+        if created_any and last is not None:
+            return f"flagged a possible match to {last.member.name}'s pledge"
         return None
     except Exception:
         from core.utils import log_exception as _lx; _lx('pledges/services/matching.py')

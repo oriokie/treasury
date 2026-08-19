@@ -121,3 +121,23 @@ class SiteConfigFormCompletenessTests(TestCase):
                            or f'id_{f.name}' in html)
                 self.assertTrue(present,
                                 f"unplaced setting {f.name} is not on the page")
+
+    def test_equality_placed_fields_are_not_duplicated_as_unplaced(self):
+        """Fields rendered with ``f.name == '…'`` must count as placed.
+
+        If they don't, they also appear under Other settings. Saving then posts
+        two widgets for the same name and the later (unchanged) value wins —
+        which is why pledge match mode and public submit mode appeared to
+        revert after every save.
+        """
+        from core.views import _unplaced_setting_fields
+        from core.forms import SiteConfigForm
+        unplaced = {f.name for f in _unplaced_setting_fields(SiteConfigForm())}
+        for name in ("pledge_match_mode", "pledge_public_submit_mode",
+                     "pledge_match_window_days", "pledge_public_form_enabled",
+                     "receipt_bank_scope", "sabbath_confirm_scope",
+                     "lcb_departments", "notify_email_enabled"):
+            self.assertNotIn(
+                name, unplaced,
+                f"{name} is rendered via f.name == in settings.html but was "
+                "still treated as unplaced — it would duplicate on save")

@@ -742,16 +742,12 @@ class AppealWorkflow(BusinessWorkflowTest):
         self.assert_fund_balance(self.appeal_fund, Decimal("25000"))
         self.assert_books_balance("after auto-matching four times")
 
-    def test_a_gift_larger_than_the_promise_leaves_its_remainder_free(self):
-        """Grace gives 100,000 against a 60,000 promise.
+    def test_a_gift_larger_than_the_promise_stays_on_the_tracker(self):
+        """Grace gives 100,000 against a 60,000 promise, and has no other.
 
-        Two things must be true at once, and they have been in conflict before:
-        her pledge is kept and no more than kept (60,000 credited, not 100,000),
-        AND the other 40,000 is not written off. It is real money sitting in the
-        appeal's fund, and when she promises again it must be reachable — the
-        matcher used to strike out any gift it had touched at all, which made
-        the remainder of a part-applied contribution permanently invisible and
-        left the church chasing a member who had already paid.
+        The extra is still her giving to this appeal, so the pledge tracker
+        records all 100,000. If she later opens another promise, new gifts
+        (not this already-linked remainder) are what fulfil it.
         """
         campaign = self._launch_appeal()
         first = self._pledge_at_the_desk(campaign, self.grace, "60000")
@@ -761,39 +757,48 @@ class AppealWorkflow(BusinessWorkflowTest):
 
         self._auto_match()
         first.refresh_from_db()
-        self.assertEqual(first.paid, Decimal("60000"),
-                         "the pledge was credited with more than it promised")
+        self.assertEqual(first.paid, Decimal("100000"),
+                         "extra giving after a completed pledge was not kept "
+                         "on the tracker")
         self.assertEqual(first.status, Pledge.Status.FULFILLED)
-        self.assertEqual(campaign.total_received, Decimal("60000"))
+        self.assertEqual(campaign.total_received, Decimal("100000"))
 
-        # she promises again at the next appeal service; the 40,000 she has
-        # already given is what pays it
         second = self._pledge_at_the_desk(campaign, self.grace, "20000",
                                           client=self.office)
         self._auto_match()
         second.refresh_from_db()
         self.assertEqual(
-            second.paid, Decimal("20000"),
-            "the unspent remainder of a gift could not be reached by a later "
-            "promise")
-        self.assertEqual(second.status, Pledge.Status.FULFILLED)
-
-        # and across both promises the church has still only credited what was
-        # actually given — 80,000 of the 100,000, with 20,000 still free
+            second.paid, Decimal("0"),
+            "a gift already counted on the completed pledge was reused")
         credited = self._payments_total(campaign=campaign)
-        self.assertEqual(credited, Decimal("80000"))
+        self.assertEqual(credited, Decimal("100000"))
         self.assertLessEqual(
             credited, gift.amount,
             "more was credited against promises than the member ever gave")
-        self.assert_agree(
-            "the appeal's received figure and the links behind it",
-            campaign_total_received=self._money(campaign.total_received),
-            pledge_payment_links=self._money(credited),
-        )
-        # every shilling of the gift is in the fund, credited or not
         self.assert_fund_balance(self.appeal_fund, Decimal("100000"))
         self.assert_books_balance("after a gift larger than the promise")
         self.assert_trial_balance_balances()
+
+    def test_a_gift_fills_every_open_pledge_before_surplus(self):
+        """Grace has two promises; one gift should pay both before leftover
+        stays on a completed tracker."""
+        campaign = self._launch_appeal()
+        first = self._pledge_at_the_desk(campaign, self.grace, "60000")
+        self._approve(first)
+        second = self._pledge_at_the_desk(campaign, self.grace, "20000",
+                                          client=self.office)
+        self._give(self.grace, "100000", dt.date(2026, 7, 18),
+                   self.appeal_fund)
+        self._auto_match()
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.outstanding, Decimal("0"))
+        self.assertEqual(second.outstanding, Decimal("0"))
+        self.assertEqual(first.paid + second.paid, Decimal("100000"))
+        self.assertEqual(campaign.total_received, Decimal("100000"))
+        self.assert_fund_balance(self.appeal_fund, Decimal("100000"))
+        self.assert_books_balance("after splitting a gift across pledges")
+
 
     def test_a_gift_to_the_appeal_is_not_credited_to_another_appeal(self):
         """Two appeals running at once, one member pledging to both.
