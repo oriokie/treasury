@@ -1380,7 +1380,12 @@ class UpdateRunView(TreasurerRequiredMixin, View):
         elif not tag:
             diag = f"Connected to '{repo}', but no releases or tags were found yet."
         else:
-            diag = None
+            # Releases found — but if the token is the wrong length, say so
+            # anyway. A public repo can succeed unauthenticated after a 401;
+            # the mangled token is still wrong and will break the next private
+            # check or a future lock-down of the repository.
+            _tok = token_diagnosis()
+            diag = _tok.get("note") or None
         return render(request, self.template_name, {
             "status": update_status(), "update_tag": tag,
             "current": cur, "available": avail,
