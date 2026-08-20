@@ -442,21 +442,12 @@ class PledgeAutoMatchAllView(TreasurerRequiredMixin, View):
         plan = match_svc.plan_auto_match_all(campaign=campaign)
         total = sum((r["amount"] for r in plan), Decimal("0"))
         pledges = {r["pledge"].id for r in plan}
-        # When the plan is empty, surface a short diagnosis so a treasurer can
-        # tell "nothing left to match" from "gifts exist but fund/date/name
-        # rules excluded them" — the silent empty page was the complaint.
+        # An empty plan has several very different causes — drafts awaiting
+        # approval, gifts in the review queue, giving to another fund. The page
+        # used to recite the rules instead of saying which one applies here.
         diagnosis = None
         if not plan:
-            open_qs = Pledge.objects.filter(
-                status__in=(Pledge.Status.ACTIVE, Pledge.Status.LAPSED))
-            if campaign:
-                open_qs = open_qs.filter(campaign=campaign)
-            open_n = open_qs.count()
-            owing_n = sum(1 for p in open_qs if p.outstanding > 0)
-            diagnosis = {
-                "open_pledges": open_n,
-                "owing_pledges": owing_n,
-            }
+            diagnosis = match_svc.diagnose_empty_plan(campaign=campaign)
         return render(request, self.template_name, {
             "campaign": campaign,
             "campaigns": PledgeCampaign.objects.filter(
