@@ -30,8 +30,8 @@ this number; the form should not be the one place that hides it.{% endcomment %}
   is the pledge, the schedule is a detail that is often not decided at the
   moment of promising, and the rest is housekeeping.{% endcomment %}
   <div class="form-sec"><h3 class="form-sec-h">Who and how much</h3>
-    {% for field in form %}{% if field.name in "campaign,member,amount" %}
-      <div class="form-row u-my-sm">
+    {% for field in form %}{% if field.name in "campaign,member,visitor_name,phone,amount" %}
+      <div class="form-row u-my-sm"{% if field.name == "visitor_name" %} id="visitor-name-row"{% endif %}>
         <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="req">*</span>{% endif %}</label>
         {{ field }}
         {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
@@ -86,11 +86,39 @@ details.form-sec[open] > summary::after{content:" ▴"}
 {% block scripts %}
 <script src="{% static 'js/member-search.js' %}"></script>
 <script>
-MemberSearch.enhance({
-  selectId: "id_member", searchUrl: "{% url 'member_search' %}",
-  placeholder: "Start typing a member's name or phone…",
-  renderLabel: function(r){ return r.name; },
-  renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
-});
+(function(){
+  var phone = document.getElementById("id_phone");
+  var visitor = document.getElementById("id_visitor_name");
+  var visitorRow = document.getElementById("visitor-name-row");
+  var memberSelect = document.getElementById("id_member");
+
+  function syncVisitorRow(){
+    if (!visitorRow || !memberSelect) return;
+    var hasMember = !!(memberSelect.value);
+    visitorRow.style.display = hasMember ? "none" : "";
+    if (hasMember && visitor) visitor.value = "";
+  }
+
+  MemberSearch.enhance({
+    selectId: "id_member", searchUrl: "{% url 'member_search' %}",
+    placeholder: "Start typing a member's name or phone…",
+    renderLabel: function(r){ return r.name; },
+    renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+    onPick: function(r){
+      if (phone && r.phone && r.phone.indexOf("*") === -1) phone.value = r.phone;
+      syncVisitorRow();
+    },
+  });
+
+  if (memberSelect) {
+    memberSelect.addEventListener("change", syncVisitorRow);
+    // Clearing the typeahead clears the select; show visitor name again.
+    var search = document.getElementById("id_member_search");
+    if (search) search.addEventListener("input", function(){
+      if (!memberSelect.value) syncVisitorRow();
+    });
+  }
+  syncVisitorRow();
+})();
 </script>
 {% endblock %}

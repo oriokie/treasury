@@ -120,11 +120,38 @@ def _fuzzy_threshold(cfg=None):
 _FUZZY_CHANNELS = (Transaction.Channel.CASH, Transaction.Channel.ENVELOPE)
 
 
+def _pledge_phone_set(pledge):
+    """Normalised phones this pledge may be paid from.
+
+    Includes the member's primary and alternate numbers, plus the number
+    recorded on the pledge itself (``submitted_contact``) — visitors and
+    public-form pledges often pay from a line that is not yet on the register.
+    """
+    from members.models import normalize_phone
+    phones = set()
+    member = getattr(pledge, "member", None)
+    if member is not None:
+        n = normalize_phone(member.phone)
+        if n:
+            phones.add(n)
+        # Prefetch when the caller has it; otherwise one query per pledge.
+        for mp in member.phones.all():
+            n = normalize_phone(mp.number)
+            if n:
+                phones.add(n)
+    sc = getattr(pledge, "submitted_contact", "") or ""
+    if "/" in sc:
+        n = normalize_phone(sc.rsplit("/", 1)[-1].strip())
+        if n:
+            phones.add(n)
+    return phones
+
+
 def candidate_contributions(pledge, window_days=400, allow_fuzzy=True, cfg=None):
     """Confirmed contributions from this pledge's member that could be applied to
-    it: same member (by FK or name key), within the pledge's active window, in the
-    campaign's fund or one of its sub-accounts, not already matched, not
-    reversed.
+    it: same member (by FK, phone, or name key), within the pledge's active
+    window, in the campaign's fund or one of its sub-accounts, not already
+    matched, not reversed.
 
     When ``allow_fuzzy`` is True and the fuzzy threshold is set, unlinked cash
     and envelope receipts whose payer name is close enough to the pledgor are
@@ -132,6 +159,7 @@ def candidate_contributions(pledge, window_days=400, allow_fuzzy=True, cfg=None)
     Returns a list of ``{"txn", "match"}`` where match is ``"exact"`` or
     ``"fuzzy"``.
     """
+    from members.models import normalize_phone
     member = pledge.member
     # From the pledge date, not a week before it. A gift given before the
     # promise was made cannot be payment of that promise — it was giving the
@@ -145,15 +173,22 @@ def candidate_contributions(pledge, window_days=400, allow_fuzzy=True, cfg=None)
             confirmed=True, is_reversal=False, is_reversed=False,
             date__gte=start, date__lte=end)
           .exclude(id__in=already_matched_txn_ids()))
-    # match the member by FK, or by name when the gift wasn't linked
+    # Match by FK, or by name/phone when the gift wasn't linked. Phone-only
+    # M-Pesa credits often have a payer_phone but a truncated/wrong payer_name.
     nk = name_key(member.name)
-    qs = qs.filter(Q(member=member) | Q(member__isnull=True, payer_name__isnull=False))
+    phones = _pledge_phone_set(pledge)
+    qs = qs.filter(
+        Q(member=member)
+        | Q(member__isnull=True, payer_name__isnull=False)
+        | Q(member__isnull=True, payer_phone__gt=""))
     fund_ids = campaign_fund_ids(pledge.campaign)
     threshold = _fuzzy_threshold(cfg) if allow_fuzzy else 0.0
     out = []
     for t in qs.select_related("department"):
         match = None
         if t.member_id == member.id:
+            match = "exact"
+        elif phones and normalize_phone(t.payer_phone) in phones:
             match = "exact"
         elif nk and name_key(t.payer_name or "") == nk:
             match = "exact"
@@ -194,15 +229,20 @@ def suggest_matches_for_pledge(pledge, allow_fuzzy=True, cfg=None):
     return rows
 
 
+#: Statuses that still expect payment. LAPSED is included so an overdue promise
+#: can still be filled; FULFILLED is not (surplus is handled separately).
+_OPEN_FOR_FILL = (Pledge.Status.ACTIVE, Pledge.Status.LAPSED)
+
+
 def _member_has_other_outstanding(pledge):
-    """Whether this member still has another recognised pledge to fill.
+    """Whether this member still has another open pledge to fill.
 
     Surplus (giving beyond a completed promise) stays on that promise only when
     there is nowhere else for it to go. If another pledge is still open, the
-    extra belongs there first.
+    extra belongs there first. Fulfilled pledges do not count as owing.
     """
     for p in (Pledge.objects.filter(member_id=pledge.member_id,
-                                    status__in=Pledge.RECOGNISED_STATUSES)
+                                    status__in=_OPEN_FOR_FILL)
               .exclude(pk=pledge.pk)):
         if p.outstanding > 0:
             return True
@@ -218,7 +258,7 @@ def _members_still_owing(plan):
         pid = row["pledge"].id
         planned[pid] = planned.get(pid, Decimal("0")) + row["amount"]
     owing = set()
-    qs = (Pledge.objects.filter(status__in=Pledge.RECOGNISED_STATUSES)
+    qs = (Pledge.objects.filter(status__in=_OPEN_FOR_FILL)
           .only("id", "member_id", "amount"))
     for p in qs:
         left = p.outstanding - planned.get(p.id, Decimal("0"))
@@ -313,14 +353,20 @@ def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
     leftover kept on a completed pledge so it still shows on the tracker.
     Returns [{pledge, txn, amount, match, surplus}, …].
     """
-    qs = (Pledge.objects.filter(status=Pledge.Status.ACTIVE)
-          .select_related("campaign", "member", "campaign__target_department"))
+    qs = (Pledge.objects.filter(status__in=_OPEN_FOR_FILL)
+          .select_related("campaign", "member", "campaign__target_department")
+          .prefetch_related("member__phones"))
     if campaign:
         qs = qs.filter(campaign=campaign)
     applied_by_txn = applied_by_transaction()
     shared = {}
     plan = []
-    for pledge in qs:
+    # Active before lapsed so current promises take gift remainder first.
+    from django.db.models import Case, IntegerField, When
+    for pledge in qs.order_by(
+            Case(When(status=Pledge.Status.ACTIVE, then=0), default=1,
+                 output_field=IntegerField()),
+            "-start_date", "-id"):
         pledge.campaign = shared.setdefault(pledge.campaign_id, pledge.campaign)
         plan.extend(plan_auto_match_pledge(
             pledge, applied_by_txn=applied_by_txn,
@@ -330,7 +376,8 @@ def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
     surplus_qs = (Pledge.objects.filter(
                     status__in=(Pledge.Status.ACTIVE, Pledge.Status.FULFILLED))
                   .select_related("campaign", "member",
-                                  "campaign__target_department"))
+                                  "campaign__target_department")
+                  .prefetch_related("member__phones"))
     if campaign:
         surplus_qs = surplus_qs.filter(campaign=campaign)
     for pledge in surplus_qs:
@@ -441,15 +488,16 @@ def auto_match_all(user=None, campaign=None, allow_fuzzy=True):
 # It NEVER moves money — money already moved via the contribution itself.
 # ---------------------------------------------------------------------------
 def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
-    """Pledges this contribution could plausibly fulfil: same member (FK or
-    name key, or fuzzy cash/envelope name), contribution dated within the
-    pledge window, and — when the setting requires it — the contribution's
+    """Pledges this contribution could plausibly fulfil: same member (FK,
+    phone, name key, or fuzzy cash/envelope name), contribution dated within
+    the pledge window, and — when the setting requires it — the contribution's
     fund matching the campaign's target fund.
 
     Open pledges only, unless ``include_fulfilled`` so leftover giving can
     still land on a completed promise when the member has nothing else owing.
     """
     from core.models import SiteConfig
+    from members.models import normalize_phone
     cfg = cfg or SiteConfig.get()
     if txn.direction != Transaction.Direction.CREDIT or not txn.confirmed:
         return []
@@ -457,13 +505,15 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
         return []
     member = txn.member
     nk = name_key(txn.payer_name or "")
-    if not member and not nk:
+    txn_phone = normalize_phone(txn.payer_phone)
+    if not member and not nk and not txn_phone:
         return []
-    statuses = [Pledge.Status.ACTIVE]
+    statuses = list(_OPEN_FOR_FILL)
     if include_fulfilled:
         statuses.append(Pledge.Status.FULFILLED)
-    qs = Pledge.objects.filter(status__in=statuses).select_related(
-        "member", "campaign")
+    qs = (Pledge.objects.filter(status__in=statuses)
+          .select_related("member", "campaign")
+          .prefetch_related("member__phones"))
     out = []
     fund_cache = {}
     same_fund_only = cfg.pledge_match_same_fund_only
@@ -472,6 +522,8 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
     for p in qs:
         # member match
         if member and p.member_id == member.id:
+            ok = True
+        elif txn_phone and txn_phone in _pledge_phone_set(p):
             ok = True
         elif nk and name_key(p.member.name) == nk:
             ok = True
