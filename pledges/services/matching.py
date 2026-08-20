@@ -569,10 +569,14 @@ def diagnose_empty_plan(campaign=None, cfg=None, pledge_scan_limit=200):
             f"{counts['already_applied']} gift(s) from these members are "
             "already applied to a pledge.")
     if counts["unconfirmed"]:
+        # Allocated and confirmed are different states: the fund may already
+        # be right while the confirmation hold keeps the gift out of the
+        # ledger. "Review queue" was the wrong place — that screen is for
+        # gifts the rules could not allocate.
         reasons.append(
-            f"{counts['unconfirmed']} gift(s) are still unconfirmed — they are "
-            "waiting in the review queue, and unconfirmed giving is never "
-            "matched.")
+            f"{counts['unconfirmed']} gift(s) are allocated but still held "
+            "unconfirmed (Statements → gifts awaiting confirmation). "
+            "Unconfirmed giving is never matched.")
     if counts["wrong_fund"]:
         reasons.append(
             f"{counts['wrong_fund']} gift(s) went to a fund outside the "
@@ -651,9 +655,15 @@ def explain_pledge_gifts(pledge, cfg=None, limit=60):
         free = t.amount - applied.get(t.id, Decimal("0"))
         gift_fund = getattr(t.department, "name", None) or "no fund"
         if not t.confirmed:
+            # "Allocated" and "confirmed" are two different states, and saying
+            # only "unconfirmed" invites the fair objection that the gift has
+            # plainly been allocated. It has: the fund is right, and the money
+            # is still held out of the ledger.
             verdict, detail = "Not matched", (
-                "The gift is still unconfirmed. Confirm it in the review "
-                "queue — unconfirmed giving is never matched.")
+                f"Allocated to {gift_fund}, but still held unconfirmed, so it "
+                "is not in the ledger or any balance yet and no pledge can be "
+                "matched to it. Confirm it under Statements → gifts awaiting "
+                "confirmation.")
         elif t.is_reversal or t.is_reversed:
             verdict, detail = "Not matched", "The gift was reversed."
         elif free <= 0:

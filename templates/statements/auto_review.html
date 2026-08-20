@@ -2,13 +2,17 @@
 {% block title %}Review auto-allocated · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Review auto-allocated entries</h1>
-<div class="sub">{{ imp.filename }} · {{ count }} entr{{ count|pluralize:"y,ies" }} awaiting confirmation</div></div>
+<div class="sub">{% if imp %}{{ imp.filename }}{% else %}M-Pesa and bank feed{% endif %} · {{ count }} entr{{ count|pluralize:"y,ies" }} awaiting confirmation</div></div>
 <div class="btn-row">
+  {% if imp %}
   <a class="btn btn-ghost btn-sm" href="{% url 'statement_auto_excel' imp.id %}">⬇ Download Excel</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'statement_detail' imp.id %}">← Back</a>
+  {% else %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'transaction_list' %}">← Back to register</a>
+  {% endif %}
 </div></div>
 
-<div class="info-panel">These entries were auto-allocated by the rules engine but are <strong>held</strong> until you confirm them — they do not yet affect balances or the ledger. Adjust the fund on any row if needed, then confirm. You can also download the Excel to check offline.</div>
+<div class="info-panel">These entries were auto-allocated by the rules engine but are <strong>held</strong> until you confirm them — they do not yet affect balances or the ledger{% if not imp %}, and a pledge cannot be matched to them{% endif %}. Adjust the fund on any row if needed, then confirm.{% if imp %} You can also download the Excel to check offline.{% endif %}</div>
 
 {% if rows %}
 <form method="post">{% csrf_token %}
@@ -36,7 +40,7 @@
   </div>
 </form>
 {% else %}
-<p class="empty">Nothing awaiting confirmation for this import.</p>
+<p class="empty">Nothing awaiting confirmation{% if imp %} for this import{% endif %}.</p>
 {% endif %}
 <style>.ledger.compact td,.ledger.compact th{padding:.3rem .5rem}</style>
 {% endblock %}

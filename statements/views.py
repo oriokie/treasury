@@ -705,11 +705,26 @@ class AutoReconcileRejectView(TreasurerRequiredMixin, View):
 
 # ---- Review & confirm auto-allocated imports (held when import confirmation is on) ----
 class AutoAllocationReviewView(DataEntryRequiredMixin, View):
+    """Confirm gifts the rules allocated confidently but the hold kept back.
+
+    Without ``pk`` this is the live feed's queue: M-Pesa and bank webhook gifts
+    belong to no import batch, and holding them here was a trap. The hold is
+    written by `ingest`, the only release was scoped to a statement import the
+    gift never had, and so a confidently allocated gift could sit off the
+    ledger, out of every balance, and invisible to pledge matching, with no
+    screen in the system able to let it through. It even wore the reassuring
+    green "Auto-allocated" pill in the register while doing so.
+    """
     template_name = "statements/auto_review.html"
 
-    def get(self, request, pk):
-        imp = get_object_or_404(StatementImport, pk=pk)
-        rows = (Transaction.objects.filter(statement_import=imp, confirmed=False)
+    def _held(self, imp):
+        qs = Transaction.objects.filter(confirmed=False)
+        return (qs.filter(statement_import=imp) if imp is not None
+                else qs.filter(statement_import__isnull=True))
+
+    def get(self, request, pk=None):
+        imp = get_object_or_404(StatementImport, pk=pk) if pk else None
+        rows = (self._held(imp)
                 .select_related("department", "dev_group").order_by("date", "id"))
         from departments.models import Department, split_component_dept_ids
         from django.db.models import Q
@@ -722,11 +737,11 @@ class AutoAllocationReviewView(DataEntryRequiredMixin, View):
             "imp": imp, "rows": rows, "funds": funds,
             "comp_ids": comp_ids, "count": rows.count()})
 
-    def post(self, request, pk):
-        imp = get_object_or_404(StatementImport, pk=pk)
+    def post(self, request, pk=None):
+        imp = get_object_or_404(StatementImport, pk=pk) if pk else None
         from departments.models import Department, split_component_dept_ids
         comp_ids = set(split_component_dept_ids())
-        rows = list(Transaction.objects.filter(statement_import=imp, confirmed=False))
+        rows = list(self._held(imp))
         only = set(request.POST.getlist("confirm"))     # ids ticked, if any
         confirm_all = request.POST.get("confirm_all")
         changed = 0
@@ -754,6 +769,8 @@ class AutoAllocationReviewView(DataEntryRequiredMixin, View):
             pass
         messages.success(request, f"Confirmed {changed} auto-allocated entr"
                                   f"{'y' if changed == 1 else 'ies'}. They now affect balances.")
+        if imp is None:
+            return redirect("held_gifts_review")
         return redirect("statement_detail", pk=pk)
 
 

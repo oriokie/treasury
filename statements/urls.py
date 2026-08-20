@@ -11,6 +11,9 @@ urlpatterns = [
     path("statements/feed-log/", views.BankFeedLogView.as_view(), name="bank_feed_log"),
     path("statements/<int:pk>/", views.ImportStatusView.as_view(), name="statement_detail"),
     path("statements/<int:pk>/review/", views.AutoAllocationReviewView.as_view(), name="statement_auto_review"),
+    # Gifts from the live M-Pesa/bank feed belong to no import batch, so their
+    # hold needs a queue of its own or nothing can ever release them.
+    path("statements/held/", views.AutoAllocationReviewView.as_view(), name="held_gifts_review"),
     path("statements/<int:pk>/review/excel/", views.AutoAllocationExcelView.as_view(), name="statement_auto_excel"),
     path("reconciliations/", views.ReconciliationListView.as_view(), name="reconciliation_list"),
     path("reconciliations/new/", views.ReconciliationCreateView.as_view(), name="reconciliation_new"),
