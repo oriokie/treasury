@@ -18,7 +18,9 @@
 
 {% if is_treasurer %}
 <div class="btn-row u-mb">
-  <a class="btn btn-sm btn-ghost" href="{% url 'pledge_auto_match_all' %}">⚡ Auto-match contributions</a>
+  {% comment %}This used to apply the matches on the spot. It now opens a
+  preview, so the label says so — the old wording promised the whole job.{% endcomment %}
+  <a class="btn btn-sm btn-ghost" href="{% url 'pledge_auto_match_all' %}">⚡ Auto-match contributions — review first</a>
   {% if suggestion_count %}<a class="btn btn-sm" href="{% url 'pledge_suggestions' %}">🔎 Review {{ suggestion_count }} match suggestion{{ suggestion_count|pluralize }}</a>{% endif %}
   {% if draft_count %}<a class="btn btn-sm btn-ghost" href="{% url 'pledge_list' %}?status=DRAFT">📝 {{ draft_count }} draft{{ draft_count|pluralize }} to approve</a>{% endif %}
   <a class="btn btn-sm btn-ghost" href="{% url 'pledge_approvals' %}">✅ Approve pledges</a>

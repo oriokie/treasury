@@ -31,6 +31,15 @@
 <form method="post">{% csrf_token %}
   {% if campaign %}<input type="hidden" name="campaign" value="{{ campaign.id }}">{% endif %}
   <input type="hidden" name="confirm" value="1">
+  {% comment %}The button that used to DO the matching now only opens this
+  page, so nothing is linked until the one below the table is pressed. Saying
+  so — and offering the same action before the table as well as after — is what
+  stops a treasurer reading a reviewed-but-unapplied plan as "it did nothing".{% endcomment %}
+  <div class="alert alert-warn u-mb">
+    <strong>Nothing is linked yet.</strong> These {{ match_count }} match{{ match_count|pluralize:"es" }}
+    are applied only when you press <em>Apply</em>.
+    <button class="btn btn-sm u-ml-sm" type="submit">Apply {{ match_count }} match{{ match_count|pluralize:"es" }} · {{ CURRENCY }} {{ total|money:0 }}</button>
+  </div>
   <div class="card u-mb"><div class="hd">Proposed matches</div><div class="bd bd-flush">
     <table class="ledger compact">
       <thead><tr>
@@ -54,7 +63,7 @@
     </table>
   </div></div>
   <div class="btn-row">
-    <button class="btn" type="submit">Apply selected matches</button>
+    <button class="btn" type="submit">Apply selected matches · {{ CURRENCY }} {{ total|money:0 }}</button>
     <a class="btn btn-ghost" href="{% url 'pledge_dashboard' %}">Cancel</a>
   </div>
 </form>
