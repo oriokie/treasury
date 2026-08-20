@@ -147,19 +147,51 @@ def _pledge_phone_set(pledge):
     return phones
 
 
-def candidate_contributions(pledge, window_days=400, allow_fuzzy=True, cfg=None):
+def _member_ids_sharing_phones(phones):
+    """Member ids whose primary or alternate number is in ``phones``."""
+    if not phones:
+        return set()
+    from members.models import Member
+    forms = _payer_phone_qs_values(phones)
+    return set(Member.objects.filter(
+        Q(phone__in=forms) | Q(phones__number__in=forms)
+    ).values_list("id", flat=True).distinct())
+
+
+def _payer_phone_qs_values(phones):
+    """Forms of ``phones`` that may appear on Transaction.payer_phone.
+
+    Member phones are normalised on save; bank CSV rows sometimes keep the
+    local ``07…`` form. The candidate filter must see both.
+    """
+    out = set(phones)
+    for ph in phones:
+        if len(ph) == 12 and ph.startswith("254"):
+            out.add("0" + ph[3:])
+            out.add(ph[3:])
+    return out
+
+
+def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None):
     """Confirmed contributions from this pledge's member that could be applied to
     it: same member (by FK, phone, or name key), within the pledge's active
     window, in the campaign's fund or one of its sub-accounts, not already
     matched, not reversed.
 
-    When ``allow_fuzzy`` is True and the fuzzy threshold is set, unlinked cash
-    and envelope receipts whose payer name is close enough to the pledgor are
-    also returned — tagged so the preview can show they are near-misses.
+    When ``allow_fuzzy`` is True and the fuzzy threshold is set, cash and
+    envelope receipts whose payer name is close enough to the pledgor are also
+    returned — tagged so the preview can show they are near-misses. Fuzzy also
+    covers gifts bank-import linked to a *different* provisional member when
+    the typed name is still a near miss (common for hand-entered cash).
+
     Returns a list of ``{"txn", "match"}`` where match is ``"exact"`` or
     ``"fuzzy"``.
     """
+    from core.models import SiteConfig
     from members.models import normalize_phone
+    cfg = cfg or SiteConfig.get()
+    if window_days is None:
+        window_days = cfg.pledge_match_window_days or 400
     member = pledge.member
     # From the pledge date, not a week before it. A gift given before the
     # promise was made cannot be payment of that promise — it was giving the
@@ -173,29 +205,44 @@ def candidate_contributions(pledge, window_days=400, allow_fuzzy=True, cfg=None)
             confirmed=True, is_reversal=False, is_reversed=False,
             date__gte=start, date__lte=end)
           .exclude(id__in=already_matched_txn_ids()))
-    # Match by FK, or by name/phone when the gift wasn't linked. Phone-only
-    # M-Pesa credits often have a payer_phone but a truncated/wrong payer_name.
+    # Match by FK, phone, or name. Bank import often links a gift to a
+    # provisional member created from a truncated M-Pesa name — those rows
+    # must still reach this pledge when the phone (or exact name) agrees.
     nk = name_key(member.name)
     phones = _pledge_phone_set(pledge)
-    qs = qs.filter(
-        Q(member=member)
-        | Q(member__isnull=True, payer_name__isnull=False)
-        | Q(member__isnull=True, payer_phone__gt=""))
-    fund_ids = campaign_fund_ids(pledge.campaign)
+    phone_siblings = _member_ids_sharing_phones(phones)
+    phone_siblings.add(member.id)
+    q = (Q(member_id__in=phone_siblings)
+         | Q(member__isnull=True, payer_name__isnull=False)
+         | Q(member__isnull=True, payer_phone__gt=""))
+    if phones:
+        # Even when linked to an unrelated member id, the M-Pesa line is the
+        # trusted signal — include those gifts so the loop can phone-match.
+        q |= Q(payer_phone__in=list(_payer_phone_qs_values(phones)))
     threshold = _fuzzy_threshold(cfg) if allow_fuzzy else 0.0
+    if threshold > 0:
+        # Cash/envelope near-misses may be linked to a provisional duplicate;
+        # pull them into the loop so fuzzy can still fire.
+        q |= Q(channel__in=_FUZZY_CHANNELS, payer_name__gt="")
+    qs = qs.filter(q)
+    fund_ids = campaign_fund_ids(pledge.campaign)
     out = []
-    for t in qs.select_related("department"):
+    for t in qs.select_related("department", "member"):
         match = None
-        if t.member_id == member.id:
+        if t.member_id in phone_siblings:
+            # Same person, including a duplicate register row that shares a
+            # phone with the pledgor.
             match = "exact"
         elif phones and normalize_phone(t.payer_phone) in phones:
             match = "exact"
         elif nk and name_key(t.payer_name or "") == nk:
             match = "exact"
         elif (threshold > 0
-              and t.member_id is None
               and t.channel in _FUZZY_CHANNELS
+              and t.member_id != member.id
               and _name_ratio(member.name, t.payer_name) >= threshold):
+            # Cash/envelope near-miss: unlinked, or linked to a provisional
+            # duplicate under a mistyped name — not to the pledgor themselves.
             match = "fuzzy"
         if not match:
             continue
@@ -258,9 +305,8 @@ def _members_still_owing(plan):
         pid = row["pledge"].id
         planned[pid] = planned.get(pid, Decimal("0")) + row["amount"]
     owing = set()
-    qs = (Pledge.objects.filter(status__in=_OPEN_FOR_FILL)
-          .only("id", "member_id", "amount"))
-    for p in qs:
+    qs = Pledge.objects.filter(status__in=_OPEN_FOR_FILL).select_related(None)
+    for p in qs.only("id", "member_id", "amount"):
         left = p.outstanding - planned.get(p.id, Decimal("0"))
         if left > 0:
             owing.add(p.member_id)
@@ -528,8 +574,8 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
         elif nk and name_key(p.member.name) == nk:
             ok = True
         elif (threshold > 0
-              and not member
               and txn.channel in _FUZZY_CHANNELS
+              and (not member or member.id != p.member_id)
               and _name_ratio(p.member.name, txn.payer_name) >= threshold):
             ok = True
         else:

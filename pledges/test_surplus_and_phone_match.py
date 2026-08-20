@@ -54,6 +54,56 @@ class PhoneMatchTests(TestCase):
         self.assertEqual(len(plan), 1)
         self.assertEqual(plan[0]["amount"], Decimal("4000"))
 
+    def test_bank_gift_linked_to_duplicate_member_matches_by_phone(self):
+        """Bank import often creates a provisional row for the same M-Pesa line.
+
+        That gift must still reach the real member's pledge — not stay stuck
+        on the duplicate because candidate_contributions only looked at
+        member=pledge.member | unlinked.
+        """
+        duplicate = Member.objects.create(
+            name="A MUTUA", phone="254712000111", active=False,
+            source=Member.Source.AUTO_BANK)
+        gift = Transaction.objects.create(
+            date=dt.date(2026, 6, 10), channel="BANK", direction="CREDIT",
+            amount=Decimal("4000"), department=self.fund, member=duplicate,
+            payer_name="A MUTUA", payer_phone="0712000111",
+            confirmed=True, allocation_status="AUTO")
+        ids = {c["txn"].id for c in match_svc.candidate_contributions(self.pledge)}
+        self.assertIn(gift.id, ids)
+        applied = match_svc.auto_match_pledge(self.pledge, user=self.user)
+        self.assertEqual(applied, Decimal("4000"))
+
+    def test_bank_gift_linked_to_unrelated_member_still_matches_same_phone(self):
+        other = Member.objects.create(
+            name="WRONG PERSON", phone="254799000111", active=True)
+        gift = Transaction.objects.create(
+            date=dt.date(2026, 6, 10), channel="BANK", direction="CREDIT",
+            amount=Decimal("2500"), department=self.fund, member=other,
+            payer_name="WRONG PERSON", payer_phone="254712000111",
+            confirmed=True, allocation_status="AUTO")
+        rows = match_svc.candidate_contributions(self.pledge)
+        self.assertIn(gift.id, {c["txn"].id for c in rows})
+        self.assertEqual(
+            next(c["match"] for c in rows if c["txn"].id == gift.id), "exact")
+
+    def test_fuzzy_cash_linked_to_wrong_member_is_suggested(self):
+        from core.models import SiteConfig
+        cfg = SiteConfig.get()
+        cfg.pledge_match_fuzzy_threshold = Decimal("0.84")
+        cfg.save()
+        wrong = Member.objects.create(
+            name="Pledg Giver", phone="254700999888", active=False,
+            source=Member.Source.AUTO_BANK)
+        gift = Transaction.objects.create(
+            date=dt.date(2026, 6, 10), channel="CASH", direction="CREDIT",
+            amount=Decimal("3000"), department=self.fund, member=wrong,
+            payer_name="Asha Mutuaa", confirmed=True, allocation_status="MANUAL")
+        rows = match_svc.suggest_matches_for_pledge(self.pledge)
+        ids = {r["txn"].id: r["match"] for r in rows}
+        self.assertIn(gift.id, ids)
+        self.assertEqual(ids[gift.id], "fuzzy")
+
 
 class LapsedDoesNotBlockSurplusTests(TestCase):
     """A lapsed unpaid promise elsewhere must not stop extra giving landing on

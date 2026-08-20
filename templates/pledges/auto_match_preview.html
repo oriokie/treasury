@@ -63,6 +63,10 @@
   <div class="we-mark">✓</div>
   <div class="we-title">Nothing to auto-match</div>
   <div class="we-hint">No unmatched contributions were found for active pledges{% if campaign %} in {{ campaign.name }}{% endif %}.</div>
+  {% if diagnosis %}
+  <div class="help u-mt-sm">Open pledges: {{ diagnosis.open_pledges }} · Still owing: {{ diagnosis.owing_pledges }}.
+    Matches need a confirmed gift in the campaign's fund (or a sub-account), dated on/after the pledge, from the same member (register link, phone, exact name, or fuzzy cash/envelope name).</div>
+  {% endif %}
 </div>
 <a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>
 {% endif %}
