@@ -19,6 +19,7 @@
   <div class="ws-metric is-negative"><span class="wm-l">Payments</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ sum_debits|money:0 }}</span></div>
   <div class="ws-metric"><span class="wm-l">Net</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ sum_net|money:0 }}</span></div>
   {% if sum_review %}<div class="ws-metric is-warn"><span class="wm-l">In review</span><span class="wm-v">{{ sum_review }}</span></div>{% endif %}
+  {% if sum_held %}<div class="ws-metric is-warn"><span class="wm-l"><a class="link" href="{% url 'held_gifts_review' %}" title="Allocated, but held out of the ledger and every balance until confirmed — and unmatchable to a pledge until then">Held, unconfirmed</a></span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ sum_held_total|money:0 }}</span></div>{% endif %}
 </div>
 
 {% if date_default_applied %}
@@ -92,7 +93,11 @@
         <td>{% if t.department %}{{ t.department.name }}{% if t.dev_group %} <span class="muted u-xs">· {{ t.dev_group.label }}</span>{% endif %}{% elif t.excluded_from_income %}<span class="pill pill-grey" title="Counted once via the envelope record; excluded from income to avoid double-counting">excluded · via envelope</span>{% else %}<span class="pill pill-amber" title="No fund assigned — needs allocation">needs allocation</span>{% endif %}{% if t.manual_receipt %} <span class="pill pill-brass" title="Manual receipt: receipted on paper (no system envelope); kept out of the review queue and the receipt-bank-giving pull">manual receipt</span>{% elif t.processed_via_envelope %} <span class="pill pill-grey" title="A system envelope was created for this contribution">receipted · envelope</span>{% endif %}</td>
         <td class="mono muted">{{ t.reference|default:"—"|truncatechars:22 }}</td>
         {% if show_mpesa_ref %}<td class="mono muted">{{ t.mpesa_ref|default:"—" }}</td>{% endif %}
-        <td><span class="pill {% if t.allocation_status == 'REVIEW' %}pill-amber{% elif t.allocation_status == 'AUTO' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_allocation_status_display }}</span></td>
+        {% comment %}A held gift used to show the green "Auto-allocated" pill and
+        nothing else — the most reassuring badge on the page, on money that is
+        not in the ledger, not in any balance, and cannot fulfil a pledge. That
+        is how "allocated" came to be read as "done".{% endcomment %}
+        <td><span class="pill {% if t.allocation_status == 'REVIEW' %}pill-amber{% elif t.allocation_status == 'AUTO' %}pill-green{% else %}pill-grey{% endif %}">{{ t.get_allocation_status_display }}</span>{% if not t.confirmed %} <a class="pill pill-amber" href="{% url 'held_gifts_review' %}" title="Held until confirmed: allocated to a fund, but not yet in the ledger or any balance, and a pledge cannot be matched to it. Click to confirm.">unconfirmed</a>{% endif %}</td>
         <td class="num mono {% if t.direction == 'DEBIT' or t.is_reversal %}row-debit{% endif %}">{% if t.is_bank_memo %}<span class="cr-dr-badge" title="Memo — no cash effect: this bank line was receipted manually, so the money is counted once on its envelope entry; it does not move the running balance">MEMO</span> <s class="muted" title="Counted on the envelope entry — contributes zero here">{{ t.amount|money }}</s>{% else %}<span class="cr-dr-badge" title="{% if t.direction == 'DEBIT' or t.is_reversal %}Debit — money out, or an offsetting reversal{% else %}Credit — money in{% endif %}">{% if t.direction == 'DEBIT' or t.is_reversal %}DR{% else %}CR{% endif %}</span> {% if t.direction == 'DEBIT' or t.is_reversal %}({{ t.amount|money }}){% else %}{{ t.amount|money }}{% endif %}{% endif %}</td>
         <td class="num mono muted u-xs" title="Balance up to and including this entry, in chronological order, under the current filters">{{ running_balances|get_item:t.id|money }}</td>
         {% if can_enter_data %}<td class="num u-nowrap">

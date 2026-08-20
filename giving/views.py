@@ -467,12 +467,19 @@ class TransactionListView(PrefPaginationMixin, ReadAccessMixin, ListView):
             credits=Sum("amount", filter=_Q(direction="CREDIT")),
             debits=Sum("amount", filter=_Q(direction="DEBIT")),
             n=Count("id"),
-            review=Count("id", filter=_Q(allocation_status="REVIEW")))
+            review=Count("id", filter=_Q(allocation_status="REVIEW")),
+            # Held money is not "in review" — the rules allocated it
+            # confidently and the confirmation setting kept it back. It was
+            # counted in neither card, so it sat here looking settled.
+            held=Count("id", filter=_Q(confirmed=False)),
+            held_total=Sum("amount", filter=_Q(confirmed=False)))
         ctx["sum_credits"] = agg["credits"] or 0
         ctx["sum_debits"] = agg["debits"] or 0
         ctx["sum_net"] = (agg["credits"] or 0) - (agg["debits"] or 0)
         ctx["sum_count"] = agg["n"] or 0
         ctx["sum_review"] = agg["review"] or 0
+        ctx["sum_held"] = agg["held"] or 0
+        ctx["sum_held_total"] = agg["held_total"] or 0
         ctx["has_filters"] = any(self.request.GET.get(k) for k in
                                  ("q", "channel", "status", "department",
                                   "date_from", "date_to", "direction", "amount_min",
