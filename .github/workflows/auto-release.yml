@@ -1,0 +1,157 @@
+name: Auto-release
+
+# Every push to main becomes a GitHub release the in-app updater can see.
+#
+# What went wrong before: VERSION was bumped to 3.48.0 on main and never tagged,
+# so hosted instances kept comparing themselves to v3.47.0 and reported "already
+# on the latest". `manage.py release --push` was the missing manual step.
+#
+# This workflow:
+#   1. If VERSION already sits above the newest tag → tag HEAD and publish.
+#   2. If VERSION matches the newest tag but main has moved → bump the patch
+#      (3.48.0 → 3.48.1), commit, tag, and publish.
+#   3. If HEAD is already that tag → do nothing.
+#
+# Minor/major bumps stay manual: edit VERSION + WHATS_NEW, merge to main, and
+# this workflow will tag what you wrote instead of auto-bumping.
+#
+# Publishing happens here (not via release.yml) because pushes made with
+# GITHUB_TOKEN do not trigger other workflows — a tag push from this job would
+# otherwise never create the Release the updater reads.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release-main
+  cancel-in-progress: false
+
+env:
+  DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+  DJANGO_DEBUG: "False"
+  DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+  DJANGO_SECURE_SSL_REDIRECT: "False"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  release:
+    name: Bump, tag, and publish
+    runs-on: ubuntu-latest
+    # The commit this job itself pushes carries [auto-release]; re-entering on
+    # that push would bump forever. Skip it — the tag and Release were created
+    # in the run that wrote the commit.
+    if: ${{ !contains(github.event.head_commit.message || '', '[auto-release]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Default token can push tags/commits with contents:write.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Decide bump vs tag
+        id: plan
+        run: |
+          python - <<'PY'
+          import json, os, django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+          django.setup()
+          from core.services.auto_release import prepare_release, apply_bump, apply_tag_note
+          plan = prepare_release()
+          print(f"action={plan['action']} version={plan['version']} tag={plan['tag']}")
+          if plan["action"] == "bump":
+              apply_bump(plan)
+          elif plan["action"] == "tag":
+              apply_tag_note(plan)
+          with open("auto_release_plan.json", "w") as f:
+              json.dump(plan, f)
+          print(f"commits={len(plan.get('commits') or [])}")
+          PY
+          echo "action=$(python -c 'import json;print(json.load(open(\"auto_release_plan.json\"))[\"action\"])')" >> "$GITHUB_OUTPUT"
+          echo "version=$(python -c 'import json;print(json.load(open(\"auto_release_plan.json\"))[\"version\"])')" >> "$GITHUB_OUTPUT"
+          echo "tag=$(python -c 'import json;print(json.load(open(\"auto_release_plan.json\"))[\"tag\"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Commit the patch bump
+        if: steps.plan.outputs.action == 'bump'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md core/auto_release_notes.json
+          git commit -m "Release v${{ steps.plan.outputs.version }} [auto-release]"
+
+      - name: Commit release notes for a human VERSION bump
+        if: steps.plan.outputs.action == 'tag'
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No note/changelog changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md core/auto_release_notes.json
+          git status --short
+          git commit -m "Changelog for v${{ steps.plan.outputs.version }} [auto-release]" || true
+
+      - name: Tag
+        if: steps.plan.outputs.action == 'bump' || steps.plan.outputs.action == 'tag'
+        run: |
+          python - <<'PY'
+          import os, django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+          django.setup()
+          from core.services import changelog as cl
+          from core.services.auto_release import _git
+          import json
+          plan = json.load(open("auto_release_plan.json"))
+          note = cl.notes_for(plan["version"]) or f"Release {plan['tag']}"
+          _git("tag", "-a", plan["tag"], "-m", note)
+          print(f"Tagged {plan['tag']}")
+          PY
+
+      - name: Push commit and tag
+        if: steps.plan.outputs.action == 'bump' || steps.plan.outputs.action == 'tag'
+        run: |
+          git push origin HEAD:main
+          git push origin "${{ steps.plan.outputs.tag }}"
+
+      - name: Publish GitHub Release
+        if: steps.plan.outputs.action == 'bump' || steps.plan.outputs.action == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.plan.outputs.tag }}"
+          PREV=$(git tag -l 'v*' --sort=-v:refname | grep -v "^${TAG}$" | head -n1)
+          if [ -n "$PREV" ]; then
+            git log --no-merges --pretty=format:'%s' "${PREV}..${TAG}" > commits.txt
+          else
+            git log --no-merges --pretty=format:'%s' -n 50 "${TAG}" > commits.txt
+          fi
+          python - <<'PY' > notes.md
+          import os, django
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+          django.setup()
+          from core.services import changelog as cl
+          from core.version import get_version
+          get_version.cache_clear()
+          commits = [l.strip() for l in open("commits.txt") if l.strip()]
+          print(cl.release_body(get_version(), commits))
+          PY
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          fi
+          echo "Published $TAG"
+
+      - name: Already released
+        if: steps.plan.outputs.action == 'noop'
+        run: echo "HEAD is already ${{ steps.plan.outputs.tag }}; nothing to do."
