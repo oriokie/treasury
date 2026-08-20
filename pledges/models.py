@@ -222,6 +222,23 @@ class Pledge(models.Model):
     #: need a treasurer either. A day covers the mistake and not the rewrite.
     LEADER_EDIT_WINDOW = dt.timedelta(days=1)
 
+    @property
+    def pledged_phone(self):
+        """Mobile number this pledge was recorded against (for matching/SMS).
+
+        Prefers the number stored on ``submitted_contact`` (office form and
+        public form both write ``name / phone`` there), then the member's
+        receipt phone.
+        """
+        from members.models import normalize_phone
+        sc = self.submitted_contact or ""
+        if "/" in sc:
+            raw = sc.rsplit("/", 1)[-1].strip()
+            return normalize_phone(raw) or raw or ""
+        if self.member_id:
+            return self.member.receipt_phone or self.member.phone or ""
+        return ""
+
     def leader_editable(self, now=None):
         """Whether a leader may still change or withdraw this pledge.
 

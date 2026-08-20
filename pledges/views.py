@@ -224,7 +224,12 @@ class PledgeCreateView(DataEntryRequiredMixin, View):
             p.save()
             messages.success(request, "Pledge saved.")
             return redirect("pledge_detail", pk=p.pk)
-        return render(request, "pledges/pledge_form.html", {"form": form, "obj": obj})
+        campaign = None
+        cid = (obj.campaign_id if obj else None) or form.data.get("campaign")
+        if cid:
+            campaign = PledgeCampaign.objects.filter(pk=cid).first()
+        return render(request, "pledges/pledge_form.html",
+                      {"form": form, "obj": obj, "campaign": campaign})
 
 
 class BasePledgeApprovalQueue(TemplateView):
