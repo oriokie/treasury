@@ -38,6 +38,27 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.48.0": "Fixes an update check that reported no release while one was sitting "
+              "in plain sight. A mangled GitHub access token — the reported case was "
+              "a classic token one character too long — makes GitHub reject every "
+              "authenticated call, including for a public repository where no token "
+              "was needed, so the page said \"Latest release seen (none)\". The "
+              "checker now retries without the token after a rejection, and still "
+              "warns when the token's length is wrong so the server's .env can be "
+              "corrected. Separately: M-Pesa gifts held for confirmation (allocated "
+              "but not yet in the ledger) have a queue of their own under Banking → "
+              "Gifts awaiting confirmation, because those rows belong to no statement "
+              "import and the only confirm screen was import-scoped — so they could "
+              "never be released, and auto-match correctly refused them while the "
+              "register showed only the green Auto-allocated pill. The pledge page "
+              "now says why a gift in the appeal's own fund is not on that pledge "
+              "(held unconfirmed, before the start date, past the matching window), "
+              "and ignores money given to other funds so a healthy promise does not "
+              "look blocked by tithe or AWM. Auto-match also recognises gifts by "
+              "M-Pesa phone and by duplicate member rows sharing a phone, fills "
+              "lapsed pledges, and the empty preview names the reason it found "
+              "nothing. Office pledges carry a mobile number (autofilled for "
+              "register members; required for visitors), shown on the pledge detail.",
     "3.47.0": "A campaign can now show how it is doing on its own public pledge link. Tick "
               "\"Show public progress\" when editing the campaign and anyone who opens the link "
               "sees the number of pledges made, the amount pledged and the amount received, with a "
