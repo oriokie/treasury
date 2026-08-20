@@ -61,6 +61,26 @@ class OfficePledgePhoneFormTests(TestCase):
         form = PledgeForm(self._base(phone="0799888777"))
         self.assertFalse(form.is_valid())
 
+    def test_register_member_may_omit_phone(self):
+        """Desk entry that already names the member must not demand a phone."""
+        data = self._base(member=self.member.id)
+        data.pop("phone")
+        form = PledgeForm(data)
+        self.assertTrue(form.is_valid(), form.errors)
+        p = form.save()
+        self.assertEqual(p.member_id, self.member.id)
+        self.assertEqual(p.pledged_phone, "254711000222")
+
+    def test_visitor_without_phone_rejected(self):
+        form = PledgeForm({
+            "campaign": self.campaign.id,
+            "amount": "5000",
+            "frequency": Pledge.Frequency.MONTHLY,
+            "start_date": "2026-06-01",
+            "visitor_name": "Sunday Visitor",
+        })
+        self.assertFalse(form.is_valid())
+
     def test_detail_page_shows_pledged_phone(self):
         p = Pledge.objects.create(
             campaign=self.campaign, member=self.member, amount=Decimal("1000"),

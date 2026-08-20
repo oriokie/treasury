@@ -15,13 +15,17 @@ class CampaignForm(forms.ModelForm):
 
 
 class PledgeForm(forms.ModelForm):
-    """Office pledge form: member optional so a visitor can pledge; phone is
-    always required (M-Pesa matching and reminders)."""
+    """Office pledge form: member optional so a visitor can pledge.
+
+    Mobile is required for visitors (and for matching/reminders). A register
+    member may omit it — their number on file is used — so desk entry that
+    already names the member keeps working.
+    """
 
     phone = forms.CharField(
-        max_length=20, required=True, label="Mobile number",
+        max_length=20, required=False, label="Mobile number",
         help_text="M-PESA number this pledge will be paid from. "
-                  "Filled automatically when you pick a member on the register.")
+                  "Autofilled when you pick a member; required for visitors.")
     visitor_name = forms.CharField(
         max_length=120, required=False, label="Visitor name",
         help_text="Required when the pledgor is not on the church register.")
@@ -78,6 +82,8 @@ class PledgeForm(forms.ModelForm):
     def clean_phone(self):
         from members.models import normalize_phone
         raw = (self.cleaned_data.get("phone") or "").strip()
+        if not raw:
+            return ""
         ph = normalize_phone(raw)
         if not ph:
             raise forms.ValidationError(
@@ -85,12 +91,21 @@ class PledgeForm(forms.ModelForm):
         return ph
 
     def clean(self):
+        from members.models import normalize_phone
         cleaned = super().clean()
         member = cleaned.get("member")
         visitor = (cleaned.get("visitor_name") or "").strip()
-        phone = cleaned.get("phone")
+        phone = cleaned.get("phone") or ""
+
         if member:
+            # Desk flows that only pick a member still work: use the number
+            # on file when the field was left blank.
+            if not phone:
+                phone = (normalize_phone(member.receipt_phone or member.phone)
+                         or (member.phone or ""))
+                cleaned["phone"] = phone
             return cleaned
+
         if phone:
             from django.db.models import Q
             from members.models import Member
@@ -103,23 +118,27 @@ class PledgeForm(forms.ModelForm):
             if hit:
                 cleaned["member"] = hit
                 return cleaned
+
         if not visitor:
             raise forms.ValidationError(
                 "Select a member on the register, or enter the visitor's name.")
+        if not phone:
+            raise forms.ValidationError(
+                "Enter a mobile number for the visitor.")
         cleaned["visitor_name"] = visitor
         return cleaned
 
     def save(self, commit=True):
         from members.models import Member
         p = super().save(commit=False)
-        phone = self.cleaned_data["phone"]
+        phone = self.cleaned_data.get("phone") or ""
         member = self.cleaned_data.get("member")
         visitor = (self.cleaned_data.get("visitor_name") or "").strip()
         if not member:
             member = Member.objects.create(
                 name=visitor, phone=phone,
                 source=Member.Source.AUTO_BANK, active=False)
-        else:
+        elif phone:
             if not member.phone:
                 member.phone = phone
                 member.save(update_fields=["phone"])
@@ -127,7 +146,8 @@ class PledgeForm(forms.ModelForm):
                 member.add_phone(phone)
         p.member = member
         display_name = member.name if member.active else (visitor or member.name)
-        p.submitted_contact = f"{display_name} / {phone}"[:120]
+        if phone:
+            p.submitted_contact = f"{display_name} / {phone}"[:120]
         if commit:
             p.save()
             self.save_m2m()
