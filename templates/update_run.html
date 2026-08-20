@@ -22,7 +22,7 @@
   {% else %}
   <div class="info-panel">You're already on the latest version the app can see ({{ current }}).</div>
   {% if diag %}<div class="card u-mt"><div class="bd">
-    <strong>{% if update_tag %}Token warning{% else %}Why no update is showing{% endif %}</strong>
+    <strong>Why no update is showing</strong>
     <p class="help u-mt-xs">{{ diag }}</p>
     <table class="ledger compact u-mt-sm"><tbody>
       <tr><td>Configured repository</td><td class="mono">{{ repo|default:"(none)" }}</td></tr>

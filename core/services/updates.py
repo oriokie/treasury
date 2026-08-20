@@ -116,36 +116,13 @@ def token_diagnosis():
 
 
 def _fetch_json(url, token, timeout=4):
-    """GET JSON from GitHub. On 401 with a token, retry without it.
-
-    A mangled ``GITHUB_TOKEN`` (the reported case: classic token one character
-    too long) makes GitHub reject the request even for a *public* repository —
-    worse than sending no token at all. The update page then reports
-    "Latest release seen (none)" while the release is sitting in plain sight.
-    Falling back unauthenticated recovers the public case; a private repo still
-    fails the second attempt and keeps the original 401 explanation.
-    """
-    import urllib.error
-
     headers = {"Accept": "application/vnd.github+json",
                "User-Agent": "treasury-updater"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode())
-    except urllib.error.HTTPError as exc:
-        if exc.code == 401 and token:
-            # Drain the body so the connection can be reused, then try as a
-            # public caller — the only path that still works for a public repo
-            # when the configured token is garbage.
-            try:
-                exc.read()
-            except Exception:  # noqa: BLE001
-                pass
-            return _fetch_json(url, token="", timeout=timeout)
-        raise
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode())
 
 
 def latest_release(force=False):
@@ -157,10 +134,7 @@ def latest_release(force=False):
     "Latest release seen (none)"). Result is cached for a few minutes.
 
     Authenticates with GITHUB_TOKEN if set, so private repositories work. The
-    token is read from settings/env and never logged. A rejected token is
-    retried without auth (see ``_fetch_json``) so a public repo is not blinded
-    by a bad credential.
-    """
+    token is read from settings/env and never logged."""
     import time
     now = time.time()
     if not force and _release_cache["value"] is not None \
