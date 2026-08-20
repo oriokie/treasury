@@ -598,6 +598,98 @@ def diagnose_empty_plan(campaign=None, cfg=None, pledge_scan_limit=200):
     return {"reasons": reasons, "counts": counts}
 
 
+def explain_pledge_gifts(pledge, cfg=None, limit=60):
+    """Every gift the rules recognise as this pledgor's, and its verdict.
+
+    ``diagnose_empty_plan`` answers "why did the sweep propose nothing" in
+    totals across a campaign. It cannot answer the question a treasurer
+    actually arrives with, which is about one line on one member's page: this
+    gift is right here, from this member, to this appeal — why is it not on the
+    pledge? Counting it among "3 gifts went to another fund" leaves them to
+    guess which three, and a sweep that is working as designed then reads as a
+    sweep that is broken.
+
+    So the verdict is given per gift, naming the fund and the dates involved.
+    Date and fund are deliberately not filtered out of the scan — being
+    excluded by them is the answer being looked for.
+
+    Returns ``[{"txn", "match", "ok", "verdict", "detail"}, …]``, newest first.
+    Read-only.
+    """
+    from core.models import SiteConfig
+    cfg = cfg or SiteConfig.get()
+    member = pledge.member
+    if member is None:
+        return []
+    window = cfg.pledge_match_window_days or 400
+    threshold = _fuzzy_threshold(cfg)
+    phones = _pledge_phone_set(pledge)
+    siblings = _member_ids_sharing_phones(phones)
+    siblings.add(member.id)
+    nk = name_key(member.name)
+    fund_ids = campaign_fund_ids(pledge.campaign)
+    end = (pledge.end_date or dt.date.today()) + dt.timedelta(days=window)
+    applied = applied_by_transaction()
+
+    q = (Q(member_id__in=siblings)
+         | Q(member__isnull=True, payer_name__gt="")
+         | Q(member__isnull=True, payer_phone__gt=""))
+    if phones:
+        q |= Q(payer_phone__in=list(_payer_phone_qs_values(phones)))
+    if threshold > 0:
+        q |= Q(channel__in=_FUZZY_CHANNELS, payer_name__gt="")
+    qs = (Transaction.objects.filter(direction=Transaction.Direction.CREDIT)
+          .filter(q).select_related("department", "member")
+          .order_by("-date", "-id"))
+
+    fund_name = getattr(pledge.campaign.target_department, "name", None)
+    out = []
+    for t in qs[:limit * 4]:
+        match = _gift_is_from_pledgor(t, member, phones, nk, siblings, threshold)
+        if not match:
+            continue
+        free = t.amount - applied.get(t.id, Decimal("0"))
+        gift_fund = getattr(t.department, "name", None) or "no fund"
+        if not t.confirmed:
+            verdict, detail = "Not matched", (
+                "The gift is still unconfirmed. Confirm it in the review "
+                "queue — unconfirmed giving is never matched.")
+        elif t.is_reversal or t.is_reversed:
+            verdict, detail = "Not matched", "The gift was reversed."
+        elif free <= 0:
+            verdict, detail = "Already applied", (
+                "The whole gift is already applied to a pledge.")
+        elif t.date < pledge.start_date:
+            verdict, detail = "Not matched", (
+                f"Given {t.date:%d/%m/%y}, before this pledge's start date of "
+                f"{pledge.start_date:%d/%m/%y} — a gift cannot pay a promise "
+                "that was not yet made. Correct the start date if the pledge "
+                "was recorded late.")
+        elif t.date > end:
+            verdict, detail = "Not matched", (
+                f"Given {t.date:%d/%m/%y}, past the {window}-day matching "
+                "window (Settings → Pledges → matching window).")
+        elif fund_ids and not t.department_id:
+            verdict, detail = "Not matched", (
+                "The gift has no fund on it yet. Allocate it first.")
+        elif fund_ids and t.department_id not in fund_ids:
+            verdict, detail = "Not matched", (
+                f"Given to {gift_fund}, which is not "
+                f"{fund_name or 'this campaign’s fund'} nor one of its "
+                "sub-accounts. Only money given to the appeal fulfils it — "
+                "move the gift's fund, or point the campaign at the fund the "
+                "money actually lands in.")
+        else:
+            verdict, detail = "Will match", (
+                f"KES {free:,.0f} of this gift is free and in {gift_fund}. "
+                "Run auto-match, or add it by hand.")
+        out.append({"txn": t, "match": match, "ok": verdict == "Will match",
+                    "verdict": verdict, "detail": detail})
+        if len(out) >= limit:
+            break
+    return out
+
+
 def apply_planned_matches(rows, user=None):
     """Write PledgePayment links for a plan from `plan_auto_match_*`.
 

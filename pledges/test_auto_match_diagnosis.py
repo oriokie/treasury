@@ -113,6 +113,16 @@ class AutoMatchDiagnosisTests(TestCase):
         self.assertContains(r, "Nothing to auto-match")
         self.assertContains(r, "outside the campaign&#x27;s own fund")
 
+    def test_the_preview_says_nothing_is_applied_yet(self):
+        """The dashboard button used to apply matches on the spot; it now only
+        opens this page, so the page has to say that the job is unfinished."""
+        self._gift("20000", self.appeal_fund)
+        c = Client()
+        c.force_login(self.user)
+        r = c.get("/pledges/auto-match/")
+        self.assertContains(r, "Nothing is linked yet")
+        self.assertContains(r, "Apply")
+
     def test_the_window_setting_is_quoted_in_the_reason(self):
         cfg = SiteConfig.get()
         cfg.pledge_match_window_days = 30

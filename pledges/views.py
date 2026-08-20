@@ -181,6 +181,12 @@ class PledgeDetailView(ReadAccessMixin, TemplateView):
             ctx["suggestions"] = match_svc.suggest_matches_for_pledge(p)
         else:
             ctx["suggestions"] = []
+        # Why a gift from this member is not on the pledge. Asked here, on the
+        # page that shows the shortfall, rather than only in the sweep's totals.
+        ctx["gift_verdicts"] = (
+            match_svc.explain_pledge_gifts(p) if ctx["is_treasurer"] else [])
+        ctx["unmatched_gifts"] = [g for g in ctx["gift_verdicts"]
+                                  if g["verdict"] == "Not matched"]
         return ctx
 
 
