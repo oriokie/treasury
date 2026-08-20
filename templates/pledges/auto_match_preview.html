@@ -63,13 +63,26 @@
   <div class="we-mark">✓</div>
   <div class="we-title">Nothing to auto-match</div>
   <div class="we-hint">No unmatched contributions were found for active pledges{% if campaign %} in {{ campaign.name }}{% endif %}.</div>
+  {% comment %}"Nothing to match" and "nothing was allowed to match" look
+  identical on this page, so the reason is stated rather than the rules.{% endcomment %}
+  {% if diagnosis.reasons %}
+  <div class="am-why u-mt-sm">
+    <div class="eyebrow">Why</div>
+    <ul>{% for reason in diagnosis.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
   {% if diagnosis %}
-  <div class="help u-mt-sm">Open pledges: {{ diagnosis.open_pledges }} · Still owing: {{ diagnosis.owing_pledges }}.
-    Matches need a confirmed gift in the campaign's fund (or a sub-account), dated on/after the pledge, from the same member (register link, phone, exact name, or fuzzy cash/envelope name).</div>
+  <div class="help u-mt-sm">Open pledges: {{ diagnosis.counts.open_pledges }} · still owing: {{ diagnosis.counts.owing_pledges }}{% if diagnosis.counts.draft_pledges %} · awaiting approval: {{ diagnosis.counts.draft_pledges }}{% endif %}.
+    A match needs a confirmed gift in the campaign's fund (or a sub-account), dated on/after the pledge, from the same member (register link, M-PESA number, exact name, or a near-miss cash/envelope name).</div>
   {% endif %}
 </div>
 <a class="btn btn-ghost btn-sm" href="{% url 'pledge_dashboard' %}">← Overview</a>
 {% endif %}
 
 <p class="help u-mt">Untick any row you do not want linked. Applying creates pledge–contribution links only — fund balances are unchanged.</p>
+<style>
+.am-why{text-align:left;display:inline-block;max-width:60ch}
+.am-why ul{margin:.3rem 0 0;padding-left:1.1rem}
+.am-why li{margin:.25rem 0;font-size:.85rem;color:var(--muted)}
+</style>
 {% endblock %}

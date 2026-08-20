@@ -172,6 +172,33 @@ def _payer_phone_qs_values(phones):
     return out
 
 
+def _gift_is_from_pledgor(txn, member, phones, nk, phone_siblings, threshold):
+    """Whether one gift was given by this pledgor, and how surely.
+
+    ``"exact"`` for a register link (including a duplicate row sharing the
+    pledgor's phone), the M-Pesa line, or the same name key; ``"fuzzy"`` for a
+    hand-typed cash/envelope name that is only a near miss; ``None`` for
+    somebody else's giving. Says nothing about fund or date — those are the
+    caller's to apply, which is what lets the empty-preview diagnosis ask
+    "was it excluded for being the wrong person, or the wrong fund?".
+    """
+    from members.models import normalize_phone
+    if txn.member_id is not None and txn.member_id in phone_siblings:
+        return "exact"
+    if phones and normalize_phone(txn.payer_phone) in phones:
+        return "exact"
+    if nk and name_key(txn.payer_name or "") == nk:
+        return "exact"
+    if (threshold > 0
+            and txn.channel in _FUZZY_CHANNELS
+            and txn.member_id != member.id
+            and _name_ratio(member.name, txn.payer_name) >= threshold):
+        # Cash/envelope near-miss: unlinked, or linked to a provisional
+        # duplicate under a mistyped name — not to the pledgor themselves.
+        return "fuzzy"
+    return None
+
+
 def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None):
     """Confirmed contributions from this pledge's member that could be applied to
     it: same member (by FK, phone, or name key), within the pledge's active
@@ -228,22 +255,8 @@ def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None
     fund_ids = campaign_fund_ids(pledge.campaign)
     out = []
     for t in qs.select_related("department", "member"):
-        match = None
-        if t.member_id in phone_siblings:
-            # Same person, including a duplicate register row that shares a
-            # phone with the pledgor.
-            match = "exact"
-        elif phones and normalize_phone(t.payer_phone) in phones:
-            match = "exact"
-        elif nk and name_key(t.payer_name or "") == nk:
-            match = "exact"
-        elif (threshold > 0
-              and t.channel in _FUZZY_CHANNELS
-              and t.member_id != member.id
-              and _name_ratio(member.name, t.payer_name) >= threshold):
-            # Cash/envelope near-miss: unlinked, or linked to a provisional
-            # duplicate under a mistyped name — not to the pledgor themselves.
-            match = "fuzzy"
+        match = _gift_is_from_pledgor(t, member, phones, nk, phone_siblings,
+                                      threshold)
         if not match:
             continue
         if not _gift_is_for_campaign(t, fund_ids):
@@ -445,6 +458,144 @@ def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
             index[key] = len(merged)
             merged.append(row)
     return merged
+
+
+def diagnose_empty_plan(campaign=None, cfg=None, pledge_scan_limit=200):
+    """Why the sweep proposed nothing — in terms of this church's own data.
+
+    "Nothing to auto-match" has several very different causes, and the screen
+    used to recite the matching rules instead of saying which one applies. A
+    treasurer whose pledges are all still DRAFT (every public-form submission
+    starts there, and a draft is never matched) was reading a page that implied
+    the gifts were the problem.
+
+    So each cause is counted rather than described: promises awaiting approval,
+    nothing owing, or giving that WAS recognised as the pledgor's but was
+    excluded for a stated reason — unconfirmed, wrong fund, dated before the
+    promise, past the window, already applied.
+
+    Returns ``{"reasons": [sentence, …], "counts": {…}}``. Read-only.
+    """
+    from core.models import SiteConfig
+    from members.models import normalize_phone
+    cfg = cfg or SiteConfig.get()
+
+    scoped = Pledge.objects.all()
+    if campaign:
+        scoped = scoped.filter(campaign=campaign)
+    drafts = scoped.filter(status=Pledge.Status.DRAFT).count()
+    open_qs = (scoped.filter(status__in=_OPEN_FOR_FILL)
+               .select_related("member", "campaign",
+                               "campaign__target_department")
+               .prefetch_related("member__phones"))
+    owing = [p for p in open_qs if p.outstanding > 0]
+
+    counts = {"draft_pledges": drafts, "open_pledges": len(open_qs),
+              "owing_pledges": len(owing), "gifts_from_pledgors": 0,
+              "unconfirmed": 0, "reversed": 0, "already_applied": 0,
+              "before_pledge_start": 0, "past_window": 0,
+              "unallocated_fund": 0, "wrong_fund": 0}
+    reasons = []
+
+    if drafts:
+        reasons.append(
+            f"{drafts} pledge(s) are still awaiting approval. A draft is never "
+            "matched — approve them first and run this again.")
+    if not open_qs:
+        # A fulfilled promise has left the open set, so "no open pledges" and
+        # "every pledge is paid" arrive here identically — and telling a
+        # treasurer there are no pledges when the tracker plainly shows several
+        # is how a working sweep gets reported as broken.
+        done = scoped.filter(status=Pledge.Status.FULFILLED).count()
+        counts["fulfilled_pledges"] = done
+        if done:
+            reasons.append(
+                f"All {done} pledge(s) here are paid in full — there is "
+                "nothing left to match.")
+        elif not drafts:
+            reasons.append(
+                "There are no active or lapsed pledges to match against.")
+        return {"reasons": reasons, "counts": counts}
+    if not owing:
+        reasons.append(
+            f"All {len(open_qs)} open pledge(s) are already paid in full, so "
+            "there is nothing left to fill.")
+        return {"reasons": reasons, "counts": counts}
+
+    # Which gifts the rules DID recognise as a pledgor's, so the exclusion that
+    # removed them can be named. Date and fund are deliberately not filtered
+    # here — being excluded by them is the answer we are looking for.
+    window = cfg.pledge_match_window_days or 400
+    threshold = _fuzzy_threshold(cfg)
+    fully_matched = already_matched_txn_ids()
+    credits = (Transaction.objects.filter(direction=Transaction.Direction.CREDIT)
+               .select_related("member"))
+    for pledge in owing[:pledge_scan_limit]:
+        phones = _pledge_phone_set(pledge)
+        siblings = _member_ids_sharing_phones(phones)
+        siblings.add(pledge.member_id)
+        nk = name_key(pledge.member.name)
+        fund_ids = campaign_fund_ids(pledge.campaign)
+        end = (pledge.end_date or dt.date.today()) + dt.timedelta(days=window)
+        for t in credits:
+            if not _gift_is_from_pledgor(t, pledge.member, phones, nk,
+                                         siblings, threshold):
+                continue
+            counts["gifts_from_pledgors"] += 1
+            if not t.confirmed:
+                counts["unconfirmed"] += 1
+            elif t.is_reversal or t.is_reversed:
+                counts["reversed"] += 1
+            elif t.id in fully_matched:
+                counts["already_applied"] += 1
+            elif t.date < pledge.start_date:
+                counts["before_pledge_start"] += 1
+            elif t.date > end:
+                counts["past_window"] += 1
+            elif fund_ids and not t.department_id:
+                counts["unallocated_fund"] += 1
+            elif fund_ids and t.department_id not in fund_ids:
+                counts["wrong_fund"] += 1
+
+    if not counts["gifts_from_pledgors"]:
+        reasons.append(
+            "No giving is on record for the members who pledged. A gift is "
+            "recognised by their register link, M-Pesa number, or name as it "
+            "was entered.")
+        return {"reasons": reasons, "counts": counts}
+
+    if counts["already_applied"]:
+        reasons.append(
+            f"{counts['already_applied']} gift(s) from these members are "
+            "already applied to a pledge.")
+    if counts["unconfirmed"]:
+        reasons.append(
+            f"{counts['unconfirmed']} gift(s) are still unconfirmed — they are "
+            "waiting in the review queue, and unconfirmed giving is never "
+            "matched.")
+    if counts["wrong_fund"]:
+        reasons.append(
+            f"{counts['wrong_fund']} gift(s) went to a fund outside the "
+            "campaign's own fund and its sub-accounts. Only money given to the "
+            "appeal fulfils the appeal"
+            + (" (Settings → Pledges → same fund only)."
+               if cfg.pledge_match_same_fund_only else "."))
+    if counts["unallocated_fund"]:
+        reasons.append(
+            f"{counts['unallocated_fund']} gift(s) have no fund on them yet. "
+            "Allocate them first — unallocated money is not yet evidence of "
+            "what it was for.")
+    if counts["before_pledge_start"]:
+        reasons.append(
+            f"{counts['before_pledge_start']} gift(s) were given before the "
+            "pledge date, so they cannot be payment of that promise. Correct "
+            "the pledge's start date if it was recorded late.")
+    if counts["past_window"]:
+        reasons.append(
+            f"{counts['past_window']} gift(s) fall past the {window}-day "
+            "matching window after the pledge's end date "
+            "(Settings → Pledges → matching window).")
+    return {"reasons": reasons, "counts": counts}
 
 
 def apply_planned_matches(rows, user=None):
