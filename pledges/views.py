@@ -183,10 +183,17 @@ class PledgeDetailView(ReadAccessMixin, TemplateView):
             ctx["suggestions"] = []
         # Why a gift from this member is not on the pledge. Asked here, on the
         # page that shows the shortfall, rather than only in the sweep's totals.
+        # Only gifts already in the campaign's fund (or its sub-accounts) —
+        # money given to another appeal is a different question, and listing it
+        # here made a healthy pledge look blocked by AWM / tithe / etc.
         ctx["gift_verdicts"] = (
             match_svc.explain_pledge_gifts(p) if ctx["is_treasurer"] else [])
-        ctx["unmatched_gifts"] = [g for g in ctx["gift_verdicts"]
-                                  if g["verdict"] == "Not matched"]
+        fund_ids = (match_svc.campaign_fund_ids(p.campaign)
+                    if ctx["gift_verdicts"] else set())
+        ctx["unmatched_gifts"] = [
+            g for g in ctx["gift_verdicts"]
+            if g["verdict"] == "Not matched"
+            and (not fund_ids or g["txn"].department_id in fund_ids)]
         return ctx
 
 
