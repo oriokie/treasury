@@ -141,10 +141,14 @@ def site_context(request):
             debit=Count("pk", filter=Q(
                 allocation_status=Transaction.Status.REVIEW,
                 direction=Transaction.Direction.DEBIT,
-                channel=Transaction.Channel.BANK)))
+                channel=Transaction.Channel.BANK)),
+            # Feed gifts held for confirmation (no import batch to own them).
+            held=Count("pk", filter=Q(
+                confirmed=False, statement_import__isnull=True)))
         ctx["queue_badge"] = txn_badges["queue"]
         ctx["sabbath_badge"] = txn_badges["sabbath"]
         ctx["debit_badge"] = txn_badges["debit"]
+        ctx["held_badge"] = txn_badges["held"]
         exp_badges = Expense.objects.aggregate(
             expense=Count("pk", filter=Q(
                 status=Expense.Status.PENDING,

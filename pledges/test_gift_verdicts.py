@@ -96,13 +96,22 @@ class GiftVerdictTests(TestCase):
         verdicts = {r["txn"].id: r["verdict"] for r in rows}
         self.assertEqual(verdicts[gift.id], "Already applied")
 
-    def test_the_pledge_page_explains_the_excluded_gift(self):
-        self._gift("10", self.other)
+    def test_the_pledge_page_explains_a_held_gift_in_the_campaign_fund(self):
+        self._gift("10", self.group12, confirmed=False)
         c = Client()
         c.force_login(self.user)
         r = c.get(f"/pledges/{self.pledge.id}/")
         self.assertContains(r, "not on this pledge")
-        self.assertContains(r, "AWM")
+        self.assertContains(r, "held unconfirmed")
+
+    def test_the_pledge_page_ignores_gifts_to_other_funds(self):
+        """Wrong-fund giving is real, but it is not this pledge's problem."""
+        self._gift("10", self.other)
+        c = Client()
+        c.force_login(self.user)
+        r = c.get(f"/pledges/{self.pledge.id}/")
+        self.assertNotContains(r, "not on this pledge")
+        self.assertNotContains(r, "AWM")
 
     def test_the_pledge_page_stays_quiet_when_nothing_is_excluded(self):
         self._gift("10", self.group12)
