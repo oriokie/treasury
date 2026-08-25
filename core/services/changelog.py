@@ -7,7 +7,11 @@ CHANGELOG.md and for a GitHub release body too — writing those separately woul
 mean three descriptions of one release, drifting apart from the day they were
 written.
 
-So nothing here composes prose. It reads WHATS_NEW, sorts it properly (by
+Auto patch releases (see ``core.services.auto_release``) add notes in
+``core/auto_release_notes.json`` instead of rewriting ``version.py``. Curated
+``WHATS_NEW`` text still wins when both exist for the same version.
+
+So nothing here composes prose. It reads those sources, sorts properly (by
 version number, which a text sort gets wrong the moment there is a 3.10 and a
 3.9), and renders it. The commit list is offered alongside, never instead: a
 church treasurer reading a release note should not be handed forty commit
@@ -22,6 +26,7 @@ Every released version, newest first.
 
 Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit the
 entry there, not this file, or the next release will overwrite your change.
+Auto patch releases may also add notes via `core/auto_release_notes.json`.
 """
 
 
@@ -34,14 +39,24 @@ def parse_version(v):
     return tuple((parts + [0, 0, 0])[:3])
 
 
+def _auto_notes():
+    from core.services.auto_release import load_auto_notes
+    return load_auto_notes()
+
+
 def released_versions(newest_first=True):
     """Every version with a written note, in version order."""
-    return sorted(WHATS_NEW, key=parse_version, reverse=newest_first)
+    keys = set(WHATS_NEW) | set(_auto_notes())
+    return sorted(keys, key=parse_version, reverse=newest_first)
 
 
 def notes_for(version):
-    """The user-facing note for one version, or "" when none was written."""
-    return (WHATS_NEW.get(str(version).lstrip("v")) or "").strip()
+    """The user-facing note for one version, or "" when none was written.
+
+    Curated ``WHATS_NEW`` wins over an auto-generated patch note.
+    """
+    v = str(version).lstrip("v")
+    return (WHATS_NEW.get(v) or _auto_notes().get(v) or "").strip()
 
 
 def render(versions=None):

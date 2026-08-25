@@ -69,16 +69,27 @@ restart the web server. It is safe to re-run.
 
 ## Cutting a new release (maintainers)
 
-1. Bump the version in the `VERSION` file (semantic versioning).
-2. Commit, tag, and push:
-   ```bash
-   git commit -am "Release vX.Y.Z"
-   git tag vX.Y.Z && git push && git push --tags
-   ```
-3. Publish a GitHub Release for the tag with a short changelog.
+**Patch releases are automatic.** Every push to `main` runs the Auto-release
+workflow: if `VERSION` still matches the newest tag, it bumps the patch
+(e.g. 3.48.0 → 3.48.1), tags it, and publishes a GitHub Release so the in-app
+updater can see it. You do not need to remember `manage.py release` for ordinary
+merges — that forgotten step is how 3.48.0 sat on main with no tag while every
+hosted instance kept reporting "already on the latest".
 
-Hosted instances will then show the update banner and can update with
-`./update.sh`.
+**Minor / major releases stay manual** (they need a real "What's new" paragraph):
+
+1. Bump `VERSION` and add an entry to `core.version.WHATS_NEW`.
+2. Merge to `main`. Auto-release will tag what you wrote (it will not bump
+   again when `VERSION` is already ahead of the newest tag).
+
+You can still cut a release by hand:
+
+```bash
+python manage.py release --check
+python manage.py release --push
+```
+
+Hosted instances then show the update banner and can update with `./update.sh`.
 
 ## Production checklist
 
