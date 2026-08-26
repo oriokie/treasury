@@ -759,6 +759,11 @@ class ClaimResolveView(AllocateRequiredMixin, View):
         txn = get_object_or_404(Transaction, pk=pk,
                                 allocation_status=Transaction.Status.REVIEW,
                                 direction=Transaction.Direction.CREDIT)
+
+        # --- excess petty cash deposited to the bank (cash-location move) ---
+        if request.POST.get("kind") == "petty_to_bank":
+            return self._petty_to_bank(request, txn)
+
         # --- split allocation: one bank gift meant for several funds ---
         if request.POST.get("split") == "1":
             from departments.models import Department as _D, DevelopmentGroup as _G
@@ -866,6 +871,43 @@ class ClaimResolveView(AllocateRequiredMixin, View):
         if resolved_similar:
             msg += f" Rule applied to {resolved_similar} similar item(s)."
         messages.success(request, msg)
+        return redirect("queue")
+
+    @db_tx.atomic
+    def _petty_to_bank(self, request, txn):
+        """Bank credit is excess float cash deposited — reduce the tin, leave
+        the credit on the ledger as a non-income cash-location transfer."""
+        from cashbook.models import PettyCashBankDeposit
+        from cashbook.services.treasury_position import petty_balance_asof
+
+        if _block_if_locked(request, txn.date):
+            return redirect("queue")
+
+        float_bal = petty_balance_asof(txn.date)
+        if txn.amount > float_bal:
+            messages.error(
+                request,
+                f"The petty-cash float on {txn.date:%d %b %Y} is only "
+                f"{float_bal:,.2f} — cannot deposit {txn.amount:,.2f} to the bank.")
+            return redirect("queue")
+
+        note = (request.POST.get("description") or txn.raw_narration
+                or "Excess petty cash deposited to bank")[:200]
+        PettyCashBankDeposit.objects.create(
+            date=txn.date, amount=txn.amount, note=note,
+            bank_transaction=txn, recorded_by=request.user)
+        txn.department = None
+        txn.excluded_from_income = True
+        txn.allocation_status = Transaction.Status.MANUAL
+        txn.claimed_by = request.user
+        txn.claimed_at = timezone.now()
+        txn.save(update_fields=[
+            "department", "excluded_from_income", "allocation_status",
+            "claimed_by", "claimed_at"])
+        messages.success(
+            request,
+            f"Recorded as petty cash deposited to the bank — the float is "
+            f"reduced by {txn.amount:,.2f}.")
         return redirect("queue")
 
 
@@ -1434,16 +1476,25 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
     is created). This is for contributions a member wrote on a physical envelope: the
     money is on the bank statement, but it must not be receipted again.
 
-    Upload a small file with just a REFERENCE and an AMOUNT per row. The reference
-    finds the bank transaction; the amount confirms it's the right record (a
-    mismatch is reported, not applied). Accepts .csv or .xlsx.
+    Two input paths feed the same confirm-then-apply flow:
+      1. Upload a .csv/.xlsx with REFERENCE (+ optional AMOUNT) per row.
+      2. Paste M-Pesa / bank refs (one per line, or comma/space separated).
+
+    The first POST builds a match plan and shows a confirmation screen; nothing
+    is marked until the treasurer confirms.
     """
     template_name = "giving/mark_processed_import.html"
+    SESSION_KEY = "mark_processed_plan"
 
     def get(self, request):
         if request.GET.get("template"):
             return self._template()
-        return render(request, self.template_name, {})
+        return render(request, self.template_name, {"stage": "upload"})
+
+    def post(self, request):
+        if request.POST.get("apply"):
+            return self._apply(request)
+        return self._parse(request)
 
     def _template(self):
         from django.http import HttpResponse
@@ -1489,98 +1540,193 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
                     rows.append((ref, amt))
         return rows
 
-    def post(self, request):
-        f = request.FILES.get("file")
-        if not f:
-            messages.error(request, "Choose a file with reference and amount columns.")
-            return redirect("mark_processed_import")
+    def _rows_from_paste(self, text):
+        """Parse pasted M-Pesa / bank refs: one per line, or comma / whitespace /
+        semicolon separated. Amounts are not expected here — use the spreadsheet
+        upload when you need amount confirmation (e.g. split offerings)."""
+        import re
+        rows = []
+        seen = set()
+        for ref in re.split(r"[\s,;]+", text or ""):
+            ref = ref.strip()
+            if not ref:
+                continue
+            key = ref.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append((ref, None))
+        return rows
+
+    def _parse_amount(self, raw_amt):
+        if raw_amt in (None, ""):
+            return None
         try:
-            rows = self._rows_from_upload(f)
+            return Decimal(str(raw_amt).replace(",", "").strip())
         except Exception:
             from core.utils import log_exception as _lx; _lx('giving/views.py')
-            messages.error(request, "Could not read that file — upload the .csv or "
-                                    ".xlsx from the template.")
-            return redirect("mark_processed_import")
-        if not rows:
-            messages.warning(request, "No rows with a reference were found.")
-            return redirect("mark_processed_import")
+            return None
 
-        marked = already = not_found = mismatched = ambiguous = 0
-        problems = []
+    def _match_display(self, txn):
+        return {
+            "id": txn.id,
+            "date": txn.date.isoformat(),
+            "date_display": txn.date.strftime("%d %b %Y"),
+            "amount": str(txn.amount),
+            "payer": (txn.payer_name or txn.raw_narration or "")[:80],
+            "reference": txn.reference or "",
+            "mpesa_ref": txn.mpesa_ref or "",
+            "manual_receipt": bool(txn.manual_receipt),
+        }
 
-        def _mark(txn):
-            """Mark one transaction as a manual (paper) receipt; return True if
-            newly changed. Cascade is off because the importer has already matched
-            the full split group by its total and marks each row explicitly."""
-            return txn.mark_manual_receipt(value=True, cascade_split=False) > 0
-
+    def _build_plan(self, rows):
+        """Match each (ref, amount) row against bank credits. Returns a list of
+        plan dicts (JSON-safe for the session) — nothing is marked here."""
+        plan = []
         for ref, raw_amt in rows:
-            # match a bank CREDIT by any of the reference-bearing fields
             qs = Transaction.objects.filter(
                 channel=Transaction.Channel.BANK,
                 direction=Transaction.Direction.CREDIT,
                 is_reversal=False, is_reversed=False).filter(
                 Q(reference__iexact=ref) | Q(core_ref__iexact=ref)
                 | Q(bank_receipt__iexact=ref) | Q(mpesa_ref__iexact=ref))
-            n = qs.count()
+            matches = list(qs)
+            n = len(matches)
+            amt = self._parse_amount(raw_amt)
+            amt_s = str(amt) if amt is not None else None
+            base = {
+                "reference": ref,
+                "amount": amt_s,
+                "txn_ids": [],
+                "matches": [self._match_display(t) for t in matches],
+            }
+
             if n == 0:
-                not_found += 1
-                if len(problems) < 12:
-                    problems.append(f"“{ref}”: no matching bank entry")
+                plan.append({**base, "status": "not_found",
+                             "detail": "no matching bank entry"})
                 continue
 
-            # parse the confirming amount, if supplied
-            amt = None
-            if raw_amt not in (None, ""):
-                try:
-                    amt = Decimal(str(raw_amt).replace(",", "").strip())
-                except Exception:
-                    from core.utils import log_exception as _lx; _lx('giving/views.py')
-                    amt = None
-
             if n == 1:
-                txn = qs.first()
+                txn = matches[0]
                 if amt is not None and txn.amount != amt:
-                    mismatched += 1
-                    if len(problems) < 12:
-                        problems.append(f"“{ref}”: amount {amt} ≠ recorded {txn.amount}")
+                    plan.append({**base, "status": "mismatched",
+                                 "detail": f"amount {amt} ≠ recorded {txn.amount}"})
                     continue
-                if _mark(txn):
-                    marked += 1
+                if txn.manual_receipt:
+                    plan.append({**base, "status": "already",
+                                 "txn_ids": [txn.id],
+                                 "detail": "already marked as manual receipt"})
                 else:
-                    already += 1
+                    plan.append({**base, "status": "ok",
+                                 "txn_ids": [txn.id],
+                                 "detail": f"{txn.amount:,.2f} on {txn.date:%d %b %Y}"})
                 continue
 
             # --- multiple matches: most often a SPLIT-FUND gift -----------------
             # A split gift (e.g. Combined Offering) is posted as several rows that
             # share the reference but divide the amount. The uploaded amount is the
             # original lump sum, so it equals the SUM of the group, not any one row.
-            rows_qs = list(qs)
-            total = sum((t.amount for t in rows_qs), Decimal(0))
+            total = sum((t.amount for t in matches), Decimal(0))
             if amt is not None and total == amt:
-                # whole split group confirmed by its total — mark every part
-                newly = sum(1 for t in rows_qs if _mark(t))
+                ids = [t.id for t in matches]
+                if all(t.manual_receipt for t in matches):
+                    plan.append({**base, "status": "already", "txn_ids": ids,
+                                 "detail": f"all {n} split parts already marked"})
+                else:
+                    plan.append({**base, "status": "ok", "txn_ids": ids,
+                                 "detail": f"{n} split parts totalling {total:,.2f}"})
+                continue
+            if amt is not None:
+                exact = [t for t in matches if t.amount == amt]
+                if len(exact) == 1:
+                    txn = exact[0]
+                    if txn.manual_receipt:
+                        plan.append({**base, "status": "already",
+                                     "txn_ids": [txn.id],
+                                     "detail": "already marked as manual receipt"})
+                    else:
+                        plan.append({**base, "status": "ok",
+                                     "txn_ids": [txn.id],
+                                     "detail": f"{txn.amount:,.2f} on {txn.date:%d %b %Y}"})
+                    continue
+            hint = (f"sum is {total}" if amt is None
+                    else f"amount {amt} ≠ any row and ≠ split total {total}")
+            plan.append({**base, "status": "ambiguous",
+                         "detail": f"matches {n} entries — {hint}"})
+        return plan
+
+    def _parse(self, request):
+        f = request.FILES.get("file")
+        refs_text = (request.POST.get("refs_text") or "").strip()
+        if f:
+            try:
+                rows = self._rows_from_upload(f)
+            except Exception:
+                from core.utils import log_exception as _lx; _lx('giving/views.py')
+                messages.error(request, "Could not read that file — upload the .csv or "
+                                        ".xlsx from the template.")
+                return redirect("mark_processed_import")
+        elif refs_text:
+            rows = self._rows_from_paste(refs_text)
+        else:
+            messages.error(request, "Upload a file, or paste M-Pesa / bank references.")
+            return redirect("mark_processed_import")
+        if not rows:
+            messages.warning(request, "No rows with a reference were found.")
+            return redirect("mark_processed_import")
+
+        plan = self._build_plan(rows)
+        request.session[self.SESSION_KEY] = plan
+        ready = sum(1 for p in plan if p["status"] == "ok")
+        problems = sum(1 for p in plan if p["status"] not in ("ok", "already"))
+        already = sum(1 for p in plan if p["status"] == "already")
+        return render(request, self.template_name, {
+            "stage": "review", "plan": plan,
+            "ready": ready, "problems": problems, "already": already,
+        })
+
+    @db_tx.atomic
+    def _apply(self, request):
+        plan = request.session.get(self.SESSION_KEY)
+        if not plan:
+            messages.error(request, "Your review session expired — please upload or paste again.")
+            return redirect("mark_processed_import")
+
+        marked = already = not_found = mismatched = ambiguous = 0
+        problems = []
+
+        for p in plan:
+            status = p.get("status")
+            ref = p.get("reference", "")
+            if status == "ok":
+                newly = 0
+                for pk in p.get("txn_ids") or []:
+                    txn = Transaction.objects.filter(pk=pk).first()
+                    if not txn:
+                        continue
+                    # Cascade off: the plan already resolved the full split group.
+                    if txn.mark_manual_receipt(value=True, cascade_split=False) > 0:
+                        newly += 1
                 if newly:
                     marked += newly
                 else:
                     already += 1
-                continue
-            # otherwise, an exact single-row amount match still disambiguates
-            if amt is not None:
-                exact = [t for t in rows_qs if t.amount == amt]
-                if len(exact) == 1:
-                    if _mark(exact[0]):
-                        marked += 1
-                    else:
-                        already += 1
-                    continue
-            # genuinely ambiguous — report with both the count and the group total
-            ambiguous += 1
-            if len(problems) < 12:
-                hint = (f"sum is {total}" if amt is None
-                        else f"amount {amt} ≠ any row and ≠ split total {total}")
-                problems.append(f"“{ref}”: matches {n} entries — {hint}")
+            elif status == "already":
+                already += 1
+            elif status == "not_found":
+                not_found += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: {p.get('detail') or 'no matching bank entry'}")
+            elif status == "mismatched":
+                mismatched += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: {p.get('detail') or 'amount mismatch'}")
+            elif status == "ambiguous":
+                ambiguous += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: {p.get('detail') or 'ambiguous'}")
 
+        request.session.pop(self.SESSION_KEY, None)
         parts = [f"{marked} marked as manual receipt"]
         if already:
             parts.append(f"{already} already marked")

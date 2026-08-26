@@ -518,6 +518,21 @@ def full_excel_export_response(year=None):
     except Exception:
         pass
 
+    # ---- Petty cash deposited to bank (float → bank) ---------------------
+    try:
+        from cashbook.models import PettyCashBankDeposit
+        _sheet("Petty Cash Bank Deposits",
+               ["ID", "Date", "Amount", "Note", "Bank txn", "Recorded by"],
+               [[d.id, d.date.isoformat(), float(d.amount),
+                 getattr(d, "note", "") or "",
+                 d.bank_transaction_id or "",
+                 d.recorded_by.username if d.recorded_by_id else ""]
+                for d in PettyCashBankDeposit.objects.select_related(
+                    "recorded_by").order_by("date")],
+               title="Petty cash deposited to bank", money_cols=(3,))
+    except Exception:
+        pass
+
     # ---- Benevolent scheme -------------------------------------------------
     # The benevolent module holds the church's welfare obligations — who is
     # covered, who their household is, what has been paid in and what has been

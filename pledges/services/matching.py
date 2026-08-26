@@ -123,28 +123,70 @@ _FUZZY_CHANNELS = (Transaction.Channel.CASH, Transaction.Channel.ENVELOPE)
 def _pledge_phone_set(pledge):
     """Normalised phones this pledge may be paid from.
 
-    Includes the member's primary and alternate numbers, plus the number
-    recorded on the pledge itself (``submitted_contact``) — visitors and
-    public-form pledges often pay from a line that is not yet on the register.
+    Includes the member's primary and alternate numbers, the number recorded
+    on the pledge itself (``submitted_contact``), and any extra phones /
+    family-member phones on ``PledgeMatchAlias``.
     """
+    return _pledge_identity(pledge)["phones"]
+
+
+def _add_member_to_identity(member, phones, member_ids, name_keys, fuzzy_names):
     from members.models import normalize_phone
-    phones = set()
-    member = getattr(pledge, "member", None)
-    if member is not None:
-        n = normalize_phone(member.phone)
+    if member is None:
+        return
+    member_ids.add(member.id)
+    nk = name_key(member.name)
+    if nk:
+        name_keys.add(nk)
+    fuzzy_names.append(member.name)
+    n = normalize_phone(member.phone)
+    if n:
+        phones.add(n)
+    for mp in member.phones.all():
+        n = normalize_phone(mp.number)
         if n:
             phones.add(n)
-        # Prefetch when the caller has it; otherwise one query per pledge.
-        for mp in member.phones.all():
-            n = normalize_phone(mp.number)
-            if n:
-                phones.add(n)
+
+
+def _pledge_identity(pledge):
+    """Phones, member ids, and names that count as this pledgor for matching.
+
+    Primary member + ``submitted_contact`` phone + ``MemberPhone`` rows, plus
+    every ``PledgeMatchAlias`` (extra M-Pesa line or family member). Member ids
+    also include anyone on the register who shares those phones (provisional
+    bank-import duplicates).
+    """
+    from members.models import normalize_phone
+    phones, member_ids, name_keys, fuzzy_names = set(), set(), set(), []
+
+    _add_member_to_identity(
+        getattr(pledge, "member", None),
+        phones, member_ids, name_keys, fuzzy_names)
+
     sc = getattr(pledge, "submitted_contact", "") or ""
     if "/" in sc:
         n = normalize_phone(sc.rsplit("/", 1)[-1].strip())
         if n:
             phones.add(n)
-    return phones
+
+    aliases = getattr(pledge, "match_aliases", None)
+    if aliases is not None:
+        for alias in aliases.all():
+            if alias.phone:
+                n = normalize_phone(alias.phone)
+                if n:
+                    phones.add(n)
+            if alias.member_id:
+                _add_member_to_identity(
+                    alias.member, phones, member_ids, name_keys, fuzzy_names)
+
+    member_ids |= _member_ids_sharing_phones(phones)
+    return {
+        "phones": phones,
+        "member_ids": member_ids,
+        "name_keys": name_keys,
+        "fuzzy_names": fuzzy_names,
+    }
 
 
 def _member_ids_sharing_phones(phones):
@@ -172,30 +214,36 @@ def _payer_phone_qs_values(phones):
     return out
 
 
-def _gift_is_from_pledgor(txn, member, phones, nk, phone_siblings, threshold):
-    """Whether one gift was given by this pledgor, and how surely.
+def _gift_is_from_pledgor(txn, identity, threshold):
+    """Whether one gift was given by this pledgor (or an allowed alias), and how
+    surely.
 
-    ``"exact"`` for a register link (including a duplicate row sharing the
-    pledgor's phone), the M-Pesa line, or the same name key; ``"fuzzy"`` for a
+    ``"exact"`` for a register link (including a duplicate row sharing a
+    recognised phone), the M-Pesa line, or the same name key; ``"fuzzy"`` for a
     hand-typed cash/envelope name that is only a near miss; ``None`` for
     somebody else's giving. Says nothing about fund or date — those are the
     caller's to apply, which is what lets the empty-preview diagnosis ask
     "was it excluded for being the wrong person, or the wrong fund?".
     """
     from members.models import normalize_phone
-    if txn.member_id is not None and txn.member_id in phone_siblings:
+    phones = identity["phones"]
+    member_ids = identity["member_ids"]
+    name_keys = identity["name_keys"]
+    fuzzy_names = identity["fuzzy_names"]
+
+    if txn.member_id is not None and txn.member_id in member_ids:
         return "exact"
     if phones and normalize_phone(txn.payer_phone) in phones:
         return "exact"
-    if nk and name_key(txn.payer_name or "") == nk:
+    if name_keys and name_key(txn.payer_name or "") in name_keys:
         return "exact"
-    if (threshold > 0
-            and txn.channel in _FUZZY_CHANNELS
-            and txn.member_id != member.id
-            and _name_ratio(member.name, txn.payer_name) >= threshold):
+    if threshold > 0 and txn.channel in _FUZZY_CHANNELS:
         # Cash/envelope near-miss: unlinked, or linked to a provisional
-        # duplicate under a mistyped name — not to the pledgor themselves.
-        return "fuzzy"
+        # duplicate under a mistyped name — not to a recognised pledgor id
+        # (those already returned "exact" above).
+        for name in fuzzy_names:
+            if _name_ratio(name, txn.payer_name) >= threshold:
+                return "fuzzy"
     return None
 
 
@@ -215,11 +263,9 @@ def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None
     ``"fuzzy"``.
     """
     from core.models import SiteConfig
-    from members.models import normalize_phone
     cfg = cfg or SiteConfig.get()
     if window_days is None:
         window_days = cfg.pledge_match_window_days or 400
-    member = pledge.member
     # From the pledge date, not a week before it. A gift given before the
     # promise was made cannot be payment of that promise — it was giving the
     # member had already done, and counting it toward the pledge credits them
@@ -235,11 +281,10 @@ def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None
     # Match by FK, phone, or name. Bank import often links a gift to a
     # provisional member created from a truncated M-Pesa name — those rows
     # must still reach this pledge when the phone (or exact name) agrees.
-    nk = name_key(member.name)
-    phones = _pledge_phone_set(pledge)
-    phone_siblings = _member_ids_sharing_phones(phones)
-    phone_siblings.add(member.id)
-    q = (Q(member_id__in=phone_siblings)
+    identity = _pledge_identity(pledge)
+    phones = identity["phones"]
+    member_ids = identity["member_ids"]
+    q = (Q(member_id__in=member_ids)
          | Q(member__isnull=True, payer_name__isnull=False)
          | Q(member__isnull=True, payer_phone__gt=""))
     if phones:
@@ -255,8 +300,7 @@ def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None
     fund_ids = campaign_fund_ids(pledge.campaign)
     out = []
     for t in qs.select_related("department", "member"):
-        match = _gift_is_from_pledgor(t, member, phones, nk, phone_siblings,
-                                      threshold)
+        match = _gift_is_from_pledgor(t, identity, threshold)
         if not match:
             continue
         if not _gift_is_for_campaign(t, fund_ids):
@@ -414,7 +458,7 @@ def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
     """
     qs = (Pledge.objects.filter(status__in=_OPEN_FOR_FILL)
           .select_related("campaign", "member", "campaign__target_department")
-          .prefetch_related("member__phones"))
+          .prefetch_related("member__phones", "match_aliases__member__phones"))
     if campaign:
         qs = qs.filter(campaign=campaign)
     applied_by_txn = applied_by_transaction()
@@ -436,7 +480,7 @@ def plan_auto_match_all(campaign=None, allow_fuzzy=True, cfg=None):
                     status__in=(Pledge.Status.ACTIVE, Pledge.Status.FULFILLED))
                   .select_related("campaign", "member",
                                   "campaign__target_department")
-                  .prefetch_related("member__phones"))
+                  .prefetch_related("member__phones", "match_aliases__member__phones"))
     if campaign:
         surplus_qs = surplus_qs.filter(campaign=campaign)
     for pledge in surplus_qs:
@@ -487,7 +531,7 @@ def diagnose_empty_plan(campaign=None, cfg=None, pledge_scan_limit=200):
     open_qs = (scoped.filter(status__in=_OPEN_FOR_FILL)
                .select_related("member", "campaign",
                                "campaign__target_department")
-               .prefetch_related("member__phones"))
+               .prefetch_related("member__phones", "match_aliases__member__phones"))
     owing = [p for p in open_qs if p.outstanding > 0]
 
     counts = {"draft_pledges": drafts, "open_pledges": len(open_qs),
@@ -531,15 +575,11 @@ def diagnose_empty_plan(campaign=None, cfg=None, pledge_scan_limit=200):
     credits = (Transaction.objects.filter(direction=Transaction.Direction.CREDIT)
                .select_related("member"))
     for pledge in owing[:pledge_scan_limit]:
-        phones = _pledge_phone_set(pledge)
-        siblings = _member_ids_sharing_phones(phones)
-        siblings.add(pledge.member_id)
-        nk = name_key(pledge.member.name)
+        identity = _pledge_identity(pledge)
         fund_ids = campaign_fund_ids(pledge.campaign)
         end = (pledge.end_date or dt.date.today()) + dt.timedelta(days=window)
         for t in credits:
-            if not _gift_is_from_pledgor(t, pledge.member, phones, nk,
-                                         siblings, threshold):
+            if not _gift_is_from_pledgor(t, identity, threshold):
                 continue
             counts["gifts_from_pledgors"] += 1
             if not t.confirmed:
@@ -627,10 +667,9 @@ def explain_pledge_gifts(pledge, cfg=None, limit=60):
         return []
     window = cfg.pledge_match_window_days or 400
     threshold = _fuzzy_threshold(cfg)
-    phones = _pledge_phone_set(pledge)
-    siblings = _member_ids_sharing_phones(phones)
-    siblings.add(member.id)
-    nk = name_key(member.name)
+    identity = _pledge_identity(pledge)
+    phones = identity["phones"]
+    siblings = identity["member_ids"]
     fund_ids = campaign_fund_ids(pledge.campaign)
     end = (pledge.end_date or dt.date.today()) + dt.timedelta(days=window)
     applied = applied_by_transaction()
@@ -649,7 +688,7 @@ def explain_pledge_gifts(pledge, cfg=None, limit=60):
     fund_name = getattr(pledge.campaign.target_department, "name", None)
     out = []
     for t in qs[:limit * 4]:
-        match = _gift_is_from_pledgor(t, member, phones, nk, siblings, threshold)
+        match = _gift_is_from_pledgor(t, identity, threshold)
         if not match:
             continue
         free = t.amount - applied.get(t.id, Decimal("0"))
@@ -812,24 +851,26 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
         statuses.append(Pledge.Status.FULFILLED)
     qs = (Pledge.objects.filter(status__in=statuses)
           .select_related("member", "campaign")
-          .prefetch_related("member__phones"))
+          .prefetch_related("member__phones", "match_aliases__member__phones"))
     out = []
     fund_cache = {}
     same_fund_only = cfg.pledge_match_same_fund_only
     window = cfg.pledge_match_window_days or 400
     threshold = _fuzzy_threshold(cfg)
     for p in qs:
-        # member match
-        if member and p.member_id == member.id:
+        identity = _pledge_identity(p)
+        # member / phone / name / fuzzy — same rules as the bulk matcher
+        if member and member.id in identity["member_ids"]:
             ok = True
-        elif txn_phone and txn_phone in _pledge_phone_set(p):
+        elif txn_phone and txn_phone in identity["phones"]:
             ok = True
-        elif nk and name_key(p.member.name) == nk:
+        elif nk and nk in identity["name_keys"]:
             ok = True
         elif (threshold > 0
               and txn.channel in _FUZZY_CHANNELS
-              and (not member or member.id != p.member_id)
-              and _name_ratio(p.member.name, txn.payer_name) >= threshold):
+              and (not member or member.id not in identity["member_ids"])
+              and any(_name_ratio(n, txn.payer_name) >= threshold
+                      for n in identity["fuzzy_names"])):
             ok = True
         else:
             ok = False

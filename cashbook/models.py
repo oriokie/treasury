@@ -541,6 +541,38 @@ class PettyCashTopUp(models.Model):
         return f"Petty cash top-up {self.amount} on {self.date}"
 
 
+class PettyCashBankDeposit(models.Model):
+    """Excess float cash deposited back into the bank (cash-location movement).
+
+    The reverse of a top-up: notes leave the tin and appear as a bank credit.
+    No fund is charged — total cash is unchanged; only the location moves
+    (tin → bank). The linked bank credit is excluded from income so it does
+    not double-count as giving.
+    """
+    date = models.DateField(db_index=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
+    note = models.CharField(max_length=200, blank=True)
+
+    bank_transaction = models.OneToOneField(
+        "giving.Transaction", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="petty_bank_deposit",
+        help_text="The bank credit that is this deposit of float cash.")
+
+    recorded_by = models.ForeignKey("auth.User", on_delete=models.PROTECT,
+                                    related_name="petty_bank_deposits")
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["-date", "-id"]
+        verbose_name = "Petty cash bank deposit"
+        verbose_name_plural = "Petty cash bank deposits"
+
+    def __str__(self):
+        return f"Petty cash deposited to bank {self.amount} on {self.date}"
+
+
 def expense_receipt_path(instance, filename):
     """Store receipts under the YEAR/MONTH the expense was INCURRED (not uploaded),
     so a year's supporting documents sit together for audit/printing."""

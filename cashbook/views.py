@@ -1089,6 +1089,14 @@ class PettyCashView(ReadAccessMixin, TemplateView):
         for t in PettyTopUp.objects.filter(date__gte=start, date__lte=end):
             movements.append({"date": t.date, "desc": "Top-up" + (f" — {t.note}" if t.note else ""),
                               "in": t.amount, "out": None, "fund": None})
+        from .models import PettyCashBankDeposit
+        for dep in PettyCashBankDeposit.objects.filter(date__gte=start, date__lte=end):
+            movements.append({
+                "date": dep.date,
+                "desc": "Deposited to bank"
+                        + (f" — {dep.note}" if dep.note else ""),
+                "in": None, "out": dep.amount, "fund": None,
+                "cat": "Bank deposit"})
         disb = (Expense.objects.filter(paid_from_petty_cash=True, date__gte=start, date__lte=end,
                 status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
                 .select_related("department"))
