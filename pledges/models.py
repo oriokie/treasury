@@ -369,6 +369,61 @@ class Pledge(models.Model):
         return out
 
 
+class PledgeMatchAlias(models.Model):
+    """An extra identity that may pay this pledge — for auto-matching only.
+
+    Covers the common cases the primary pledgor / phone miss:
+
+    * the same person pays from a second M-Pesa line
+    * a family pledge where the spouse (another register member, or another
+      phone) also pays toward the same promise
+
+    These do not change who the pledge belongs to, who gets reminders, or
+    campaign figures — they only widen who a contribution is recognised as
+    coming from.
+    """
+    pledge = models.ForeignKey(Pledge, on_delete=models.CASCADE,
+                               related_name="match_aliases")
+    member = models.ForeignKey(
+        "members.Member", null=True, blank=True,
+        on_delete=models.CASCADE, related_name="pledge_match_aliases",
+        help_text="Another register member whose gifts should count "
+                  "(e.g. spouse on a family pledge).")
+    phone = models.CharField(
+        max_length=20, blank=True,
+        help_text="An extra M-Pesa / mobile number that may pay this pledge.")
+    label = models.CharField(
+        max_length=60, blank=True,
+        help_text="Optional note, e.g. Wife, Husband, Second line.")
+    created_by = models.ForeignKey(
+        "auth.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="pledge_match_aliases_added")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Pledge match alias"
+        verbose_name_plural = "Pledge match aliases"
+
+    def __str__(self):
+        who = self.member.name if self.member_id else (self.phone or "?")
+        return f"{who} → pledge {self.pledge_id}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        from members.models import normalize_phone
+        if self.phone:
+            n = normalize_phone(self.phone)
+            if not n:
+                raise ValidationError(
+                    {"phone": "Enter a valid Kenyan mobile number "
+                              "(e.g. 07XXXXXXXX)."})
+            self.phone = n
+        if not self.member_id and not self.phone:
+            raise ValidationError(
+                "Add a member, a phone number, or both.")
+
+
 class PledgePayment(models.Model):
     """Links a real, confirmed contribution to a pledge -- the *only* way a pledge
     is fulfilled. It records that money already in the ledger should be counted

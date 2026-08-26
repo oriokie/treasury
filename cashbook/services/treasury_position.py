@@ -31,13 +31,15 @@ from django.db.models import Count, Sum
 def petty_balance_asof(on):
     """The petty-cash float balance as at a date: top-ups less petty
     disbursements, plus cash refunded back into the box, less cash currently
-    out with advance holders. Petty cash is a CASH LOCATION (a physical
-    float), not a fund — ministry funds carry the actual cost of petty-paid
-    expenses, so fund balances stay correct.
+    out with advance holders, less excess float deposited back to the bank.
+    Petty cash is a CASH LOCATION (a physical float), not a fund — ministry
+    funds carry the actual cost of petty-paid expenses, so fund balances stay
+    correct.
 
-    (Moved verbatim from cashbook.views._petty_balance_asof.)"""
+    (Moved verbatim from cashbook.views._petty_balance_asof; bank-deposit
+    outflows added later as the reverse of a top-up.)"""
     from cashbook.models import (Expense, ExpenseRefund, PettyCashTopUp,
-                                 StaffAdvance)
+                                 PettyCashBankDeposit, StaffAdvance)
     topups = (PettyCashTopUp.objects.filter(date__lte=on)
               .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     disb = (Expense.objects.filter(paid_from_petty_cash=True, date__lte=on,
@@ -46,6 +48,9 @@ def petty_balance_asof(on):
     # cash refunded back into the petty box tops the float up again
     refunds_in = (ExpenseRefund.objects.filter(to_petty_cash=True, date__lte=on)
                   .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+    # excess notes taken from the tin and deposited at the bank
+    banked = (PettyCashBankDeposit.objects.filter(date__lte=on)
+              .aggregate(t=Sum("amount"))["t"] or Decimal(0))
     # advances issued out of the petty box, still unreturned, are also "out"
     # — deliberately petty_cash_out_asof, not petty_outstanding_asof: the
     # float's own balance must not change just because an advance was later
@@ -54,7 +59,7 @@ def petty_balance_asof(on):
     for adv in StaffAdvance.objects.filter(from_petty_cash=True,
                                            date_issued__lte=on):
         adv_out += adv.petty_cash_out_asof(on)
-    return topups - disb + refunds_in - adv_out
+    return topups - disb + refunds_in - banked - adv_out
 
 
 # ===========================================================================

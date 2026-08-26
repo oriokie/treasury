@@ -88,6 +88,9 @@
       <button class="btn btn-sm q-submit" disabled>Allocate</button>
       <button type="button" class="btn btn-sm btn-ghost q-split-toggle">⑂ Split</button>
       {% if can.manage_loans and t.direction == 'CREDIT' %}<a class="btn btn-sm btn-ghost" href="{% url 'loan_from_transaction' t.id %}" title="This money is a loan, not a contribution — record it as a loan receipt (a liability), keeping the row on the bank ledger">🤝 Loan receipt</a>{% endif %}
+      <button type="submit" name="kind" value="petty_to_bank" class="btn btn-sm btn-ghost"
+              title="This bank credit is excess petty-cash float deposited back into the bank — reduces the float, not income"
+              onclick="return confirm('Record this as excess petty cash deposited to the bank? The float will be reduced by {{ CURRENCY }} {{ t.amount|floatformat:2 }}.');">↓ Petty → bank</button>
     </div>
 
     <div class="q-split-panel" hidden>

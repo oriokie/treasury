@@ -1,7 +1,8 @@
-{% extends 'base.html' %}{% load humanize treasury_extras rights_tags %}
+{% extends 'base.html' %}{% load static humanize treasury_extras rights_tags %}
 {% block title %}Pledge · {{ pledge.member.name }}{% endblock %}
 
 {% block scripts %}
+<script src="{% static 'js/member-search.js' %}"></script>
 <script>
 // Show the exact words before sending. An SMS cannot be recalled, so the
 // confirm carries the message itself rather than asking "are you sure?" about
@@ -31,6 +32,15 @@
         });
     });
   });
+
+  if (window.MemberSearch && document.getElementById("id_alias_member")) {
+    MemberSearch.enhance({
+      selectId: "id_alias_member", searchUrl: "{% url 'member_search' %}",
+      placeholder: "Search family member…",
+      renderLabel: function(r){ return r.name; },
+      renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+    });
+  }
 })();
 </script>
 {% endblock %}
@@ -49,6 +59,44 @@
   <div class="ws-metric is-warn"><span class="wm-l">Outstanding</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ pledge.outstanding|money:0 }}</span></div>
   <div class="ws-metric"><span class="wm-l">Status</span><span class="wm-v" style="font-size:1rem"><span class="pill {% if pledge.status == 'FULFILLED' %}pill-green{% elif pledge.status == 'ACTIVE' %}pill-blue{% elif pledge.status == 'LAPSED' %}pill-red{% elif pledge.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ pledge.get_status_display }}</span></span></div>
 </div>
+
+{% if can_enter_data or match_aliases %}
+<div class="card u-mb"><div class="hd">Also match payments from</div><div class="bd">
+  <p class="help u-mt-0">When this person pays from another M-Pesa line, or a spouse / family member pays toward the same pledge, add them here so auto-match recognises those gifts.</p>
+  {% if match_aliases %}
+  <table class="ledger compact u-mb"><thead><tr><th>Who / number</th><th>Note</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead><tbody>
+  {% for a in match_aliases %}
+    <tr>
+      <td>{% if a.member %}<strong>{{ a.member.name }}</strong>{% endif %}{% if a.member and a.phone %} · {% endif %}{% if a.phone %}<span class="mono">{{ a.phone|phone_for:user }}</span>{% endif %}</td>
+      <td class="muted">{{ a.label|default:"—" }}</td>
+      {% if can_enter_data %}<td><form method="post" action="{% url 'pledge_match_alias_delete' pledge.id a.id %}" class="u-inline" onsubmit="return confirm('Stop matching gifts from this person/number to this pledge?');">{% csrf_token %}<button class="link link-danger">remove</button></form></td>{% endif %}
+    </tr>
+  {% endfor %}
+  </tbody></table>
+  {% else %}
+  <p class="help">No extras yet — only {{ pledge.member.name }}{% if pledge.pledged_phone %} (<span class="mono">{{ pledge.pledged_phone|phone_for:user }}</span>){% endif %} is matched.</p>
+  {% endif %}
+  {% if can_enter_data %}
+  <form method="post" action="{% url 'pledge_match_alias_add' pledge.id %}" class="u-mt-sm" style="display:flex;gap:.5rem;align-items:flex-end;flex-wrap:wrap">{% csrf_token %}
+    <div class="f grow" style="min-width:200px">
+      <label>Member (optional)</label>
+      <select name="member" id="id_alias_member" class="field">
+        <option value="">— none —</option>
+      </select>
+    </div>
+    <div class="f">
+      <label>Phone (optional)</label>
+      <input type="text" name="phone" class="field" placeholder="07XXXXXXXX" style="width:150px">
+    </div>
+    <div class="f">
+      <label>Note</label>
+      <input type="text" name="label" class="field" placeholder="e.g. Wife" maxlength="60" style="width:120px">
+    </div>
+    <button class="btn btn-sm">Add</button>
+  </form>
+  {% endif %}
+</div></div>
+{% endif %}
 
 {% if pledge.status == 'DRAFT' and is_treasurer %}
 <div class="alert alert-warn u-mb"><strong>Awaiting approval.</strong> This pledge was recorded by an assistant.

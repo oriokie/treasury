@@ -12,7 +12,8 @@ from django.views.generic import ListView, TemplateView
 
 from core.permissions import (ReadAccessMixin, DataEntryRequiredMixin,
                               TreasurerRequiredMixin)
-from .models import PledgeCampaign, Pledge, PledgePayment, PledgeReminderLog
+from .models import (PledgeCampaign, Pledge, PledgePayment, PledgeReminderLog,
+                     PledgeMatchAlias)
 from .forms import CampaignForm, PledgeForm
 from .services import matching as match_svc
 from .services import reminders as rem_svc
@@ -165,9 +166,12 @@ class PledgeDetailView(ReadAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        p = get_object_or_404(Pledge.objects.select_related("member", "campaign"),
-                              pk=kwargs["pk"])
+        p = get_object_or_404(
+            Pledge.objects.select_related("member", "campaign")
+            .prefetch_related("match_aliases__member"),
+            pk=kwargs["pk"])
         ctx["pledge"] = p
+        ctx["match_aliases"] = list(p.match_aliases.select_related("member"))
         ctx["payments"] = p.payments.select_related("transaction").all()
         from core.roles import is_treasurer, can_enter_data
         ctx["is_treasurer"] = is_treasurer(self.request.user)
@@ -1471,6 +1475,82 @@ class PledgeImportView(TreasurerRequiredMixin, View):
     @staticmethod
     def _norm(s):
         return " ".join((s or "").upper().split())
+
+
+class PledgeMatchAliasAddView(DataEntryRequiredMixin, View):
+    """Add an extra phone or family member that may pay this pledge."""
+
+    def post(self, request, pk):
+        from django.core.exceptions import ValidationError
+        from members.models import Member, normalize_phone
+        p = get_object_or_404(Pledge, pk=pk)
+        raw_phone = (request.POST.get("phone") or "").strip()
+        label = (request.POST.get("label") or "").strip()[:60]
+        member_id = (request.POST.get("member") or "").strip()
+        member = None
+        if member_id:
+            member = Member.objects.filter(pk=member_id).first()
+            if not member:
+                messages.error(request, "That member was not found.")
+                return redirect("pledge_detail", pk=pk)
+            if member.id == p.member_id:
+                messages.error(request,
+                    "That is already the pledgor — add a different member, "
+                    "or an extra phone number.")
+                return redirect("pledge_detail", pk=pk)
+
+        phone = ""
+        if raw_phone:
+            phone = normalize_phone(raw_phone) or ""
+            if not phone:
+                messages.error(request,
+                    "Enter a valid Kenyan mobile number (e.g. 07XXXXXXXX).")
+                return redirect("pledge_detail", pk=pk)
+
+        if not member and not phone:
+            messages.error(request, "Add a member, a phone number, or both.")
+            return redirect("pledge_detail", pk=pk)
+
+        if member and p.match_aliases.filter(member=member).exists():
+            messages.warning(request, f"{member.name} is already on this pledge.")
+            return redirect("pledge_detail", pk=pk)
+        if phone and p.match_aliases.filter(phone=phone).exists():
+            messages.warning(request, "That phone is already on this pledge.")
+            return redirect("pledge_detail", pk=pk)
+        if phone and phone == (p.pledged_phone or ""):
+            messages.warning(request,
+                "That is already this pledge's primary number.")
+            return redirect("pledge_detail", pk=pk)
+
+        alias = PledgeMatchAlias(
+            pledge=p, member=member, phone=phone, label=label,
+            created_by=request.user)
+        try:
+            alias.full_clean()
+            alias.save()
+        except ValidationError as e:
+            messages.error(request, "; ".join(
+                err for errs in e.message_dict.values() for err in errs)
+                if hasattr(e, "message_dict") else str(e))
+            return redirect("pledge_detail", pk=pk)
+
+        bits = []
+        if member:
+            bits.append(member.name)
+        if phone:
+            bits.append(phone)
+        messages.success(request,
+            "Added for auto-matching: " + " · ".join(bits) + ".")
+        return redirect("pledge_detail", pk=pk)
+
+
+class PledgeMatchAliasDeleteView(DataEntryRequiredMixin, View):
+    def post(self, request, pk, alias_id):
+        p = get_object_or_404(Pledge, pk=pk)
+        alias = get_object_or_404(PledgeMatchAlias, pk=alias_id, pledge=p)
+        alias.delete()
+        messages.success(request, "Removed from auto-matching.")
+        return redirect("pledge_detail", pk=pk)
 
 
 class PledgeDeleteView(TreasurerRequiredMixin, View):

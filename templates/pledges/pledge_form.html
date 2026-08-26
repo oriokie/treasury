@@ -68,6 +68,7 @@ this number; the form should not be the one place that hides it.{% endcomment %}
 </div></form>
 
 <p class="help u-narrow-md" style="margin-top:1rem">An assistant's pledge is saved as a draft for a treasurer to approve. A treasurer's pledge is active immediately. Either way, no money moves until contributions are matched.</p>
+{% if obj %}<p class="help u-narrow-md">Paying from another number, or a spouse paying toward this pledge? Add them under <strong>Also match payments from</strong> on the <a class="link" href="{% url 'pledge_detail' obj.id %}">pledge page</a>.</p>{% endif %}
 
 <style>
 .form-row .field,.form-row select,.form-row input,.form-row textarea{width:100%}

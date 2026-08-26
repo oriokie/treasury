@@ -79,6 +79,12 @@ class OtherMoneyMovementAmountValidationTests(TestCase):
             PettyCashTopUp(date=dt.date(2026, 6, 1), amount=Decimal("-1000"),
                 recorded_by=self.tr).full_clean()
 
+    def test_petty_bank_deposit_rejects_negative(self):
+        from cashbook.models import PettyCashBankDeposit
+        with self.assertRaises(ValidationError):
+            PettyCashBankDeposit(date=dt.date(2026, 6, 1), amount=Decimal("-1000"),
+                recorded_by=self.tr).full_clean()
+
     def test_payable_rejects_negative(self):
         with self.assertRaises(ValidationError):
             Payable(description="supplier", amount=Decimal("-100"),

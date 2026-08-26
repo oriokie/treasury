@@ -582,7 +582,8 @@ class TransactionExportDetailTests(TestCase):
 class MarkProcessedImportTests(TestCase):
     """Bulk 'mark processed (via envelope)': matches a bank credit by reference,
     confirms with the amount, sets manual_receipt, and reports problems
-    without applying bad rows. These entries are handled — not receipted."""
+    without applying bad rows. These entries are handled — not receipted.
+    First POST builds a review plan; second POST with apply=1 commits."""
 
     def setUp(self):
         import datetime as dt
@@ -601,16 +602,59 @@ class MarkProcessedImportTests(TestCase):
         self.t1 = mk("REFAAA111", "1500")
         self.t2 = mk("REFBBB222", "2000")
 
-    def _post(self, csv_text):
+    def _url(self):
         from django.urls import reverse
+        return reverse("mark_processed_import")
+
+    def _post(self, csv_text):
+        """Upload → confirm (two-step). Returns the apply response."""
         from django.core.files.uploadedfile import SimpleUploadedFile
-        return self.client.post(reverse("mark_processed_import"),
+        r = self.client.post(self._url(),
             {"file": SimpleUploadedFile("p.csv", csv_text.encode())})
+        self.assertEqual(r.status_code, 200)  # review stage, not yet committed
+        self.t1.refresh_from_db()
+        # first POST must not mark anything
+        return self.client.post(self._url(), {"apply": "1"})
 
     def test_match_marks_processed(self):
         self._post("reference,amount\nREFAAA111,1500\n")
         self.t1.refresh_from_db()
         self.assertTrue(self.t1.manual_receipt)
+
+    def test_review_does_not_mark_until_confirm(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = self.client.post(self._url(),
+            {"file": SimpleUploadedFile("p.csv",
+                b"reference,amount\nREFAAA111,1500\n")})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Ready to mark")
+        self.t1.refresh_from_db()
+        self.assertFalse(self.t1.manual_receipt)
+
+    def test_paste_refs_marks_processed(self):
+        r = self.client.post(self._url(), {"refs_text": "REFAAA111\nREFBBB222"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Ready to mark")
+        self.t1.refresh_from_db(); self.t2.refresh_from_db()
+        self.assertFalse(self.t1.manual_receipt)
+        self.assertFalse(self.t2.manual_receipt)
+        self.client.post(self._url(), {"apply": "1"})
+        self.t1.refresh_from_db(); self.t2.refresh_from_db()
+        self.assertTrue(self.t1.manual_receipt)
+        self.assertTrue(self.t2.manual_receipt)
+
+    def test_paste_mpesa_ref_field(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        t = Transaction.objects.create(
+            date=dt.date(2026, 6, 2), channel="BANK", direction="CREDIT",
+            amount=Decimal("900"), department=self.d, mpesa_ref="MPESA99XX",
+            allocation_status="AUTO", confirmed=True)
+        self.client.post(self._url(), {"refs_text": "MPESA99XX"})
+        self.client.post(self._url(), {"apply": "1"})
+        t.refresh_from_db()
+        self.assertTrue(t.manual_receipt)
 
     def test_amount_mismatch_is_rejected(self):
         self._post("reference,amount\nREFBBB222,9999\n")
@@ -640,19 +684,21 @@ class MarkProcessedImportTests(TestCase):
     def test_xlsx_upload_path(self):
         import io
         import openpyxl
-        from django.urls import reverse
         from django.core.files.uploadedfile import SimpleUploadedFile
         wb = openpyxl.Workbook(); ws = wb.active
         ws.append(["reference", "amount"]); ws.append(["REFAAA111", 1500])
         buf = io.BytesIO(); wb.save(buf)
-        self.client.post(reverse("mark_processed_import"),
+        r = self.client.post(self._url(),
             {"file": SimpleUploadedFile("p.xlsx", buf.getvalue())})
+        self.assertEqual(r.status_code, 200)
+        self.t1.refresh_from_db()
+        self.assertFalse(self.t1.manual_receipt)
+        self.client.post(self._url(), {"apply": "1"})
         self.t1.refresh_from_db()
         self.assertTrue(self.t1.manual_receipt)
 
     def test_template_download(self):
-        from django.urls import reverse
-        r = self.client.get(reverse("mark_processed_import") + "?template=1")
+        r = self.client.get(self._url() + "?template=1")
         self.assertEqual(r.status_code, 200)
         self.assertIn("text/csv", r["Content-Type"])
         self.assertIn(b"reference", r.content)
@@ -686,8 +732,11 @@ class MarkProcessedSplitFundTests(TestCase):
     def _post(self, csv_text):
         from django.urls import reverse
         from django.core.files.uploadedfile import SimpleUploadedFile
-        return self.client.post(reverse("mark_processed_import"),
+        url = reverse("mark_processed_import")
+        r = self.client.post(url,
             {"file": SimpleUploadedFile("p.csv", csv_text.encode())})
+        self.assertEqual(r.status_code, 200)  # review — not yet marked
+        return self.client.post(url, {"apply": "1"})
 
     def test_total_marks_all_split_parts(self):
         self._post("reference,amount\nSPLITREF,2000\n")     # the lump sum
@@ -935,8 +984,12 @@ class MarkProcessedClearsQueueTests(TestCase):
             direction="CREDIT", amount=Decimal("750"), reference="BR1",
             core_ref="BC1", allocation_status="REVIEW", confirmed=True)
         self.assertIn(t.id, self._review_queue_ids())
-        self.client.post(reverse("mark_processed_import"),
+        url = reverse("mark_processed_import")
+        self.client.post(url,
             {"file": SimpleUploadedFile("p.csv", b"reference,amount\nBR1,750\n")})
+        t.refresh_from_db()
+        self.assertIn(t.id, self._review_queue_ids())  # not marked until confirm
+        self.client.post(url, {"apply": "1"})
         t.refresh_from_db()
         self.assertNotIn(t.id, self._review_queue_ids())
 
