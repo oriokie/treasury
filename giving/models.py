@@ -743,9 +743,16 @@ class CampaignMember(models.Model):
     name_key = models.CharField(max_length=120, db_index=True, editable=False)
     phone = models.CharField(max_length=12, blank=True, db_index=True)
     group = models.CharField(max_length=40, blank=True)
+    # Personal rallying code: when present in a bank/M-Pesa reference, the gift
+    # is attributed to this member and their group — even if someone else paid.
+    match_code = models.CharField(
+        max_length=16, unique=True, null=True, blank=True, db_index=True,
+        help_text="Code supporters put in the bank reference to credit this "
+                  "member and their group.")
 
     def save(self, *args, **kwargs):
         from members.models import name_key as _nk, normalize_phone
+        from core.codes import generate_match_code
         self.name = (self.name or "").strip()[:120]
         self.name_key = _nk(self.name)
         # store a normalised 12-digit phone or nothing — never an over-long or
@@ -753,6 +760,15 @@ class CampaignMember(models.Model):
         # by phone needs the canonical form anyway, and name matching still works.
         self.phone = (normalize_phone(self.phone) or "")[:12]
         self.group = (self.group or "").strip()[:40]
+        if not self.match_code:
+            self.match_code = generate_match_code("CM")
+            for _ in range(20):
+                if not CampaignMember.objects.filter(match_code=self.match_code).exists():
+                    break
+                self.match_code = generate_match_code("CM")
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = list(set(update_fields) | {"match_code"})
         super().save(*args, **kwargs)
 
     class Meta:

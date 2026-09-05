@@ -46,10 +46,16 @@ MUTED = "677770"
 HAIR = "E6E0D2"
 RULE = "D3CBB6"
 TINT = "F0F6F2"
+NEG = "A23B32"
 
 BODY_FONT = "Calibri"
 DISPLAY_FONT = "Georgia"
 MONO_FONT = "Consolas"
+
+# Empty numeric cells on screen print as a middot so a blank column on the
+# trial balance (or a quiet fund) still reads as a deliberate absence, not a
+# missing figure. Same glyph in Word.
+BLANK_MARK = "·"
 
 
 def _t(text):
@@ -137,89 +143,130 @@ class WordDoc:
     # ------------------------------------------------------------- masthead
     def masthead(self, *, org, meta="", basis="", header_text=""):
         if header_text:
-            self.text(header_text, size=16, color=MUTED, space_after=60)
+            self.text(header_text, size=15, color=MUTED, space_after=40)
         if org:
-            self.text(org, size=15, bold=True, caps=True, color=MUTED,
-                      spacing=30, space_after=40)
-        self.text(self.title, size=44, font=DISPLAY_FONT, color=INK,
-                  space_after=40, keep_next=True)
+            self.text(org, size=14, bold=True, caps=True, color=MUTED,
+                      spacing=40, space_after=20)
+        self.text(self.title, size=42, font=DISPLAY_FONT, color=INK,
+                  space_after=20, keep_next=True)
         if self.period:
-            self.text(f"For the period {self.period}", size=21,
-                      color=INK_SOFT, space_after=40)
+            self.text(f"For the period {self.period}", size=20,
+                      color=INK_SOFT, space_after=20)
         if meta:
-            self.text(meta, size=15, color=MUTED, space_after=80)
+            self.text(meta, size=14, color=MUTED, space_after=60)
         if basis:
             # the as-reported banner: printed, bordered, unmissable — two packs
             # for one date with different figures must read as two questions
-            self.text(basis, size=16, color=INK_SOFT, space_after=80,
+            self.text(basis, size=15, color=INK_SOFT, space_after=60,
                       shading="F5EAD2",
                       borders=[_border("left", sz=16, color=self.brass)],
                       indent=113)
         self.para("", borders=[_border("bottom", sz=12, color=self.primary)],
-                  space_after=200)
+                  space_after=140)
 
-    def group_heading(self, number, name):
+    def group_heading(self, number, name, *, first=False):
+        """A numbered major section (Overview, Statements, …). ``first`` drops
+        the top gap so the opening group sits flush under the masthead rule."""
         self.para(
-            run(f"{number}  ", size=24, font=DISPLAY_FONT, color=self.brass,
+            run(f"{number}  ", size=22, font=DISPLAY_FONT, color=self.brass,
                 bold=True)
-            + run(name, size=26, font=DISPLAY_FONT, color=INK, bold=True),
-            keep_next=True, space_before=260, space_after=120,
+            + run(name, size=24, font=DISPLAY_FONT, color=INK, bold=True),
+            keep_next=True,
+            space_before=0 if first else 200,
+            space_after=80,
             borders=[_border("bottom", sz=6, color=RULE)])
 
     def section_title(self, text):
-        self.text(text, size=17, bold=True, caps=True, color=INK_SOFT,
-                  spacing=16, keep_next=True, space_before=140, space_after=60)
+        self.text(text, size=16, bold=True, caps=True, color=INK_SOFT,
+                  spacing=20, keep_next=True, space_before=100, space_after=40)
 
     def prose(self, text, *, small=False):
-        for chunk in str(text).split("\n\n"):
-            if chunk.strip():
-                self.text(chunk.strip(), size=16 if small else 19,
-                          color=INK_SOFT, space_after=100)
+        chunks = [c.strip() for c in str(text).split("\n\n") if c.strip()]
+        for i, chunk in enumerate(chunks):
+            self.text(chunk, size=15 if small else 18,
+                      color=INK_SOFT, space_after=60 if i < len(chunks) - 1 else 80)
 
     def caption(self, text):
         """The method note under a table — how the figures were arrived at."""
-        self.text(text, size=15, italic=True, color=MUTED,
-                  space_before=40, space_after=60)
+        self.text(text, size=14, italic=True, color=MUTED,
+                  space_before=20, space_after=40)
 
-    def explanation(self, text):
+    def explanation(self, text, *, labelled=True):
         """The treasurer's (or generated) commentary, set off by a rule as on
-        screen and on paper."""
+        screen and on paper. A small 'What this shows' label mirrors the printed
+        pack so a board member knows the prose is commentary, not a figure."""
+        first = True
         for chunk in str(text).split("\n\n"):
-            if chunk.strip():
-                self.text(chunk.strip(), size=17, color=INK_SOFT,
-                          borders=[_border("left", sz=8, color=RULE)],
-                          indent=170, space_after=80)
+            if not chunk.strip():
+                continue
+            if first and labelled:
+                self.para(
+                    run("What this shows", size=12, bold=True, caps=True,
+                        color=MUTED, spacing=24),
+                    borders=[_border("left", sz=8, color=RULE)],
+                    indent=170, space_before=40, space_after=20, keep_next=True)
+                first = False
+            self.text(chunk.strip(), size=16, color=INK_SOFT,
+                      borders=[_border("left", sz=8, color=RULE)],
+                      indent=170, space_after=60)
+
+    def doc_footer(self, left="", right=""):
+        """Closing strip under the last section — church · report on the left,
+        a short provenance line on the right, as on the printed pack."""
+        if not left and not right:
+            return
+        self.para("", borders=[_border("top", sz=4, color=HAIR)],
+                  space_before=160, space_after=40)
+        if left:
+            self.text(left, size=13, color=MUTED, space_after=20)
+        if right:
+            self.text(right, size=13, color=MUTED, space_after=40)
 
     # ----------------------------------------------------------------- KPIs
     def kpi_band(self, cards, currency=""):
-        """The headline figures as a borderless row of cells, hairline-ruled
-        top and bottom like the screen's band. ``cards`` is [(label, value)]."""
+        """Headline figures as a hairline-ruled band. ``cards`` is a sequence of
+        ``(label, value)`` or ``(label, value, sub)`` — the optional sub-line is
+        what the screen shows under each figure."""
         if not cards:
             return
-        w = CONTENT_W // len(cards)
+        normalised = []
+        for card in cards:
+            if len(card) == 2:
+                normalised.append((card[0], card[1], ""))
+            else:
+                normalised.append((card[0], card[1], card[2] if len(card) > 2 else ""))
+        w = CONTENT_W // len(normalised)
         tcs = []
-        for label, value in cards:
+        for i, (label, value, sub) in enumerate(normalised):
+            borders = (_border("top", sz=4, color=HAIR)
+                       + _border("bottom", sz=4, color=HAIR))
+            if i > 0:
+                borders += _border("left", sz=4, color=HAIR)
+            after_value = 20 if sub else 50
             cell_ps = (
-                f"<w:p><w:pPr><w:spacing w:before=\"60\" w:after=\"20\"/></w:pPr>"
-                f"{run(label, size=13, bold=True, caps=True, color=MUTED, spacing=16)}</w:p>"
-                f"<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"60\"/></w:pPr>"
-                f"{run((currency + ' ') if currency else '', size=15, color=MUTED)}"
-                f"{run(value, size=28, bold=True, font=DISPLAY_FONT, color=INK)}</w:p>")
+                f'<w:p><w:pPr><w:spacing w:before="40" w:after="10"/></w:pPr>'
+                f"{run(label, size=12, bold=True, caps=True, color=MUTED, spacing=20)}</w:p>"
+                f'<w:p><w:pPr><w:spacing w:before="0" w:after="{after_value}"/></w:pPr>'
+                f"{run((currency + ' ') if currency else '', size=14, color=MUTED)}"
+                f"{run(value, size=26, bold=True, font=DISPLAY_FONT, color=INK)}</w:p>")
+            if sub:
+                cell_ps += (
+                    f'<w:p><w:pPr><w:spacing w:before="0" w:after="40"/></w:pPr>'
+                    f"{run(sub, size=13, color=MUTED)}</w:p>")
             tcs.append(
                 f'<w:tc><w:tcPr><w:tcW w:w="{w}" w:type="dxa"/>'
-                f"<w:tcBorders>{_border('top', sz=4, color=HAIR)}"
-                f"{_border('bottom', sz=4, color=HAIR)}</w:tcBorders>"
+                f"<w:tcBorders>{borders}</w:tcBorders>"
                 f"</w:tcPr>{cell_ps}</w:tc>")
         self._body.append(
             f'<w:tbl><w:tblPr><w:tblW w:w="{CONTENT_W}" w:type="dxa"/>'
             '<w:tblLayout w:type="fixed"/></w:tblPr>'
-            "<w:tblGrid>" + "".join(f'<w:gridCol w:w="{w}"/>' for _ in cards)
+            "<w:tblGrid>" + "".join(f'<w:gridCol w:w="{w}"/>' for _ in normalised)
             + f"</w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>{''.join(tcs)}</w:tr></w:tbl>")
-        self.para("", space_after=60)
+        self.para("", space_after=40)
 
     # --------------------------------------------------------------- tables
     def _cell(self, xml_runs, width, *, align=None, borders="", shading=None,
-              space=(30, 30)):
+              space=(20, 20)):
         shd = (f'<w:shd w:val="clear" w:color="auto" w:fill="{shading}"/>'
                if shading else "")
         jc = f'<w:jc w:val="{align}"/>' if align else ""
@@ -239,22 +286,32 @@ class WordDoc:
         label = max((CONTENT_W - money * n_num) // n_lbl, 1400)
         return [money if c["numeric"] else label for c in columns]
 
+    @staticmethod
+    def _display_cell(value, *, numeric, blank_mark=True):
+        """Format a cell for print: empty numeric cells become a middot so a
+        blank trial-balance column still reads as intentional."""
+        text = "" if value is None else str(value)
+        if numeric and not text.strip() and blank_mark:
+            return BLANK_MARK, True  # (text, is_blank_mark)
+        return text, False
+
     def table(self, columns, rows, total=None):
         """A report table.
 
         ``columns``: [{label, numeric}]; ``rows``: [{cells: [str], level,
-        emphasis, numeric_blank}] where level is '', 'heading', 'subtotal' or
-        'grand'. The first row repeats as a header on every printed page and no
-        row splits across one — the two things that make a forty-row fund
-        statement readable on paper, and the two things the old HTML export
-        could not promise.
+        emphasis}] where level is '', 'heading', 'subtotal' or 'grand'. The
+        first row repeats as a header on every printed page and no row splits
+        across one — the two things that make a forty-row fund statement
+        readable on paper, and the two things the old HTML export could not
+        promise. Empty numeric cells render as a middot, matching the screen.
         """
         widths = self._grid(columns)
         head = "".join(
-            self._cell(run(c["label"], size=13, bold=True, caps=True,
-                           color=MUTED, spacing=12),
+            self._cell(run(c["label"], size=12, bold=True, caps=True,
+                           color=MUTED, spacing=16),
                        widths[i], align="right" if c["numeric"] else None,
-                       borders=_border("bottom", sz=8, color=INK))
+                       borders=_border("bottom", sz=8, color=INK),
+                       space=(20, 30))
             for i, c in enumerate(columns))
         body_rows = []
         for r in rows:
@@ -263,15 +320,15 @@ class WordDoc:
             shading = TINT if level == "grand" else None
             cells = []
             for i, c in enumerate(columns):
-                v = r["cells"][i]
+                v = r["cells"][i] if i < len(r["cells"]) else ""
                 is_num = c["numeric"]
                 if level == "heading":
                     cells.append(self._cell(
-                        run(v if not is_num else "", size=13, bold=True,
-                            caps=True, color=INK_SOFT, spacing=12),
+                        run(v if not is_num else "", size=12, bold=True,
+                            caps=True, color=INK_SOFT, spacing=16),
                         widths[i], borders=_border("bottom", sz=0,
                                                    style="nil"),
-                        space=(90, 20)))
+                        space=(70, 12)))
                     continue
                 borders = _border("bottom", sz=2, color=HAIR)
                 if level == "subtotal":
@@ -281,13 +338,18 @@ class WordDoc:
                     borders = (_border("top", sz=8, color=self.primary)
                                + _border("bottom", sz=8, color=self.primary,
                                          style="double"))
-                neg = is_num and str(v).strip().startswith(("-", "("))
-                cells.append(self._cell(
-                    run(v, size=16 if is_num else 17,
+                text, is_blank = self._display_cell(v, numeric=is_num)
+                neg = is_num and not is_blank and text.strip().startswith(("-", "("))
+                if is_blank:
+                    cell_run = run(text, size=15, color=RULE)
+                else:
+                    cell_run = run(
+                        text, size=15 if is_num else 16,
                         font=MONO_FONT if is_num else None,
                         bold=emphasis,
-                        color="A23B32" if neg else (INK if emphasis else INK_SOFT)),
-                    widths[i], align="right" if is_num else None,
+                        color=NEG if neg else (INK if emphasis else INK_SOFT))
+                cells.append(self._cell(
+                    cell_run, widths[i], align="right" if is_num else None,
                     borders=borders, shading=shading))
             body_rows.append("<w:tr><w:trPr><w:cantSplit/></w:trPr>"
                              + "".join(cells) + "</w:tr>")
@@ -295,15 +357,17 @@ class WordDoc:
         if total:
             cells = []
             for i, c in enumerate(columns):
-                v = total[i]
+                v = total[i] if i < len(total) else ""
+                text, _ = self._display_cell(
+                    v, numeric=c["numeric"], blank_mark=False)
                 cells.append(self._cell(
-                    run(v, size=16 if c["numeric"] else 17, bold=True,
+                    run(text, size=15 if c["numeric"] else 16, bold=True,
                         font=MONO_FONT if c["numeric"] else None, color=INK),
                     widths[i], align="right" if c["numeric"] else None,
                     borders=_border("top", sz=8, color=self.primary)
                     + _border("bottom", sz=8, color=self.primary,
                               style="double"),
-                    shading=TINT, space=(50, 50)))
+                    shading=TINT, space=(40, 40)))
             foot = ("<w:tr><w:trPr><w:cantSplit/></w:trPr>"
                     + "".join(cells) + "</w:tr>")
         self._body.append(
@@ -313,14 +377,13 @@ class WordDoc:
             + "</w:tblGrid>"
             + f'<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>{head}</w:tr>'
             + "".join(body_rows) + foot + "</w:tbl>")
-        self.para("", space_after=60)
+        self.para("", space_after=40)
 
     def keyvalue(self, pairs):
         """A label/figure statement. Rendered as a table capped at roughly the
         screen's narrow width, for the same reason the screen caps it: a label
         a hand-span from its figure is a row the eye loses."""
         width = min(CONTENT_W, 6200)
-        cols = [{"label": "", "numeric": False}, {"label": "", "numeric": True}]
         widths = [width - 1800, 1800]
         body_rows = []
         for label, value, level in pairs:
@@ -328,10 +391,10 @@ class WordDoc:
             if level == "heading":
                 body_rows.append(
                     "<w:tr><w:trPr><w:cantSplit/></w:trPr>"
-                    + self._cell(run(label, size=13, bold=True, caps=True,
-                                     color=INK_SOFT, spacing=12), widths[0],
+                    + self._cell(run(label, size=12, bold=True, caps=True,
+                                     color=INK_SOFT, spacing=16), widths[0],
                                  borders=_border("bottom", sz=0, style="nil"),
-                                 space=(90, 20))
+                                 space=(70, 12))
                     + self._cell("", widths[1],
                                  borders=_border("bottom", sz=0, style="nil"))
                     + "</w:tr>")
@@ -346,16 +409,18 @@ class WordDoc:
                            + _border("bottom", sz=8, color=self.primary,
                                      style="double"))
                 shading = TINT
-            neg = str(value).strip().startswith(("-", "("))
+            text, is_blank = self._display_cell(value, numeric=True)
+            neg = not is_blank and text.strip().startswith(("-", "("))
+            value_run = (run(text, size=14, color=RULE) if is_blank else
+                         run(text, size=15, bold=emphasis, font=MONO_FONT,
+                             color=NEG if neg else INK))
             body_rows.append(
                 "<w:tr><w:trPr><w:cantSplit/></w:trPr>"
-                + self._cell(run(label, size=17, bold=emphasis,
+                + self._cell(run(label, size=16, bold=emphasis,
                                  color=INK if emphasis else INK_SOFT),
                              widths[0], borders=borders, shading=shading)
-                + self._cell(run(value, size=16, bold=emphasis, font=MONO_FONT,
-                                 color="A23B32" if neg else INK),
-                             widths[1], align="right", borders=borders,
-                             shading=shading)
+                + self._cell(value_run, widths[1], align="right",
+                             borders=borders, shading=shading)
                 + "</w:tr>")
         self._body.append(
             f'<w:tbl><w:tblPr><w:tblW w:w="{width}" w:type="dxa"/>'
@@ -363,31 +428,33 @@ class WordDoc:
             "<w:tblGrid>"
             + "".join(f'<w:gridCol w:w="{w}"/>' for w in widths)
             + "</w:tblGrid>" + "".join(body_rows) + "</w:tbl>")
-        self.para("", space_after=60)
+        self.para("", space_after=40)
 
     def signatures(self, roles):
         """Adoption lines: a rule to sign on, the role, and a prompt — one cell
-        per signatory, side by side as on the printed pack."""
+        per signatory, side by side as on the printed pack. No section title —
+        the Adoption group heading is enough, matching the screen."""
         if not roles:
             return
         w = CONTENT_W // len(roles)
         tcs = []
         for role in roles:
             cell = (
-                f"<w:p><w:pPr><w:spacing w:before=\"500\" w:after=\"40\"/>"
+                f'<w:p><w:pPr><w:spacing w:before="360" w:after="30"/>'
                 f"<w:pBdr>{_border('bottom', sz=6, color=INK)}</w:pBdr>"
-                f'<w:ind w:right="600"/></w:pPr></w:p>'
-                f"<w:p><w:pPr><w:spacing w:before=\"40\" w:after=\"0\"/></w:pPr>"
-                f"{run(role, size=16, bold=True, color=INK)}</w:p>"
-                f"<w:p><w:pPr><w:spacing w:before=\"0\" w:after=\"120\"/></w:pPr>"
-                f"{run('Name, signature & date', size=14, color=MUTED)}</w:p>")
-            tcs.append(f'<w:tc><w:tcPr><w:tcW w:w="{w}" w:type="dxa"/></w:tcPr>'
-                       f"{cell}</w:tc>")
+                f'<w:ind w:right="500"/></w:pPr></w:p>'
+                f'<w:p><w:pPr><w:spacing w:before="30" w:after="0"/></w:pPr>'
+                f"{run(role, size=15, bold=True, color=INK)}</w:p>"
+                f'<w:p><w:pPr><w:spacing w:before="0" w:after="80"/></w:pPr>'
+                f"{run('Name, signature & date', size=13, color=MUTED)}</w:p>")
+            tcs.append(f'<w:tc><w:tcPr><w:tcW w:w="{w}" w:type="dxa"/>'
+                       f"</w:tcPr>{cell}</w:tc>")
         self._body.append(
             f'<w:tbl><w:tblPr><w:tblW w:w="{CONTENT_W}" w:type="dxa"/>'
             '<w:tblLayout w:type="fixed"/></w:tblPr>'
             "<w:tblGrid>" + "".join(f'<w:gridCol w:w="{w}"/>' for _ in roles)
             + f"</w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>{''.join(tcs)}</w:tr></w:tbl>")
+        self.para("", space_after=40)
 
     # --------------------------------------------------------------- images
     @staticmethod

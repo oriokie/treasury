@@ -644,7 +644,7 @@ class RunRulesOnQueueView(AllocateRequiredMixin, View):
             if r["skipped_locked"]:
                 extra.append(f"{r['skipped_locked']} in a locked period were skipped")
             if r["skipped_split"]:
-                extra.append(f"{r['skipped_split']} matched a split fund (allocate manually)")
+                extra.append(f"{r['skipped_split']} split-fund match(es) could not be expanded")
             if extra:
                 msg += " (" + "; ".join(extra) + ")."
             messages.success(request, msg)
@@ -1542,8 +1542,9 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
 
     def _rows_from_paste(self, text):
         """Parse pasted M-Pesa / bank refs: one per line, or comma / whitespace /
-        semicolon separated. Amounts are not expected here — use the spreadsheet
-        upload when you need amount confirmation (e.g. split offerings)."""
+        semicolon separated. Amounts are not expected; split-fund gifts that share
+        a reference are confirmed as one group in `_build_plan` when the matches
+        form a single split (same gift), without needing an amount."""
         import re
         rows = []
         seen = set()
@@ -1624,10 +1625,15 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
 
             # --- multiple matches: most often a SPLIT-FUND gift -----------------
             # A split gift (e.g. Combined Offering) is posted as several rows that
-            # share the reference but divide the amount. The uploaded amount is the
-            # original lump sum, so it equals the SUM of the group, not any one row.
+            # share the reference but divide the amount. Spreadsheet uploads send
+            # the original lump sum (equals the SUM of the group). Paste sends no
+            # amount — confirm only when the matches form one split group (same
+            # gift via split_of / shared core_ref base / mpesa_ref), not when they
+            # are unrelated gifts that happen to share a reference string.
             total = sum((t.amount for t in matches), Decimal(0))
-            if amt is not None and total == amt:
+            groups = _group_split_siblings(matches)
+            is_one_split = len(groups) == 1 and len(groups[0]) == n
+            if is_one_split and (amt is None or total == amt):
                 ids = [t.id for t in matches]
                 if all(t.manual_receipt for t in matches):
                     plan.append({**base, "status": "already", "txn_ids": ids,
@@ -1649,8 +1655,10 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
                                      "txn_ids": [txn.id],
                                      "detail": f"{txn.amount:,.2f} on {txn.date:%d %b %Y}"})
                     continue
-            hint = (f"sum is {total}" if amt is None
-                    else f"amount {amt} ≠ any row and ≠ split total {total}")
+            if amt is None:
+                hint = f"not a single split gift (sum is {total})"
+            else:
+                hint = f"amount {amt} ≠ any row and ≠ split total {total}"
             plan.append({**base, "status": "ambiguous",
                          "detail": f"matches {n} entries — {hint}"})
         return plan
@@ -2731,9 +2739,11 @@ class CampaignDetailView(ReadAccessMixin, View):
         for g in groups:
             g["history"] = history.get(g["name"], [])
         txns = campaign.transactions.all()
+        members = list(campaign.members.order_by("group", "name"))
         return render(request, self.template_name, {
             "campaign": campaign,
             "groups": groups,
+            "members": members,
             "total_members": sum(g["count"] for g in groups),
             "total_reachable": sum(g["reachable"] for g in groups),
             "n_txns": txns.count(),

@@ -12,7 +12,7 @@
   <div class="step {% if batch.status == 'APPROVED' or batch.status == 'REMITTED' %}done{% endif %}">2 · Approved</div>
   <div class="step {% if batch.is_settled %}done{% endif %}">3 · Payment issued</div>
   <div class="step {% if batch.status == 'REMITTED' %}done{% endif %}">4 · Sent</div>
-  <div class="step {% if batch.payment and batch.payment.status == 'CLEARED' %}done{% endif %}">5 · Cleared</div>
+  <div class="step {% if batch.is_cleared %}done{% endif %}">5 · Cleared</div>
 </div>
 
 <div class="table-wrap"><table class="ledger">
@@ -27,17 +27,29 @@
   </tbody>
 </table></div>
 
-{% if batch.payment %}
-<div class="card u-mt"><div class="hd">Settlement payment</div><div class="bd" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;align-items:center">
-  <div>
-    <div><strong>{{ batch.payment.get_method_display }}</strong> <span class="mono">{{ batch.payment.instrument_number|default:"—" }}</span></div>
-    <div class="help u-mt-0">Issued {{ batch.payment.date_issued|date:"d M Y"|default:"—" }} · {{ CURRENCY }} {{ batch.payment.amount|money }}
-      {% if batch.payment.bank_account %} · {{ batch.payment.bank_account }}{% endif %}</div>
-  </div>
-  <div>{% if batch.payment.status == 'CLEARED' %}<span class="pill pill-green">Cleared</span>
-       {% elif batch.payment.is_outstanding %}<span class="pill pill-amber">{{ batch.payment.get_status_display }}</span>
-       {% else %}<span class="pill pill-grey">{{ batch.payment.get_status_display }}</span>{% endif %}
-    <a class="link u-xs" href="{% url 'payment_register' %}">Open register →</a></div>
+{% if settlement_payments %}
+<div class="card u-mt"><div class="hd">Settlement payment{% if settlement_payments|length > 1 %}s{% endif %}</div><div class="bd">
+  <div class="table-wrap"><table class="ledger">
+    <thead><tr><th>Method</th><th>Reference</th><th>Issued</th><th>Bank</th><th>Status</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for p in settlement_payments %}
+      <tr>
+        <td><strong>{{ p.get_method_display }}</strong></td>
+        <td class="mono">{{ p.instrument_number|default:"—" }}</td>
+        <td>{{ p.date_issued|date:"d M Y"|default:"—" }}</td>
+        <td>{% if p.bank_account %}{{ p.bank_account }}{% else %}—{% endif %}</td>
+        <td>{% if p.status == 'CLEARED' %}<span class="pill pill-green">Cleared</span>
+            {% elif p.is_outstanding %}<span class="pill pill-amber">{{ p.get_status_display }}</span>
+            {% else %}<span class="pill pill-grey">{{ p.get_status_display }}</span>{% endif %}</td>
+        <td class="num mono">{{ p.amount|money }}</td>
+      </tr>
+    {% endfor %}
+    <tr class="total-row"><td colspan="5"><strong>Settled</strong>
+      <span class="help">{% if batch.is_settled %}· matches batch total{% else %}· of {{ batch.total_amount|money }} (remaining {{ remaining_to_settle|money }}){% endif %}</span></td>
+      <td class="num mono"><strong>{{ settled_amount|money }}</strong></td></tr>
+    </tbody>
+  </table></div>
+  <p class="help u-mt-0"><a class="link u-xs" href="{% url 'payment_register' %}">Open payment register →</a></p>
 </div></div>
 {% elif batch.cheque_no %}<p class="help">Remitted by cheque <strong>{{ batch.cheque_no }}</strong> on {{ batch.cheque_date|date:"d M Y" }}.</p>{% endif %}
 
@@ -47,16 +59,25 @@
     <form method="post" action="{% url 'remittance_batch_approve' batch.id %}">{% csrf_token %}<button class="btn">Approve batch</button></form>
   {% elif batch.status == 'APPROVED' %}
     {% if not batch.is_settled %}
-      <details class="card" style="width:100%"><summary class="hd" style="cursor:pointer">Step 1 · Issue payment instrument</summary><div class="bd">
-        <p class="help u-mt-0">Issue the cheque, EFT, bank transfer or M-Pesa payment that settles this remittance. This records the settlement; it does not post a separate accounting entry.</p>
-        <form method="post" action="{% url 'remittance_batch_issue_payment' batch.id %}" class="filters u-m-0">{% csrf_token %}
-          <div class="f"><label>Method</label><select name="method" class="field field--select">
-            <option value="CHEQUE">Cheque</option><option value="EFT">EFT (bank transfer)</option>
-            <option value="RTGS">RTGS</option><option value="MPESA">M-Pesa</option><option value="OTHER">Other</option></select></div>
-          <div class="f"><label>Reference / number</label><input name="instrument_number" class="field mono" placeholder="Cheque no. / EFT ref"></div>
-          <div class="f"><label>Date</label><input type="date" name="date_issued" class="field"></div>
-          {% if bank_accounts %}<div class="f"><label>Bank account</label><select name="bank_account" class="field field--select"><option value="">—</option>{% for a in bank_accounts %}<option value="{{ a.id }}">{{ a }}</option>{% endfor %}</select></div>{% endif %}
-          <button class="btn">Issue payment</button>
+      <details class="card" style="width:100%" open><summary class="hd" style="cursor:pointer">Step 1 · Issue payment instrument{% if settlement_payments %}s{% endif %}</summary><div class="bd">
+        <p class="help u-mt-0">Issue one or more cheques, EFTs, bank transfers or M-Pesa payments that together equal the batch total. You can add them all at once, or incrementally until the running total matches. This records the settlement; it does not post a separate accounting entry.</p>
+        {% if settlement_payments %}
+        <p class="help">Already issued: <strong class="mono">{{ settled_amount|money }}</strong> of <strong class="mono">{{ batch.total_amount|money }}</strong>
+          · remaining <strong class="mono">{{ remaining_to_settle|money }}</strong></p>
+        {% endif %}
+        <form method="post" action="{% url 'remittance_batch_issue_payment' batch.id %}" class="u-m-0" id="issueForm">{% csrf_token %}
+          <div class="table-wrap"><table class="ledger" id="instTable">
+            <thead><tr><th>Method</th><th>Reference / number</th><th>Date</th>{% if bank_accounts %}<th>Bank account</th>{% endif %}<th class="num">Amount</th><th></th></tr></thead>
+            <tbody id="instRows"></tbody>
+          </table></div>
+          <div class="btn-row u-mt-sm" style="justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+            <button type="button" class="btn btn-sm btn-ghost" id="addInstRow">＋ Add instrument</button>
+            <span class="help">This form: <span id="formTotal" class="mono">0.00</span>
+              · with existing: <span id="combinedTotal" class="mono">{{ settled_amount }}</span>
+              / <span class="mono">{{ batch.total_amount }}</span>
+              · remaining: <span id="formRemain" class="mono">{{ remaining_to_settle }}</span></span>
+          </div>
+          <div class="btn-row u-mt"><button class="btn" type="submit">Issue payment{% if settlement_payments %}s{% endif %}</button></div>
         </form>
       </div></details>
     {% else %}
@@ -67,8 +88,8 @@
   {% endif %}
   <a class="btn btn-ghost" href="{% url 'remittance_dashboard' %}">Back to dashboard</a>
 </div>
-{% if batch.status == 'REMITTED' and batch.payment and batch.payment.status != 'CLEARED' %}
-<p class="help u-mt-sm">Awaiting bank clearance. When the payment clears, mark it Cleared in the <a class="link" href="{% url 'payment_register' %}">payment register</a> or during bank reconciliation — this only updates the status and posts no further entries.</p>
+{% if batch.status == 'REMITTED' and not batch.is_cleared %}
+<p class="help u-mt-sm">Awaiting bank clearance. When each payment clears, mark it Cleared in the <a class="link" href="{% url 'payment_register' %}">payment register</a> or during bank reconciliation — this only updates the status and posts no further entries.</p>
 {% endif %}
 {% endif %}
 <style>
@@ -76,5 +97,52 @@
 .wizard .step{padding:.4rem .8rem;border-radius:999px;background:var(--card-head);color:var(--muted);font-size:.82rem;font-weight:600}
 .wizard .step.done{background:var(--forest-soft);color:var(--forest)}
 .total-row td{border-top:2px solid var(--forest)}
+#instTable .field,#instTable .field--select{min-width:0;width:100%}
+#instTable td.num .field{max-width:9rem;margin-left:auto}
 </style>
+{% if is_treasurer and batch.status == 'APPROVED' and not batch.is_settled %}
+<script>
+(function(){
+  const EXISTING=parseFloat("{{ settled_amount }}")||0;
+  const BATCH=parseFloat("{{ batch.total_amount }}")||0;
+  const bankOpts=`{% if bank_accounts %}<option value="">—</option>{% for a in bank_accounts %}<option value="{{ a.id }}">{{ a|escapejs }}</option>{% endfor %}{% endif %}`;
+  const hasBank={{ bank_accounts|yesno:"true,false" }};
+  function addRow(prefAmt){
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><select name="method" class="field field--select">
+        <option value="CHEQUE">Cheque</option><option value="EFT">EFT (bank transfer)</option>
+        <option value="RTGS">RTGS</option><option value="MPESA">M-Pesa</option><option value="OTHER">Other</option></select></td>
+      <td><input name="instrument_number" class="field mono" placeholder="Cheque no. / EFT ref"></td>
+      <td><input type="date" name="date_issued" class="field"></td>
+      ${hasBank?`<td><select name="bank_account" class="field field--select">${bankOpts}</select></td>`:``}
+      <td class="num"><input type="number" step="0.01" min="0.01" name="amount" class="field mono amt" value="${prefAmt!=null?prefAmt:''}"></td>
+      <td><button type="button" class="btn btn-xs btn-ghost rm-inst" title="Remove row">✕</button></td>`;
+    tr.querySelector(".rm-inst").addEventListener("click",()=>{
+      if(document.querySelectorAll("#instRows tr").length<=1)return;
+      tr.remove();recalc();
+    });
+    tr.querySelector(".amt").addEventListener("input",recalc);
+    document.getElementById("instRows").appendChild(tr);
+    recalc();
+  }
+  function recalc(){
+    let a=0;
+    document.querySelectorAll("#instRows .amt").forEach(i=>{const v=parseFloat(i.value);if(!isNaN(v))a+=v;});
+    const combined=EXISTING+a;
+    const rem=BATCH-combined;
+    const ft=document.getElementById("formTotal");
+    const ct=document.getElementById("combinedTotal");
+    const fr=document.getElementById("formRemain");
+    if(ft)ft.textContent=a.toFixed(2);
+    if(ct){ct.textContent=combined.toFixed(2);ct.style.color=Math.abs(rem)<0.01?"var(--forest)":"var(--brass)";}
+    if(fr){fr.textContent=rem.toFixed(2);fr.style.color=Math.abs(rem)<0.01?"var(--forest)":(rem<0?"var(--danger, #b33)":"var(--brass)");}
+  }
+  const addBtn=document.getElementById("addInstRow");
+  if(addBtn)addBtn.addEventListener("click",()=>addRow(""));
+  // Prefill first row with remaining balance so a single cheque still works in one click.
+  const remain=Math.max(BATCH-EXISTING,0);
+  addRow(remain>0?remain.toFixed(2):"");
+})();
+</script>
+{% endif %}
 {% endblock %}

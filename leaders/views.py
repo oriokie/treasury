@@ -93,7 +93,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
             return redirect("leader_dashboard")
         self.dept = dept
         export = request.GET.get("export")
-        if export in ("groups_csv", "groups_xlsx"):
+        if export in ("groups_csv", "groups_xlsx", "groups_png"):
             return self._export_groups(request, export)
         return super().get(request, *args, **kwargs)
 
@@ -126,15 +126,33 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
     def _export_groups(self, request, export):
         from reports.exports import csv_response, xlsx_response
         from core.models import SiteConfig
+        from django.http import HttpResponse
         start, end = parse_period(request)
         rows = self._dev_group_rows(start, end)
+        fn = f"dev_groups_{self.dept.slug or self.dept.id}_{start:%Y%m%d}_{end:%Y%m%d}"
+        if export == "groups_png":
+            if self.dept.category != Department.Category.DEVELOPMENT:
+                return redirect("leader_department_detail", pk=self.dept.pk)
+            from cashbook.services.goal_chart import build_dev_group_collections_png
+            cfg = SiteConfig.get()
+            data = build_dev_group_collections_png(
+                dept_name=self.dept.name, start=start, end=end,
+                rows=[{"name": str(r["group"]), "opening": r["opening"],
+                       "collected": r["collected"], "closing": r["closing"]}
+                      for r in rows],
+                currency=getattr(cfg, "currency_symbol", None) or "KSh",
+                church_name=cfg.church_name or "")
+            resp = HttpResponse(data, content_type="image/png")
+            # inline so the page can embed the image; the download link uses
+            # the HTML download attribute to save a file.
+            resp["Content-Disposition"] = f'inline; filename="{fn}.png"'
+            return resp
         header = ["Group", "Opening", "Receipts", "Closing", "Target", "% of target"]
         data = [[str(r["group"]), float(r["opening"]), float(r["collected"]),
                  float(r["closing"]), float(r["target"]),
                  (r["pct"] if r["pct"] is not None else "")] for r in rows]
         title = (f"{self.dept.name} — development groups, "
                  f"{start:%d %b %Y} to {end:%d %b %Y}")
-        fn = f"dev_groups_{self.dept.slug or self.dept.id}_{start:%Y%m%d}_{end:%Y%m%d}"
         if export == "groups_xlsx":
             return xlsx_response(f"{fn}.xlsx", header, data, title=title,
                                  church=SiteConfig.get().church_name)

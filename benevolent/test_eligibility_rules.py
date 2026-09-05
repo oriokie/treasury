@@ -142,12 +142,14 @@ class TenureTests(EligibilityFixture):
         min_paid_months=2 — the point of the tenure rule."""
         self._publish(min_paid_months=2)
         mem = self._enrol("Doubled Up", days_ago=60)
-        # two payments, both in the SAME recent month
+        # two payments, both in the SAME recent month (fixed mid-month dates —
+        # relative "days ago" near the 1st can spill into the previous month)
+        same_month = TODAY.replace(day=15)
         contrib_svc.record_contribution(
-            self.scheme, date=TODAY - dt.timedelta(days=5), amount=Decimal("100"),
+            self.scheme, date=same_month, amount=Decimal("100"),
             user=self.treasurer, membership=mem)
         contrib_svc.record_contribution(
-            self.scheme, date=TODAY - dt.timedelta(days=3), amount=Decimal("100"),
+            self.scheme, date=same_month + dt.timedelta(days=2), amount=Decimal("100"),
             user=self.treasurer, membership=mem)
         res = evaluate(self.scheme, event_type=self.bereavement, event_date=TODAY,
                        membership=mem)

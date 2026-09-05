@@ -248,21 +248,18 @@ def _gift_is_from_pledgor(txn, identity, threshold):
 
 
 def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None):
-    """Confirmed contributions from this pledge's member that could be applied to
-    it: same member (by FK, phone, or name key), within the pledge's active
-    window, in the campaign's fund or one of its sub-accounts, not already
-    matched, not reversed.
+    """Confirmed contributions that could be applied to this pledge.
 
-    When ``allow_fuzzy`` is True and the fuzzy threshold is set, cash and
-    envelope receipts whose payer name is close enough to the pledgor are also
-    returned — tagged so the preview can show they are near-misses. Fuzzy also
-    covers gifts bank-import linked to a *different* provisional member when
-    the typed name is still a near miss (common for hand-entered cash).
+    Includes gifts whose bank reference contains this pledge's ``match_code``
+    (code first — even when the payer is someone else), plus gifts from the
+    pledgor by FK / phone / name / fuzzy cash-envelope name, within the pledge
+    window, in the campaign fund subtree, not already matched, not reversed.
 
-    Returns a list of ``{"txn", "match"}`` where match is ``"exact"`` or
-    ``"fuzzy"``.
+    Returns a list of ``{"txn", "match"}`` where match is ``"code"``,
+    ``"exact"``, or ``"fuzzy"``.
     """
     from core.models import SiteConfig
+    from pledges.services.codes import _norm_code, codes_in_reference
     cfg = cfg or SiteConfig.get()
     if window_days is None:
         window_days = cfg.pledge_match_window_days or 400
@@ -296,18 +293,26 @@ def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None
         # Cash/envelope near-misses may be linked to a provisional duplicate;
         # pull them into the loop so fuzzy can still fire.
         q |= Q(channel__in=_FUZZY_CHANNELS, payer_name__gt="")
+    code = _norm_code(getattr(pledge, "match_code", "") or "")
+    if len(code) >= 4:
+        # Any gift whose reference contains this pledge's code — payer ignored.
+        q |= Q(reference__icontains=pledge.match_code)
     qs = qs.filter(q)
     fund_ids = campaign_fund_ids(pledge.campaign)
     out = []
     for t in qs.select_related("department", "member"):
-        match = _gift_is_from_pledgor(t, identity, threshold)
+        if code and len(code) >= 4 and code in codes_in_reference(t.reference):
+            match = "code"
+        else:
+            match = _gift_is_from_pledgor(t, identity, threshold)
         if not match:
             continue
         if not _gift_is_for_campaign(t, fund_ids):
             continue
         out.append({"txn": t, "match": match})
-    # Exact before fuzzy so a clear link is preferred when both exist.
-    out.sort(key=lambda r: (0 if r["match"] == "exact" else 1, r["txn"].id))
+    # Code and exact before fuzzy so a clear link is preferred when both exist.
+    rank = {"code": 0, "exact": 1, "fuzzy": 2}
+    out.sort(key=lambda r: (rank.get(r["match"], 9), r["txn"].id))
     return out
 
 
@@ -826,21 +831,50 @@ def auto_match_all(user=None, campaign=None, allow_fuzzy=True):
 # It NEVER moves money — money already moved via the contribution itself.
 # ---------------------------------------------------------------------------
 def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
-    """Pledges this contribution could plausibly fulfil: same member (FK,
-    phone, name key, or fuzzy cash/envelope name), contribution dated within
-    the pledge window, and — when the setting requires it — the contribution's
-    fund matching the campaign's target fund.
+    """Pledges this contribution could plausibly fulfil.
+
+    **Match code first.** If the bank/M-Pesa reference contains a recognised
+    pledge ``match_code``, only that pledge is returned — even when the payer
+    is a different pledged member. That is how one pledgor contributes toward
+    another's promise.
+
+    Otherwise: same member (FK, phone, name key, or fuzzy cash/envelope name),
+    contribution dated within the pledge window, and — when the setting
+    requires it — the contribution's fund matching the campaign's target fund.
 
     Open pledges only, unless ``include_fulfilled`` so leftover giving can
     still land on a completed promise when the member has nothing else owing.
     """
     from core.models import SiteConfig
     from members.models import normalize_phone
+    from pledges.services.codes import find_pledge_by_code
     cfg = cfg or SiteConfig.get()
     if txn.direction != Transaction.Direction.CREDIT or not txn.confirmed:
         return []
     if txn.is_reversal or txn.is_reversed:
         return []
+
+    # --- Code wins over identity -------------------------------------------
+    coded = find_pledge_by_code(txn.reference or "")
+    if coded is not None:
+        allowed = list(_OPEN_FOR_FILL)
+        if include_fulfilled:
+            allowed.append(Pledge.Status.FULFILLED)
+        if coded.status not in allowed:
+            return []
+        if coded.outstanding <= 0 and not include_fulfilled:
+            return []
+        window = cfg.pledge_match_window_days or 400
+        start = coded.start_date - dt.timedelta(days=7)
+        end = (coded.end_date or dt.date.today()) + dt.timedelta(days=window)
+        if not (start <= txn.date <= end):
+            return []
+        if cfg.pledge_match_same_fund_only:
+            fund_ids = campaign_fund_ids(coded.campaign)
+            if not _gift_is_for_campaign(txn, fund_ids):
+                return []
+        return [coded]
+
     member = txn.member
     nk = name_key(txn.payer_name or "")
     txn_phone = normalize_phone(txn.payer_phone)

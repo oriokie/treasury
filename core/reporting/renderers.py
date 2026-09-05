@@ -95,15 +95,22 @@ def _section_breaks(section):
 def _cover_health_line(rendered):
     """A one-line financial-health summary for a board-pack export cover, or ''
     when unavailable. Only computed for reports that opt into a custom template
-    (the board pack), so ordinary engine exports pay nothing for it."""
+    (the board pack), so ordinary engine exports pay nothing for it. Wording
+    matches the on-screen masthead so Word and HTML read as the same pack."""
     if not getattr(rendered.report, "html_template", None):
         return ""
     try:
         from core.intelligence import compute_health_score
         hs = compute_health_score(rendered.context)
-        return f"Financial health score: {hs.overall:.0f}/100 ({hs.band})"
+        return f"Financial health {hs.overall:.0f}/100 ({hs.band})"
     except Exception:  # noqa: BLE001
         return ""
+
+
+def _is_board_pack(rendered):
+    """Reports that ship a dedicated presentation template (the board pack)
+    get a few Word-side flourishes the generic engine export does not need."""
+    return bool(getattr(rendered.report, "html_template", None))
 
 
 class Renderer:
@@ -379,6 +386,9 @@ class DocxRenderer(Renderer):
         if brand.get("conference") or brand.get("region"):
             meta.append(" · ".join(x for x in (brand.get("conference"),
                                                brand.get("region")) if x))
+        board_pack = _is_board_pack(rendered)
+        if board_pack:
+            meta.append("Presented to the Church Board")
         health_line = _cover_health_line(rendered)
         if health_line:
             meta.append(health_line)
@@ -410,28 +420,32 @@ class DocxRenderer(Renderer):
                 group_no += 1
                 if not first_group and _section_breaks(s):
                     doc.page_break()
+                doc.group_heading(group_no, grp, first=first_group)
                 first_group = False
-                doc.group_heading(group_no, grp)
 
             if s.kind == "heading":
-                doc.text(s.extra.get("text", ""), size=26, bold=True,
+                doc.text(s.extra.get("text", ""), size=24, bold=True,
                          font="Georgia", keep_next=True,
-                         space_before=200, space_after=100)
+                         space_before=160, space_after=80)
                 continue
 
             if s.kind == "kpi":
+                # No section title — the KPI band is the Overview's first
+                # statement, matching the screen (and avoiding "KEY FIGURES"
+                # shouting over the group heading).
                 cards = []
                 for r in s.rows:
                     disp = r.cells.get("display")
-                    cards.append((str(r.cells.get("label", "")),
-                                  disp if disp else money(r.cells.get("value"),
-                                                          0)))
+                    value = (disp if disp else money(r.cells.get("value"), 0))
+                    sub = str(r.cells.get("sub") or "")
+                    cards.append((str(r.cells.get("label", "")), value, sub))
                 doc.kpi_band(cards, currency=currency)
             elif s.kind in ("commentary", "info"):
                 doc.section_title(s.title)
-                doc.prose(s.extra.get("text", ""))
+                doc.prose(s.extra.get("text") or s.extra.get("explanation") or "")
             elif s.kind == "signature":
-                doc.section_title(s.title)
+                # The Adoption group heading is the only label — a second
+                # "SIGNATURES" caps line is furniture the printed pack drops.
                 doc.signatures([str(r.cells.get("role", "")) for r in s.rows])
             elif s.kind == "chart":
                 doc.section_title(s.title)
@@ -464,7 +478,6 @@ class DocxRenderer(Renderer):
                 doc.section_title(s.title)
                 columns = [{"label": c.label, "numeric": c.numeric}
                            for c in s.columns]
-                places = {c.label: getattr(c, "places", 2) for c in s.columns}
                 rows = []
                 for r in s.rows:
                     level = (r.meta or {}).get("level") or ""
@@ -485,20 +498,28 @@ class DocxRenderer(Renderer):
                              for c in s.columns]
                 doc.table(columns, rows, total=total)
 
-            # the method caption and the commentary travel with the document,
-            # exactly as on screen and in print
-            if s.note and s.kind not in ("commentary", "info"):
+            # Captions and commentary travel with the document as on screen.
+            # Signature blocks carry neither — an empty "What this shows" under
+            # a row of signature lines is furniture, not information.
+            if s.note and s.kind not in ("commentary", "info", "signature"):
                 doc.caption(s.note)
             explanation = (s.extra.get("explanation") or "").strip()
             if explanation and explanation != s.note \
-                    and s.kind not in ("commentary", "info"):
+                    and s.kind not in ("commentary", "info", "signature"):
                 doc.explanation(explanation)
 
         if brand.get("certification_statement"):
             doc.prose(brand["certification_statement"], small=True)
         if brand.get("footer_text"):
-            doc.text(brand["footer_text"], size=15, color="677770",
-                     space_before=200)
+            doc.text(brand["footer_text"], size=14, color="677770",
+                     space_before=160)
+        elif board_pack:
+            church = brand.get("church_name") or ""
+            left = " · ".join(x for x in (church, rendered.report.title) if x)
+            doc.doc_footer(
+                left=left,
+                right="Figures from the Financial Metrics Registry; "
+                      "commentary is written from the same figures.")
 
         resp = HttpResponse(
             doc.to_bytes(),

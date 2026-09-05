@@ -267,9 +267,13 @@ class RemittanceBatchDetailView(ReportAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        batch = get_object_or_404(RemittanceBatch, pk=kwargs["pk"])
+        batch = get_object_or_404(
+            RemittanceBatch.objects.prefetch_related("payments"), pk=kwargs["pk"])
         ctx["batch"] = batch
         ctx["lines"] = batch.expenses.select_related("department").all()
+        ctx["settlement_payments"] = batch.settlement_instruments()
+        ctx["settled_amount"] = batch.settled_amount
+        ctx["remaining_to_settle"] = batch.remaining_to_settle
         ctx["field_name"] = SiteConfig.get().field_name or "the field"
         from statements.models import BankAccount
         ctx["bank_accounts"] = BankAccount.objects.all()
@@ -290,68 +294,175 @@ class RemittanceBatchApproveView(TreasurerRequiredMixin, View):
         return redirect("remittance_batch_detail", pk=pk)
 
 class RemittanceBatchRemitView(TreasurerRequiredMixin, View):
-    """Mark a batch as sent — only once a payment instrument has been issued and
-    linked. The instrument is the settlement record for the trust liability;
-    bank reconciliation later only flips it to Cleared (no extra journals)."""
+    """Mark a batch as sent — only once settlement instruments cover the total.
+    The instrument(s) are the settlement record for the trust liability;
+    bank reconciliation later only flips them to Cleared (no extra journals)."""
     def post(self, request, pk):
         batch = get_object_or_404(RemittanceBatch, pk=pk)
         if batch.status != RemittanceBatch.Status.APPROVED:
             messages.error(request, "Approve the batch before marking it sent.")
             return redirect("remittance_batch_detail", pk=pk)
         if not batch.is_settled:
-            messages.error(request, "Issue and link a payment instrument (cheque, "
-                "EFT, M-Pesa, etc.) before marking this batch as sent.")
+            messages.error(request, "Issue payment instrument(s) that total the "
+                "batch amount before marking this batch as sent.")
             return redirect("remittance_batch_detail", pk=pk)
-        inst = batch.payment
-        paid_date = inst.date_issued or _dt.date.today()
+        instruments = batch.settlement_instruments()
+        primary = batch.payment or (instruments[0] if instruments else None)
+        paid_date = ((primary.date_issued if primary else None)
+                     or _dt.date.today())
+        # voucher: primary first, else a brief concatenation of all refs
+        refs = [p.instrument_number for p in instruments if p.instrument_number]
+        if primary and primary.instrument_number:
+            voucher = primary.instrument_number[:30]
+        else:
+            voucher = ", ".join(refs)[:30]
         batch.status = RemittanceBatch.Status.REMITTED
         batch.remitted_at = _tz.now()
-        # keep the legacy fields in step for any old reports still reading them
-        if inst.method == "CHEQUE":
-            batch.cheque_no = inst.instrument_number[:30]
-            batch.cheque_date = inst.date_issued
+        # keep legacy cheque fields in step when any settlement instrument is a cheque
+        cheque = next((p for p in instruments if p.method == "CHEQUE"), None)
+        if cheque:
+            batch.cheque_no = (cheque.instrument_number or "")[:30]
+            batch.cheque_date = cheque.date_issued
         batch.save(update_fields=["status", "remitted_at", "cheque_no", "cheque_date"])
         batch.expenses.update(status=Expense.Status.PAID, paid_date=paid_date,
-                              voucher_no=inst.instrument_number[:30])
+                              voucher_no=voucher)
         _repost_to_ledger(batch.expenses.all())
         messages.success(request, f"Batch {batch.batch_number} marked sent, settled by "
-                                  f"{inst.get_method_display()} {inst.instrument_number}.")
+                                  f"{batch.settlement_label}.")
         return redirect("remittance_batch_detail", pk=pk)
 
 class RemittanceBatchIssuePaymentView(TreasurerRequiredMixin, View):
-    """Issue a payment instrument that settles this remittance batch and link it.
-    Posts no journal entries — the batch's remittance expenses already account
-    for the liability; this only records how it is being paid."""
+    """Issue one or more payment instruments that settle this remittance batch.
+    Amounts may be posted together or incrementally until they equal the batch
+    total. Posts no journal entries — the batch's remittance expenses already
+    account for the liability; this only records how it is being paid."""
     def post(self, request, pk):
+        from django.db import transaction
         from cashbook.models import PaymentInstrument
+        from statements.models import BankAccount
         batch = get_object_or_404(RemittanceBatch, pk=pk)
         if batch.status not in (RemittanceBatch.Status.APPROVED,
                                 RemittanceBatch.Status.DRAFT):
             messages.error(request, "A payment can only be issued for a draft or "
                                     "approved batch.")
             return redirect("remittance_batch_detail", pk=pk)
-        method = request.POST.get("method") or "CHEQUE"
-        number = (request.POST.get("instrument_number") or "").strip()[:40]
-        try:
-            issued = _dt.date.fromisoformat(request.POST.get("date_issued")) \
-                if request.POST.get("date_issued") else _dt.date.today()
-        except ValueError:
-            issued = _dt.date.today()
-        bank_id = request.POST.get("bank_account") or ""
-        inst = PaymentInstrument(
-            method=method, instrument_number=number,
-            payee="Conference remittance", amount=batch.total_amount,
-            date_issued=issued, status=PaymentInstrument.Status.ISSUED,
-            source_kind=PaymentInstrument.SourceKind.REMITTANCE,
-            remittance_batch=batch, recorded_by=request.user)
-        if bank_id.isdigit():
-            from statements.models import BankAccount
-            inst.bank_account = BankAccount.objects.filter(pk=bank_id).first()
-        inst.save()
-        batch.payment = inst
-        batch.save(update_fields=["payment"])
-        messages.success(request, f"Issued {inst.get_method_display()} "
-                                  f"{inst.instrument_number} for this remittance.")
+        if batch.is_settled:
+            messages.error(request, "This batch is already fully settled.")
+            return redirect("remittance_batch_detail", pk=pk)
+
+        methods = request.POST.getlist("method")
+        numbers = request.POST.getlist("instrument_number")
+        dates = request.POST.getlist("date_issued")
+        banks = request.POST.getlist("bank_account")
+        amounts = request.POST.getlist("amount")
+        # Legacy single-field POST (no parallel lists): treat as one row.
+        if not methods and request.POST.get("method"):
+            methods = [request.POST.get("method")]
+            numbers = [request.POST.get("instrument_number") or ""]
+            dates = [request.POST.get("date_issued") or ""]
+            banks = [request.POST.get("bank_account") or ""]
+            amounts = [request.POST.get("amount") or ""]
+        if not methods:
+            messages.error(request, "Add at least one payment instrument.")
+            return redirect("remittance_batch_detail", pk=pk)
+
+        n = len(methods)
+        def _pad(lst):
+            return list(lst) + [""] * max(0, n - len(lst))
+        numbers, dates, banks, amounts = (
+            _pad(numbers), _pad(dates), _pad(banks), _pad(amounts))
+
+        valid_methods = dict(PaymentInstrument.Method.choices)
+        rows = []
+        for i in range(n):
+            method = (methods[i] or "CHEQUE").upper()
+            if method not in valid_methods:
+                method = "CHEQUE"
+            number = (numbers[i] or "").strip()[:40]
+            raw_amt = (amounts[i] or "").strip()
+            # Skip completely blank rows (extra JS rows left empty).
+            if not number and not raw_amt and i > 0:
+                continue
+            try:
+                issued = (_dt.date.fromisoformat(dates[i])
+                          if dates[i] else _dt.date.today())
+            except ValueError:
+                issued = _dt.date.today()
+            bank_id = (banks[i] or "").strip()
+            bank = (BankAccount.objects.filter(pk=bank_id).first()
+                    if bank_id.isdigit() else None)
+            if raw_amt:
+                try:
+                    amount = Decimal(raw_amt)
+                except Exception:
+                    messages.error(request, f"Invalid amount on instrument row {i + 1}.")
+                    return redirect("remittance_batch_detail", pk=pk)
+            else:
+                amount = None  # filled after we know remaining / row count
+            if amount is not None and amount <= 0:
+                messages.error(request, "Each instrument amount must be greater than zero.")
+                return redirect("remittance_batch_detail", pk=pk)
+            rows.append({"method": method, "number": number, "issued": issued,
+                         "bank": bank, "amount": amount})
+
+        if not rows:
+            messages.error(request, "Add at least one payment instrument.")
+            return redirect("remittance_batch_detail", pk=pk)
+
+        existing = batch.settled_amount
+        remaining = batch.total_amount - existing
+        # Default unspecified amounts: sole blank row gets the full remaining
+        # balance (backward-compatible single-instrument issue).
+        blanks = [r for r in rows if r["amount"] is None]
+        if blanks:
+            if len(rows) == 1 and len(blanks) == 1:
+                rows[0]["amount"] = remaining
+            else:
+                messages.error(request, "Enter an amount for each payment instrument.")
+                return redirect("remittance_batch_detail", pk=pk)
+
+        new_total = sum((r["amount"] for r in rows), Decimal("0"))
+        if new_total <= 0:
+            messages.error(request, "Payment amounts must be greater than zero.")
+            return redirect("remittance_batch_detail", pk=pk)
+        if existing + new_total > batch.total_amount + Decimal("0.01"):
+            messages.error(
+                request,
+                f"Payment total KES {existing + new_total:,.2f} exceeds the batch "
+                f"total of KES {batch.total_amount:,.2f}.")
+            return redirect("remittance_batch_detail", pk=pk)
+
+        created = []
+        with transaction.atomic():
+            for r in rows:
+                inst = PaymentInstrument(
+                    method=r["method"], instrument_number=r["number"],
+                    payee="Conference remittance", amount=r["amount"],
+                    date_issued=r["issued"], status=PaymentInstrument.Status.ISSUED,
+                    source_kind=PaymentInstrument.SourceKind.REMITTANCE,
+                    remittance_batch=batch, recorded_by=request.user,
+                    bank_account=r["bank"])
+                inst.save()
+                created.append(inst)
+            # Keep batch.payment as the primary/first instrument for compatibility.
+            if not batch.payment_id:
+                batch.payment = created[0]
+                batch.save(update_fields=["payment"])
+
+        if len(created) == 1:
+            inst = created[0]
+            messages.success(request, f"Issued {inst.get_method_display()} "
+                                      f"{inst.instrument_number} for this remittance.")
+        else:
+            messages.success(request, f"Issued {len(created)} payment instruments "
+                                      f"totalling KES {new_total:,.2f}.")
+        batch.refresh_from_db()
+        if not batch.is_settled:
+            messages.info(
+                request,
+                f"Settlement so far: KES {batch.settled_amount:,.2f} of "
+                f"KES {batch.total_amount:,.2f} "
+                f"(remaining KES {batch.remaining_to_settle:,.2f}).")
         return redirect("remittance_batch_detail", pk=pk)
 
 class RemittanceBatchListView(ReportAccessMixin, TemplateView):

@@ -5,8 +5,9 @@
   <div>
     <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
     <h1>Enter several expenses</h1>
-    <div class="desc">For a stack of receipts that share a date, fund, claimant and
-      payment method — enter those once, then one line per receipt.</div>
+    <div class="desc">Enter shared defaults once, then one line per receipt.
+      Leave a line’s override blank to keep the default — e.g. one fund with
+      different claimants, or mixed dates and payees in the same batch.</div>
   </div>
   <div class="rule" aria-hidden="true"></div>
 </div>
@@ -15,7 +16,8 @@
   {# Claimed once on the server, so a second send of this same form saves nothing. #}
   <input type="hidden" name="submit_token" value="{{ submit_token }}">
 <div class="card"><div class="bd">
-  <div class="xf-group-h" style="margin-top:0"><span class="xf-n">1</span> Shared by every line</div>
+  <div class="xf-group-h" style="margin-top:0"><span class="xf-n">1</span> Defaults for every line</div>
+  <p class="help u-mt-0" style="margin-bottom:.7rem">Applied when a line leaves a field blank. Open <b>More</b> on a line to override.</p>
   <div class="form-grid xf-grid-2">
     <div class="form-row"><label for="bDate">Date</label>
       <input type="date" name="date" id="bDate" class="field" value="{{ today|date:'Y-m-d' }}" required></div>
@@ -60,9 +62,9 @@
   <div class="xf-group-h" style="margin-top:0"><span class="xf-n">2</span> One line per receipt</div>
   <div class="table-scroll">
   <table class="ledger compact" id="xbTable">
-    <thead><tr><th style="width:44%">What it was for</th><th>Category</th>
-      <th class="num" style="width:14%">Amount</th>
-      <th class="num" style="width:14%">Charge</th><th></th></tr></thead>
+    <thead><tr><th style="width:40%">What it was for</th><th>Category</th>
+      <th class="num" style="width:12%">Amount</th>
+      <th class="num" style="width:12%">Charge</th><th style="width:5.5rem"></th></tr></thead>
     <tbody id="xbBody"></tbody>
     <tfoot><tr><th colspan="2">Total</th>
       <th class="num mono" id="xbTotal">0.00</th>
@@ -71,7 +73,8 @@
   </div>
   <div class="u-mt"><button type="button" class="btn btn-ghost btn-sm" id="xbAdd">+ Add another line</button>
     <span class="muted u-xs">Blank lines are ignored. A charge on a line is for a
-      payment made on its own.</span></div>
+      payment made on its own. Use <b>More</b> when a line’s fund, claimant,
+      payee, supplier, method, date or voucher differs from the defaults.</span></div>
 
   <div class="form-row u-mt" style="max-width:34rem">
     <label for="bSharedCharge">One charge for the whole batch
@@ -99,17 +102,105 @@
 const fundUrl="{% url 'fund_search' %}", balUrl="{% url 'department_balance' %}";
 const fmt=n=>Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const catOptions=`{% for value, label in categories %}<option value="{{ value }}">{{ label }}</option>{% endfor %}`;
+const methodOptions=`{% for value, label in methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}`;
+const vendorOptions=`{% for v in vendors %}<option value="{{ v.id }}">{{ v.name|escapejs }}</option>{% endfor %}`;
+
+function wireFundSearch(searchEl, hiddenEl, acEl, balEl){
+  let ft=null;
+  async function showBal(){
+    if(!balEl) return;
+    if(!hiddenEl.value){ balEl.style.display="none"; return; }
+    try{ const d=await (await fetch(balUrl+"?id="+hiddenEl.value)).json();
+      if(!d.ok){ balEl.style.display="none"; return; }
+      balEl.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong>`;
+      balEl.style.display="block";
+    }catch(e){ balEl.style.display="none"; }
+  }
+  searchEl.addEventListener("input",()=>{ clearTimeout(ft); hiddenEl.value="";
+    if(balEl) balEl.style.display="none";
+    ft=setTimeout(async()=>{ try{
+      const d=await (await fetch(fundUrl+"?scope=expense&q="+encodeURIComponent(searchEl.value.trim()))).json();
+      acEl.innerHTML=""; if(!d.results.length){ acEl.style.display="none"; return; }
+      d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
+        it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
+        it.addEventListener("mousedown",e=>{ e.preventDefault();
+          searchEl.value=r.label; hiddenEl.value=r.id; acEl.style.display="none"; showBal();
+          markOverride(searchEl.closest("tr")); });
+        acEl.appendChild(it); });
+      acEl.style.display="block";
+    }catch(e){ acEl.style.display="none"; } },160);
+  });
+  searchEl.addEventListener("blur",()=>setTimeout(()=>acEl.style.display="none",150));
+  return {showBal};
+}
+
+function markOverride(ovrTr){
+  if(!ovrTr || !ovrTr.classList.contains("xb-ovr")) return;
+  const main=ovrTr.previousElementSibling;
+  if(!main) return;
+  const btn=main.querySelector(".xb-more");
+  const filled=[...ovrTr.querySelectorAll("input,select")].some(el=>{
+    if(el.type==="hidden") return !!el.value;
+    return !!(el.value||"").trim();
+  });
+  btn.classList.toggle("xb-more--set", filled);
+  btn.title=filled?"Overrides set — click to edit":"Override defaults for this line";
+}
 
 function addRow(){
-  const tr=document.createElement("tr");
-  tr.innerHTML=`<td><input type="text" name="line_description" class="field" maxlength="200" placeholder="e.g. Fuel for the youth rally"></td>
+  const body=document.getElementById("xbBody");
+  const main=document.createElement("tr");
+  main.className="xb-main";
+  main.innerHTML=`<td><input type="text" name="line_description" class="field" maxlength="200" placeholder="e.g. Fuel for the youth rally"></td>
     <td><select name="line_category" class="field field--select"><option value="">— use default —</option>${catOptions}</select></td>
     <td><input type="number" name="line_amount" step="0.01" min="0" class="field num xb-amt"></td>
     <td><input type="number" name="line_charge" step="0.01" min="0" class="field num xb-chg"></td>
-    <td><button type="button" class="btn btn-xs btn-ghost xb-del" title="Remove this line">×</button></td>`;
-  document.getElementById("xbBody").appendChild(tr);
-  tr.querySelector(".xb-del").addEventListener("click",()=>{ tr.remove(); total(); });
-  return tr;
+    <td class="xb-acts"><button type="button" class="btn btn-xs btn-ghost xb-more" title="Override defaults for this line">More</button>
+      <button type="button" class="btn btn-xs btn-ghost xb-del" title="Remove this line">×</button></td>`;
+  const ovr=document.createElement("tr");
+  ovr.className="xb-ovr";
+  ovr.hidden=true;
+  ovr.innerHTML=`<td colspan="5"><div class="xb-ovr-panel">
+      <div class="xb-ovr-grid">
+        <div class="form-row"><label>Date <span class="muted u-xs">(blank = default)</span></label>
+          <input type="date" name="line_date" class="field"></div>
+        <div class="form-row"><label>Fund / department</label>
+          <div class="pos-rel">
+            <input type="text" class="field xb-fund-search" autocomplete="off" placeholder="— use default —">
+            <div class="ac-box xb-fund-ac"></div>
+          </div>
+          <input type="hidden" name="line_department" class="xb-fund-id" value=""></div>
+        <div class="form-row"><label>Claimant</label>
+          <input type="text" name="line_claimant" class="field" maxlength="120" placeholder="— use default —"></div>
+        <div class="form-row"><label>Payee</label>
+          <input type="text" name="line_payee" class="field" maxlength="160" placeholder="— use default —"></div>
+        <div class="form-row"><label>Supplier</label>
+          <select name="line_vendor" class="field field--select">
+            <option value="">— use default —</option>${vendorOptions}</select></div>
+        <div class="form-row"><label>Method</label>
+          <select name="line_method" class="field field--select">
+            <option value="">— use default —</option>${methodOptions}</select></div>
+        <div class="form-row"><label>Voucher no</label>
+          <input type="text" name="line_voucher" class="field" maxlength="30" placeholder="— use default —"></div>
+      </div>
+    </div></td>`;
+  body.appendChild(main);
+  body.appendChild(ovr);
+  main.querySelector(".xb-del").addEventListener("click",()=>{
+    ovr.remove(); main.remove(); total();
+  });
+  main.querySelector(".xb-more").addEventListener("click",()=>{
+    ovr.hidden=!ovr.hidden;
+    main.querySelector(".xb-more").textContent=ovr.hidden?"More":"Less";
+  });
+  wireFundSearch(
+    ovr.querySelector(".xb-fund-search"),
+    ovr.querySelector(".xb-fund-id"),
+    ovr.querySelector(".xb-fund-ac"),
+    null);
+  ovr.addEventListener("input",()=>markOverride(ovr));
+  ovr.addEventListener("change",()=>markOverride(ovr));
+  return main;
 }
 function total(){
   let a=0,c=0;
@@ -135,7 +226,7 @@ document.addEventListener("input",e=>{ if(e.target.matches(".xb-amt,.xb-chg")) t
 // reaching for the button first.
 document.addEventListener("input",e=>{
   if(!e.target.matches('input[name="line_description"]')) return;
-  const rows=[...document.querySelectorAll("#xbBody tr")];
+  const rows=[...document.querySelectorAll("#xbBody tr.xb-main")];
   const last=rows[rows.length-1];
   if(last && last.contains(e.target) && e.target.value.trim()) addRow();
 });
@@ -144,28 +235,7 @@ for(let i=0;i<4;i++) addRow();
 // fund autocomplete + balance, same behaviour as the single expense form
 const fs=document.getElementById("bFundSearch"), fh=document.getElementById("bFund"),
       fa=document.getElementById("bFundAc"), fb=document.getElementById("bBal");
-let ft=null;
-async function showBal(){
-  if(!fh.value){ fb.style.display="none"; return; }
-  try{ const d=await (await fetch(balUrl+"?id="+fh.value)).json();
-    if(!d.ok){ fb.style.display="none"; return; }
-    fb.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong>`;
-    fb.style.display="block";
-  }catch(e){ fb.style.display="none"; }
-}
-fs.addEventListener("input",()=>{ clearTimeout(ft); fh.value=""; fb.style.display="none";
-  ft=setTimeout(async()=>{ try{
-    const d=await (await fetch(fundUrl+"?scope=expense&q="+encodeURIComponent(fs.value.trim()))).json();
-    fa.innerHTML=""; if(!d.results.length){ fa.style.display="none"; return; }
-    d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
-      it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
-      it.addEventListener("mousedown",e=>{ e.preventDefault();
-        fs.value=r.label; fh.value=r.id; fa.style.display="none"; showBal(); });
-      fa.appendChild(it); });
-    fa.style.display="block";
-  }catch(e){ fa.style.display="none"; } },160);
-});
-fs.addEventListener("blur",()=>setTimeout(()=>fa.style.display="none",150));
+wireFundSearch(fs, fh, fa, fb);
 </script>
 <style>
 .xb-shell .ledger td{padding:.35rem .4rem}
@@ -177,5 +247,13 @@ fs.addEventListener("blur",()=>setTimeout(()=>fa.style.display="none",150));
   margin-right:.4rem;border-radius:50%;background:var(--brass);color:#fff;font-size:.72rem;
   font-weight:700;font-family:"IBM Plex Mono",ui-monospace,monospace}
 .xf-grid-2{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.xb-acts{white-space:nowrap;vertical-align:middle}
+.xb-acts .btn{margin-left:.15rem}
+.xb-more--set{color:var(--forest);font-weight:600}
+.xb-ovr td{background:var(--card-head,#f6f3eb);padding:.55rem .5rem .65rem!important;border-top:none}
+.xb-ovr-panel{max-width:56rem}
+.xb-ovr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.55rem .7rem}
+.xb-ovr-grid .form-row{margin:0}
+.xb-ovr-grid label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:.15rem}
 </style>
 {% endblock %}

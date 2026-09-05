@@ -395,13 +395,27 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         # chance here too, instead of only when dept is None.
                         dev_group_unknown = (resolver == "DEV_GROUP_NA")
                         if dept is None or dev_group_unknown:
-                            from giving.services.allocation import campaign_allocate
-                            campaign, campaign_group, cdept, cstatus = campaign_allocate(
-                                row["reference"], row["name"], row["phone"])
-                            if cdept is not None and (dept is None or cstatus == "AUTO"):
-                                dept = cdept
-                                status = (Transaction.Status.AUTO if cstatus == "AUTO"
-                                          else Transaction.Status.REVIEW)
+                            # Pledge match_code in the reference → campaign fund
+                            # first (code is explicit intent for that appeal).
+                            code_pinned = False
+                            try:
+                                from pledges.services.codes import pledge_code_allocate
+                                _p, pdept, pstatus = pledge_code_allocate(
+                                    row["reference"])
+                                if pdept is not None:
+                                    dept = pdept
+                                    status = Transaction.Status.AUTO
+                                    code_pinned = True
+                            except Exception:  # noqa: BLE001
+                                pass
+                            if not code_pinned:
+                                from giving.services.allocation import campaign_allocate
+                                campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                                    row["reference"], row["name"], row["phone"])
+                                if cdept is not None and (dept is None or cstatus == "AUTO"):
+                                    dept = cdept
+                                    status = (Transaction.Status.AUTO if cstatus == "AUTO"
+                                              else Transaction.Status.REVIEW)
 
                         # detect_scheme's own "sole owner of this fund" fallback
                         # (see benevolent.services.allocation.detect_scheme) never

@@ -373,10 +373,20 @@ class EnvelopeLedgerCreate(DataEntryRequiredMixin, View):
                     "error_detail": r.error_detail,
                 })
 
+        from core.rights import display_phone
+        # Active members embedded once for the ledger's client-side name
+        # typeahead — avoids a debounced round-trip on every keystroke.
+        members_json = [
+            {"id": m.id, "name": m.name,
+             "phone": display_phone(request.user, m.phone or "")}
+            for m in (Member.objects.filter(active=True)
+                      .order_by("name").only("id", "name", "phone"))
+        ]
         return render(request, self.template_name, {
             "columns": column_catalog(),
             "default_date": sab_raw,
             "dev_groups": DevelopmentGroup.objects.filter(active=True).order_by("number"),
+            "members_json": json.dumps(members_json),
             "batch": batch,
             "batch_rows_json": json.dumps(rows_json),
             "return_reason": batch.return_reason if batch and batch.status ==

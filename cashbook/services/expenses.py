@@ -153,20 +153,36 @@ def record_batch_charge(*, header, expenses, amount, user, auto_approve=False):
         paid_date=date if is_paid else None)
 
 
+def _line_or_header(line, header, key, *, blank_as_default=True):
+    """Prefer a per-line value; fall back to the shared header default.
+
+    Blank strings (and missing keys) mean "use the header" so a treasurer can
+    override only the fields that actually differ on that receipt.
+    """
+    if key not in line:
+        return header.get(key)
+    value = line.get(key)
+    if blank_as_default and (value is None or value == ""):
+        return header.get(key)
+    return value
+
+
 @db_tx.atomic
 def record_batch(*, header, lines, user, auto_approve=False,
                  shared_charge=None):
-    """Several expenses that share a date, fund, claimant and payment method.
+    """Several expenses that usually share a date, fund, claimant and method.
 
     The common case this exists for: a treasurer settling a stack of receipts
-    from one person, on one day, from one fund. Re-entering those four fields
-    for every line is the slow part, and the part that produces inconsistent
-    data when someone mistypes the fund on line seven.
+    that mostly share those facts. Re-entering them for every line is the slow
+    part, and the part that produces inconsistent data when someone mistypes
+    the fund on line seven.
 
-    `header` supplies the shared values; each line supplies what actually
-    differs — description, amount, an optional category override and an
-    optional transaction charge. Atomic: either the whole stack is recorded or
-    none of it, because a half-entered batch is worse than none.
+    `header` supplies the defaults; each line supplies description, amount, an
+    optional category override, an optional transaction charge, and optional
+    overrides for department, claimant, payee, vendor, method, date and
+    voucher. Blank line fields keep the header default. Atomic: either the
+    whole stack is recorded or none of it, because a half-entered batch is
+    worse than none.
 
     `shared_charge` covers the case a per-line charge cannot express: the whole
     stack settled with one transfer, attracting one fee. The two are added
@@ -181,14 +197,18 @@ def record_batch(*, header, lines, user, auto_approve=False,
         if not description or not amount or Decimal(str(amount)) <= 0:
             continue          # blank rows are how a variable-length form ends
         expense, charge_expense = record(
-            date=header["date"], department=header["department"],
+            date=_line_or_header(line, header, "date") or header["date"],
+            department=(_line_or_header(line, header, "department")
+                        or header["department"]),
             description=description, amount=amount, user=user,
             category=line.get("category") or header.get("category")
             or Expense.Category.OTHER,
-            method=header.get("method") or Expense.Method.CASH,
-            claimant=header.get("claimant", ""), payee=header.get("payee", ""),
-            vendor=header.get("vendor"),
-            voucher_no=line.get("voucher_no") or header.get("voucher_no", ""),
+            method=(_line_or_header(line, header, "method")
+                    or Expense.Method.CASH),
+            claimant=_line_or_header(line, header, "claimant") or "",
+            payee=_line_or_header(line, header, "payee") or "",
+            vendor=_line_or_header(line, header, "vendor"),
+            voucher_no=_line_or_header(line, header, "voucher_no") or "",
             expenditure_type=header.get("expenditure_type"),
             budget_line=header.get("budget_line"),
             paid_from_petty_cash=header.get("paid_from_petty_cash", False),

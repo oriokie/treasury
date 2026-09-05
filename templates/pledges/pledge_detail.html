@@ -60,6 +60,17 @@
   <div class="ws-metric"><span class="wm-l">Status</span><span class="wm-v" style="font-size:1rem"><span class="pill {% if pledge.status == 'FULFILLED' %}pill-green{% elif pledge.status == 'ACTIVE' %}pill-blue{% elif pledge.status == 'LAPSED' %}pill-red{% elif pledge.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ pledge.get_status_display }}</span></span></div>
 </div>
 
+{% if pledge.match_code %}
+<div class="card u-mb"><div class="bd" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+  <div>
+    <strong class="u-xs">Match code</strong>
+    <div class="mono" style="font-size:1.25rem;letter-spacing:.04em" id="pledgeCode">{{ pledge.match_code }}</div>
+    <p class="help u-mt-0">Put this in the M-Pesa / bank reference so gifts are matched to this pledge first — including when someone else pays toward it.</p>
+  </div>
+  <button type="button" class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('pledgeCode').textContent);this.textContent='Copied'">Copy code</button>
+</div></div>
+{% endif %}
+
 {% if can_enter_data or match_aliases %}
 <div class="card u-mb"><div class="hd">Also match payments from</div><div class="bd">
   <p class="help u-mt-0">When this person pays from another M-Pesa line, or a spouse / family member pays toward the same pledge, add them here so auto-match recognises those gifts.</p>

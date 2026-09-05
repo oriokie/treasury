@@ -80,6 +80,81 @@ class RemittancePaymentWorkflowTests(TestCase):
         self.assertTrue(self.b.is_settled)
         self.assertIn("QA12CD", self.b.settlement_label)
 
+    def test_two_cheques_summing_to_total_settles(self):
+        self._approve()
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/issue-payment/", {
+            "method": ["CHEQUE", "CHEQUE"],
+            "instrument_number": ["1001", "1002"],
+            "date_issued": ["2026-06-05", "2026-06-05"],
+            "amount": ["5000.00", "7000.00"],
+        })
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.payments.count(), 2)
+        self.assertEqual(self.b.settled_amount, Decimal("12000.00"))
+        self.assertTrue(self.b.is_settled)
+        self.assertIn("1001", self.b.settlement_label)
+        self.assertIn("1002", self.b.settlement_label)
+        # primary FK kept for compatibility
+        self.assertIsNotNone(self.b.payment_id)
+        self.assertEqual(self.b.payment.instrument_number, "1001")
+        # can now mark sent
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/remit/", {})
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.status, "REMITTED")
+        self.assertEqual(self.b.cheque_no, "1001")
+
+    def test_partial_instrument_does_not_settle(self):
+        self._approve()
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/issue-payment/", {
+            "method": "CHEQUE", "instrument_number": "2001",
+            "date_issued": "2026-06-05", "amount": "4000.00",
+        })
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.settled_amount, Decimal("4000.00"))
+        self.assertFalse(self.b.is_settled)
+        self.assertEqual(self.b.remaining_to_settle, Decimal("8000.00"))
+        # mark sent still blocked
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/remit/", {})
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.status, "APPROVED")
+        # incremental second cheque completes settlement
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/issue-payment/", {
+            "method": "CHEQUE", "instrument_number": "2002",
+            "date_issued": "2026-06-06", "amount": "8000.00",
+        })
+        self.b.refresh_from_db()
+        self.assertTrue(self.b.is_settled)
+        self.assertEqual(self.b.payments.count(), 2)
+
+    def test_over_total_rejected(self):
+        self._approve()
+        n0 = PaymentInstrument.objects.filter(remittance_batch=self.b).count()
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/issue-payment/", {
+            "method": ["CHEQUE", "CHEQUE"],
+            "instrument_number": ["3001", "3002"],
+            "date_issued": ["2026-06-05", "2026-06-05"],
+            "amount": ["8000.00", "5000.00"],  # 13000 > 12000
+        })
+        self.b.refresh_from_db()
+        self.assertEqual(
+            PaymentInstrument.objects.filter(remittance_batch=self.b).count(), n0)
+        self.assertFalse(self.b.is_settled)
+        # partial then overshoot also rejected
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/issue-payment/", {
+            "method": "CHEQUE", "instrument_number": "3001",
+            "date_issued": "2026-06-05", "amount": "8000.00",
+        })
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.settled_amount, Decimal("8000.00"))
+        self.c.post(f"/reports/trust/remittance/batch/{self.b.id}/issue-payment/", {
+            "method": "CHEQUE", "instrument_number": "3002",
+            "date_issued": "2026-06-05", "amount": "5000.00",  # would make 13000
+        })
+        self.b.refresh_from_db()
+        self.assertEqual(self.b.payments.count(), 1)
+        self.assertEqual(self.b.settled_amount, Decimal("8000.00"))
+        self.assertFalse(self.b.is_settled)
+
 
 class RouteRenameTests(TestCase):
     def setUp(self):
