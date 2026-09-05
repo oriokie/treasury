@@ -32,6 +32,27 @@
   to record who belongs to which group.{% endif %}</p></div>
 {% endif %}
 
+{% if members %}
+<div class="card u-mb"><div class="hd">Member codes
+  <span class="muted">— supporters put a member's code in the bank reference to credit them and their group</span></div>
+<div class="bd u-pad-cell">
+  <table class="ledger compact">
+    <thead><tr><th>Name</th><th>Group</th><th>Code</th><th>Phone</th></tr></thead>
+    <tbody>
+    {% for m in members %}
+      <tr>
+        <td>{{ m.name }}</td>
+        <td>{{ m.group|default:"—" }}</td>
+        <td class="mono">{{ m.match_code }}</td>
+        <td class="mono muted u-xs">{{ m.phone|default:"—" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="help u-mt-sm">When a pledged member (or anyone else) contributes for another member, the <em>recipient's</em> code in the reference wins — gifts are attributed to that member and group first.</p>
+</div></div>
+{% endif %}
+
 {% if any_targets %}
 {% comment %}Chasing only the groups still short of the target on the fund's
 budget page. The button says how many groups and how much, because "remind the
@@ -215,10 +236,11 @@ compose it rather than on the confirmation screen afterwards.{% endcomment %}
   {% endif %}
 
   <table class="ledger compact">
-    <thead><tr><th>Name</th><th>Phone</th><th>Group</th></tr></thead>
+    <thead><tr><th>Name</th><th>Code</th><th>Phone</th><th>Group</th></tr></thead>
     <tbody>
     {% for m in g.members %}
       <tr><td>{{ m.name }}</td>
+        <td class="mono">{{ m.match_code }}</td>
         <td class="mono">{{ m.phone|default:"—" }}</td>
         <td>{{ m.group|default:"—" }}</td></tr>
     {% endfor %}

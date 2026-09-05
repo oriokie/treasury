@@ -309,18 +309,59 @@ class RemittanceBatch(models.Model):
     def __str__(self):
         return self.batch_number
 
+    # Statuses that count toward settling the remittance liability. PRESENTED
+    # is omitted: the instrument is still mid-clearing and not yet a firm
+    # settlement for "mark as sent" purposes.
+    SETTLEMENT_STATUSES = ("ISSUED", "OUTSTANDING", "CLEARED")
+
+    def settlement_instruments(self):
+        """Payment instruments that settle this batch.
+
+        Prefers the `payments` reverse relation (PaymentInstrument.remittance_batch).
+        Also includes `batch.payment` for legacy rows that only set the FK the
+        other way, so old and new data share one settlement total.
+        """
+        import datetime as dt
+        seen = {}
+        for p in self.payments.filter(status__in=self.SETTLEMENT_STATUSES):
+            seen[p.pk] = p
+        # legacy / primary FK — may not be in payments if remittance_batch was unset
+        if self.payment_id and self.payment.status in self.SETTLEMENT_STATUSES:
+            seen.setdefault(self.payment_id, self.payment)
+        return sorted(
+            seen.values(),
+            key=lambda p: (p.date_issued or dt.date.min, p.id))
+
+    @property
+    def settled_amount(self):
+        return sum((p.amount for p in self.settlement_instruments()), Decimal("0"))
+
+    @property
+    def remaining_to_settle(self):
+        return max(self.total_amount - self.settled_amount, Decimal("0"))
+
     @property
     def is_settled(self):
-        """True once an issued payment instrument is linked (the obligation is
-        being settled), regardless of whether it has cleared yet."""
-        return self.payment_id is not None and self.payment.status in (
-            "ISSUED", "OUTSTANDING", "CLEARED")
+        """True when linked instruments in ISSUED/OUTSTANDING/CLEARED sum to
+        the batch total (within 0.01). Partial instruments leave it unsettled."""
+        insts = self.settlement_instruments()
+        if not insts:
+            return False
+        return abs(self.settled_amount - self.total_amount) <= Decimal("0.01")
+
+    @property
+    def is_cleared(self):
+        """True once every settlement instrument has cleared the bank."""
+        insts = self.settlement_instruments()
+        return bool(insts) and all(p.status == "CLEARED" for p in insts)
 
     @property
     def settlement_label(self):
-        if self.payment_id:
-            p = self.payment
-            return f"{p.get_method_display()} {p.instrument_number}".strip()
+        insts = self.settlement_instruments()
+        if insts:
+            return ", ".join(
+                f"{p.get_method_display()} {p.instrument_number}".strip()
+                for p in insts)
         if self.cheque_no:                      # legacy, pre-migration
             return f"Cheque {self.cheque_no}"
         return ""

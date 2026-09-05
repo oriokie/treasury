@@ -29,7 +29,10 @@ class MemberSmsCriteriaTests(TestCase):
         self.non_giver = Member.objects.create(name="Non Giver Person",
             phone="254711000002", active=True)
         self.no_phone = Member.objects.create(name="No Phone Person", active=True)
-        Transaction.objects.create(date=dt.date(2026, 6, 1), amount=Decimal("500"),
+        # Relative to today so the "recent giving" window does not drift past
+        # a hard-coded date as the calendar moves on.
+        Transaction.objects.create(
+            date=dt.date.today() - dt.timedelta(days=30), amount=Decimal("500"),
             direction="CREDIT", confirmed=True, channel="CASH",
             allocation_status="MANUAL", department=self.d, member=self.giver)
         self.c = Client(); self.c.force_login(self.tr)
@@ -60,7 +63,7 @@ class MemberSmsCriteriaTests(TestCase):
             allocation_status="MANUAL", department=self.d, member=old_giver)
         b = self.c.get("/members/sms/?criteria=no_recent_giving&days=90").content.decode()
         self.assertIn("OLD GIVER", b)   # gave in 2020, not in last 90 days
-        self.assertNotIn(">GIVER PERSON<", b)  # gave recently (2026-06-01 is within window)
+        self.assertNotIn(">GIVER PERSON<", b)  # gave recently (within 90-day window)
 
     def test_outstanding_pledge_criterion(self):
         from pledges.models import Pledge, PledgeCampaign

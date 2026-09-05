@@ -57,7 +57,7 @@
     <div class="es-funds" id="esFunds"></div>
   </div>
 
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. New rows copy the Channel and Group above them.</p>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. Type a development <strong>group number</strong> on the Development column (resolved when you submit). New rows copy the Channel and Group number above them.</p>
 
   <div class="btn-row entry-actions">
     <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
@@ -68,10 +68,23 @@
 
 <script>
 const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}",isDevelopment:{{ c.is_development|yesno:"true,false" }},isDefault:{{ c.default|yesno:"true,false" }},subgroups:[{% for s in c.subgroups %}{id:"{{ s.id }}",label:"{{ s.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]}{% if not forloop.last %},{% endif %}{% endfor %}];
-const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",number:{{ g.number }},label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const DEV_GROUP_BY_NUMBER = {};
+const DEV_GROUP_BY_ID = {};
+DEV_GROUPS.forEach(g=>{ DEV_GROUP_BY_NUMBER[String(g.number)] = g; DEV_GROUP_BY_ID[String(g.id)] = g; });
+function resolveDevGroupId(num){
+  if(num == null || num === "") return null;
+  const g = DEV_GROUP_BY_NUMBER[String(num).trim()];
+  return g ? String(g.id) : null;
+}
+function numberForDevGroupId(id){
+  if(!id) return "";
+  const g = DEV_GROUP_BY_ID[String(id)];
+  return g ? String(g.number) : "";
+}
+const MEMBERS = {{ members_json|safe }};
 const INITIAL_ROWS = {{ batch_rows_json|safe }};
 const INITIAL_BATCH_ID = {{ batch.id|default:"null" }};
-function devGroupOptions(sel){ let o='<option value="">— group —</option>'; DEV_GROUPS.forEach(g=>{ o+=`<option value="${g.id}" ${sel==g.id?'selected':''}>${g.label}</option>`; }); return o; }
 
 // Maps a subgroup's own department id -> its parent fund's column key, so a
 // row's totals/summary attribute a subgroup-targeted amount back to the
@@ -266,6 +279,7 @@ function rebuildTable(){
   syncTemplateLink();
   updateTotals();
   markDirtyAndSave();
+  pinLedgerHead();
 }
 
 let dragCol = null;
@@ -359,6 +373,7 @@ function currentAmounts(tr){
 function readRow(tr){
   const amounts = currentAmounts(tr);
   const dg = tr.querySelector(".devgrp");
+  const groupNum = dg ? (dg.value || "").trim() : "";
   return {
     name: tr.querySelector(".cname") ? tr.querySelector(".cname").value : "",
     mid: tr.querySelector(".mid") ? tr.querySelector(".mid").value : "",
@@ -367,7 +382,9 @@ function readRow(tr){
     rcpt_overridden: tr.dataset.rcptOverridden === "1",
     chan: tr.querySelector(".chan") ? tr.querySelector(".chan").value : "CASH",
     manual_total: tr.querySelector(".mtotal") ? tr.querySelector(".mtotal").value : "",
-    dev_group_id: dg ? dg.value : "",
+    // Typed group NUMBER stays on the row; id is resolved at collect/submit.
+    dev_group_number: groupNum,
+    dev_group_id: groupNum ? (resolveDevGroupId(groupNum) || "") : "",
     amounts,
   };
 }
@@ -396,9 +413,13 @@ function fundCellHtml(c, data){
     // re-targeted posting key. Matches the same per-department check the
     // cash-entry form and review-queue resolve action already use
     // (category == DEVELOPMENT), rather than assuming a single "the"
-    // Development fund.
+    // Development fund. Cashier keys the group NUMBER; it is resolved to
+    // a DevelopmentGroup id when the sheet is collected / submitted.
+    const grpNum = (data.dev_group_number != null && data.dev_group_number !== "")
+      ? data.dev_group_number
+      : numberForDevGroupId(data.dev_group_id || "");
     return `<input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}">`
-         + `<select class="field--select devgrp devgrp-select">${devGroupOptions(data.dev_group_id||'')}</select>`;
+         + `<input class="field devgrp num mono" inputmode="numeric" placeholder="grp#" title="Development group number" value="${grpNum}">`;
   }
   if(c.subgroups && c.subgroups.length){
     // Generic subgroup picker: this fund has real sub-account funds (e.g.
@@ -465,11 +486,18 @@ function wireRowEvents(tr){
     cascadeSelectFrom(tr, ".chan", "chanOverridden");
     markDirtyAndSave();
   });
-  const devgrp = tr.querySelector(".devgrp");
-  if(devgrp) devgrp.addEventListener("change", ()=>{
-    tr.dataset.devgrpOverridden = "1";
-    cascadeSelectFrom(tr, ".devgrp", "devgrpOverridden");
-    markDirtyAndSave();
+  // Development group is row-local only — typing a number (or clearing it)
+  // must NOT cascade to later rows. New rows still inherit the number above
+  // them once, via addRow(). Multiple Development fund columns on one row
+  // share the same number.
+  tr.querySelectorAll(".devgrp").forEach(devgrp=>{
+    devgrp.addEventListener("input", ()=>{
+      tr.dataset.devgrpOverridden = "1";
+      tr.classList.remove("row-bad-group");
+      const v = devgrp.value;
+      tr.querySelectorAll(".devgrp").forEach(el=>{ if(el !== devgrp) el.value = v; });
+      markDirtyAndSave();
+    });
   });
   tr.querySelectorAll(".subgrp-select").forEach(sel=>{
     sel.addEventListener("change", ()=>{
@@ -527,6 +555,41 @@ function wireRowEvents(tr){
     // already in flight, by moving the sequence number past what those
     // requests will compare against when they resolve.
     const cancelLookup = ()=>{ clearTimeout(timer); reqSeq++; };
+    function renderMemberSuggestions(results){
+      box.innerHTML = "";
+      if(!results.length){ hideBox(); return; }
+      results.forEach(m=>{
+        const it = document.createElement("div"); it.className = "ac-item";
+        it.textContent = m.name + (m.phone ? "  ·  " + m.phone : "");
+        it.addEventListener("mousedown", e=>{
+          e.preventDefault(); nameI.value = m.name; midI.value = m.id;
+          if(m.phone) tr.dataset.phone = m.phone;
+          cancelLookup(); hideBox(); markDirtyAndSave();
+        });
+        box.appendChild(it);
+      });
+      const r = nameI.getBoundingClientRect();
+      box.style.left = r.left + "px"; box.style.top = r.bottom + "px";
+      box.style.width = Math.max(r.width, 180) + "px";
+      box.style.display = "block";
+    }
+    // Prefer the members list embedded at page load — filter in memory so
+    // the typeahead never waits on a network round-trip. Fall back to the
+    // server search endpoint only when that list is empty (e.g. a future
+    // change stops embedding it).
+    function localMemberMatches(q){
+      const ql = q.toLowerCase();
+      const out = [];
+      for(let i = 0; i < MEMBERS.length; i++){
+        const m = MEMBERS[i];
+        if((m.name && m.name.toLowerCase().indexOf(ql) !== -1) ||
+           (m.phone && String(m.phone).indexOf(q) !== -1)){
+          out.push(m);
+          if(out.length >= 8) break;
+        }
+      }
+      return out;
+    }
     nameI.addEventListener("input", ()=>{
       midI.value = ""; clearTimeout(timer);
       const q = nameI.value.trim();
@@ -534,6 +597,14 @@ function wireRowEvents(tr){
       markDirtyAndSave();
       if(q.length < 2){ hideBox(); return; }
       const mySeq = ++reqSeq;
+      if(MEMBERS && MEMBERS.length){
+        // local filter is sync — still gate on focus so a blur that raced
+        // the keystroke can't leave the box stranded (same stale-result
+        // contract as the network path below).
+        if(mySeq !== reqSeq || document.activeElement !== nameI) return;
+        renderMemberSuggestions(localMemberMatches(q));
+        return;
+      }
       timer = setTimeout(async ()=>{
         try{
           const d = await (await fetch(searchUrl + "?q=" + encodeURIComponent(q))).json();
@@ -547,22 +618,7 @@ function wireRowEvents(tr){
           // Two ways to be stale: a newer lookup has superseded this one (it
           // will render its own results), or the field no longer has focus.
           if(mySeq !== reqSeq || document.activeElement !== nameI) return;
-          box.innerHTML = "";
-          if(!d.results.length){ hideBox(); return; }
-          d.results.forEach(m=>{
-            const it = document.createElement("div"); it.className = "ac-item";
-            it.textContent = m.name + (m.phone ? "  ·  " + m.phone : "");
-            it.addEventListener("mousedown", e=>{
-              e.preventDefault(); nameI.value = m.name; midI.value = m.id;
-              if(m.phone) tr.dataset.phone = m.phone;
-              cancelLookup(); hideBox(); markDirtyAndSave();
-            });
-            box.appendChild(it);
-          });
-          const r = nameI.getBoundingClientRect();
-          box.style.left = r.left + "px"; box.style.top = r.bottom + "px";
-          box.style.width = Math.max(r.width, 180) + "px";
-          box.style.display = "block";
+          renderMemberSuggestions(d.results || []);
         }catch(e){ hideBox(); }
       }, 170);
     });
@@ -638,12 +694,12 @@ function resequenceFrom(startTr){
   }
 }
 
-// Channel and Development Group cascade the SAME way receipts do: setting
-// either on one row propagates it forward to every later row that hasn't
-// itself been explicitly changed, and a later explicit change becomes the
-// new anchor for whatever follows it. New rows added at the end start
-// un-overridden (they already inherited their initial value from the row
-// above in addRow()), so they keep following an earlier change made later.
+// Channel cascades the SAME way receipts do: setting it on one row
+// propagates it forward to every later row that hasn't itself been
+// explicitly changed, and a later explicit change becomes the new anchor
+// for whatever follows it. Development group does NOT cascade — each row
+// keeps its own keyed group number (new rows still inherit once from the
+// row above in addRow()).
 function cascadeSelectFrom(startTr, selector, overrideFlag){
   const rows = Array.from(document.querySelectorAll("#envBody tr"));
   const startIdx = rows.indexOf(startTr);
@@ -720,7 +776,7 @@ function escText(s){
 }
 
 function validateRow(tr){
-  tr.classList.remove("row-mismatch");
+  tr.classList.remove("row-mismatch", "row-bad-group");
   if(!rowIsActive(tr)){ updateBlockingState(); return true; }
   const computed = rowTotal(tr);
   const mtotalI = tr.querySelector(".mtotal");
@@ -728,6 +784,16 @@ function validateRow(tr){
   const rcpt = (tr.querySelector(".rcpt").value || "").trim();
   let bad = !rcpt || isNaN(manual) || Math.abs(manual - computed) >= 0.01;
   if(bad) tr.classList.add("row-mismatch");
+  // Typed group number must resolve to a known DevelopmentGroup before
+  // Submit — empty is fine (group is optional); a non-matching number is not.
+  const dg = tr.querySelector(".devgrp");
+  if(dg){
+    const num = (dg.value || "").trim();
+    if(num && !resolveDevGroupId(num)){
+      tr.classList.add("row-bad-group");
+      bad = true;
+    }
+  }
   updateBlockingState();
   return !bad;
 }
@@ -748,6 +814,13 @@ function rowProblemMessages(tr){
   }
   if(tr.classList.contains("row-dup-receipt")){
     msgs.push("Receipt number is used by another row.");
+  }
+  if(tr.classList.contains("row-bad-group")){
+    const dg = tr.querySelector(".devgrp");
+    const num = dg ? (dg.value || "").trim() : "";
+    msgs.push(num
+      ? `No development group matches number ${num}.`
+      : "Development group number is not valid.");
   }
   return msgs;
 }
@@ -838,14 +911,15 @@ function addRow(){
   } else if(nextReceipt != null){
     rcpt = String(nextReceipt);
   }
-  // new rows inherit repetitive values (channel, group) from the row above,
-  // to minimise typing for a run of similar entries
+  // new rows inherit repetitive values (channel, group number) from the
+  // row above, to minimise typing for a run of similar entries — inheritance
+  // is one-shot at add time; later edits to a group number stay on that row.
   const data = {rcpt: rcpt};
   if(prev){
     const prevChan = prev.querySelector(".chan");
     if(prevChan) data.chan = prevChan.value;
     const prevDg = prev.querySelector(".devgrp");
-    if(prevDg) data.dev_group_id = prevDg.value;
+    if(prevDg && prevDg.value) data.dev_group_number = prevDg.value;
   }
   const tr = makeRow(visibleOrderedColumns(), data);
   document.getElementById("envBody").appendChild(tr);
@@ -864,6 +938,9 @@ function collectPayload(){
   const rows = [];
   document.querySelectorAll("#envBody tr").forEach((tr, i)=>{
     const d = readRow(tr);
+    // Resolve keyed group number → DevelopmentGroup id at collect time
+    // (autosave and submit). Unresolved numbers go as null so a draft can
+    // still save; submit's validateRow blocks advancing until they match.
     rows.push({
       line_no: i + 1, receipt_no: d.rcpt, receipt_no_overridden: d.rcpt_overridden,
       contributor_name: d.name, member_id: d.mid || null, phone: d.phone,
@@ -1083,8 +1160,45 @@ document.querySelectorAll(".colcb").forEach(cb=>cb.addEventListener("change", sy
   function hideBoxes(){ document.querySelectorAll(".ac-box").forEach(b=>{ b.style.display = "none"; }); }
   const wrap = document.getElementById("xlWrap");
   if(wrap) wrap.addEventListener("scroll", hideBoxes);
-  window.addEventListener("resize", hideBoxes);
+  window.addEventListener("scroll", hideBoxes, {passive:true});
+  window.addEventListener("resize", ()=>{ hideBoxes(); syncLedgerStickyOffsets(); });
 })();
+
+// Keep thead / entry-toolbar stuck under the app topbar on PAGE scroll.
+// The table wrap no longer uses a vertical max-height scrollport — only
+// horizontal overflow — so sticky top offsets must clear the chrome.
+// overflow-x on .xl-wrap creates a scrollport that stops CSS sticky from
+// pinning to the viewport; pinLedgerHead() compensates with translateY.
+function syncLedgerStickyOffsets(){
+  const topbar = document.querySelector(".topbar");
+  const toolbar = document.querySelector(".entry-toolbar");
+  const topbarH = topbar ? Math.ceil(topbar.getBoundingClientRect().height) : 0;
+  const toolbarH = toolbar ? Math.ceil(toolbar.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--ledger-topbar-h", topbarH + "px");
+  document.documentElement.style.setProperty("--ledger-toolbar-h", toolbarH + "px");
+  document.documentElement.style.setProperty("--ledger-head-top", (topbarH + toolbarH) + "px");
+  pinLedgerHead();
+}
+function pinLedgerHead(){
+  const wrap = document.getElementById("xlWrap");
+  const head = document.getElementById("headRow");
+  const table = document.getElementById("envTable");
+  if(!wrap || !head || !table) return;
+  const stickAt = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue("--ledger-head-top")) || 0;
+  const wrapTop = wrap.getBoundingClientRect().top;
+  const tableBottom = table.getBoundingClientRect().bottom;
+  const headH = head.offsetHeight || 28;
+  let y = 0;
+  if(wrapTop < stickAt && (tableBottom - headH) > stickAt){
+    y = Math.round(stickAt - wrapTop);
+  }
+  head.querySelectorAll("th").forEach(th=>{
+    th.style.transform = y ? `translateY(${y}px)` : "";
+    th.classList.toggle("is-page-stuck", !!y);
+  });
+}
+window.addEventListener("scroll", pinLedgerHead, {passive:true});
 
 document.getElementById("addRow").addEventListener("click", ()=>addRows(5));
 document.getElementById("sabDate").addEventListener("change", markDirtyAndSave);
@@ -1099,6 +1213,7 @@ async function seedReceipt(){
 
 (async ()=>{
   await seedReceipt();
+  syncLedgerStickyOffsets();
   // Show whatever fund columns this batch's own rows already have money
   // against, whatever the "preferred" defaults say — see
   // usedFundKeysFromRows for why this has to happen BEFORE COLS is read
@@ -1142,6 +1257,7 @@ async function seedReceipt(){
     dirty = false;
     setSaveStatus("idle");
   }
+  syncLedgerStickyOffsets();
 })();
 
 function rebuildHeaderOnly(){
@@ -1189,11 +1305,14 @@ function rebuildHeaderOnly(){
 .cp-pin-row{display:flex;align-items:center;gap:.8rem;padding:.2rem 0;border-bottom:1px solid var(--line)}
 .cp-pin-label{flex:1;font-size:.82rem}
 
-.xl-wrap{overflow:auto;max-height:72vh;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch;position:relative}
+.xl-wrap{overflow-x:auto;overflow-y:visible;border:1px solid var(--line);border-radius:8px;-webkit-overflow-scrolling:touch;position:relative}
 .xl-grid{border-collapse:separate;border-spacing:0;table-layout:fixed;min-width:max-content}
 .xl-grid th,.xl-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;overflow:hidden}
+/* thead sticks under the toolbar via pinLedgerHead() translateY (page scroll);
+   position:sticky + left still pins identity columns during horizontal scroll */
 .xl-grid thead th{position:sticky;top:0;z-index:5;background:var(--accent,#1f5f4f);color:#fff;padding:.25rem .35rem;
-  font-size:.7rem;white-space:nowrap;text-align:right;cursor:grab}
+  font-size:.7rem;white-space:nowrap;text-align:right;cursor:grab;will-change:transform}
+.xl-grid thead th.is-page-stuck{box-shadow:0 2px 6px -2px rgba(0,0,0,.25)}
 .xl-grid thead th.dragging{opacity:.5}
 .xl-grid thead th.pinned{z-index:7}
 .colhead-lbl{pointer-events:none}
@@ -1201,13 +1320,14 @@ function rebuildHeaderOnly(){
 .colhead-resize{position:absolute;right:0;top:0;bottom:0;width:6px;cursor:col-resize}
 .xl-grid th.colhead{position:sticky;top:0}
 .xl-grid td .field,.xl-grid td .field--select{border:none;border-radius:0;width:100%;background:transparent;padding:.18rem .3rem;font-size:.78rem;box-shadow:none}
-.xl-grid td .amt,.xl-grid td .mtotal{text-align:right}
+.xl-grid td .amt,.xl-grid td .mtotal,.xl-grid td .devgrp{text-align:right}
+.xl-grid td .devgrp{max-width:4.2rem;border-top:1px dashed var(--line)!important}
 .xl-grid td .field:focus{outline:2px solid var(--accent,#1f5f4f);outline-offset:-2px;background:#fff}
 .xl-grid .rownum{text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
 .xl-grid td.pinned,.xl-grid th.pinned{position:sticky;z-index:4;background:#fff}
 .xl-grid thead th.pinned{background:var(--accent,#1f5f4f)}
 .xl-grid .rm-col{width:28px;text-align:center}
-.xl-grid tr.row-mismatch td,.xl-grid tr.row-dup-receipt td{background:var(--danger-soft,#fbeceb) !important}
+.xl-grid tr.row-mismatch td,.xl-grid tr.row-dup-receipt td,.xl-grid tr.row-bad-group td{background:var(--danger-soft,#fbeceb) !important}
 .meta-cell{position:relative}
 .pos-rel{position:relative}
 /* This table-embedded search positions its popup by fixed viewport
@@ -1218,7 +1338,8 @@ function rebuildHeaderOnly(){
 .btn-xs{padding:.1rem .4rem;font-size:.8rem}
 
 .entry-toolbar{display:flex;align-items:center;gap:.8rem;padding:.7rem .9rem;margin-bottom:.8rem;
-  background:var(--card-head,#faf7f0);border:1px solid var(--line);border-radius:10px;flex-wrap:wrap}
+  background:var(--card-head,#faf7f0);border:1px solid var(--line);border-radius:10px;flex-wrap:wrap;
+  position:sticky;top:var(--ledger-topbar-h, 0px);z-index:12}
 .entry-toolbar .tb-field{display:flex;flex-direction:column;gap:.2rem}
 .entry-toolbar .tb-field label{font-size:.72rem;font-weight:600;color:var(--muted,#777);text-transform:uppercase;letter-spacing:.03em}
 .entry-toolbar .tb-field .field{min-width:150px}

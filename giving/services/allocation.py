@@ -313,15 +313,28 @@ def campaign_allocate(reference, name, phone):
     one of an active campaign's trigger words, match the payer to a campaign
     member (phone, then unique name) and return that campaign's department.
 
+    **Member match_code first.** When a campaign member's rallying code appears
+    in the reference, that member and their group win — even if someone else
+    paid (so supporters can rally for a named member).
+
     Returns (campaign, group, department, status) or (None, "", None, None).
     status is AUTO when a member matched, REVIEW when only the trigger matched
     (so an unrecognised giver still routes to the right fund for review).
     """
     import re
     from giving.models import Campaign
+    from pledges.services.codes import find_campaign_member_by_code
+
     s = re.sub(r"\s+", "", (reference or "").strip().lower())
     if not s:
         return None, "", None, None
+
+    # Code attribution does not require a trigger word — the code itself is the
+    # intent signal (rallying for a named member).
+    camp, member = find_campaign_member_by_code(reference)
+    if camp is not None and member is not None:
+        return camp, (member.group or ""), camp.subgroup_department(member.group), "AUTO"
+
     for camp in Campaign.objects.filter(active=True):
         trigs = camp.trigger_list()
         if not trigs or not any(t in s for t in trigs):
@@ -339,9 +352,10 @@ def reallocate_pending():
     """Re-run allocation rules over the items currently in the review queue
     (credits awaiting allocation), so rules added *after* an import can clear
     them without re-importing. Updates each transaction in place when it now
-    resolves to a fund (directly, via a development-group token, or via the
-    campaign fallback). Split-fund matches and locked periods are left for
-    manual handling. Returns a summary dict.
+    resolves to a fund (directly, via a development-group token, the campaign
+    fallback, or a pledge match_code). Split-fund matches are expanded in place
+    the same way statement import does. Locked periods are left alone.
+    Returns a summary dict.
     """
     from giving.models import Transaction, SplitFund
     from giving.services.allocation import campaign_allocate
@@ -361,7 +375,25 @@ def reallocate_pending():
             continue
         resolver, status = allocate(t.reference, t.date)
         if isinstance(resolver, SplitFund):
-            skipped_split += 1          # splitting in place is out of scope here
+            # Expand like statement import — previously left for manual allocate.
+            try:
+                parts = [(d, amt, None) for d, amt in resolver.split(t.amount)]
+                if len(parts) < 2:
+                    skipped_split += 1
+                    continue
+                t.split_into(parts, user=None)
+                allocated += 1
+                if t.confirmed and not t.is_reversal and not t.is_reversed:
+                    try:
+                        from pledges.services.matching import handle_new_contribution
+                        # Children inherit confirmation; match against each part.
+                        for sib in t.strict_split_siblings():
+                            handle_new_contribution(sib)
+                        handle_new_contribution(t)
+                    except Exception:  # noqa: BLE001
+                        pass
+            except Exception:  # noqa: BLE001
+                skipped_split += 1
             continue
         dept, dev_group = _resolve(resolver)
         new_status = None
@@ -375,10 +407,20 @@ def reallocate_pending():
         # the payer's name/phone, same as when dept was never resolved at all.
         dev_group_unknown = (resolver == "DEV_GROUP_NA")
         if dept is None or dev_group_unknown:
-            campaign, campaign_group, cdept, cstatus = campaign_allocate(
-                t.reference, t.payer_name, t.payer_phone)
-            if cdept is not None and (dept is None or cstatus == "AUTO"):
-                dept, new_status = cdept, Transaction.Status.AUTO
+            code_pinned = False
+            try:
+                from pledges.services.codes import pledge_code_allocate
+                _p, pdept, _ps = pledge_code_allocate(t.reference)
+                if pdept is not None:
+                    dept, new_status = pdept, Transaction.Status.AUTO
+                    code_pinned = True
+            except Exception:  # noqa: BLE001
+                pass
+            if not code_pinned:
+                campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                    t.reference, t.payer_name, t.payer_phone)
+                if cdept is not None and (dept is None or cstatus == "AUTO"):
+                    dept, new_status = cdept, Transaction.Status.AUTO
         if dept is None or new_status not in (Transaction.Status.AUTO,
                                               Transaction.Status.LEARNED):
             continue
@@ -392,6 +434,13 @@ def reallocate_pending():
             fields += ["campaign", "campaign_group"]
         t.save(update_fields=fields)
         allocated += 1
+        # Newly allocated gifts may fulfil a pledge (match_code or identity).
+        if t.confirmed and not t.is_reversal and not t.is_reversed:
+            try:
+                from pledges.services.matching import handle_new_contribution
+                handle_new_contribution(t)
+            except Exception:  # noqa: BLE001
+                pass
     return {"scanned": scanned, "allocated": allocated,
             "remaining": scanned - allocated,
             "skipped_locked": skipped_locked, "skipped_split": skipped_split}

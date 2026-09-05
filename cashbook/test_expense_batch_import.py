@@ -39,7 +39,7 @@ class Base(TestCase):
 
 
 class ExpenseBatchEntryTests(Base):
-    """Several receipts, one date, one fund, one claimant."""
+    """Several receipts sharing defaults, with optional per-line overrides."""
 
     def _post(self, **over):
         data = {
@@ -104,6 +104,72 @@ class ExpenseBatchEntryTests(Base):
         self._post(line_amount=["1200", "not-a-number", ""])
         self.assertEqual(Expense.objects.count(), before,
                          "Part of the batch was saved after a bad line.")
+
+    def test_a_line_may_override_claimant_and_keep_the_header_fund(self):
+        """One fund, different claimants — the reported batch-entry gap."""
+        other = Vendor.objects.create(name="Other Supplies")
+        self._post(
+            line_claimant=["A. Otieno", "", ""],
+            line_payee=["", "Choir secretary", ""],
+            line_vendor=["", str(other.pk), ""],
+            line_method=["CASH", "", ""],
+            line_date=["", "", ""],
+            line_department=["", "", ""],
+            line_voucher=["V-1", "", ""],
+        )
+        fuel = Expense.objects.get(description="Fuel to Kisii")
+        choir = Expense.objects.get(description="Fare for choir")
+        self.assertEqual(fuel.claimant, "A. Otieno")
+        self.assertEqual(fuel.method, "CASH")
+        self.assertEqual(fuel.voucher_no, "V-1")
+        self.assertEqual(fuel.department, self.fund)
+        self.assertEqual(fuel.vendor, self.supplier)  # blank vendor → header
+        self.assertEqual(choir.claimant, "J. Mwangi")  # blank → header
+        self.assertEqual(choir.payee, "Choir secretary")
+        self.assertEqual(choir.vendor, other)
+        self.assertEqual(choir.method, "MPESA")
+
+    def test_a_line_may_override_department_and_date(self):
+        other_fund = Department.objects.create(
+            name="Building Fund", slug="building-fund",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.MINISTRY,
+            active=True, show_in_expenses=True, selectable=True)
+        other_day = TODAY - dt.timedelta(days=3)
+        self._post(
+            line_department=["", str(other_fund.pk), ""],
+            line_date=["", other_day.isoformat(), ""],
+            line_claimant=["", "", ""],
+            line_payee=["", "", ""],
+            line_vendor=["", "", ""],
+            line_method=["", "", ""],
+            line_voucher=["", "", ""],
+        )
+        fuel = Expense.objects.get(description="Fuel to Kisii")
+        choir = Expense.objects.get(description="Fare for choir")
+        self.assertEqual(fuel.department, self.fund)
+        self.assertEqual(fuel.date, TODAY)
+        self.assertEqual(choir.department, other_fund)
+        self.assertEqual(choir.date, other_day)
+
+    def test_blank_line_overrides_keep_every_header_default(self):
+        """Empty override fields must not wipe the shared header."""
+        self._post(
+            payee="Accounts payable",
+            voucher_no="BATCH-1",
+            line_department=["", "", ""],
+            line_date=["", "", ""],
+            line_claimant=["", "", ""],
+            line_payee=["", "", ""],
+            line_vendor=["", "", ""],
+            line_method=["", "", ""],
+            line_voucher=["", "", ""],
+        )
+        for expense in Expense.objects.filter(charge_for__isnull=True):
+            self.assertEqual(expense.payee, "Accounts payable")
+            self.assertEqual(expense.voucher_no, "BATCH-1")
+            self.assertEqual(expense.claimant, "J. Mwangi")
+            self.assertEqual(expense.vendor, self.supplier)
 
 
 class SharedRecordingRulesTests(Base):

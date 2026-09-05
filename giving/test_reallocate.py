@@ -81,3 +81,24 @@ class ReallocatePendingTests(TestCase):
         c = Client(); c.force_login(u)
         body = c.get("/queue/").content.decode()
         self.assertIn("Run rules on pending", body)
+
+    def test_split_fund_rule_expands_on_run_rules(self):
+        from giving.models import SplitFund, SplitComponent
+        enf = Department.objects.create(name="ENF-R", fund_type="TRUST", category="TRUST")
+        lcb = Department.objects.create(name="LCB-R", fund_type="LOCAL", category="OFFERING")
+        sf = SplitFund.objects.create(name="Combined-R")
+        SplitComponent.objects.create(split_fund=sf, department=enf, percent=Decimal("50"))
+        SplitComponent.objects.create(split_fund=sf, department=lcb, percent=Decimal("50"))
+        AllocationRule.objects.create(
+            reference=normalize_reference("combinedoffering"),
+            split_fund=sf, department=None, source="LEARNED")
+        t = _review("combinedoffering", 1)[0]
+        t.amount = Decimal("2000")
+        t.save(update_fields=["amount"])
+        res = reallocate_pending()
+        self.assertEqual(res["allocated"], 1)
+        self.assertEqual(res["skipped_split"], 0)
+        parts = Transaction.objects.filter(reference="combinedoffering")
+        self.assertEqual(parts.count(), 2)
+        self.assertEqual(sum(p.amount for p in parts), Decimal("2000"))
+        self.assertEqual(parts.filter(allocation_status="REVIEW").count(), 0)

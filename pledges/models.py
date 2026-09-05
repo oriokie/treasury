@@ -17,6 +17,8 @@ from django.db import models
 from django.db.models import Sum
 from simple_history.models import HistoricalRecords
 
+from core.codes import generate_match_code
+
 
 def _add_months(d, n):
     """Add n calendar months to a date, clamping the day to the month length."""
@@ -213,6 +215,15 @@ class Pledge(models.Model):
     submitted_contact = models.CharField(max_length=120, blank=True,
         help_text="Name/phone the member entered, for verification.")
 
+    # Short code the pledgor (or anyone contributing *for* them) puts in the
+    # M-Pesa / bank reference. Detected first during statement / CBS import so
+    # a pledged member paying toward someone else's promise is attributed
+    # correctly — identity matching alone would credit the payer's own pledge.
+    match_code = models.CharField(
+        max_length=16, unique=True, null=True, blank=True, db_index=True,
+        help_text="Code for bank/M-Pesa references. Matched before payer "
+                  "identity so gifts can be directed to another member's pledge.")
+
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 
@@ -261,6 +272,33 @@ class Pledge(models.Model):
 
     def __str__(self):
         return f"{self.member.name} -> {self.campaign.name}: {self.amount}"
+
+    def ensure_match_code(self, save=True):
+        """Assign a unique match_code when blank. Safe to call repeatedly."""
+        if self.match_code:
+            return self.match_code
+        for _ in range(40):
+            code = generate_match_code("PG")
+            if not Pledge.objects.filter(match_code=code).exists():
+                self.match_code = code
+                if save and self.pk:
+                    self.save(update_fields=["match_code"])
+                return code
+        raise RuntimeError("Could not allocate a unique pledge match code")
+
+    def save(self, *args, **kwargs):
+        if not self.match_code:
+            # Assign before insert so the unique constraint is satisfied without
+            # a second write; race retries live in ensure_match_code callers.
+            self.match_code = generate_match_code("PG")
+            for _ in range(20):
+                if not Pledge.objects.filter(match_code=self.match_code).exists():
+                    break
+                self.match_code = generate_match_code("PG")
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = list(set(update_fields) | {"match_code"})
+        super().save(*args, **kwargs)
 
     @property
     def accepts_payment(self):

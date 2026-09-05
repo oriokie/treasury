@@ -4062,16 +4062,16 @@ class PaymentAnalysisView(ReadAccessMixin, View):
 
 
 class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
-    """Several expenses that share a date, fund, claimant and method.
+    """Several expenses that usually share a date, fund, claimant and method.
 
-    A treasurer settling a stack of receipts from one person, on one day, from
-    one fund, was re-typing those four fields for every line — which is the slow
-    part, and the part where the fund gets mistyped on line seven and nobody
-    notices until the fund balances are wrong.
+    A treasurer settling a stack of receipts was re-typing those four fields
+    for every line — which is the slow part, and the part where the fund gets
+    mistyped on line seven and nobody notices until the fund balances are wrong.
 
-    So the shared facts are entered once at the top, and each line carries only
-    what actually differs: the narration, the amount, and the transaction charge
-    where there was one. The work itself goes through
+    Shared facts are entered once at the top as defaults. Each line carries the
+    narration, amount, optional charge, and optional overrides (department,
+    claimant, payee, vendor, method, date, voucher) when a receipt differs.
+    Blank line fields keep the header default. The work itself goes through
     `services.expenses.record_batch`, the same function the single form and the
     spreadsheet import use, so a batch-entered expense is indistinguishable from
     one entered any other way.
@@ -4143,13 +4143,44 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
         amounts = post.getlist("line_amount")
         categories = post.getlist("line_category")
         charges = post.getlist("line_charge")
+        line_dates = post.getlist("line_date")
+        line_depts = post.getlist("line_department")
+        line_claimants = post.getlist("line_claimant")
+        line_payees = post.getlist("line_payee")
+        line_vendors = post.getlist("line_vendor")
+        line_methods = post.getlist("line_method")
+        line_vouchers = post.getlist("line_voucher")
+
+        # Resolve override FKs once for the posted ids that appear, so each
+        # blank line keeps the header without an extra query.
+        override_dept_ids = {d for d in line_depts if (d or "").isdigit()}
+        override_depts = {
+            str(d.pk): d for d in Department.objects.filter(pk__in=override_dept_ids)
+        } if override_dept_ids else {}
+        override_vendor_ids = {v for v in line_vendors if (v or "").isdigit()}
+        override_vendors = {
+            str(v.pk): v for v in Vendor.objects.filter(pk__in=override_vendor_ids)
+        } if override_vendor_ids else {}
+
+        def _at(seq, i):
+            return seq[i] if i < len(seq) else None
+
         lines = []
         for i, description in enumerate(descriptions):
+            dept_raw = (_at(line_depts, i) or "").strip()
+            vendor_raw = (_at(line_vendors, i) or "").strip()
             lines.append({
                 "description": description,
-                "amount": amounts[i] if i < len(amounts) else None,
-                "category": categories[i] if i < len(categories) else None,
-                "charge": charges[i] if i < len(charges) else None,
+                "amount": _at(amounts, i),
+                "category": _at(categories, i),
+                "charge": _at(charges, i),
+                "date": _parse_date(_at(line_dates, i)),
+                "department": override_depts.get(dept_raw) if dept_raw else None,
+                "claimant": (_at(line_claimants, i) or "").strip() or None,
+                "payee": (_at(line_payees, i) or "").strip() or None,
+                "vendor": override_vendors.get(vendor_raw) if vendor_raw else None,
+                "method": (_at(line_methods, i) or "").strip() or None,
+                "voucher_no": (_at(line_vouchers, i) or "").strip() or None,
             })
 
         try:
@@ -4167,8 +4198,15 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
             messages.error(request, "No lines had both a description and an amount.")
             return self.render_to_response(self.get_context_data(**kwargs))
 
+        # Unlinked rows include principal lines and any shared batch charge.
+        roots = [e for e in created if e.charge_for_id is None]
+        funds = {e.department.name for e in roots}
+        dates = {e.date for e in roots}
+        fund_label = next(iter(funds)) if len(funds) == 1 else f"{len(funds)} funds"
+        date_label = (f"for {next(iter(dates)):%d %b %Y}" if len(dates) == 1
+                      else f"across {len(dates)} dates")
         messages.success(
             request,
-            f"{len(created)} expense(s) recorded against {fund.name} "
-            f"for {when:%d %b %Y}.")
+            f"{len(created)} expense(s) recorded against {fund_label} "
+            f"{date_label}.")
         return redirect("expense_list")

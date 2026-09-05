@@ -44,10 +44,11 @@ on a page naming the appeal, with nothing to choose but what they promise.{% end
 </form>
 
 <div class="ws-table"><table class="ledger compact">
-  <thead><tr><th>Member</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th>Progress</th><th>Added</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead><tbody>
+  <thead><tr><th>Member</th><th>Code</th><th>Status</th><th class="num">Pledged</th><th class="num">Paid</th><th class="num">Outstanding</th><th>Progress</th><th>Added</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead><tbody>
   {% for p in pledges %}
     <tr><td><a class="link" href="{% url 'pledge_detail' p.id %}">{{ p.member.name }}</a>
         {% if p.note %}<div class="muted u-xs">{{ p.note|truncatechars:40 }}</div>{% endif %}</td>
+      <td class="mono u-xs">{{ p.match_code|default:"—" }}</td>
       <td><span class="pill {% if p.status == 'FULFILLED' %}pill-green{% elif p.status == 'ACTIVE' %}pill-blue{% elif p.status == 'LAPSED' %}pill-red{% elif p.status == 'DRAFT' %}pill-amber{% else %}pill-grey{% endif %}">{{ p.get_status_display }}</span></td>
       <td class="num mono">{{ p.amount|money:0 }}</td><td class="num mono">{{ p.paid|money:0 }}</td><td class="num mono {% if p.outstanding %}row-debit{% endif %}">{{ p.outstanding|money:0 }}</td>
       <td style="min-width:110px"><div class="pbar"><span style="width:{{ p.pct_paid }}%"></span></div></td>
@@ -58,9 +59,10 @@ on a page naming the appeal, with nothing to choose but what they promise.{% end
               onsubmit="return confirm('Delete this pledge? Only do this for a row imported in error — a real pledge that was withdrawn should be cancelled, not deleted.');">{% csrf_token %}
           <button class="btn btn-ghost btn-sm link-danger" style="padding:0 .3rem">Delete</button></form>{% endif %}
       </td>{% endif %}</tr>
-  {% empty %}<tr><td colspan="8"><div class="ws-empty"><div class="we-title">{% if q or f_status %}Nothing matches that filter{% else %}No pledges in this campaign yet{% endif %}</div></div></td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="9"><div class="ws-empty"><div class="we-title">{% if q or f_status %}Nothing matches that filter{% else %}No pledges in this campaign yet{% endif %}</div></div></td></tr>{% endfor %}
   </tbody></table></div>
-<p class="help">A pledge that has already received a payment cannot be deleted — the money is real and is in the cash book.
+<p class="help">Each pledge has a <strong>match code</strong> — put it in the M-Pesa / bank reference so gifts are allocated to that member's pledge first (including when another pledged member pays for them).
+  A pledge that has already received a payment cannot be deleted — the money is real and is in the cash book.
   Correct a wrong <em>allocation</em> by editing the pledge; a pledge genuinely withdrawn should be <strong>cancelled</strong>
   on its own page, which keeps the record rather than erasing it.</p>
 <style>.pbar{height:7px;background:var(--line);border-radius:4px;overflow:hidden}.pbar span{display:block;height:100%;background:var(--forest,#1f5f4f)}</style>

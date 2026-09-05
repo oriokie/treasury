@@ -10,7 +10,7 @@ import zipfile
 
 from django.test import SimpleTestCase
 
-from core.reporting.wordml import PAGE_W, WordDoc, docx_text
+from core.reporting.wordml import BLANK_MARK, PAGE_W, WordDoc, docx_text
 
 
 def _doc(**kw):
@@ -29,15 +29,22 @@ class PackageTests(SimpleTestCase):
     def test_every_part_is_well_formed_xml(self):
         d = _doc()
         d.masthead(org="St Test & Co", meta="Prepared today")
-        d.group_heading(1, "Overview")
+        d.group_heading(1, "Overview", first=True)
+        d.kpi_band([("Receipts", "1,000", "cash for the period"),
+                    ("Expenditure", "400")])
         d.table([{"label": "Fund", "numeric": False},
                  {"label": "Closing", "numeric": True}],
                 [{"cells": ["Building", "1,000.00"], "level": "",
+                  "emphasis": False},
+                 {"cells": ["Quiet fund", ""], "level": "",
                   "emphasis": False}],
                 total=["TOTAL", "1,000.00"])
         d.keyvalue([("Assets", "", "heading"), ("Bank", "9.00", ""),
+                    ("Nil line", "", ""),
                     ("Net assets", "9.00", "grand")])
+        d.explanation("The books balance.")
         d.signatures(["Prepared by", "Approved by"])
+        d.doc_footer(left="St Test · Report", right="Figures from the registry.")
         payload = d.to_bytes()
         with zipfile.ZipFile(io.BytesIO(payload)) as z:
             self.assertIsNone(z.testzip())
@@ -103,3 +110,47 @@ class PrintBehaviourTests(SimpleTestCase):
         d.keyvalue([("Net assets", "9.00", "grand")])
         docxml = _part(d.to_bytes(), "word/document.xml")
         self.assertIn('w:val="double"', docxml)
+
+
+class BoardReadyPresentationTests(SimpleTestCase):
+    """The polish that makes a board-pack Word download read like the printed
+    pack: blank cells, KPI subs, commentary labels, page breaks."""
+
+    def test_empty_numeric_cells_print_as_a_middot(self):
+        d = _doc()
+        d.table([{"label": "Account", "numeric": False},
+                 {"label": "Debit", "numeric": True},
+                 {"label": "Credit", "numeric": True}],
+                [{"cells": ["Bank", "100.00", ""], "level": "",
+                  "emphasis": False}])
+        text = docx_text(d.to_bytes())
+        self.assertIn(BLANK_MARK, text)
+        self.assertIn("Bank", text)
+        self.assertIn("100.00", text)
+
+    def test_kpi_band_carries_an_optional_sub_line(self):
+        d = _doc()
+        d.kpi_band([("Total receipts", "50,000", "cash for the period")])
+        text = docx_text(d.to_bytes())
+        self.assertIn("Total receipts", text)
+        self.assertIn("50,000", text)
+        self.assertIn("cash for the period", text)
+
+    def test_explanation_is_labelled_what_this_shows(self):
+        d = _doc()
+        d.explanation("Collections matched the cash book.")
+        text = docx_text(d.to_bytes())
+        self.assertIn("What this shows", text)
+        self.assertIn("Collections matched the cash book.", text)
+
+    def test_page_break_emits_a_real_word_break(self):
+        d = _doc()
+        d.group_heading(1, "Overview", first=True)
+        d.page_break()
+        d.group_heading(2, "Statements")
+        payload = d.to_bytes()
+        docxml = _part(payload, "word/document.xml")
+        self.assertIn('w:br w:type="page"', docxml)
+        text = docx_text(payload)
+        self.assertIn("Overview", text)
+        self.assertIn("Statements", text)

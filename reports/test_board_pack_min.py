@@ -508,6 +508,47 @@ class BoardPackCompositionTests(_Seed):
                                       "end": "2026-12-31"})
             self.assertEqual(r.status_code, 200, fmt)
 
+    def test_docx_export_is_board_ready(self):
+        """Word download mirrors the printed pack: numbered groups, page breaks
+        before the statements / verification / adoption blocks, KPIs without a
+        redundant KEY FIGURES shout, signature lines without a SIGNATURES title,
+        commentary labelled, and real table figures (not 'Nothing to report')."""
+        import io
+        import zipfile
+
+        from core.reporting.wordml import docx_text
+
+        self.client.force_login(_treasurer("bpm_docx"))
+        r = self.client.get(reverse("engine_report", args=["board_report_v2"]),
+                            {"export": "docx", "start": "2026-01-01",
+                             "end": "2026-12-31"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("wordprocessingml.document", r["Content-Type"])
+        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+            self.assertIsNone(z.testzip())
+            docxml = z.read("word/document.xml").decode()
+        text = docx_text(r.content)
+
+        # hierarchy the board reads
+        for group in ("Overview", "Collections", "Statements",
+                      "Verification", "Adoption"):
+            self.assertIn(group, text, group)
+        self.assertIn("Presented to the Church Board", text)
+        self.assertIn("Total receipts", text)
+        self.assertIn("Executive summary", text)
+        self.assertIn("Collections summary", text)
+        self.assertIn("What this shows", text)
+        self.assertNotIn("Nothing to report", text)
+        # KPI / signature titles the screen suppresses
+        self.assertNotIn("KEY FIGURES", text)
+        self.assertNotIn("SIGNATURES", text)
+        self.assertIn("Prepared by", text)
+        self.assertIn("Name, signature & date", text)
+        # page breaks before Statements, Verification and Adoption
+        self.assertGreaterEqual(docxml.count('w:br w:type="page"'), 3)
+        # a figure from the seeded collections (not just a heading)
+        self.assertIn("Building", text)
+
     def test_declared_metrics_are_all_registered(self):
         from core.metrics import metrics
         for comp in (CollectionsSummaryComponent(), TrustFundSummaryComponent(),

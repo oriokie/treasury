@@ -214,14 +214,25 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             # bug, missed the first time round).
             dev_group_unknown = (resolver == "DEV_GROUP_NA")
             if dept is None or dev_group_unknown:
-                # rules missed — try the campaign fallback (e.g. camp expenses)
-                from giving.services.allocation import campaign_allocate
-                campaign, campaign_group, cdept, cstatus = campaign_allocate(
-                    reference, name, phone)
-                if cdept is not None and (dept is None or cstatus == "AUTO"):
-                    dept = cdept
-                    status = (Transaction.Status.AUTO if cstatus == "AUTO"
-                              else Transaction.Status.REVIEW)
+                code_pinned = False
+                try:
+                    from pledges.services.codes import pledge_code_allocate
+                    _p, pdept, pstatus = pledge_code_allocate(reference)
+                    if pdept is not None:
+                        dept = pdept
+                        status = Transaction.Status.AUTO
+                        code_pinned = True
+                except Exception:  # noqa: BLE001
+                    pass
+                if not code_pinned:
+                    # rules missed — try the campaign fallback (e.g. camp expenses)
+                    from giving.services.allocation import campaign_allocate
+                    campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                        reference, name, phone)
+                    if cdept is not None and (dept is None or cstatus == "AUTO"):
+                        dept = cdept
+                        status = (Transaction.Status.AUTO if cstatus == "AUTO"
+                                  else Transaction.Status.REVIEW)
 
     confirmed = True
     if require_confirm and status in (Transaction.Status.AUTO, Transaction.Status.LEARNED):
@@ -281,4 +292,13 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             reversal_of.is_reversed = True
             reversal_of.reversed_at = timezone.now()
             reversal_of.save(update_fields=["is_reversed", "reversed_at"])
+        # Pledge match (incl. match_code in the reference) — same hook as file
+        # import. Best-effort; never break ingest.
+        if (is_credit and confirmed and not t.is_reversed
+                and not getattr(t, "excluded_from_income", False)):
+            try:
+                from pledges.services.matching import handle_new_contribution
+                handle_new_contribution(t)
+            except Exception:  # noqa: BLE001
+                pass
         return t, "created"

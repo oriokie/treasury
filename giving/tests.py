@@ -771,6 +771,44 @@ class MarkProcessedSplitFundTests(TestCase):
             t.refresh_from_db()
             self.assertTrue(t.manual_receipt)
 
+    def _paste(self, refs_text):
+        from django.urls import reverse
+        url = reverse("mark_processed_import")
+        r = self.client.post(url, {"refs_text": refs_text})
+        self.assertEqual(r.status_code, 200)  # review — not yet marked
+        return r, self.client.post(url, {"apply": "1"})
+
+    def test_paste_split_reference_marks_all_parts(self):
+        """Paste has no amounts; a shared reference that is one split gift
+        (same core_ref base) must mark every part, not land as ambiguous."""
+        review, _ = self._paste("SPLITREF")
+        plan = review.context["plan"]
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]["status"], "ok")
+        self.assertCountEqual(plan[0]["txn_ids"], [self.h1.id, self.h2.id])
+        self.h1.refresh_from_db(); self.h2.refresh_from_db()
+        self.assertTrue(self.h1.manual_receipt)
+        self.assertTrue(self.h2.manual_receipt)
+
+    def test_paste_unrelated_shared_reference_stays_ambiguous(self):
+        """Two different gifts that only share free-text reference must not
+        be treated as one split when pasting without amounts."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+        common = dict(date=dt.date(2026, 6, 4), channel="BANK", direction="CREDIT",
+                      reference="BENDUES", confirmed=True, allocation_status="MANUAL")
+        a = Transaction.objects.create(amount=Decimal("200"), department=self.local,
+            core_ref="UNIQUE-A", **common)
+        b = Transaction.objects.create(amount=Decimal("200"), department=self.trust,
+            core_ref="UNIQUE-B", **common)
+        review, _ = self._paste("BENDUES")
+        plan = review.context["plan"]
+        self.assertEqual(plan[0]["status"], "ambiguous")
+        a.refresh_from_db(); b.refresh_from_db()
+        self.assertFalse(a.manual_receipt)
+        self.assertFalse(b.manual_receipt)
+
 
 class MarkProcessedClearsQueueTests(TestCase):
     """Marking an entry processed must also remove it from the review queue, and
