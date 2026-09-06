@@ -965,17 +965,16 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
                         group_number = dg.number
                         dev_group_id = dg.id
                     else:
-                        # Digits-only fallback kept for sheet rows that only
-                        # carry a number — still never creates a group.
+                        # Digits still drive fund-subgroup rekeying even when
+                        # no DevelopmentGroup tag exists — do not clear them.
                         digits = "".join(ch for ch in str(gv) if ch.isdigit())
                         if digits:
                             group_number = int(digits)
                             from departments.models import DevelopmentGroup
                             dg = DevelopmentGroup.objects.filter(
                                 number=group_number, active=True).first()
-                            dev_group_id = dg.id if dg else None
-                            if dg is None:
-                                group_number = None
+                            if dg is not None:
+                                dev_group_id = dg.id
             # One "Group"/"Group Number" cell applies row-wide: it both feeds
             # the Development-Group tag above (unchanged) and — generalised —
             # reattributes any OTHER fund column's amount to that fund's own
