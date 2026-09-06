@@ -76,9 +76,16 @@ jobs:
               json.dump(plan, f)
           print(f"commits={len(plan.get('commits') or [])}")
           PY
-          echo "action=$(python -c 'import json;print(json.load(open(\"auto_release_plan.json\"))[\"action\"])')" >> "$GITHUB_OUTPUT"
-          echo "version=$(python -c 'import json;print(json.load(open(\"auto_release_plan.json\"))[\"version\"])')" >> "$GITHUB_OUTPUT"
-          echo "tag=$(python -c 'import json;print(json.load(open(\"auto_release_plan.json\"))[\"tag\"])')" >> "$GITHUB_OUTPUT"
+          # Write outputs via a heredoc — nested python -c with \" escapes
+          # silently failed (SyntaxError) and left action empty, so bump/
+          # tag/publish were skipped while the job still reported success.
+          python - <<'OUT' >> "$GITHUB_OUTPUT"
+          import json
+          plan = json.load(open("auto_release_plan.json"))
+          print(f"action={plan['action']}")
+          print(f"version={plan['version']}")
+          print(f"tag={plan['tag']}")
+          OUT
 
       - name: Commit the patch bump
         if: steps.plan.outputs.action == 'bump'

@@ -333,6 +333,7 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                 campaign = None
                 campaign_group = ""
                 status = Transaction.Status.REVIEW
+                attributed_via_code = False
 
                 loan_hit = None
                 if is_credit:
@@ -395,47 +396,44 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         # chance here too, instead of only when dept is None.
                         dev_group_unknown = (resolver == "DEV_GROUP_NA")
                         if dept is None or dev_group_unknown:
-                            # Pledge match_code in the reference → campaign fund
-                            # first (code is explicit intent for that appeal).
-                            code_pinned = False
-                            try:
-                                from pledges.services.codes import pledge_code_allocate
-                                _p, pdept, pstatus = pledge_code_allocate(
-                                    row["reference"])
-                                if pdept is not None:
-                                    dept = pdept
-                                    status = Transaction.Status.AUTO
-                                    code_pinned = True
-                            except Exception:  # noqa: BLE001
-                                pass
-                            if not code_pinned:
-                                from giving.services.allocation import campaign_allocate
-                                campaign, campaign_group, cdept, cstatus = campaign_allocate(
-                                    row["reference"], row["name"], row["phone"])
-                                if cdept is not None and (dept is None or cstatus == "AUTO"):
-                                    dept = cdept
-                                    status = (Transaction.Status.AUTO if cstatus == "AUTO"
-                                              else Transaction.Status.REVIEW)
+                            from giving.services.allocation import campaign_allocate
+                            campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                                row["reference"], row["name"], row["phone"])
+                            if cdept is not None and (dept is None or cstatus == "AUTO"):
+                                dept = cdept
+                                status = (Transaction.Status.AUTO if cstatus == "AUTO"
+                                          else Transaction.Status.REVIEW)
 
-                        # detect_scheme's own "sole owner of this fund" fallback
-                        # (see benevolent.services.allocation.detect_scheme) never
-                        # got a real chance above — it needs the FUND, which
-                        # ordinary allocation has only just now worked out. A
-                        # church typing "MSAMARIA" as an ordinary fund reference
-                        # (giving.AllocationRule, never a benevolent
-                        # ContributionRule) got the fund right, but the money
-                        # silently never reached the benevolent intake queue: no
-                        # ContributionRule pattern matched, and the sole-scheme
-                        # fallback was structurally unreachable with fund=None on
-                        # the only attempt. Retried here, now the fund is known.
-                        if ben_scheme is None and dept is not None:
-                            try:
-                                ben_scheme, _bk2, _bs2 = detect_scheme(
-                                    row["reference"], fund=dept)
-                            except Exception:  # noqa: BLE001 — never break an import
-                                pass
+                    # Match codes (PG / MB / CM): credit the intended member and
+                    # their development group even when someone else paid.
+                    from pledges.services.attribution import apply_code_to_import
+                    (member, dept, dev_group, campaign, campaign_group, status,
+                     attributed_via_code) = apply_code_to_import(
+                        reference=row["reference"], member=member, dept=dept,
+                        dev_group=dev_group, campaign=campaign,
+                        campaign_group=campaign_group, status=status,
+                        Transaction=Transaction)
+
+                    # detect_scheme's own "sole owner of this fund" fallback
+                    # (see benevolent.services.allocation.detect_scheme) never
+                    # got a real chance above — it needs the FUND, which
+                    # ordinary allocation has only just now worked out. A
+                    # church typing "MSAMARIA" as an ordinary fund reference
+                    # (giving.AllocationRule, never a benevolent
+                    # ContributionRule) got the fund right, but the money
+                    # silently never reached the benevolent intake queue: no
+                    # ContributionRule pattern matched, and the sole-scheme
+                    # fallback was structurally unreachable with fund=None on
+                    # the only attempt. Retried here, now the fund is known.
+                    if ben_scheme is None and dept is not None:
+                        try:
+                            ben_scheme, _bk2, _bs2 = detect_scheme(
+                                row["reference"], fund=dept)
+                        except Exception:  # noqa: BLE001 — never break an import
+                            pass
                 else:
                     status = Transaction.Status.REVIEW
+                    attributed_via_code = False
 
                 if ben_scheme is not None and ben_scheme.fund_id:
                     # the fund is known with certainty, so the receipt is allocated
@@ -492,6 +490,7 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                     statement_import=import_obj, allocation_status=status,
                     bank_account=bank_account, confirmed=confirmed,
                     campaign=campaign, campaign_group=(campaign_group or ""),
+                    attributed_via_code=attributed_via_code,
                     raw_narration=row["raw_narration"])
 
                 if split_fund is not None:

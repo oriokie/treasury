@@ -497,7 +497,13 @@ def _trust_summary_impl(start=None, end=None):
 
 def dev_group_members(group, start=None, end=None):
     """Per-member contributions to a development group in a period, for the leader's
-    reconciliation. Returns {'rows': [{member_name, phone, count, total}], 'total'}."""
+    reconciliation. Returns {'rows': [{member_name, phone, count, total, via}],
+    'total'}.
+
+    ``via`` is set when the gift was attributed through a match code — the
+    person who actually paid (payer_name), so a treasurer can see that Alice
+    paid toward Bob's group tally.
+    """
     from collections import defaultdict
     qs = _txn().filter(
         dev_group=group, direction=Transaction.Direction.CREDIT, confirmed=True,
@@ -506,7 +512,8 @@ def dev_group_members(group, start=None, end=None):
         qs = qs.filter(date__gte=start)
     if end:
         qs = qs.filter(date__lte=end)
-    agg = defaultdict(lambda: {"name": "", "phone": "", "count": 0, "total": Decimal(0)})
+    agg = defaultdict(lambda: {
+        "name": "", "phone": "", "count": 0, "total": Decimal(0), "via": set()})
     for t in qs.select_related("member"):
         if t.member_id:
             key = ("m", t.member_id)
@@ -521,7 +528,16 @@ def dev_group_members(group, start=None, end=None):
         row["phone"] = row["phone"] or phone
         row["count"] += 1
         row["total"] += t.amount
-    rows = sorted(agg.values(), key=lambda r: -r["total"])
+        if getattr(t, "attributed_via_code", False) and t.payer_name:
+            paid_by = t.payer_name.strip()
+            if paid_by and paid_by.upper() != (name or "").upper():
+                row["via"].add(paid_by)
+    rows = []
+    for r in agg.values():
+        via = sorted(r.pop("via"))
+        r["via"] = ", ".join(via)
+        rows.append(r)
+    rows = sorted(rows, key=lambda r: -r["total"])
     return {"rows": rows, "total": sum((r["total"] for r in rows), Decimal(0))}
 
 

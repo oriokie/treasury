@@ -165,6 +165,7 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
     campaign = None
     campaign_group = ""
     status = Transaction.Status.REVIEW
+    attributed_via_code = False
 
     # Is the bank undoing one of its own earlier entries? If so this event is one
     # half of a NON-EVENT and must not be allocated to a fund, matched to a
@@ -214,25 +215,22 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             # bug, missed the first time round).
             dev_group_unknown = (resolver == "DEV_GROUP_NA")
             if dept is None or dev_group_unknown:
-                code_pinned = False
-                try:
-                    from pledges.services.codes import pledge_code_allocate
-                    _p, pdept, pstatus = pledge_code_allocate(reference)
-                    if pdept is not None:
-                        dept = pdept
-                        status = Transaction.Status.AUTO
-                        code_pinned = True
-                except Exception:  # noqa: BLE001
-                    pass
-                if not code_pinned:
-                    # rules missed — try the campaign fallback (e.g. camp expenses)
-                    from giving.services.allocation import campaign_allocate
-                    campaign, campaign_group, cdept, cstatus = campaign_allocate(
-                        reference, name, phone)
-                    if cdept is not None and (dept is None or cstatus == "AUTO"):
-                        dept = cdept
-                        status = (Transaction.Status.AUTO if cstatus == "AUTO"
-                                  else Transaction.Status.REVIEW)
+                # rules missed — try the campaign fallback (e.g. camp expenses)
+                from giving.services.allocation import campaign_allocate
+                campaign, campaign_group, cdept, cstatus = campaign_allocate(
+                    reference, name, phone)
+                if cdept is not None and (dept is None or cstatus == "AUTO"):
+                    dept = cdept
+                    status = (Transaction.Status.AUTO if cstatus == "AUTO"
+                              else Transaction.Status.REVIEW)
+
+        from pledges.services.attribution import apply_code_to_import
+        (member, dept, dev_group, campaign, campaign_group, status,
+         attributed_via_code) = apply_code_to_import(
+            reference=reference, member=member, dept=dept,
+            dev_group=dev_group, campaign=campaign,
+            campaign_group=campaign_group, status=status,
+            Transaction=Transaction)
 
     confirmed = True
     if require_confirm and status in (Transaction.Status.AUTO, Transaction.Status.LEARNED):
@@ -246,6 +244,7 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
         payer_phone=(phone or "")[:12], mpesa_ref=(mpesa_ref or "")[:30],
         allocation_status=status, bank_account=bank_account, confirmed=confirmed,
         campaign=campaign, campaign_group=(campaign_group or ""),
+        attributed_via_code=attributed_via_code,
         # The bank's own undoing of an earlier entry is recorded — the money did
         # move, and the register must say what the bank said — but it is not
         # income, and `TransactionQuerySet.active` / `.confirmed_credits` already

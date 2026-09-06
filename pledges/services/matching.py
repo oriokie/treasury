@@ -294,14 +294,20 @@ def candidate_contributions(pledge, window_days=None, allow_fuzzy=True, cfg=None
         # pull them into the loop so fuzzy can still fire.
         q |= Q(channel__in=_FUZZY_CHANNELS, payer_name__gt="")
     code = _norm_code(getattr(pledge, "match_code", "") or "")
+    member_code = _norm_code(getattr(getattr(pledge, "member", None), "match_code", "") or "")
     if len(code) >= 4:
         # Any gift whose reference contains this pledge's code — payer ignored.
         q |= Q(reference__icontains=pledge.match_code)
+    if len(member_code) >= 4 and member_code != code:
+        q |= Q(reference__icontains=pledge.member.match_code)
     qs = qs.filter(q)
     fund_ids = campaign_fund_ids(pledge.campaign)
     out = []
     for t in qs.select_related("department", "member"):
-        if code and len(code) >= 4 and code in codes_in_reference(t.reference):
+        ref_n = codes_in_reference(t.reference)
+        if code and len(code) >= 4 and code in ref_n:
+            match = "code"
+        elif member_code and len(member_code) >= 4 and member_code in ref_n:
             match = "code"
         else:
             match = _gift_is_from_pledgor(t, identity, threshold)
@@ -855,7 +861,37 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False):
         return []
 
     # --- Code wins over identity -------------------------------------------
+    from pledges.services.codes import find_member_by_code, find_pledge_by_code
     coded = find_pledge_by_code(txn.reference or "")
+    if coded is None:
+        # Member-level code: any recognised open pledge of that member.
+        coded_member = find_member_by_code(txn.reference or "")
+        if coded_member is not None:
+            allowed = list(_OPEN_FOR_FILL)
+            if include_fulfilled:
+                allowed.append(Pledge.Status.FULFILLED)
+            qs = (Pledge.objects.filter(member=coded_member, status__in=allowed)
+                  .select_related("member", "campaign"))
+            out = []
+            window = cfg.pledge_match_window_days or 400
+            same_fund_only = cfg.pledge_match_same_fund_only
+            fund_cache = {}
+            for p in qs:
+                if p.outstanding <= 0 and not include_fulfilled:
+                    continue
+                start = p.start_date - dt.timedelta(days=7)
+                end = (p.end_date or dt.date.today()) + dt.timedelta(days=window)
+                if not (start <= txn.date <= end):
+                    continue
+                if same_fund_only:
+                    camp_id = p.campaign_id
+                    if camp_id not in fund_cache:
+                        fund_cache[camp_id] = campaign_fund_ids(p.campaign)
+                    if not _gift_is_for_campaign(txn, fund_cache[camp_id]):
+                        continue
+                out.append(p)
+            return out
+
     if coded is not None:
         allowed = list(_OPEN_FOR_FILL)
         if include_fulfilled:
