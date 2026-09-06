@@ -18,7 +18,8 @@
     <div class="tb-status" id="saveStatus"><span class="save-dot" id="saveDot"></span><span id="saveStatusText">Not saved yet</span></div>
     <div class="tb-spacer"></div>
     <button type="button" class="btn btn-sm btn-ghost" id="toggleCols">⚙ Columns</button>
-    <a class="btn btn-sm btn-ghost" id="tplLink" href="#">⬇ Template</a>
+    <a class="btn btn-sm btn-ghost" id="tplLink" href="{% url 'envelope_template' %}">⬇ Template</a>
+    <button type="button" class="btn btn-sm btn-ghost" id="exportGridBtn" title="Download the current sheet as Excel (local backup before submit)">⬇ This sheet</button>
   </div>
 
   <div id="blockedBanner" class="alert alert-danger u-mb no-print" style="display:none">
@@ -419,7 +420,7 @@ function fundCellHtml(c, data){
       ? data.dev_group_number
       : numberForDevGroupId(data.dev_group_id || "");
     return `<input class="field amt num mono" data-fid="${c.key}" inputmode="decimal" value="${v}">`
-         + `<input class="field devgrp num mono" inputmode="numeric" placeholder="grp#" title="Development group number" value="${grpNum}">`;
+         + `<span class="devgrp-wrap"><input class="field devgrp num mono" inputmode="numeric" placeholder="grp#" title="Development group number" value="${grpNum}"></span>`;
   }
   if(c.subgroups && c.subgroups.length){
     // Generic subgroup picker: this fund has real sub-account funds (e.g.
@@ -1156,6 +1157,47 @@ document.getElementById("resetLayout").addEventListener("click", ()=>{
 });
 document.querySelectorAll(".colcb").forEach(cb=>cb.addEventListener("change", syncTemplateLink));
 
+document.getElementById("exportGridBtn")?.addEventListener("click", async ()=>{
+  const payload = collectPayload();
+  // Enrich with typed group numbers for the export (ids alone are opaque).
+  const bodyRows = [...document.querySelectorAll("#envBody tr")];
+  const rows = (payload.rows || []).map((r, i)=>{
+    const tr = bodyRows[i];
+    const dg = tr && tr.querySelector(".devgrp");
+    return {...r, contributor_name: r.contributor_name || r.name,
+            dev_group_number: dg ? (dg.value || "").trim() : ""};
+  });
+  const btn = document.getElementById("exportGridBtn");
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = "Preparing…";
+  try{
+    const res = await fetch("{% url 'envelope_ledger_export' %}", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
+      credentials: "same-origin",
+      body: JSON.stringify({
+        sabbath: document.getElementById("sabDate").value || "",
+        cols: selectedFundKeys(),
+        rows,
+      }),
+    });
+    if(!res.ok) throw new Error("export failed");
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = /filename="([^"]+)"/.exec(cd);
+    a.download = m ? m[1] : "envelope_sheet.xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert("Could not download the sheet. Try again, or copy the rows by hand.");
+  }finally{
+    btn.disabled = false; btn.textContent = prev;
+  }
+});
+
 (function(){
   function hideBoxes(){ document.querySelectorAll(".ac-box").forEach(b=>{ b.style.display = "none"; }); }
   const wrap = document.getElementById("xlWrap");
@@ -1252,6 +1294,7 @@ async function seedReceipt(){
     updateTotals();
     dirty = false;
     setSaveStatus("saved", "");
+    syncTemplateLink();
   } else {
     rebuildTable();
     dirty = false;
@@ -1292,6 +1335,7 @@ function rebuildHeaderOnly(){
     head.appendChild(th);
   });
   const rmTh = document.createElement("th"); rmTh.className = "rm-col"; head.appendChild(rmTh);
+  syncTemplateLink();
 }
 </script>
 
@@ -1321,7 +1365,18 @@ function rebuildHeaderOnly(){
 .xl-grid th.colhead{position:sticky;top:0}
 .xl-grid td .field,.xl-grid td .field--select{border:none;border-radius:0;width:100%;background:transparent;padding:.18rem .3rem;font-size:.78rem;box-shadow:none}
 .xl-grid td .amt,.xl-grid td .mtotal,.xl-grid td .devgrp{text-align:right}
-.xl-grid td .devgrp{max-width:4.2rem;border-top:1px dashed var(--line)!important}
+.xl-grid td .devgrp-wrap{
+  display:inline-flex;align-items:center;justify-content:flex-end;
+  margin-top:.2rem;padding:.15rem .25rem;border-radius:4px;
+  border:1px solid var(--line-strong,#c5d0c8);
+  background:color-mix(in srgb, var(--forest-soft,#e8f2ec) 70%, white);
+  max-width:100%;
+}
+.xl-grid td .devgrp-wrap .devgrp{
+  max-width:3.6rem;border:0!important;background:transparent!important;
+  box-shadow:none!important;padding:.1rem .2rem;margin:0;
+}
+.xl-grid td .devgrp{max-width:4.2rem}
 .xl-grid td .field:focus{outline:2px solid var(--accent,#1f5f4f);outline-offset:-2px;background:#fff}
 .xl-grid .rownum{text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
 .xl-grid td.pinned,.xl-grid th.pinned{position:sticky;z-index:4;background:#fff}

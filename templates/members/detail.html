@@ -28,11 +28,21 @@
 {% endif %}
 {% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">{{ member.get_group_display|default:"No group" }}{% if member.phone %} · <span class="mono">{{ member.phone|phone_for:user }}</span>{% endif %}</div></div>
+<div class="page-head"><div><h1>{{ member.name }}</h1><div class="sub">{{ member.get_group_display|default:"No group" }}{% if member.phone %} · <span class="mono">{{ member.phone|phone_for:user }}</span>{% endif %}{% if member.dev_group %} · Dev group {{ member.dev_group.label }}{% endif %}</div></div>
 <div class="btn-row">
   <a class="btn btn-ghost" href="{% url 'report_member' member.id %}">Statement</a>
   {% if can_enter_data %}<a class="btn" href="{% url 'member_edit' member.id %}">Edit</a>{% endif %}
 </div></div>
+{% if member.match_code %}
+<div class="card u-mb"><div class="bd" style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+  <div>
+    <strong class="u-xs">Match code</strong>
+    <div class="mono" style="font-size:1.25rem;letter-spacing:.04em" id="memberCode">{{ member.match_code }}</div>
+    <p class="help u-mt-0">Others put this in the M-Pesa / bank reference to credit this member's pledges and development group — even when they pay themselves.</p>
+  </div>
+  <button type="button" class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('memberCode').textContent);this.textContent='Copied'">Copy code</button>
+</div></div>
+{% endif %}
 <div class="grid-3 u-mb">
   <div class="stat"><div class="lbl">Total given (lifetime)</div><div class="val mono">{{ total_given|money }}</div></div>
   <div class="stat"><div class="lbl">Member type</div><div class="val" style="font-size:1.1rem">{{ member.get_member_type_display|default:"—" }}</div></div>

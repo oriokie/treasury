@@ -693,6 +693,71 @@ class EnvelopeTemplateView(DataEntryRequiredMixin, View):
         return resp
 
 
+class EnvelopeLedgerExportView(DataEntryRequiredMixin, View):
+    """Download the current on-screen ledger grid as Excel — a local backup
+    before submit, for when autosave or the server is unavailable."""
+
+    def post(self, request):
+        import io
+        import json
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill
+        from django.http import HttpResponse, JsonResponse
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except (ValueError, TypeError):
+            return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+        rows = payload.get("rows") or []
+        sab = (payload.get("sabbath") or "")[:20]
+        columns = column_catalog(for_import=True)
+        # Prefer the column order the cashier had open
+        keys = [k for k in (payload.get("cols") or []) if k]
+        catalog = {c["key"]: c for c in columns}
+        chosen = [catalog[k] for k in keys if k in catalog] or \
+                 [c for c in columns if c["default"]]
+        headers = ["No", "Contributor Name", "Phone", "Receipt No", "Channel",
+                   "Group"] + [c["label"] for c in chosen]
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Envelopes"
+        ws.append(headers)
+        bold = Font(bold=True, color="FFFFFF")
+        fill = PatternFill("solid", fgColor="1F5F4F")
+        for col, _ in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col)
+            cell.font = bold
+            cell.fill = fill
+        for i, r in enumerate(rows, start=1):
+            amounts = r.get("amounts") or {}
+            grp = r.get("dev_group_number") or r.get("group") or ""
+            line = [
+                i,
+                r.get("contributor_name") or r.get("name") or "",
+                r.get("phone") or "",
+                r.get("receipt_no") or "",
+                r.get("channel") or "",
+                grp,
+            ]
+            for c in chosen:
+                raw = amounts.get(c["key"], "")
+                line.append(raw if raw not in (None, "") else "")
+            ws.append(line)
+        ws.column_dimensions["B"].width = 26
+        for i in range(min(len(headers), 26)):
+            letter = chr(65 + i)
+            ws.column_dimensions[letter].width = max(
+                ws.column_dimensions[letter].width or 12, 14)
+        ws.freeze_panes = "A2"
+        buf = io.BytesIO()
+        wb.save(buf)
+        fname = f"envelope_sheet_{sab or 'draft'}.xlsx".replace(" ", "_")
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+
 class EnvelopeImportView(DataEntryRequiredMixin, View):
     """Upload a filled envelope template and create the envelopes."""
     template_name = "envelopes/import.html"

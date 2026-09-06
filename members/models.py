@@ -119,6 +119,14 @@ class Member(models.Model):
     )
     source = models.CharField(max_length=12, choices=Source.choices, default=Source.MANUAL)
     active = models.BooleanField(default=True)
+    # One code for bank / M-Pesa references: gifts carrying this code are
+    # credited to this member (pledges + development-group tallies), even when
+    # someone else paid. Distinct from per-pledge PG… codes, which target one
+    # specific promise.
+    match_code = models.CharField(
+        max_length=16, unique=True, null=True, blank=True, db_index=True,
+        help_text="Code others put in a bank reference to credit this member "
+                  "and their development group.")
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 
@@ -131,12 +139,22 @@ class Member(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
+        from core.codes import generate_match_code
         # store names in uppercase for a consistent register across imports,
         # bank statements and envelope entry (collation-independent matching too)
         if self.name:
             self.name = " ".join(self.name.upper().split())
         self.name_key = name_key(self.name)
         self.phone = normalize_phone(self.phone) or self.phone
+        if not self.match_code:
+            self.match_code = generate_match_code("MB")
+            for _ in range(20):
+                if not Member.objects.filter(match_code=self.match_code).exists():
+                    break
+                self.match_code = generate_match_code("MB")
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = list(set(update_fields) | {"match_code"})
         super().save(*args, **kwargs)
 
     @property

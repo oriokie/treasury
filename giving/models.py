@@ -275,6 +275,13 @@ class Transaction(models.Model):
                                   on_delete=models.SET_NULL, related_name="transactions")
     member = models.ForeignKey("members.Member", null=True, blank=True,
                                on_delete=models.SET_NULL)
+    # When True, ``member`` is who the gift is *for* (from a match code in the
+    # reference); ``payer_name`` / ``payer_phone`` are who actually paid. Lets
+    # development-group tallies and pledges credit the recipient while the
+    # statement still shows the payer.
+    attributed_via_code = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Gift credited to member via a match code; payer_* is who paid.")
 
     reference = models.CharField(max_length=60, blank=True)
     payer_name = models.CharField(max_length=120, blank=True)

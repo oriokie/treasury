@@ -21,6 +21,8 @@ urlpatterns = [
     path("envelopes/batches/<int:pk>/reject/", views.EnvelopeBatchRejectView.as_view(), name="envelope_batch_reject"),
     path("envelopes/batches/<int:pk>/post/", views.EnvelopeBatchPostView.as_view(), name="envelope_batch_post"),
     path("envelopes/template/", views.EnvelopeTemplateView.as_view(), name="envelope_template"),
+    path("envelopes/ledger/export/", views.EnvelopeLedgerExportView.as_view(),
+         name="envelope_ledger_export"),
     path("envelopes/import/", views.EnvelopeImportView.as_view(), name="envelope_import"),
     path("envelopes/reverse/", views.EnvelopeReversalView.as_view(), name="envelope_reverse"),
     path("envelopes/<int:pk>/reassign/", views.EnvelopeReassignView.as_view(), name="envelope_reassign"),
