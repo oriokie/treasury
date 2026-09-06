@@ -10,12 +10,24 @@ from django.db import transaction as db_tx
 from django.db.models import Q
 
 from core.utils import sabbath_week_of
-from departments.models import Department, DevelopmentGroup
+from departments.models import Department
 from giving.models import Transaction, SplitFund
 from giving.services.allocation import allocate
 from members.services.matching import match_or_create_member
 from statements.models import StatementImport
 from statements.services.parser import read_rows
+
+
+def _pin_campaign_dev_group(dev_group, campaign, campaign_group):
+    """When a campaign sheet names a group, match an existing DevelopmentGroup.
+
+    Never creates groups. Used after campaign_allocate so Development campaigns
+    tag ``Transaction.dev_group`` instead of spawning child Department funds.
+    """
+    if dev_group is not None or not campaign_group:
+        return dev_group
+    from departments.services.matching import match_existing_dev_group
+    return match_existing_dev_group(campaign_group) or dev_group
 
 
 def _is_receiptable_fund(dept):
@@ -55,15 +67,20 @@ def _development_fund():
 
 
 def _resolve(resolver):
-    """Map an allocate() resolver to (Department, DevelopmentGroup|None)."""
+    """Map an allocate() resolver to (Department, DevelopmentGroup|None).
+
+    Never creates DevelopmentGroup rows — unknown numbers leave the gift on
+    the parent Development fund (unassigned) for a treasurer to tag.
+    """
     if isinstance(resolver, Department):
         return resolver, None
     if isinstance(resolver, str) and resolver.startswith("DEV_GROUP_"):
+        from departments.services.matching import match_existing_dev_group
         tail = resolver.rsplit("_", 1)[-1]
         dept = _development_fund()
         if tail.isdigit():
-            grp, _ = DevelopmentGroup.objects.get_or_create(number=int(tail))
-            return dept, grp
+            grp = match_existing_dev_group(int(tail))
+            return dept, grp  # None when the group is not set up yet
         return dept, None  # DEV_GROUP_NA: development, group unknown
     return None, None
 
@@ -403,8 +420,10 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                                 dept = cdept
                                 status = (Transaction.Status.AUTO if cstatus == "AUTO"
                                           else Transaction.Status.REVIEW)
+                            dev_group = _pin_campaign_dev_group(
+                                dev_group, campaign, campaign_group)
 
-                    # Match codes (PG / MB / CM): credit the intended member and
+                    # Match codes (PG / MB / CM / DEV): credit the intended member and
                     # their development group even when someone else paid.
                     from pledges.services.attribution import apply_code_to_import
                     (member, dept, dev_group, campaign, campaign_group, status,
@@ -413,6 +432,9 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         dev_group=dev_group, campaign=campaign,
                         campaign_group=campaign_group, status=status,
                         Transaction=Transaction)
+                    # Codes may have set campaign_group without a group FK yet.
+                    dev_group = _pin_campaign_dev_group(
+                        dev_group, campaign, campaign_group)
 
                     # detect_scheme's own "sole owner of this fund" fallback
                     # (see benevolent.services.allocation.detect_scheme) never

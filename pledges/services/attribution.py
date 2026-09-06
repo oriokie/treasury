@@ -11,8 +11,8 @@ def apply_code_to_import(*, reference, member, dept, dev_group, campaign,
     ``member`` becomes the *beneficiary* (who gets credit); payer identity
     stays on payer_name / payer_phone set by the caller.
 
-    Pledge (PG), member (MB) and campaign (CM) codes all go through the same
-    path so "paid by others" and development-group tallies behave alike.
+    Pledge (PG), member (MB), campaign (CM) and development-group (DEV) codes
+    all go through this path so group tallies and "paid by others" stay consistent.
     """
     from pledges.services.codes import resolve_code_attribution
     try:
@@ -28,10 +28,11 @@ def apply_code_to_import(*, reference, member, dept, dev_group, campaign,
     if hit.get("department") is not None and dept is None:
         dept = hit["department"]
         status = Transaction.Status.AUTO
-    # Any code that names a beneficiary's home group credits that group —
-    # pledge, member, and campaign codes alike.
+    # Any code that names a beneficiary's / group's home group credits that
+    # group — pledge, member, campaign, and DEV group codes alike.
     if hit.get("dev_group") is not None:
-        if hit.get("source") in ("member", "pledge", "campaign") or dev_group is None:
+        if hit.get("source") in ("member", "pledge", "campaign", "dev_group") \
+                or dev_group is None:
             dev_group = hit["dev_group"]
     if hit.get("campaign") is not None:
         campaign = hit["campaign"]
@@ -39,8 +40,16 @@ def apply_code_to_import(*, reference, member, dept, dev_group, campaign,
         if hit.get("department") is not None:
             dept = hit["department"]
             status = Transaction.Status.AUTO
+    # Group-only DEV code (or member code with home group) may still leave
+    # dept unset if allocate() missed — stamp Development + AUTO.
+    if dept is None and hit.get("dev_group") is not None \
+            and hit.get("department") is not None:
+        dept = hit["department"]
+        status = Transaction.Status.AUTO
+    elif dept is None and hit.get("department") is not None:
+        dept = hit["department"]
+        status = Transaction.Status.AUTO
     # Flag only when the gift was redirected to someone other than the payer
-    # (so self-payments with one's own code do not show "paid by …").
     via = bool(
         hit.get("via_code")
         and hit.get("beneficiary") is not None

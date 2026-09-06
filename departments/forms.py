@@ -64,4 +64,14 @@ class DevelopmentGroupForm(StyledFormMixin, forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Surface the auto-assigned DEV… bank code so treasurers can share it;
+        # it is not editable here (regeneration would break printed cards).
+        if self.instance and self.instance.pk and self.instance.match_code:
+            self.fields["match_code_display"] = forms.CharField(
+                label="Bank reference code",
+                required=False,
+                initial=self.instance.match_code,
+                disabled=True,
+                help_text="Put this code in a bank / M-Pesa reference to "
+                          "auto-allocate to this development group.")
         self._style()

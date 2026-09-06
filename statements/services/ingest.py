@@ -223,6 +223,9 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
                     dept = cdept
                     status = (Transaction.Status.AUTO if cstatus == "AUTO"
                               else Transaction.Status.REVIEW)
+                from statements.services.importer import _pin_campaign_dev_group
+                dev_group = _pin_campaign_dev_group(
+                    dev_group, campaign, campaign_group)
 
         from pledges.services.attribution import apply_code_to_import
         (member, dept, dev_group, campaign, campaign_group, status,
@@ -231,6 +234,9 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             dev_group=dev_group, campaign=campaign,
             campaign_group=campaign_group, status=status,
             Transaction=Transaction)
+        from statements.services.importer import _pin_campaign_dev_group
+        dev_group = _pin_campaign_dev_group(
+            dev_group, campaign, campaign_group)
 
     confirmed = True
     if require_confirm and status in (Transaction.Status.AUTO, Transaction.Status.LEARNED):
