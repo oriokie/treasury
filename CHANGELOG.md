@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.48.2
+
+Automated patch release covering: Fix CI failures from group matching and wiped auto-release notes; Match existing development groups and auto-allocate via codes.
+
 ## 3.48.1
 
 Automated patch release covering: Attribute gifts via member/pledge/campaign codes and harden ledger export; Add match codes, multi-settlement remittance, and related UX fixes; Improve treasury matching: petty→bank, mark-processed confirm, pledge aliases; Auto-bump a patch release on every push to main.
