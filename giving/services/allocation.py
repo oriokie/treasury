@@ -421,13 +421,38 @@ def reallocate_pending():
                     t.reference, t.payer_name, t.payer_phone)
                 if cdept is not None and (dept is None or cstatus == "AUTO"):
                     dept, new_status = cdept, Transaction.Status.AUTO
+                from statements.services.importer import _pin_campaign_dev_group
+                dev_group = _pin_campaign_dev_group(
+                    dev_group, campaign, campaign_group)
+        # Full code attribution (MB/PG/CM/DEV) — may set member, group, fund.
+        try:
+            from pledges.services.attribution import apply_code_to_import
+            (member, dept, dev_group, campaign, campaign_group, new_status2,
+             via) = apply_code_to_import(
+                reference=t.reference, member=t.member, dept=dept,
+                dev_group=dev_group, campaign=campaign,
+                campaign_group=campaign_group or "",
+                status=new_status or Transaction.Status.REVIEW,
+                Transaction=Transaction)
+            if member is not None:
+                t.member = member
+            if via:
+                t.attributed_via_code = True
+            if new_status2 in (Transaction.Status.AUTO, Transaction.Status.LEARNED):
+                new_status = new_status2
+            from statements.services.importer import _pin_campaign_dev_group
+            dev_group = _pin_campaign_dev_group(
+                dev_group, campaign, campaign_group)
+        except Exception:  # noqa: BLE001
+            pass
         if dept is None or new_status not in (Transaction.Status.AUTO,
                                               Transaction.Status.LEARNED):
             continue
         t.department = dept
         t.dev_group = dev_group
         t.allocation_status = new_status
-        fields = ["department", "dev_group", "allocation_status"]
+        fields = ["department", "dev_group", "allocation_status", "member",
+                  "attributed_via_code"]
         if campaign is not None:
             t.campaign = campaign
             t.campaign_group = campaign_group or ""

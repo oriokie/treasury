@@ -45,6 +45,7 @@ def _simulate_row(reference, name, phone):
 class DevGroupCampaignFallbackTests(TestCase):
     def setUp(self):
         self.dev_dept = _dev_dept()
+        self.g27 = DevelopmentGroup.objects.create(number=27, name="Group 27")
         self.camp = Campaign.objects.create(name="DevFallbackTest", department=self.dev_dept,
             triggers="dev,grp,group", active=True)
         CampaignMember.objects.create(campaign=self.camp, name="MARY GIVER",
@@ -54,10 +55,15 @@ class DevGroupCampaignFallbackTests(TestCase):
         resolver, dept, dev_group, status, campaign, campaign_group = _simulate_row(
             "dev support", "MARY GIVER", "254799888777")
         self.assertEqual(resolver, "DEV_GROUP_NA")
-        self.assertEqual(dept.name, "27")
+        # Development campaigns keep the parent fund and tag an existing group
+        self.assertEqual(dept.name.upper(), "DEVELOPMENT")
         self.assertEqual(status, "AUTO")
         self.assertEqual(campaign.name, "DevFallbackTest")
         self.assertEqual(campaign_group, "27")
+        # Pin happens in the real importer; simulate it here
+        from statements.services.importer import _pin_campaign_dev_group
+        pinned = _pin_campaign_dev_group(dev_group, campaign, campaign_group)
+        self.assertEqual(pinned, self.g27)
 
     def test_dev_word_with_unknown_giver_falls_back_to_generic_development(self):
         resolver, dept, dev_group, status, campaign, campaign_group = _simulate_row(
@@ -79,12 +85,21 @@ class DevGroupCampaignFallbackTests(TestCase):
         self.assertIsNone(dept)
         self.assertEqual(status, "REVIEW")
 
+    def test_unknown_group_number_does_not_create(self):
+        from statements.services.importer import _resolve
+        before = DevelopmentGroup.objects.count()
+        dept, grp = _resolve("DEV_GROUP_98")
+        self.assertEqual(dept.name.upper(), "DEVELOPMENT")
+        self.assertIsNone(grp)
+        self.assertEqual(DevelopmentGroup.objects.count(), before)
+
 
 class DevGroupCampaignFallbackReallocateTests(TestCase):
     """Same fix, applied to reallocate_pending() (used to clear the review
     queue after new rules/campaigns are added, without re-importing)."""
     def setUp(self):
         self.dev_dept = _dev_dept()
+        self.g33 = DevelopmentGroup.objects.create(number=33, name="Group 33")
         self.camp = Campaign.objects.create(name="ReallocDevTest", department=self.dev_dept,
             triggers="dev,grp,group", active=True)
         CampaignMember.objects.create(campaign=self.camp, name="PETER GIVER",
@@ -97,7 +112,8 @@ class DevGroupCampaignFallbackReallocateTests(TestCase):
             payer_name="PETER GIVER", payer_phone="254788777666")
         result = reallocate_pending()
         t.refresh_from_db()
-        self.assertEqual(t.department.name, "33")
+        self.assertEqual(t.department.name.upper(), "DEVELOPMENT")
+        self.assertEqual(t.dev_group_id, self.g33.id)
         self.assertEqual(t.allocation_status, "AUTO")
         self.assertEqual(t.campaign_id, self.camp.id)
         self.assertEqual(result["allocated"], 1)
@@ -123,6 +139,7 @@ class DevGroupCampaignFallbackIngestTests(TestCase):
     through this path, not the file importer."""
     def setUp(self):
         self.dev_dept = _dev_dept()
+        self.g41 = DevelopmentGroup.objects.create(number=41, name="Group 41")
         self.camp = Campaign.objects.create(name="IngestDevTest", department=self.dev_dept,
             triggers="dev,grp,group", active=True)
         CampaignMember.objects.create(campaign=self.camp, name="SARAH GIVER",
@@ -136,7 +153,8 @@ class DevGroupCampaignFallbackIngestTests(TestCase):
             raw_narration="dev contribution", core_ref="INGESTDEVTEST001")
         self.assertEqual(outcome, "created")
         self.assertIsNotNone(txn)
-        self.assertEqual(txn.department.name, "41")
+        self.assertEqual(txn.department.name.upper(), "DEVELOPMENT")
+        self.assertEqual(txn.dev_group_id, self.g41.id)
         self.assertEqual(txn.allocation_status, "AUTO")
         self.assertEqual(txn.campaign_id, self.camp.id)
 

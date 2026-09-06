@@ -959,12 +959,22 @@ class EnvelopeImportView(DataEntryRequiredMixin, View):
             if group_i is not None:
                 gv = cell(group_i)
                 if gv not in (None, ""):
-                    digits = "".join(ch for ch in str(gv) if ch.isdigit())
-                    if digits:
-                        group_number = int(digits)
-                        from departments.models import DevelopmentGroup
-                        dg = DevelopmentGroup.objects.filter(number=group_number).first()
-                        dev_group_id = dg.id if dg else None
+                    from departments.services.matching import match_existing_dev_group
+                    dg = match_existing_dev_group(gv)
+                    if dg is not None:
+                        group_number = dg.number
+                        dev_group_id = dg.id
+                    else:
+                        # Digits still drive fund-subgroup rekeying even when
+                        # no DevelopmentGroup tag exists — do not clear them.
+                        digits = "".join(ch for ch in str(gv) if ch.isdigit())
+                        if digits:
+                            group_number = int(digits)
+                            from departments.models import DevelopmentGroup
+                            dg = DevelopmentGroup.objects.filter(
+                                number=group_number, active=True).first()
+                            if dg is not None:
+                                dev_group_id = dg.id
             # One "Group"/"Group Number" cell applies row-wide: it both feeds
             # the Development-Group tag above (unchanged) and — generalised —
             # reattributes any OTHER fund column's amount to that fund's own

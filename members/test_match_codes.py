@@ -146,3 +146,25 @@ class MemberMatchCodeTests(TestCase):
         bob_row = next(r for r in tallies["rows"] if r["name"] == "BOB MMC")
         self.assertEqual(bob_row["total"], Decimal("800"))
         self.assertIn("ALICE MMC", bob_row["via"])
+
+    def test_code_matches_with_punctuation_and_extra_text(self):
+        """Contains match survives hyphens / spaces around the code."""
+        hit = resolve_code_attribution(
+            f"FOR {self.bob.match_code[:2]}-{self.bob.match_code[2:]} THANKS",
+            payer_member=self.alice)
+        self.assertEqual(hit.get("beneficiary"), self.bob)
+        self.assertEqual(hit.get("dev_group"), self.g3)
+
+    def test_dev_group_code_auto_allocates_without_creating(self):
+        """DEV… codes route to Development + that existing group."""
+        self.assertTrue(self.g3.match_code.startswith("DEV"))
+        member, dept, dg, camp, cgrp, status, via = apply_code_to_import(
+            reference=f"GIFT {self.g3.match_code} EXTRA",
+            member=self.alice, dept=None, dev_group=None,
+            campaign=None, campaign_group="", status="REVIEW",
+            Transaction=Transaction)
+        self.assertEqual(dg, self.g3)
+        self.assertIsNotNone(dept)
+        self.assertEqual(dept.category, "DEVELOPMENT")
+        self.assertEqual(status, "AUTO")
+        self.assertFalse(via)  # group-only, not a person redirect

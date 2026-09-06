@@ -69,14 +69,44 @@
 
 <script>
 const ALL_COLS = [{% for c in columns %}{key:"{{ c.key }}",label:"{{ c.label|escapejs }}",isDevelopment:{{ c.is_development|yesno:"true,false" }},isDefault:{{ c.default|yesno:"true,false" }},subgroups:[{% for s in c.subgroups %}{id:"{{ s.id }}",label:"{{ s.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}]}{% if not forloop.last %},{% endif %}{% endfor %}];
-const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",number:{{ g.number }},label:"{{ g.name|default:g.number|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
+const DEV_GROUPS = [{% for g in dev_groups %}{id:"{{ g.id }}",number:{{ g.number }},name:"{{ g.name|default:''|escapejs }}",label:"{{ g.label|escapejs }}"}{% if not forloop.last %},{% endif %}{% endfor %}];
 const DEV_GROUP_BY_NUMBER = {};
 const DEV_GROUP_BY_ID = {};
 DEV_GROUPS.forEach(g=>{ DEV_GROUP_BY_NUMBER[String(g.number)] = g; DEV_GROUP_BY_ID[String(g.id)] = g; });
+function _normHint(s){
+  return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 function resolveDevGroupId(num){
+  // Match an existing development group only — never invent one.
+  // Accepts exact number, "G12"/"Group 12", or a unique name fragment (contains).
   if(num == null || num === "") return null;
-  const g = DEV_GROUP_BY_NUMBER[String(num).trim()];
-  return g ? String(g.id) : null;
+  const raw = String(num).trim();
+  if(!raw) return null;
+  const exact = DEV_GROUP_BY_NUMBER[raw];
+  if(exact) return String(exact.id);
+  const digits = raw.replace(/\D/g, "");
+  if(digits){
+    const byNum = DEV_GROUP_BY_NUMBER[String(parseInt(digits, 10))];
+    if(byNum){
+      const compact = _normHint(raw);
+      const n = String(parseInt(digits, 10));
+      if(compact === n || compact.endsWith(n) || /^(?:dev(?:elop)?(?:grp|gp|g)?|group|grp|gp|g)?\d+$/.test(compact))
+        return String(byNum.id);
+    }
+  }
+  const needle = _normHint(raw);
+  if(needle.length < 2) return null;
+  const hits = DEV_GROUPS.filter(g=>{
+    const hay = _normHint((g.name || "") + " group " + g.number);
+    return hay.indexOf(needle) >= 0 || String(g.number) === needle;
+  });
+  if(hits.length === 1) return String(hits[0].id);
+  if(digits){
+    const n = parseInt(digits, 10);
+    const numbered = hits.filter(g => g.number === n);
+    if(numbered.length === 1) return String(numbered[0].id);
+  }
+  return null;
 }
 function numberForDevGroupId(id){
   if(!id) return "";
@@ -785,16 +815,16 @@ function validateRow(tr){
   const rcpt = (tr.querySelector(".rcpt").value || "").trim();
   let bad = !rcpt || isNaN(manual) || Math.abs(manual - computed) >= 0.01;
   if(bad) tr.classList.add("row-mismatch");
-  // Typed group number must resolve to a known DevelopmentGroup before
-  // Submit — empty is fine (group is optional); a non-matching number is not.
-  const dg = tr.querySelector(".devgrp");
-  if(dg){
-    const num = (dg.value || "").trim();
-    if(num && !resolveDevGroupId(num)){
-      tr.classList.add("row-bad-group");
-      bad = true;
+    // Typed group must resolve to a known DevelopmentGroup before
+    // Submit — empty is fine (group is optional); a non-matching hint is not.
+    const dg = tr.querySelector(".devgrp");
+    if(dg){
+      const num = (dg.value || "").trim();
+      if(num && !resolveDevGroupId(num)){
+        tr.classList.add("row-bad-group");
+        bad = true;
+      }
     }
-  }
   updateBlockingState();
   return !bad;
 }
@@ -820,8 +850,8 @@ function rowProblemMessages(tr){
     const dg = tr.querySelector(".devgrp");
     const num = dg ? (dg.value || "").trim() : "";
     msgs.push(num
-      ? `No development group matches number ${num}.`
-      : "Development group number is not valid.");
+      ? `No development group matches “${num}”. Use an existing group number or name.`
+      : "Development group is not valid.");
   }
   return msgs;
 }

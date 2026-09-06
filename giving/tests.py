@@ -56,11 +56,18 @@ class AllocationEngineTests(TestCase):
 
     def test_resolver_token_maps_to_fund_and_group(self):
         from statements.services.importer import _resolve
+        # Existing group: tag it. Unknown group: Development fund, no create.
+        DevelopmentGroup.objects.create(number=12, name="Group 12")
         resolver, _ = allocate("Grp12dev")
         dept, grp = _resolve(resolver)
         self.assertEqual(dept.name.upper(), "DEVELOPMENT")
         self.assertEqual(grp.number, 12)
         self.assertTrue(DevelopmentGroup.objects.filter(number=12).exists())
+        before = DevelopmentGroup.objects.count()
+        dept2, grp2 = _resolve("DEV_GROUP_88")
+        self.assertEqual(dept2.name.upper(), "DEVELOPMENT")
+        self.assertIsNone(grp2)
+        self.assertEqual(DevelopmentGroup.objects.count(), before)
 
 
 class TransactionDedupTests(TestCase):

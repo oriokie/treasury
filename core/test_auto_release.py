@@ -24,18 +24,20 @@ class NoteFromCommitsTests(SimpleTestCase):
 class AutoNotesMergeTests(SimpleTestCase):
     def test_curated_whats_new_wins_over_auto(self):
         # 3.48.0 has curated WHATS_NEW; an auto note must not replace it.
-        ar.save_auto_notes({"3.48.0": "auto junk that must not show"})
+        previous = ar.load_auto_notes()
+        ar.save_auto_notes({**previous, "3.48.0": "auto junk that must not show"})
         try:
             self.assertNotIn("auto junk", cl.notes_for("3.48.0"))
             self.assertIn("update check", cl.notes_for("3.48.0").lower())
         finally:
-            ar.save_auto_notes({})
+            ar.save_auto_notes(previous)
 
     def test_auto_note_is_used_when_no_curated_entry(self):
-        ar.save_auto_notes({"9.9.9": "Automated patch release: something."})
+        previous = ar.load_auto_notes()
+        ar.save_auto_notes({**previous, "9.9.9": "Automated patch release: something."})
         try:
             self.assertEqual(cl.notes_for("9.9.9"),
                              "Automated patch release: something.")
             self.assertIn("9.9.9", cl.released_versions())
         finally:
-            ar.save_auto_notes({})
+            ar.save_auto_notes(previous)

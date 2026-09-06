@@ -60,7 +60,15 @@
       <span class="pill {% if t.direction == 'DEBIT' %}pill-red{% else %}pill-green{% endif %}">{{ t.get_direction_display }}</span>
       <span class="muted mono q-date">{{ t.date|date:"d M Y" }}</span>
     </div>
-    <div class="q-payer">{{ t.payer_name|default:"(no payer name)" }}{% if t.payer_phone %} <span class="mono muted">· {{ t.payer_phone }}</span>{% endif %}</div>
+    <div class="q-payer">
+      {% if t.attributed_via_code and t.member %}
+        <a href="{% url 'member_detail' t.member.id %}">{{ t.member.name }}</a>
+        {% if t.payer_name %}<span class="muted u-xs"> · paid by {{ t.payer_name }}</span>{% endif %}
+      {% else %}
+        {{ t.payer_name|default:"(no payer name)" }}
+      {% endif %}
+      {% if t.payer_phone %} <span class="mono muted">· {{ t.payer_phone }}</span>{% endif %}
+    </div>
     <div class="q-ref">
       {% if t.reference %}<span class="q-ref-chip mono">{{ t.reference }}</span>{% endif %}
       <span class="muted q-narr">{{ t.raw_narration|truncatechars:96 }}</span>

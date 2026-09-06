@@ -714,14 +714,24 @@ class Campaign(models.Model):
         return None
 
     def subgroup_department(self, group_name):
-        """The fund a matched member's contribution belongs to: the child fund
-        named after the member's group (e.g. CAMP_1), parented to the campaign's
-        department so it inherits its fund type and rolls up in trust/local
-        reports. Created on demand. A blank group falls back to the parent fund."""
+        """The fund a matched member's contribution belongs to.
+
+        Development campaigns keep the parent Development fund and tag an
+        existing ``DevelopmentGroup`` elsewhere (contains match) — they must
+        never spawn child Department rows named after group numbers.
+
+        Other campaigns (e.g. Camp Expense) still use / create a child fund
+        named after the member's group (e.g. CAMP_1), parented to the
+        campaign's department. A blank group falls back to the parent fund.
+        """
         from departments.models import Department
         from django.utils.text import slugify
         g = (group_name or "").strip()
         if not g:
+            return self.department
+        # Development: match existing groups only — never create fund children.
+        if (self.department
+                and self.department.category == Department.Category.DEVELOPMENT):
             return self.department
         dept = Department.objects.filter(name__iexact=g).first()
         if dept:

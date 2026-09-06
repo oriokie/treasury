@@ -50,7 +50,7 @@ class LedgerGroupNumberUxTests(TestCase):
     def test_invalid_group_number_blocks_submit_via_row_bad_group(self):
         html = self.client.get(reverse("envelope_ledger")).content.decode()
         self.assertIn("row-bad-group", html)
-        self.assertIn("No development group matches number", html)
+        self.assertIn("No development group matches", html)
         # validateRow must resolve the typed number before allowing advance
         self.assertIn("resolveDevGroupId(num)", html)
 

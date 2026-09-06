@@ -205,6 +205,12 @@ class DevelopmentGroup(models.Model):
     leader_email = models.EmailField(blank=True,
         help_text="If set, the group's contribution report can be emailed here.")
     active = models.BooleanField(default=True)
+    # Bank / M-Pesa reference code: credits the Development fund + this group
+    # without naming a person (alongside member MB… / pledge PG… / campaign CM…).
+    match_code = models.CharField(
+        max_length=16, unique=True, null=True, blank=True, db_index=True,
+        help_text="Code in a bank reference that auto-allocates to this "
+                  "development group (e.g. DEV7K2M).")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -212,6 +218,21 @@ class DevelopmentGroup(models.Model):
 
     def __str__(self):
         return self.name or f"Development Group {self.number}"
+
+    def save(self, *args, **kwargs):
+        from core.codes import generate_match_code
+        if not self.match_code:
+            self.match_code = generate_match_code("DEV")
+            for _ in range(20):
+                if not DevelopmentGroup.objects.filter(
+                        match_code=self.match_code).exclude(pk=self.pk).exists():
+                    break
+                self.match_code = generate_match_code("DEV")
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = list(
+                    set(update_fields) | {"match_code"})
+        super().save(*args, **kwargs)
 
     @property
     def label(self):
