@@ -360,6 +360,47 @@ class CampaignMemberGivingTests(CampaignBase):
             campaign=self.campaign, name="Mary Otieno")
         self.assertEqual(stats[mary.id]["count"], 0)
 
+    def test_phone_match_without_campaign_fk(self):
+        """Gifts that landed on the campaign fund without a campaign stamp
+        must still count — otherwise every sheet member looks dormant."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+
+        ruth = CampaignMember.objects.get(
+            campaign=self.campaign, name="Ruth Momanyi")
+        # No campaign= set — the common production case when allocation
+        # tagged the fund but not the campaign row.
+        Transaction.objects.create(
+            date=dt.date(2026, 4, 2), channel="BANK", direction="CREDIT",
+            amount=Decimal("3000"), department=self.fund,
+            payer_name="Ruth Momanyi", payer_phone="254790301470",
+            confirmed=True, allocation_status="AUTO", core_ref="CG-PHONE")
+        stats = campaign_sms.member_contributions(
+            self.campaign, dt.date(2026, 4, 1), dt.date(2026, 4, 30))
+        self.assertEqual(stats[ruth.id]["amount"], Decimal("3000"))
+        self.assertEqual(stats[ruth.id]["count"], 1)
+
+    def test_phone_match_via_subgroup_fund(self):
+        """A gift to a campaign sub-account (e.g. CAMP_1) matches by phone."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+
+        sub = Department.objects.create(
+            name="Group 2", parent=self.fund, fund_type="LOCAL")
+        ruth = CampaignMember.objects.get(
+            campaign=self.campaign, name="Ruth Momanyi")
+        Transaction.objects.create(
+            date=dt.date(2026, 5, 3), channel="BANK", direction="CREDIT",
+            amount=Decimal("1200"), department=sub,
+            payer_phone="254790301470", confirmed=True,
+            allocation_status="AUTO", core_ref="CG-SUB")
+        stats = campaign_sms.member_contributions(
+            self.campaign, dt.date(2026, 5, 1), dt.date(2026, 5, 31))
+        self.assertEqual(stats[ruth.id]["amount"], Decimal("1200"))
+        self.assertEqual(stats[ruth.id]["count"], 1)
+
     def test_detail_page_shows_giving_and_dormant(self):
         import datetime as dt
         from decimal import Decimal

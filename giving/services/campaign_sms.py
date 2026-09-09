@@ -428,22 +428,51 @@ def send(campaign, group, template, *, user=None):
             "record": record}
 
 
+def _campaign_fund_ids(campaign):
+    """The campaign's fund and every nested sub-account — same tree the
+    group-progress and "not contributed to campaign" SMS criterion use."""
+    parent = campaign.department
+    if parent is None:
+        return []
+
+    def _walk(d):
+        ids = [d.id]
+        for sub in d.subgroups.all():
+            ids.extend(_walk(sub))
+        return ids
+
+    return _walk(parent)
+
+
 def member_contributions(campaign, start=None, end=None):
     """How much each sheet member has contributed in a period, and how often.
 
-    Attribution follows the same rules money uses on the way in: a campaign
-    match code in the reference wins first (so gifts rallied for someone else
-    still land on that member), then phone, then a unique name. Transactions
-    that belong to the campaign but match nobody are left out of the per-person
-    totals — they still count in the campaign-wide raised figure.
+    Matching is phone-first against the sheet (``CampaignMember.phone``),
+    because that is how the list is identified in the real world — a gift
+    from 2547… belongs to the sheet row with that mobile, whether or not the
+    transaction was tagged with the campaign FK at import time.
+
+    Scope is the campaign's fund tree (parent + sub-accounts) *or* rows
+    already stamped ``campaign=…``. Restricting to the FK alone left everyone
+    dormant when gifts landed on the fund via other allocation paths
+    (development-group tokens, manual allocate, etc.).
+
+    Attribution order:
+      1. Campaign match code in the reference (rallying for someone else)
+      2. Mobile number — ``payer_phone``, then the credited register member's
+         phone — must identify exactly one sheet row
+      3. Unique name on the sheet
 
     Returns ``{campaign_member_id: {"amount": Decimal, "count": int}}``.
     """
+    import re
     from decimal import Decimal
+
+    from django.db.models import Q
 
     from giving.models import Transaction
     from members.models import name_key, normalize_phone
-    from pledges.services.codes import find_campaign_member_by_code
+    from pledges.services.codes import codes_in_reference, find_campaign_member_by_code
 
     members = list(campaign.members.all())
     if not members:
@@ -459,8 +488,13 @@ def member_contributions(campaign, start=None, end=None):
         if m.name_key:
             by_name.setdefault(m.name_key, []).append(m)
 
+    fund_ids = _campaign_fund_ids(campaign)
+    scope = Q(campaign=campaign)
+    if fund_ids:
+        scope |= Q(department_id__in=fund_ids)
+
     qs = (Transaction.objects.filter(
-            campaign=campaign,
+            scope,
             direction=Transaction.Direction.CREDIT, confirmed=True,
             is_reversal=False, is_reversed=False, excluded_from_income=False)
           .select_related("member"))
@@ -471,40 +505,52 @@ def member_contributions(campaign, start=None, end=None):
 
     totals = {m.id: {"amount": Decimal(0), "count": 0} for m in members}
 
-    def _resolve(txn):
-        camp, cm = find_campaign_member_by_code(txn.reference)
+    def _by_phone(raw):
+        ph = normalize_phone(raw or "")
+        if ph and len(by_phone.get(ph, [])) == 1:
+            return by_phone[ph][0]
+        return None
+
+    def _by_name(raw):
+        key = name_key(raw or "")
+        if key and len(by_name.get(key, [])) == 1:
+            return by_name[key][0]
+        return None
+
+    def _by_code(reference):
+        camp, cm = find_campaign_member_by_code(reference)
         if camp is not None and camp.id == campaign.id and cm is not None \
                 and cm.id in by_id:
             return cm
         # Direct code lookup — covers viewing an inactive campaign whose codes
         # find_campaign_member_by_code would skip (it only searches active ones).
-        if txn.reference:
-            import re
-            from pledges.services.codes import codes_in_reference
-            s = codes_in_reference(txn.reference)
-            hit, hit_len = None, 0
-            for m in members:
-                code = re.sub(r"[^a-z0-9]", "", (m.match_code or "").lower())
-                if len(code) >= 4 and code in s and len(code) > hit_len:
-                    hit, hit_len = m, len(code)
-            if hit is not None:
-                return hit
-        # Register member credited via code / match — map back to the sheet.
+        if not reference:
+            return None
+        s = codes_in_reference(reference)
+        hit, hit_len = None, 0
+        for m in members:
+            code = re.sub(r"[^a-z0-9]", "", (m.match_code or "").lower())
+            if len(code) >= 4 and code in s and len(code) > hit_len:
+                hit, hit_len = m, len(code)
+        return hit
+
+    def _resolve(txn):
+        cm = _by_code(txn.reference)
+        if cm is not None:
+            return cm
+        # Mobile number is the primary identity for sheet matching.
+        cm = _by_phone(txn.payer_phone)
+        if cm is not None:
+            return cm
         if txn.member_id:
-            ph = normalize_phone(txn.member.phone or "")
-            if ph and len(by_phone.get(ph, [])) == 1:
-                return by_phone[ph][0]
-            key = getattr(txn.member, "name_key", None) or name_key(txn.member.name)
-            if key and len(by_name.get(key, [])) == 1:
-                return by_name[key][0]
-        # Payer identity as written on the bank line.
-        ph = normalize_phone(txn.payer_phone or "")
-        if ph and len(by_phone.get(ph, [])) == 1:
-            return by_phone[ph][0]
-        key = name_key(txn.payer_name or "")
-        if key and len(by_name.get(key, [])) == 1:
-            return by_name[key][0]
-        return None
+            cm = _by_phone(txn.member.phone)
+            if cm is not None:
+                return cm
+            cm = _by_name(getattr(txn.member, "name_key", None)
+                          or txn.member.name)
+            if cm is not None:
+                return cm
+        return _by_name(txn.payer_name)
 
     for txn in qs.iterator():
         cm = _resolve(txn)
