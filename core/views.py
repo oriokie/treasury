@@ -175,12 +175,24 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         }
         # remittance deadline alerts (item 5): surface overdue / due-soon trust
         # remittances so the treasurer is reminded ahead of the deadline.
+        # Only when there is RECEIPTED trust outstanding to remit — unreceipted
+        # bank credits are still pending formal receipt and are not yet a firm
+        # remittance liability (same rule as the trust / remittance reports).
         from cashbook.models import RemittanceDeadline
+        from reports.services import balances as _bal
         _today = __import__("datetime").date.today()
         _rd = RemittanceDeadline.objects.filter(remitted=False,
                                                 deadline__gte=_today - __import__("datetime").timedelta(days=60))
-        ctx["remit_overdue"] = [d for d in _rd if d.is_overdue]
-        ctx["remit_due_soon"] = [d for d in _rd if d.is_due_soon]
+        _receipted_out = sum(
+            (r["to_remit"] for r in _bal.trust_summary()
+             if r.get("to_remit") and r["to_remit"] > 0),
+            __import__("decimal").Decimal(0))
+        if _receipted_out > 0:
+            ctx["remit_overdue"] = [d for d in _rd if d.is_overdue]
+            ctx["remit_due_soon"] = [d for d in _rd if d.is_due_soon]
+        else:
+            ctx["remit_overdue"] = []
+            ctx["remit_due_soon"] = []
 
         # --- pledge attention signals -----------------------------------------
         # Pledges are informational, but drafts awaiting approval and lapsed/

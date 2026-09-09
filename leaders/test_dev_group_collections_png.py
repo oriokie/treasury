@@ -1,4 +1,4 @@
-"""Server-rendered PNG of development-group collections on the leader
+"""Server-rendered PNG of development-group receipts on the leader
 department page — same Pillow table approach as fund budget PNGs, scoped to
 the selected start/end period."""
 import datetime as dt
@@ -41,14 +41,27 @@ class DevGroupCollectionsPngTests(TestCase):
         data = build_dev_group_collections_png(
             dept_name=self.dept.name,
             start=dt.date(2026, 6, 1), end=dt.date(2026, 6, 30),
-            rows=[{"name": "Group One", "opening": Decimal("0"),
-                   "collected": Decimal("2500"), "closing": Decimal("2500")}],
+            rows=[{"name": "Group One", "collected": Decimal("2500")}],
             church_name="Test Church")
         self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
         img = Image.open(io.BytesIO(data))
         self.assertEqual(img.format, "PNG")
         self.assertEqual(img.width % SCALE, 0)
-        self.assertLessEqual(img.width // SCALE, 800)
+        self.assertLessEqual(img.width // SCALE, 1000)
+
+    def test_png_shows_receipts_only(self):
+        """Show image is receipts for the period — not opening/closing balances."""
+        from cashbook.services.goal_chart import (
+            build_dev_group_collections_png, SCALE)
+        data = build_dev_group_collections_png(
+            dept_name=self.dept.name,
+            start=dt.date(2026, 6, 1), end=dt.date(2026, 6, 30),
+            rows=[{"name": "Group One", "opening": Decimal("999"),
+                   "collected": Decimal("2500"), "closing": Decimal("3499")}])
+        self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
+        # Logical width is wider than the old 4-column 760px image.
+        img = Image.open(io.BytesIO(data))
+        self.assertGreaterEqual(img.width // SCALE, 850)
 
     def test_export_endpoint_returns_png_for_period(self):
         url = (f"/leader/department/{self.dept.id}/"
@@ -69,6 +82,12 @@ class DevGroupCollectionsPngTests(TestCase):
         self.assertIn("⤓ PNG", body)
         self.assertIn("Show image", body)
         self.assertIn('class="ld-dev-groups-png"', body)
+        self.assertIn('class="ld-period-form no-print"', body)
+        self.assertIn("This quarter", body)
+        self.assertIn("Preview shareable receipts image", body)
+        self.assertIn('class="bd bd-flush ld-table-scroll"', body)
+        self.assertNotIn("export=groups_csv", body)
+        self.assertNotIn("⬇ CSV", body)
 
     def test_non_leader_cannot_download(self):
         other = User.objects.create_user("outsider", password="x")

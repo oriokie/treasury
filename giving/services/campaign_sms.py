@@ -53,6 +53,7 @@ PLACEHOLDERS = {
     "{name}": "the member's name as it appears on the sheet",
     "{group}": "their group as written on the sheet, e.g. CAMP_1",
     "{group_no}": "just the number in it, e.g. 1",
+    "{code}": "their rallying code — supporters put it in the bank reference",
     "{goal}": "their group's target from the fund's budget page",
     "{collected}": "what their group has raised so far this year",
     "{short}": "how much their group still needs",
@@ -228,6 +229,7 @@ def render_message(template, *, member, campaign, progress=None):
                          ("{short}", _money(row.get("short", 0))),
                          ("{group}", group),
                          ("{goal}", _money(row.get("goal", 0))),
+                         ("{code}", member.match_code or ""),
                          ("{name}", member.name)):
         text = text.replace(token, str(value))
     return text
@@ -424,3 +426,90 @@ def send(campaign, group, template, *, user=None):
             "skipped": plan["skipped_count"],
             "total": plan["count"] + plan["skipped_count"],
             "record": record}
+
+
+def member_contributions(campaign, start=None, end=None):
+    """How much each sheet member has contributed in a period, and how often.
+
+    Attribution follows the same rules money uses on the way in: a campaign
+    match code in the reference wins first (so gifts rallied for someone else
+    still land on that member), then phone, then a unique name. Transactions
+    that belong to the campaign but match nobody are left out of the per-person
+    totals — they still count in the campaign-wide raised figure.
+
+    Returns ``{campaign_member_id: {"amount": Decimal, "count": int}}``.
+    """
+    from decimal import Decimal
+
+    from giving.models import Transaction
+    from members.models import name_key, normalize_phone
+    from pledges.services.codes import find_campaign_member_by_code
+
+    members = list(campaign.members.all())
+    if not members:
+        return {}
+
+    by_id = {m.id: m for m in members}
+    by_phone = {}
+    by_name = {}
+    for m in members:
+        ph = normalize_phone(m.phone)
+        if ph:
+            by_phone.setdefault(ph, []).append(m)
+        if m.name_key:
+            by_name.setdefault(m.name_key, []).append(m)
+
+    qs = (Transaction.objects.filter(
+            campaign=campaign,
+            direction=Transaction.Direction.CREDIT, confirmed=True,
+            is_reversal=False, is_reversed=False, excluded_from_income=False)
+          .select_related("member"))
+    if start:
+        qs = qs.filter(date__gte=start)
+    if end:
+        qs = qs.filter(date__lte=end)
+
+    totals = {m.id: {"amount": Decimal(0), "count": 0} for m in members}
+
+    def _resolve(txn):
+        camp, cm = find_campaign_member_by_code(txn.reference)
+        if camp is not None and camp.id == campaign.id and cm is not None \
+                and cm.id in by_id:
+            return cm
+        # Direct code lookup — covers viewing an inactive campaign whose codes
+        # find_campaign_member_by_code would skip (it only searches active ones).
+        if txn.reference:
+            import re
+            from pledges.services.codes import codes_in_reference
+            s = codes_in_reference(txn.reference)
+            hit, hit_len = None, 0
+            for m in members:
+                code = re.sub(r"[^a-z0-9]", "", (m.match_code or "").lower())
+                if len(code) >= 4 and code in s and len(code) > hit_len:
+                    hit, hit_len = m, len(code)
+            if hit is not None:
+                return hit
+        # Register member credited via code / match — map back to the sheet.
+        if txn.member_id:
+            ph = normalize_phone(txn.member.phone or "")
+            if ph and len(by_phone.get(ph, [])) == 1:
+                return by_phone[ph][0]
+            key = getattr(txn.member, "name_key", None) or name_key(txn.member.name)
+            if key and len(by_name.get(key, [])) == 1:
+                return by_name[key][0]
+        # Payer identity as written on the bank line.
+        ph = normalize_phone(txn.payer_phone or "")
+        if ph and len(by_phone.get(ph, [])) == 1:
+            return by_phone[ph][0]
+        key = name_key(txn.payer_name or "")
+        if key and len(by_name.get(key, [])) == 1:
+            return by_name[key][0]
+        return None
+
+    for txn in qs.iterator():
+        cm = _resolve(txn)
+        if cm is None:
+            continue
+        totals[cm.id]["amount"] += txn.amount
+        totals[cm.id]["count"] += 1
+    return totals

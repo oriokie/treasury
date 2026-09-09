@@ -236,8 +236,10 @@ class DevelopmentGroup(models.Model):
 
     @property
     def label(self):
-        base = f"Group {self.number}"
-        return f"{base} – {self.name}" if self.name else base
+        # Show the group's own name (e.g. "DEV_GROUP_12"); fall back to
+        # "Group N" only when a group has no name. The name already carries
+        # the number in practice, so prefixing "Group 12 – " duplicated it.
+        return self.name or f"Group {self.number}"
 
 
 def _trailing_number(name):

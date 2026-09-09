@@ -2722,12 +2722,24 @@ class CampaignDetailView(ReadAccessMixin, View):
     template_name = "giving/campaign_detail.html"
 
     def get(self, request, pk):
-        from django.db.models import Count, Sum
+        import datetime as _dt
+        from django.db.models import Sum
+        from core.utils import parse_period
         from giving.models import Campaign
         from giving.services import campaign_sms
 
         campaign = get_object_or_404(
             Campaign.objects.select_related("department"), pk=pk)
+        # Year-to-date by default — campaigns run for months, and "who has
+        # given" is rarely answered by looking only at the current calendar
+        # month. Explicit start/end (or a period preset) still win.
+        if not any(request.GET.get(k)
+                   for k in ("start", "end", "period", "year", "month")):
+            today = _dt.date.today()
+            start, end = _dt.date(today.year, 1, 1), today
+        else:
+            start, end = parse_period(request)
+
         progress = campaign_sms.group_progress(campaign)
         groups = progress
         behind = [r for r in progress if r["behind"]]
@@ -2738,16 +2750,58 @@ class CampaignDetailView(ReadAccessMixin, View):
                    for g in groups}
         for g in groups:
             g["history"] = history.get(g["name"], [])
-        txns = campaign.transactions.all()
+        period_txns = campaign.transactions.filter(
+            date__gte=start, date__lte=end)
         members = list(campaign.members.order_by("group", "name"))
+        giving = campaign_sms.member_contributions(campaign, start, end)
+        dormant = 0
+        for m in members:
+            row = giving.get(m.id) or {}
+            m.contributed = row.get("amount") or 0
+            m.n_gifts = row.get("count") or 0
+            if m.n_gifts == 0:
+                dormant += 1
+        for g in groups:
+            for m in g["members"]:
+                row = giving.get(m.id) or {}
+                m.contributed = row.get("amount") or 0
+                m.n_gifts = row.get("count") or 0
+        if request.GET.get("export") == "members_xlsx":
+            from django.utils.text import slugify
+            from reports.exports import xlsx_response
+
+            header = [
+                "Member", "Group", "Rallying code", "Contributions",
+                "Amount contributed", "Phone", "Status",
+            ]
+            data = [
+                [
+                    m.name, m.group or "", m.match_code or "", m.n_gifts,
+                    float(m.contributed), m.phone or "",
+                    "Active giver" if m.n_gifts else "Dormant",
+                ]
+                for m in members
+            ]
+            filename = (
+                f"{slugify(campaign.name) or 'campaign'}_member_giving_"
+                f"{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
+            )
+            title = (
+                f"{campaign.name} — member giving, "
+                f"{start:%d %b %Y} to {end:%d %b %Y}"
+            )
+            return xlsx_response(filename, header, data, title=title)
         return render(request, self.template_name, {
             "campaign": campaign,
             "groups": groups,
             "members": members,
+            "start": start,
+            "end": end,
+            "dormant_count": dormant,
             "total_members": sum(g["count"] for g in groups),
             "total_reachable": sum(g["reachable"] for g in groups),
-            "n_txns": txns.count(),
-            "raised": txns.aggregate(t=Sum("amount"))["t"] or 0,
+            "n_txns": period_txns.count(),
+            "raised": period_txns.aggregate(t=Sum("amount"))["t"] or 0,
             "placeholders": campaign_sms.PLACEHOLDERS,
             "sms_enabled": _sms_enabled(),
             # Writing to the whole campaign at once. Worth its own box rather

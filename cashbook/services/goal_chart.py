@@ -406,21 +406,23 @@ def build_group_goals_png(*, dept_name, year, group_rows, contribution_goal,
 
 def build_dev_group_collections_png(*, dept_name, start, end, rows,
                                     currency="KSh", church_name=""):
-    """PNG summary of development-group collections for a date range.
+    """PNG summary of development-group *receipts* for a date range.
 
-    ``rows``: list of {"name", "opening", "collected", "closing"} — same shape
-    the leader department page already builds. Columns match the on-screen
-    table (Group / Opening / Receipts / Closing), so the downloaded image
-    reads like the HTML table for printing or sharing.
+    ``rows``: list of {"name", "collected"} (opening/closing ignored) — leaders
+    share how much each group collected in the selected period, not the running
+    balance. Two columns keep the image readable on a phone: more width per
+    figure, larger type relative to canvas width.
     """
-    W = 760
-    pad = 22
-    header_h = 84
-    col_head_h = 40
-    row_h = 46
-    total_row_h = 50
-    footer_h = 28
-    cell_pad = 10
+    # Sized for a phone viewport. Two columns (Group / Receipts) with a wider
+    # canvas and larger type so the image stays legible when scaled to ~380px.
+    W = 900
+    pad = 28
+    header_h = 96
+    col_head_h = 48
+    row_h = 52
+    total_row_h = 56
+    footer_h = 32
+    cell_pad = 14
     n = max(len(rows), 1)
     table_h = col_head_h + n * row_h + total_row_h
     H = header_h + table_h + footer_h
@@ -428,30 +430,28 @@ def build_dev_group_collections_png(*, dept_name, start, end, rows,
     img = Image.new("RGB", (_s(W), _s(H)), PAPER)
     d = ImageDraw.Draw(img)
 
-    f_title = _font("DejaVuSans-Bold.ttf", 24)
-    f_sub = _font("DejaVuSans.ttf", 15)
-    f_colhead = _font("DejaVuSans-Bold.ttf", 17)
-    f_cell = _font("DejaVuSansMono.ttf", 19)
-    f_name = _font("DejaVuSans-Bold.ttf", 19)
-    f_foot = _font("DejaVuSans.ttf", 13)
+    f_title = _font("DejaVuSans-Bold.ttf", 28)
+    f_sub = _font("DejaVuSans.ttf", 17)
+    f_colhead = _font("DejaVuSans-Bold.ttf", 20)
+    f_cell = _font("DejaVuSansMono.ttf", 24)
+    f_name = _font("DejaVuSans-Bold.ttf", 22)
+    f_foot = _font("DejaVuSans.ttf", 14)
 
     period = f"{start:%d %b %Y} – {end:%d %b %Y}"
-    y = 14
+    y = 16
     if church_name:
         d.text((_s(pad), _s(y)), church_name, font=f_sub, fill=MUTED)
-        y += 20
+        y += 22
     d.text((_s(pad), _s(y)), f"{dept_name} — development groups",
            font=f_title, fill=FOREST_DEEP)
-    y += 30
-    d.text((_s(pad), _s(y)), f"Collections {period}", font=f_sub, fill=MUTED)
+    y += 34
+    d.text((_s(pad), _s(y)), f"Receipts {period}", font=f_sub, fill=MUTED)
 
     table_x0, table_x1 = pad, W - pad
     table_w = table_x1 - table_x0
-    col_num_w = 140
-    col_group_w = table_w - 3 * col_num_w
-    col_x = [table_x0]
-    for cw in (col_group_w, col_num_w, col_num_w, col_num_w):
-        col_x.append(col_x[-1] + cw)
+    col_num_w = 280
+    col_group_w = table_w - col_num_w
+    col_x = [table_x0, table_x0 + col_group_w, table_x1]
 
     def col_rect(i):
         return _s(col_x[i]), _s(col_x[i + 1])
@@ -464,20 +464,19 @@ def build_dev_group_collections_png(*, dept_name, start, end, rows,
     top = header_h
     d.rectangle([_s(table_x0), _s(top), _s(table_x1), _s(top + col_head_h)],
                 fill=FOREST_SOFT)
-    headers = ["Group", "Opening", "Receipts", "Closing"]
-    hy = _s(top + (col_head_h - 18) / 2)
+    headers = ["Group", "Receipts"]
+    hy = _s(top + (col_head_h - 20) / 2)
     d.text((_s(col_x[0] + cell_pad), hy), headers[0], font=f_colhead,
            fill=FOREST_DEEP)
-    for i in range(1, 4):
-        right_text(i, hy, headers[i], f_colhead, FOREST_DEEP)
+    right_text(1, hy, headers[1], f_colhead, FOREST_DEEP)
     d.line([(_s(table_x0), _s(top + col_head_h)),
             (_s(table_x1), _s(top + col_head_h))],
            fill=LINE_STRONG, width=_s(2))
 
     ry = top + col_head_h
-    tot_open = tot_coll = tot_close = 0.0
+    tot_coll = 0.0
     if not rows:
-        cy = _s(ry + (row_h - 16) / 2)
+        cy = _s(ry + (row_h - 18) / 2)
         d.text((_s(col_x[0] + cell_pad), cy), "No development groups yet.",
                font=f_sub, fill=MUTED)
         ry += row_h
@@ -487,30 +486,22 @@ def build_dev_group_collections_png(*, dept_name, start, end, rows,
         if idx % 2 == 1:
             d.rectangle([_s(table_x0), _s(ry), _s(table_x1), _s(ry + row_h)],
                         fill=ROW_ALT)
-        opening = float(r.get("opening") or 0)
         collected = float(r.get("collected") or 0)
-        closing = float(r.get("closing") or 0)
-        tot_open += opening
         tot_coll += collected
-        tot_close += closing
-        cy = _s(ry + (row_h - 16) / 2)
+        cy = _s(ry + (row_h - 18) / 2)
         d.text((_s(col_x[0] + cell_pad), cy), str(r.get("name") or ""),
                font=f_name, fill=INK)
-        right_text(1, cy, _money(opening), f_cell, INK)
-        right_text(2, cy, _money(collected), f_cell, INK)
-        right_text(3, cy, _money(closing), f_cell, INK)
+        right_text(1, cy, _money(collected), f_cell, INK)
         ry += row_h
         d.line([(_s(table_x0), _s(ry)), (_s(table_x1), _s(ry))],
                fill=LINE, width=_s(1))
 
     d.rectangle([_s(table_x0), _s(ry), _s(table_x1), _s(ry + total_row_h)],
                 fill=FOREST_SOFT)
-    ty = _s(ry + (total_row_h - 16) / 2)
+    ty = _s(ry + (total_row_h - 18) / 2)
     d.text((_s(col_x[0] + cell_pad), ty), "All groups", font=f_name,
            fill=FOREST_DEEP)
-    right_text(1, ty, _money(tot_open), f_name, FOREST_DEEP)
-    right_text(2, ty, _money(tot_coll), f_name, FOREST_DEEP)
-    right_text(3, ty, _money(tot_close), f_name, FOREST_DEEP)
+    right_text(1, ty, _money(tot_coll), f_name, FOREST_DEEP)
     ry += total_row_h
     d.line([(_s(table_x0), _s(ry)), (_s(table_x1), _s(ry))],
            fill=LINE_STRONG, width=_s(2))
@@ -520,7 +511,7 @@ def build_dev_group_collections_png(*, dept_name, start, end, rows,
     for cx in col_x[1:-1]:
         d.line([(_s(cx), _s(top)), (_s(cx), _s(ry))], fill=LINE, width=_s(1))
 
-    fy = _s(ry + 12)
+    fy = _s(ry + 14)
     cur = (currency or "KSh").strip()
     d.text((_s(table_x0), fy),
            f"Generated by the Treasury system · amounts in {cur}",
