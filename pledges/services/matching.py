@@ -1060,3 +1060,124 @@ def handle_new_contribution(txn, user=None, cfg=None):
         from core.utils import log_exception as _lx; _lx('pledges/services/matching.py')
         # matching is best-effort; never let it break contribution creation
         return None
+
+
+# ---------------------------------------------------------------------------
+# Keeping the tracker honest after a contribution CHANGES (Phase 3).
+#
+# A PledgePayment is created when the gift arrives, but the gift can change
+# afterwards — it can be reversed, reallocated to another fund, or credited to
+# a different member. Nothing used to revisit the links when that happened, so
+# a pledge went on counting money that had been reversed, or a gift that had
+# been moved to somebody else's fund entirely. This is the other half of
+# `handle_new_contribution`: when the gift moves, the promise it was matched to
+# has to be told. It still never moves money — only the informational links.
+# ---------------------------------------------------------------------------
+def resync_contribution_pledges(txn, user=None, cfg=None, rematch=True):
+    """Re-evaluate a contribution's pledge links after the gift has changed.
+
+    Removes any ``PledgePayment`` whose pledge the gift no longer qualifies for
+    — because it was reversed, un-confirmed, reallocated to a fund outside the
+    campaign, or credited to a different member — recomputes the affected
+    pledges, and (``rematch``) re-runs matching so a gift now belonging to a
+    different member's promise is picked up. Pending suggestions for a link
+    that no longer holds are cleared the same way.
+
+    Deliberately conservative about *fund* removal: a gift sitting with no fund
+    at all (a transient "sent back to review" state, or a bank memo) is left
+    alone rather than unlinked, because unallocated is not the same as
+    reallocated-away. A reversed or un-confirmed gift, by contrast, is a hard
+    disqualifier and its links always go.
+
+    Never raises in a way that would break the surrounding save. Returns a
+    summary dict ``{"removed", "touched", "rematched"}``.
+    """
+    from core.models import SiteConfig
+    from pledges.models import PledgePayment, PledgeMatchSuggestion
+    try:
+        cfg = cfg or SiteConfig.get()
+        payments = list(txn.pledge_payments.select_related("pledge").all())
+        suggestions = list(
+            txn.pledge_suggestions.filter(
+                status=PledgeMatchSuggestion.Status.PENDING)
+            .select_related("pledge"))
+        if not payments and not suggestions and not rematch:
+            return {"removed": 0, "touched": 0, "rematched": None}
+
+        hard_invalid = (
+            txn.direction != Transaction.Direction.CREDIT
+            or not txn.confirmed
+            or txn.is_reversal or txn.is_reversed)
+
+        if hard_invalid:
+            keep_ids = set()
+        else:
+            # The set of pledges the gift qualifies for AS IT STANDS NOW —
+            # identity / match-code / fund / date, independent of how much is
+            # still owing (include_fulfilled keeps a completed promise in view
+            # so surplus links are not wrongly cut).
+            keep_ids = {
+                p.id for p in active_pledges_for_contribution(
+                    txn, cfg, include_fulfilled=True)}
+
+        def _should_drop(pledge_id):
+            if pledge_id in keep_ids:
+                return False
+            # Hard disqualifier: always drop. Otherwise only drop when the gift
+            # is actually allocated to a fund (so a transient unallocated / memo
+            # state does not wipe a real match).
+            return hard_invalid or txn.department_id is not None
+
+        touched = set()
+        removed = 0
+        for pp in payments:
+            if _should_drop(pp.pledge_id):
+                pledge = pp.pledge
+                pp.delete()
+                removed += 1
+                touched.add(pledge)
+        for sug in suggestions:
+            if _should_drop(sug.pledge_id):
+                sug.delete()
+
+        for pledge in touched:
+            pledge.recompute_status()
+
+        rematched = None
+        if rematch and not hard_invalid:
+            rematched = handle_new_contribution(txn, user=user, cfg=cfg)
+
+        return {"removed": removed, "touched": len(touched),
+                "rematched": rematched}
+    except Exception:
+        from core.utils import log_exception as _lx; _lx('pledges/services/matching.py')
+        return {"removed": 0, "touched": 0, "rematched": None}
+
+
+def resync_all_pledge_payments(campaign=None, rematch=False):
+    """Sweep every existing PledgePayment and drop links that no longer hold.
+
+    The one-time repair for links that went stale before `resync_...` ran on
+    every change — money left on a pledge after its gift was reversed or moved.
+    Read the same rule as the per-gift resync. Returns a summary dict.
+
+    ``rematch`` is off by default here: the sweep's job is to *clean* stale
+    links, and a bulk re-match is a separate, louder action (the auto-match
+    sweep) a treasurer runs deliberately.
+    """
+    from pledges.models import PledgePayment
+    qs = (PledgePayment.objects.filter(transaction__isnull=False)
+          .select_related("transaction", "pledge"))
+    if campaign is not None:
+        qs = qs.filter(pledge__campaign=campaign)
+    seen_txn = set()
+    removed = 0
+    touched = set()
+    for pp in qs:
+        tid = pp.transaction_id
+        if tid in seen_txn:
+            continue
+        seen_txn.add(tid)
+        res = resync_contribution_pledges(pp.transaction, rematch=rematch)
+        removed += res["removed"]
+    return {"transactions_checked": len(seen_txn), "removed": removed}

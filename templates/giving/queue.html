@@ -35,7 +35,7 @@
   </select>
   <select name="dev_group" class="field--select" style="max-width:240px">
     <option value="">Development group № (if applicable)…</option>
-    {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }} — {{ g.label|truncatechars:28 }}</option>{% endfor %}
+    {% for g in dev_groups %}<option value="{{ g.id }}">{{ g.label|truncatechars:32 }}</option>{% endfor %}
   </select>
   <button class="btn btn-sm">Allocate selected</button>
 </form>
@@ -87,7 +87,7 @@
 
     <select name="dev_group" class="field--select dev-pick" hidden>
       <option value="">Development group №…</option>
-      {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }} — {{ g.label|truncatechars:30 }}</option>{% endfor %}
+      {% for g in dev_groups %}<option value="{{ g.id }}">{{ g.label|truncatechars:32 }}</option>{% endfor %}
     </select>
 
     <label class="check-row q-remember"><input type="checkbox" name="remember_rule"> <span>Remember this reference for next time</span></label>

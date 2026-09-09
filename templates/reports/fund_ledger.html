@@ -44,7 +44,7 @@
       <td class="num mono">{{ r.closing|money }}</td></tr>
   {% endfor %}
   {% for r in dev_rows %}
-    <tr><td class="muted">↳ {{ r.group.label }} <span class="pill pill-grey pill-xs">dev group</span></td>
+    <tr><td class="muted">↳ <a class="link" href="{% url 'report_dev_group_members' r.group.id %}?start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">{{ r.group.label }}</a> <span class="pill pill-grey pill-xs">dev group</span></td>
       <td class="num mono">—</td>
       <td class="num mono">{{ r.receipts|money }}</td>
       {% if sub_show_payments %}<td class="num mono">—</td>{% endif %}

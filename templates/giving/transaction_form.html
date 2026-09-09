@@ -4,8 +4,76 @@
 <div class="page-head"><div><h1>Edit ledger entry</h1><div class="sub">Alter a banking or cash entry. Changes are recorded in the audit log.</div></div></div>
 <div class="card u-narrow-md"><div class="bd">
   {% if object.raw_narration %}<div class="help u-mb-sm">Original narration: <span class="mono">{{ object.raw_narration }}</span></div>{% endif %}
-  <form method="post"><div class="form-grid">{% csrf_token %}{% include 'partials/form_fields.html' %}</div>
+  <form method="post"><div class="form-grid">{% csrf_token %}
+    {% for field in form %}
+      {% if field.name == 'member' %}
+      <div class="form-row">
+        <label for="memberSearch">Member</label>
+        <div class="pos-rel">
+          <input id="memberSearch" class="field" autocomplete="off"
+                 placeholder="Start typing a member's name…"
+                 value="{% if form.instance.member %}{{ form.instance.member.name }}{% endif %}">
+          <div class="ac-box" id="memberAc"></div>
+        </div>
+        <div class="help" id="memberPick"{% if not form.instance.member %} style="display:none"{% endif %}>
+          {% if form.instance.member %}Linked to member: {{ form.instance.member.name }}{% endif %}
+        </div>
+        {{ field }}
+        {% for e in field.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+      </div>
+      {% else %}
+      <div class="form-row">
+        {% if field.field.widget.input_type == 'checkbox' %}
+          <div class="check-row">{{ field }} <label for="{{ field.id_for_label }}" class="u-m-0">{{ field.label }}</label></div>
+        {% else %}
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+        {% endif %}
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+        {% for e in field.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+    </div>
     <div class="btn-row"><button class="btn">Save changes</button><a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a></div>
   </form>
 </div></div>
+<script>
+const searchUrl="{% url 'member_search' %}";
+const inp=document.getElementById("memberSearch"), ac=document.getElementById("memberAc");
+const hidden=document.getElementById("id_member"), pick=document.getElementById("memberPick");
+let t=null;
+inp.addEventListener("input",()=>{ clearTimeout(t); hidden.value=""; pick.style.display="none";
+  const q=inp.value.trim(); if(q.length<2){ ac.style.display="none"; return; }
+  t=setTimeout(async()=>{ try{
+    const d=await (await fetch(searchUrl+"?q="+encodeURIComponent(q))).json();
+    ac.innerHTML=""; if(!d.results.length){ ac.style.display="none"; return; }
+    d.results.forEach(m=>{ const it=document.createElement("div"); it.className="ac-item";
+      it.innerHTML=`${m.name}${m.type?' <span class="muted">· '+m.type+'</span>':''}${m.phone?' <span class="muted">· '+m.phone+'</span>':''}`;
+      const doPick=()=>{ inp.value=m.name; hidden.value=m.id;
+        pick.textContent="Linked to member: "+m.name; pick.style.display="block"; ac.style.display="none"; };
+      it.addEventListener("mousedown",e=>{ e.preventDefault(); doPick(); });
+      it._pick=doPick;
+      ac.appendChild(it); });
+    ac.style.display="block";
+  }catch(e){ ac.style.display="none"; } },170);
+});
+inp.addEventListener("blur",()=>setTimeout(()=>ac.style.display="none",150));
+inp.addEventListener("keydown",e=>{
+  const open = ac.style.display==="block";
+  const items=[...ac.querySelectorAll(".ac-item")];
+  if(e.key==="Enter" && open && items.length){
+    const act=ac.querySelector(".ac-item.ac-active")||items[0];
+    e.preventDefault(); if(act._pick) act._pick(); return;
+  }
+  if(!open || !items.length) return;
+  let idx=items.findIndex(i=>i.classList.contains("ac-active"));
+  if(e.key==="ArrowDown"){ e.preventDefault(); idx=(idx+1)%items.length; }
+  else if(e.key==="ArrowUp"){ e.preventDefault(); idx=(idx-1+items.length)%items.length; }
+  else if(e.key==="Escape"){ ac.style.display="none"; return; }
+  else return;
+  items.forEach(i=>i.classList.remove("ac-active"));
+  items[idx].classList.add("ac-active");
+  items[idx].scrollIntoView({block:"nearest"});
+});
+</script>
 {% endblock %}

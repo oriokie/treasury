@@ -86,6 +86,16 @@ class CampaignMessageTests(CampaignBase):
         self.assertIn("Dear Ruth Momanyi, Group 2 meets on Sabbath. "
                       "— Camp Meeting 2026", messages_out["Ruth Momanyi"])
 
+    def test_code_placeholder_fills_match_code(self):
+        ruth = CampaignMember.objects.get(campaign=self.campaign, name="Ruth Momanyi")
+        plan = campaign_sms.preview(
+            self.campaign, "Group 2",
+            "Your code is {code}")
+        messages_out = {r["member"].name: r["message"] for r in plan["recipients"]}
+        self.assertEqual(messages_out["Ruth Momanyi"],
+                         f"Your code is {ruth.match_code}")
+        self.assertIn("{code}", campaign_sms.PLACEHOLDERS)
+
     def test_preview_separates_reachable_from_not(self):
         plan = campaign_sms.preview(self.campaign, "Group 2", "Hello {name}")
         self.assertEqual(plan["count"], 2)
@@ -301,3 +311,100 @@ class CampaignInterruptedSendTests(CampaignBase):
         body = self.client.get(
             reverse("campaign_detail", args=[self.campaign.pk])).content.decode()
         self.assertIn("interrupted", body)
+
+
+class CampaignMemberGivingTests(CampaignBase):
+    """Per-person contributed amount and gift frequency for a period."""
+
+    def test_contributions_by_payer_phone_and_code(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+
+        ruth = CampaignMember.objects.get(
+            campaign=self.campaign, name="Ruth Momanyi")
+        kevin = CampaignMember.objects.get(
+            campaign=self.campaign, name="Kevin Ogega")
+        Transaction.objects.create(
+            date=dt.date(2026, 3, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("1000"), department=self.fund, campaign=self.campaign,
+            campaign_group="Group 2", payer_name="Ruth Momanyi",
+            payer_phone="254790301470", confirmed=True, allocation_status="AUTO",
+            core_ref="CG1")
+        Transaction.objects.create(
+            date=dt.date(2026, 3, 8), channel="BANK", direction="CREDIT",
+            amount=Decimal("500"), department=self.fund, campaign=self.campaign,
+            campaign_group="Group 2", payer_name="Someone Else",
+            reference=f"FOR {ruth.match_code}", confirmed=True,
+            allocation_status="AUTO", core_ref="CG2")
+        Transaction.objects.create(
+            date=dt.date(2026, 3, 15), channel="BANK", direction="CREDIT",
+            amount=Decimal("2000"), department=self.fund, campaign=self.campaign,
+            campaign_group="Group 10", payer_name="Kevin Ogega",
+            payer_phone="254716804186", confirmed=True, allocation_status="AUTO",
+            core_ref="CG3")
+        # Outside the period — must not count.
+        Transaction.objects.create(
+            date=dt.date(2025, 12, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("9999"), department=self.fund, campaign=self.campaign,
+            payer_phone="254790301470", confirmed=True, allocation_status="AUTO",
+            core_ref="CG4")
+
+        stats = campaign_sms.member_contributions(
+            self.campaign, dt.date(2026, 3, 1), dt.date(2026, 3, 31))
+        self.assertEqual(stats[ruth.id]["amount"], Decimal("1500"))
+        self.assertEqual(stats[ruth.id]["count"], 2)
+        self.assertEqual(stats[kevin.id]["amount"], Decimal("2000"))
+        self.assertEqual(stats[kevin.id]["count"], 1)
+        mary = CampaignMember.objects.get(
+            campaign=self.campaign, name="Mary Otieno")
+        self.assertEqual(stats[mary.id]["count"], 0)
+
+    def test_detail_page_shows_giving_and_dormant(self):
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+
+        Transaction.objects.create(
+            date=dt.date(2026, 6, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("750"), department=self.fund, campaign=self.campaign,
+            payer_name="Ruth Momanyi", payer_phone="254790301470",
+            confirmed=True, allocation_status="AUTO", core_ref="CG5")
+        r = self.client.get(
+            reverse("campaign_detail", args=[self.campaign.pk])
+            + "?start=2026-01-01&end=2026-12-31")
+        self.assertEqual(r.status_code, 200)
+        body = r.content.decode()
+        self.assertIn("Member giving", body)
+        self.assertIn("Dormant", body)
+        self.assertIn("Gifts", body)
+        self.assertIn("SMS this group", body)
+
+    def test_member_giving_excel_uses_selected_period(self):
+        import datetime as dt
+        import io
+        from decimal import Decimal
+
+        import openpyxl
+
+        from giving.models import Transaction
+
+        Transaction.objects.create(
+            date=dt.date(2026, 6, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("750"), department=self.fund, campaign=self.campaign,
+            payer_name="Ruth Momanyi", payer_phone="254790301470",
+            confirmed=True, allocation_status="AUTO", core_ref="CG6")
+        r = self.client.get(
+            reverse("campaign_detail", args=[self.campaign.pk])
+            + "?start=2026-06-01&end=2026-06-30&export=members_xlsx")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            r["Content-Type"])
+        self.assertIn("20260601_20260630.xlsx", r["Content-Disposition"])
+        ws = openpyxl.load_workbook(io.BytesIO(r.content), data_only=True).active
+        values = list(ws.values)
+        flat = [cell for row in values for cell in row]
+        self.assertIn("Ruth Momanyi", flat)
+        self.assertIn("Amount contributed", flat)
+        self.assertIn(750, flat)

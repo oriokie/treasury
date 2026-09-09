@@ -138,7 +138,9 @@ class TransactionEditForm(StyledFormMixin, forms.ModelForm):
         self.fields["department"].queryset = Department.objects.filter(active=True).select_related("parent")
         self.fields["department"].required = False
         self.fields["member"].queryset = Member.objects.filter(active=True)
-        for f in ("member", "dev_group", "reference", "payer_name",
+        self.fields["member"].required = False
+        self.fields["member"].widget = forms.HiddenInput()
+        for f in ("dev_group", "reference", "payer_name",
                   "payer_phone", "mpesa_ref"):
             self.fields[f].required = False
         self._style()

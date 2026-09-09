@@ -93,7 +93,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
             return redirect("leader_dashboard")
         self.dept = dept
         export = request.GET.get("export")
-        if export in ("groups_csv", "groups_xlsx", "groups_png"):
+        if export in ("groups_xlsx", "groups_png"):
             return self._export_groups(request, export)
         return super().get(request, *args, **kwargs)
 
@@ -137,8 +137,7 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
             cfg = SiteConfig.get()
             data = build_dev_group_collections_png(
                 dept_name=self.dept.name, start=start, end=end,
-                rows=[{"name": str(r["group"]), "opening": r["opening"],
-                       "collected": r["collected"], "closing": r["closing"]}
+                rows=[{"name": str(r["group"]), "collected": r["collected"]}
                       for r in rows],
                 currency=getattr(cfg, "currency_symbol", None) or "KSh",
                 church_name=cfg.church_name or "")
@@ -350,10 +349,21 @@ def _collection_rows(dept, start, end, user):
             .select_related("member", "dev_group").order_by("-date", "-id"))
     out = []
     for t in txns:
+        # Who the gift is credited to (the member, else the payer name).
+        member_name = t.member.name if t.member_id else ""
+        # Who actually paid, shown only when it differs from the credited
+        # member — e.g. someone paid toward another member via a match code,
+        # or a gift was manually reattributed. When there's no member, the
+        # contributor column already IS the payer, so this stays blank.
+        payer = ""
+        if (t.member_id and t.payer_name
+                and t.payer_name.strip().upper() != (member_name or "").strip().upper()):
+            payer = display_giver(user, t.payer_name)
         out.append({
             "date": t.date, "amount": t.amount, "channel": t.get_channel_display(),
-            "who": display_giver(user, t.member.name if t.member_id else t.payer_name) or "—",
+            "who": display_giver(user, member_name or t.payer_name) or "—",
             "phone": display_phone(user, t.member.phone if t.member_id else t.payer_phone),
+            "payer": payer,
             "reference": t.reference or "",
             "group": t.dev_group.label if t.dev_group_id else "",
         })
@@ -374,9 +384,11 @@ class LeaderCollectionsView(LeaderRequiredMixin, TemplateView):
             from reports.exports import csv_response, xlsx_response
             from core.models import SiteConfig
             rows = _collection_rows(self.dept, start, end, self.request.user)
-            header = ["Date", "Contributor", "Phone", "Reference", "Channel", "Group", "Amount"]
-            data = [[r["date"].isoformat(), r["who"], r["phone"], r["reference"],
-                     r["channel"], r["group"], float(r["amount"])] for r in rows]
+            header = ["Date", "Contributor", "Phone", "Payer (if different)",
+                      "Reference", "Channel", "Group", "Amount"]
+            data = [[r["date"].isoformat(), r["who"], r["phone"], r["payer"],
+                     r["reference"], r["channel"], r["group"], float(r["amount"])]
+                    for r in rows]
             title = f"{self.dept.name} collections {start:%d %b %Y}–{end:%d %b %Y}"
             fn = f"collections_{self.dept.slug or self.dept.id}"
             if export == "xlsx":
@@ -396,7 +408,8 @@ class LeaderCollectionsView(LeaderRequiredMixin, TemplateView):
         if q:
             rows = [r for r in rows if q in (r.get("who") or "").lower()
                     or q in (r.get("reference") or "").lower()
-                    or q in (r.get("phone") or "").lower()]
+                    or q in (r.get("phone") or "").lower()
+                    or q in (r.get("payer") or "").lower()]
         ctx["q"] = self.request.GET.get("q", "")
         ctx["total"] = sum((r["amount"] for r in rows), Decimal(0))
         ctx["count"] = len(rows)
