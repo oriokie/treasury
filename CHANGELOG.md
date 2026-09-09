@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.48.3
+
+Automated patch release: feat: campaign giving, SMS codes, pledge resync, leader/report UX.
+
 ## 3.48.2
 
 Automated patch release covering: Fix CI failures from group matching and wiped auto-release notes; Match existing development groups and auto-allocate via codes.
