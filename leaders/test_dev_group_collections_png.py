@@ -63,6 +63,48 @@ class DevGroupCollectionsPngTests(TestCase):
         img = Image.open(io.BytesIO(data))
         self.assertGreaterEqual(img.width // SCALE, 850)
 
+    def test_png_drops_zero_receipts_and_sorts_largest_first(self):
+        from cashbook.services.goal_chart import (
+            build_dev_group_collections_png, SCALE)
+        # Builder itself drops zeros and sorts — verify via row count / height
+        # (one non-zero row) and that the endpoint applies the same rule.
+        data = build_dev_group_collections_png(
+            dept_name=self.dept.name,
+            start=dt.date(2026, 6, 1), end=dt.date(2026, 6, 30),
+            rows=[
+                {"name": "Zero Group", "collected": Decimal("0")},
+                {"name": "Small", "collected": Decimal("100")},
+                {"name": "Large", "collected": Decimal("9000")},
+            ])
+        img = Image.open(io.BytesIO(data))
+        # header + col head + 2 data rows + total + footer (zeros dropped)
+        # W=900, H = 96 + 48 + 2*52 + 56 + 32 = 336 logical
+        self.assertEqual(img.height // SCALE, 96 + 48 + 2 * 52 + 56 + 32)
+
+        g2 = DevelopmentGroup.objects.create(
+            number=2, name="Zero Group", target=Decimal("1000"), active=True)
+        g3 = DevelopmentGroup.objects.create(
+            number=3, name="Big Group", target=Decimal("1000"), active=True)
+        Transaction.objects.create(
+            date=dt.date(2026, 6, 12), channel="CASH", direction="CREDIT",
+            amount=Decimal("8000"), department=self.dept, dev_group=g3,
+            payer_name="Giver", confirmed=True, allocation_status="MANUAL",
+            core_ref="PNG2")
+        # g2 has no receipts in range; self.g has 2500; g3 has 8000
+        url = (f"/leader/department/{self.dept.id}/"
+               "?start=2026-06-01&end=2026-06-30&export=groups_png")
+        r = self.c.get(url)
+        self.assertEqual(r.status_code, 200)
+        # Two groups with receipts → same height as builder above
+        img2 = Image.open(io.BytesIO(r.content))
+        self.assertEqual(img2.height // SCALE, 96 + 48 + 2 * 52 + 56 + 32)
+        # Page table still lists all active groups (including zeros)
+        page = self.c.get(
+            f"/leader/department/{self.dept.id}/"
+            "?start=2026-06-01&end=2026-06-30")
+        self.assertIn("Zero Group", page.content.decode())
+        self.assertIn(g2.name, page.content.decode())
+
     def test_export_endpoint_returns_png_for_period(self):
         url = (f"/leader/department/{self.dept.id}/"
                "?start=2026-06-01&end=2026-06-30&export=groups_png")

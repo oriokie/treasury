@@ -410,9 +410,17 @@ def build_dev_group_collections_png(*, dept_name, start, end, rows,
 
     ``rows``: list of {"name", "collected"} (opening/closing ignored) — leaders
     share how much each group collected in the selected period, not the running
-    balance. Two columns keep the image readable on a phone: more width per
-    figure, larger type relative to canvas width.
+    balance. Zero-receipt groups are dropped and the rest sorted largest-first
+    so the shareable image stays short and readable. Two columns keep the image
+    usable on a phone: more width per figure, larger type relative to canvas.
     """
+    from decimal import Decimal
+    rows = [
+        r for r in (rows or [])
+        if (r.get("collected") or Decimal(0)) > 0
+    ]
+    rows.sort(key=lambda r: r.get("collected") or 0, reverse=True)
+
     # Sized for a phone viewport. Two columns (Group / Receipts) with a wider
     # canvas and larger type so the image stays legible when scaled to ~380px.
     W = 900
@@ -477,7 +485,7 @@ def build_dev_group_collections_png(*, dept_name, start, end, rows,
     tot_coll = 0.0
     if not rows:
         cy = _s(ry + (row_h - 18) / 2)
-        d.text((_s(col_x[0] + cell_pad), cy), "No development groups yet.",
+        d.text((_s(col_x[0] + cell_pad), cy), "No receipts in this period.",
                font=f_sub, fill=MUTED)
         ry += row_h
         d.line([(_s(table_x0), _s(ry)), (_s(table_x1), _s(ry))],

@@ -135,10 +135,14 @@ class LeaderDepartmentDetailView(LeaderRequiredMixin, TemplateView):
                 return redirect("leader_department_detail", pk=self.dept.pk)
             from cashbook.services.goal_chart import build_dev_group_collections_png
             cfg = SiteConfig.get()
+            # Share image: only groups with receipts in the period, largest first.
+            png_rows = sorted(
+                (r for r in rows if (r.get("collected") or 0) > 0),
+                key=lambda r: r["collected"], reverse=True)
             data = build_dev_group_collections_png(
                 dept_name=self.dept.name, start=start, end=end,
                 rows=[{"name": str(r["group"]), "collected": r["collected"]}
-                      for r in rows],
+                      for r in png_rows],
                 currency=getattr(cfg, "currency_symbol", None) or "KSh",
                 church_name=cfg.church_name or "")
             resp = HttpResponse(data, content_type="image/png")
