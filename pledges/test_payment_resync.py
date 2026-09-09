@@ -143,6 +143,41 @@ class ReassignMemberTests(ResyncBase):
         other_pledge.refresh_from_db()
         self.assertEqual(other_pledge.paid, Decimal("4000"))
 
+    def test_reassign_drops_even_when_payer_phone_still_matches(self):
+        """The edit form leaves payer_phone alone. That number used to keep
+        the old pledge linked — and rematch would put it straight back."""
+        gift = self._gift(payer_phone="254712000111", payer_name="JOHN KAMAU")
+        PledgePayment.objects.create(
+            pledge=self.pledge, transaction=gift, amount=Decimal("4000"),
+            date=gift.date)
+        other_pledge = Pledge.objects.create(
+            campaign=self.campaign, member=self.other_member,
+            amount=Decimal("6000"), start_date=dt.date(2026, 1, 1),
+            status=Pledge.Status.ACTIVE)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            gift.member = self.other_member
+            gift.save(update_fields=["member"])
+
+        self.assertEqual(self.pledge.paid, Decimal("0"))
+        other_pledge.refresh_from_db()
+        self.assertEqual(other_pledge.paid, Decimal("4000"))
+
+    def test_opening_the_pledge_page_heals_a_stale_link(self):
+        """A gift already moved off this pledge (no signal fired) drops
+        when a treasurer opens the tracker."""
+        gift = self._gift(payer_phone="254712000111")
+        PledgePayment.objects.create(
+            pledge=self.pledge, transaction=gift, amount=Decimal("4000"),
+            date=gift.date)
+        Transaction.objects.filter(pk=gift.pk).update(
+            member=self.other_member)
+
+        self.client.force_login(self.user)
+        r = self.client.get(f"/pledges/{self.pledge.pk}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.pledge.paid, Decimal("0"))
+
 
 class BackfillCommandTests(ResyncBase):
     def test_command_removes_stale_link_from_reversed_gift(self):

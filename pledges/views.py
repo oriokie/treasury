@@ -172,8 +172,21 @@ class PledgeDetailView(ReadAccessMixin, TemplateView):
             pk=kwargs["pk"])
         ctx["pledge"] = p
         ctx["match_aliases"] = list(p.match_aliases.select_related("member"))
-        ctx["payments"] = p.payments.select_related("transaction").all()
+        # Heal stale payment links when a treasurer opens the page — gifts
+        # reallocated or credited to someone else before the listener ran
+        # (or when payer phone still pointed at this pledgor) otherwise sit
+        # on the tracker until a one-off backfill.
         from core.roles import is_treasurer, can_enter_data
+        if can_enter_data(self.request.user):
+            seen = set()
+            for pp in p.payments.filter(transaction__isnull=False):
+                tid = pp.transaction_id
+                if tid in seen:
+                    continue
+                seen.add(tid)
+                match_svc.resync_contribution_pledges(pp.transaction)
+            p.refresh_from_db()
+        ctx["payments"] = p.payments.select_related("transaction").all()
         ctx["is_treasurer"] = is_treasurer(self.request.user)
         ctx["can_enter_data"] = can_enter_data(self.request.user)
         ctx["reminders"] = p.reminders.all()[:10]
