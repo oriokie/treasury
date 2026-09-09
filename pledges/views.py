@@ -177,7 +177,12 @@ class PledgeDetailView(ReadAccessMixin, TemplateView):
         # (or when payer phone still pointed at this pledgor) otherwise sit
         # on the tracker until a one-off backfill.
         from core.roles import is_treasurer, can_enter_data
-        if can_enter_data(self.request.user):
+        # Do not heal a cancelled/draft pledge — those payment rows are the
+        # historical record. Resync is for gifts that moved, not promises
+        # the church has let go.
+        if (can_enter_data(self.request.user)
+                and p.status not in (Pledge.Status.CANCELLED,
+                                     Pledge.Status.DRAFT)):
             seen = set()
             for pp in p.payments.filter(transaction__isnull=False):
                 tid = pp.transaction_id

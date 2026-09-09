@@ -163,6 +163,21 @@ class ReassignMemberTests(ResyncBase):
         other_pledge.refresh_from_db()
         self.assertEqual(other_pledge.paid, Decimal("4000"))
 
+    def test_cancelling_then_opening_the_page_keeps_the_match_record(self):
+        """Cancel redirects to the pledge page. Healing must not treat a
+        cancelled promise as 'no longer qualifying' and delete the payment."""
+        gift = self._gift()
+        PledgePayment.objects.create(
+            pledge=self.pledge, transaction=gift, amount=Decimal("4000"),
+            date=gift.date)
+        self.pledge.status = Pledge.Status.CANCELLED
+        self.pledge.save()
+
+        self.client.force_login(self.user)
+        r = self.client.get(f"/pledges/{self.pledge.pk}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(self.pledge.paid, Decimal("4000"))
+
     def test_opening_the_pledge_page_heals_a_stale_link(self):
         """A gift already moved off this pledge (no signal fired) drops
         when a treasurer opens the tracker."""

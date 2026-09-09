@@ -837,7 +837,8 @@ def auto_match_all(user=None, campaign=None, allow_fuzzy=True):
 # It NEVER moves money — money already moved via the contribution itself.
 # ---------------------------------------------------------------------------
 def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
-                                    credited_member_only=False):
+                                    credited_member_only=False,
+                                    extra_statuses=()):
     """Pledges this contribution could plausibly fulfil.
 
     **Match code first.** If the bank/M-Pesa reference contains a recognised
@@ -871,6 +872,7 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
             allowed = list(_OPEN_FOR_FILL)
             if include_fulfilled:
                 allowed.append(Pledge.Status.FULFILLED)
+            allowed.extend(extra_statuses)
             qs = (Pledge.objects.filter(member=coded_member, status__in=allowed)
                   .select_related("member", "campaign"))
             out = []
@@ -897,6 +899,7 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
         allowed = list(_OPEN_FOR_FILL)
         if include_fulfilled:
             allowed.append(Pledge.Status.FULFILLED)
+        allowed.extend(extra_statuses)
         if coded.status not in allowed:
             return []
         if coded.outstanding <= 0 and not include_fulfilled:
@@ -927,6 +930,7 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
     statuses = list(_OPEN_FOR_FILL)
     if include_fulfilled:
         statuses.append(Pledge.Status.FULFILLED)
+    statuses.extend(extra_statuses)
     qs = (Pledge.objects.filter(status__in=statuses)
           .select_related("member", "campaign")
           .prefetch_related("member__phones", "match_aliases__member__phones"))
@@ -1130,7 +1134,13 @@ def resync_contribution_pledges(txn, user=None, cfg=None, rematch=True):
             keep_ids = {
                 p.id for p in active_pledges_for_contribution(
                     txn, cfg, include_fulfilled=True,
-                    credited_member_only=True)}
+                    credited_member_only=True,
+                    # Cancelled/draft links are the record of what was
+                    # matched. Drop them only when the *gift* moved, not
+                    # when the promise was let go (opening the pledge page
+                    # after cancel used to wipe the 30,000).
+                    extra_statuses=(Pledge.Status.CANCELLED,
+                                    Pledge.Status.DRAFT))}
 
         def _should_drop(pledge_id):
             if pledge_id in keep_ids:
