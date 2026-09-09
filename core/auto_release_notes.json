@@ -2,5 +2,6 @@
   "3.48.1": "Automated patch release covering: Attribute gifts via member/pledge/campaign codes and harden ledger export; Add match codes, multi-settlement remittance, and related UX fixes; Improve treasury matching: petty\u2192bank, mark-processed confirm, pledge aliases; Auto-bump a patch release on every push to main.",
   "3.48.2": "Automated patch release covering: Fix CI failures from group matching and wiped auto-release notes; Match existing development groups and auto-allocate via codes.",
   "3.48.3": "Automated patch release: feat: campaign giving, SMS codes, pledge resync, leader/report UX.",
-  "3.48.4": "Automated patch release: fix: campaign giving by phone; PNG drops zeros, sorts desc."
+  "3.48.4": "Automated patch release: fix: campaign giving by phone; PNG drops zeros, sorts desc.",
+  "3.48.5": "Automated patch release covering: fix: keep cancelled pledge payment records on page resync; fix: campaign page timeout and pledge payment resync."
 }
