@@ -360,6 +360,26 @@ class CampaignMemberGivingTests(CampaignBase):
             campaign=self.campaign, name="Mary Otieno")
         self.assertEqual(stats[mary.id]["count"], 0)
 
+    def test_does_not_reload_every_campaign_code_per_gift(self):
+        """The page timed out when each fund-tree gift queried every active
+        campaign member's match code. Lookups stay in-memory for this sheet."""
+        import datetime as dt
+        from decimal import Decimal
+        from unittest.mock import patch
+
+        from giving.models import Transaction
+
+        Transaction.objects.create(
+            date=dt.date(2026, 3, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("100"), department=self.fund,
+            payer_phone="254790301470", confirmed=True, allocation_status="AUTO",
+            core_ref="CG-FAST")
+        with patch("pledges.services.codes.find_campaign_member_by_code") as fn:
+            fn.return_value = (None, None)
+            campaign_sms.member_contributions(
+                self.campaign, dt.date(2026, 3, 1), dt.date(2026, 3, 31))
+            fn.assert_not_called()
+
     def test_phone_match_without_campaign_fk(self):
         """Gifts that landed on the campaign fund without a campaign stamp
         must still count — otherwise every sheet member looks dormant."""

@@ -1068,6 +1068,14 @@ class TransactionUpdateView(DataEntryRequiredMixin, UpdateView):
         changed_manual = "manual_receipt" in form.changed_data
         new_value = form.instance.manual_receipt
         response = super().form_valid(form)
+        # Keep pledge payment links honest after a manual edit (reallocate,
+        # reassign member). The post_save signal also does this; calling it
+        # here means the redirect-to-list path cannot miss an on_commit hook.
+        try:
+            from pledges.services.matching import resync_contribution_pledges
+            resync_contribution_pledges(self.object)
+        except Exception:
+            from core.utils import log_exception as _lx; _lx('giving/views.py')
         if changed_manual:
             # marking on: pull it (and split siblings) out of the queues so it
             # isn't receipted again. Un-marking: clear the flag on the whole gift

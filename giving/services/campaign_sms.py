@@ -85,27 +85,48 @@ def group_progress(campaign, year=None):
 
     year = year or _dt.date.today().year
     parent = campaign.department
+    from departments.models import subtree_ids
     subs = {d.name.strip().lower(): d
             for d in Department.objects.filter(parent=parent, active=True)}
 
-    def _fund_ids(d):
-        ids = [d.id]
-        for sub in d.subgroups.all():
-            ids.extend(_fund_ids(sub))
-        return ids
-
-    rows = []
-    for g in groups_for(campaign):
+    groups = groups_for(campaign)
+    root_ids = []
+    for g in groups:
         fund = subs.get((g["name"] or "").strip().lower())
-        goal = (fund.contribution_goal or Decimal(0)) if fund else Decimal(0)
-        collected = Decimal(0)
+        g["_fund"] = fund
         if fund is not None:
-            collected = (Transaction.objects.filter(
-                department_id__in=_fund_ids(fund),
+            root_ids.append(fund.id)
+
+    collected_by_fund = {}
+    children = {}
+    if root_ids:
+        tree_ids = subtree_ids(root_ids)
+        for fid, parent_id in Department.objects.filter(
+                id__in=tree_ids).values_list("id", "parent_id"):
+            if parent_id:
+                children.setdefault(parent_id, []).append(fid)
+        for row in (Transaction.objects.filter(
+                department_id__in=tree_ids,
                 direction=Transaction.Direction.CREDIT, confirmed=True,
                 is_reversal=False, is_reversed=False,
                 excluded_from_income=False, date__year=year)
-                .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+                .values("department_id").annotate(t=Sum("amount"))):
+            collected_by_fund[row["department_id"]] = row["t"] or Decimal(0)
+
+    def _tree_ids(root):
+        ids = [root]
+        for child in children.get(root, []):
+            ids.extend(_tree_ids(child))
+        return ids
+
+
+    rows = []
+    for g in groups:
+        fund = g.pop("_fund")
+        ids = _tree_ids(fund.id) if fund is not None else []
+        goal = (fund.contribution_goal or Decimal(0)) if fund else Decimal(0)
+        collected = sum((collected_by_fund.get(i, Decimal(0)) for i in ids),
+                        Decimal(0))
         short = max(goal - collected, Decimal(0))
         rows.append({
             **g,
@@ -431,17 +452,10 @@ def send(campaign, group, template, *, user=None):
 def _campaign_fund_ids(campaign):
     """The campaign's fund and every nested sub-account — same tree the
     group-progress and "not contributed to campaign" SMS criterion use."""
-    parent = campaign.department
-    if parent is None:
+    from departments.models import subtree_ids
+    if campaign.department_id is None:
         return []
-
-    def _walk(d):
-        ids = [d.id]
-        for sub in d.subgroups.all():
-            ids.extend(_walk(sub))
-        return ids
-
-    return _walk(parent)
+    return list(subtree_ids([campaign.department_id]))
 
 
 def member_contributions(campaign, start=None, end=None):
@@ -465,36 +479,53 @@ def member_contributions(campaign, start=None, end=None):
 
     Returns ``{campaign_member_id: {"amount": Decimal, "count": int}}``.
     """
-    import re
     from decimal import Decimal
 
     from django.db.models import Q
 
     from giving.models import Transaction
     from members.models import name_key, normalize_phone
-    from pledges.services.codes import codes_in_reference, find_campaign_member_by_code
+    from pledges.services.codes import _norm_code, codes_in_reference
 
     members = list(campaign.members.all())
     if not members:
         return {}
 
-    by_id = {m.id: m for m in members}
     by_phone = {}
     by_name = {}
+    ranked_codes = []
     for m in members:
         ph = normalize_phone(m.phone)
         if ph:
             by_phone.setdefault(ph, []).append(m)
         if m.name_key:
             by_name.setdefault(m.name_key, []).append(m)
+        code = _norm_code(m.match_code)
+        if len(code) >= 4:
+            ranked_codes.append((code, m.match_code, m))
+    ranked_codes.sort(key=lambda row: len(row[0]), reverse=True)
+    phones = list(by_phone.keys())
 
     fund_ids = _campaign_fund_ids(campaign)
-    scope = Q(campaign=campaign)
+    # Only pull gifts that can possibly match a sheet row. Scanning every
+    # credit on a parent fund (e.g. Development, year-to-date) and then
+    # hitting the campaign-code table once per row is what timed the page out.
+    match_q = Q(campaign=campaign)
+    if phones:
+        match_q |= Q(payer_phone__in=phones) | Q(member__phone__in=phones)
+    if ranked_codes:
+        code_q = Q()
+        for _norm, raw, _m in ranked_codes:
+            if raw:
+                code_q |= Q(reference__icontains=raw)
+        match_q |= code_q
+
+    scoped = Q(campaign=campaign)
     if fund_ids:
-        scope |= Q(department_id__in=fund_ids)
+        scoped |= Q(department_id__in=fund_ids)
 
     qs = (Transaction.objects.filter(
-            scope,
+            scoped & match_q,
             direction=Transaction.Direction.CREDIT, confirmed=True,
             is_reversal=False, is_reversed=False, excluded_from_income=False)
           .select_related("member"))
@@ -518,27 +549,22 @@ def member_contributions(campaign, start=None, end=None):
         return None
 
     def _by_code(reference):
-        camp, cm = find_campaign_member_by_code(reference)
-        if camp is not None and camp.id == campaign.id and cm is not None \
-                and cm.id in by_id:
-            return cm
-        # Direct code lookup — covers viewing an inactive campaign whose codes
-        # find_campaign_member_by_code would skip (it only searches active ones).
-        if not reference:
+        # This campaign's codes only — never reload every active campaign's
+        # sheet (find_campaign_member_by_code) once per gift.
+        if not reference or not ranked_codes:
             return None
         s = codes_in_reference(reference)
-        hit, hit_len = None, 0
-        for m in members:
-            code = re.sub(r"[^a-z0-9]", "", (m.match_code or "").lower())
-            if len(code) >= 4 and code in s and len(code) > hit_len:
-                hit, hit_len = m, len(code)
-        return hit
+        if not s:
+            return None
+        for code, _raw, m in ranked_codes:
+            if code in s:
+                return m
+        return None
 
     def _resolve(txn):
         cm = _by_code(txn.reference)
         if cm is not None:
             return cm
-        # Mobile number is the primary identity for sheet matching.
         cm = _by_phone(txn.payer_phone)
         if cm is not None:
             return cm
