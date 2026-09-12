@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.48.6
+
+Automated patch release: feat: campaign Excel for givers not in any uploaded group.
+
 ## 3.48.5
 
 Automated patch release covering: fix: keep cancelled pledge payment records on page resync; fix: campaign page timeout and pledge payment resync.
