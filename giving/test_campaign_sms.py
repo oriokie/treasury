@@ -469,3 +469,109 @@ class CampaignMemberGivingTests(CampaignBase):
         self.assertIn("Ruth Momanyi", flat)
         self.assertIn("Amount contributed", flat)
         self.assertIn(750, flat)
+
+    def test_the_page_offers_excel_of_givers_not_in_a_group(self):
+        body = self.client.get(
+            reverse("campaign_detail", args=[self.campaign.pk])).content.decode()
+        self.assertIn('value="ungrouped_xlsx"', body)
+        self.assertIn("not in a group", body.lower())
+
+    def test_ungrouped_excel_lists_givers_who_are_not_on_the_sheet(self):
+        """The existing Excel is the uploaded groups. This one is everyone
+        else who still gave to the campaign — the question the group list
+        cannot answer."""
+        import datetime as dt
+        import io
+        from decimal import Decimal
+
+        import openpyxl
+
+        from giving.models import Transaction
+
+        Transaction.objects.create(
+            date=dt.date(2026, 7, 2), channel="BANK", direction="CREDIT",
+            amount=Decimal("400"), department=self.fund, campaign=self.campaign,
+            payer_name="Visitor Jane", payer_phone="254711999001",
+            confirmed=True, allocation_status="AUTO", core_ref="UG1")
+        Transaction.objects.create(
+            date=dt.date(2026, 7, 3), channel="BANK", direction="CREDIT",
+            amount=Decimal("150"), department=self.fund, campaign=self.campaign,
+            payer_name="Visitor Jane", payer_phone="254711999001",
+            confirmed=True, allocation_status="AUTO", core_ref="UG2")
+        # On the sheet — must not appear here, even with no group recorded.
+        Transaction.objects.create(
+            date=dt.date(2026, 7, 4), channel="BANK", direction="CREDIT",
+            amount=Decimal("900"), department=self.fund, campaign=self.campaign,
+            payer_name="Ungrouped Person", payer_phone="254700000012",
+            confirmed=True, allocation_status="AUTO", core_ref="UG3")
+        # On the sheet, matched by rallying code from someone else paying.
+        ruth = CampaignMember.objects.get(
+            campaign=self.campaign, name="Ruth Momanyi")
+        Transaction.objects.create(
+            date=dt.date(2026, 7, 5), channel="BANK", direction="CREDIT",
+            amount=Decimal("250"), department=self.fund, campaign=self.campaign,
+            payer_name="Someone Else", reference=f"FOR {ruth.match_code}",
+            confirmed=True, allocation_status="AUTO", core_ref="UG4")
+        r = self.client.get(
+            reverse("campaign_detail", args=[self.campaign.pk])
+            + "?start=2026-07-01&end=2026-07-31&export=ungrouped_xlsx")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            r["Content-Type"])
+        self.assertIn("20260701_20260731.xlsx", r["Content-Disposition"])
+        self.assertIn("not_in_a_group", r["Content-Disposition"])
+        ws = openpyxl.load_workbook(io.BytesIO(r.content), data_only=True).active
+        values = list(ws.values)
+        flat = [cell for row in values for cell in row]
+        self.assertIn("Amount contributed", flat)
+        self.assertIn("Not in a group", flat)
+        self.assertIn(550, flat)
+        names = [row[0] for row in values if row and row[0]]
+        self.assertTrue(any("VISITOR JANE" in str(n) for n in names))
+        self.assertFalse(any("Ungrouped Person" in str(n) for n in names))
+        self.assertFalse(any("Ruth Momanyi" in str(n) for n in names))
+        self.assertFalse(any("Someone Else" in str(n) for n in names))
+
+    def test_ungrouped_contributors_respect_the_period(self):
+        import datetime as dt
+        from decimal import Decimal
+
+        from giving.models import Transaction
+
+        Transaction.objects.create(
+            date=dt.date(2026, 1, 10), channel="BANK", direction="CREDIT",
+            amount=Decimal("100"), department=self.fund, campaign=self.campaign,
+            payer_name="Old Visitor", payer_phone="254711999002",
+            confirmed=True, allocation_status="AUTO", core_ref="UG-OLD")
+        Transaction.objects.create(
+            date=dt.date(2026, 8, 10), channel="BANK", direction="CREDIT",
+            amount=Decimal("80"), department=self.fund, campaign=self.campaign,
+            payer_name="New Visitor", payer_phone="254711999003",
+            confirmed=True, allocation_status="AUTO", core_ref="UG-NEW")
+        rows = campaign_sms.ungrouped_contributors(
+            self.campaign, dt.date(2026, 8, 1), dt.date(2026, 8, 31))
+        names = [r["name"] for r in rows]
+        self.assertTrue(any("NEW VISITOR" in n for n in names))
+        self.assertFalse(any("OLD VISITOR" in n for n in names))
+        self.assertEqual(rows[0]["amount"], Decimal("80"))
+        self.assertEqual(rows[0]["count"], 1)
+
+    def test_ungrouped_includes_fund_gifts_without_a_campaign_stamp(self):
+        """The common production case: money landed on the campaign fund
+        without the campaign FK, and the giver is not on the sheet."""
+        import datetime as dt
+        from decimal import Decimal
+
+        from giving.models import Transaction
+
+        Transaction.objects.create(
+            date=dt.date(2026, 9, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("1200"), department=self.fund,
+            payer_name="Walk In", payer_phone="254711999004",
+            confirmed=True, allocation_status="AUTO", core_ref="UG-FUND")
+        rows = campaign_sms.ungrouped_contributors(
+            self.campaign, dt.date(2026, 9, 1), dt.date(2026, 9, 30))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["amount"], Decimal("1200"))
+        self.assertIn("WALK IN", rows[0]["name"])

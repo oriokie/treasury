@@ -458,38 +458,43 @@ def _campaign_fund_ids(campaign):
     return list(subtree_ids([campaign.department_id]))
 
 
-def member_contributions(campaign, start=None, end=None):
-    """How much each sheet member has contributed in a period, and how often.
-
-    Matching is phone-first against the sheet (``CampaignMember.phone``),
-    because that is how the list is identified in the real world — a gift
-    from 2547… belongs to the sheet row with that mobile, whether or not the
-    transaction was tagged with the campaign FK at import time.
-
-    Scope is the campaign's fund tree (parent + sub-accounts) *or* rows
-    already stamped ``campaign=…``. Restricting to the FK alone left everyone
-    dormant when gifts landed on the fund via other allocation paths
-    (development-group tokens, manual allocate, etc.).
-
-    Attribution order:
-      1. Campaign match code in the reference (rallying for someone else)
-      2. Mobile number — ``payer_phone``, then the credited register member's
-         phone — must identify exactly one sheet row
-      3. Unique name on the sheet
-
-    Returns ``{campaign_member_id: {"amount": Decimal, "count": int}}``.
-    """
-    from decimal import Decimal
-
+def _campaign_gift_qs(campaign, start=None, end=None, extra_q=None):
+    """Confirmed credits on the campaign's fund tree, or already stamped
+    ``campaign=…``. Shared by sheet-member giving and the ungrouped export so
+    the two lists cannot disagree about which gifts are in scope."""
     from django.db.models import Q
 
     from giving.models import Transaction
+
+    fund_ids = _campaign_fund_ids(campaign)
+    scoped = Q(campaign=campaign)
+    if fund_ids:
+        scoped |= Q(department_id__in=fund_ids)
+    q = scoped if extra_q is None else (scoped & extra_q)
+    qs = (Transaction.objects.filter(
+            q,
+            direction=Transaction.Direction.CREDIT, confirmed=True,
+            is_reversal=False, is_reversed=False, excluded_from_income=False)
+          .select_related("member"))
+    if start:
+        qs = qs.filter(date__gte=start)
+    if end:
+        qs = qs.filter(date__lte=end)
+    return qs
+
+
+def _sheet_matcher(members):
+    """Attribute a gift to a campaign sheet row, in memory.
+
+    Same order as the campaign page: rallying code, then phone, then unique
+    name. Built once for a sheet rather than hitting the campaign-code table
+    per gift — that is what timed the page out.
+
+    Returns ``(by_phone, ranked_codes, resolve)``. ``resolve(txn)`` is a sheet
+    row or ``None``.
+    """
     from members.models import name_key, normalize_phone
     from pledges.services.codes import _norm_code, codes_in_reference
-
-    members = list(campaign.members.all())
-    if not members:
-        return {}
 
     by_phone = {}
     by_name = {}
@@ -504,37 +509,6 @@ def member_contributions(campaign, start=None, end=None):
         if len(code) >= 4:
             ranked_codes.append((code, m.match_code, m))
     ranked_codes.sort(key=lambda row: len(row[0]), reverse=True)
-    phones = list(by_phone.keys())
-
-    fund_ids = _campaign_fund_ids(campaign)
-    # Only pull gifts that can possibly match a sheet row. Scanning every
-    # credit on a parent fund (e.g. Development, year-to-date) and then
-    # hitting the campaign-code table once per row is what timed the page out.
-    match_q = Q(campaign=campaign)
-    if phones:
-        match_q |= Q(payer_phone__in=phones) | Q(member__phone__in=phones)
-    if ranked_codes:
-        code_q = Q()
-        for _norm, raw, _m in ranked_codes:
-            if raw:
-                code_q |= Q(reference__icontains=raw)
-        match_q |= code_q
-
-    scoped = Q(campaign=campaign)
-    if fund_ids:
-        scoped |= Q(department_id__in=fund_ids)
-
-    qs = (Transaction.objects.filter(
-            scoped & match_q,
-            direction=Transaction.Direction.CREDIT, confirmed=True,
-            is_reversal=False, is_reversed=False, excluded_from_income=False)
-          .select_related("member"))
-    if start:
-        qs = qs.filter(date__gte=start)
-    if end:
-        qs = qs.filter(date__lte=end)
-
-    totals = {m.id: {"amount": Decimal(0), "count": 0} for m in members}
 
     def _by_phone(raw):
         ph = normalize_phone(raw or "")
@@ -561,7 +535,7 @@ def member_contributions(campaign, start=None, end=None):
                 return m
         return None
 
-    def _resolve(txn):
+    def resolve(txn):
         cm = _by_code(txn.reference)
         if cm is not None:
             return cm
@@ -578,10 +552,126 @@ def member_contributions(campaign, start=None, end=None):
                 return cm
         return _by_name(txn.payer_name)
 
-    for txn in qs.iterator():
-        cm = _resolve(txn)
+    return by_phone, ranked_codes, resolve
+
+
+def member_contributions(campaign, start=None, end=None):
+    """How much each sheet member has contributed in a period, and how often.
+
+    Matching is phone-first against the sheet (``CampaignMember.phone``),
+    because that is how the list is identified in the real world — a gift
+    from 2547… belongs to the sheet row with that mobile, whether or not the
+    transaction was tagged with the campaign FK at import time.
+
+    Scope is the campaign's fund tree (parent + sub-accounts) *or* rows
+    already stamped ``campaign=…``. Restricting to the FK alone left everyone
+    dormant when gifts landed on the fund via other allocation paths
+    (development-group tokens, manual allocate, etc.).
+
+    Attribution order:
+      1. Campaign match code in the reference (rallying for someone else)
+      2. Mobile number — ``payer_phone``, then the credited register member's
+         phone — must identify exactly one sheet row
+      3. Unique name on the sheet
+
+    Returns ``{campaign_member_id: {"amount": Decimal, "count": int}}``.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Q
+
+    members = list(campaign.members.all())
+    if not members:
+        return {}
+
+    by_phone, ranked_codes, resolve = _sheet_matcher(members)
+    # Only pull gifts that can possibly match a sheet row. Scanning every
+    # credit on a parent fund (e.g. Development, year-to-date) and then
+    # hitting the campaign-code table once per row is what timed the page out.
+    match_q = Q(campaign=campaign)
+    if by_phone:
+        match_q |= Q(payer_phone__in=list(by_phone.keys())) | Q(
+            member__phone__in=list(by_phone.keys()))
+    if ranked_codes:
+        code_q = Q()
+        for _norm, raw, _m in ranked_codes:
+            if raw:
+                code_q |= Q(reference__icontains=raw)
+        match_q |= code_q
+
+    totals = {m.id: {"amount": Decimal(0), "count": 0} for m in members}
+    for txn in _campaign_gift_qs(campaign, start, end, extra_q=match_q).iterator():
+        cm = resolve(txn)
         if cm is None:
             continue
         totals[cm.id]["amount"] += txn.amount
         totals[cm.id]["count"] += 1
     return totals
+
+
+def ungrouped_contributors(campaign, start=None, end=None):
+    """People who gave to the campaign in the period but are not on the
+    uploaded group sheet.
+
+    The member-giving Excel is the sheet. This is everyone else whose money
+    still landed on the campaign's fund tree (or is stamped ``campaign=…``) —
+    visitors, members the sheet missed, gifts that could not be matched to a
+    row. A treasurer asking "who contributed but is not in any group in the
+    list" is asking this, and it is the gap the group totals cannot explain.
+
+    Matching is the same as ``member_contributions``, so a gift cannot appear
+    in both lists. Computed on demand (the Excel download) rather than on
+    every page load — scanning the whole fund tree is what timed the campaign
+    page out before.
+
+    Returns a list of dicts ``{name, phone, amount, count}``, sorted by name.
+    """
+    from decimal import Decimal
+
+    from members.models import name_key, normalize_phone
+
+    members = list(campaign.members.all())
+    resolve = _sheet_matcher(members)[2] if members else (lambda _txn: None)
+
+    def identity(txn):
+        ph = normalize_phone(txn.payer_phone or "")
+        if not ph and txn.member_id:
+            ph = normalize_phone(txn.member.phone or "")
+        if ph:
+            return ("phone", ph)
+        if txn.member_id:
+            return ("member", txn.member_id)
+        key = name_key(txn.payer_name or "")
+        if not key and txn.member_id:
+            key = txn.member.name_key or name_key(txn.member.name)
+        if key:
+            return ("name", key)
+        return ("txn", txn.id)
+
+    buckets = {}
+    for txn in _campaign_gift_qs(campaign, start, end).iterator():
+        if resolve(txn) is not None:
+            continue
+        row = buckets.setdefault(identity(txn), {
+            "name": "", "phone": "", "amount": Decimal(0), "count": 0,
+        })
+        row["amount"] += txn.amount
+        row["count"] += 1
+        name = (txn.member.name if txn.member_id else "") or (txn.payer_name or "")
+        phone = ""
+        if txn.member_id:
+            phone = (normalize_phone(txn.member.phone or "")
+                     or txn.member.phone or "")
+        if not phone:
+            phone = (normalize_phone(txn.payer_phone or "")
+                     or txn.payer_phone or "")
+        if name and (not row["name"] or txn.member_id):
+            row["name"] = name
+        if phone and not row["phone"]:
+            row["phone"] = phone
+
+    out = sorted(buckets.values(), key=lambda r: (r["name"] or "").lower())
+    for row in out:
+        if not row["name"]:
+            row["name"] = row["phone"] or "Unknown"
+    return out

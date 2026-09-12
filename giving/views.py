@@ -2774,7 +2774,8 @@ class CampaignDetailView(ReadAccessMixin, View):
                 row = giving.get(m.id) or {}
                 m.contributed = row.get("amount") or 0
                 m.n_gifts = row.get("count") or 0
-        if request.GET.get("export") == "members_xlsx":
+        export = request.GET.get("export")
+        if export in ("members_xlsx", "ungrouped_xlsx"):
             from django.utils.text import slugify
             from reports.exports import xlsx_response
 
@@ -2782,22 +2783,43 @@ class CampaignDetailView(ReadAccessMixin, View):
                 "Member", "Group", "Rallying code", "Contributions",
                 "Amount contributed", "Phone", "Status",
             ]
-            data = [
-                [
-                    m.name, m.group or "", m.match_code or "", m.n_gifts,
-                    float(m.contributed), m.phone or "",
-                    "Active giver" if m.n_gifts else "Dormant",
+            slug = slugify(campaign.name) or "campaign"
+            if export == "members_xlsx":
+                data = [
+                    [
+                        m.name, m.group or "", m.match_code or "", m.n_gifts,
+                        float(m.contributed), m.phone or "",
+                        "Active giver" if m.n_gifts else "Dormant",
+                    ]
+                    for m in members
                 ]
-                for m in members
-            ]
-            filename = (
-                f"{slugify(campaign.name) or 'campaign'}_member_giving_"
-                f"{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
-            )
-            title = (
-                f"{campaign.name} — member giving, "
-                f"{start:%d %b %Y} to {end:%d %b %Y}"
-            )
+                filename = (
+                    f"{slug}_member_giving_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
+                )
+                title = (
+                    f"{campaign.name} — member giving, "
+                    f"{start:%d %b %Y} to {end:%d %b %Y}"
+                )
+            else:
+                # Givers in the selected period who are not on any group in
+                # the uploaded sheet. Same columns as the member workbook so
+                # the two can be read side by side.
+                data = [
+                    [
+                        r["name"], "", "", r["count"],
+                        float(r["amount"]), r["phone"] or "",
+                        "Not in a group",
+                    ]
+                    for r in campaign_sms.ungrouped_contributors(
+                        campaign, start, end)
+                ]
+                filename = (
+                    f"{slug}_not_in_a_group_{start:%Y%m%d}_{end:%Y%m%d}.xlsx"
+                )
+                title = (
+                    f"{campaign.name} — contributed, not in a group, "
+                    f"{start:%d %b %Y} to {end:%d %b %Y}"
+                )
             return xlsx_response(filename, header, data, title=title)
         return render(request, self.template_name, {
             "campaign": campaign,
