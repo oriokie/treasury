@@ -4,7 +4,7 @@ import json
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
-from django.db import transaction as db_tx
+from django.db import DataError, transaction as db_tx
 from django.http import JsonResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
@@ -435,7 +435,16 @@ class EnvelopeBatchAutosaveView(DataEntryRequiredMixin, View):
         from .services import batches as bsvc
         batch, created = bsvc.get_or_create_draft(
             request.user, payload.get("batch_id"), sab)
-        bsvc.autosave_rows(batch, rows_payload)
+        try:
+            bsvc.autosave_rows(batch, rows_payload)
+        except DataError:
+            # Backstop for a money column MySQL still rejects. A 500 here is
+            # what Submit for review surfaces, because the button saves first.
+            return JsonResponse({
+                "ok": False,
+                "error": "One of the amounts is too large to save "
+                         "(maximum 9,999,999,999.99).",
+            }, status=400)
         batch.refresh_from_db()
 
         errors = {r.line_no: {"code": r.error, "detail": r.error_detail}

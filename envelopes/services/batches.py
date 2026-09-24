@@ -32,7 +32,7 @@ in doesn't come back out.
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.db import transaction as db_tx
 
@@ -46,6 +46,26 @@ from ..models import Envelope, EnvelopeBatch, EnvelopeBatchRow
 
 TOLERANCE = Decimal("0.01")   # matches CountSession.has_discrepancy elsewhere
 
+
+def _money_overflow(value, field_name):
+    """True when `value` cannot be stored in that EnvelopeBatchRow money column.
+
+    Those columns are DECIMAL(12, 2): at most 9,999,999,999.99. MySQL rejects
+    anything larger with DataError 1264 ("Out of range value for column
+    'manual_total'"), and autosave used to let that escape as a 500. Submit
+    for review always saves first, so the cashier saw a failed submit.
+    """
+    if value is None:
+        return False
+    field = EnvelopeBatchRow._meta.get_field(field_name)
+    quantum = Decimal(10) ** -field.decimal_places
+    limit = (Decimal(10) ** (field.max_digits - field.decimal_places)) - quantum
+    try:
+        quantized = Decimal(value).quantize(quantum)
+    except InvalidOperation:
+        return True
+    return quantized.copy_abs() > limit
+
 # error codes surfaced to the grid, each with the row-level message shown
 # beside the offending cell
 ERR_TOTAL_MISMATCH = "TOTAL_MISMATCH"
@@ -53,6 +73,12 @@ ERR_TOTAL_MISSING = "TOTAL_MISSING"
 ERR_NO_RECEIPT = "NO_RECEIPT"
 ERR_DUPLICATE_RECEIPT = "DUPLICATE_RECEIPT"
 ERR_NO_ALLOCATION = "NO_ALLOCATION"
+ERR_AMOUNT_TOO_LARGE = "AMOUNT_TOO_LARGE"
+# Shown when a typed figure cannot fit the DECIMAL(12, 2) money columns.
+# 12 digits with 2 scale leaves 10 digits before the point.
+_AMOUNT_TOO_LARGE_DETAIL = (
+    "An amount on this row is larger than 9,999,999,999.99, so it can't be saved."
+)
 
 
 def recompute_row_total(amounts):
@@ -149,6 +175,12 @@ def revalidate_batch_rows(batch):
         code, detail, computed = validate_row(
             contributor_name=r.contributor_name, receipt_no=r.receipt_no,
             amounts=r.amounts, manual_total=r.manual_total)
+        if _money_overflow(computed, "computed_total"):
+            # Don't write the sum: MySQL would abort the whole save. Zero
+            # stands in so the row still persists and can carry the error.
+            computed = Decimal(0)
+            if row_is_active(r.contributor_name, r.amounts):
+                code, detail = ERR_AMOUNT_TOO_LARGE, _AMOUNT_TOO_LARGE_DETAIL
         if not code and row_is_active(r.contributor_name, r.amounts):
             key = (r.receipt_no or "").strip()
             if key in dup:
@@ -344,11 +376,17 @@ def autosave_rows(batch, rows_payload):
     with db_tx.atomic():
         batch.rows.all().delete()
         new_rows = []
+        too_big_lines = set()
         for i, r in enumerate(rows_payload, start=1):
             amounts = r.get("amounts") or {}
             if not isinstance(amounts, dict):
                 amounts = {}
             manual_total = _amount(r.get("manual_total"))
+            if _money_overflow(manual_total, "manual_total"):
+                # Drop the figure rather than failing the INSERT. The typed
+                # value stays in the browser; the row is flagged below.
+                manual_total = None
+                too_big_lines.add(i)
             new_rows.append(EnvelopeBatchRow(
                 batch=batch, line_no=i,
                 receipt_no=(r.get("receipt_no") or "").strip()[:20],
@@ -361,6 +399,13 @@ def autosave_rows(batch, rows_payload):
                 amounts=amounts, manual_total=manual_total))
         EnvelopeBatchRow.objects.bulk_create(new_rows)
     revalidate_batch_rows(batch)
+    if too_big_lines:
+        for r in batch.rows.filter(line_no__in=too_big_lines):
+            if not row_is_active(r.contributor_name, r.amounts):
+                continue
+            r.error = ERR_AMOUNT_TOO_LARGE
+            r.error_detail = _AMOUNT_TOO_LARGE_DETAIL
+            r.save(update_fields=["error", "error_detail"])
 
 
 # ===========================================================================
