@@ -162,6 +162,10 @@ let layout = null;          // {order:[keys], hidden:[keys], widths:{key:px}, pi
 let currentBatchId = INITIAL_BATCH_ID;
 let nextReceipt = null;
 let saveTimer = null, heartbeatTimer = null, saving = false, dirty = false;
+// Saves run one at a time. Submit waits on this chain so it never posts
+// while a heartbeat save is still replacing rows, and never posts after a
+// save that failed.
+let saveTail = Promise.resolve(false);
 let blockedReason = null, blockedForDate = null;   // a hard, permanent save block
                                                     // (closed Sabbath / locked period)
                                                     // for the date it was seen on —
@@ -775,6 +779,26 @@ function flagDuplicateName(tr){
 // ===========================================================================
 // Total vs. fund-amounts validation — the row-level red-highlight rule
 // ===========================================================================
+// DECIMAL(12, 2) stores at most 10 digits before the decimal point.
+// Anything larger is what made autosave raise
+// "Out of range value for column 'manual_total'" and Submit fail.
+function amountTooBig(raw){
+  let s = String(raw == null ? "" : raw).replace(/[,\s]/g, "").trim();
+  if(!s) return false;
+  if(/e/i.test(s)){
+    const n = Number(s);
+    return !Number.isFinite(n) || Math.abs(n) >= 10000000000;
+  }
+  if(s[0] === "-" || s[0] === "+") s = s.slice(1);
+  const whole = (s.split(".")[0] || "").replace(/^0+/, "");
+  return whole.length > 10;
+}
+function rowHasOversizedAmount(tr){
+  const mt = tr.querySelector(".mtotal");
+  if(mt && amountTooBig(mt.value)) return true;
+  return Object.values(currentAmounts(tr)).some(amountTooBig);
+}
+
 function rowIsActive(tr){
   // matches envelopes.services.batches.row_is_active: a name alone makes a
   // row "active" (so a name-but-no-allocation row is flagged, not silently
@@ -808,12 +832,13 @@ function escText(s){
 
 function validateRow(tr){
   tr.classList.remove("row-mismatch", "row-bad-group");
+  if(!rowHasOversizedAmount(tr)) delete tr.dataset.amountTooBig;
   if(!rowIsActive(tr)){ updateBlockingState(); return true; }
   const computed = rowTotal(tr);
   const mtotalI = tr.querySelector(".mtotal");
   const manual = mtotalI ? parseFloat(mtotalI.value) : NaN;
   const rcpt = (tr.querySelector(".rcpt").value || "").trim();
-  let bad = !rcpt || isNaN(manual) || Math.abs(manual - computed) >= 0.01;
+  let bad = !rcpt || isNaN(manual) || Math.abs(manual - computed) >= 0.01 || rowHasOversizedAmount(tr);
   if(bad) tr.classList.add("row-mismatch");
     // Typed group must resolve to a known DevelopmentGroup before
     // Submit — empty is fine (group is optional); a non-matching hint is not.
@@ -834,7 +859,9 @@ function validateRow(tr){
 // stale message surviving an edit.
 function rowProblemMessages(tr){
   const msgs = [];
-  if(tr.classList.contains("row-mismatch")){
+  if(rowHasOversizedAmount(tr) || tr.dataset.amountTooBig){
+    msgs.push("An amount on this row is larger than 9,999,999,999.99, so it can't be saved.");
+  } else if(tr.classList.contains("row-mismatch")){
     const computed = rowTotal(tr);
     const mtotalI = tr.querySelector(".mtotal");
     const manual = mtotalI ? parseFloat(mtotalI.value) : NaN;
@@ -885,6 +912,8 @@ function updateBlockingState(){
     panel.style.display = "none";
     btn.disabled = false;
   }
+  // A closed Sabbath stays blocked even when every row is otherwise clean.
+  if(blockedReason) btn.disabled = true;
 }
 
 function renumber(){
@@ -987,7 +1016,7 @@ function setSaveStatus(state, when){
   dot.className = "save-dot save-" + state;
   if(state === "saving") txt.textContent = "Saving…";
   else if(state === "saved") txt.textContent = "Saved " + (when || "");
-  else if(state === "error") txt.textContent = "Couldn't save — will retry";
+  else if(state === "error") txt.textContent = when || "Couldn't save — will retry";
   else if(state === "blocked") txt.textContent = "Not saved — see above";
   else if(state === "offline") txt.textContent = "Offline — will retry";
   else txt.textContent = "Not saved yet";
@@ -1019,11 +1048,17 @@ function markDirtyAndSave(){
   saveTimer = setTimeout(saveNow, 1500);
 }
 
-async function saveNow(){
-  if(saving) return;
+function saveNow(){
+  const run = saveTail.then(() => performSave());
+  // A failed save must not stall every later one.
+  saveTail = run.then(() => false, () => false);
+  return run;
+}
+
+async function performSave(){
   const dateNow = document.getElementById("sabDate").value;
-  if(blockedReason && dateNow === blockedForDate) return;   // known permanent block, unchanged
-  if(!navigator.onLine){ setSaveStatus("offline"); return; }
+  if(blockedReason && dateNow === blockedForDate) return false;   // known permanent block, unchanged
+  if(!navigator.onLine){ setSaveStatus("offline"); return false; }
   saving = true;
   setSaveStatus("saving");
   try{
@@ -1032,8 +1067,9 @@ async function saveNow(){
       method: "POST", headers: {"Content-Type": "application/json", "X-CSRFToken": CSRF},
       body: JSON.stringify(payload),
     });
-    const d = await r.json();
-    if(d.ok){
+    let d = null;
+    try{ d = await r.json(); }catch(e){ d = null; }
+    if(d && d.ok){
       currentBatchId = d.batch_id;
       dirty = false;
       blockedReason = null; blockedForDate = null;
@@ -1041,15 +1077,22 @@ async function saveNow(){
       applyServerErrors(d.errors || {});
       const t = new Date(d.saved_at);
       setSaveStatus("saved", t.toLocaleTimeString());
+      return true;
     } else if(r.status === 409){
-      blockedReason = d.error; blockedForDate = dateNow;
-      showBlockedBanner(d.error || "This Sabbath can't be edited right now.");
+      blockedReason = d && d.error; blockedForDate = dateNow;
+      showBlockedBanner((d && d.error) || "This Sabbath can't be edited right now.");
       setSaveStatus("blocked");
+      return false;
+    } else if(r.status === 403){
+      setSaveStatus("error", "Couldn't save — refresh the page and sign in again");
+      return false;
     } else {
-      setSaveStatus("error");
+      setSaveStatus("error", (d && d.error) || "Couldn't save — will retry");
+      return false;
     }
   }catch(e){
     setSaveStatus("error");
+    return false;
   }finally{
     saving = false;
   }
@@ -1060,6 +1103,8 @@ function applyServerErrors(errors){
   // top of the client's own instant checks — merged, not replacing them
   document.querySelectorAll("#envBody tr").forEach((tr, i)=>{
     const e = errors[i + 1];
+    if(e && e.code === "AMOUNT_TOO_LARGE") tr.dataset.amountTooBig = e.detail || "1";
+    else delete tr.dataset.amountTooBig;
     if(e && e.code === "DUPLICATE_RECEIPT"){
       tr.classList.add("row-dup-receipt");
       let note = tr.querySelector(".row-err-server");
@@ -1098,9 +1143,11 @@ document.getElementById("submitBtn").addEventListener("click", async ()=>{
     return;
   }
   clearTimeout(saveTimer);
-  await saveNow();
-  if(!currentBatchId){
-    setSaveStatus("error");
+  const saved = await saveNow();
+  document.querySelectorAll("#envBody tr").forEach(validateRow);
+  if(saved !== true || !currentBatchId || btn.disabled){
+    if(saved === true && !currentBatchId) setSaveStatus("error");
+    if(btn.disabled) document.getElementById("rowErrorsPanel").scrollIntoView({behavior:"smooth", block:"center"});
     return;
   }
   btn.disabled = true;

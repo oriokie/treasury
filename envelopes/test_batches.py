@@ -429,6 +429,69 @@ class AutosaveViewTests(_Seed):
                              content_type="application/json")
         self.assertEqual(r.status_code, 409)
 
+    def test_oversized_manual_total_is_saved_as_a_row_error(self):
+        """MySQL DECIMAL(12, 2) rejects 11+ digits before the point with
+        DataError 1264 ("Out of range value for column 'manual_total' at
+        row 6"). Autosave must keep the other rows and flag that one,
+        because Submit for review saves first and used to surface the 500."""
+        rows = []
+        for i in range(1, 6):
+            rows.append({
+                "line_no": i, "receipt_no": f"BIG{i}", "contributor_name": f"P{i}",
+                "manual_total": "10", "amounts": {str(self.tithe.id): "10"},
+            })
+        rows.append({
+            "line_no": 6, "receipt_no": "BIG6", "contributor_name": "Too Big",
+            "manual_total": "254712345678",
+            "amounts": {str(self.tithe.id): "10"},
+        })
+        payload = {"batch_id": None, "date": SAB.isoformat(), "rows": rows}
+        r = self.client.post(self.url, data=json.dumps(payload),
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        d = r.json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["errors"]["6"]["code"], bsvc.ERR_AMOUNT_TOO_LARGE)
+        self.assertNotIn("1", d["errors"])
+        batch = EnvelopeBatch.objects.get(pk=d["batch_id"])
+        sixth = batch.rows.get(line_no=6)
+        self.assertIsNone(sixth.manual_total)
+        self.assertEqual(batch.rows.get(line_no=1).manual_total, Decimal("10"))
+        problems = bsvc.submit_batch(batch, self.assistant)
+        self.assertTrue(problems)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, EnvelopeBatch.Status.DRAFT)
+
+    def test_largest_legal_total_still_saves(self):
+        payload = {"batch_id": None, "date": SAB.isoformat(), "rows": [{
+            "line_no": 1, "receipt_no": "MAX1", "contributor_name": "Jane",
+            "manual_total": "9,999,999,999.99",
+            "amounts": {str(self.tithe.id): "9999999999.99"},
+        }]}
+        r = self.client.post(self.url, data=json.dumps(payload),
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        d = r.json()
+        self.assertTrue(d["ok"])
+        self.assertEqual(d["errors"], {})
+        row = EnvelopeBatch.objects.get(pk=d["batch_id"]).rows.get()
+        self.assertEqual(row.manual_total, Decimal("9999999999.99"))
+        self.assertEqual(row.computed_total, Decimal("9999999999.99"))
+
+    def test_oversized_fund_amount_does_not_crash(self):
+        payload = {"batch_id": None, "date": SAB.isoformat(), "rows": [{
+            "line_no": 1, "receipt_no": "SUM1", "contributor_name": "Jane",
+            "manual_total": "10",
+            "amounts": {str(self.tithe.id): "100000000000"},
+        }]}
+        r = self.client.post(self.url, data=json.dumps(payload),
+                             content_type="application/json")
+        self.assertEqual(r.status_code, 200, r.content)
+        d = r.json()
+        self.assertEqual(d["errors"]["1"]["code"], bsvc.ERR_AMOUNT_TOO_LARGE)
+        row = EnvelopeBatch.objects.get(pk=d["batch_id"]).rows.get()
+        self.assertEqual(row.computed_total, Decimal(0))
+
     def test_second_call_reuses_same_batch(self):
         payload = {"batch_id": None, "date": SAB.isoformat(), "rows": [
             {"line_no": 1, "receipt_no": "AV3", "contributor_name": "Jane",
