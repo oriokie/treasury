@@ -4,5 +4,6 @@
   "3.48.3": "Automated patch release: feat: campaign giving, SMS codes, pledge resync, leader/report UX.",
   "3.48.4": "Automated patch release: fix: campaign giving by phone; PNG drops zeros, sorts desc.",
   "3.48.5": "Automated patch release covering: fix: keep cancelled pledge payment records on page resync; fix: campaign page timeout and pledge payment resync.",
-  "3.48.6": "Automated patch release: feat: campaign Excel for givers not in any uploaded group."
+  "3.48.6": "Automated patch release: feat: campaign Excel for givers not in any uploaded group.",
+  "3.48.7": "Automated patch release: fix: keep an oversized envelope total from crashing Submit for review."
 }
