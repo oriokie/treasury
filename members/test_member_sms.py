@@ -48,6 +48,22 @@ class MemberSmsCriteriaTests(TestCase):
                        f"&campaign={self.camp.id}").content.decode()
         self.assertNotIn("NO PHONE PERSON", b)
 
+    def test_not_in_campaign_targets_members_not_signed_up(self):
+        """Members who are NOT on the campaign's sign-up sheet — matched by name
+        or phone to a CampaignMember — are the ones to invite to take part."""
+        from giving.models import CampaignMember
+        # the giver is registered in the campaign (same phone), the non-giver is not
+        CampaignMember.objects.create(campaign=self.camp, name="Giver Person",
+            phone="254711000001")
+        b = self.c.get(f"/members/sms/?criteria=not_in_campaign"
+                       f"&campaign={self.camp.id}").content.decode()
+        self.assertIn("NON GIVER PERSON", b)
+        self.assertNotIn(">GIVER PERSON<", b)
+
+    def test_not_in_campaign_without_a_campaign_shows_nobody(self):
+        b = self.c.get("/members/sms/?criteria=not_in_campaign").content.decode()
+        self.assertNotIn("NON GIVER PERSON", b)
+
     def test_by_group_criterion(self):
         Member.objects.create(name="Group Member", phone="254711000003",
             active=True, group="AMM")

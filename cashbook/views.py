@@ -929,14 +929,40 @@ class RecurringListView(ReadAccessMixin, ListView):
         return RecurringExpense.objects.select_related("department").all()
 
     def get_context_data(self, **kwargs):
+        from decimal import Decimal
         from .services.recurring import next_due, upcoming_instalments
         ctx = super().get_context_data(**kwargs)
+        today = dt.date.today()
         # `upcoming` excludes instalments already settled — including any paid
         # ahead of time — so the same period cannot be offered for payment twice.
-        ctx["rows"] = [{"s": s,
-                        "next": next_due(s) if s.active else None,
-                        "upcoming": upcoming_instalments(s, 3) if s.active else []}
-                       for s in ctx["schedules"]]
+        rows = []
+        for s in ctx["schedules"]:
+            nxt = next_due(s) if s.active else None
+            rows.append({"s": s, "next": nxt,
+                         "upcoming": upcoming_instalments(s, 3) if s.active else [],
+                         # Due now: the next instalment's date has arrived or
+                         # passed, so "Generate due" would create it today. This
+                         # is what the treasurer scans the list for.
+                         "due_now": bool(nxt and nxt <= today)})
+        ctx["rows"] = rows
+
+        # A monthly-equivalent view of the standing commitment, so the page can
+        # answer "what do these schedules cost us a month" at a glance. Each
+        # cadence is converted to a per-month figure (a Sabbath payment recurs
+        # ~52 times a year, a quarter is a third of a month's worth, and so on).
+        per_month = {
+            "SABBATH": Decimal(52) / Decimal(12),
+            "MONTHLY": Decimal(1),
+            "QUARTERLY": Decimal(1) / Decimal(3),
+            "YEARLY": Decimal(1) / Decimal(12),
+        }
+        active = [r for r in rows if r["s"].active]
+        ctx["active_count"] = len(active)
+        ctx["paused_count"] = len(rows) - len(active)
+        ctx["due_now_count"] = sum(1 for r in active if r["due_now"])
+        ctx["monthly_commitment"] = sum(
+            (r["s"].amount * per_month.get(r["s"].frequency, Decimal(1))
+             for r in active), Decimal(0))
         return ctx
 
 

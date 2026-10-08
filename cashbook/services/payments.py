@@ -215,7 +215,9 @@ def auto_clear_cheques_for_debits(txns, user):
     An amount-only match is never auto-applied: two cheques for the same amount
     are perfectly ordinary, and guessing between them would clear the wrong one.
     """
-    from cashbook.models import PaymentInstrument
+    from cashbook.models import Expense, PaymentInstrument
+    from giving.models import Transaction
+    from statements.services.reconcile import _cheque_numbers
 
     outstanding = list(
         PaymentInstrument.objects
@@ -232,41 +234,81 @@ def auto_clear_cheques_for_debits(txns, user):
         narration = (txn.raw_narration or txn.reference or "").upper()
         if not narration:
             continue
+        cheque_numbers = _cheque_numbers(narration)
         for inst in outstanding:
-            num = (inst.instrument_number or "").strip()
-            if not num:
-                continue
-            # match the number with and without its leading zeros — a bank prints
-            # "CHQ No.000412" while a cheque book may be recorded as "412"
-            variants = {num.upper(), num.lstrip("0").upper()}
-            if not any(v and v in narration for v in variants):
+            if not _instrument_number_in_narration(inst.instrument_number,
+                                                   narration, cheque_numbers):
                 continue
             if inst.amount != txn.amount:
                 # the number matches but the money does not — leave it for a human
                 continue
             apply_event(inst, "CLEAR", user=user, on=txn.date,
+                        bank_transaction=txn,
                         comment=f"Cleared automatically: the bank's statement shows "
                                 f"this cheque debited on {txn.date:%d %b %Y}.")
-            inst.bank_transaction = txn
-            inst.save(update_fields=["bank_transaction"])
+            # Settle the expense(s) the cheque paid and resolve the debit, so a
+            # cheque that reconciles exactly leaves the debit queue instead of
+            # sitting there asking to be classified by hand. Only when a fund is
+            # actually charged (expenses behind the instrument): a bare cheque
+            # with no linked expense still clears for the trail, but its debit
+            # stays in the queue so a fund is not left uncharged.
+            depts = set()
+            for exp in inst.all_expenses:
+                if exp.bank_transaction_id is None:
+                    exp.bank_transaction = txn
+                if exp.status != Expense.Status.PAID:
+                    exp.status = Expense.Status.PAID
+                    exp.paid_date = txn.date
+                exp.save()
+                depts.add(exp.department_id)
+            if depts:
+                if len(depts) == 1 and inst.expense_id:
+                    txn.department = inst.expense.department
+                txn.allocation_status = Transaction.Status.MANUAL
+                txn.save(update_fields=["department", "allocation_status"])
             cleared.append(inst)
             outstanding.remove(inst)
             break
     return cleared
 
 
+def _instrument_number_in_narration(number, narration, cheque_numbers):
+    """True when `number` is the cheque/instrument on this `narration`.
+
+    Matched three ways, strongest first, so a bank that prints "CHQ No.000412"
+    reconciles against a cheque book recorded as "412" and vice versa:
+      * the statement's parsed cheque number (leading zeros stripped) equals it;
+      * the number appears literally in the narration;
+      * the number with its leading zeros stripped appears in the narration.
+    """
+    num = (number or "").strip().upper()
+    if not num:
+        return False
+    bare = num.lstrip("0") or "0"
+    if bare in cheque_numbers:
+        return True
+    return any(v and v in narration for v in {num, num.lstrip("0")})
+
+
 def suggest_instrument_for_debit(txn):
     """A cheap match suggestion for the debit queue: an outstanding instrument
     whose number appears in the debit's narration, else a unique
-    exact-amount outstanding instrument. Suggestion only — never auto-applied."""
+    exact-amount outstanding instrument. Suggestion only — never auto-applied.
+
+    Number matching tolerates leading zeros and the bank's "CHQ No." prefixes
+    (via the statement's own cheque-number parser), so a cheque the church
+    recorded as "412" is recognised in a narration reading "CHQ No.000412"."""
     from cashbook.models import PaymentInstrument
+    from statements.services.reconcile import _cheque_numbers
     qs = PaymentInstrument.objects.filter(
         status__in=PaymentInstrument.OUTSTANDING_STATES,
         bank_transaction__isnull=True)
-    narration = (txn.raw_narration or "").upper()
+    narration = (txn.raw_narration or txn.reference or "").upper()
     if narration:
+        cheque_numbers = _cheque_numbers(narration)
         for inst in qs.exclude(instrument_number="")[:200]:
-            if inst.instrument_number.upper() in narration:
+            if _instrument_number_in_narration(inst.instrument_number, narration,
+                                               cheque_numbers):
                 return inst, "number"
     exact = list(qs.filter(amount=txn.amount)[:2])
     if len(exact) == 1:

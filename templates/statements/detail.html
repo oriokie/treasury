@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize %}
+{% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Import · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><div class="eyebrow">Banking · {{ SITE_NAME }}</div><h1>Import result</h1><div class="sub">{{ imp.filename }} · {{ imp.uploaded_at|date:"d M Y H:i" }}</div></div>
@@ -31,4 +31,28 @@
   {% if imp.queued_for_review %}<a class="btn" href="{% url 'queue' %}">Resolve {{ imp.queued_for_review }} queued →</a>{% endif %}
   <a class="btn btn-ghost" href="{% url 'transaction_list' %}">View ledger</a>
 </div>
+
+<div class="rpt-mast u-mt-lg">
+  <div>
+    <h2 style="margin:0">Imported records</h2>
+    <div class="desc">The entries this file added to the ledger{% if row_count > rows|length %} — showing the latest {{ rows|length }} of {{ row_count }}{% endif %}</div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
+<div class="table-wrap"><table class="ledger">
+  <thead><tr><th>Date</th><th>Direction</th><th class="num">Amount</th><th>Payer / narration</th><th>Fund</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for t in rows %}
+    <tr>
+      <td class="mono">{{ t.date|date:"d/m/y" }}</td>
+      <td>{% if t.direction == 'DEBIT' %}<span class="pill pill-red">Debit</span>{% else %}<span class="pill pill-green">Credit</span>{% endif %}</td>
+      <td class="num mono">{{ CURRENCY }} {{ t.amount|money }}</td>
+      <td>{{ t.payer_name|default:t.raw_narration|default:t.reference|truncatechars:48 }}</td>
+      <td class="muted">{{ t.department.name|default:"—" }}</td>
+      <td><span class="pill {% if t.allocation_status == 'REVIEW' %}pill-amber{% else %}pill-grey{% endif %}">{{ t.get_allocation_status_display }}</span>
+        {% if not t.confirmed %}<span class="pill pill-amber" title="Held unconfirmed until reviewed">held</span>{% endif %}</td>
+    </tr>
+  {% empty %}<tr><td colspan="6" class="empty"><div class="big">☷</div>This import created no ledger entries.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
 {% endblock %}

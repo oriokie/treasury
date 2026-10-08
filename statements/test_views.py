@@ -34,6 +34,21 @@ class StatementViewTests(TestCase):
         self.assertEqual(self.client.get(
             reverse("statement_detail", args=[imp.pk])).status_code, 200)
 
+    def test_detail_lists_the_imported_records(self):
+        """The 'View' button opens the entries the import added, not only its
+        counts — so a treasurer can see what came in."""
+        from giving.models import Transaction
+        imp = StatementImport.objects.create(uploaded_by=self.treasurer,
+            filename="y.csv", total_rows=1, imported=1, status="DONE")
+        Transaction.objects.create(
+            date=dt.date(2026, 7, 1), channel="BANK", direction="CREDIT",
+            amount=Decimal("1500"), allocation_status="AUTO", confirmed=True,
+            payer_name="JANE DOE", statement_import=imp, core_ref="VDET1")
+        b = self.client.get(
+            reverse("statement_detail", args=[imp.pk])).content.decode()
+        self.assertIn("Imported records", b)
+        self.assertIn("JANE DOE", b)
+
     def test_auto_reconcile_page_and_run(self):
         self.assertEqual(self.client.get(reverse("auto_reconcile")).status_code, 200)
         r = self.client.post(reverse("auto_reconcile_run"))

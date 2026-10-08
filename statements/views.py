@@ -57,8 +57,15 @@ class ImportStatusView(ReadAccessMixin, DetailView):
     def get_context_data(self, **kwargs):
         from giving.models import Transaction as _T
         ctx = super().get_context_data(**kwargs)
-        ctx["auto_pending"] = _T.objects.filter(
-            statement_import=self.object, confirmed=False).count()
+        base = _T.objects.filter(statement_import=self.object)
+        ctx["auto_pending"] = base.filter(confirmed=False).count()
+        # The rows this import actually created, so "View" opens the entries
+        # that were added rather than only their counts. Capped — a very large
+        # statement should not render ten thousand rows into one page — with the
+        # ledger (filtered to this import) one click away for the full set.
+        ctx["rows"] = (base.select_related("department", "member", "bank_account")
+                       .order_by("-date", "-id")[:500])
+        ctx["row_count"] = base.count()
         return ctx
 
 

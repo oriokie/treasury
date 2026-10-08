@@ -1148,9 +1148,15 @@ class DebitQueueView(DebitClassifyRequiredMixin, ListView):
             if inst:
                 suggestions[d.pk] = {"inst": inst, "how": how}
         ctx["instrument_suggestions"] = suggestions
-        ctx["pending_expenses"] = Expense.objects.filter(
-            status__in=[Expense.Status.PENDING, Expense.Status.APPROVED],
-            bank_transaction__isnull=True).order_by("-date")[:200]
+        # Expenses a debit can be matched to: anything recorded but not yet tied
+        # to a bank line. PAID matters as much as PENDING/APPROVED — a cheque or
+        # transfer entered as already paid still has to be reconciled to the bank
+        # debit that cleared it, and leaving PAID out was why "match to existing
+        # expense" came up empty for exactly the payments people were trying to
+        # reconcile. REJECTED is the only status with nothing to match.
+        ctx["pending_expenses"] = (Expense.objects.filter(bank_transaction__isnull=True)
+            .exclude(status=Expense.Status.REJECTED)
+            .select_related("department").order_by("-date")[:300])
         # open remittance batches — a trust remittance debit usually settles a
         # whole batch (one payment covering several trust funds), so it should
         # be matched to the batch's per-fund lines rather than one fund
