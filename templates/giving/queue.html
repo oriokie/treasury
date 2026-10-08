@@ -1,26 +1,41 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Review queue · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div><h1>Review queue</h1>
-    <div class="sub">{{ items|length }} entr{{ items|length|pluralize:"y,ies" }} on this page need a fund before they count toward giving</div></div>
-  <div class="btn-row no-print">
-    <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
-    {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
-    {% if can_enter_data and items %}
-    <form method="post" action="{% url 'queue_run_rules' %}" class="u-inline"
-          onsubmit="return confirm('Re-run allocation rules on the queued items? Items matching a rule (e.g. one you just added) will be allocated automatically.');">
-      {% csrf_token %}
-      <button class="btn btn-brass btn-sm" title="Apply the current allocation rules to the items still in this queue — useful right after adding rules following an import">⚙ Run rules on pending</button>
-    </form>{% endif %}
-    {% if can_enter_data and unallocated_in_ledger %}
-    <form method="post" action="{% url 'queue_fetch_unallocated' %}" class="u-inline"
-          onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated contribution(s) from the ledger into the queue for allocation?');">
-      {% csrf_token %}
-      <button class="btn btn-brass btn-sm" title="Contributions in the ledger with no fund assigned that aren't in the queue">⤵ Fetch {{ unallocated_in_ledger }} unallocated from ledger</button>
-    </form>{% endif %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Giving · {{ SITE_NAME }}</div>
+      <h1>Review queue</h1>
+      <div class="desc">{% if queue_count %}Each entry needs a fund before it counts toward giving — allocate it to a fund, split it, or record it another way.{% else %}Everything imported has been allocated.{% endif %}</div>
+    </div>
+    <div class="rpt-actions no-print">
+      <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
+      {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
+      {% if can_enter_data and items %}
+      <form method="post" action="{% url 'queue_run_rules' %}" class="u-inline"
+            onsubmit="return confirm('Re-run allocation rules on the queued items? Items matching a rule (e.g. one you just added) will be allocated automatically.');">
+        {% csrf_token %}
+        <button class="btn btn-brass btn-sm" title="Apply the current allocation rules to the items still in this queue — useful right after adding rules following an import">⚙ Run rules on pending</button>
+      </form>{% endif %}
+      {% if can_enter_data and unallocated_in_ledger %}
+      <form method="post" action="{% url 'queue_fetch_unallocated' %}" class="u-inline"
+            onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated contribution(s) from the ledger into the queue for allocation?');">
+        {% csrf_token %}
+        <button class="btn btn-brass btn-sm" title="Contributions in the ledger with no fund assigned that aren't in the queue">⤵ Fetch {{ unallocated_in_ledger }} unallocated from ledger</button>
+      </form>{% endif %}
+    </div>
   </div>
+  <div class="rule"></div>
 </div>
+
+{% if queue_count %}
+<div class="grid-4 u-mb">
+  <div class="stat"><div class="lbl">Awaiting a fund</div><div class="val mono text-amber">{{ queue_count }}</div></div>
+  <div class="stat"><div class="lbl">Total waiting</div><div class="val mono">{{ CURRENCY }} {{ queue_amount|money }}</div></div>
+  <div class="stat"><div class="lbl">On this page</div><div class="val mono">{{ items|length }}</div></div>
+  <div class="stat"><div class="lbl">Unallocated in ledger</div><div class="val mono {% if unallocated_in_ledger %}text-amber{% endif %}">{{ unallocated_in_ledger }}</div></div>
+</div>
+{% endif %}
 
 {% if can_enter_data and items %}
 <form id="bulkAllocForm" method="post" action="{% url 'queue_bulk_allocate' %}" class="bulk-bar no-print"
@@ -206,4 +221,21 @@
   });
 })();
 </script>
+<style>
+/* Review-queue polish. The .q-* vocabulary is used only on this page, so these
+   scoped rules refine it without touching any other screen. Keep the site's
+   paper/forest/brass palette and the existing card structure. */
+.q-card{border-left:3px solid var(--brass);transition:box-shadow var(--t),border-color var(--t)}
+.q-card:hover{border-left-color:var(--forest)}
+.q-amt{font-size:1.24rem}
+/* Set the allocation form apart as the place to act, without a second card. */
+.q-form{background:var(--card-head,#faf7f0);border:1px solid var(--line);
+  border-radius:12px;padding:.9rem 1rem}
+/* The primary action reads as primary once a fund is chosen, and plainly
+   inert until then — so the one button to press is never in doubt. */
+.q-submit:not(:disabled){background:var(--forest);border-color:var(--forest);color:#fff;font-weight:600}
+.q-submit:not(:disabled):hover{background:var(--forest-deep,#1f3d30)}
+.q-actions{flex-wrap:wrap;row-gap:.4rem}
+@media(max-width:760px){.q-form{padding:.8rem}}
+</style>
 {% endblock %}

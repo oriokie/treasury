@@ -224,6 +224,34 @@ class ChequeAutoClearingTests(TestCase):
         chq.refresh_from_db()
         self.assertEqual(chq.status, "ISSUED")
 
+    def test_a_matched_cheque_settles_its_expense_and_resolves_the_debit(self):
+        """When the cleared cheque carries an expense, the match should also
+        mark that expense PAID and take the debit out of the review queue —
+        otherwise the debit sits there asking to be classified by hand even
+        though the payment is fully reconciled."""
+        from cashbook.models import Expense
+        dept = Department.objects.create(name="Maint8", fund_type="LOCAL",
+                                         category="MINISTRY")
+        exp = Expense.objects.create(
+            date=dt.date(2026, 6, 28), department=dept, description="Venue",
+            amount=Decimal("15500"), category="MAINTENANCE", method="CHEQUE",
+            status="APPROVED", recorded_by=self.treasurer, approved_by=self.treasurer)
+        chq = self._cheque("000412", "15500")
+        chq.source_kind = "EXPENSE"; chq.expense = exp
+        chq.save(update_fields=["source_kind", "expense"])
+        self._import([
+            ("01-07-2026", "A GIFT", "300.00", "10,300.00"),
+            ("01-07-2026", "CHQ No.000412", "0.00", "-5,200.00"),
+        ])
+        chq.refresh_from_db(); exp.refresh_from_db()
+        self.assertEqual(chq.status, "CLEARED")
+        self.assertEqual(exp.status, "PAID")
+        debit = Transaction.objects.get(direction="DEBIT", amount=Decimal("15500"))
+        self.assertEqual(exp.bank_transaction_id, debit.pk)
+        self.assertEqual(debit.allocation_status, "MANUAL",
+                         "a fully-reconciled cheque debit should leave the queue")
+        self.assertEqual(debit.department_id, dept.pk)
+
     def test_an_amount_only_match_is_never_auto_applied(self):
         """Two cheques for the same amount are perfectly ordinary, and guessing
         between them would clear the wrong one. It stays a SUGGESTION, offered in

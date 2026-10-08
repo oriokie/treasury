@@ -585,6 +585,9 @@ class MemberSmsView(TreasurerRequiredMixin, View):
         "not_contributed_campaign": (
             "Dear {name}, greetings from {church}. We haven't yet received your "
             "contribution towards {campaign}. Kindly consider giving as led."),
+        "not_in_campaign": (
+            "Dear {name}, greetings from {church}. You are not yet signed up for "
+            "{campaign}. We'd love to have you take part — kindly let us know."),
         "outstanding_pledge": (
             "Dear {name}, greetings from {church}. This is a friendly reminder "
             "of your pledge — a balance of {amount} remains outstanding."),
@@ -599,6 +602,7 @@ class MemberSmsView(TreasurerRequiredMixin, View):
         from giving.models import Campaign
         return {
             "not_contributed_campaign": "Have not contributed to a campaign",
+            "not_in_campaign": "Are not registered in a campaign",
             "outstanding_pledge": "Have an outstanding pledge",
             "no_recent_giving": "Have not given in the last N days",
             "by_group": "Belong to a demographic group",
@@ -652,6 +656,29 @@ class MemberSmsView(TreasurerRequiredMixin, View):
                      .filter(department_id__in=fund_ids, member__isnull=False)
                      .values_list("member_id", flat=True))
             return base.exclude(id__in=givers), extra
+
+        if crit == "not_in_campaign":
+            # Members who are NOT on a campaign's own sign-up sheet
+            # (CampaignMember) — the people to invite to take part, as opposed
+            # to `not_contributed_campaign`, which is about who has not yet
+            # GIVEN. A member is treated as already registered when their name
+            # (order-insensitive key) or any number on file matches a campaign
+            # member, the same two handles the campaign matcher uses.
+            from giving.models import Campaign, CampaignMember
+            camp = Campaign.objects.filter(pk=g.get("campaign") or None).first()
+            extra["campaign"] = camp
+            if not camp:
+                return base.none(), extra
+            enrolled = CampaignMember.objects.filter(campaign=camp)
+            keys = {k for k in enrolled.values_list("name_key", flat=True) if k}
+            phones = {p for p in enrolled.values_list("phone", flat=True) if p}
+            qs = base
+            if keys:
+                qs = qs.exclude(name_key__in=keys)
+            if phones:
+                qs = qs.exclude(
+                    Q(phone__in=phones) | Q(phones__number__in=phones))
+            return qs.distinct(), extra
 
         if crit == "outstanding_pledge":
             from pledges.models import Pledge

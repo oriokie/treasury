@@ -58,6 +58,51 @@ class ChequeDebitImportTests(TestCase):
         self.assertEqual(parse_narration("CHQ No.000411")["receipt"], "")
 
 
+class DebitReimportDedupTests(TestCase):
+    """Re-importing a statement must not duplicate debits that carry no unique
+    bank identifier — bare cheque / monthly-charge rows with no Core Ref, no
+    receipt and no channel ref. With nothing to match on, these re-imported on
+    every upload and the debit was posted again each time."""
+
+    def setUp(self):
+        self.u = User.objects.create_user("imp_dd", password="x")
+
+    def _import(self, content):
+        imp = StatementImport.objects.create(uploaded_by=self.u, filename="s.csv")
+        run_import(imp, content, "s.csv")
+        imp.refresh_from_db()
+        return imp
+
+    # No Core Ref / receipt / channel-ref column at all — only what the bank
+    # printed in the narration, which for a charge or a cheque is not unique.
+    CSV = (b"Posting Date,Narration,Debit Amount,Credit Amount,Running Balance\n"
+           b"01-07-2026,MONTHLY LEDGER FEE,250.00,0.00,99750.00\n"
+           b"02-07-2026,CHQ No.000777,15000.00,0.00,84750.00\n")
+
+    def test_first_import_posts_both_debits(self):
+        self._import(self.CSV)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2)
+
+    def test_reimport_does_not_duplicate_identifierless_debits(self):
+        self._import(self.CSV)
+        imp2 = self._import(self.CSV)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2,
+                         "the same debits were posted again on re-import")
+        self.assertEqual(imp2.duplicates_skipped, 2)
+
+    def test_two_distinct_charges_the_same_day_stay_separate(self):
+        """The fallback keys on amount AND narration, so a journal of several
+        distinct charges under no reference is not collapsed into one."""
+        csv = (b"Posting Date,Narration,Debit Amount,Credit Amount,Running Balance\n"
+               b"01-07-2026,STAMP DUTY,250.00,0.00,99750.00\n"
+               b"01-07-2026,EXCISE DUTY,300.00,0.00,99450.00\n")
+        self._import(csv)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2)
+        # …and re-importing that pair still collapses to the same two
+        self._import(csv)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2)
+
+
 class ChequeReconcileTests(TestCase):
     def setUp(self):
         self.u = User.objects.create_user("rec_chq", password="x", is_superuser=True)

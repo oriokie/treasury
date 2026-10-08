@@ -1,26 +1,53 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Recurring expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Recurring expenses</h1>
-<div class="sub">Predetermined payments made every Sabbath or every month</div></div>
-<div class="btn-row">
-  {% if can_enter_data %}<form method="post" action="{% url 'recurring_generate' %}" class="u-inline" onsubmit="return confirm('Generate all due recurring expenses up to today?');">{% csrf_token %}<button class="btn btn-brass">⟳ Generate due</button></form>
-  <a class="btn" href="{% url 'recurring_create' %}">+ New schedule</a>{% endif %}
-</div></div>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
+      <h1>Recurring expenses</h1>
+      <div class="desc">Predetermined payments on a fixed cadence — every Sabbath, month, quarter or year</div>
+    </div>
+    <div class="rpt-actions no-print">
+      {% if can_enter_data %}
+      <form method="post" action="{% url 'recurring_generate' %}" class="u-inline" onsubmit="return confirm('Generate all due recurring expenses up to today?');">{% csrf_token %}<button class="btn btn-brass">⟳ Generate due</button></form>
+      <a class="btn" href="{% url 'recurring_create' %}">+ New schedule</a>{% endif %}
+    </div>
+  </div>
+  <div class="rule"></div>
+</div>
+
+<div class="grid-4 u-mb">
+  <div class="stat"><div class="lbl">Active schedules</div><div class="val mono">{{ active_count }}</div></div>
+  <div class="stat"><div class="lbl">Due now</div><div class="val mono {% if due_now_count %}text-amber{% endif %}">{{ due_now_count }}</div></div>
+  <div class="stat"><div class="lbl">Paused</div><div class="val mono muted">{{ paused_count }}</div></div>
+  <div class="stat"><div class="lbl">Monthly commitment</div><div class="val mono">{{ CURRENCY }} {{ monthly_commitment|money }}</div></div>
+</div>
+
 <div class="info-panel">A schedule doesn't change balances on its own — pressing <strong>Generate due</strong> creates real expense entries on each due date (every Sabbath, or the chosen day each month), which then go through approval and post to the ledger like any expense. Locked months are skipped, and an entry is never created twice. An instalment can also be settled ahead of its due date with <strong>Pay early</strong>: the expense is dated the day the money leaves, but records which instalment it settles, so the schedule will not charge that period again.</div>
+
 <div class="table-wrap"><table class="ledger">
-  <thead><tr><th>Description</th><th>Fund</th><th>Frequency</th><th class="num">Amount</th><th>Claimant</th><th>Next due</th><th>Status</th>{% if can_enter_data %}<th></th>{% endif %}</tr></thead>
+  <thead><tr>
+    <th>Description</th><th>Fund</th><th>Frequency</th>
+    <th class="num">Amount</th><th>Claimant</th><th>Next due</th><th>Status</th>
+    {% if can_enter_data %}<th class="num">Actions</th>{% endif %}
+  </tr></thead>
   <tbody>
   {% for r in rows %}
     <tr {% if not r.s.active %}class="muted"{% endif %}>
-      <td>{{ r.s.description }}</td>
+      <td>
+        <a class="link" href="{% url 'recurring_edit' r.s.id %}">{{ r.s.description }}</a>
+        <div class="muted u-xs">{{ r.s.get_category_display }}{% if r.s.method %} · {{ r.s.get_method_display }}{% endif %}</div>
+      </td>
       <td>{{ r.s.department.name }}</td>
-      <td>{{ r.s.get_frequency_display }}{% if r.s.frequency == 'MONTHLY' %} <span class="muted">(day {{ r.s.day_of_month }})</span>{% endif %}</td>
-      <td class="num mono">{{ r.s.amount|money }}</td>
+      <td>{{ r.s.get_frequency_display }}{% if r.s.frequency == 'MONTHLY' %} <span class="muted u-xs">(day {{ r.s.day_of_month }})</span>{% endif %}</td>
+      <td class="num mono">{{ CURRENCY }} {{ r.s.amount|money }}</td>
       <td>{{ r.s.claimant|default:"—" }}</td>
-      <td class="mono">{% if r.next %}{{ r.next|date:"d M Y" }}{% else %}—{% endif %}</td>
+      <td class="mono">
+        {% if r.next %}{{ r.next|date:"d M Y" }}{% if r.due_now %} <span class="pill pill-amber" title="This instalment is due — Generate due will create it">due</span>{% endif %}{% else %}—{% endif %}
+      </td>
       <td>{% if r.s.active %}<span class="pill pill-green">Active</span>{% else %}<span class="pill pill-grey">Paused</span>{% endif %}</td>
-      {% if can_enter_data %}<td class="u-nowrap">
+      {% if can_enter_data %}<td class="num u-nowrap">
         {% if r.upcoming %}
         {% comment %} Paying ahead is normal — a payee travelling, an office closed
            over a holiday, a quarter settled with one cheque. The instalment is
@@ -40,7 +67,7 @@
         <form method="post" action="{% url 'recurring_delete' r.s.id %}" class="u-inline" onsubmit="return confirm('Delete this recurring schedule? Expenses it already created remain in the ledger.');">{% csrf_token %}<button class="link link-danger">Delete</button></form>
       </td>{% endif %}
     </tr>
-  {% empty %}<tr><td colspan="{% if can_enter_data %}8{% else %}7{% endif %}" class="empty"><div class="big">↻</div>No recurring expenses set up yet.</td></tr>{% endfor %}
+  {% empty %}<tr><td colspan="{% if can_enter_data %}8{% else %}7{% endif %}" class="empty"><div class="big">↻</div>No recurring expenses set up yet.{% if can_enter_data %}<div class="u-mt-sm"><a class="btn btn-sm" href="{% url 'recurring_create' %}">+ Add your first schedule</a></div>{% endif %}</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% endblock %}

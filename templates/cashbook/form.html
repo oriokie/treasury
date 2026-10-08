@@ -208,22 +208,10 @@ async function showBal(){
   if(!deptHidden.value){ box.style.display="none"; return; }
   try{ const d=await (await fetch(balUrl+"?id="+deptHidden.value)).json();
     if(!d.ok){ box.style.display="none"; return; }
-    let parts=`opening ${fmt(d.opening)} + receipts ${fmt(d.receipts)} − spent ${fmt(d.spent)}`;
-    if(d.refunded) parts+=` + refunds ${fmt(d.refunded)}`;
-    if(d.transfers_in) parts+=` + transfers in ${fmt(d.transfers_in)}`;
-    if(d.transfers_out) parts+=` − transfers out ${fmt(d.transfers_out)}`;
-    let html=`Available balance <strong>KES ${fmt(d.balance)}</strong> <span class="muted">(${parts})</span>`;
-    // Say so when the figure includes collection sub-accounts. A treasurer
-    // comparing this against the fund's own line elsewhere would otherwise be
-    // reading two different things with no clue which.
-    const kids=d.children||[];
-    if(kids.length){
-      html+=`<div class="muted u-xs" style="margin-top:.3rem">Includes ${kids.length} collection `
-        +`sub-account${kids.length>1?"s":""} that can only be spent through this fund — `
-        +`this fund on its own holds ${fmt(d.own_balance)}. `
-        +kids.map(c=>`${c.name} ${fmt(c.balance)}`).join(" · ")+`</div>`;
-    }
-    box.innerHTML=html;
+    // Just the figure a treasurer needs before committing — the available
+    // balance. The opening/receipts/spent breakdown and the sub-account note
+    // were more than the moment calls for and are left off here.
+    box.innerHTML=`Available balance <strong>KES ${fmt(d.balance)}</strong>`;
     box.style.display="block";
   }catch(e){ box.style.display="none"; }
 }

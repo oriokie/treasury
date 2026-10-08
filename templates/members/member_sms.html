@@ -19,13 +19,13 @@
         {% endfor %}
       </select></div>
 
-    {% if criteria == "not_contributed_campaign" %}
+    {% if criteria == "not_contributed_campaign" or criteria == "not_in_campaign" %}
     <div class="form-row"><label>Campaign</label>
       <select name="campaign" class="field--select" onchange="this.form.submit()">
         <option value="">— choose a campaign —</option>
         {% for c in campaigns %}<option value="{{ c.id }}" {% if selected_campaign.id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
       </select>
-      <input type="hidden" name="criteria" value="not_contributed_campaign"></div>
+      <input type="hidden" name="criteria" value="{{ criteria }}"></div>
     {% endif %}
 
     {% if criteria == "by_group" %}
@@ -62,7 +62,7 @@
   {% if criteria == "no_recent_giving" %}<input type="hidden" name="days" value="{{ days }}">{% endif %}
   {% if min_gifts %}<input type="hidden" name="min_gifts" value="{{ min_gifts }}">{% endif %}
   <div class="card u-mt"><div class="hd">Message</div><div class="bd">
-    <p class="help u-mt-0">Placeholders: <span class="mono">{name}</span>, <span class="mono">{church}</span>{% if criteria == "not_contributed_campaign" %}, <span class="mono">{campaign}</span>{% endif %}{% if criteria == "outstanding_pledge" %}, <span class="mono">{amount}</span>{% endif %} — filled per member.</p>
+    <p class="help u-mt-0">Placeholders: <span class="mono">{name}</span>, <span class="mono">{church}</span>{% if criteria == "not_contributed_campaign" or criteria == "not_in_campaign" %}, <span class="mono">{campaign}</span>{% endif %}{% if criteria == "outstanding_pledge" %}, <span class="mono">{amount}</span>{% endif %} — filled per member.</p>
     <textarea name="template" rows="3" class="field" style="width:100%">{{ template }}</textarea>
     {% if sms_enabled %}<div class="btn-row u-mt-sm"><button class="btn btn-brass">✉ Send to {{ recipient_count }} member{{ recipient_count|pluralize }}</button></div>
     {% else %}<div class="help u-mt-sm">Enable SMS to send.</div>{% endif %}
