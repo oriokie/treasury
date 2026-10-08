@@ -305,6 +305,24 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                 direction=(Transaction.Direction.DEBIT if _amt < 0
                            else Transaction.Direction.CREDIT),
             ).exists()
+        # A line the bank gives NO unique handle at all — no M-Pesa receipt, no
+        # channel ref, no Core Ref. Bare cheque and monthly-charge DEBITs on a
+        # bank that leaves those columns blank are the common case, and with
+        # nothing above to match on they re-imported on every upload, duplicating
+        # the debit each time. Fall back to the same identity the bank register
+        # uses for such lines — exact date, signed amount and narration — so a
+        # true re-import collapses while two genuinely different charges (which
+        # differ in amount or narration) stay distinct. Matches the register's
+        # own synthetic (SYN) dedup key, so the two layers agree.
+        if not already and not rcpt_up and not mref_up and not core_ref:
+            already = Transaction.objects.filter(
+                channel=Transaction.Channel.BANK,
+                date=row["date"],
+                amount=abs(_amt),
+                direction=(Transaction.Direction.DEBIT if _amt < 0
+                           else Transaction.Direction.CREDIT),
+                raw_narration=row["raw_narration"],
+            ).exists()
         if already:
             dup += 1
             continue

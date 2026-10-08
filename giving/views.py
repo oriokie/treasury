@@ -617,6 +617,7 @@ class ReviewQueueView(ReadAccessMixin, ListView):
                 .select_related("member").order_by("date", "id"))
 
     def get_context_data(self, **kwargs):
+        from django.db.models import Count, Sum
         from departments.models import DevelopmentGroup
         from giving.models import SplitFund
         ctx = super().get_context_data(**kwargs)
@@ -625,6 +626,12 @@ class ReviewQueueView(ReadAccessMixin, ListView):
         ctx["dev_groups"] = DevelopmentGroup.objects.filter(active=True).order_by("number")
         # item 5: gifts in the ledger that still need a fund but aren't in the queue
         ctx["unallocated_in_ledger"] = FetchUnallocatedView.pending_qs().count()
+        # Whole-queue summary for the header (not just this page) — a treasurer
+        # deciding whether to sit down and clear it wants the total waiting and
+        # what it adds up to, the way the debit queue states its own count.
+        agg = self.get_queryset().aggregate(n=Count("id"), total=Sum("amount"))
+        ctx["queue_count"] = agg["n"] or 0
+        ctx["queue_amount"] = agg["total"] or 0
         return ctx
 
 
