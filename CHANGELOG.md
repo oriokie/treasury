@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.48.8
+
+Automated patch release covering: queue UX + register-backed debit auto-resolve + re-import dedup; feat: statement import records, debit matching, campaign SMS, expense balance & recurring UX.
+
 ## 3.48.7
 
 Automated patch release: fix: keep an oversized envelope total from crashing Submit for review.
