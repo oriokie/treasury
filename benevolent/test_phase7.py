@@ -255,7 +255,8 @@ class EventWiringTests(Phase7Fixture):
         n = BenevolentNotification.objects.filter(
             event=NotificationEvent.REGISTRATION_CONFIRMED, membership=m).first()
         self.assertIsNotNone(n)
-        self.assertIn("MARY KIOKO", n.body)   # Member.save() stores names uppercase
+        self.assertIn("Mary", n.body)   # texts use the first name, not the stored full name
+        self.assertNotIn("KIOKO", n.body)
 
     def test_registering_that_needs_admission_does_not_notify_until_admitted(self):
         v2 = scheme_svc.new_version_from(
