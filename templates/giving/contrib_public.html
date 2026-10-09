@@ -199,13 +199,13 @@
         <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel"
                placeholder="07XXXXXXXX" required value="{{ phone_value|default:'' }}"></div>
       <p class="hint">The number that will receive the M-Pesa prompt.</p>
-      <label for="amount">Amount (KES)</label>
-      <div class="field"><span class="prefix">KSh</span>
+      <label for="amount">Amount ({{ CURRENCY }})</label>
+      <div class="field"><span class="prefix">{{ CURRENCY }}</span>
         <input id="amount" name="amount" type="number" inputmode="numeric" min="1" max="150000" step="1"
                placeholder="Enter amount" required value="{{ amount_value|default:'' }}"></div>
       <div class="eyebrow" style="margin-top:.8rem">Quick select</div>
       <div class="quicks" id="quicks">
-        {% for n in quick %}<button type="button" class="quick" data-amount="{{ n }}">KSh {{ n|intcomma }}</button>{% endfor %}
+        {% for n in quick %}<button type="button" class="quick" data-amount="{{ n }}">{{ CURRENCY }} {{ n|intcomma }}</button>{% endfor %}
       </div>
       <button class="pay" type="submit" {% if not ready %}disabled{% endif %}>Contribute now</button>
       {% if not ready %}<p class="hint">The M-Pesa prompt is not available just now. You can still give with the account code below.</p>{% endif %}
