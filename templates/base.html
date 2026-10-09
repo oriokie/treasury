@@ -74,6 +74,7 @@
           <a href="{% url 'count_list' %}" class="{% if 'count' in request.resolver_match.url_name %}active{% endif %}">Cash counts</a>
           <a href="{% url 'queue' %}" class="{% if request.resolver_match.url_name == 'queue' %}active{% endif %}">Review queue{% if queue_badge %}<span class="badge">{{ queue_badge }}</span>{% endif %}</a>
           <a href="{% url 'sabbath_queue' %}" class="{% if request.resolver_match.url_name == 'sabbath_queue' %}active{% endif %}">Sabbath confirmations{% if sabbath_badge %}<span class="badge">{{ sabbath_badge }}</span>{% endif %}</a>
+          {% if is_treasurer %}<a href="{% url 'contrib_attempts' %}" class="{% if request.resolver_match.url_name == 'contrib_attempts' %}active{% endif %}">Contribution attempts{% if contrib_attempt_badge %}<span class="badge">{{ contrib_attempt_badge }}</span>{% endif %}</a>{% endif %}
         </div>
       </details>
 

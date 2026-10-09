@@ -39,8 +39,18 @@
     <strong class="u-xs">Match code</strong>
     <div class="mono" style="font-size:1.25rem;letter-spacing:.04em" id="memberCode">{{ member.match_code }}</div>
     <p class="help u-mt-0">Others put this in the M-Pesa / bank reference to credit this member's pledges and development group — even when they pay themselves.</p>
+    {% if cfg.contrib_links_enabled %}
+    <p class="help u-mt-0">Personal link: <a class="link mono" href="{% url 'contrib_link' member.match_code %}">{{ request.scheme }}://{{ request.get_host }}{% url 'contrib_link' member.match_code %}</a></p>
+    {% else %}
+    <p class="help u-mt-0">A shareable contribution page for this code can be switched on under <a class="link" href="{% url 'settings' %}?tab=contrib">Settings → Contribution links</a>.</p>
+    {% endif %}
   </div>
   <button type="button" class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('memberCode').textContent);this.textContent='Copied'">Copy code</button>
+  {% if is_treasurer and member.phone %}
+  <form method="post" action="{% url 'member_contrib_sms_one' member.pk %}" class="u-inline" onsubmit="return confirm('Text {{ member.name }} their contribution link?');">{% csrf_token %}
+    <button class="btn btn-sm btn-ghost">✉ Text the link</button>
+  </form>
+  {% endif %}
 </div></div>
 {% endif %}
 <div class="grid-3 u-mb">

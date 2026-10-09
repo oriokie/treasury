@@ -37,6 +37,14 @@ PUBLIC_URL_NAMES = {
     "cbs_webhook",           # bank machine-to-machine; auth'd by token/HMAC, not a session
     "public_pledge",         # deliberately public member pledge form (off by default)
     "public_pledge_thanks",  # its thank-you page
+    # A member's personal contribution link. Off unless contrib_links_enabled.
+    # The code in the path is the member's own match code, which is what the
+    # link exists to share. The status poll and the Safaricom callback carry
+    # no session: the poll only reports an attempt this app created, and the
+    # callback is matched on the checkout id Safaricom was given.
+    "contrib_link",
+    "contrib_link_status",
+    "mpesa_stk_callback",
     # The public benevolent application form. Same security model as the pledge
     # form above and for the same reasons: off unless explicitly enabled,
     # write-only (it never reads or exposes any member data), touches no ledger

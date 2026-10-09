@@ -416,6 +416,55 @@ class SiteConfig(models.Model):
     daraja_consumer_secret = EncryptedCharField(max_length=255, blank=True, default="")
     daraja_env = models.CharField(max_length=10, default="SANDBOX", blank=True,
         help_text="SANDBOX or PRODUCTION.")
+    daraja_passkey = EncryptedCharField(max_length=255, blank=True, default="",
+        help_text="Lipa na M-Pesa passkey from the Daraja portal. Required for "
+                  "the STK prompt on a personal contribution link.")
+
+    class DarajaTxnType(models.TextChoices):
+        PAYBILL = "PAYBILL", "Paybill"
+        TILL = "TILL", "Buy Goods (till)"
+
+    daraja_txn_type = models.CharField(
+        max_length=8, choices=DarajaTxnType.choices, default=DarajaTxnType.PAYBILL,
+        help_text="Paybill asks the payer for an account number — the member's "
+                  "code. A till does not, but a gift paid through a member's link "
+                  "is still credited to that member.")
+
+    # --- Personal contribution links (STK) ---------------------------------
+    contrib_links_enabled = models.BooleanField(
+        default=False,
+        help_text="Let each member share a link friends can open to give by "
+                  "M-Pesa prompt. Off until you choose the fund below.")
+    contrib_fund = models.ForeignKey(
+        "departments.Department", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Gifts paid through a personal link are booked to this fund "
+                  "and credited to the member whose code is in the link.")
+    contrib_title = models.CharField(
+        max_length=80, blank=True, default="Development Fund",
+        help_text="Heading on the public page, under the church name.")
+    contrib_tagline = models.CharField(
+        max_length=140, blank=True, default="Together we build for God's glory",
+        help_text="One line under the heading.")
+    contrib_verse = models.CharField(
+        max_length=240, blank=True,
+        default="Each of you should give what you have decided in your heart to give.",
+        help_text="Short verse at the foot of the public page. Leave blank to hide it.")
+    contrib_verse_ref = models.CharField(
+        max_length=40, blank=True, default="2 Corinthians 9:7")
+    contrib_quick_amounts = models.CharField(
+        max_length=80, blank=True, default="50,100,500,1000",
+        help_text="Whole-shilling amounts offered as buttons, separated by commas.")
+    contrib_sms_template = models.CharField(
+        max_length=600, blank=True,
+        default="Dear {name}, {church} has introduced a personal contribution "
+                "link for you. You may use it to make your contribution and also "
+                "share it with friends and family who wish to support you. All "
+                "payments made through your link will be credited to your account "
+                "and added to your total contribution. Your link: {link}. Your "
+                "code: {code}. God bless you.",
+        help_text="Texted to a member with their own link. Placeholders: {name} "
+                  "(first name) {church} {fund} {link} {code}.")
 
     # --- Co-operative Bank CBS real-time transaction feed (inbound webhook) ----
     class BankFeedAuth(models.TextChoices):

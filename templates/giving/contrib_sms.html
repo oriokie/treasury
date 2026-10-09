@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Contribution link SMS · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Send contribution links</h1>
+  <div class="sub">Each member receives their own link and code, addressed by first name</div>
+</div>
+<a class="btn btn-ghost btn-sm" href="{% url 'member_list' %}">← Members</a>
+</div>
+
+{% if not links_enabled %}
+<div class="info-panel">Personal links are switched off. Turn them on under <a class="link" href="{% url 'settings' %}?tab=contrib">Settings → Contribution links</a> before the page will accept a gift. You can still send the text.</div>
+{% endif %}
+{% if not sms_enabled %}
+<div class="info-panel">SMS is currently disabled. Enable it under Settings → SMS to send. The preview below is what would go out.</div>
+{% endif %}
+
+<div class="card u-mt"><div class="hd">Message</div><div class="bd">
+  <p class="help u-mt-0">The wording is set under Settings → Contribution links. Placeholders <span class="mono">{name}</span> (first name), <span class="mono">{church}</span>, <span class="mono">{fund}</span>, <span class="mono">{link}</span>, <span class="mono">{code}</span> are filled for each member.</p>
+  {% if preview %}<p class="u-mt-sm" style="white-space:pre-wrap">{{ preview }}</p>{% endif %}
+  <form method="post" class="u-mt" onsubmit="return confirm('Send this text to {{ recipient_count }} member(s)?');">{% csrf_token %}
+    {% if sms_enabled %}
+    <button class="btn btn-brass">✉ Send to {{ recipient_count }} member{{ recipient_count|pluralize }}</button>
+    {% else %}
+    <p class="help">Enable SMS to send.</p>
+    {% endif %}
+  </form>
+</div></div>
+
+<div class="card u-mt"><div class="hd">Recipients <span class="muted">{{ recipient_count }}</span></div>
+<div class="table-wrap"><table class="ledger compact">
+  <thead><tr><th>Member</th><th>Code</th><th>Phone</th></tr></thead>
+  <tbody>
+  {% for m in recipients %}
+  <tr><td>{{ m.name }}</td><td class="mono">{{ m.match_code }}</td><td class="mono">{{ m.phone }}</td></tr>
+  {% empty %}<tr><td colspan="3" class="empty">No active members with both a phone number and a code.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if recipient_count > 500 %}<p class="help">Showing the first 500. The send still includes everyone.</p>{% endif %}
+</div>
+{% endblock %}

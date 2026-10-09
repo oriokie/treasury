@@ -746,7 +746,7 @@ class MemberSmsView(TreasurerRequiredMixin, View):
 
     def post(self, request):
         from core.models import SiteConfig
-        from core.services.sms import send_sms, _format
+        from core.services.sms import send_sms, sms_first_name, _format
         recips, extra = self._recipients(request.POST)
         template = request.POST.get("template") or "Dear {name}, greetings from {church}. "
         church = SiteConfig.get().church_name or ""
@@ -760,7 +760,7 @@ class MemberSmsView(TreasurerRequiredMixin, View):
                      .first())
                 amount = f"{p.outstanding:,.0f}" if p else ""
             msg = _format(template,
-                          name=(m.name.split()[0] if m.name else "member"),
+                          name=sms_first_name(m.name) or "Friend",
                           church=church, campaign=campaign_name, amount=amount)
             log = send_sms(m.phone, msg)
             if getattr(log, "status", "") == "SENT":

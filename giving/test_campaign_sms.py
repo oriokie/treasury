@@ -83,7 +83,7 @@ class CampaignMessageTests(CampaignBase):
             self.campaign, "Group 2",
             "Dear {name}, {group} meets on Sabbath. — {campaign}")
         messages_out = {r["member"].name: r["message"] for r in plan["recipients"]}
-        self.assertIn("Dear Ruth Momanyi, Group 2 meets on Sabbath. "
+        self.assertIn("Dear Ruth, Group 2 meets on Sabbath. "
                       "— Camp Meeting 2026", messages_out["Ruth Momanyi"])
 
     def test_code_placeholder_fills_match_code(self):

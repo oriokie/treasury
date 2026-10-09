@@ -152,8 +152,9 @@ class BulkSmsResult:
 
 
 def _format(template, membership, scheme, extra=None):
+    from core.services.sms import sms_first_name
     ctx = {
-        "name": membership.member.name.split()[0].title() if membership.member.name else "",
+        "name": sms_first_name(membership.member.name),
         "full_name": membership.member.name,
         "scheme": scheme.name,
         "number": membership.number,

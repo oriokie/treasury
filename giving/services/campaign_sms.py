@@ -22,6 +22,7 @@ communication, not accounting.
 """
 from django.db.models import Q
 
+from core.services.sms import sms_first_name
 from members.models import normalize_phone
 
 
@@ -50,7 +51,7 @@ TARGET_MET = "<met>"
 #: Placeholders a sender may use in the message body. Kept short and obvious —
 #: a treasurer writing this on a phone should not need a reference card.
 PLACEHOLDERS = {
-    "{name}": "the member's name as it appears on the sheet",
+    "{name}": "the member's first name",
     "{group}": "their group as written on the sheet, e.g. CAMP_1",
     "{group_no}": "just the number in it, e.g. 1",
     "{code}": "their rallying code — supporters put it in the bank reference",
@@ -251,7 +252,7 @@ def render_message(template, *, member, campaign, progress=None):
                          ("{group}", group),
                          ("{goal}", _money(row.get("goal", 0))),
                          ("{code}", member.match_code or ""),
-                         ("{name}", member.name)):
+                         ("{name}", sms_first_name(member.name))):
         text = text.replace(token, str(value))
     return text
 

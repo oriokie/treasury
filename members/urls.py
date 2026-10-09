@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from giving.views_contrib import ContributionLinkSmsOneView, ContributionLinkSmsView
 
 urlpatterns = [
     path("members/duplicates/merge-all/", views.BulkMergeView.as_view(), name="member_bulk_merge"),
@@ -8,6 +9,10 @@ urlpatterns = [
     path("members/duplicates/", views.DuplicateReviewView.as_view(), name="member_duplicates"),
     path("members/bulk/", views.MemberBulkView.as_view(), name="member_bulk"),
     path("members/sms/", views.MemberSmsView.as_view(), name="member_sms"),
+    path("members/contribution-link/sms/", ContributionLinkSmsView.as_view(),
+         name="member_contrib_sms"),
+    path("members/<int:pk>/contribution-link/sms/", ContributionLinkSmsOneView.as_view(),
+         name="member_contrib_sms_one"),
     path("members/export/", views.MemberExportView.as_view(), name="member_export"),
     path("members/import/", views.MemberImportView.as_view(), name="member_import"),
 

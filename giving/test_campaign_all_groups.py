@@ -111,7 +111,7 @@ class PlaceholderTests(_Campaign):
 
     def test_the_older_placeholders_are_untouched(self):
         self.assertEqual(self._render("Dear {name}, from {campaign}", "Ann One"),
-                         "Dear Ann One, from Camp All 2026")
+                         "Dear Ann, from Camp All 2026")
 
     def test_group_no_is_offered_to_the_sender(self):
         self.assertIn("{group_no}", campaign_sms.PLACEHOLDERS)

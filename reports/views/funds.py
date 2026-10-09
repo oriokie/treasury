@@ -369,7 +369,7 @@ class FundThankSmsView(ReportAccessMixin, TemplateView):
     def post(self, request, *args, **kwargs):
         from core.roles import is_treasurer
         from core.models import SiteConfig
-        from core.services.sms import send_sms, _format
+        from core.services.sms import send_sms, sms_first_name, _format
         if not is_treasurer(request.user):
             messages.error(request, "Only a treasurer can send the thank-you messages.")
             return redirect("report_fund", pk=kwargs["pk"])
@@ -380,7 +380,7 @@ class FundThankSmsView(ReportAccessMixin, TemplateView):
         period_str = f"{start:%d %b %Y} – {end:%d %b %Y}"
         sent = failed = 0
         for member, total in self._recipients(dept, start, end):
-            msg = _format(template, name=member.name.split()[0] if member.name else "member",
+            msg = _format(template, name=sms_first_name(member.name) or "Friend",
                           amount=f"{total:,.0f}", fund=dept.name,
                           period=period_str, church=church)
             log = send_sms(member.phone, msg)
