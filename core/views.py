@@ -392,6 +392,7 @@ class SettingsView(TreasurerRequiredMixin, View):
             "unplaced_settings": _unplaced_setting_fields(form),
             "recent_sms": SmsLog.objects.all()[:10],
             "cbs_webhook_url": request.build_absolute_uri(reverse("cbs_webhook")),
+            "stk_callback_url": request.build_absolute_uri(reverse("mpesa_stk_callback")),
             "my_telegram_pin": mine.pin if mine else "",
             "telegram_users": tg_users,
             "camp_offering_progress": camp_progress,

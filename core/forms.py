@@ -17,6 +17,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         # (test_siteconfig_form_binds_every_field) asserts this stays true.
         exclude = ["id", "updated_at", "board_config"]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
+                   "contrib_sms_template": forms.Textarea(attrs={"rows": 4}),
                    "receipt_message": forms.Textarea(attrs={"rows": 3}),
                    "pledge_thanks_template": forms.Textarea(attrs={"rows": 2}),
                    "pledge_reminder_template": forms.Textarea(attrs={"rows": 2}),
@@ -33,7 +34,12 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             render_value=True, attrs={"class": "field"})
         self.fields["telegram_bot_token"].widget = forms.PasswordInput(
             render_value=True, attrs={"class": "field"})
+        self.fields["daraja_passkey"].widget = forms.PasswordInput(
+            render_value=True, attrs={"class": "field"})
         from departments.models import Department
+        self.fields["contrib_fund"].queryset = (
+            Department.objects.filter(active=True).order_by("name"))
+        self.fields["contrib_fund"].required = False
         self.fields["telegram_envelope_funds"].queryset = (
             Department.objects.filter(active=True).select_related("parent").order_by("name"))
         self.fields["telegram_envelope_funds"].required = False

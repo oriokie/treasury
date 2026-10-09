@@ -15,7 +15,8 @@
   screen it was downloaded from.{% endcomment %}
   <a class="btn btn-ghost btn-sm" href="{% url 'member_export' %}{% if request.GET.urlencode %}?{{ request.GET.urlencode }}{% endif %}"
      title="Downloads the members currently filtered, in the same order">⬇ Export CSV</a>
-  {% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'member_sms' %}">✉ SMS members</a>{% endif %}
+  {% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'member_sms' %}">✉ SMS members</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'member_contrib_sms' %}">✉ Contribution links</a>{% endif %}
   {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'member_import' %}">⬆ Import</a>
   <a class="btn" href="{% url 'member_create' %}">＋ New member</a>{% endif %}
 </div></div>

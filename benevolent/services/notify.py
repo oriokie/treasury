@@ -255,6 +255,11 @@ def _send_one(event, channel, cfg, *, membership, case, user, extra):
         return None
 
     ctx = _context(event, membership=membership, case=case, user=user, extra=extra)
+    if channel == "SMS":
+        from core.services.sms import sms_first_name
+        for key in ("member_name", "beneficiary", "user_name"):
+            if ctx.get(key):
+                ctx[key] = sms_first_name(ctx[key]) or ctx[key]
     subject, body = template.render(ctx)
 
     notif = BenevolentNotification.objects.create(

@@ -18,6 +18,18 @@ from members.models import normalize_phone
 from core.models import SiteConfig, SmsLog
 
 
+def sms_first_name(full):
+    """The first word of a name, for a text message.
+
+    People are stored as 'EDWIN ORIOKI'. A text should say Edwin, not every
+    name on the record. A one-word name is used as it is, title-cased.
+    """
+    parts = (full or "").split()
+    if not parts:
+        return ""
+    return parts[0].title()
+
+
 def _format(template, **ctx):
     out = template or ""
     for k, v in ctx.items():
@@ -66,7 +78,7 @@ def build_receipt_text(envelope, cfg=None):
     """The receipt message body for an envelope (shared by SMS and WhatsApp)."""
     cfg = cfg or SiteConfig.get()
     return _format(cfg.sms_receipt_template,
-                   name=envelope.contributor_name,
+                   name=sms_first_name(envelope.contributor_name) or "Friend",
                    amount=f"{envelope.total:,.0f}",
                    receipt=envelope.receipt_no,
                    date=envelope.date.strftime("%d %b %Y"),

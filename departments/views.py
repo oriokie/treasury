@@ -1241,14 +1241,14 @@ class DevGroupSmsView(TreasurerRequiredMixin, View):
 
     def post(self, request, pk=None):
         from core.models import SiteConfig
-        from core.services.sms import send_sms, _format
+        from core.services.sms import send_sms, sms_first_name, _format
         group = self._group(pk)
         template = request.POST.get("template") or self.DEFAULT_TEMPLATE
         church = SiteConfig.get().church_name or ""
         sent = failed = 0
         for m in self._recipients(group):
             msg = _format(template,
-                          name=(m.name.split()[0] if m.name else "member"),
+                          name=sms_first_name(m.name) or "Friend",
                           group=(m.dev_group.label if m.dev_group else ""),
                           church=church)
             log = send_sms(m.phone, msg)

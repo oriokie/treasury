@@ -17,6 +17,7 @@
   </div>
   <div class="st-group"><span class="st-grouplabel">Messaging</span>
     <button type="button" class="tab" data-tab="sms">SMS</button>
+    <button type="button" class="tab" data-tab="contrib">Contribution links</button>
     <button type="button" class="tab" data-tab="channels">Channels</button>
     <button type="button" class="tab" data-tab="telegram">Telegram</button>
     <button type="button" class="tab" data-tab="email">Email</button>
@@ -150,6 +151,20 @@
       </div>
       {% if camp_offering_progress %}<div class="help u-mt-sm">Collected so far this year: <strong>{{ CURRENCY }} {{ camp_offering_progress.collected|floatformat:0 }}</strong> of {{ CURRENCY }} {{ camp_offering_progress.goal|floatformat:0 }} ({{ camp_offering_progress.pct }}%).</div>{% endif %}
       <a class="link u-mt-sm u-inline" href="{% url 'report_board_classic' %}">See full budget &amp; goal tracking →</a>
+    </div></div>
+  </section>
+  <section class="tabpane" data-pane="contrib">
+    <div class="card"><div class="bd">
+      <div class="help u-mb-sm">Each member already has a code. This adds a page they can share, so a friend can give by M-Pesa prompt and the gift is credited to that member. Failed and unfinished prompts are listed under Giving → Contribution attempts.</div>
+      <div class="form-grid">
+      {% for f in form %}{% if f.name in 'contrib_links_enabled contrib_fund contrib_title contrib_tagline contrib_verse contrib_verse_ref contrib_quick_amounts contrib_sms_template' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+          {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+          {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+      {% endif %}{% endfor %}
+      </div>
+      <div class="help u-mt-sm">Safaricom calls <span class="mono">{{ stk_callback_url }}</span> when a PIN is entered. That address must be the public https site (the site address on the Telegram tab). The prompt itself uses the Daraja shortcode, passkey and keys on the Channels tab.</div>
     </div></div>
   </section>
   <section class="tabpane" data-pane="sms">
@@ -317,7 +332,7 @@
     <div class="card u-mt"><div class="hd">M-Pesa Daraja (Paybill) <span class="muted">(optional, for future use)</span></div><div class="bd">
       <div class="help u-mb-sm">Pull Paybill transactions directly from Safaricom Daraja for real-time reconciliation, instead of the weekly CSV upload. Leave disabled until your Daraja app credentials are ready.</div>
       <div class="form-grid">
-      {% for f in form %}{% if f.name in 'daraja_enabled daraja_shortcode daraja_consumer_key daraja_consumer_secret daraja_env' %}
+      {% for f in form %}{% if f.name in 'daraja_enabled daraja_shortcode daraja_consumer_key daraja_consumer_secret daraja_passkey daraja_env daraja_txn_type' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>

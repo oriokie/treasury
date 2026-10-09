@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Contribution attempts · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Contribution attempts</h1>
+  <div class="sub">M-Pesa prompts from personal links that did not become a gift — for follow-up</div>
+</div></div>
+
+<div class="btn-row u-mb">
+  <a class="btn btn-sm {% if show != 'open' %}btn-ghost{% endif %}" href="?show=open">To follow up{% if open_count %} <span class="badge">{{ open_count }}</span>{% endif %}</a>
+  <a class="btn btn-sm {% if show != 'done' %}btn-ghost{% endif %}" href="?show=done">Paid</a>
+  <a class="btn btn-sm {% if show != 'all' %}btn-ghost{% endif %}" href="?show=all">All</a>
+</div>
+
+<div class="card"><div class="table-wrap"><table class="ledger">
+  <thead><tr>
+    <th>When</th><th>Member</th><th>Code</th><th>Phone</th><th class="num">Amount</th>
+    <th>Result</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for a in rows %}
+  <tr>
+    <td class="mono">{{ a.created_at|date:"d M Y H:i" }}</td>
+    <td><a class="link" href="{% url 'member_detail' a.member_id %}">{{ a.member.name }}</a></td>
+    <td class="mono">{{ a.code }}</td>
+    <td class="mono">{{ a.phone }}</td>
+    <td class="num mono">{{ a.amount|floatformat:0 }}</td>
+    <td>
+      <span class="pill {% if a.status == 'SUCCESS' %}pill-green{% elif a.status == 'SENT' %}pill-blue{% elif a.status == 'CANCELLED' or a.status == 'TIMEOUT' %}pill-amber{% else %}pill-red{% endif %}">{{ a.get_status_display }}</span>
+      {% if a.result_desc %}<div class="help u-mt-0">{{ a.result_desc }}</div>{% endif %}
+      {% if a.mpesa_receipt %}<div class="mono u-xs">{{ a.mpesa_receipt }}</div>{% endif %}
+      {% if a.transaction_id %}<div class="help u-mt-0">Booked to the ledger.</div>{% endif %}
+    </td>
+    <td>
+      <form method="post" class="u-inline">{% csrf_token %}
+        <input type="hidden" name="id" value="{{ a.pk }}">
+        <input type="hidden" name="show" value="{{ show }}">
+        {% if a.status == "SENT" %}<button class="btn btn-xs btn-ghost" name="action" value="query">Ask M-Pesa</button>{% endif %}
+        {% if a.status != "SUCCESS" and not a.followed_up %}<button class="btn btn-xs" name="action" value="follow">Followed up</button>
+        {% elif a.followed_up %}<button class="btn btn-xs btn-ghost" name="action" value="reopen">Reopen</button>{% endif %}
+      </form>
+    </td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="7" class="empty">{% if show == "open" %}Nothing waiting for follow-up.{% else %}No attempts in this list.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

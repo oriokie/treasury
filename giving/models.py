@@ -860,3 +860,61 @@ class CampaignMessage(models.Model):
         return (self.state != self.State.DONE
                 or (self.intended_count
                     and self.sent_count + self.failed_count < self.intended_count))
+
+
+class ContributionAttempt(models.Model):
+    """One M-Pesa prompt started from a member's personal contribution link.
+
+    A completed prompt becomes a Transaction credited to that member. One that
+    was cancelled, timed out, or rejected stays here so a treasurer can see
+    who tried to give and follow them up. The public page polls by ``token``;
+    Safaricom calls back with ``checkout_request_id``.
+    """
+
+    class Status(models.TextChoices):
+        SENT = "SENT", "Prompt sent — waiting for PIN"
+        SUCCESS = "SUCCESS", "Paid"
+        FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled on the phone"
+        TIMEOUT = "TIMEOUT", "No response"
+        ERROR = "ERROR", "Prompt could not be sent"
+
+    member = models.ForeignKey(
+        "members.Member", on_delete=models.PROTECT, related_name="contribution_attempts")
+    code = models.CharField(max_length=16, db_index=True,
+                            help_text="The member's match code at the time of the prompt.")
+    phone = models.CharField(max_length=12)
+    amount = models.DecimalField(max_digits=12, decimal_places=2,
+                                 validators=[MinValueValidator(Decimal("1"))])
+    fund = models.ForeignKey(
+        "departments.Department", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The fund this gift will be booked to, copied from settings "
+                  "when the prompt was sent.")
+    status = models.CharField(max_length=10, choices=Status.choices,
+                              default=Status.SENT, db_index=True)
+    checkout_request_id = models.CharField(max_length=64, blank=True, db_index=True)
+    merchant_request_id = models.CharField(max_length=64, blank=True)
+    mpesa_receipt = models.CharField(max_length=30, blank=True)
+    result_code = models.CharField(max_length=8, blank=True)
+    result_desc = models.CharField(max_length=255, blank=True)
+    token = models.CharField(max_length=32, unique=True)
+    transaction = models.ForeignKey(
+        "giving.Transaction", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="contribution_attempts")
+    followed_up = models.BooleanField(default=False, db_index=True)
+    followed_up_at = models.DateTimeField(null=True, blank=True)
+    queried_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.code} {self.amount} {self.status}"
+
+    @property
+    def needs_follow_up(self):
+        return (not self.followed_up
+                and self.status != self.Status.SUCCESS)

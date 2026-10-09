@@ -10,7 +10,7 @@ message so nobody is texted twice for the same appeal cycle.
 from decimal import Decimal
 
 from core.models import SiteConfig
-from core.services.sms import send_sms
+from core.services.sms import send_sms, sms_first_name
 from core.services.whatsapp import send_whatsapp
 from pledges.models import PledgeReminderLog
 
@@ -37,7 +37,7 @@ def message_context(pledge, cfg=None):
     """The values a pledge message may draw on."""
     cfg = cfg or SiteConfig.get()
     return {
-        "name": (pledge.member.name or "").title(),
+        "name": sms_first_name(pledge.member.name) or "Friend",
         "amount": f"{pledge.amount:,.0f}",
         "campaign": pledge.campaign.name,
         "church": cfg.church_name or "our church",
@@ -68,7 +68,7 @@ def message_context_for_pledges(pledges, cfg=None):
         bal = p.outstanding if p.outstanding > 0 else p.amount
         parts.append(f"{p.campaign.name} (KES {bal:,.0f})")
     return {
-        "name": (pledges[0].member.name or "").title(),
+        "name": sms_first_name(pledges[0].member.name) or "Friend",
         "amount": f"{total_amount:,.0f}",
         "campaign": "; ".join(parts),
         "church": cfg.church_name or "our church",

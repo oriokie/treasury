@@ -74,6 +74,7 @@ class PortalConfinementMiddleware:
         "/accounts/password_change", "/accounts/forgot-password",
         "/2fa/",
         "/static/", "/media/", "/healthz",
+        "/c/",
     )
 
     def __init__(self, get_response):

@@ -1,8 +1,15 @@
 from django.urls import path
-from . import views
+from . import views, views_contrib
 
 urlpatterns = [
     path("queue/sabbath/", views.SabbathConfirmQueueView.as_view(), name="sabbath_queue"),
+    path("giving/contribution-attempts/", views_contrib.ContributionAttemptsView.as_view(),
+         name="contrib_attempts"),
+    path("c/<str:code>/", views_contrib.ContributionLinkView.as_view(), name="contrib_link"),
+    path("c/status/<str:token>/", views_contrib.ContributionLinkStatusView.as_view(),
+         name="contrib_link_status"),
+    path("api/mpesa/stk/callback/", views_contrib.MpesaStkCallbackView.as_view(),
+         name="mpesa_stk_callback"),
     path("transactions/", views.TransactionListView.as_view(), name="transaction_list"),
     path("transactions/pending-receipt/", views.PendingReceiptView.as_view(),
          name="pending_receipt_view"),

@@ -38,6 +38,12 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.49.0": "Members can share a personal contribution link. Anyone who opens it "
+              "gives by M-Pesa prompt, and the gift is credited to that member "
+              "using their code. Text the link from Members, and see prompts that "
+              "were started but not finished under Giving → Contribution attempts "
+              "so they can be followed up. Text messages now greet people by "
+              "their first name.",
     "3.48.0": "Fixes an update check that reported no release while one was sitting "
               "in plain sight. A mangled GitHub access token — the reported case was "
               "a classic token one character too long — makes GitHub reject every "

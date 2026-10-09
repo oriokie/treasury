@@ -149,6 +149,15 @@ def site_context(request):
         ctx["sabbath_badge"] = txn_badges["sabbath"]
         ctx["debit_badge"] = txn_badges["debit"]
         ctx["held_badge"] = txn_badges["held"]
+        if cfg.contrib_links_enabled and ctx.get("is_treasurer"):
+            try:
+                from giving.models import ContributionAttempt
+                ctx["contrib_attempt_badge"] = (
+                    ContributionAttempt.objects
+                    .exclude(status=ContributionAttempt.Status.SUCCESS)
+                    .filter(followed_up=False).count())
+            except Exception:  # noqa: BLE001
+                ctx["contrib_attempt_badge"] = 0
         exp_badges = Expense.objects.aggregate(
             expense=Count("pk", filter=Q(
                 status=Expense.Status.PENDING,
@@ -197,6 +206,8 @@ _BREADCRUMBS = {
     # People
     "member_list": ("People", "Members"),
     "member_detail": ("People", "Members"),
+    "member_contrib_sms": ("People", "Members"),
+    "contrib_attempts": ("Giving", "Contribution attempts"),
     "pledge_dashboard": ("People", "Pledges"),
     "campaign_list": ("People", "Campaigns"),
     # Funds & setup

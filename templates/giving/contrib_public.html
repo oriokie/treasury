@@ -1,0 +1,297 @@
+{% load humanize %}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Support {{ display_name }} · {{ church }}</title>
+<style>
+  :root {
+    --green: #1a4f3e;
+    --green-deep: #12382c;
+    --gold: #c4a35a;
+    --ink: #1c2420;
+    --muted: #5e6b64;
+    --line: #e4ebe6;
+    --paper: #f4f7f5;
+    --card: #fff;
+    --danger: #8d2b22;
+    --ok: #1a6b45;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--paper);
+  }
+  .band {
+    background: linear-gradient(165deg, var(--green-deep), var(--green) 55%, #246b52);
+    color: #fff;
+    text-align: center;
+    padding: 2.2rem 1.2rem 3.2rem;
+    position: relative;
+  }
+  .band:after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 6px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .mark {
+    width: 64px; height: 64px; margin: 0 auto .8rem;
+    border-radius: 50%;
+    background: #fff;
+    color: var(--green);
+    display: grid; place-items: center;
+    font-family: Georgia, serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+  }
+  .church { font-weight: 700; font-size: 1.15rem; letter-spacing: .01em; }
+  .fund {
+    margin-top: .45rem;
+    font-size: .78rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--gold);
+    font-weight: 700;
+  }
+  .tagline { margin: .35rem 0 0; font-size: .92rem; opacity: .9; }
+  .wrap { max-width: 440px; margin: .85rem auto 2rem; padding: 0 1rem 2rem; }
+  .card {
+    background: var(--card);
+    border-radius: 18px;
+    box-shadow: 0 16px 40px rgba(18, 56, 44, .12);
+    overflow: hidden;
+  }
+  .who {
+    display: flex; gap: .85rem; align-items: center;
+    padding: 1.15rem 1.2rem;
+    background: #f7faf8;
+    border-bottom: 1px solid var(--line);
+  }
+  .avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: var(--green); color: #fff;
+    display: grid; place-items: center;
+    font-family: Georgia, serif; font-size: 1.25rem; flex: none;
+  }
+  .eyebrow { font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .who strong { display: block; font-size: 1.15rem; margin-top: .1rem; }
+  .who .church-sm { color: var(--muted); font-size: .85rem; }
+  .body { padding: 1.15rem 1.2rem 1.3rem; }
+  .lead { margin: 0 0 1rem; color: #31403a; line-height: 1.45; font-size: .95rem; }
+  label { display: block; font-weight: 650; font-size: .88rem; margin: .85rem 0 .3rem; }
+  .field {
+    display: flex; align-items: center; gap: .4rem;
+    border: 1px solid #d5e0da; border-radius: 12px;
+    padding: .15rem .75rem; background: #fff;
+  }
+  .field:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px rgba(26, 79, 62, .12); }
+  .prefix { color: var(--muted); font-weight: 650; }
+  input[type="tel"], input[type="number"] {
+    border: 0; outline: 0; width: 100%; padding: .75rem 0;
+    font-size: 1.05rem; background: transparent; font-family: inherit;
+  }
+  .hint { color: var(--muted); font-size: .78rem; margin: .3rem 0 0; }
+  .quicks { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .45rem; }
+  .quick {
+    border: 1px solid #d5e0da; background: #fff; border-radius: 999px;
+    padding: .4rem .75rem; font: inherit; font-size: .85rem; cursor: pointer; color: var(--ink);
+  }
+  .quick.on { background: var(--green); color: #fff; border-color: var(--green); }
+  button.pay {
+    width: 100%; margin-top: 1.1rem; border: 0; border-radius: 12px;
+    background: var(--green); color: #fff; font: inherit; font-weight: 700;
+    font-size: 1.02rem; padding: .9rem 1rem; cursor: pointer;
+  }
+  button.pay:disabled { opacity: .55; cursor: not-allowed; }
+  .secure { text-align: center; color: var(--muted); font-size: .78rem; margin: .7rem 0 0; line-height: 1.4; }
+  .err {
+    background: #fdecea; color: var(--danger); border-radius: 10px;
+    padding: .7rem .8rem; font-size: .9rem; margin-bottom: .4rem;
+  }
+  .okbox {
+    background: #e8f6ee; color: var(--ok); border-radius: 10px;
+    padding: .85rem .9rem; font-size: .95rem;
+  }
+  .wait { text-align: center; padding: .4rem 0 1rem; }
+  .spin {
+    width: 36px; height: 36px; margin: .2rem auto .8rem;
+    border: 3px solid #d5e0da; border-top-color: var(--green);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .codebox {
+    margin-top: 1rem; background: #f7faf8; border: 1px dashed #c5d5cc;
+    border-radius: 12px; padding: .75rem .85rem;
+  }
+  .codebox .mono { font-family: ui-monospace, monospace; font-size: 1.15rem; letter-spacing: .06em; font-weight: 700; }
+  .rowbtns { display: flex; gap: .4rem; margin-top: .55rem; }
+  .ghost {
+    border: 1px solid #d5e0da; background: #fff; border-radius: 999px;
+    padding: .35rem .7rem; font: inherit; font-size: .8rem; cursor: pointer;
+  }
+  .steps {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: .4rem;
+    padding: 0 1.2rem 1.15rem; border-top: 1px solid var(--line);
+    text-align: center;
+  }
+  .steps-title {
+    grid-column: 1 / -1;
+    font-size: .72rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700; padding-top: 1rem;
+  }
+  .n {
+    width: 22px; height: 22px; border-radius: 50%; margin: 0 auto .3rem;
+    background: #e7f2ec; color: var(--green); font-size: .78rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  .steps span { display: block; font-size: .78rem; color: #31403a; line-height: 1.3; }
+  .verse { text-align: center; padding: 0 1.4rem 1.3rem; color: var(--muted); }
+  .verse p { margin: 0; font-family: Georgia, serif; font-style: italic; color: #31403a; }
+  .verse small { letter-spacing: .08em; text-transform: uppercase; font-size: .68rem; }
+  footer { text-align: center; color: var(--muted); font-size: .78rem; padding-bottom: 1.5rem; }
+</style>
+</head>
+<body>
+<header class="band">
+  <div class="mark" aria-hidden="true">{{ initial }}</div>
+  <div class="church">{{ church }}</div>
+  <div class="fund">{{ title }}</div>
+  {% if tagline %}<p class="tagline">{{ tagline }}</p>{% endif %}
+</header>
+<main class="wrap">
+  <article class="card">
+    <div class="who">
+      <div class="avatar" aria-hidden="true">{{ initial }}</div>
+      <div>
+        <div class="eyebrow">Contribute for</div>
+        <strong>{{ display_name }}</strong>
+        <div class="church-sm">{{ church }}</div>
+      </div>
+    </div>
+
+    {% if attempt and attempt.status == "SUCCESS" %}
+    <div class="body">
+      <div class="okbox">{{ status_message }} This gift is credited to {{ display_name }} (code {{ member.match_code }}).</div>
+      <p class="secure">You can close this page. A receipt is sent to the phone that paid, by M-Pesa.</p>
+    </div>
+    {% elif attempt and attempt.status == "SENT" %}
+    <div class="body" id="waiting" data-token="{{ attempt.token }}">
+      <div class="wait">
+        <div class="spin" aria-hidden="true"></div>
+        <strong>Check the phone</strong>
+        <p class="hint">{{ status_message }} The PIN is entered only on the phone, never on this page.</p>
+      </div>
+      <p class="secure" id="waitNote">Waiting for M-Pesa…</p>
+    </div>
+    {% else %}
+    <form class="body" method="post" id="payform">
+      {% csrf_token %}
+      {% if error %}<div class="err">{{ error }}</div>{% endif %}
+      {% if attempt and status_message %}<div class="err">{{ status_message }}</div>{% endif %}
+      <p class="lead">Enter the Safaricom number that should receive the prompt, and the amount. The gift is credited to <strong>{{ display_name }}</strong> and added to their contribution.</p>
+      <label for="phone">M-Pesa phone number</label>
+      <div class="field"><span class="prefix" aria-hidden="true">☎</span>
+        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel"
+               placeholder="07XXXXXXXX" required value="{{ phone_value|default:'' }}"></div>
+      <p class="hint">The number that will receive the M-Pesa prompt.</p>
+      <label for="amount">Amount (KES)</label>
+      <div class="field"><span class="prefix">KSh</span>
+        <input id="amount" name="amount" type="number" inputmode="numeric" min="1" max="150000" step="1"
+               placeholder="Enter amount" required value="{{ amount_value|default:'' }}"></div>
+      <div class="eyebrow" style="margin-top:.8rem">Quick select</div>
+      <div class="quicks" id="quicks">
+        {% for n in quick %}<button type="button" class="quick" data-amount="{{ n }}">KSh {{ n|intcomma }}</button>{% endfor %}
+      </div>
+      <button class="pay" type="submit" {% if not ready %}disabled{% endif %}>Contribute now</button>
+      {% if not ready %}<p class="hint">The M-Pesa prompt is not available just now. You can still give with the account code below.</p>{% endif %}
+      <p class="secure">Secure payment via M-Pesa. Your PIN is entered only on your phone.</p>
+    </form>
+    {% endif %}
+
+    <div class="body" style="padding-top:0">
+      <div class="codebox">
+        <div class="eyebrow">Member code</div>
+        <div class="mono" id="memberCode">{{ member.match_code }}</div>
+        <p class="hint">{% if shortcode %}Or pay manually: Lipa na M-Pesa → {% if till %}Buy Goods {{ shortcode }}{% else %}Paybill {{ shortcode }}, account <strong>{{ member.match_code }}</strong>{% endif %}.{% else %}Anyone paying for {{ display_name }} can quote this code.{% endif %}</p>
+        <div class="rowbtns">
+          <button type="button" class="ghost" id="copyCode">Copy code</button>
+          <button type="button" class="ghost" id="copyLink">Copy link</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="steps-title">How to give</div>
+      <div><div class="n">1</div><span>Enter phone and amount</span></div>
+      <div><div class="n">2</div><span>Receive the M-Pesa prompt</span></div>
+      <div><div class="n">3</div><span>Enter your PIN to finish</span></div>
+    </div>
+    {% if verse %}
+    <div class="verse">
+      <p>“{{ verse }}”</p>
+      {% if verse_ref %}<small>{{ verse_ref }}</small>{% endif %}
+    </div>
+    {% endif %}
+  </article>
+</main>
+<footer>{{ church }} · {{ title }}</footer>
+<script>
+(function () {
+  var amount = document.getElementById("amount");
+  document.querySelectorAll(".quick").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (!amount) return;
+      amount.value = btn.getAttribute("data-amount");
+      document.querySelectorAll(".quick").forEach(function (b) { b.classList.remove("on"); });
+      btn.classList.add("on");
+      amount.focus();
+    });
+  });
+  function copy(text, el) {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(function () {
+      var prev = el.textContent;
+      el.textContent = "Copied";
+      setTimeout(function () { el.textContent = prev; }, 1400);
+    });
+  }
+  var codeBtn = document.getElementById("copyCode");
+  var linkBtn = document.getElementById("copyLink");
+  if (codeBtn) codeBtn.addEventListener("click", function () {
+    copy(document.getElementById("memberCode").textContent.trim(), codeBtn);
+  });
+  if (linkBtn) linkBtn.addEventListener("click", function () {
+    copy("{{ share_url|escapejs }}", linkBtn);
+  });
+  var waiting = document.getElementById("waiting");
+  if (!waiting) return;
+  var token = waiting.getAttribute("data-token");
+  var note = document.getElementById("waitNote");
+  var tries = 0;
+  function poll() {
+    tries += 1;
+    if (tries > 40) {
+      if (note) note.textContent = "Still waiting. If the prompt disappeared, refresh and try again.";
+      return;
+    }
+    fetch("/c/status/" + encodeURIComponent(token) + "/", {headers: {"Accept": "application/json"}})
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.status && data.status !== "SENT") {
+          window.location.reload();
+          return;
+        }
+        setTimeout(poll, 3000);
+      })
+      .catch(function () { setTimeout(poll, 4000); });
+  }
+  setTimeout(poll, 3000);
+})();
+</script>
+</body>
+</html>

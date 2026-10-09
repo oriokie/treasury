@@ -45,7 +45,7 @@ class WordingTests(_Pledged):
 
     def test_placeholders_are_filled_from_the_pledge(self):
         text = rem.build_pledge_text(self.pledge, kind="THANKS")
-        self.assertIn("Asha Mutua", text)          # titled, not as stored
+        self.assertIn("Asha", text)          # first name, not the whole name
         self.assertIn("50,000", text)
         self.assertIn("Sanctuary Roof", text)
 
@@ -53,14 +53,14 @@ class WordingTests(_Pledged):
         self.cfg.pledge_thanks_template = "Asante {name} kwa ahadi ya {amount}."
         self.cfg.save()
         self.assertEqual(rem.build_pledge_text(self.pledge, kind="THANKS"),
-                         "Asante Asha Mutua kwa ahadi ya 50,000.")
+                         "Asante Asha kwa ahadi ya 50,000.")
 
     def test_an_unknown_placeholder_is_left_alone_rather_than_raising(self):
         """A treasurer editing this is not writing code, and a stray brace must
         not stop a message going out."""
         text = rem.build_pledge_text(self.pledge, kind="THANKS",
                                      template="Hi {name}, {nonsense} here")
-        self.assertIn("Asha Mutua", text)
+        self.assertIn("Asha", text)
         self.assertIn("{nonsense}", text)
 
     def test_a_malformed_template_falls_back_to_the_default(self):
@@ -85,7 +85,7 @@ class PreviewTests(_Pledged):
                             {"kind": "THANKS", "pledge": self.pledge.pk})
         d = r.json()
         self.assertTrue(d["ok"])
-        self.assertIn("Asha Mutua", d["text"])
+        self.assertIn("Asha", d["text"])
         self.assertEqual(d["example"], self.member.name)
 
     def test_it_counts_segments_because_a_church_pays_per_segment(self):
