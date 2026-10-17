@@ -40,6 +40,7 @@
   {% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="whatsapp"><button class="btn btn-ghost btn-sm" title="Send all receipts by WhatsApp">🟢 WhatsApp all</button></form>{% endif %}
   {% endif %}
   {% if can_enter_data %}
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_bulk_reassign' %}?from={{ sabbath|date:'Y-m-d' }}" title="Paste a list of receipt numbers to move to another Sabbath">⇄ Move by numbers</a>
   <form method="post" action="{% url 'sabbath_close' %}" class="u-inline">{% csrf_token %}
     <input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}">
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -50,20 +51,41 @@
 </div>
 
 {% if sec.count %}
+{% if can_enter_data %}
+{# Standalone form — checkboxes/select/button attach via the HTML form= attribute so we never nest this inside the per-row reassign/delete forms. #}
+<form id="bulkMoveForm" method="post" action="{% url 'envelope_bulk_reassign' %}">{% csrf_token %}
+  <input type="hidden" name="from" value="{{ sabbath|date:'Y-m-d' }}">
+  <input type="hidden" name="next" value="{% url 'envelope_sabbath_entries' sabbath|date:'Y-m-d' %}">
+</form>
+{% endif %}
 <div class="card u-mb"><div class="bd">
   <div class="filter-row">
     <input type="search" id="envFilter" class="field" placeholder="Filter by receipt, contributor or fund…" autocomplete="off">
     <span class="muted u-xs" id="filterCount">{{ sec.count }} shown</span>
+    {% if can_enter_data %}
+    <span class="grow"></span>
+    <div class="bulk-move" id="bulkMoveBar">
+      <span class="muted u-xs"><span id="bulkMoveCount">0</span> selected</span>
+      <select name="sabbath" id="bulkMoveTarget" class="field--select move-sel" form="bulkMoveForm" title="Move selected receipts to this Sabbath" disabled>
+        <option value="">Move to…</option>
+        {% for s in move_targets %}{% if s != sabbath %}<option value="{{ s|date:'Y-m-d' }}">{{ s|date:"d M Y" }}</option>{% endif %}{% endfor %}
+      </select>
+      <button type="submit" form="bulkMoveForm" class="btn btn-sm" id="bulkMoveBtn" disabled
+              onclick="return confirm('Move the selected receipts to the chosen Sabbath?');">Move</button>
+    </div>
+    {% endif %}
   </div>
   <div class="ws-table sticky">
     <table class="ledger env-table">
       <thead><tr>
+        {% if can_enter_data %}<th class="chk"><input type="checkbox" id="envCheckAll" title="Select all visible" aria-label="Select all visible"></th>{% endif %}
         <th>Receipt</th><th>Contributor</th><th>Channel</th><th>Funds</th>
         <th class="num">Total</th>{% if can_enter_data %}<th>Sabbath</th><th></th>{% endif %}
       </tr></thead>
       <tbody id="envRows">
       {% for e in sec.items %}
         <tr data-search="{{ e.receipt_no|lower }} {{ e.contributor_name|lower }} {% for l in e.lines.all %}{{ l.department.name|lower }} {% endfor %}"{% if e.is_voided %} class="row-voided"{% endif %}>
+          {% if can_enter_data %}<td class="chk"><input type="checkbox" name="ids" value="{{ e.id }}" class="env-chk" form="bulkMoveForm"></td>{% endif %}
           <td class="mono u-nowrap">
             <a href="{% url 'envelope_detail' e.id %}">{{ e.receipt_no }}</a>
             {% if e.is_voided %}<span class="pill pill-red pill-xs" title="Reversed in the ledger">reversed</span>{% endif %}
@@ -77,6 +99,7 @@
           {% if can_enter_data %}
           <td>
             <form method="post" action="{% url 'envelope_reassign' e.id %}" class="u-m-0">{% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'envelope_sabbath_entries' sabbath|date:'Y-m-d' %}">
               <select name="sabbath" class="field--select move-sel" onchange="this.form.submit()" title="Move this receipt to another Sabbath">
                 {% for s in all_saturdays %}<option value="{{ s|date:'Y-m-d' }}" {% if s == sabbath %}selected{% endif %}>{{ s|date:"d M" }}</option>{% endfor %}
               </select>
@@ -105,7 +128,7 @@
       {% endfor %}
       </tbody>
       <tfoot><tr>
-        <th colspan="4">Total · {{ sec.count }} envelope{{ sec.count|pluralize }}</th>
+        <th colspan="{% if can_enter_data %}5{% else %}4{% endif %}">Total · {{ sec.count }} envelope{{ sec.count|pluralize }}</th>
         <th class="num mono">{{ sec.total|money }}</th>
         {% if can_enter_data %}<th colspan="2"></th>{% endif %}
       </tr></tfoot>
@@ -145,10 +168,14 @@
 .sab-toolbar .grow{flex:1}
 .sab-status{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}
 
-.filter-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem}
+.filter-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
 .filter-row .field{max-width:340px;margin:0}
+.filter-row .grow{flex:1}
+.bulk-move{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}
+.bulk-move .move-sel{min-width:110px}
 
 .env-table td{vertical-align:middle}
+.env-table .chk{width:2rem;text-align:center}
 .env-table .row-voided td{opacity:.55}
 .env-table .row-voided .mono>a{text-decoration:line-through}
 .env-table .move-sel{font-size:.78rem;padding:.15rem .3rem;margin:0;width:auto;min-width:72px}
@@ -169,21 +196,57 @@
 <script>
 (function(){
   var box = document.getElementById("envFilter");
-  if(!box) return;
   var rows = Array.prototype.slice.call(document.querySelectorAll("#envRows tr"));
   var count = document.getElementById("filterCount");
   var none = document.getElementById("noMatch");
-  box.addEventListener("input", function(){
-    var q = box.value.trim().toLowerCase();
-    var shown = 0;
-    rows.forEach(function(tr){
-      var hit = !q || (tr.dataset.search || "").indexOf(q) !== -1;
-      tr.style.display = hit ? "" : "none";
-      if(hit) shown++;
+  var checkAll = document.getElementById("envCheckAll");
+  var moveCount = document.getElementById("bulkMoveCount");
+  var moveTarget = document.getElementById("bulkMoveTarget");
+  var moveBtn = document.getElementById("bulkMoveBtn");
+
+  function visibleChecks(){
+    return rows.filter(function(tr){ return tr.style.display !== "none"; })
+               .map(function(tr){ return tr.querySelector(".env-chk"); })
+               .filter(Boolean);
+  }
+  function updBulk(){
+    var checks = Array.prototype.slice.call(document.querySelectorAll(".env-chk"));
+    var sel = checks.filter(function(c){ return c.checked; });
+    if(moveCount) moveCount.textContent = sel.length;
+    var ready = sel.length > 0 && moveTarget && moveTarget.value;
+    if(moveTarget) moveTarget.disabled = sel.length === 0;
+    if(moveBtn) moveBtn.disabled = !ready;
+    if(checkAll){
+      var vis = visibleChecks();
+      checkAll.checked = vis.length > 0 && vis.every(function(c){ return c.checked; });
+      checkAll.indeterminate = !checkAll.checked && vis.some(function(c){ return c.checked; });
+    }
+  }
+  if(box){
+    box.addEventListener("input", function(){
+      var q = box.value.trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function(tr){
+        var hit = !q || (tr.dataset.search || "").indexOf(q) !== -1;
+        tr.style.display = hit ? "" : "none";
+        if(hit) shown++;
+      });
+      if(count) count.textContent = shown + " shown";
+      if(none) none.style.display = shown ? "none" : "";
+      updBulk();
     });
-    count.textContent = shown + " shown";
-    none.style.display = shown ? "none" : "";
+  }
+  if(checkAll){
+    checkAll.addEventListener("change", function(){
+      visibleChecks().forEach(function(c){ c.checked = checkAll.checked; });
+      updBulk();
+    });
+  }
+  document.addEventListener("change", function(e){
+    if(e.target && (e.target.classList.contains("env-chk") || e.target === moveTarget))
+      updBulk();
   });
+  updBulk();
 })();
 </script>
 {% endblock %}

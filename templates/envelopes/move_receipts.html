@@ -1,0 +1,44 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Move receipts · Envelopes · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <div class="eyebrow">
+      {% if from_sabbath %}<a class="link" href="{% url 'envelope_sabbath_entries' from_sabbath|date:'Y-m-d' %}">← Sabbath {{ from_sabbath|date:"d M Y" }}</a>
+      {% else %}<a class="link" href="{% url 'envelope_list' %}">← Envelopes</a>{% endif %}
+    </div>
+    <h1>Move receipts between Sabbaths</h1>
+    <div class="ws-sub">Paste receipt numbers (one per line, or separated by commas) and pick the Sabbath they belong on.</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:560px">
+  <div class="bd">
+    <form method="post">{% csrf_token %}
+      {% if from_value %}<input type="hidden" name="from" value="{{ from_value }}">{% endif %}
+      <div class="form-row">
+        <label for="id_receipts">Receipt numbers</label>
+        <textarea id="id_receipts" name="receipts" class="field" rows="10" required
+                  placeholder="e.g.&#10;ENV-1001&#10;ENV-1002&#10;ENV-1005"
+                  autofocus>{{ receipts_raw }}</textarea>
+        <div class="help">Whitespace, commas and semicolons all work as separators. Matching is case-insensitive.</div>
+      </div>
+      <div class="form-row">
+        <label for="id_sabbath">Move to Sabbath</label>
+        <select id="id_sabbath" name="sabbath" class="field--select" required>
+          <option value="">Choose…</option>
+          {% for s in target_options %}
+          <option value="{{ s|date:'Y-m-d' }}" {% if from_sabbath and s == from_sabbath %}disabled{% endif %}>{{ s|date:"l, d M Y" }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn" type="submit" onclick="return confirm('Move these receipts to the chosen Sabbath?');">Move receipts</button>
+        {% if from_sabbath %}<a class="btn btn-ghost" href="{% url 'envelope_sabbath_entries' from_sabbath|date:'Y-m-d' %}">Cancel</a>{% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<p class="help u-mt">Prefer ticking rows on the Sabbath page? Open a Sabbath, select the receipts, and use <strong>Move</strong> in the toolbar above the table.</p>
+{% endblock %}

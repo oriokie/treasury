@@ -129,6 +129,13 @@ class SabbathEntriesPageTests(_Seed):
         self.assertContains(r, reverse("envelope_receipts_bulk"))
         self.assertContains(r, reverse("envelope_sabbath_excel"))
         self.assertContains(r, reverse("sabbath_close"))
+        self.assertContains(r, reverse("envelope_bulk_reassign"))
+
+    def test_offers_bulk_select_controls_for_data_entry(self):
+        r = self.client.get(reverse("envelope_sabbath_entries", args=["2026-06-06"]))
+        self.assertContains(r, 'id="bulkMoveForm"')
+        self.assertContains(r, 'name="ids"')
+        self.assertContains(r, 'id="envCheckAll"')
 
     def test_empty_sabbath_renders_without_the_table(self):
         r = self.client.get(reverse("envelope_sabbath_entries", args=["2026-06-13"]))
