@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.49.1
+
+Automated patch release covering: fix: collapse multiline Django comment in sabbath_entries; feat: bulk-move envelope receipts between Sabbaths.
+
 ## 3.49.0
 
 Members can share a personal contribution link. Anyone who opens it gives by M-Pesa prompt, and the gift is credited to that member using their code. Text the link from Members, and see prompts that were started but not finished under Giving → Contribution attempts so they can be followed up. Text messages now greet people by their first name.
