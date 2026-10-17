@@ -229,11 +229,19 @@ def _is_loan_receipt(txn):
 
 
 def post_transaction(txn):
-    """Income receipt. Skips bank-debit-direction rows (represented by expenses)."""
+    """Income receipt. Skips bank-debit-direction rows (represented by expenses).
+
+    Bank memos (``manual_receipt``) are the statement half of a paper receipt —
+    income lives on the envelope counterpart. Any prior journal is withdrawn
+    and nothing is re-posted, so bulk mark-processed does not recreate an
+    INC_OTHER entry for every memo it creates.
+    """
     from giving.models import Transaction
     _replace_entries("transaction", txn.pk)
     if (txn.direction != Transaction.Direction.CREDIT or not txn.confirmed
             or txn.is_reversed or txn.is_reversal):
+        return
+    if getattr(txn, "is_bank_memo", False):
         return
     cash = _acct("CASH")
     dept = txn.department

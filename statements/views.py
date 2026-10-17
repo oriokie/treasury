@@ -280,7 +280,11 @@ class ReconciliationCreateView(DataEntryRequiredMixin, View):
                 book_balance=draft.book_balance,
                 notes=draft.notes, user=request.user)
             messages.success(request, "Reconciliation started — add your items below.")
-            return redirect("reconciliation_detail", pk=rec.pk)
+            # Skip the detail view's immediate re-sync — create already synced.
+            # Without this flag, "Start reconciliation" paid the expensive
+            # managed-item pass twice in one click.
+            return redirect(
+                f"{reverse('reconciliation_detail', args=[rec.pk])}?just_created=1")
         return render(request, self.template_name, {"form": form})
 
 
@@ -536,7 +540,10 @@ class ReconciliationDetailView(ReadAccessMixin, View):
         # auto-populate the petty-cash float and bank-funded staff advances as
         # reconciling items, kept in step with their current values
         from core import roles
-        if roles.can_enter_data(request.user):
+        # Fresh worksheets were just synced in start_reconciliation; re-running
+        # here doubles the history/advance work on the create→detail hop.
+        if (roles.can_enter_data(request.user)
+                and request.GET.get("just_created") != "1"):
             refreshed = _sync_managed_recon_items(rec)
             if refreshed is not None:
                 messages.info(

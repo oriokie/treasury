@@ -56,8 +56,9 @@ def petty_balance_asof(on):
     # float's own balance must not change just because an advance was later
     # accounted for on paper (an expense record, not a cash movement)
     adv_out = Decimal(0)
-    for adv in StaffAdvance.objects.filter(from_petty_cash=True,
-                                           date_issued__lte=on):
+    # Prefetch top-ups: petty_cash_out_asof reads them twice per advance.
+    for adv in StaffAdvance.objects.filter(
+            from_petty_cash=True, date_issued__lte=on).prefetch_related("topups"):
         adv_out += adv.petty_cash_out_asof(on)
     return topups - disb + refunds_in - banked - adv_out
 
@@ -119,18 +120,20 @@ def outstanding_bank_advances_total(as_of=None):
     Petty-funded advances are excluded — those sit in the petty-cash float.
     Top-ups dated after `as_of` are excluded (they hadn't left the bank yet).
 
-    (Moved verbatim from cashbook.views.)"""
+    (Moved verbatim from cashbook.views; topups/expenses are prefetched so a
+    reconciliation sync is not an N+1 per open advance.)"""
     from cashbook.models import Expense, StaffAdvance
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
+    paid = {Expense.Status.APPROVED, Expense.Status.PAID}
     for adv in advances_open_asof(
-            StaffAdvance.objects.filter(date_issued__lte=as_of,
-                                        from_petty_cash=False), as_of):
-        topups_after = (adv.topups.filter(date__gt=as_of)
-                        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-        settled = (adv.expenses.filter(
-            status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
-            date__lte=as_of).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+            StaffAdvance.objects.filter(
+                date_issued__lte=as_of, from_petty_cash=False
+            ).prefetch_related("topups", "expenses"), as_of):
+        topups_after = sum((t.amount for t in adv.topups.all() if t.date > as_of),
+                           Decimal(0))
+        settled = sum((e.amount for e in adv.expenses.all()
+                       if e.status in paid and e.date <= as_of), Decimal(0))
         bal = ((adv.amount or Decimal(0)) - topups_after - settled
                - (adv.returned_to_petty or Decimal(0)))
         if bal > 0:
@@ -145,13 +148,14 @@ def outstanding_petty_advances_total(as_of=None):
     listed as their own cash-at-hand item, or that money silently disappears
     from the worksheet.
 
-    (Moved verbatim from cashbook.views.)"""
+    (Moved verbatim from cashbook.views; related rows prefetched for sync speed.)"""
     from cashbook.models import StaffAdvance
     as_of = as_of or _dt.date.today()
     total = Decimal(0)
     for adv in advances_open_asof(
-            StaffAdvance.objects.filter(from_petty_cash=True,
-                                        date_issued__lte=as_of), as_of):
+            StaffAdvance.objects.filter(
+                from_petty_cash=True, date_issued__lte=as_of
+            ).prefetch_related("topups", "expenses"), as_of):
         try:
             total += adv.petty_outstanding_asof(as_of)
         except Exception:  # noqa: BLE001
