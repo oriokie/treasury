@@ -741,7 +741,7 @@ def receipted_after(as_of=None):
         # true 5,000 on every "as reported" statement.
         return Decimal(0)
     moment = asat.moment_for(as_of)
-    rows = Transaction.objects.filter(
+    rows = list(Transaction.objects.filter(
         channel=Transaction.Channel.BANK,
         direction=Transaction.Direction.CREDIT,
         is_reversed=False, is_reversal=False, date__lte=as_of,
@@ -752,11 +752,26 @@ def receipted_after(as_of=None):
         # balances themselves apply (see fund_balance_parts: department set,
         # confirmed, unreversed, dated up to as_of; the date and the reversal
         # flags are in the filter above)
-        Q(department__isnull=False) & Q(confirmed=True))
+        Q(department__isnull=False) & Q(confirmed=True)
+    ).only("id", "amount"))
+    if not rows:
+        return Decimal(0)
+    # One history query for the whole set, then keep the latest row ≤ moment
+    # per transaction in Python. The previous per-row `.history.filter().first()`
+    # was an N+1 that dominated bank-reconciliation create/detail on busy books.
+    by_id = {t.pk: t for t in rows}
+    Hist = Transaction.history.model
+    latest = {}
+    for h in (Hist.objects.filter(id__in=by_id, history_date__lte=moment)
+              .order_by("id", "-history_date", "-history_id")
+              .only("id", "manual_receipt", "processed_via_envelope",
+                    "department_id", "is_reversed", "history_date",
+                    "history_id").iterator(chunk_size=2000)):
+        if h.id not in latest:
+            latest[h.id] = h
     total = Decimal(0)
-    for t in rows:
-        was = (t.history.filter(history_date__lte=moment)
-               .order_by("-history_date", "-history_id").first())
+    for tid, t in by_id.items():
+        was = latest.get(tid)
         if was is None:
             continue          # no record that far back: do not invent one
         if (not was.manual_receipt and not was.processed_via_envelope

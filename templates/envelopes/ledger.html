@@ -58,10 +58,14 @@
     <div class="es-funds" id="esFunds"></div>
   </div>
 
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. Type a development <strong>group number</strong> on the Development column (resolved when you submit). New rows copy the Channel and Group number above them.</p>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Use <strong>＋</strong> on a row to insert below it — later un-edited receipt numbers shift automatically. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. Type a development <strong>group number</strong> on the Development column (resolved when you submit). New rows copy the Channel and Group number above them.</p>
 
   <div class="btn-row entry-actions">
-    <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ Add 5 rows</button>
+    <div class="add-rows-ctl" title="How many blank rows to append">
+      <label class="muted u-xs" for="addRowCount">Add</label>
+      <input type="number" id="addRowCount" class="field" min="1" max="100" value="5" inputmode="numeric">
+      <button type="button" class="btn btn-ghost btn-sm" id="addRow">＋ rows</button>
+    </div>
     <button type="button" class="btn btn-save" id="submitBtn">Submit for review <span id="saveTotal" class="save-total"></span></button>
     <a class="btn btn-ghost" href="{% url 'envelope_batch_list' %}">Done for now</a>
   </div>
@@ -504,7 +508,8 @@ function makeRow(cols, data){
     tr.appendChild(td);
   });
   const rmTd = document.createElement("td"); rmTd.className = "rm-col";
-  rmTd.innerHTML = `<button type="button" class="btn btn-xs btn-ghost rm">✕</button>`;
+  rmTd.innerHTML = `<button type="button" class="btn btn-xs btn-ghost ins" title="Insert a row below">＋</button>`
+                 + `<button type="button" class="btn btn-xs btn-ghost rm" title="Remove this row">✕</button>`;
   tr.appendChild(rmTd);
 
   wireRowEvents(tr);
@@ -552,9 +557,21 @@ function wireRowEvents(tr){
     });
   });
 
+  const ins = tr.querySelector(".ins");
+  if(ins) ins.addEventListener("click", ()=>{
+    insertRowAfter(tr);
+    const next = tr.nextElementSibling;
+    if(next){
+      const focus = next.querySelector(".cname") || next.querySelector("input,select");
+      if(focus){ focus.focus(); if(focus.select) focus.select(); }
+    }
+  });
   const rm = tr.querySelector(".rm");
   if(rm) rm.addEventListener("click", ()=>{
     if(tr._acBox) tr._acBox.remove();   // moved to document.body — not cleaned up by tr.remove() alone
+    // Deleting does not renumber neighbours — a gap is clearer than silently
+    // rewriting later receipts the cashier may already have written on paper.
+    // Insert (＋) and editing a Receipt still cascade un-edited rows forward.
     tr.remove(); renumber(); updateTotals(); markDirtyAndSave();
   });
   rowTotal(tr);
@@ -961,6 +978,16 @@ function updateTotals(){
   if(st) st.textContent = grand ? ("· KSh " + grand.toLocaleString()) : "";
 }
 
+function inheritFrom(prev){
+  // one-shot inheritance at add/insert time — later edits stay on that row
+  const data = {};
+  if(!prev) return data;
+  const prevChan = prev.querySelector(".chan");
+  if(prevChan) data.chan = prevChan.value;
+  const prevDg = prev.querySelector(".devgrp");
+  if(prevDg && prevDg.value) data.dev_group_number = prevDg.value;
+  return data;
+}
 function addRow(){
   const rows = document.querySelectorAll("#envBody tr");
   const prev = rows.length ? rows[rows.length - 1] : null;
@@ -971,16 +998,8 @@ function addRow(){
   } else if(nextReceipt != null){
     rcpt = String(nextReceipt);
   }
-  // new rows inherit repetitive values (channel, group number) from the
-  // row above, to minimise typing for a run of similar entries — inheritance
-  // is one-shot at add time; later edits to a group number stay on that row.
-  const data = {rcpt: rcpt};
-  if(prev){
-    const prevChan = prev.querySelector(".chan");
-    if(prevChan) data.chan = prevChan.value;
-    const prevDg = prev.querySelector(".devgrp");
-    if(prevDg && prevDg.value) data.dev_group_number = prevDg.value;
-  }
+  const data = inheritFrom(prev);
+  data.rcpt = rcpt;
   const tr = makeRow(visibleOrderedColumns(), data);
   document.getElementById("envBody").appendChild(tr);
   applyPinLeftOffsets();
@@ -989,6 +1008,41 @@ function addRow(){
   return tr;
 }
 function addRows(n){ for(let i=0;i<n;i++) addRow(); }
+
+function insertRowAfter(afterTr){
+  // Insert a blank row under afterTr, then resequence from afterTr so the
+  // new row and every later un-edited receipt shift forward by one. Hand-
+  // edited receipts stay put and become the new anchor for what follows —
+  // same rule as typing a receipt mid-sheet.
+  const data = inheritFrom(afterTr);
+  data.rcpt = "";   // filled by resequenceFrom
+  const tr = makeRow(visibleOrderedColumns(), data);
+  afterTr.after(tr);
+  applyPinLeftOffsets();
+  renumber();
+  resequenceFrom(afterTr);
+  flagDuplicateReceipt();
+  markDirtyAndSave();
+  return tr;
+}
+
+function addRowCount(){
+  const el = document.getElementById("addRowCount");
+  let n = el ? parseInt(el.value, 10) : 5;
+  if(!Number.isFinite(n) || n < 1) n = 1;
+  if(n > 100) n = 100;
+  if(el) el.value = String(n);
+  try{ localStorage.setItem("envLedger.addRows", String(n)); }catch(e){}
+  return n;
+}
+function loadAddRowCount(){
+  const el = document.getElementById("addRowCount");
+  if(!el) return;
+  try{
+    const saved = parseInt(localStorage.getItem("envLedger.addRows"), 10);
+    if(Number.isFinite(saved) && saved >= 1 && saved <= 100) el.value = String(saved);
+  }catch(e){}
+}
 
 // ===========================================================================
 // Autosave: debounced, heartbeat, and a best-effort beacon on unload —
@@ -1319,7 +1373,15 @@ function pinLedgerHead(){
 }
 window.addEventListener("scroll", pinLedgerHead, {passive:true});
 
-document.getElementById("addRow").addEventListener("click", ()=>addRows(5));
+loadAddRowCount();
+document.getElementById("addRow").addEventListener("click", ()=>addRows(addRowCount()));
+const addCountEl = document.getElementById("addRowCount");
+if(addCountEl){
+  addCountEl.addEventListener("change", ()=>addRowCount());
+  addCountEl.addEventListener("keydown", e=>{
+    if(e.key === "Enter"){ e.preventDefault(); addRows(addRowCount()); }
+  });
+}
 document.getElementById("sabDate").addEventListener("change", markDirtyAndSave);
 
 // ===========================================================================
@@ -1458,7 +1520,10 @@ function rebuildHeaderOnly(){
 .xl-grid .rownum{text-align:center;color:var(--muted,#888);background:var(--card-head,#faf7f0);font-size:.72rem}
 .xl-grid td.pinned,.xl-grid th.pinned{position:sticky;z-index:4;background:#fff}
 .xl-grid thead th.pinned{background:var(--accent,#1f5f4f)}
-.xl-grid .rm-col{width:28px;text-align:center}
+.xl-grid .rm-col{width:52px;text-align:center;white-space:nowrap}
+.xl-grid .rm-col .btn{padding:.05rem .28rem}
+.add-rows-ctl{display:inline-flex;align-items:center;gap:.35rem}
+.add-rows-ctl .field{width:3.6rem;margin:0;padding:.2rem .35rem;text-align:center}
 .xl-grid tr.row-mismatch td,.xl-grid tr.row-dup-receipt td,.xl-grid tr.row-bad-group td{background:var(--danger-soft,#fbeceb) !important}
 .meta-cell{position:relative}
 .pos-rel{position:relative}

@@ -1601,18 +1601,43 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
             "manual_receipt": bool(txn.manual_receipt),
         }
 
+    def _index_bank_credits_by_ref(self, refs):
+        """One query covering every pasted/uploaded reference → matches by
+        casefolded key. Avoids the previous per-row OR of four ``__iexact``
+        lookups, which timed out large mark-processed reviews before Apply."""
+        from collections import defaultdict
+        from django.db.models.functions import Lower
+        keys = list({(r or "").casefold() for r in refs if r})
+        by_ref = defaultdict(list)
+        if not keys:
+            return by_ref
+        qs = (Transaction.objects.filter(
+                channel=Transaction.Channel.BANK,
+                direction=Transaction.Direction.CREDIT,
+                is_reversal=False, is_reversed=False)
+              .annotate(_ref=Lower("reference"), _core=Lower("core_ref"),
+                        _bank=Lower("bank_receipt"), _mpesa=Lower("mpesa_ref"))
+              .filter(Q(_ref__in=keys) | Q(_core__in=keys)
+                      | Q(_bank__in=keys) | Q(_mpesa__in=keys)))
+        for t in qs:
+            seen = set()
+            for val in (t.reference, t.core_ref, t.bank_receipt, t.mpesa_ref):
+                if not val:
+                    continue
+                k = val.casefold()
+                if k not in keys or k in seen:
+                    continue
+                seen.add(k)
+                by_ref[k].append(t)
+        return by_ref
+
     def _build_plan(self, rows):
         """Match each (ref, amount) row against bank credits. Returns a list of
         plan dicts (JSON-safe for the session) — nothing is marked here."""
+        by_ref = self._index_bank_credits_by_ref([r for r, _ in rows])
         plan = []
         for ref, raw_amt in rows:
-            qs = Transaction.objects.filter(
-                channel=Transaction.Channel.BANK,
-                direction=Transaction.Direction.CREDIT,
-                is_reversal=False, is_reversed=False).filter(
-                Q(reference__iexact=ref) | Q(core_ref__iexact=ref)
-                | Q(bank_receipt__iexact=ref) | Q(mpesa_ref__iexact=ref))
-            matches = list(qs)
+            matches = list(by_ref.get((ref or "").casefold(), []))
             n = len(matches)
             amt = self._parse_amount(raw_amt)
             amt_s = str(amt) if amt is not None else None
@@ -1714,7 +1739,11 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
             "ready": ready, "problems": problems, "already": already,
         })
 
-    @db_tx.atomic
+    # Apply in chunks so a large paste does not hold one mega-transaction
+    # (and one gunicorn worker) for minutes. Each chunk still uses the same
+    # mark_manual_receipt path as a single-row mark.
+    _APPLY_CHUNK = 40
+
     def _apply(self, request):
         plan = request.session.get(self.SESSION_KEY)
         if not plan:
@@ -1723,21 +1752,15 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
 
         marked = already = not_found = mismatched = ambiguous = 0
         problems = []
+        ok_ids = []
 
         for p in plan:
             status = p.get("status")
             ref = p.get("reference", "")
             if status == "ok":
-                newly = 0
-                for pk in p.get("txn_ids") or []:
-                    txn = Transaction.objects.filter(pk=pk).first()
-                    if not txn:
-                        continue
-                    # Cascade off: the plan already resolved the full split group.
-                    if txn.mark_manual_receipt(value=True, cascade_split=False) > 0:
-                        newly += 1
-                if newly:
-                    marked += newly
+                ids = list(p.get("txn_ids") or [])
+                if ids:
+                    ok_ids.extend(ids)
                 else:
                     already += 1
             elif status == "already":
@@ -1754,6 +1777,32 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
                 ambiguous += 1
                 if len(problems) < 12:
                     problems.append(f"“{ref}”: {p.get('detail') or 'ambiguous'}")
+
+        # Preserve plan order while de-duping (a split group can list an id once
+        # per plan row only, but paste mistakes can still repeat).
+        seen, unique_ids = set(), []
+        for pk in ok_ids:
+            try:
+                pk = int(pk)
+            except (TypeError, ValueError):
+                continue
+            if pk not in seen:
+                seen.add(pk)
+                unique_ids.append(pk)
+
+        for i in range(0, len(unique_ids), self._APPLY_CHUNK):
+            chunk = unique_ids[i:i + self._APPLY_CHUNK]
+            with db_tx.atomic():
+                txns = {t.pk: t for t in Transaction.objects.filter(pk__in=chunk)}
+                for pk in chunk:
+                    txn = txns.get(pk)
+                    if not txn:
+                        continue
+                    # Cascade off: the plan already resolved the full split group.
+                    if txn.mark_manual_receipt(value=True, cascade_split=False) > 0:
+                        marked += 1
+                    else:
+                        already += 1
 
         request.session.pop(self.SESSION_KEY, None)
         parts = [f"{marked} marked as manual receipt"]
