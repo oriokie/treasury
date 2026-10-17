@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.49.2
+
+Automated patch release: feat: speed mark-processed and recon; improve ledger row UX.
+
 ## 3.49.1
 
 Automated patch release covering: fix: collapse multiline Django comment in sabbath_entries; feat: bulk-move envelope receipts between Sabbaths.
