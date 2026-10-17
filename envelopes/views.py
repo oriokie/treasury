@@ -1,6 +1,7 @@
 import io
 import datetime as dt
 import json
+import re
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -240,11 +241,15 @@ class EnvelopeSabbathEntriesView(ReadAccessMixin, View):
         section["closed"] = SabbathClose.objects.filter(sabbath=sabbath).first()
 
         cfg = SiteConfig.get()
+        month_sats = _saturdays_of_month(sabbath.year, sabbath.month)
         return render(request, self.template_name, {
             "sec": section,
             "sabbath": sabbath,
             "month_value": f"{sabbath.year}-{sabbath.month:02d}",
-            "all_saturdays": _saturdays_of_month(sabbath.year, sabbath.month),
+            # Per-row dropdown stays month-scoped (compact); the bulk bar uses
+            # the wider nearby set so a cross-month correction is one click.
+            "all_saturdays": month_sats,
+            "move_targets": _nearby_saturdays(sabbath),
             "prev_sabbath": sabbath - dt.timedelta(days=7),
             "next_sabbath": sabbath + dt.timedelta(days=7),
             "voided_count": sum(1 for e in items if e.is_voided),
@@ -255,38 +260,185 @@ class EnvelopeSabbathEntriesView(ReadAccessMixin, View):
         })
 
 
+def _move_envelope_to_sabbath(env, new_date):
+    """Move one envelope (and its linked cash transactions / ledger posts) to
+    ``new_date``. Shared by the single-row and bulk reassign views so a bulk
+    correction cannot drift from the per-receipt path."""
+    env.date = new_date
+    env.sabbath_week = sabbath_week_of(new_date)
+    env.save(update_fields=["date", "sabbath_week"])
+    # keep any linked cash transactions in step
+    linked = list(Transaction.objects.filter(envelope_lines__envelope=env))
+    Transaction.objects.filter(pk__in=[t.pk for t in linked]).update(
+        date=new_date, sabbath_week=env.sabbath_week)
+    # bulk .update() bypasses the post_save signal that posts to the general
+    # ledger, so without this the ledger would keep showing these receipts
+    # under the old date after the correction — re-post each one so its
+    # journal entry moves to the corrected date too.
+    try:
+        from ledger.services import posting
+        if posting.chart_ready():
+            for t in linked:
+                t.date = new_date
+                posting.post_transaction(t)
+    except Exception:  # noqa: BLE001 — the envelope move itself must still succeed
+        from core.utils import log_exception as _lx; _lx("envelope date move: ledger repost")
+
+
+def _parse_receipt_nos(raw):
+    """Split a pasted block of receipt numbers on commas, whitespace or newlines."""
+    return [p for p in re.split(r"[\s,;]+", (raw or "").strip()) if p]
+
+
+def _nearby_saturdays(sabbath):
+    """Saturdays of this month plus the previous and next month — enough
+    range for the usual correction of a receipt that landed on the wrong week,
+    including across a month boundary."""
+    y, m = sabbath.year, sabbath.month
+    seen, out = set(), []
+    for dm in (-1, 0, 1):
+        mm = m + dm
+        yy = y
+        if mm < 1:
+            mm, yy = 12, y - 1
+        elif mm > 12:
+            mm, yy = 1, y + 1
+        for s in _saturdays_of_month(yy, mm):
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+    out.sort()
+    return out
+
+
+def _safe_next_url(raw, fallback):
+    """Only allow same-origin relative redirects (leading ``/``, not ``//``)."""
+    if raw and raw.startswith("/") and not raw.startswith("//"):
+        return raw
+    return fallback
+
+
 class EnvelopeReassignView(DataEntryRequiredMixin, View):
     """Move an envelope to a different Sabbath."""
 
     def post(self, request, pk):
-        from django.shortcuts import get_object_or_404
         env = get_object_or_404(Envelope, pk=pk)
         try:
             new_date = dt.date.fromisoformat(request.POST.get("sabbath"))
         except (TypeError, ValueError):
             messages.error(request, "Pick a valid Sabbath date.")
             return redirect("envelope_list")
-        env.date = new_date
-        env.sabbath_week = sabbath_week_of(new_date)
-        env.save(update_fields=["date", "sabbath_week"])
-        # keep any linked cash transactions in step
-        linked = list(Transaction.objects.filter(envelope_lines__envelope=env))
-        Transaction.objects.filter(pk__in=[t.pk for t in linked]).update(
-            date=new_date, sabbath_week=env.sabbath_week)
-        # bulk .update() bypasses the post_save signal that posts to the general
-        # ledger, so without this the ledger would keep showing these receipts
-        # under the old date after the correction — re-post each one so its
-        # journal entry moves to the corrected date too.
-        try:
-            from ledger.services import posting
-            if posting.chart_ready():
-                for t in linked:
-                    t.date = new_date
-                    posting.post_transaction(t)
-        except Exception:  # noqa: BLE001 — the envelope move itself must still succeed
-            from core.utils import log_exception as _lx; _lx("envelope date move: ledger repost")
+        _move_envelope_to_sabbath(env, new_date)
         messages.success(request, f"Moved receipt {env.receipt_no} to {new_date:%d %b %Y}.")
-        return redirect(f"{reverse('envelope_list')}?month={new_date.year}-{new_date.month:02d}")
+        fallback = reverse("envelope_sabbath_entries", args=[new_date.isoformat()])
+        return redirect(_safe_next_url(request.POST.get("next"), fallback))
+
+
+class EnvelopeBulkReassignView(DataEntryRequiredMixin, View):
+    """Move many envelopes to another Sabbath — either by checkbox selection
+    on the Sabbath entries page, or by pasting a list of receipt numbers."""
+    template_name = "envelopes/move_receipts.html"
+
+    def get(self, request):
+        from_raw = request.GET.get("from") or ""
+        try:
+            from_sabbath = dt.date.fromisoformat(from_raw) if from_raw else None
+        except ValueError:
+            from_sabbath = None
+        anchor = from_sabbath or _last_saturday()
+        return render(request, self.template_name, {
+            "from_sabbath": from_sabbath,
+            "from_value": from_sabbath.isoformat() if from_sabbath else "",
+            "target_options": _nearby_saturdays(anchor),
+            "receipts_raw": "",
+        })
+
+    def post(self, request):
+        try:
+            new_date = dt.date.fromisoformat(request.POST.get("sabbath") or "")
+        except (TypeError, ValueError):
+            messages.error(request, "Pick a valid Sabbath date.")
+            return self._back(request)
+
+        ids = [int(x) for x in request.POST.getlist("ids") if str(x).isdigit()]
+        receipt_nos = _parse_receipt_nos(request.POST.get("receipts") or "")
+
+        envs = []
+        missing = []
+        if ids:
+            found = {e.pk: e for e in Envelope.objects.filter(pk__in=ids)}
+            for pk in ids:
+                if pk in found:
+                    envs.append(found[pk])
+                else:
+                    missing.append(str(pk))
+        elif receipt_nos:
+            # Case-insensitive match so a pasted list from Excel still hits
+            # receipts stored in a different case.
+            from django.db.models.functions import Upper
+            wanted = list(dict.fromkeys(n.upper() for n in receipt_nos))
+            found_by_no = {
+                e.receipt_no.upper(): e
+                for e in (Envelope.objects.annotate(_ru=Upper("receipt_no"))
+                          .filter(_ru__in=wanted))
+            }
+            for no in receipt_nos:
+                env = found_by_no.get(no.upper())
+                if env:
+                    envs.append(env)
+                else:
+                    missing.append(no)
+        else:
+            messages.error(request, "Select receipts or paste receipt numbers to move.")
+            return self._back(request)
+
+        # De-dupe while preserving order (a paste can list the same number twice).
+        seen, unique = set(), []
+        for e in envs:
+            if e.pk not in seen:
+                seen.add(e.pk)
+                unique.append(e)
+        envs = unique
+
+        already = [e for e in envs if e.date == new_date]
+        to_move = [e for e in envs if e.date != new_date]
+        for env in to_move:
+            _move_envelope_to_sabbath(env, new_date)
+
+        if to_move:
+            messages.success(
+                request,
+                f"Moved {len(to_move)} receipt{'s' if len(to_move) != 1 else ''} "
+                f"to {new_date:%d %b %Y}.")
+        if already and not to_move:
+            messages.info(request, "Those receipts are already on that Sabbath.")
+        elif already:
+            messages.info(
+                request,
+                f"{len(already)} receipt{'s' if len(already) != 1 else ''} "
+                f"already on {new_date:%d %b %Y} — left alone.")
+        if missing:
+            sample = ", ".join(missing[:8])
+            extra = f" (+{len(missing) - 8} more)" if len(missing) > 8 else ""
+            messages.warning(request, f"Not found: {sample}{extra}.")
+
+        fallback = reverse("envelope_sabbath_entries", args=[new_date.isoformat()])
+        return redirect(_safe_next_url(request.POST.get("next"), fallback))
+
+    def _back(self, request):
+        """Return to the referring Sabbath page when we know it, else the
+        paste form. Used when the POST cannot proceed (bad date / nothing
+        selected) so the treasurer is not dumped on the month overview."""
+        from_raw = (request.POST.get("from") or request.GET.get("from") or "")
+        try:
+            dt.date.fromisoformat(from_raw)
+        except ValueError:
+            return redirect("envelope_bulk_reassign")
+        # The paste form always posts a ``receipts`` field; the checkbox form
+        # on the Sabbath page never does. Use that to decide where to land.
+        if "receipts" in request.POST:
+            return redirect(f"{reverse('envelope_bulk_reassign')}?from={from_raw}")
+        return redirect("envelope_sabbath_entries", date=from_raw)
 
 
 class EnvelopeDetailView(ReadAccessMixin, DetailView):
