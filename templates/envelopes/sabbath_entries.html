@@ -52,8 +52,7 @@
 
 {% if sec.count %}
 {% if can_enter_data %}
-{# Standalone form — checkboxes/select/button attach via the HTML form= attribute
-   so we never nest this inside the per-row reassign/delete forms. #}
+{# Standalone form — checkboxes/select/button attach via the HTML form= attribute so we never nest this inside the per-row reassign/delete forms. #}
 <form id="bulkMoveForm" method="post" action="{% url 'envelope_bulk_reassign' %}">{% csrf_token %}
   <input type="hidden" name="from" value="{{ sabbath|date:'Y-m-d' }}">
   <input type="hidden" name="next" value="{% url 'envelope_sabbath_entries' sabbath|date:'Y-m-d' %}">
