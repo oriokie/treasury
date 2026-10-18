@@ -11,5 +11,6 @@
   "3.49.2": "Automated patch release: feat: speed mark-processed and recon; improve ledger row UX.",
   "3.49.3": "Automated patch release: feat: fund leaders directory with SMS and email statements.",
   "3.49.4": "Automated patch release: feat: suggest and assign dev groups; month multi-sheet Excel.",
-  "3.49.5": "Automated patch release covering: fix: one consolidated fund-leader SMS/email with YTD Excel; feat: near-name matching, assign-all suggested, builder gift floor."
+  "3.49.5": "Automated patch release covering: fix: one consolidated fund-leader SMS/email with YTD Excel; feat: near-name matching, assign-all suggested, builder gift floor.",
+  "3.49.6": "Automated patch release: feat: add detailed ledger sheets to fund-leader Excel."
 }
