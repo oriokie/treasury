@@ -40,7 +40,7 @@
               <input type="hidden" name="channel" value="sms">
               <input type="hidden" name="start" value="{{ default_start }}">
               <input type="hidden" name="end" value="{{ default_end }}">
-              <button class="link" type="submit" title="SMS month-to-date balances for linked funds">SMS</button>
+              <button class="link" type="submit" title="One SMS with year-to-date consolidated balances">SMS</button>
             </form>
             {% endif %}
             {% if email_enabled and l.has_valid_email %}
@@ -48,7 +48,7 @@
               <input type="hidden" name="channel" value="email">
               <input type="hidden" name="start" value="{{ default_start }}">
               <input type="hidden" name="end" value="{{ default_end }}">
-              <button class="link" type="submit" title="Email month-to-date statements (sub-accounts separately)">Email</button>
+              <button class="link" type="submit" title="One email with year-to-date Excel (main + sub-accounts)">Email</button>
             </form>
             {% endif %}
           {% endif %}
@@ -67,6 +67,6 @@
 </div>
 {% endif %}
 
-<p class="help u-mt">SMS sends opening, receipts, expenses and closing for each linked fund. Email sends the parent fund statement, then each active sub-account with activity as its own message. Leaders without a valid contact or with no linked fund are skipped.</p>
+<p class="help u-mt">Each leader gets one SMS (consolidated totals for parent + sub-accounts) or one email with an Excel attachment of the main fund and every sub-account. Defaults to year-to-date. Leaders without a valid contact or with no linked fund are skipped.</p>
 <style>.row-muted td{opacity:.55}.u-inline{display:inline}</style>
 {% endblock %}

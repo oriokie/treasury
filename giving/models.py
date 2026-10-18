@@ -699,8 +699,12 @@ class Campaign(models.Model):
                 if t.strip()]
 
     def match_member(self, name, phone):
-        """Phone first (if it identifies exactly one member), else a unique name."""
-        from members.models import name_key, normalize_phone
+        """Phone first (if it identifies exactly one member), else a unique name.
+
+        Name matching accepts near forms (titles, middle initials) when they
+        resolve to exactly one sheet row — same rule as campaign giving totals.
+        """
+        from members.models import name_key, names_near_match, normalize_phone
         ph = normalize_phone(phone)
         if ph:
             qs = self.members.filter(phone=ph)
@@ -711,6 +715,10 @@ class Campaign(models.Model):
             qs = self.members.filter(name_key=key)
             if qs.count() == 1:
                 return qs.first()
+        if name:
+            hits = [m for m in self.members.all() if names_near_match(name, m.name)]
+            if len(hits) == 1:
+                return hits[0]
         return None
 
     def subgroup_department(self, group_name):

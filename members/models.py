@@ -47,6 +47,44 @@ def name_key(raw):
     return " ".join(sorted(n.split()))
 
 
+# Titles / honorifics dropped when comparing "near" names so
+# ``ELDER JOHN MOTARI`` matches ``JOHN MOTARI``.
+_NAME_TITLE_TOKENS = frozenset({
+    "ELDER", "ELD", "PASTOR", "PTR", "PS", "REV", "REVEREND",
+    "DR", "MR", "MRS", "MS", "MISS", "PROF", "HON", "SIR",
+    "BROTHER", "SISTER", "BRO", "SIS", "EVANGELIST", "EV",
+    "DEACON", "DEACONESS", "APOSTLE", "BISHOP",
+})
+
+
+def name_core_tokens(raw):
+    """Significant name tokens for near matching.
+
+    Drops titles and single-letter middle initials so ``EVALYNE M UHURU`` and
+    ``EVALYNE UHURU`` share the same core set.
+    """
+    if not raw:
+        return frozenset()
+    n = re.sub(r"[^A-Z ]", " ", str(raw).upper())
+    return frozenset(
+        t for t in n.split()
+        if t and t not in _NAME_TITLE_TOKENS and len(t) > 1)
+
+
+def names_near_match(a, b):
+    """True when two names are the same person with optional titles/initials.
+
+    Requires at least two significant tokens on each side after stripping
+    titles and single-letter initials, and one token set must be a subset of
+    the other (so ``JOHN MOTARI`` matches ``ELDER JOHN MOTARI`` but not
+    ``JOHN SMITH``).
+    """
+    ta, tb = name_core_tokens(a), name_core_tokens(b)
+    if len(ta) < 2 or len(tb) < 2:
+        return bool(ta) and ta == tb
+    return ta <= tb or tb <= ta
+
+
 def mask_phone(raw, visible=3):
     """Mask a phone number for privacy, keeping only the last `visible` digits,
     e.g. '254712345678' -> '*********678'. Used when a departmental leader views

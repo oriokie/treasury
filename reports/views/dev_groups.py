@@ -53,13 +53,56 @@ class DevGroupUnassignedView(RightRequiredMixin, TemplateView):
             t.suggested_group = g
             t.suggest_reason = reason
         ctx["items"] = items
+        ctx["suggested_count"] = sum(1 for t in items if t.suggested_group)
         ctx["count"] = qs.count()
         ctx["total"] = qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
         ctx["groups"] = DevelopmentGroup.objects.filter(active=True).order_by("number")
         return ctx
 
+    def _sync_envelope_groups(self, ids, grp):
+        try:
+            from envelopes.models import EnvelopeLine
+            EnvelopeLine.objects.filter(
+                transaction_id__in=ids, dev_group__isnull=True
+            ).update(dev_group=grp)
+        except Exception:
+            from core.utils import log_exception as _lx
+            _lx("reports/views.py")
+
     def post(self, request):
+        from collections import defaultdict
         from departments.models import DevelopmentGroup
+        from ..services.dev_assign import suggest_groups_for_many
+
+        # Apply each row's suggested group in one go (no bulk group picker).
+        if request.POST.get("assign_suggested"):
+            items = list(self._qs()[:2000])
+            suggestions = suggest_groups_for_many(items)
+            by_group = defaultdict(list)
+            for t in items:
+                g, _ = suggestions.get(t.id, (None, ""))
+                if g:
+                    by_group[g.id].append(t.id)
+            if not by_group:
+                messages.error(
+                    request,
+                    "No suggested groups to apply — none of the unassigned "
+                    "offerings have a clear suggestion.")
+                return redirect("dev_unassigned")
+            n = 0
+            for gid, ids in by_group.items():
+                grp = DevelopmentGroup.objects.filter(pk=gid).first()
+                if not grp:
+                    continue
+                n += (Transaction.objects
+                      .filter(id__in=ids, dev_group__isnull=True)
+                      .update(dev_group=grp))
+                self._sync_envelope_groups(ids, grp)
+            messages.success(
+                request,
+                f"Assigned {n} development contribution(s) using suggested groups.")
+            return redirect("dev_unassigned")
+
         gid = request.POST.get("dev_group")
         # Per-row Assign posts a single ``txn``; bulk posts a list (or ``all``).
         ids = request.POST.getlist("txn")
@@ -71,15 +114,7 @@ class DevGroupUnassignedView(RightRequiredMixin, TemplateView):
             return redirect("dev_unassigned")
         n = (Transaction.objects.filter(id__in=ids, dev_group__isnull=True)
              .update(dev_group=grp))
-        # keep the linked envelope lines in step (guarded: tolerate older schemas
-        # where EnvelopeLine has no dev_group column)
-        try:
-            from envelopes.models import EnvelopeLine
-            EnvelopeLine.objects.filter(transaction_id__in=ids,
-                                        dev_group__isnull=True).update(dev_group=grp)
-        except Exception:
-            from core.utils import log_exception as _lx; _lx('reports/views.py')
-            pass
+        self._sync_envelope_groups(ids, grp)
         messages.success(request, f"Assigned {n} development contribution(s) to {grp.label}.")
         return redirect("dev_unassigned")
 
@@ -120,21 +155,43 @@ class DevGroupBuilderView(RightRequiredMixin, TemplateView):
     """Propose N development groups balanced by members' historical development
     giving (capability), so each group carries a comparable giving capacity. By
     default this only produces a downloadable Excel/CSV proposal and changes no
-    data; a treasurer can enable the live "apply" action in settings."""
+    data; a treasurer can enable the live "apply" action in settings.
+
+    Members with fewer than ``MIN_GIFTS`` development contributions are left out
+    of the balance (they would distort capacity) and listed separately.
+    """
     required_right = "build_dev_groups"
     template_name = "reports/dev_group_builder.html"
+    MIN_GIFTS = 5
 
-    def _member_totals(self):
-        from departments.models import Department
+    def _member_rows(self):
+        """``(eligible, low_activity)`` for balancing vs the red side list.
+
+        Each item is ``(id, name, phone, amount, gift_count)``.
+        """
         from members.models import Member
-        rows = {r["member"]: r["t"] for r in (Transaction.objects.filter(
-            member__isnull=False, direction=Transaction.Direction.CREDIT,
-            confirmed=True, department__category=Department.Category.DEVELOPMENT)
-            .values("member").annotate(t=Sum("amount")))}
-        items = []
+        rows = {r["member"]: (r["t"] or Decimal(0), r["n"] or 0)
+                for r in (Transaction.objects.filter(
+                    member__isnull=False, direction=Transaction.Direction.CREDIT,
+                    confirmed=True, excluded_from_income=False,
+                    department__category=Department.Category.DEVELOPMENT)
+                    .values("member")
+                    .annotate(t=Sum("amount"), n=Count("id")))}
+        eligible, low = [], []
         for m in Member.objects.filter(active=True):
-            items.append((m.id, m.name, m.phone or "", rows.get(m.id, Decimal(0))))
-        return items
+            amt, n = rows.get(m.id, (Decimal(0), 0))
+            row = (m.id, m.name, m.phone or "", amt, n)
+            if n >= self.MIN_GIFTS:
+                eligible.append(row)
+            else:
+                low.append(row)
+        low.sort(key=lambda x: (x[4], x[3]), reverse=True)
+        return eligible, low
+
+    @staticmethod
+    def _partition_items(rows):
+        """Strip gift_count for ``balanced_partition`` (id, name, phone, weight)."""
+        return [(mid, name, phone, amt) for mid, name, phone, amt, _n in rows]
 
     def get(self, request, *args, **kwargs):
         if request.GET.get("export") in ("xlsx", "csv"):
@@ -148,11 +205,17 @@ class DevGroupBuilderView(RightRequiredMixin, TemplateView):
             n = int(self.request.GET.get("n") or 0)
         except ValueError:
             n = 0
-        items = self._member_totals()
-        ctx["member_count"] = len(items)
-        ctx["total_capability"] = sum((w for _, _, _, w in items), Decimal(0))
+        eligible, low = self._member_rows()
+        ctx["member_count"] = len(eligible)
+        ctx["low_activity"] = [
+            {"id": mid, "name": name, "phone": phone, "weight": amt, "gifts": n}
+            for mid, name, phone, amt, n in low]
+        ctx["low_activity_count"] = len(low)
+        ctx["min_gifts"] = self.MIN_GIFTS
+        ctx["total_capability"] = sum((w for _, _, _, w, _ in eligible), Decimal(0))
         ctx["n"] = n
         ctx["apply_enabled"] = SiteConfig.get().dev_group_builder_apply
+        items = self._partition_items(eligible)
         if 2 <= n <= 50 and items:
             buckets = _balanced_partition(items, n)
             for i, b in enumerate(buckets, 1):
@@ -169,19 +232,32 @@ class DevGroupBuilderView(RightRequiredMixin, TemplateView):
             n = int(request.GET.get("n") or 0)
         except ValueError:
             n = 0
-        items = self._member_totals()
-        header = ["Group", "Member", "Phone", "Development giving (capability)"]
+        eligible, low = self._member_rows()
+        items = self._partition_items(eligible)
+        header = ["Group", "Member", "Phone", "Development giving (capability)",
+                  "Gifts", "Status"]
         rows = []
         if 2 <= n <= 50 and items:
             buckets = _balanced_partition(items, n)
+            gift_by_id = {mid: n for mid, _, _, _, n in eligible}
             for i, b in enumerate(buckets, 1):
                 for m in sorted(b["members"], key=lambda x: x["weight"], reverse=True):
-                    rows.append([f"Group {i}", m["name"], m["phone"], float(m["weight"])])
+                    rows.append([f"Group {i}", m["name"], m["phone"],
+                                 float(m["weight"]), gift_by_id.get(m["id"], 0),
+                                 "Balanced"])
         else:
-            # no group count given — just the member list with their capability
-            header = ["Member", "Phone", "Development giving (capability)"]
-            for mid, name, phone, w in sorted(items, key=lambda x: x[3], reverse=True):
-                rows.append([name, phone, float(w)])
+            header = ["Member", "Phone", "Development giving (capability)",
+                      "Gifts", "Status"]
+            for mid, name, phone, w, n_gifts in sorted(
+                    eligible, key=lambda x: x[3], reverse=True):
+                rows.append([name, phone, float(w), n_gifts, "Eligible"])
+        for mid, name, phone, w, n_gifts in low:
+            if 2 <= n <= 50 and items:
+                rows.append(["—", name, phone, float(w), n_gifts,
+                             f"Low activity (<{self.MIN_GIFTS} gifts)"])
+            else:
+                rows.append([name, phone, float(w), n_gifts,
+                             f"Low activity (<{self.MIN_GIFTS} gifts)"])
         fname = f"development-groups-{n}" if n else "development-members"
         if request.GET["export"] == "csv":
             return csv_response(fname + ".csv", header, rows)
@@ -207,9 +283,13 @@ class DevGroupBuilderView(RightRequiredMixin, TemplateView):
             messages.error(request, "Choose between 2 and 50 groups.")
             return redirect(f"{request.path}?n={n}")
         prefix = (request.POST.get("prefix") or "Group").strip()[:40]
-        items = self._member_totals()
+        eligible, low = self._member_rows()
+        items = self._partition_items(eligible)
         if not items:
-            messages.error(request, "There are no active members to group.")
+            messages.error(
+                request,
+                f"No members with at least {self.MIN_GIFTS} development "
+                "contributions to group.")
             return redirect(request.path)
         buckets = _balanced_partition(items, n)
         with transaction.atomic():
@@ -222,8 +302,11 @@ class DevGroupBuilderView(RightRequiredMixin, TemplateView):
                 grp.save()
                 ids = [m["id"] for m in b["members"]]
                 Member.objects.filter(id__in=ids).update(dev_group=grp)
-        messages.success(request, f"Built {n} balanced development groups from "
-            f"{len(items)} members' giving history.")
+        skipped = len(low)
+        messages.success(
+            request,
+            f"Built {n} balanced development groups from {len(items)} members "
+            f"({skipped} with fewer than {self.MIN_GIFTS} gifts left unassigned).")
         return redirect("report_dev_groups")
 
 class DevGroupMembersView(PeriodMixin, TemplateView):

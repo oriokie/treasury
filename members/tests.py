@@ -32,6 +32,19 @@ class NameKeyTests(TestCase):
         self.assertEqual(name_key("Edwin  Orioki"), name_key("edwin, orioki"))
 
 
+class NamesNearMatchTests(TestCase):
+    def test_title_and_middle_initial(self):
+        from members.models import names_near_match
+        self.assertTrue(names_near_match("ELDER JOHN MOTARI", "JOHN MOTARI"))
+        self.assertTrue(names_near_match("EVALYNE UHURU", "EVALYNE M UHURU"))
+        self.assertTrue(names_near_match("JOHN MOTARI", "MOTARI JOHN"))
+
+    def test_different_people_do_not_match(self):
+        from members.models import names_near_match
+        self.assertFalse(names_near_match("JOHN MOTARI", "JOHN SMITH"))
+        self.assertFalse(names_near_match("JOHN", "JOHN MOTARI"))
+
+
 class MemberMatchingTests(TestCase):
     def setUp(self):
         self.existing = Member.objects.create(
