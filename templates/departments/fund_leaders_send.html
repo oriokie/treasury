@@ -7,9 +7,9 @@
     <h1>{% if channel == 'email' %}Email statements{% else %}SMS balances{% endif %}</h1>
     <div class="ws-sub">
       {% if channel == 'email' %}
-      Each selected leader with a valid email receives the statement for every linked fund, then a separate email for each sub-account that had activity.
+      Each selected leader gets <strong>one email</strong> with consolidated totals and an Excel attachment (main fund + every sub-account), for the period below (defaults to year-to-date).
       {% else %}
-      Each selected leader with a valid phone receives one SMS per linked fund: opening, receipts, expenses and closing for the period.
+      Each selected leader gets <strong>one SMS</strong> with consolidated opening, receipts, expenses and closing (parent + sub-accounts rolled together). Defaults to year-to-date.
       {% endif %}
     </div>
   </div>
