@@ -8,7 +8,7 @@
       <h1>Funds &amp; departments</h1>
       <div class="desc">Two fund types: Trust (remitted to the field) and Local (kept by the church)</div>
     </div>
-    <div class="rpt-actions no-print">{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a> <a class="btn btn-ghost btn-sm" href="{% url 'fund_structure_import' %}">⬆ Import funds &amp; sub-accounts</a> <a class="btn btn-ghost btn-sm" href="{% url 'bulk_fund_import' %}">⬆ Bulk budget import</a> <a class="btn btn-ghost btn-sm" href="{% url 'dev_group_sms' %}">✉ SMS dev groups</a> <a class="btn btn-ghost btn-sm" href="{% url 'historical_accounts' %}">⌂ Closed / archived</a> <a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div>
+    <div class="rpt-actions no-print">{% if is_treasurer %}<a class="btn" href="{% url 'department_create' %}">＋ New fund</a> <a class="btn btn-ghost btn-sm" href="{% url 'fund_leader_list' %}">Leaders</a> <a class="btn btn-ghost btn-sm" href="{% url 'fund_structure_import' %}">⬆ Import funds &amp; sub-accounts</a> <a class="btn btn-ghost btn-sm" href="{% url 'bulk_fund_import' %}">⬆ Bulk budget import</a> <a class="btn btn-ghost btn-sm" href="{% url 'dev_group_sms' %}">✉ SMS dev groups</a> <a class="btn btn-ghost btn-sm" href="{% url 'historical_accounts' %}">⌂ Closed / archived</a> <a class="btn btn-ghost btn-sm" href="{% url 'budget' %}">◷ Budgeting</a>{% endif %}</div>
   </div>
   <div class="rule"></div>
 </div>

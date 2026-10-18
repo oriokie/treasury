@@ -1,0 +1,72 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Leaders · Funds · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <div class="eyebrow">Funds &amp; setup · {{ SITE_NAME }}</div>
+    <h1>Leaders</h1>
+    <div class="ws-sub">Store fund and group leaders’ contacts, then SMS balances or email statements for a period. Only leaders with a valid phone or email are messaged.</div>
+  </div>
+  <div class="ws-actions">
+    {% if is_treasurer %}
+    <a class="btn" href="{% url 'fund_leader_create' %}">＋ Add leader</a>
+    {% if sms_enabled %}<a class="btn btn-ghost btn-sm" href="{% url 'fund_leader_send' %}?channel=sms">✉ SMS statements ({{ sms_ready }})</a>{% endif %}
+    {% if email_enabled %}<a class="btn btn-ghost btn-sm" href="{% url 'fund_leader_send' %}?channel=email">✉ Email statements ({{ email_ready }})</a>{% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if leaders %}
+<div class="card"><div class="bd">
+  <div class="table-wrap"><table class="ledger">
+    <thead><tr>
+      <th>Name</th><th>Phone</th><th>Email</th><th>Funds</th><th>Groups</th>
+      {% if is_treasurer %}<th></th>{% endif %}
+    </tr></thead>
+    <tbody>
+    {% for l in leaders %}
+      <tr{% if not l.active %} class="row-muted"{% endif %}>
+        <td><strong>{{ l.name }}</strong>{% if not l.active %} <span class="pill pill-grey">inactive</span>{% endif %}</td>
+        <td class="mono">{% if l.has_valid_phone %}{{ l.phone }}{% elif l.phone %}<span class="muted" title="Not a valid Kenyan mobile">{{ l.phone }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if l.has_valid_email %}{{ l.email }}{% elif l.email %}<span class="muted">{{ l.email }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="u-xs">{% for d in l.departments.all %}<span class="pill pill-grey">{{ d.name }}</span> {% empty %}<span class="muted">none</span>{% endfor %}</td>
+        <td class="u-xs">{% for g in l.groups.all %}<span class="pill pill-grey">{{ g.label }}</span> {% empty %}<span class="muted">—</span>{% endfor %}</td>
+        {% if is_treasurer %}
+        <td class="num u-nowrap">
+          <a class="link" href="{% url 'fund_leader_edit' l.id %}">Edit</a>
+          {% if l.active and l.departments.exists %}
+            {% if sms_enabled and l.has_valid_phone %}
+            <form method="post" action="{% url 'fund_leader_send_one' l.id %}" class="u-inline">{% csrf_token %}
+              <input type="hidden" name="channel" value="sms">
+              <input type="hidden" name="start" value="{{ default_start }}">
+              <input type="hidden" name="end" value="{{ default_end }}">
+              <button class="link" type="submit" title="SMS month-to-date balances for linked funds">SMS</button>
+            </form>
+            {% endif %}
+            {% if email_enabled and l.has_valid_email %}
+            <form method="post" action="{% url 'fund_leader_send_one' l.id %}" class="u-inline">{% csrf_token %}
+              <input type="hidden" name="channel" value="email">
+              <input type="hidden" name="start" value="{{ default_start }}">
+              <input type="hidden" name="end" value="{{ default_end }}">
+              <button class="link" type="submit" title="Email month-to-date statements (sub-accounts separately)">Email</button>
+            </form>
+            {% endif %}
+          {% endif %}
+          <a class="link" href="{% url 'fund_leader_delete' l.id %}">Delete</a>
+        </td>
+        {% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+{% else %}
+<div class="empty"><div class="big">👤</div>
+  No leaders yet.
+  {% if is_treasurer %}<div class="u-mt"><a class="btn" href="{% url 'fund_leader_create' %}">＋ Add the first leader</a></div>{% endif %}
+</div>
+{% endif %}
+
+<p class="help u-mt">SMS sends opening, receipts, expenses and closing for each linked fund. Email sends the parent fund statement, then each active sub-account with activity as its own message. Leaders without a valid contact or with no linked fund are skipped.</p>
+<style>.row-muted td{opacity:.55}.u-inline{display:inline}</style>
+{% endblock %}

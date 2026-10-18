@@ -1,6 +1,6 @@
 from django import forms
 from accounts.forms import StyledFormMixin
-from .models import Department, DevelopmentGroup
+from .models import Department, DevelopmentGroup, FundLeader
 
 
 class DepartmentForm(StyledFormMixin, forms.ModelForm):
@@ -75,3 +75,75 @@ class DevelopmentGroupForm(StyledFormMixin, forms.ModelForm):
                 help_text="Put this code in a bank / M-Pesa reference to "
                           "auto-allocate to this development group.")
         self._style()
+
+
+class FundLeaderForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = FundLeader
+        fields = ["name", "phone", "email", "active", "notes",
+                  "departments", "groups"]
+        widgets = {
+            "departments": forms.CheckboxSelectMultiple,
+            "groups": forms.CheckboxSelectMultiple,
+            "notes": forms.TextInput,
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["departments"].queryset = (
+            Department.objects.filter(active=True).order_by("name"))
+        self.fields["departments"].required = False
+        self.fields["departments"].help_text = (
+            "Funds this leader receives statements for. Tick a parent fund to "
+            "include its sub-accounts as separate emails.")
+        self.fields["groups"].queryset = (
+            DevelopmentGroup.objects.filter(active=True).order_by("number"))
+        self.fields["groups"].required = False
+        self.fields["groups"].label = "Development groups"
+        self.fields["phone"].widget.attrs["placeholder"] = "07XXXXXXXX"
+        self.fields["email"].widget.attrs["placeholder"] = "optional@example.com"
+        self._style()
+
+    def clean_phone(self):
+        from members.models import normalize_phone
+        raw = (self.cleaned_data.get("phone") or "").strip()
+        if not raw:
+            return ""
+        norm = normalize_phone(raw)
+        if not norm:
+            raise forms.ValidationError(
+                "Enter a valid Kenyan mobile number (e.g. 0712 345 678).")
+        return norm
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("phone") and not cleaned.get("email"):
+            raise forms.ValidationError(
+                "Add at least a phone number or an email so statements can be sent.")
+        return cleaned
+
+
+class FundLeaderSendForm(StyledFormMixin, forms.Form):
+    start = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    end = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    leader_ids = forms.MultipleChoiceField(
+        required=False, widget=forms.CheckboxSelectMultiple)
+
+    def __init__(self, *args, leaders=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        leaders = leaders or FundLeader.objects.none()
+        self.fields["leader_ids"].choices = [
+            (str(l.pk), l.name) for l in leaders]
+        self._style()
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start"), cleaned.get("end")
+        if start and end and end < start:
+            raise forms.ValidationError("End date must be on or after the start.")
+        return cleaned
+
+    def selected_leaders(self):
+        ids = [int(x) for x in self.cleaned_data.get("leader_ids") or []
+               if str(x).isdigit()]
+        return FundLeader.objects.filter(pk__in=ids, active=True)

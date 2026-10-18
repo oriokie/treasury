@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}{% if channel == 'email' %}Email{% else %}SMS{% endif %} leader statements · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <div class="eyebrow"><a class="link" href="{% url 'fund_leader_list' %}">← Leaders</a></div>
+    <h1>{% if channel == 'email' %}Email statements{% else %}SMS balances{% endif %}</h1>
+    <div class="ws-sub">
+      {% if channel == 'email' %}
+      Each selected leader with a valid email receives the statement for every linked fund, then a separate email for each sub-account that had activity.
+      {% else %}
+      Each selected leader with a valid phone receives one SMS per linked fund: opening, receipts, expenses and closing for the period.
+      {% endif %}
+    </div>
+  </div>
+  <div class="ws-actions">
+    {% if channel == 'sms' %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'fund_leader_send' %}?channel=email">Switch to email</a>
+    {% else %}
+    <a class="btn btn-ghost btn-sm" href="{% url 'fund_leader_send' %}?channel=sms">Switch to SMS</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if channel == 'sms' and not sms_enabled %}
+<div class="alert alert-amber u-mb">SMS is disabled in Settings. Enable it before sending.</div>
+{% endif %}
+{% if channel == 'email' and not email_enabled %}
+<div class="alert alert-amber u-mb">Email is not configured in Settings → Email.</div>
+{% endif %}
+
+{% if not leaders %}
+<div class="empty"><div class="big">∅</div>
+  No active leaders with a linked fund and a valid {% if channel == 'email' %}email{% else %}phone{% endif %}.
+  <div class="u-mt"><a class="btn btn-ghost" href="{% url 'fund_leader_list' %}">Back to leaders</a></div>
+</div>
+{% else %}
+<div class="card" style="max-width:640px"><div class="bd">
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="channel" value="{{ channel }}">
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-row"><label>From</label>{{ form.start }}</div>
+    <div class="form-row"><label>To</label>{{ form.end }}</div>
+    <div class="form-row">
+      <label>Leaders ({{ leaders|length }} eligible)</label>
+      <div class="check-grid">{{ form.leader_ids }}</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" type="submit" {% if channel == 'sms' and not sms_enabled %}disabled{% endif %}{% if channel == 'email' and not email_enabled %}disabled{% endif %}
+              onclick="return confirm('Send {% if channel == 'email' %}email statements{% else %}SMS balances{% endif %} for the selected leaders?');">
+        Send {% if channel == 'email' %}emails{% else %}SMS{% endif %}
+      </button>
+      <a class="btn btn-ghost" href="{% url 'fund_leader_list' %}">Cancel</a>
+    </div>
+  </form>
+</div></div>
+{% endif %}
+<style>
+.check-grid{max-height:280px;overflow:auto}
+.check-grid ul{list-style:none;margin:0;padding:0}
+.check-grid li{margin:.2rem 0}
+.check-grid label{display:flex;gap:.4rem;align-items:center;font-size:.9rem}
+</style>
+{% endblock %}

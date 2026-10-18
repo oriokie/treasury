@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Delete {{ object.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <div class="eyebrow"><a class="link" href="{% url 'fund_leader_list' %}">← Leaders</a></div>
+    <h1>Delete {{ object.name }}?</h1>
+    <div class="ws-sub">This only removes the contact record — it does not change funds, groups or the Leader login portal.</div>
+  </div>
+</div>
+<div class="card u-narrow"><div class="bd">
+  <form method="post">{% csrf_token %}
+    <p>Remove <strong>{{ object.name }}</strong> from the leaders directory?</p>
+    <div class="btn-row">
+      <button class="btn btn-danger" type="submit">Delete</button>
+      <a class="btn btn-ghost" href="{% url 'fund_leader_list' %}">Cancel</a>
+    </div>
+  </form>
+</div></div>
+{% endblock %}

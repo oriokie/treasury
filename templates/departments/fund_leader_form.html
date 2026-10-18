@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}Edit {{ object.name }}{% else %}New leader{% endif %} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <div class="eyebrow"><a class="link" href="{% url 'fund_leader_list' %}">← Leaders</a></div>
+    <h1>{% if object %}Edit leader{% else %}New leader{% endif %}</h1>
+    <div class="ws-sub">Name, phone and optional email. Link funds for statements and development groups they oversee.</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:640px"><div class="bd">
+  <form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-grid">
+      {% for f in form %}
+        {% if f.name != 'departments' and f.name != 'groups' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+        {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
+          {% if f.errors %}<div class="field-error">{{ f.errors }}</div>{% endif %}
+          {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="form-row u-mt">
+      <label>{{ form.departments.label }}</label>
+      <div class="check-grid">{{ form.departments }}</div>
+      {% if form.departments.errors %}<div class="field-error">{{ form.departments.errors }}</div>{% endif %}
+      <div class="help">{{ form.departments.help_text }}</div>
+    </div>
+    <div class="form-row">
+      <label>{{ form.groups.label }}</label>
+      <div class="check-grid">{{ form.groups }}</div>
+      {% if form.groups.errors %}<div class="field-error">{{ form.groups.errors }}</div>{% endif %}
+      <div class="help">{{ form.groups.help_text }}</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" type="submit">Save</button>
+      <a class="btn btn-ghost" href="{% url 'fund_leader_list' %}">Cancel</a>
+    </div>
+  </form>
+</div></div>
+<style>
+.check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.25rem .8rem;max-height:220px;overflow:auto;padding:.4rem 0}
+.check-grid ul{list-style:none;margin:0;padding:0;display:contents}
+.check-grid li{margin:0}
+.check-grid label{font-size:.88rem;display:flex;gap:.35rem;align-items:center}
+</style>
+{% endblock %}
