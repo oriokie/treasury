@@ -8,5 +8,6 @@
   "3.48.7": "Automated patch release: fix: keep an oversized envelope total from crashing Submit for review.",
   "3.48.8": "Automated patch release covering: queue UX + register-backed debit auto-resolve + re-import dedup; feat: statement import records, debit matching, campaign SMS, expense balance & recurring UX.",
   "3.49.1": "Automated patch release covering: fix: collapse multiline Django comment in sabbath_entries; feat: bulk-move envelope receipts between Sabbaths.",
-  "3.49.2": "Automated patch release: feat: speed mark-processed and recon; improve ledger row UX."
+  "3.49.2": "Automated patch release: feat: speed mark-processed and recon; improve ledger row UX.",
+  "3.49.3": "Automated patch release: feat: fund leaders directory with SMS and email statements."
 }
