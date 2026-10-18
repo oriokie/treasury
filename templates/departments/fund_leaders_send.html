@@ -7,7 +7,7 @@
     <h1>{% if channel == 'email' %}Email statements{% else %}SMS balances{% endif %}</h1>
     <div class="ws-sub">
       {% if channel == 'email' %}
-      Each selected leader gets <strong>one email</strong> with consolidated totals and an Excel attachment (main fund + every sub-account), for the period below (defaults to year-to-date).
+      Each selected leader gets <strong>one email</strong> with consolidated totals and an Excel attachment: a summary sheet plus a detailed statement of entries for the main fund and every sub-account (defaults to year-to-date).
       {% else %}
       Each selected leader gets <strong>one SMS</strong> with consolidated opening, receipts, expenses and closing (parent + sub-accounts rolled together). Defaults to year-to-date.
       {% endif %}
