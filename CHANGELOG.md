@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.49.5
+
+Automated patch release covering: fix: one consolidated fund-leader SMS/email with YTD Excel; feat: near-name matching, assign-all suggested, builder gift floor.
+
 ## 3.49.4
 
 Automated patch release: feat: suggest and assign dev groups; month multi-sheet Excel.
