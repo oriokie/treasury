@@ -38,13 +38,21 @@ class DevGroupUnassignedView(RightRequiredMixin, TemplateView):
                         # development contribution — keep it out of the
                         # unassigned queue and every dev-group figure
                         excluded_from_income=False)
-                .select_related("department", "member").order_by("-date"))
+                .select_related("department", "member", "member__dev_group")
+                .order_by("-date"))
 
     def get_context_data(self, **kwargs):
         from departments.models import DevelopmentGroup
+        from ..services.dev_assign import suggest_groups_for_many
         ctx = super().get_context_data(**kwargs)
         qs = self._qs()
-        ctx["items"] = qs[:500]
+        items = list(qs[:500])
+        suggestions = suggest_groups_for_many(items)
+        for t in items:
+            g, reason = suggestions.get(t.id, (None, ""))
+            t.suggested_group = g
+            t.suggest_reason = reason
+        ctx["items"] = items
         ctx["count"] = qs.count()
         ctx["total"] = qs.aggregate(t=Sum("amount"))["t"] or Decimal(0)
         ctx["groups"] = DevelopmentGroup.objects.filter(active=True).order_by("number")
@@ -53,6 +61,7 @@ class DevGroupUnassignedView(RightRequiredMixin, TemplateView):
     def post(self, request):
         from departments.models import DevelopmentGroup
         gid = request.POST.get("dev_group")
+        # Per-row Assign posts a single ``txn``; bulk posts a list (or ``all``).
         ids = request.POST.getlist("txn")
         if request.POST.get("all"):
             ids = list(self._qs().values_list("id", flat=True))

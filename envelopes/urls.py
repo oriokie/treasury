@@ -28,6 +28,7 @@ urlpatterns = [
     path("envelopes/<int:pk>/reassign/", views.EnvelopeReassignView.as_view(), name="envelope_reassign"),
     path("envelopes/move/", views.EnvelopeBulkReassignView.as_view(), name="envelope_bulk_reassign"),
     path("envelopes/sabbath.xlsx", views.EnvelopeSabbathExcelView.as_view(), name="envelope_sabbath_excel"),
+    path("envelopes/month.xlsx", views.EnvelopeMonthExcelView.as_view(), name="envelope_month_excel"),
     path("envelopes/pull-bank/", views.EnvelopePullBankView.as_view(), name="envelope_pull_bank"),
     path("envelopes/reconcile/", views.SabbathReconciliationView.as_view(), name="sabbath_reconcile"),
     path("envelopes/reconcile/apply/", views.ReconcileApplyView.as_view(), name="reconcile_apply"),

@@ -1194,11 +1194,9 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
     """Download one Sabbath's envelopes as .xlsx with a trust/local summary."""
 
     def get(self, request):
-        import io
         import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-        from openpyxl.worksheet.page import PageMargins
-        from core.models import SiteConfig
+        from django.http import HttpResponse
+        from .services.sabbath_excel import write_sabbath_sheet
         try:
             sab = dt.date.fromisoformat(request.GET.get("date"))
         except (TypeError, ValueError):
@@ -1207,211 +1205,64 @@ class EnvelopeSabbathExcelView(ReadAccessMixin, View):
         envs = [e for e in Envelope.objects.select_related("member")
                 .prefetch_related("lines__department").order_by("receipt_no")
                 if sabbath_bucket(e.date) == sab]
-
-        # Map each split-half department to the single concept it belongs to
-        # (e.g. "Combined Offering (Trust 50%)" -> "Combined Offering"), so the
-        # per-contributor entries table shows ONE block for the full amount given,
-        # while the summary table can still split it into trust/local halves.
-        from giving.models import SplitFund
-        split_parent = {}          # department_id -> split fund name
-        split_name_is_trust = {}   # split fund name -> True if it has a trust half
-        for sf in SplitFund.objects.filter(active=True).prefetch_related(
-                "components__department"):
-            for comp in sf.components.all():
-                split_parent[comp.department_id] = sf.name
-                if comp.department.is_trust:
-                    split_name_is_trust[sf.name] = True
-
-        # Map each NUMBERED sub-account (e.g. "Small Group 7") to its parent
-        # fund, so a fund set up with many numbered subgroups doesn't explode
-        # this sheet into one column per subgroup — established, individually-
-        # named sub-accounts (Tithe, Camp Meeting, ...) are NOT numbered and
-        # are unaffected, still shown on their own exactly as before. The
-        # subgroup account is still what the ledger actually posted to
-        # (accounting stays precise); this only changes how it's DISPLAYED
-        # here. See departments.models.numbered_subgroup_parent_map.
-        from departments.models import numbered_subgroup_parent_map
-        subgroup_parent = numbered_subgroup_parent_map()
-
-        def _strip_suffix(receipt):
-            # receipts are stored globally-unique as "<MON><sidx>-<original>"
-            # (e.g. "JUN1-0421"); show only the original number to the reader.
-            s = str(receipt or "")
-            if "-" in s:
-                head, _, tail = s.partition("-")
-                # only strip a leading month/sabbath tag like JUN1, MAY2…
-                if head[:3].isalpha() and any(ch.isdigit() for ch in head):
-                    return tail or s
-            return s
-
-        # ---- entries-table columns: real funds, but split halves AND numbered
-        # subgroups collapsed to their single concept / parent name ----
-        present = {}   # key -> ("dept", dept) or ("split", name); preserves order info
-        for e in envs:
-            for l in e.lines.all():
-                if l.department_id in split_parent:
-                    name = split_parent[l.department_id]
-                    present.setdefault(("split", name),
-                                       split_name_is_trust.get(name, False))
-                else:
-                    dept = subgroup_parent.get(l.department_id, l.department)
-                    present.setdefault(("dept", dept.id), dept)
-
-        # build ordered display columns (trust first), each with a label + a test
-        entry_cols = []   # list of dicts: {label, is_trust, match(line)->bool}
-        for key, val in present.items():
-            if key[0] == "split":
-                nm = key[1]
-                entry_cols.append({
-                    "label": nm, "is_trust": val,
-                    "ids": {d for d, n in split_parent.items() if n == nm}})
-            else:
-                d = val
-                ids = {d.id} | {cid for cid, p in subgroup_parent.items()
-                                if p.id == d.id}
-                entry_cols.append({
-                    "label": d.name, "is_trust": d.is_trust, "ids": ids})
-        entry_cols.sort(key=lambda c: (not c["is_trust"], c["label"]))
-
-        # ---- summary funds: the REAL funds (halves stay separate, numbered
-        # subgroups roll up to their parent), trust first ----
-        present_real = {}
-        for e in envs:
-            for l in e.lines.all():
-                dept = subgroup_parent.get(l.department_id, l.department)
-                present_real[dept.id] = dept
-        funds = sorted(present_real.values(), key=lambda d: (not d.is_trust, d.name))
-
-        wb = openpyxl.Workbook(); ws = wb.active; ws.title = "Sabbath"
-        bold = Font(bold=True); white = Font(bold=True, color="FFFFFF")
-        head_fill = PatternFill("solid", fgColor="1F5F4F")
-        amber = PatternFill("solid", fgColor="B07D2C")
-        grey = PatternFill("solid", fgColor="E8E2D4")
-        thin = Side(style="thin", color="999999")
-        border = Border(left=thin, right=thin, top=thin, bottom=thin)
-        ncols = 4 + len(entry_cols) + 1
-
-        # church name + report title
-        ws.append([church])
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
-        ws.cell(1, 1).font = Font(bold=True, size=15, color="1F5F4F")
-        ws.cell(1, 1).alignment = Alignment(horizontal="center")
-        ws.append([f"Treasurer's Cash Statement — Sabbath {sab:%d %B %Y}"])
-        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
-        ws.cell(2, 1).font = Font(bold=True, size=12)
-        ws.cell(2, 1).alignment = Alignment(horizontal="center")
-
-        header = (["No", "Contributor", "Receipt", "Channel"]
-                  + [c["label"] for c in entry_cols] + ["Total"])
-        ws.append(header)
-        hr = ws.max_row
-        for c in range(1, len(header) + 1):
-            cell = ws.cell(hr, c); cell.font = white; cell.fill = head_fill
-            cell.alignment = Alignment(horizontal="center", wrap_text=True)
-            cell.border = border
-
-        first_data = ws.max_row + 1
-        for i, e in enumerate(envs, start=1):
-            # sum each contributor's lines into the collapsed display columns
-            amt = {}
-            for l in e.lines.all():
-                amt[l.department_id] = amt.get(l.department_id, Decimal(0)) + l.amount
-            row_cells = []
-            for col in entry_cols:
-                v = sum((amt.get(did, Decimal(0)) for did in col["ids"]), Decimal(0))
-                row_cells.append(float(v) if v else "")
-            ws.append([i, e.contributor_name, _strip_suffix(e.receipt_no),
-                       e.get_channel_display()] + row_cells + [float(e.total)])
-
-        # column totals row (over the collapsed display columns)
-        totals = {f.id: Decimal(0) for f in funds}   # per REAL fund (for summary)
-        grand = Decimal(0)
-        for e in envs:
-            for l in e.lines.all():
-                did = subgroup_parent.get(l.department_id, l.department).id
-                if did in totals:
-                    totals[did] += l.amount
-            grand += e.total
-        col_totals = []
-        for col in entry_cols:
-            col_totals.append(float(sum((totals.get(did, Decimal(0))
-                                         for did in col["ids"]), Decimal(0))))
-        ws.append(["", "TOTAL", "", ""] + col_totals + [float(grand)])
-        last_data = ws.max_row
-        for c in range(1, len(header) + 1):
-            ws.cell(last_data, c).font = bold
-            ws.cell(last_data, c).fill = grey
-
-        # borders + number format across the whole data grid (incl totals row)
-        for r in range(hr, last_data + 1):
-            for c in range(1, len(header) + 1):
-                cell = ws.cell(r, c)
-                cell.border = border
-                if c >= 5 and isinstance(cell.value, (int, float)):
-                    cell.number_format = "#,##0.00"
-
-        # ---- summary block (offset one column right, so it starts at B) ----
-        ws.append([])
-        summary_start = ws.max_row + 1
-        ws.append(["", "SUMMARY"]); ws.cell(ws.max_row, 2).font = Font(bold=True, size=12)
-        ws.append(["", "Trust fund items (remitted)"]); ws.cell(ws.max_row, 2).font = bold
-        ws.cell(ws.max_row, 2).fill = amber
-        ws.cell(ws.max_row, 3).fill = amber
-        trust_total = Decimal(0)
-        for f in funds:
-            if f.is_trust:
-                ws.append(["", f.name, float(totals[f.id])]); trust_total += totals[f.id]
-        ws.append(["", "Total trust funds", float(trust_total)]); ws.cell(ws.max_row, 2).font = bold
-        ws.cell(ws.max_row, 3).font = bold; ws.cell(ws.max_row, 2).fill = grey
-        ws.cell(ws.max_row, 3).fill = grey
-        ws.append(["", "Local fund items (retained)"]); ws.cell(ws.max_row, 2).font = bold
-        ws.cell(ws.max_row, 2).fill = amber; ws.cell(ws.max_row, 3).fill = amber
-        local_total = Decimal(0)
-        for f in funds:
-            if not f.is_trust:
-                ws.append(["", f.name, float(totals[f.id])]); local_total += totals[f.id]
-        ws.append(["", "Total local funds", float(local_total)]); ws.cell(ws.max_row, 2).font = bold
-        ws.cell(ws.max_row, 3).font = bold; ws.cell(ws.max_row, 2).fill = grey
-        ws.cell(ws.max_row, 3).fill = grey
-        ws.append(["", "GRAND TOTAL GIVEN", float(grand)])
-        ws.cell(ws.max_row, 2).font = Font(bold=True, size=12)
-        ws.cell(ws.max_row, 3).font = Font(bold=True, size=12)
-        summary_end = ws.max_row
-
-        # borders + number format on the summary table (both columns)
-        for r in range(summary_start, summary_end + 1):
-            for c in (2, 3):
-                cell = ws.cell(r, c)
-                cell.border = border
-                if c == 3 and isinstance(cell.value, (int, float)):
-                    cell.number_format = "#,##0.00"
-
-        ws.column_dimensions["A"].width = 5
-        ws.column_dimensions["B"].width = 26
-        ws.column_dimensions["C"].width = 14
-        ws.column_dimensions["D"].width = 12
-        for i in range(4, len(header)):
-            col = openpyxl.utils.get_column_letter(i + 1)
-            ws.column_dimensions[col].width = max(ws.column_dimensions[col].width or 10, 13)
-        ws.freeze_panes = "A4"
-
-        # ---- print setup: landscape, fit to one page wide, repeat headers ----
-        ws.page_setup.orientation = "landscape"
-        ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 0
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
-        ws.print_options.horizontalCentered = True
-        ws.page_margins = PageMargins(left=0.4, right=0.4, top=0.6, bottom=0.5,
-                                      header=0.3, footer=0.3)
-        ws.print_title_rows = "1:3"        # church + title + column header on every page
-        ws.oddFooter.center.text = f"{church} — Sabbath {sab:%d %b %Y} — Page &P of &N"
-
-        buf = io.BytesIO(); wb.save(buf)
-        from django.http import HttpResponse
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Sabbath"
+        write_sabbath_sheet(ws, sab, envs, church, include_channel=True)
+        buf = io.BytesIO()
+        wb.save(buf)
         resp = HttpResponse(
             buf.getvalue(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         resp["Content-Disposition"] = f'attachment; filename="sabbath_{sab}.xlsx"'
+        return resp
+
+
+class EnvelopeMonthExcelView(ReadAccessMixin, View):
+    """All Sabbaths in a month as one workbook — one sheet each, no Channel column."""
+
+    def get(self, request):
+        import openpyxl
+        from django.http import HttpResponse
+        from .services.sabbath_excel import write_sabbath_sheet, sheet_title_for
+        picked = _parse_month(request.GET.get("month"))
+        today = dt.date.today()
+        year, month = picked or (today.year, today.month)
+        saturdays = _saturdays_of_month(year, month)
+        church = SiteConfig.get().church_name or "Church Treasury"
+        range_start = (saturdays[0] - dt.timedelta(days=6)
+                       if saturdays else dt.date(year, month, 1))
+        range_end = saturdays[-1] if saturdays else dt.date(year, month, 1)
+        all_envs = list(Envelope.objects.select_related("member")
+                        .prefetch_related("lines__department")
+                        .filter(date__gte=range_start, date__lte=range_end)
+                        .order_by("receipt_no"))
+        by_sab = {s: [] for s in saturdays}
+        for e in all_envs:
+            b = sabbath_bucket(e.date)
+            if b in by_sab:
+                by_sab[b].append(e)
+
+        wb = openpyxl.Workbook()
+        # Drop the default sheet; rebuild one per Sabbath.
+        default = wb.active
+        wb.remove(default)
+        for sab in saturdays:
+            ws = wb.create_sheet(title=sheet_title_for(sab))
+            write_sabbath_sheet(ws, sab, by_sab[sab], church,
+                                include_channel=False)
+        if not wb.sheetnames:
+            ws = wb.create_sheet(title="Empty")
+            write_sabbath_sheet(ws, dt.date(year, month, 1), [], church,
+                                include_channel=False)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        resp["Content-Disposition"] = (
+            f'attachment; filename="envelopes_{year:04d}-{month:02d}.xlsx"')
         return resp
 
 
