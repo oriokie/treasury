@@ -186,6 +186,7 @@
         <summary><span class="ic">🏦</span> Funds &amp; setup <span class="chev">▾</span></summary>
         <div class="grp-links">
           <a href="{% url 'department_list' %}" class="{% if 'department' in request.resolver_match.url_name %}active{% endif %}">Funds &amp; departments</a>
+          <a href="{% url 'fund_leader_list' %}" class="{% if 'fund_leader' in request.resolver_match.url_name %}active{% endif %}">Leaders</a>
           <a href="{% url 'transfer_list' %}" class="{% if 'transfer' in request.resolver_match.url_name %}active{% endif %}">Fund transfers</a>
           <a href="{% url 'budget' %}" class="{% if request.resolver_match.url_name == 'budget' %}active{% endif %}">Budgeting</a>
           <a href="{% url 'asset_list' %}" class="{% if request.resolver_match.url_name == 'asset_list' %}active{% endif %}">Fixed assets</a>

@@ -52,7 +52,8 @@ class NavReorgTests(TestCase):
         from django.urls import reverse
         for name in ["remittance_dashboard", "rule_list", "dev_patterns",
                      "member_list", "pledge_dashboard", "campaign_list",
-                     "department_list", "transfer_list", "budget", "asset_list"]:
+                     "department_list", "fund_leader_list", "transfer_list",
+                     "budget", "asset_list"]:
             r = self.c.get(reverse(name))
             self.assertIn(r.status_code, (200, 301, 302), name)
 

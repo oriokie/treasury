@@ -589,3 +589,62 @@ def departments_led_by(user):
     if not led_ids:
         return Department.objects.none()
     return Department.objects.filter(id__in=subtree_ids(led_ids)).distinct()
+
+
+class FundLeader(models.Model):
+    """A contact for a fund / development-group leader — name, phone and
+    optional email — used from Funds & setup to SMS period balances and email
+    fund statements. Distinct from ``DepartmentLeadership``, which gates the
+    logged-in Leader portal."""
+    name = models.CharField(max_length=120)
+    phone = models.CharField(
+        max_length=20, blank=True,
+        help_text="Kenyan mobile (07… / 01… / 254…). Required to send SMS.")
+    email = models.EmailField(
+        blank=True,
+        help_text="Optional. Required to email statements.")
+    active = models.BooleanField(default=True)
+    notes = models.CharField(max_length=255, blank=True)
+    departments = models.ManyToManyField(
+        Department, blank=True, related_name="fund_leader_contacts",
+        help_text="Funds whose opening / receipts / expenses / closing are "
+                  "sent to this leader. Sub-accounts of a linked fund are "
+                  "emailed as separate statements.")
+    groups = models.ManyToManyField(
+        DevelopmentGroup, blank=True, related_name="fund_leader_contacts",
+        help_text="Optional development group(s) this leader is responsible for.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        from members.models import normalize_phone
+        if self.name:
+            self.name = " ".join(self.name.split())
+        if self.phone:
+            self.phone = normalize_phone(self.phone) or self.phone.strip()
+        if self.email:
+            self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+    @property
+    def has_valid_phone(self):
+        from members.models import normalize_phone
+        return bool(normalize_phone(self.phone))
+
+    @property
+    def has_valid_email(self):
+        if not self.email:
+            return False
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError
+        try:
+            validate_email(self.email)
+            return True
+        except ValidationError:
+            return False

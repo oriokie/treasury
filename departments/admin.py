@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Department, DevelopmentGroup
+from .models import Department, DevelopmentGroup, FundLeader
 
 
 @admin.register(Department)
@@ -30,3 +30,11 @@ class DepartmentLeadershipAdmin(admin.ModelAdmin):
     list_filter = ("department",)
     search_fields = ("user__username", "department__name")
     raw_id_fields = ("user", "department")
+
+
+@admin.register(FundLeader)
+class FundLeaderAdmin(admin.ModelAdmin):
+    list_display = ("name", "phone", "email", "active")
+    list_filter = ("active",)
+    search_fields = ("name", "phone", "email")
+    filter_horizontal = ("departments", "groups")

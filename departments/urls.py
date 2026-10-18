@@ -1,7 +1,17 @@
 from django.urls import path
 from . import views
+from . import views_fund_leaders as leaders
 
 urlpatterns = [
+    path("fund-leaders/", leaders.FundLeaderListView.as_view(), name="fund_leader_list"),
+    path("fund-leaders/new/", leaders.FundLeaderCreateView.as_view(), name="fund_leader_create"),
+    path("fund-leaders/send/", leaders.FundLeaderSendView.as_view(), name="fund_leader_send"),
+    path("fund-leaders/<int:pk>/edit/", leaders.FundLeaderUpdateView.as_view(),
+         name="fund_leader_edit"),
+    path("fund-leaders/<int:pk>/delete/", leaders.FundLeaderDeleteView.as_view(),
+         name="fund_leader_delete"),
+    path("fund-leaders/<int:pk>/send/", leaders.FundLeaderSendOneView.as_view(),
+         name="fund_leader_send_one"),
     path("departments/", views.DepartmentListView.as_view(), name="department_list"),
     path("departments/new/", views.DepartmentCreateView.as_view(), name="department_create"),
     path("departments/<int:pk>/edit/", views.DepartmentUpdateView.as_view(), name="department_edit"),
