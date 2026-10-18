@@ -29,6 +29,7 @@
     <input type="month" name="month" value="{{ month_value }}" class="field" onchange="this.form.submit()">
   </form>
   <a class="btn btn-ghost btn-sm" href="?month={{ next_month }}">Next ›</a>
+  <a class="btn btn-ghost btn-sm" href="{% url 'envelope_month_excel' %}?month={{ month_value }}" title="Download every Sabbath this month as one Excel workbook (one sheet each)">⬇ Excel (all Sabbaths)</a>
   <span class="grow"></span>
   {% if can_enter_data %}
   <form method="post" action="{% url 'envelope_pull_bank' %}" class="u-inline-flex" onsubmit="var s=prompt('Starting receipt number for these bank receipts?\n\nLeave blank to continue automatically from the last receipt.',''); if(s===null){return false;} this.querySelector('.startrcpt').value=s.trim(); var sb=this.querySelector('.sabpick').value; return confirm(sb ? ('Receipt bank giving for the Sabbath of '+sb+' as envelopes? Money is counted once.') : 'Receipt all auto-allocated bank giving this month as envelopes? Money is counted once.');">
