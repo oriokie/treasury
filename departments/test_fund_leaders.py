@@ -156,14 +156,22 @@ class FundLeaderSendTests(TestCase):
         self.assertTrue(fname.endswith(".xlsx"))
         self.assertIn("spreadsheet", mime)
         self.assertGreater(len(content), 100)
-        # Workbook has the parent sheet with main + sub rows
+        # Summary + a detailed ledger sheet per account (main and sub).
         import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(content))
-        self.assertIn("FlSendFund", wb.sheetnames)
-        values = [cell for row in wb["FlSendFund"].iter_rows(values_only=True)
+        self.assertTrue(any("Summary" in n for n in wb.sheetnames))
+        summary = next(n for n in wb.sheetnames if "Summary" in n)
+        values = [cell for row in wb[summary].iter_rows(values_only=True)
                   for cell in row]
         self.assertTrue(any(v and "FlSub" in str(v) for v in values))
         self.assertTrue(any(v and "consolidated" in str(v).lower() for v in values))
+        detail_main = next(n for n in wb.sheetnames if "Detail" in n)
+        detail_vals = [cell for row in wb[detail_main].iter_rows(values_only=True)
+                       for cell in row]
+        self.assertTrue(any(v == "Opening balance" for v in detail_vals))
+        self.assertTrue(any(v == "Closing balance" for v in detail_vals))
+        self.assertTrue(any(n == "FlSub" or n.startswith("FlSub")
+                            for n in wb.sheetnames))
 
     @patch("core.services.sms.send_sms")
     def test_send_one_view_posts_sms(self, mock_sms):

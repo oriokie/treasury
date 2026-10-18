@@ -5,9 +5,10 @@ opening / receipts / expenses / closing the fund reports use.
 
 Rules for a leader linked to a parent and its children:
   * **SMS** — one message with the *consolidated* total (parent + sub-accounts).
-  * **Email** — one message with a single Excel attachment covering the main
-    fund and every sub-account (same columns as the fund report's sub-accounts
-    export on ``/reports/fund/<id>/``).
+  * **Email** — one message with a single Excel attachment: a summary sheet
+    (main + sub-accounts, like ``/reports/fund/<id>/?export=subgroups``) plus
+    a detailed ledger sheet of entries for each account (same rows as the fund
+    ledger export).
 
 Recipients without a valid phone (SMS) or email (email) are skipped.
 """
@@ -132,7 +133,8 @@ def email_body(leader, fund_labels, figures, start, end, church=""):
     lines += [
         f"Closing balance:  {_money(figures['closing'])}",
         "",
-        "A spreadsheet with the main fund and each sub-account is attached.",
+        "A spreadsheet is attached: a summary of the main fund and each "
+        "sub-account, plus a detailed statement sheet of entries for every account.",
         "",
     ]
     if church:
@@ -157,92 +159,252 @@ def _safe_sheet_title(name):
     return (cleaned or "Fund")[:31]
 
 
+def _unique_sheet_title(used, name):
+    title = _safe_sheet_title(name)
+    base, n = title, 2
+    while title in used:
+        suffix = f"-{n}"
+        title = _safe_sheet_title(base[: 31 - len(suffix)] + suffix)
+        n += 1
+    used.add(title)
+    return title
+
+
+def ledger_entries_for(dept, start, end):
+    """Detailed fund ledger rows for one account — same basis as FundLedgerView.
+
+    Returns ``(opening, entries, closing)`` where each entry has date, src,
+    desc, debit, credit, balance.
+    """
+    from cashbook.models import Expense, ExpenseRefund, FundTransfer
+    from giving.models import Transaction
+    from reports.services.balances import brought_forward
+
+    receipts = (Transaction.objects.confirmed_credits()
+                .filter(department=dept, date__gte=start, date__lte=end)
+                .order_by("date"))
+    payments = (Expense.objects.filter(
+        department=dept, date__gte=start, date__lte=end,
+        status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+        .order_by("date"))
+    entries = []
+    for t in receipts:
+        if t.excluded_from_income:
+            base = t.payer_name or t.reference or "Receipt"
+            entries.append({
+                "date": t.date,
+                "desc": f"{base} — loan / financing receipt (not income)",
+                "credit": t.amount, "debit": None, "src": "Financing",
+            })
+        else:
+            entries.append({
+                "date": t.date,
+                "desc": t.payer_name or t.reference or "Receipt",
+                "credit": t.amount, "debit": None, "src": "Receipt",
+            })
+    for x in payments:
+        entries.append({
+            "date": x.date, "desc": x.description,
+            "credit": None, "debit": x.amount, "src": "Expense",
+        })
+    for rf in (ExpenseRefund.objects.filter(
+            expense__department=dept, date__gte=start, date__lte=end,
+            expense__status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+            .select_related("expense")):
+        entries.append({
+            "date": rf.date,
+            "desc": f"Refund — {rf.expense.description}",
+            "credit": rf.amount, "debit": None, "src": "Refund",
+        })
+    for tr in FundTransfer.objects.filter(
+            destination=dept, date__gte=start, date__lte=end):
+        entries.append({
+            "date": tr.date,
+            "desc": f"Transfer from {tr.source.name}"
+                    + (f" — {tr.reason}" if tr.reason else ""),
+            "credit": tr.amount, "debit": None, "src": "Transfer",
+        })
+    for tr in FundTransfer.objects.filter(
+            source=dept, date__gte=start, date__lte=end):
+        entries.append({
+            "date": tr.date,
+            "desc": f"Transfer to {tr.destination.name}"
+                    + (f" — {tr.reason}" if tr.reason else ""),
+            "credit": None, "debit": tr.amount, "src": "Transfer",
+        })
+    entries.sort(key=lambda r: r["date"])
+    opening = brought_forward(dept, start)
+    running = opening
+    for en in entries:
+        running += (en["credit"] or 0) - (en["debit"] or 0)
+        en["balance"] = running
+    return opening, entries, running
+
+
+def _write_header_block(ws, church, title_line, styles):
+    """Church + title rows; returns the next free row index (1-based)."""
+    Font = styles["Font"]
+    r = 1
+    if church:
+        ws.cell(row=r, column=1, value=church).font = Font(bold=True, size=14)
+        r += 1
+    ws.cell(row=r, column=1, value=title_line).font = Font(
+        bold=True, size=12, color="1F5F4F")
+    return r + 2
+
+
+def _style_header_row(ws, row, headers, styles):
+    for c, h in enumerate(headers, start=1):
+        cell = ws.cell(row=row, column=c, value=h)
+        cell.font = styles["white"]
+        cell.fill = styles["head_fill"]
+        cell.alignment = styles["Alignment"](horizontal="center")
+
+
+def _write_summary_sheet(wb, root, rows_by_id, start, end, church, used, styles):
+    from openpyxl.utils import get_column_letter
+
+    title = _unique_sheet_title(used, f"{root.name} · Summary")
+    ws = wb.create_sheet(title=title)
+    header = ["Fund / sub-account", "Type", "Opening", "Receipts",
+              "Payments", "Closing balance"]
+    r = _write_header_block(
+        ws, church,
+        (f"{root.name} — main fund & sub-accounts "
+         f"({start:%d %b %Y} to {end:%d %b %Y})"),
+        styles)
+    head_row = r
+    _style_header_row(ws, head_row, header, styles)
+
+    parent_fig = figures_for(root, rows_by_id)
+    accounts = [(f"{root.name} (main)", root, parent_fig)]
+    for sub in root.subgroups.filter(active=True).order_by("name"):
+        accounts.append((sub.name, sub, figures_for(sub, rows_by_id)))
+
+    cons = consolidate_figures(root, rows_by_id)
+    rr = head_row
+    for label, dept, fig in accounts:
+        rr += 1
+        closing = fig["closing"] if fig.get("closing") is not None else (
+            fig["opening"] + fig["receipts"] - fig["expenses"]
+            + fig.get("transfers_in", 0) - fig.get("transfers_out", 0))
+        vals = [
+            label,
+            "Trust" if dept.is_trust else "Local",
+            float(fig["opening"] or 0),
+            float(fig["receipts"] or 0),
+            float(fig["expenses"] or 0),
+            float(closing),
+        ]
+        for c, v in enumerate(vals, start=1):
+            cell = ws.cell(row=rr, column=c, value=v)
+            if isinstance(v, float):
+                cell.number_format = "#,##0.00"
+
+    rr += 1
+    for c, v in enumerate([
+        "TOTAL (consolidated)", "",
+        float(cons["opening"]), float(cons["receipts"]),
+        float(cons["expenses"]), float(cons["closing"]),
+    ], start=1):
+        cell = ws.cell(row=rr, column=c, value=v)
+        cell.font = styles["bold"]
+        cell.fill = styles["grey"]
+        if isinstance(v, float):
+            cell.number_format = "#,##0.00"
+
+    for c, h in enumerate(header, start=1):
+        ws.column_dimensions[get_column_letter(c)].width = max(14, len(str(h)) + 2)
+    ws.column_dimensions["A"].width = 28
+    ws.freeze_panes = ws.cell(row=head_row + 1, column=1)
+    return accounts
+
+
+def _write_detail_sheet(wb, dept, label, start, end, church, used, styles):
+    """One sheet of ledger entries for a single account."""
+    from openpyxl.utils import get_column_letter
+
+    title = _unique_sheet_title(used, label)
+    ws = wb.create_sheet(title=title)
+    header = ["Type", "Date", "Description", "Debit", "Credit", "Balance"]
+    r = _write_header_block(
+        ws, church,
+        (f"{dept.name} — detailed statement "
+         f"({start:%d %b %Y} to {end:%d %b %Y})"),
+        styles)
+    head_row = r
+    _style_header_row(ws, head_row, header, styles)
+
+    opening, entries, closing = ledger_entries_for(dept, start, end)
+    rr = head_row + 1
+    for c, v in enumerate(
+            ["", "", "Opening balance", "", "", float(opening)], start=1):
+        cell = ws.cell(row=rr, column=c, value=v)
+        cell.font = styles["bold"]
+        if isinstance(v, float):
+            cell.number_format = "#,##0.00"
+
+    for en in entries:
+        rr += 1
+        vals = [
+            en["src"],
+            en["date"].isoformat() if en["date"] else "",
+            en["desc"],
+            float(en["debit"]) if en["debit"] else "",
+            float(en["credit"]) if en["credit"] else "",
+            float(en["balance"]),
+        ]
+        for c, v in enumerate(vals, start=1):
+            cell = ws.cell(row=rr, column=c, value=v)
+            if isinstance(v, float):
+                cell.number_format = "#,##0.00"
+
+    rr += 1
+    for c, v in enumerate(
+            ["", "", "Closing balance", "", "", float(closing)], start=1):
+        cell = ws.cell(row=rr, column=c, value=v)
+        cell.font = styles["bold"]
+        cell.fill = styles["grey"]
+        if isinstance(v, float):
+            cell.number_format = "#,##0.00"
+
+    widths = {"A": 12, "B": 12, "C": 40, "D": 12, "E": 12, "F": 14}
+    for col, w in widths.items():
+        ws.column_dimensions[col].width = w
+    for c, h in enumerate(header, start=1):
+        ws.column_dimensions[get_column_letter(c)].width = max(
+            ws.column_dimensions[get_column_letter(c)].width or 10,
+            len(str(h)) + 2)
+    ws.freeze_panes = ws.cell(row=head_row + 1, column=1)
+
+
 def build_statement_xlsx(leader, roots, rows_by_id, start, end, church=""):
-    """Excel bytes: one sheet per root fund — main + sub-accounts, fund-report style."""
+    """Excel bytes: summary sheet per root, then a detail sheet per account."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
 
     wb = openpyxl.Workbook()
-    default = wb.active
-    wb.remove(default)
+    wb.remove(wb.active)
 
-    header = ["Fund / sub-account", "Type", "Opening", "Receipts",
-              "Payments", "Closing balance"]
-    head_fill = PatternFill("solid", fgColor="1F5F4F")
-    grey = PatternFill("solid", fgColor="E8E2D4")
-    bold = Font(bold=True)
-    white = Font(bold=True, color="FFFFFF")
-
+    styles = {
+        "Font": Font,
+        "Alignment": Alignment,
+        "bold": Font(bold=True),
+        "white": Font(bold=True, color="FFFFFF"),
+        "head_fill": PatternFill("solid", fgColor="1F5F4F"),
+        "grey": PatternFill("solid", fgColor="E8E2D4"),
+    }
     used_titles = set()
+
     for root in roots:
-        title = _safe_sheet_title(root.name)
-        base, n = title, 2
-        while title in used_titles:
-            title = _safe_sheet_title(f"{base[:28]}-{n}")
-            n += 1
-        used_titles.add(title)
-        ws = wb.create_sheet(title=title)
-
-        r = 1
-        if church:
-            ws.cell(row=r, column=1, value=church).font = Font(bold=True, size=14)
-            r += 1
-        ws.cell(row=r, column=1,
-                value=(f"{root.name} — main fund & sub-accounts "
-                       f"({start:%d %b %Y} to {end:%d %b %Y})")).font = Font(
-            bold=True, size=12, color="1F5F4F")
-        r += 2
-        head_row = r
-        for c, h in enumerate(header, start=1):
-            cell = ws.cell(row=head_row, column=c, value=h)
-            cell.font = white
-            cell.fill = head_fill
-            cell.alignment = Alignment(horizontal="center")
-
-        parent_fig = figures_for(root, rows_by_id)
-        rows = [(f"{root.name} (main)", root, parent_fig)]
-        for sub in root.subgroups.filter(active=True).order_by("name"):
-            rows.append((sub.name, sub, figures_for(sub, rows_by_id)))
-
-        cons = consolidate_figures(root, rows_by_id)
-        rr = head_row
-        for label, dept, fig in rows:
-            rr += 1
-            vals = [
-                label,
-                "Trust" if dept.is_trust else "Local",
-                float(fig["opening"] or 0),
-                float(fig["receipts"] or 0),
-                float(fig["expenses"] or 0),
-                float(fig["closing"] if fig.get("closing") is not None
-                      else (fig["opening"] + fig["receipts"] - fig["expenses"]
-                            + fig.get("transfers_in", 0)
-                            - fig.get("transfers_out", 0))),
-            ]
-            for c, v in enumerate(vals, start=1):
-                cell = ws.cell(row=rr, column=c, value=v)
-                if isinstance(v, float):
-                    cell.number_format = "#,##0.00"
-
-        rr += 1
-        total_vals = [
-            "TOTAL (consolidated)", "",
-            float(cons["opening"]), float(cons["receipts"]),
-            float(cons["expenses"]), float(cons["closing"]),
-        ]
-        for c, v in enumerate(total_vals, start=1):
-            cell = ws.cell(row=rr, column=c, value=v)
-            cell.font = bold
-            cell.fill = grey
-            if isinstance(v, float):
-                cell.number_format = "#,##0.00"
-
-        for c, h in enumerate(header, start=1):
-            from openpyxl.utils import get_column_letter
-            ws.column_dimensions[get_column_letter(c)].width = max(
-                14, len(str(h)) + 2)
-        ws.column_dimensions["A"].width = 28
-        ws.freeze_panes = ws.cell(row=head_row + 1, column=1)
+        accounts = _write_summary_sheet(
+            wb, root, rows_by_id, start, end, church, used_titles, styles)
+        # Detailed statement sheet for the main fund and each sub-account.
+        for label, dept, _fig in accounts:
+            detail_label = (f"{dept.name} · Detail" if dept.id == root.id
+                            else f"{dept.name}")
+            _write_detail_sheet(
+                wb, dept, detail_label, start, end, church, used_titles, styles)
 
     if not wb.sheetnames:
         ws = wb.create_sheet(title="Statement")
