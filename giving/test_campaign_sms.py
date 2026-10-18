@@ -401,6 +401,25 @@ class CampaignMemberGivingTests(CampaignBase):
         self.assertEqual(stats[ruth.id]["amount"], Decimal("3000"))
         self.assertEqual(stats[ruth.id]["count"], 1)
 
+    def test_near_name_match_without_phone(self):
+        """Titles / middle initials still credit the sheet member when there
+        is no phone on the gift."""
+        import datetime as dt
+        from decimal import Decimal
+        from giving.models import Transaction
+
+        ruth = CampaignMember.objects.get(
+            campaign=self.campaign, name="Ruth Momanyi")
+        Transaction.objects.create(
+            date=dt.date(2026, 4, 10), channel="BANK", direction="CREDIT",
+            amount=Decimal("400"), department=self.fund,
+            payer_name="ELDER RUTH MOMANYI", confirmed=True,
+            allocation_status="AUTO", core_ref="CG-NEAR")
+        stats = campaign_sms.member_contributions(
+            self.campaign, dt.date(2026, 4, 1), dt.date(2026, 4, 30))
+        self.assertEqual(stats[ruth.id]["amount"], Decimal("400"))
+        self.assertEqual(stats[ruth.id]["count"], 1)
+
     def test_phone_match_via_subgroup_fund(self):
         """A gift to a campaign sub-account (e.g. CAMP_1) matches by phone."""
         import datetime as dt

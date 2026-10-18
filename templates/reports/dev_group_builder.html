@@ -2,11 +2,12 @@
 {% block title %}Build development groups · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Balanced development groups</h1>
-  <div class="sub">Split members into groups of comparable giving capacity, based on their development giving history</div></div>
+  <div class="sub">Split members into groups of comparable giving capacity, based on their development giving history. Members with fewer than {{ min_gifts|default:5 }} development gifts are listed separately (not balanced in).</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'report_dev_groups' %}">← Dev groups</a></div>
 
 <div class="kpi-grid u-mb">
-  {% include "ui/stat.html" with label="Active members" value=member_count %}
+  {% include "ui/stat.html" with label="Members in balance" value=member_count %}
+  {% include "ui/stat.html" with label="Low activity (excluded)" value=low_activity_count accent="warn" %}
   {% include "ui/stat.html" with label="Total giving capability" prefix=CURRENCY value=total_capability|money accent="brass" %}
   {% if n >= 2 %}{% include "ui/stat.html" with label="Capability spread across groups" prefix=CURRENCY value=spread|money foot="max − min group total (lower is better)" %}{% endif %}
 </div>
@@ -20,7 +21,7 @@
     <a class="btn btn-ghost" href="?n={{ n }}&export=csv">CSV</a>
     {% endif %}
   </form>
-  <p class="help u-mt-sm">Groups are balanced on both <strong>giving capability</strong> and <strong>size</strong>: members are seeded heaviest-first into the lightest group (with an even member count), then capability is fine-tuned by swapping members between the richest and poorest groups. Where giving is very skewed (one member giving most of it), that member's group is unavoidably heavier — but everyone else is spread evenly and sizes stay within one member. The download lists each member with their phone number (where known) and group.</p>
+  <p class="help u-mt-sm">Groups are balanced on both <strong>giving capability</strong> and <strong>size</strong>: members are seeded heaviest-first into the lightest group (with an even member count), then capability is fine-tuned by swapping members between the richest and poorest groups. Only members with at least <strong>{{ min_gifts|default:5 }}</strong> development contributions are included — fewer gifts is not enough history to judge capacity. Where giving is very skewed (one member giving most of it), that member's group is unavoidably heavier — but everyone else is spread evenly and sizes stay within one member.</p>
 </div></div>
 
 {% if preview %}
@@ -28,7 +29,7 @@
   <div class="btn-row">
     <a class="btn btn-sm" href="?n={{ n }}&export=xlsx">⤓ Download Excel</a>
     {% if apply_enabled %}
-    <form method="post" onsubmit="return confirm('Create {{ n }} groups and reassign every active member to them? This replaces current group membership.');">{% csrf_token %}
+    <form method="post" onsubmit="return confirm('Create {{ n }} groups and reassign the {{ member_count }} balanced members to them? {{ low_activity_count }} low-activity member(s) keep their current group.');">{% csrf_token %}
       <input type="hidden" name="n" value="{{ n }}">
       <input name="prefix" value="Group" class="field u-w-auto" style="max-width:120px" title="Group name prefix">
       <button class="btn btn-sm">✓ Create these groups</button>
@@ -45,5 +46,25 @@
   {% endfor %}
 </div>
 </div></div>
-{% elif n >= 2 %}<p class="help">No active members to group.</p>{% endif %}
+{% elif n >= 2 %}<p class="help">No members with at least {{ min_gifts|default:5 }} development gifts to group.</p>{% endif %}
+
+{% if low_activity %}
+<div class="card u-mt"><div class="hd">Low activity — fewer than {{ min_gifts|default:5 }} gifts ({{ low_activity_count }})</div>
+<div class="bd">
+  <p class="help u-mt-0">These members are not placed in the balanced groups. Review them separately before assigning manually.</p>
+  <div class="table-wrap"><table class="ledger">
+    <thead><tr><th>Member</th><th>Phone</th><th class="num">Gifts</th><th class="num">Development giving</th></tr></thead>
+    <tbody>
+    {% for m in low_activity %}
+      <tr style="color:#b42318">
+        <td>{{ m.name }}</td>
+        <td class="muted">{{ m.phone|default:"—" }}</td>
+        <td class="num mono">{{ m.gifts }}</td>
+        <td class="num mono">{{ m.weight|money }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+{% endif %}
 {% endblock %}

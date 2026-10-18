@@ -1,9 +1,9 @@
 """Suggest a development group for an unassigned Development offering.
 
 Looks at the contributor's history over the past year (by member link and by
-name), and at active development-campaign member lists. When several groups
-appear, the one with the most prior contributions wins; a true tie yields no
-suggestion rather than a guess.
+name — including near matches such as titles and middle initials), and at
+active development-campaign member lists. When several groups appear, the one
+with the most prior contributions wins; a true tie yields no suggestion.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from django.utils import timezone
 from departments.models import Department, DevelopmentGroup
 from departments.services.matching import match_existing_dev_group
 from giving.models import Campaign, CampaignMember, Transaction
-from members.models import name_key
+from members.models import name_core_tokens, name_key
 
 
 def _since(days=365):
@@ -54,6 +54,42 @@ def _pick(counts, reasons, groups_by_id):
     return g, f"{reasons.get(gid, 'history')} ({best_n})"
 
 
+def _token_index(names_by_txn):
+    """token → [(txn_id, core_tokens)] for near-match lookups."""
+    idx = defaultdict(list)
+    for tid, names in names_by_txn.items():
+        seen = set()
+        for n in names:
+            toks = name_core_tokens(n)
+            key = frozenset(toks)
+            if len(toks) < 2 or key in seen:
+                continue
+            seen.add(key)
+            for t in toks:
+                idx[t].append((tid, toks))
+    return idx
+
+
+def _tokens_near(a, b):
+    """Subset match on core token sets (same rule as ``names_near_match``)."""
+    if len(a) < 2 or len(b) < 2:
+        return bool(a) and a == b
+    return a <= b or b <= a
+
+
+def _near_txn_ids(candidate_name, token_index):
+    """Txn ids whose page names near-match ``candidate_name``."""
+    ht = name_core_tokens(candidate_name or "")
+    if len(ht) < 2:
+        return ()
+    hits = set()
+    for t in ht:
+        for tid, pt in token_index.get(t, ()):
+            if tid not in hits and _tokens_near(ht, pt):
+                hits.add(tid)
+    return hits
+
+
 def suggest_groups_for_many(txns, *, since=None):
     """``{txn_id: (DevelopmentGroup|None, reason)}`` for a page of unassigned rows.
 
@@ -76,6 +112,7 @@ def suggest_groups_for_many(txns, *, since=None):
         tid: [name_key(n) for n in names if name_key(n)]
         for tid, names in names_by_txn.items()}
     all_keys = {k for keys in keys_by_txn.values() for k in keys}
+    token_index = _token_index(names_by_txn)
 
     # member_id → Counter(group_id)
     by_member = defaultdict(Counter)
@@ -91,39 +128,58 @@ def suggest_groups_for_many(txns, *, since=None):
             if r["dev_group"] and r["n"]:
                 by_member[r["member_id"]][r["dev_group"]] += r["n"]
 
-    # name_key → Counter(group_id) from exact name matches on past gifts
-    by_name = defaultdict(Counter)
-    if all_names:
-        q = Q()
-        for n in all_names:
-            q |= Q(payer_name__iexact=n) | Q(member__name__iexact=n)
+    # Per-txn name/history counts (exact + near)
+    by_txn_name = defaultdict(Counter)
+    if all_names or token_index:
         for r in (Transaction.objects.active()
-                  .filter(q, direction=Transaction.Direction.CREDIT,
+                  .filter(direction=Transaction.Direction.CREDIT,
                           confirmed=True, excluded_from_income=False,
                           department__category=Department.Category.DEVELOPMENT,
                           dev_group__isnull=False, date__gte=since)
+                  .filter(Q(payer_name__gt="") | Q(member__isnull=False))
                   .values("payer_name", "member__name", "dev_group")
                   .annotate(n=Count("id"))):
             if not r["dev_group"] or not r["n"]:
                 continue
+            seen_keys = set()
             for candidate in (r["payer_name"], r["member__name"]):
-                k = name_key(candidate or "")
+                if not candidate:
+                    continue
+                k = name_key(candidate)
+                if k and k in seen_keys:
+                    continue
+                if k:
+                    seen_keys.add(k)
                 if k in all_keys:
-                    by_name[k][r["dev_group"]] += r["n"]
+                    for tid, keys in keys_by_txn.items():
+                        if k in keys:
+                            by_txn_name[tid][r["dev_group"]] += r["n"]
+                else:
+                    for tid in _near_txn_ids(candidate, token_index):
+                        by_txn_name[tid][r["dev_group"]] += r["n"]
 
-    # name_key → Counter(group_id) from development campaign lists
-    by_campaign = defaultdict(Counter)
-    if all_keys:
-        camps = Campaign.objects.filter(
-            active=True,
-            department__category=Department.Category.DEVELOPMENT)
+    # Per-txn campaign-list counts (exact name_key + near)
+    by_txn_campaign = defaultdict(Counter)
+    camps = Campaign.objects.filter(
+        active=True,
+        department__category=Department.Category.DEVELOPMENT)
+    if camps.exists() and (all_keys or token_index):
         for cm in (CampaignMember.objects
-                   .filter(campaign__in=camps, name_key__in=all_keys)
+                   .filter(campaign__in=camps)
                    .exclude(group="")
-                   .only("name_key", "group")):
+                   .only("name", "name_key", "group")):
             g = match_existing_dev_group(cm.group)
-            if g:
-                by_campaign[cm.name_key][g.id] += 1
+            if not g:
+                continue
+            matched_txns = set()
+            if cm.name_key and cm.name_key in all_keys:
+                for tid, keys in keys_by_txn.items():
+                    if cm.name_key in keys:
+                        matched_txns.add(tid)
+            else:
+                matched_txns.update(_near_txn_ids(cm.name, token_index))
+            for tid in matched_txns:
+                by_txn_campaign[tid][g.id] += 1
 
     # member_id → default group from membership (weak fallback)
     member_default = {}
@@ -140,13 +196,12 @@ def suggest_groups_for_many(txns, *, since=None):
             for gid, n in by_member[t.member_id].items():
                 counts[gid] += n
                 reasons[gid] = "past giving"
-        for k in keys_by_txn.get(t.id, []):
-            for gid, n in by_name.get(k, {}).items():
-                counts[gid] += n
-                reasons.setdefault(gid, "name history")
-            for gid, n in by_campaign.get(k, {}).items():
-                counts[gid] += n
-                reasons.setdefault(gid, "campaign list")
+        for gid, n in by_txn_name.get(t.id, {}).items():
+            counts[gid] += n
+            reasons.setdefault(gid, "name history")
+        for gid, n in by_txn_campaign.get(t.id, {}).items():
+            counts[gid] += n
+            reasons.setdefault(gid, "campaign list")
         if not counts and t.member_id in member_default:
             counts[member_default[t.member_id]] = 1
             reasons[member_default[t.member_id]] = "member's group"
