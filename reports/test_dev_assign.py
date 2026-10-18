@@ -90,6 +90,19 @@ class DevAssignSuggestTests(TestCase):
         self.assertEqual(out[a.id][0], self.g1)
         self.assertIsNone(out[b.id][0])
 
+    def test_near_name_title_and_middle_initial(self):
+        self._txn(payer="JOHN MOTARI", group=self.g1, days_ago=20, ref="NM1")
+        open_txn = self._txn(payer="ELDER JOHN MOTARI", group=None,
+                             days_ago=0, ref="NMOPEN")
+        g, _ = suggest_group_for(open_txn)
+        self.assertEqual(g, self.g1)
+
+        self._txn(payer="EVALYNE UHURU", group=self.g2, days_ago=15, ref="NM2")
+        open2 = self._txn(payer="EVALYNE M UHURU", group=None,
+                          days_ago=0, ref="NMOPEN2")
+        g2, _ = suggest_group_for(open2)
+        self.assertEqual(g2, self.g2)
+
 
 class DevUnassignedAssignTests(TestCase):
     def setUp(self):
@@ -127,3 +140,20 @@ class DevUnassignedAssignTests(TestCase):
         self.assertEqual(self.open_txn.dev_group_id, self.g1.id)
         page = self.client.get(reverse("dev_unassigned"))
         self.assertNotContains(page, "ROW PERSON")
+
+    def test_assign_all_suggested(self):
+        Transaction.objects.create(
+            date=timezone.localdate() - dt.timedelta(days=10),
+            channel="CASH", direction="CREDIT", amount=Decimal("50"),
+            department=self.dev, dev_group=self.g1, payer_name="ROW PERSON",
+            confirmed=True, allocation_status="MANUAL", core_ref="UA-H2")
+        other = Transaction.objects.create(
+            date=timezone.localdate(), channel="CASH", direction="CREDIT",
+            amount=Decimal("80"), department=self.dev, payer_name="NO HINT",
+            confirmed=True, allocation_status="MANUAL", core_ref="UA-2")
+        r = self.client.post(reverse("dev_unassigned"), {"assign_suggested": "1"})
+        self.assertEqual(r.status_code, 302)
+        self.open_txn.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(self.open_txn.dev_group_id, self.g1.id)
+        self.assertIsNone(other.dev_group_id)

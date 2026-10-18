@@ -76,17 +76,31 @@ class DevGroupBuilderTests(TestCase):
             category="DEVELOPMENT")
         for i in range(12):
             m = Member.objects.create(name=f"M{i}", active=True)
-            Transaction.objects.create(date=dt.date(2026, 5, 1),
-                amount=Decimal(str((i + 1) * 100)), department=devfund,
-                direction="CREDIT", confirmed=True, member=m, channel="BANK",
-                allocation_status="MANUAL")
+            # Five gifts each so they clear the builder's minimum history bar.
+            for g in range(5):
+                Transaction.objects.create(
+                    date=dt.date(2026, 5, 1 + g),
+                    amount=Decimal(str((i + 1) * 20)), department=devfund,
+                    direction="CREDIT", confirmed=True, member=m, channel="BANK",
+                    allocation_status="MANUAL", core_ref=f"TRB-{i}-{g}")
+        # One low-activity member — listed separately, not placed in a group.
+        low = Member.objects.create(name="Low Activity", active=True)
+        Transaction.objects.create(
+            date=dt.date(2026, 5, 1), amount=Decimal("50"), department=devfund,
+            direction="CREDIT", confirmed=True, member=low, channel="BANK",
+            allocation_status="MANUAL", core_ref="TRB-LOW")
         c = Client(); c.force_login(tr)
-        self.assertEqual(c.get("/reports/dev-groups/build/?n=4").status_code, 200)
+        page = c.get("/reports/dev-groups/build/?n=4")
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "LOW ACTIVITY")  # Member.name is uppercased
+        self.assertContains(page, "Low activity")
         c.post("/reports/dev-groups/build/", {"n": "4", "prefix": "Team"})
         self.assertEqual(DevelopmentGroup.objects.filter(
             name__startswith="Team", active=True).count(), 4)
         self.assertEqual(Member.objects.filter(
             dev_group__name__startswith="Team").count(), 12)
+        low.refresh_from_db()
+        self.assertIsNone(low.dev_group_id)
         from django.db.models import Sum
         caps = [Transaction.objects.filter(member__dev_group=g).aggregate(
             t=Sum("amount"))["t"] or Decimal(0)

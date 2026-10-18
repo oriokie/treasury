@@ -488,24 +488,31 @@ def _sheet_matcher(members):
     """Attribute a gift to a campaign sheet row, in memory.
 
     Same order as the campaign page: rallying code, then phone, then unique
-    name. Built once for a sheet rather than hitting the campaign-code table
-    per gift — that is what timed the page out.
+    name (exact ``name_key``, then near match for titles / middle initials).
+    Built once for a sheet rather than hitting the campaign-code table per
+    gift — that is what timed the page out.
 
-    Returns ``(by_phone, ranked_codes, resolve)``. ``resolve(txn)`` is a sheet
-    row or ``None``.
+    Returns ``(by_phone, ranked_codes, resolve, surname_tokens)``.
+    ``resolve(txn)`` is a sheet row or ``None``. ``surname_tokens`` are the
+    longer core tokens used to prefilter fund-tree gifts for name matching.
     """
-    from members.models import name_key, normalize_phone
+    from members.models import (name_core_tokens, name_key, names_near_match,
+                                normalize_phone)
     from pledges.services.codes import _norm_code, codes_in_reference
 
     by_phone = {}
     by_name = {}
     ranked_codes = []
+    surname_tokens = set()
     for m in members:
         ph = normalize_phone(m.phone)
         if ph:
             by_phone.setdefault(ph, []).append(m)
         if m.name_key:
             by_name.setdefault(m.name_key, []).append(m)
+        for tok in name_core_tokens(m.name):
+            if len(tok) >= 3:
+                surname_tokens.add(tok)
         code = _norm_code(m.match_code)
         if len(code) >= 4:
             ranked_codes.append((code, m.match_code, m))
@@ -521,6 +528,13 @@ def _sheet_matcher(members):
         key = name_key(raw or "")
         if key and len(by_name.get(key, [])) == 1:
             return by_name[key][0]
+        if not raw:
+            return None
+        # Near match: ELDER JOHN MOTARI ↔ JOHN MOTARI, EVALYNE M UHURU ↔
+        # EVALYNE UHURU. Must identify exactly one sheet row.
+        hits = [m for m in members if names_near_match(raw, m.name)]
+        if len(hits) == 1:
+            return hits[0]
         return None
 
     def _by_code(reference):
@@ -547,13 +561,12 @@ def _sheet_matcher(members):
             cm = _by_phone(txn.member.phone)
             if cm is not None:
                 return cm
-            cm = _by_name(getattr(txn.member, "name_key", None)
-                          or txn.member.name)
+            cm = _by_name(getattr(txn.member, "name", None) or "")
             if cm is not None:
                 return cm
         return _by_name(txn.payer_name)
 
-    return by_phone, ranked_codes, resolve
+    return by_phone, ranked_codes, resolve, surname_tokens
 
 
 def member_contributions(campaign, start=None, end=None):
@@ -573,7 +586,8 @@ def member_contributions(campaign, start=None, end=None):
       1. Campaign match code in the reference (rallying for someone else)
       2. Mobile number — ``payer_phone``, then the credited register member's
          phone — must identify exactly one sheet row
-      3. Unique name on the sheet
+      3. Unique name on the sheet (exact ``name_key``, then near match for
+         titles / middle initials)
 
     Returns ``{campaign_member_id: {"amount": Decimal, "count": int}}``.
     """
@@ -585,7 +599,7 @@ def member_contributions(campaign, start=None, end=None):
     if not members:
         return {}
 
-    by_phone, ranked_codes, resolve = _sheet_matcher(members)
+    by_phone, ranked_codes, resolve, surname_tokens = _sheet_matcher(members)
     # Only pull gifts that can possibly match a sheet row. Scanning every
     # credit on a parent fund (e.g. Development, year-to-date) and then
     # hitting the campaign-code table once per row is what timed the page out.
@@ -599,6 +613,13 @@ def member_contributions(campaign, start=None, end=None):
             if raw:
                 code_q |= Q(reference__icontains=raw)
         match_q |= code_q
+    # Surname / significant-token prefilter so name-only gifts (no phone, no
+    # campaign stamp) still enter the matcher for near/exact name attribution.
+    if surname_tokens:
+        name_q = Q()
+        for tok in surname_tokens:
+            name_q |= Q(payer_name__icontains=tok) | Q(member__name__icontains=tok)
+        match_q |= name_q
 
     totals = {m.id: {"amount": Decimal(0), "count": 0} for m in members}
     for txn in _campaign_gift_qs(campaign, start, end, extra_q=match_q).iterator():
@@ -632,7 +653,8 @@ def ungrouped_contributors(campaign, start=None, end=None):
     from members.models import name_key, normalize_phone
 
     members = list(campaign.members.all())
-    resolve = _sheet_matcher(members)[2] if members else (lambda _txn: None)
+    resolve = (_sheet_matcher(members)[2] if members
+               else (lambda _txn: None))
 
     def identity(txn):
         ph = normalize_phone(txn.payer_phone or "")

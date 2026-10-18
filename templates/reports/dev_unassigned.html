@@ -20,8 +20,16 @@
       </select></div>
     <button class="btn">Assign selected</button>
     <button class="btn btn-ghost" name="all" value="1" onclick="return confirm('Assign ALL {{ count }} unassigned offerings to the chosen group?');">Assign all to chosen group</button>
+    {% if suggested_count %}
+    <button class="btn btn-ghost" form="assign-suggested" onclick="return confirm('Assign {{ suggested_count }} offering(s) to their suggested groups?');">Assign all suggested ({{ suggested_count }})</button>
+    {% endif %}
   </div></div>
 </form>
+{% if suggested_count %}
+<form id="assign-suggested" method="post">{% csrf_token %}
+  <input type="hidden" name="assign_suggested" value="1">
+</form>
+{% endif %}
 
   <div class="table-wrap"><table class="ledger">
     <thead><tr><th><input type="checkbox" form="bulk-assign" onclick="document.querySelectorAll('input[name=txn][form=bulk-assign]').forEach(c=>c.checked=this.checked)"></th>
