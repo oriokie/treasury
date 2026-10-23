@@ -36,6 +36,15 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
             render_value=True, attrs={"class": "field"})
         self.fields["daraja_passkey"].widget = forms.PasswordInput(
             render_value=True, attrs={"class": "field"})
+        self.fields["daraja_consumer_secret"].widget = forms.PasswordInput(
+            render_value=True, attrs={"class": "field"})
+        _env_help = self.fields["daraja_env"].help_text
+        self.fields["daraja_env"] = forms.ChoiceField(
+            label="Daraja environment",
+            choices=[("SANDBOX", "Sandbox (test)"), ("PRODUCTION", "Production (live)")],
+            initial=self.instance.daraja_env or "SANDBOX", required=False,
+            help_text=_env_help)
+        self.fields["daraja_env"].widget.attrs.update({"class": "field field--select"})
         from departments.models import Department
         self.fields["contrib_fund"].queryset = (
             Department.objects.filter(active=True).order_by("name"))

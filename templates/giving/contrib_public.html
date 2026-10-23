@@ -91,7 +91,7 @@
   }
   .field:focus-within { border-color: var(--green); box-shadow: 0 0 0 3px rgba(26, 79, 62, .12); }
   .prefix { color: var(--muted); font-weight: 650; }
-  input[type="tel"], input[type="number"] {
+  input[type="tel"], input[type="number"], input[type="text"] {
     border: 0; outline: 0; width: 100%; padding: .75rem 0;
     font-size: 1.05rem; background: transparent; font-family: inherit;
   }
@@ -195,7 +195,7 @@
       {% if attempt and status_message %}<div class="err">{{ status_message }}</div>{% endif %}
       <p class="lead">Friends and family can support <strong>{{ display_name }}</strong> here. Enter your name, the Safaricom number that should receive the prompt, and the amount. The gift is credited to them and added to their contribution.</p>
       <label for="giver_name">Your name</label>
-      <div class="field">
+      <div class="field"><span class="prefix" aria-hidden="true">Aa</span>
         <input id="giver_name" name="giver_name" type="text" autocomplete="name"
                placeholder="As it should appear on the record" required maxlength="120"
                value="{{ giver_name_value|default:'' }}"></div>
@@ -214,7 +214,7 @@
         {% for n in quick %}<button type="button" class="quick" data-amount="{{ n }}">{{ CURRENCY }} {{ n|intcomma }}</button>{% endfor %}
       </div>
       <button class="pay" type="submit" {% if not ready %}disabled{% endif %}>Contribute now</button>
-      {% if not ready %}<p class="hint">The M-Pesa prompt is not available just now. You can still give with the account code below.</p>{% endif %}
+      {% if not ready %}<p class="hint">The M-Pesa prompt is not available just now{% if not_ready %}: {{ not_ready }}{% else %}.{% endif %} You can still give with the account code below.</p>{% endif %}
       <p class="secure">Secure payment via M-Pesa. Your PIN is entered only on your phone.</p>
     </form>
     {% endif %}
