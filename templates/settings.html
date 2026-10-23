@@ -155,7 +155,7 @@
   </section>
   <section class="tabpane" data-pane="contrib">
     <div class="card"><div class="bd">
-      <div class="help u-mb-sm">Each member already has a code. This adds a page they can share, so a friend can give by M-Pesa prompt and the gift is credited to that member. Failed and unfinished prompts are listed under Giving → Contribution attempts.</div>
+      <div class="help u-mb-sm">Each member already has a code. This adds a page they can share with friends and family: the friend types their <strong>name</strong> and M-Pesa <strong>phone</strong>, pays by prompt, and the gift is credited to the member. Co-op Bank’s credit notification has no giver name — the name from this form is what we keep with the gift (aligned with Co-operative STK giver data). Failed and unfinished prompts are listed under Giving → Contribution attempts.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'contrib_links_enabled contrib_fund contrib_title contrib_tagline contrib_verse contrib_verse_ref contrib_quick_amounts contrib_sms_template' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>

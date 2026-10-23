@@ -193,7 +193,13 @@
       {% csrf_token %}
       {% if error %}<div class="err">{{ error }}</div>{% endif %}
       {% if attempt and status_message %}<div class="err">{{ status_message }}</div>{% endif %}
-      <p class="lead">Enter the Safaricom number that should receive the prompt, and the amount. The gift is credited to <strong>{{ display_name }}</strong> and added to their contribution.</p>
+      <p class="lead">Friends and family can support <strong>{{ display_name }}</strong> here. Enter your name, the Safaricom number that should receive the prompt, and the amount. The gift is credited to them and added to their contribution.</p>
+      <label for="giver_name">Your name</label>
+      <div class="field">
+        <input id="giver_name" name="giver_name" type="text" autocomplete="name"
+               placeholder="As it should appear on the record" required maxlength="120"
+               value="{{ giver_name_value|default:'' }}"></div>
+      <p class="hint">Your name — not verified by M-Pesa. Kept with the gift so the church knows who gave.</p>
       <label for="phone">M-Pesa phone number</label>
       <div class="field"><span class="prefix" aria-hidden="true">☎</span>
         <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel"
@@ -227,7 +233,7 @@
 
     <div class="steps">
       <div class="steps-title">How to give</div>
-      <div><div class="n">1</div><span>Enter phone and amount</span></div>
+      <div><div class="n">1</div><span>Enter your name, phone and amount</span></div>
       <div><div class="n">2</div><span>Receive the M-Pesa prompt</span></div>
       <div><div class="n">3</div><span>Enter your PIN to finish</span></div>
     </div>

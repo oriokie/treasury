@@ -16,8 +16,8 @@ from core.services.sms import send_sms
 from giving.models import ContributionAttempt
 from giving.services.contrib_link import (
     apply_callback, callback_url, contribution_url, display_name, member_for_code,
-    parse_amount, payment_ready, public_message, quick_amounts, refresh_from_daraja,
-    render_sms, start_prompt,
+    parse_amount, parse_giver_name, payment_ready, public_message, quick_amounts,
+    refresh_from_daraja, render_sms, start_prompt,
 )
 from members.models import Member
 
@@ -77,14 +77,21 @@ class ContributionLinkView(View):
             return render(request, "giving/contrib_closed.html", status=404)
         cfg = SiteConfig.get()
         amount, amount_err = parse_amount(request.POST.get("amount"))
+        giver_name = request.POST.get("giver_name") or ""
         phone = request.POST.get("phone") or ""
         ctx = _page_context(member, cfg, request)
+        ctx["giver_name_value"] = giver_name
         ctx["phone_value"] = phone
         ctx["amount_value"] = request.POST.get("amount") or ""
+        name, name_err = parse_giver_name(giver_name)
+        if name_err:
+            ctx["error"] = name_err
+            return render(request, self.template_name, ctx, status=400)
         if amount_err:
             ctx["error"] = amount_err
             return render(request, self.template_name, ctx, status=400)
-        attempt, err = start_prompt(member, phone, amount, request, cfg)
+        attempt, err = start_prompt(
+            member, phone, amount, request, cfg, giver_name=name)
         if err and attempt is None:
             ctx["error"] = err
             return render(request, self.template_name, ctx, status=400)

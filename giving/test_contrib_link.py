@@ -12,7 +12,9 @@ from core.roles import TREASURER
 from core.services.sms import sms_first_name
 from departments.models import Department
 from giving.models import ContributionAttempt, Transaction
-from giving.services.contrib_link import render_sms, settle, start_prompt
+from giving.services.contrib_link import (
+    parse_giver_name, render_sms, settle, start_prompt,
+)
 from members.models import Member
 
 
@@ -38,11 +40,13 @@ class _Ready(TestCase):
         self.cfg.sms_shortcode = "CHURCH"
         self.cfg.save()
 
-    def _prompt(self):
+    def _prompt(self, giver_name="Jane Wanjiru"):
         with patch("giving.services.contrib_link.stk_push", return_value=(
                 {"ResponseCode": "0", "CheckoutRequestID": "ws_CO_1",
                  "CustomerMessage": "Check your phone"}, None)):
-            return start_prompt(self.member, "0712345678", Decimal("500"))
+            return start_prompt(
+                self.member, "0712345678", Decimal("500"),
+                giver_name=giver_name)
 
 
 class PageTests(_Ready):
@@ -54,6 +58,8 @@ class PageTests(_Ready):
         self.assertIn("Edwin Orioki", body)
         self.assertIn(self.member.match_code, body)
         self.assertIn("Contribute now", body)
+        self.assertIn('name="giver_name"', body)
+        self.assertIn("Friends and family can support", body)
         self.assertNotIn("/accounts/login", response.get("Location") or "")
 
     def test_a_switched_off_link_is_not_a_login_page(self):
@@ -68,12 +74,27 @@ class PageTests(_Ready):
         self.assertEqual(response.status_code, 404)
         self.assertContains(response, "not open", status_code=404)
 
+    def test_post_requires_the_giver_name(self):
+        url = reverse("contrib_link", args=[self.member.match_code])
+        response = self.client.post(url, {
+            "phone": "0712345678", "amount": "100", "giver_name": "",
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "name of the person who is giving",
+                            status_code=400)
+
 
 class PromptTests(_Ready):
+    def test_parse_giver_name(self):
+        self.assertEqual(parse_giver_name("  Jane   Wanjiru "),
+                         ("Jane Wanjiru", ""))
+        self.assertIsNone(parse_giver_name("A")[0])
+
     def test_a_paid_prompt_is_credited_to_the_member_once(self):
         attempt, err = self._prompt()
         self.assertEqual(err, "")
         self.assertEqual(attempt.status, ContributionAttempt.Status.SENT)
+        self.assertEqual(attempt.giver_name, "Jane Wanjiru")
         settle(attempt.pk, 0, "The service request is processed successfully.",
                "UF6EXP01")
         settle(attempt.pk, 0, "again", "UF6EXP01")
@@ -86,6 +107,13 @@ class PromptTests(_Ready):
         self.assertEqual(txn.mpesa_ref, "UF6EXP01")
         self.assertTrue(txn.attributed_via_code)
         self.assertEqual(txn.reference, self.member.match_code)
+        self.assertEqual(txn.payer_name, "JANE WANJIRU")
+        self.assertEqual(txn.payer_phone, "254712345678")
+
+    def test_start_prompt_rejects_a_blank_giver_name(self):
+        attempt, err = self._prompt(giver_name="")
+        self.assertIsNone(attempt)
+        self.assertIn("name", err.lower())
 
     def test_a_cancelled_prompt_is_listed_for_follow_up(self):
         attempt, _err = self._prompt()

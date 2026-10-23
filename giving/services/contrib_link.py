@@ -1,8 +1,10 @@
 """Personal contribution links.
 
 A member's match code is the public handle: ``/c/MB7K2M`` opens a page where
-anyone can give by M-Pesa prompt, and the gift is credited to that member.
-An attempt that never finishes stays on the follow-up list.
+friends and family can support that member by M-Pesa prompt. The giver types
+their name and phone (Co-op Bank's credit has no giver name); the gift is
+credited to the member. An attempt that never finishes stays on the follow-up
+list.
 """
 import secrets
 from datetime import timedelta
@@ -121,12 +123,25 @@ def parse_amount(raw):
     return amount, ""
 
 
-def start_prompt(member, phone_raw, amount, request=None, cfg=None):
+def parse_giver_name(raw):
+    """Name the friend typed on the form (StkGiver.Name). Not verified by M-Pesa."""
+    name = " ".join(str(raw or "").split()).strip()
+    if len(name) < 2:
+        return None, "Enter the name of the person who is giving."
+    if len(name) > 120:
+        return None, "That name is too long."
+    return name, ""
+
+
+def start_prompt(member, phone_raw, amount, request=None, cfg=None, giver_name=""):
     """Send an STK prompt. Returns (attempt or None, error message)."""
     cfg = cfg or SiteConfig.get()
     ready, reason = payment_ready(cfg)
     if not ready:
         return None, reason
+    name, name_err = parse_giver_name(giver_name)
+    if name_err:
+        return None, name_err
     phone = normalize_phone(phone_raw)
     if not phone:
         return None, "Enter a Safaricom number, for example 07XXXXXXXX."
@@ -145,8 +160,9 @@ def start_prompt(member, phone_raw, amount, request=None, cfg=None):
         return None, "Too many attempts on this link. Please try again in a little while."
 
     attempt = ContributionAttempt.objects.create(
-        member=member, code=member.match_code, phone=phone, amount=amount,
-        fund_id=cfg.contrib_fund_id, status=ContributionAttempt.Status.ERROR,
+        member=member, code=member.match_code, giver_name=name, phone=phone,
+        amount=amount, fund_id=cfg.contrib_fund_id,
+        status=ContributionAttempt.Status.ERROR,
         token=secrets.token_urlsafe(18)[:32],
         result_desc="Sending the prompt…",
     )
@@ -251,13 +267,14 @@ def _book(attempt, receipt):
         member=member,
         attributed_via_code=True,
         reference=attempt.code,
+        payer_name=attempt.giver_name or "",
         payer_phone=attempt.phone,
         mpesa_ref=receipt,
         core_ref=f"STK{attempt.pk}",
         allocation_status=Transaction.Status.MANUAL,
         raw_narration=(
             f"Personal contribution link {attempt.code} "
-            f"from {attempt.phone}"),
+            f"from {attempt.giver_name or 'giver'} ({attempt.phone})"),
     )
     try:
         from pledges.services.matching import handle_new_contribution
