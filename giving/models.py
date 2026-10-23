@@ -891,6 +891,12 @@ class ContributionAttempt(models.Model):
         "members.Member", on_delete=models.PROTECT, related_name="contribution_attempts")
     code = models.CharField(max_length=16, db_index=True,
                             help_text="The member's match code at the time of the prompt.")
+    # Who is paying (friend/family). Kept separately from ``member`` — the gift
+    # is credited to the member; Co-op Bank's credit has no giver name, so this
+    # is what we know about the person who typed the form (StkGiver.Name).
+    giver_name = models.CharField(
+        max_length=120, blank=True, default="",
+        help_text="Name the giver typed on the form. Not verified by M-Pesa.")
     phone = models.CharField(max_length=12)
     amount = models.DecimalField(max_digits=12, decimal_places=2,
                                  validators=[MinValueValidator(Decimal("1"))])

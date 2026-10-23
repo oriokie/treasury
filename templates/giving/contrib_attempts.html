@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head"><div>
   <h1>Contribution attempts</h1>
-  <div class="sub">M-Pesa prompts from personal links that did not become a gift — for follow-up</div>
+  <div class="sub">M-Pesa prompts from personal links — friends supporting a member. Unfinished ones stay here for follow-up.</div>
 </div></div>
 
 <div class="btn-row u-mb">
@@ -14,7 +14,7 @@
 
 <div class="card"><div class="table-wrap"><table class="ledger">
   <thead><tr>
-    <th>When</th><th>Member</th><th>Code</th><th>Phone</th><th class="num">Amount</th>
+    <th>When</th><th>Member</th><th>Code</th><th>Giver</th><th>Phone</th><th class="num">Amount</th>
     <th>Result</th><th></th>
   </tr></thead>
   <tbody>
@@ -23,6 +23,7 @@
     <td class="mono">{{ a.created_at|date:"d M Y H:i" }}</td>
     <td><a class="link" href="{% url 'member_detail' a.member_id %}">{{ a.member.name }}</a></td>
     <td class="mono">{{ a.code }}</td>
+    <td>{{ a.giver_name|default:"—" }}</td>
     <td class="mono">{{ a.phone }}</td>
     <td class="num mono">{{ a.amount|floatformat:0 }}</td>
     <td>
@@ -42,7 +43,7 @@
     </td>
   </tr>
   {% empty %}
-  <tr><td colspan="7" class="empty">{% if show == "open" %}Nothing waiting for follow-up.{% else %}No attempts in this list.{% endif %}</td></tr>
+  <tr><td colspan="8" class="empty">{% if show == "open" %}Nothing waiting for follow-up.{% else %}No attempts in this list.{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table></div></div>

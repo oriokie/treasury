@@ -433,13 +433,16 @@ class SiteConfig(models.Model):
     # --- Personal contribution links (STK) ---------------------------------
     contrib_links_enabled = models.BooleanField(
         default=False,
-        help_text="Let each member share a link friends can open to give by "
-                  "M-Pesa prompt. Off until you choose the fund below.")
+        help_text="Let each member share a link so friends and family can "
+                  "support them by M-Pesa prompt. The friend enters their name "
+                  "and phone; the gift is credited to the member. Off until you "
+                  "choose the fund below.")
     contrib_fund = models.ForeignKey(
         "departments.Department", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="+",
         help_text="Gifts paid through a personal link are booked to this fund "
-                  "and credited to the member whose code is in the link.")
+                  "and credited to the member whose code is in the link. The "
+                  "payer's name and phone from the form are stored on the gift.")
     contrib_title = models.CharField(
         max_length=80, blank=True, default="Development Fund",
         help_text="Heading on the public page, under the church name.")
