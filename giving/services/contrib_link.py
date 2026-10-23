@@ -255,6 +255,27 @@ def _book(attempt, receipt):
         existing = (Transaction.objects.filter(mpesa_ref__iexact=receipt).first()
                     or Transaction.objects.filter(bank_receipt__iexact=receipt).first())
         if existing:
+            # Bank credit often lands before the STK callback; fill giver details
+            # the bank never carries.
+            updates = []
+            if attempt.giver_name and not (existing.payer_name or "").strip():
+                existing.payer_name = attempt.giver_name
+                updates.append("payer_name")
+            if attempt.phone and not (existing.payer_phone or "").strip():
+                existing.payer_phone = attempt.phone
+                updates.append("payer_phone")
+            if attempt.member_id and not existing.member_id:
+                existing.member = attempt.member
+                existing.attributed_via_code = True
+                updates.extend(["member", "attributed_via_code"])
+            if attempt.code and not (existing.reference or "").strip():
+                existing.reference = attempt.code
+                updates.append("reference")
+            if attempt.fund_id and not existing.department_id:
+                existing.department_id = attempt.fund_id
+                updates.append("department_id")
+            if updates:
+                existing.save(update_fields=list(dict.fromkeys(updates)))
             return existing
     txn = Transaction.objects.create(
         date=timezone.localdate(),

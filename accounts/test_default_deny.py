@@ -35,6 +35,7 @@ PUBLIC_URL_NAMES = {
     "twofactor_verify",      # the 2FA gate, completed mid-login before auth finishes
     "healthz",               # uptime/readiness probe, exposes nothing sensitive
     "cbs_webhook",           # bank machine-to-machine; auth'd by token/HMAC, not a session
+    "stk_giver_update",      # late StkGiver attach; same bank-feed auth as cbs_webhook
     "public_pledge",         # deliberately public member pledge form (off by default)
     "public_pledge_thanks",  # its thank-you page
     # A member's personal contribution link. Off unless contrib_links_enabled.
