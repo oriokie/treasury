@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.49.8
+
+Automated patch release: Wire Daraja STK settings and Co-op StkGiver on the bank feed.
+
 ## 3.49.7
 
 Automated patch release: Collect giver name on personal contribution links.
