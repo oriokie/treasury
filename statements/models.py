@@ -308,6 +308,24 @@ class BankEvent(models.Model):
     def __str__(self):
         return f"{self.cbs_transaction_id} {self.event_type} {self.amount} [{self.status}]"
 
+
+class PendingStkGiver(models.Model):
+    """Late ``StkGiver`` update that arrived before its Co-op bank credit.
+
+    Keyed by the bank ``TransactionId``. Applied and removed when that credit
+    is processed (see ``statements.services.stk_giver``).
+    """
+    cbs_transaction_id = models.CharField(max_length=80, unique=True)
+    giver = models.JSONField(default=dict)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+
+    def __str__(self):
+        return f"PendingStkGiver {self.cbs_transaction_id}"
+
+
 # The Bank Statement Register — a separate, read-only layer. See models_register.
 from statements.models_register import (  # noqa: E402,F401
     RegisterException, StatementLine, StatementRegisterImport)

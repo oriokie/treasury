@@ -409,16 +409,26 @@ class SiteConfig(models.Model):
     whatsapp_sender = models.CharField(max_length=40, blank=True,
         help_text="The WhatsApp Business sender number, e.g. +14155238886.")
 
-    # --- M-Pesa Daraja (Paybill) direct pull (optional, for future use) ---
-    daraja_enabled = models.BooleanField(default=False)
-    daraja_shortcode = models.CharField(max_length=20, blank=True)
-    daraja_consumer_key = EncryptedCharField(max_length=255, blank=True, default="")
-    daraja_consumer_secret = EncryptedCharField(max_length=255, blank=True, default="")
-    daraja_env = models.CharField(max_length=10, default="SANDBOX", blank=True,
-        help_text="SANDBOX or PRODUCTION.")
-    daraja_passkey = EncryptedCharField(max_length=255, blank=True, default="",
-        help_text="Lipa na M-Pesa passkey from the Daraja portal. Required for "
-                  "the STK prompt on a personal contribution link.")
+    # --- M-Pesa Daraja (STK prompts on contribution links) ---
+    daraja_enabled = models.BooleanField(
+        default=False,
+        verbose_name="Enable M-Pesa STK prompts",
+        help_text="Turn on so personal contribution links can send a Lipa na "
+                  "M-Pesa prompt. Needs shortcode, keys, passkey, and a public "
+                  "https site address (Telegram tab).")
+    daraja_shortcode = models.CharField(
+        max_length=20, blank=True, verbose_name="Business shortcode",
+        help_text="Paybill or Buy Goods shortcode from Safaricom.")
+    daraja_consumer_key = EncryptedCharField(
+        max_length=255, blank=True, default="", verbose_name="Consumer key")
+    daraja_consumer_secret = EncryptedCharField(
+        max_length=255, blank=True, default="", verbose_name="Consumer secret")
+    daraja_env = models.CharField(
+        max_length=10, default="SANDBOX", blank=True, verbose_name="Daraja environment",
+        help_text="SANDBOX for testing, PRODUCTION for live prompts.")
+    daraja_passkey = EncryptedCharField(
+        max_length=255, blank=True, default="", verbose_name="Lipa na M-Pesa passkey",
+        help_text="Passkey from the Daraja portal (Lipa na M-Pesa Online).")
 
     class DarajaTxnType(models.TextChoices):
         PAYBILL = "PAYBILL", "Paybill"
@@ -426,9 +436,10 @@ class SiteConfig(models.Model):
 
     daraja_txn_type = models.CharField(
         max_length=8, choices=DarajaTxnType.choices, default=DarajaTxnType.PAYBILL,
-        help_text="Paybill asks the payer for an account number — the member's "
-                  "code. A till does not, but a gift paid through a member's link "
-                  "is still credited to that member.")
+        verbose_name="Account type",
+        help_text="Paybill shows the member's code as the account number on "
+                  "the phone. Buy Goods (till) does not ask for an account, but "
+                  "a gift paid through a member's link is still credited to them.")
 
     # --- Personal contribution links (STK) ---------------------------------
     contrib_links_enabled = models.BooleanField(

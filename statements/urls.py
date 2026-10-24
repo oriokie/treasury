@@ -1,10 +1,11 @@
 from django.urls import path
 from . import views, views_register
-from .webhook import CbsEventWebhookView
+from .webhook import CbsEventWebhookView, StkGiverUpdateView
 
 urlpatterns = [
     path("statements/<int:pk>/purge/", views.StatementPurgeView.as_view(), name="statement_purge"),
     path("api/bank/cbs-events/", CbsEventWebhookView.as_view(), name="cbs_webhook"),
+    path("api/bank/stk-giver/", StkGiverUpdateView.as_view(), name="stk_giver_update"),
     path("statements/", views.StatementListView.as_view(), name="statement_list"),
     path("statements/upload/", views.StatementUploadView.as_view(), name="statement_upload"),
     path("statements/accounts/", views.BankAccountListView.as_view(), name="bank_accounts"),

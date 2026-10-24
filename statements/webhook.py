@@ -28,6 +28,9 @@ from statements.models import BankEvent
 from statements.services.parser import parse_narration
 from statements.services.ingest import ingest_event
 from statements.services.register import bank_account_for_acct_no
+from statements.services.stk_giver import (
+    apply_pending_for, apply_to_bank_event, parse_stk_giver, store_or_apply_update,
+)
 
 
 def _reply(code, message, http_status):
@@ -62,15 +65,66 @@ def _parse_date(*candidates):
     return dt.date.today()
 
 
+def _bank_feed_authenticated(request, cfg):
+    mode = cfg.bank_feed_auth_mode
+    auth = request.META.get("HTTP_AUTHORIZATION", "")
+    if mode == SiteConfig.BankFeedAuth.NONE:
+        return True
+    if mode == SiteConfig.BankFeedAuth.BASIC:
+        if not auth.startswith("Basic ") or not cfg.bank_feed_username:
+            return False
+        try:
+            user, _, pwd = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
+        except Exception:  # noqa: BLE001
+            return False
+        # Constant time, exactly as the token branch below does it. This used
+        # to be a plain `==`, which stops at the first differing byte and so
+        # takes measurably longer the more of the password a caller has
+        # already guessed — enough, over many tries against an endpoint that
+        # by design accepts unauthenticated traffic from the internet, to
+        # recover the secret a character at a time. BASIC is the documented
+        # default, so this was the mode nearly every church runs.
+        #
+        # Both comparisons are evaluated before either is consulted: `and`
+        # would short-circuit on a wrong username and leak, by how quickly
+        # the 401 came back, whether the username itself was right.
+        user_ok = _secret_eq(user, cfg.bank_feed_username)
+        pwd_ok = _secret_eq(pwd, cfg.bank_feed_password)
+        return user_ok & pwd_ok
+    if mode == SiteConfig.BankFeedAuth.TOKEN:
+        token = (cfg.bank_feed_token or "").strip()
+        if not token:
+            return False
+        # Accept the token however the bank presents it: an Authorization
+        # header with or without a Bearer/Token scheme, or a custom header
+        # (X-Auth-Token / X-Api-Key / Api-Key). Compared in constant time.
+        def _strip_scheme(v):
+            v = (v or "").strip()
+            for scheme in ("Bearer ", "Token ", "bearer ", "token "):
+                if v.startswith(scheme):
+                    return v[len(scheme):].strip()
+            return v
+        candidates = [_strip_scheme(auth)]
+        for h in ("HTTP_X_AUTH_TOKEN", "HTTP_X_API_KEY", "HTTP_API_KEY",
+                  "HTTP_APIKEY", "HTTP_X_AUTHORIZATION", "HTTP_TOKEN"):
+            candidates.append(_strip_scheme(request.META.get(h, "")))
+        return any(c and hmac.compare_digest(c, token) for c in candidates)
+    return False
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 @method_decorator(login_not_required, name="dispatch")
 class CbsEventWebhookView(View):
-    """POST-only endpoint the bank calls for every transaction.
+    """POST-only endpoint the bank (or a relay) calls for every transaction.
 
     Machine-to-machine: the bank is not a logged-in user, so this is exempt from
     the global login-required gate (P1-1). It is NOT unauthenticated — access is
-    controlled by ``_authenticated`` below (shared-secret token or HMAC per
-    ``bank_feed_auth_mode``), which every non-GET request must pass."""
+    controlled by ``_bank_feed_authenticated`` (shared-secret token or Basic per
+    ``bank_feed_auth_mode``), which every non-GET request must pass.
+
+    Optional ``StkGiver`` on the payload (Co-op STK giver docs) is applied to the
+    credit when present; unknown keys are ignored.
+    """
 
     def get(self, request):
         # a simple health check so the bank/ops can verify the URL is live
@@ -80,50 +134,7 @@ class CbsEventWebhookView(View):
                       200)
 
     def _authenticated(self, request, cfg):
-        mode = cfg.bank_feed_auth_mode
-        auth = request.META.get("HTTP_AUTHORIZATION", "")
-        if mode == SiteConfig.BankFeedAuth.NONE:
-            return True
-        if mode == SiteConfig.BankFeedAuth.BASIC:
-            if not auth.startswith("Basic ") or not cfg.bank_feed_username:
-                return False
-            try:
-                user, _, pwd = base64.b64decode(auth[6:]).decode("utf-8").partition(":")
-            except Exception:  # noqa: BLE001
-                return False
-            # Constant time, exactly as the token branch below does it. This used
-            # to be a plain `==`, which stops at the first differing byte and so
-            # takes measurably longer the more of the password a caller has
-            # already guessed — enough, over many tries against an endpoint that
-            # by design accepts unauthenticated traffic from the internet, to
-            # recover the secret a character at a time. BASIC is the documented
-            # default, so this was the mode nearly every church runs.
-            #
-            # Both comparisons are evaluated before either is consulted: `and`
-            # would short-circuit on a wrong username and leak, by how quickly
-            # the 401 came back, whether the username itself was right.
-            user_ok = _secret_eq(user, cfg.bank_feed_username)
-            pwd_ok = _secret_eq(pwd, cfg.bank_feed_password)
-            return user_ok & pwd_ok
-        if mode == SiteConfig.BankFeedAuth.TOKEN:
-            token = (cfg.bank_feed_token or "").strip()
-            if not token:
-                return False
-            # Accept the token however the bank presents it: an Authorization
-            # header with or without a Bearer/Token scheme, or a custom header
-            # (X-Auth-Token / X-Api-Key / Api-Key). Compared in constant time.
-            def _strip_scheme(v):
-                v = (v or "").strip()
-                for scheme in ("Bearer ", "Token ", "bearer ", "token "):
-                    if v.startswith(scheme):
-                        return v[len(scheme):].strip()
-                return v
-            candidates = [_strip_scheme(auth)]
-            for h in ("HTTP_X_AUTH_TOKEN", "HTTP_X_API_KEY", "HTTP_API_KEY",
-                      "HTTP_APIKEY", "HTTP_X_AUTHORIZATION", "HTTP_TOKEN"):
-                candidates.append(_strip_scheme(request.META.get(h, "")))
-            return any(c and hmac.compare_digest(c, token) for c in candidates)
-        return False
+        return _bank_feed_authenticated(request, cfg)
 
     def post(self, request):
         cfg = SiteConfig.get()
@@ -141,9 +152,16 @@ class CbsEventWebhookView(View):
         if not txn_id:
             return _reply("400", "Missing TransactionId.", 400)
 
+        giver = parse_stk_giver(payload.get("StkGiver"))
+
         # idempotency: the bank re-delivers on non-2XX, so an already-seen event
-        # is acknowledged with 200 and creates nothing.
-        if BankEvent.objects.filter(cbs_transaction_id=txn_id).exists():
+        # is acknowledged with 200. A redelivery (or late attach) may still carry
+        # StkGiver — apply it without creating a second transaction.
+        existing = BankEvent.objects.filter(cbs_transaction_id=txn_id).first()
+        if existing is not None:
+            if giver:
+                apply_to_bank_event(existing, giver,
+                                    bank_name=_bank_name_from_payload(payload))
             return _reply("200", "Already received.", 200)
 
         amount_raw = payload.get("Amount")
@@ -227,12 +245,66 @@ class CbsEventWebhookView(View):
             # 500 -> the bank will retry; the duplicate guard prevents double-posting
             return _reply("500", "Could not process event; will accept on retry.", 500)
 
+        bank_name = parsed.get("name", "") or ""
         if outcome == "duplicate":
             evt.status = BankEvent.Status.DUPLICATE
-            evt.save(update_fields=["status"])
+            if txn is not None:
+                evt.transaction = txn
+            evt.save(update_fields=["status", "transaction"] if txn is not None
+                     else ["status"])
+            apply_pending_for(txn_id, evt, bank_name=bank_name)
+            if giver:
+                apply_to_bank_event(evt, giver, bank_name=bank_name)
             return _reply("200", "Already received.", 200)
 
         evt.status = BankEvent.Status.PROCESSED
         evt.transaction = txn
         evt.save(update_fields=["status", "transaction"])
+        apply_pending_for(txn_id, evt, bank_name=bank_name)
+        if giver:
+            apply_to_bank_event(evt, giver, bank_name=bank_name)
+        elif event_type == "CREDIT":
+            # Local STK contribution link: match by M-Pesa receipt / phone.
+            apply_to_bank_event(evt, None, bank_name=bank_name)
         return _reply("200", "Successfully received data", 200)
+
+
+def _bank_name_from_payload(payload):
+    narration = str(payload.get("Narration") or "").strip()
+    memos = " ".join(filter(None, [
+        str(payload.get("CustMemoLine1") or "").strip(),
+        str(payload.get("CustMemoLine2") or "").strip(),
+        str(payload.get("CustMemoLine3") or "").strip()]))
+    return parse_narration(narration or memos).get("name", "") or ""
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+@method_decorator(login_not_required, name="dispatch")
+class StkGiverUpdateView(View):
+    """Late ``StkGiver`` follow-up (Co-op STK giver docs §2).
+
+    Same auth as the CBS webhook. Body: ``TransactionId`` + ``StkGiver``.
+    Idempotent; may arrive before the credit — stored until then.
+    """
+
+    def get(self, request):
+        cfg = SiteConfig.get()
+        return _reply("200", "STK giver update endpoint is live."
+                      if cfg.bank_feed_enabled else "Endpoint present but disabled.",
+                      200)
+
+    def post(self, request):
+        cfg = SiteConfig.get()
+        if not cfg.bank_feed_enabled:
+            return _reply("403", "Bank feed is disabled.", 403)
+        if not _bank_feed_authenticated(request, cfg):
+            return _reply("401", "Unauthorized.", 401)
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            return _reply("400", "Malformed JSON payload.", 400)
+        ok, message = store_or_apply_update(
+            payload.get("TransactionId"), payload.get("StkGiver"))
+        if not ok:
+            return _reply("400", message, 400)
+        return _reply("200", message, 200)

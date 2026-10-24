@@ -156,6 +156,20 @@
   <section class="tabpane" data-pane="contrib">
     <div class="card"><div class="bd">
       <div class="help u-mb-sm">Each member already has a code. This adds a page they can share with friends and family: the friend types their <strong>name</strong> and M-Pesa <strong>phone</strong>, pays by prompt, and the gift is credited to the member. Co-op Bank’s credit notification has no giver name — the name from this form is what we keep with the gift (aligned with Co-operative STK giver data). Failed and unfinished prompts are listed under Giving → Contribution attempts.</div>
+      {% if contrib_prompt_ready %}
+      <div class="info-panel u-mb-sm"><strong>Contribute now is active.</strong> Public links can send an M-Pesa prompt.</div>
+      {% else %}
+      <div class="info-panel u-mb-sm" style="border-color:#c4a35a"><strong>Contribute now is disabled on public pages.</strong>
+        {% if contrib_prompt_reason %}{{ contrib_prompt_reason }}{% endif %}
+        Turn on the checklist below, then save.</div>
+      {% endif %}
+      <div class="help u-mb-sm"><strong>To activate the prompt</strong> (all required):
+        <ol class="u-mt-sm" style="margin-left:1.2rem">
+          <li>Enable <em>Contribution links</em> and choose the fund on this tab.</li>
+          <li>On <button type="button" class="link" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer" onclick="document.querySelector('#tabs .tab[data-tab=channels]').click()">Channels</button>: enable <em>M-Pesa Daraja</em> and enter shortcode, consumer key/secret, and passkey.</li>
+          <li>On <button type="button" class="link" style="background:none;border:0;padding:0;font:inherit;color:inherit;text-decoration:underline;cursor:pointer" onclick="document.querySelector('#tabs .tab[data-tab=telegram]').click()">Telegram</button>: set the public site address to <span class="mono">https://…</span> (Safaricom’s callback).</li>
+        </ol>
+      </div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'contrib_links_enabled contrib_fund contrib_title contrib_tagline contrib_verse contrib_verse_ref contrib_quick_amounts contrib_sms_template' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
@@ -329,12 +343,27 @@
       </div>
     </div></div>
 
-    <div class="card u-mt"><div class="hd">M-Pesa Daraja (Paybill) <span class="muted">(optional, for future use)</span></div><div class="bd">
-      <div class="help u-mb-sm">Pull Paybill transactions directly from Safaricom Daraja for real-time reconciliation, instead of the weekly CSV upload. Leave disabled until your Daraja app credentials are ready.</div>
+    <div class="card u-mt"><div class="hd">M-Pesa Daraja (STK prompts)</div><div class="bd">
+      <div class="help u-mb-sm">Required for the <strong>Contribute now</strong> button on personal contribution links. Safaricom sends the phone prompt; money settles to your Co-op paybill/till and can appear on the bank feed below. Enable Daraja, enter credentials from the Daraja portal, set environment to Production for live gifts, and set the public https site address on the Telegram tab.</div>
+      {% if contrib_prompt_ready %}
+      <div class="info-panel u-mb-sm"><strong>STK prompts ready.</strong> Contribution links can send a prompt.</div>
+      {% else %}
+      <div class="info-panel u-mb-sm" style="border-color:#c4a35a"><strong>STK prompts not ready.</strong>
+        {% if contrib_prompt_reason %}{{ contrib_prompt_reason }}{% endif %}
+        Complete the fields below (and Contribution links + Telegram site address), then save.</div>
+      {% endif %}
       <div class="form-grid">
-      {% for f in form %}{% if f.name in 'daraja_enabled daraja_shortcode daraja_consumer_key daraja_consumer_secret daraja_passkey daraja_env daraja_txn_type' %}
-        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+      {% for f in form %}{% if f.name in 'daraja_enabled daraja_env daraja_txn_type daraja_shortcode daraja_consumer_key daraja_consumer_secret daraja_passkey' %}
+        <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>{% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}{% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}{% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
       {% endif %}{% endfor %}
+      </div>
+      <hr class="u-divider">
+      <div class="section-title">Callback Safaricom will call</div>
+      <p class="mono u-mb-sm">{{ stk_callback_url }}</p>
+      <p class="help">Must be reachable on https. Derived from the public site address on the Telegram tab.</p>
+      <div class="u-mt-sm">
+        <button class="btn btn-sm" name="test_daraja" value="1">Save &amp; test Daraja connection</button>
+        <span class="help u-ml-sm">Saves these fields, then asks Safaricom for an OAuth token.</span>
       </div>
     </div></div>
 
@@ -354,7 +383,14 @@
         <tr><td><strong>Success reply</strong></td><td class="mono">HTTP 200 · MessageCode 200</td></tr>
       </tbody></table>
       <p class="help u-mt-sm"><strong>Important:</strong> in production the bank requires this URL to run on HTTPS (SSL). The endpoint is public but every call is authenticated against the credentials above — set strong values and share them with the bank only. Re-deliveries of the same TransactionId are de-duplicated automatically.</p>
-      <a class="btn btn-ghost btn-sm" href="{% url 'bank_feed_log' %}">View feed log</a>
+      <hr class="u-divider">
+      <div class="section-title">STK giver updates (optional)</div>
+      <p class="help u-mb-sm">When a relay forwards Co-op credits, it may include a <span class="mono">StkGiver</span> object (name/phone from the M-Pesa prompt form). Late updates — when the credit arrived before STK confirmed — POST to the URL below with the same auth. Matched by <span class="mono">TransactionId</span>; may arrive before the credit.</p>
+      <table class="ledger"><tbody>
+        <tr><td style="width:180px"><strong>Update URL</strong></td><td class="mono">{{ stk_giver_update_url }}</td></tr>
+        <tr><td><strong>Body</strong></td><td class="mono">{"TransactionId":"…","StkGiver":{…}}</td></tr>
+      </tbody></table>
+      <a class="btn btn-ghost btn-sm u-mt-sm" href="{% url 'bank_feed_log' %}">View feed log</a>
     </div></div>
 
 

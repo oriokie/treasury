@@ -387,12 +387,17 @@ class SettingsView(TreasurerRequiredMixin, View):
         # Bound once. The form carries several fund selectors, so building it
         # twice ran every one of those querysets twice for the same result.
         form = SiteConfigForm(instance=cfg)
+        from giving.services.contrib_link import payment_ready as contrib_payment_ready
+        contrib_ready, contrib_ready_reason = contrib_payment_ready(cfg)
         return render(request, self.template_name, {
             "form": form,
             "unplaced_settings": _unplaced_setting_fields(form),
             "recent_sms": SmsLog.objects.all()[:10],
             "cbs_webhook_url": request.build_absolute_uri(reverse("cbs_webhook")),
             "stk_callback_url": request.build_absolute_uri(reverse("mpesa_stk_callback")),
+            "stk_giver_update_url": request.build_absolute_uri(reverse("stk_giver_update")),
+            "contrib_prompt_ready": contrib_ready,
+            "contrib_prompt_reason": contrib_ready_reason,
             "my_telegram_pin": mine.pin if mine else "",
             "telegram_users": tg_users,
             "camp_offering_progress": camp_progress,
@@ -432,6 +437,19 @@ class SettingsView(TreasurerRequiredMixin, View):
             else:
                 messages.error(request, f"Assistant LLM test failed — {detail}")
             return redirect(reverse("settings") + "?tab=assistant")
+        if "test_daraja" in request.POST:
+            from core.services.daraja import test_connection
+            form = SiteConfigForm(request.POST, instance=cfg)
+            if form.is_valid():
+                cfg = form.save()
+            else:
+                messages.error(request, "Fix the highlighted settings before testing.")
+                return render(request, self.template_name,
+                              {"form": form, "recent_sms": SmsLog.objects.all()[:10]})
+            ok, detail = test_connection(cfg)
+            (messages.success if ok else messages.error)(
+                request, f"Daraja {'connected' if ok else 'test failed'} — {detail}")
+            return redirect(reverse("settings") + "?tab=channels")
         form = SiteConfigForm(request.POST, instance=cfg)
         if form.is_valid():
             form.save()
