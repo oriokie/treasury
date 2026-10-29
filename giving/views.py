@@ -1821,6 +1821,321 @@ class MarkProcessedImportView(DataEntryRequiredMixin, View):
         return redirect("transaction_list")
 
 
+class TransactionRecategorizeView(TreasurerRequiredMixin, View):
+    """Move wrongly auto-allocated entries to the correct fund by reference.
+
+    The treasurer pastes M-Pesa codes, core refs, or bank receipt numbers
+    (or uploads the same list) and chooses the fund they should have gone
+    to. A confirmation list is shown first; nothing moves until they
+    confirm. Each matched row keeps its amount, date, and payer — only the
+    fund changes, and the status becomes Manual so it no longer looks like
+    the rule's decision. Receipted entries and locked periods are left
+    alone. A split gift moves as a whole when the reference identifies it,
+    so one half is not left in the old fund.
+    """
+    template_name = "giving/transaction_recategorize.html"
+    SESSION_KEY = "recategorize_plan"
+    # A shared allocation word ("tithe") can hit dozens of unrelated gifts.
+    # Past that, the reference is not identifying entries — refuse, and ask
+    # for each gift's own M-Pesa or core ref.
+    _TOO_MANY = 20
+
+    def get(self, request):
+        if request.GET.get("template"):
+            return self._template()
+        return render(request, self.template_name, {
+            "stage": "upload",
+            "departments": self._funds(),
+        })
+
+    def post(self, request):
+        if request.POST.get("apply"):
+            return self._apply(request)
+        return self._parse(request)
+
+    def _funds(self):
+        return Department.objects.filter(active=True, selectable=True).order_by("name")
+
+    def _template(self):
+        resp = HttpResponse(content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="move_by_reference_template.csv"'
+        w = _csv.writer(resp)
+        w.writerow(["reference", "amount"])
+        w.writerow(["UER2Q5NF2W", ""])
+        w.writerow(["AC0C40FD2E26", "2000"])
+        return resp
+
+    def _fund_from_post(self, request):
+        raw = (request.POST.get("department") or "").strip()
+        if not raw.isdigit():
+            return None
+        return self._funds().filter(pk=int(raw)).first()
+
+    def _match_display(self, txn):
+        return {
+            "id": txn.id,
+            "date_display": txn.date.strftime("%d %b %Y"),
+            "amount": f"{txn.amount:,.2f}",
+            "payer": (txn.payer_name or txn.raw_narration or "")[:80],
+            "fund": txn.department.name if txn.department_id else "No fund",
+            "status": txn.get_allocation_status_display(),
+        }
+
+    def _index_by_ref(self, refs):
+        from collections import defaultdict
+        from django.db.models.functions import Lower
+        keys = list({(r or "").casefold() for r in refs if r})
+        by_ref = defaultdict(list)
+        if not keys:
+            return by_ref
+        qs = (Transaction.objects.filter(is_reversal=False, is_reversed=False)
+              .select_related("department")
+              .annotate(_ref=Lower("reference"), _core=Lower("core_ref"),
+                        _bank=Lower("bank_receipt"), _mpesa=Lower("mpesa_ref"))
+              .filter(Q(_ref__in=keys) | Q(_core__in=keys)
+                      | Q(_bank__in=keys) | Q(_mpesa__in=keys)))
+        for t in qs:
+            seen = set()
+            for val in (t.reference, t.core_ref, t.bank_receipt, t.mpesa_ref):
+                if not val:
+                    continue
+                k = val.casefold()
+                if k not in keys or k in seen:
+                    continue
+                seen.add(k)
+                by_ref[k].append(t)
+        return by_ref
+
+    def _with_split_family(self, seeds):
+        """The pasted ref may be only one part of a split (the core ref on
+        the original, while the other part is stored as CORE-S1). Pull the
+        rest of that gift in so it is not left half-moved."""
+        found = {}
+        stack = list(seeds)
+        while stack:
+            t = stack.pop()
+            if t.pk in found:
+                continue
+            found[t.pk] = t
+            for sib in t.strict_split_siblings().select_related("department"):
+                if sib.is_reversed or sib.is_reversal or sib.pk in found:
+                    continue
+                stack.append(sib)
+        return list(found.values())
+
+    def _blocked(self, txn):
+        from core.models import period_locked
+        if txn.is_banking:
+            return ("banking",
+                    "a banking deposit is not allocated to a fund")
+        if (txn.manual_receipt or txn.processed_via_envelope
+                or txn.channel == Transaction.Channel.ENVELOPE):
+            return ("receipted",
+                    "already receipted — the receipt names the fund, so it was left unchanged")
+        lock = period_locked(txn.date)
+        if lock:
+            return ("locked", f"{lock} is locked")
+        return None
+
+    def _judge(self, txns, amt, target_id):
+        total = sum((t.amount for t in txns), Decimal(0))
+        base = {
+            "txn_ids": [],
+            "matches": [self._match_display(t) for t in sorted(txns, key=lambda t: t.id)[:8]],
+        }
+        if amt is not None and total != amt:
+            return {**base, "status": "mismatched",
+                    "detail": f"amount {amt:,.2f} ≠ {total:,.2f} on "
+                              f"{len(txns)} entr{'y' if len(txns) == 1 else 'ies'}"}
+        for t in txns:
+            blocked = self._blocked(t)
+            if blocked:
+                return {**base, "status": blocked[0], "detail": blocked[1]}
+        moving = [t for t in txns if t.department_id != target_id]
+        if not moving:
+            return {**base, "status": "already",
+                    "detail": "already in the chosen fund"}
+        n = len(moving)
+        detail = (f"{n} entr{'y' if n == 1 else 'ies'}"
+                  + (f" of a split gift totalling {total:,.2f}" if len(txns) > 1 else
+                     f" · {moving[0].amount:,.2f}"))
+        return {**base, "status": "ok",
+                "txn_ids": [t.id for t in moving],
+                "detail": detail}
+
+    def _build_plan(self, rows, target_id):
+        by_ref = self._index_by_ref([r for r, _ in rows])
+        plan = []
+        for ref, raw_amt in rows:
+            direct = list(by_ref.get((ref or "").casefold(), []))
+            amt = MarkProcessedImportView._parse_amount(self, raw_amt)
+            base = {"reference": ref, "amount": str(amt) if amt is not None else None,
+                    "txn_ids": [], "matches": []}
+            if not direct:
+                plan.append({**base, "status": "not_found",
+                             "detail": "no matching entry"})
+                continue
+            if len(direct) > self._TOO_MANY:
+                plan.append({**base, "status": "ambiguous",
+                             "detail": f"matches {len(direct)} entries — paste each "
+                                       "gift's own M-Pesa or core reference"})
+                continue
+            family = self._with_split_family(direct)
+            groups = _group_split_siblings(family)
+            if len(groups) != 1:
+                exact = [t for t in direct if amt is not None and t.amount == amt]
+                if len(exact) == 1:
+                    family = self._with_split_family(exact)
+                    groups = _group_split_siblings(family)
+                else:
+                    groups = None
+            if not groups or len(groups) != 1:
+                shown = [self._match_display(t) for t in direct[:8]]
+                plan.append({**base, "status": "ambiguous", "matches": shown,
+                             "detail": f"matches {len(direct)} separate gifts — "
+                                       "paste each gift's own M-Pesa or core reference"})
+                continue
+            plan.append({**base, **self._judge(family, amt, target_id)})
+        return plan
+
+    def _parse(self, request):
+        dept = self._fund_from_post(request)
+        if not dept:
+            messages.error(request, "Choose the fund these entries should move to.")
+            return redirect("transaction_recategorize")
+        f = request.FILES.get("file")
+        refs_text = (request.POST.get("refs_text") or "").strip()
+        if f:
+            try:
+                rows = MarkProcessedImportView._rows_from_upload(self, f)
+            except Exception:
+                from core.utils import log_exception as _lx; _lx('giving/views.py')
+                messages.error(request, "Could not read that file — upload a .csv or .xlsx "
+                                        "with a reference column.")
+                return redirect("transaction_recategorize")
+        elif refs_text:
+            rows = MarkProcessedImportView._rows_from_paste(self, refs_text)
+        else:
+            messages.error(request, "Paste reference numbers, or upload a file.")
+            return redirect("transaction_recategorize")
+        if not rows:
+            messages.warning(request, "No reference numbers were found.")
+            return redirect("transaction_recategorize")
+
+        plan = self._build_plan(rows, dept.id)
+        request.session[self.SESSION_KEY] = {
+            "department_id": dept.id,
+            "department_name": dept.name,
+            "plan": plan,
+        }
+        ready_txns = []
+        for p in plan:
+            if p["status"] == "ok":
+                ready_txns.extend(p["txn_ids"])
+        ready_txns = list(dict.fromkeys(ready_txns))
+        return render(request, self.template_name, {
+            "stage": "review",
+            "plan": plan,
+            "department": dept,
+            "ready": len(ready_txns),
+            "ready_refs": sum(1 for p in plan if p["status"] == "ok"),
+            "already": sum(1 for p in plan if p["status"] == "already"),
+            "problems": sum(1 for p in plan if p["status"] not in ("ok", "already")),
+        })
+
+    _APPLY_CHUNK = 40
+
+    def _apply(self, request):
+        data = request.session.get(self.SESSION_KEY) or {}
+        plan = data.get("plan")
+        if not plan:
+            messages.error(request, "That review expired — paste the references again.")
+            return redirect("transaction_recategorize")
+        dept = self._funds().filter(pk=data.get("department_id")).first()
+        if not dept:
+            messages.error(request, "That fund is no longer available. Choose it again.")
+            return redirect("transaction_recategorize")
+
+        moved = already = not_found = mismatched = ambiguous = blocked = 0
+        problems = []
+        ok_ids = []
+        for p in plan:
+            status = p.get("status")
+            ref = p.get("reference", "")
+            if status == "ok":
+                ok_ids.extend(p.get("txn_ids") or [])
+            elif status == "already":
+                already += 1
+            elif status == "not_found":
+                not_found += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: no matching entry")
+            elif status == "mismatched":
+                mismatched += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: {p.get('detail') or 'amount mismatch'}")
+            elif status == "ambiguous":
+                ambiguous += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: {p.get('detail') or 'ambiguous'}")
+            else:
+                blocked += 1
+                if len(problems) < 12:
+                    problems.append(f"“{ref}”: {p.get('detail') or status}")
+
+        seen, unique_ids = set(), []
+        for pk in ok_ids:
+            try:
+                pk = int(pk)
+            except (TypeError, ValueError):
+                continue
+            if pk not in seen:
+                seen.add(pk)
+                unique_ids.append(pk)
+
+        clear_group = dept.category != Department.Category.DEVELOPMENT
+        for i in range(0, len(unique_ids), self._APPLY_CHUNK):
+            chunk = unique_ids[i:i + self._APPLY_CHUNK]
+            with db_tx.atomic():
+                txns = {t.pk: t for t in Transaction.objects.filter(pk__in=chunk)}
+                for pk in chunk:
+                    txn = txns.get(pk)
+                    if not txn or txn.is_reversed or txn.is_reversal:
+                        continue
+                    if txn.department_id == dept.id:
+                        already += 1
+                        continue
+                    if self._blocked(txn):
+                        blocked += 1
+                        continue
+                    txn.department = dept
+                    txn.allocation_status = Transaction.Status.MANUAL
+                    fields = ["department", "allocation_status"]
+                    if clear_group and txn.dev_group_id:
+                        txn.dev_group = None
+                        fields.append("dev_group")
+                    txn.save(update_fields=fields)
+                    moved += 1
+
+        request.session.pop(self.SESSION_KEY, None)
+        parts = [f"{moved} moved to {dept.name}"]
+        if already:
+            parts.append(f"{already} already in that fund")
+        if not_found:
+            parts.append(f"{not_found} not found")
+        if mismatched:
+            parts.append(f"{mismatched} amount mismatch")
+        if ambiguous:
+            parts.append(f"{ambiguous} ambiguous")
+        if blocked:
+            parts.append(f"{blocked} left unchanged (receipted or locked)")
+        msg = ", ".join(parts) + "."
+        if problems:
+            msg += " Issues: " + "; ".join(problems)
+        (messages.success if moved else messages.warning)(request, msg)
+        return redirect("transaction_list")
+
+
 class TransactionSendToReviewView(TreasurerRequiredMixin, View):
     """Undo a wrong allocation and send it back to the review queue for
     correct re-allocation — the answer to "this was wrongly auto-split

@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}Move by reference · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Move entries to another fund</h1>
+  <div class="sub">For gifts the rules sent to the wrong fund — matched by reference number</div></div></div>
+
+{% if stage == "upload" %}
+<div class="card" style="max-width:720px"><div class="bd">
+  <div class="help" style="line-height:1.7;margin-bottom:.8rem">
+    Use this when entries were <strong>auto-allocated to the wrong fund</strong>.
+    Paste the reference number of each gift — the M-Pesa code, the core ref, or
+    the bank receipt — choose the fund they should be in, and you'll see a
+    <strong>confirmation list</strong> before anything moves. Amounts, dates and
+    payers stay as they are. The fund changes, the status becomes Manual, and
+    the change is kept in each entry's audit history.
+  </div>
+  <div class="help" style="line-height:1.7;margin-bottom:.8rem">
+    Paste <strong>each gift's own reference</strong>, not the allocation word
+    (such as “tithe”) that many unrelated gifts share. A split gift moves as a
+    whole, so one part is not left behind. Entries that are already receipted,
+    or that fall in a locked month, are left unchanged.
+    Afterwards, correct the <a class="link" href="{% url 'rule_list' %}">allocation rule</a>
+    so the next import does not repeat the mistake.
+  </div>
+
+  <form method="post" class="u-section-top">
+    {% csrf_token %}
+    <div class="form-row u-my-sm">
+      <label for="id_department">Move them to</label>
+      <select name="department" id="id_department" class="field--select" required>
+        <option value="">— choose the correct fund —</option>
+        {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-row u-my-sm">
+      <label for="id_refs">Reference numbers</label>
+      <textarea name="refs_text" id="id_refs" class="field" rows="8"
+        placeholder="One per line, or separated by commas&#10;UER2Q5NF2W&#10;AC0C40FD2E26&#10;THX9K2…"></textarea>
+    </div>
+    <button class="btn">Review matches</button>
+    <a class="btn btn-ghost" href="{% url 'transaction_list' %}">Cancel</a>
+  </form>
+
+  <hr class="u-my">
+
+  <h3 class="u-my-sm">Or upload a spreadsheet</h3>
+  <div class="help" style="line-height:1.7;margin-bottom:.6rem">
+    A <span class="mono">reference</span> column, and an optional
+    <span class="mono">amount</span>. Leave the amount blank to move every part
+    of a split gift. If you fill it in, it must equal that gift's total or the
+    row is skipped.
+  </div>
+  <div class="btn-row u-my">
+    <a class="btn btn-ghost" href="?template=1">⤓ Download template (.csv)</a>
+  </div>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="form-row u-my-sm">
+      <label for="id_department_file">Move them to</label>
+      <select name="department" id="id_department_file" class="field--select" required>
+        <option value="">— choose the correct fund —</option>
+        {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-row u-my-sm"><label>Reference file (.csv or .xlsx)</label>
+      <input type="file" name="file" class="field" accept=".csv,.xlsx,.xls" required></div>
+    <button class="btn">Upload &amp; review</button>
+  </form>
+</div></div>
+
+{% elif stage == "review" %}
+<div class="ws-summary u-mb">
+  <div class="ws-metric is-primary"><span class="wm-l">Ready to move</span><span class="wm-v">{{ ready }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Already in {{ department.name }}</span><span class="wm-v">{{ already }}</span></div>
+  <div class="ws-metric {% if problems %}is-warn{% endif %}"><span class="wm-l">Left unchanged</span><span class="wm-v">{{ problems }}</span></div>
+</div>
+<p class="help u-mb">Moving to <strong>{{ department.name }}</strong>. Nothing changes until you confirm.</p>
+{% if problems %}<div class="alert alert-warn u-mb">Rows that need attention are skipped. Only the ones marked “move” will change fund.</div>{% endif %}
+{% if ready == 0 %}<div class="alert alert-warn u-mb">Nothing is ready to move. Go back and adjust the list or the fund.</div>{% endif %}
+
+<form method="post">
+  {% csrf_token %}<input type="hidden" name="apply" value="1">
+  <div class="card"><div class="bd bd-flush">
+    <table class="ledger compact">
+      <thead><tr><th>Reference</th><th>Now</th><th></th></tr></thead>
+      <tbody>
+      {% for p in plan %}<tr>
+        <td class="mono">{{ p.reference }}{% if p.amount %}<div class="muted u-xs">amount {{ p.amount }}</div>{% endif %}</td>
+        <td>
+          {% if p.matches %}
+            {% for m in p.matches %}
+              <div>{{ m.date_display }} · <span class="mono">{{ m.amount }}</span> · {{ m.fund }}{% if m.payer %} · {{ m.payer }}{% endif %}</div>
+            {% endfor %}
+            {% if p.detail %}<div class="muted u-xs">{{ p.detail }}</div>{% endif %}
+          {% else %}
+            <span class="muted">{{ p.detail }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.status == "ok" %}<span class="pill pill-green">move</span>
+          {% elif p.status == "already" %}<span class="pill">already</span>
+          {% elif p.status == "not_found" %}<span class="pill pill-amber">not found</span>
+          {% elif p.status == "mismatched" %}<span class="pill pill-amber">mismatch</span>
+          {% elif p.status == "ambiguous" %}<span class="pill pill-amber">ambiguous</span>
+          {% elif p.status == "locked" %}<span class="pill pill-amber">locked</span>
+          {% elif p.status == "receipted" %}<span class="pill pill-amber">receipted</span>
+          {% else %}<span class="pill pill-amber">{{ p.status }}</span>{% endif %}
+        </td>
+      </tr>{% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  <div class="btn-row u-mt">
+    <a class="btn btn-ghost" href="{% url 'transaction_recategorize' %}">← Back</a>
+    {% if ready %}<button class="btn">Move {{ ready }} to {{ department.name }}</button>{% endif %}
+  </div>
+</form>
+{% endif %}
+{% endblock %}

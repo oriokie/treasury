@@ -24,6 +24,8 @@ urlpatterns = [
     path("queue/export/", views.QueueExportView.as_view(), name="queue_export"),
     path("queue/import/", views.QueueImportView.as_view(), name="queue_import"),
     path("transactions/mark-processed/", views.MarkProcessedImportView.as_view(), name="mark_processed_import"),
+    path("transactions/move-by-reference/", views.TransactionRecategorizeView.as_view(),
+         name="transaction_recategorize"),
     path("campaigns/", views.CampaignListView.as_view(), name="campaign_list"),
     path("campaigns/sample/", views.CampaignTemplateView.as_view(), name="campaign_template"),
     path("campaigns/new/", views.CampaignCreateView.as_view(), name="campaign_create"),
