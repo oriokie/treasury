@@ -2,12 +2,12 @@
 {% block title %}Development-group patterns · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Development-group reference patterns</h1>
-  <div class="sub">The regexes that recognise development giving in bank narrations (e.g. <span class="mono">DEVGR7</span>, <span class="mono">dev grp 11</span>, <span class="mono">DEV GP39</span>)</div></div>
+  <div class="sub">The regexes that recognise development giving in bank narrations (e.g. <span class="mono">DEVGR7</span>, <span class="mono">dev grp 11</span>, <span class="mono">DEV GP39</span>), and exemptions for narrations that look like a group but are not</div></div>
 <a class="btn btn-ghost btn-sm" href="{% url 'rule_list' %}">Allocation rules</a></div>
 
 <div class="card u-mb"><div class="hd">Try a reference</div><div class="bd">
   <form method="get" class="filters u-m-0">
-    <div class="f u-grow"><label>Test reference</label><input type="text" name="test" value="{{ sample }}" class="field" placeholder="e.g. DEVGR7 or dev grp 11"></div>
+    <div class="f u-grow"><label>Test reference</label><input type="text" name="test" value="{{ sample }}" class="field" placeholder="e.g. DEVGR7 or aymissiongrp2"></div>
     <button class="btn btn-sm">Test match</button>
   </form>
   {% if result %}
@@ -35,8 +35,28 @@
   </tbody></table>
 </div></div>
 
-<div class="card"><div class="hd" id="formHd">Add a pattern</div><div class="bd">
+<div class="card u-mb"><div class="hd">Exemptions</div><div class="bd">
+  <p class="help u-mb-sm">When a narration would match a pattern above but is not development giving — for example <span class="mono">aymissiongrp2</span> looking like group 2 — add an exemption. Checked before the patterns run.</p>
+  <table class="ledger"><thead><tr><th>Label</th><th>When</th><th>Value</th><th>Status</th><th></th></tr></thead><tbody>
+  {% for ex in exemptions %}
+  <tr{% if not ex.enabled %} class="muted"{% endif %}>
+    <td>{{ ex.label }}{% if ex.note %}<div class="help u-mt-0">{{ ex.note }}</div>{% endif %}</td>
+    <td>{{ ex.get_kind_display }}</td>
+    <td class="mono u-xs">{{ ex.value }}</td>
+    <td>{% if ex.enabled %}<span class="pill pill-green">on</span>{% else %}<span class="pill pill-grey">off</span>{% endif %}</td>
+    <td class="u-nowrap u-right">
+      <button type="button" class="link" onclick="editExemption({{ ex.id }}, '{{ ex.label|escapejs }}', '{{ ex.kind }}', '{{ ex.value|escapejs }}', '{{ ex.note|escapejs }}', {{ ex.enabled|yesno:'true,false' }})">Edit</button>
+      · <form method="post" action="{% url 'dev_exemption_toggle' ex.id %}" class="u-inline">{% csrf_token %}<button class="link">{% if ex.enabled %}Disable{% else %}Enable{% endif %}</button></form>
+      · <form method="post" action="{% url 'dev_exemption_delete' ex.id %}" class="u-inline" onsubmit="return confirm('Delete this exemption?');">{% csrf_token %}<button class="link link-danger">Delete</button></form>
+    </td>
+  </tr>
+  {% empty %}<tr><td colspan="5" class="empty">No exemptions yet — every pattern match is treated as development.</td></tr>{% endfor %}
+  </tbody></table>
+</div></div>
+
+<div class="card u-mb"><div class="hd" id="formHd">Add a pattern</div><div class="bd">
   <form method="post">{% csrf_token %}
+    <input type="hidden" name="form" value="pattern">
     <input type="hidden" name="id" id="pat_id" value="">
     <div class="form-grid">
       <div class="form-row"><label>Label</label><input type="text" name="label" id="pat_label" class="field" required></div>
@@ -53,6 +73,31 @@
   </form>
 </div></div>
 
+<div class="card"><div class="hd" id="exFormHd">Add an exemption</div><div class="bd">
+  <form method="post">{% csrf_token %}
+    <input type="hidden" name="form" value="exemption">
+    <input type="hidden" name="id" id="ex_id" value="">
+    <div class="form-grid">
+      <div class="form-row"><label>Label</label><input type="text" name="label" id="ex_label" class="field" required placeholder="e.g. AY Mission groups"></div>
+      <div class="form-row"><label>When</label><select name="kind" id="ex_kind" class="field field--select">
+        <option value="STARTS">Starts with</option>
+        <option value="LACKS">Does not contain</option>
+        <option value="CONTAINS">Contains</option>
+        <option value="REGEX">Regular expression</option></select></div>
+      <div class="form-row"><label>Value</label><input type="text" name="value" id="ex_value" class="field mono" required placeholder="e.g. aymission or dev"></div>
+      <div class="form-row u-col-span"><label>Note</label><input type="text" name="note" id="ex_note" class="field"></div>
+      <div class="form-row"><label class="check-row"><input type="checkbox" name="enabled" id="ex_enabled" class="form-check" checked> Enabled</label></div>
+    </div>
+    <p class="help">
+      <strong>Starts with</strong> — skip when the normalised reference begins with the value (e.g. <span class="mono">aymission</span> stops <span class="mono">aymissiongrp2</span>).
+      <strong>Does not contain</strong> — skip when the value is absent (e.g. require <span class="mono">dev</span>, so bare <span class="mono">grp2</span> is ignored).
+      <strong>Contains</strong> — skip when the value is present.
+      Values for the first three kinds are stored lowercase with spaces removed, matching how references are normalised.
+    </p>
+    <div class="btn-row"><button class="btn">Save exemption</button> <button type="button" class="btn btn-ghost" onclick="resetExForm()">Clear</button></div>
+  </form>
+</div></div>
+
 <script>
 function editPattern(id,label,pattern,kind,order,note,enabled){
   document.getElementById('pat_id').value=id;
@@ -63,7 +108,7 @@ function editPattern(id,label,pattern,kind,order,note,enabled){
   document.getElementById('pat_note').value=note;
   document.getElementById('pat_enabled').checked=enabled;
   document.getElementById('formHd').textContent='Edit pattern';
-  window.scrollTo(0,document.body.scrollHeight);
+  document.getElementById('formHd').scrollIntoView({behavior:'smooth'});
 }
 function resetForm(){
   document.getElementById('pat_id').value='';
@@ -72,6 +117,23 @@ function resetForm(){
   document.getElementById('pat_kind').value='NUMBERED';
   document.getElementById('pat_enabled').checked=true;
   document.getElementById('formHd').textContent='Add a pattern';
+}
+function editExemption(id,label,kind,value,note,enabled){
+  document.getElementById('ex_id').value=id;
+  document.getElementById('ex_label').value=label;
+  document.getElementById('ex_kind').value=kind;
+  document.getElementById('ex_value').value=value;
+  document.getElementById('ex_note').value=note;
+  document.getElementById('ex_enabled').checked=enabled;
+  document.getElementById('exFormHd').textContent='Edit exemption';
+  document.getElementById('exFormHd').scrollIntoView({behavior:'smooth'});
+}
+function resetExForm(){
+  document.getElementById('ex_id').value='';
+  ['ex_label','ex_value','ex_note'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('ex_kind').value='STARTS';
+  document.getElementById('ex_enabled').checked=true;
+  document.getElementById('exFormHd').textContent='Add an exemption';
 }
 </script>
 {% endblock %}

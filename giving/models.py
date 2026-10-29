@@ -213,6 +213,83 @@ class DevGroupPattern(models.Model):
                 "group '(\\d+)' for the group number."})
 
 
+class DevGroupExemption(models.Model):
+    """A reference that would match a development-group pattern, but must not
+    be treated as development giving.
+
+    Patterns alone cannot tell ``aymissiongrp2`` (Adventist Youth Mission
+    group 2) from ``devgrp2``. An exemption opts that narration out before
+    the patterns run. Conditions are evaluated against the normalised
+    reference (lowercase, no spaces), the same string the patterns see.
+
+    - STARTS: the reference begins with the value (e.g. ``aymission``).
+    - LACKS: the reference does not contain the value (e.g. exempt when
+      ``dev`` is missing — so ``grp2`` alone is ignored, ``devgrp2`` still
+      matches).
+    - CONTAINS: the reference contains the value (e.g. ``ministry``).
+    - REGEX: the value is a regular expression that matches the reference.
+    """
+    class Kind(models.TextChoices):
+        STARTS = "STARTS", "Starts with"
+        LACKS = "LACKS", "Does not contain"
+        CONTAINS = "CONTAINS", "Contains"
+        REGEX = "REGEX", "Regular expression"
+
+    label = models.CharField(max_length=60,
+        help_text="A short name, e.g. 'AY Mission groups'.")
+    kind = models.CharField(max_length=10, choices=Kind.choices,
+                            default=Kind.STARTS)
+    value = models.CharField(max_length=120,
+        help_text="Matched against the normalised reference. For Starts with / "
+                  "Contains / Does not contain, spaces are ignored and case does "
+                  "not matter. For a regular expression, write the pattern as-is.")
+    enabled = models.BooleanField(default=True)
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey("auth.User", null=True, blank=True,
+                                   on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return self.label
+
+    def clean(self):
+        import re
+        from django.core.exceptions import ValidationError
+        value = (self.value or "").strip()
+        if not value:
+            raise ValidationError({"value": "Enter the text or pattern to match."})
+        if self.kind == self.Kind.REGEX:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                raise ValidationError({"value": f"Invalid regular expression: {exc}"})
+        else:
+            # Store the same normalised form detect_dev_group will compare against.
+            self.value = re.sub(r"\s+", "", value.lower())
+
+    def matches(self, normalised_reference):
+        """True when this exemption applies to the normalised reference."""
+        import re
+        s = normalised_reference or ""
+        v = self.value or ""
+        if self.kind == self.Kind.STARTS:
+            return bool(v) and s.startswith(v)
+        if self.kind == self.Kind.CONTAINS:
+            return bool(v) and v in s
+        if self.kind == self.Kind.LACKS:
+            return bool(v) and v not in s
+        if self.kind == self.Kind.REGEX:
+            try:
+                return bool(re.search(v, s))
+            except re.error:
+                return False
+        return False
+
+
 class TransactionQuerySet(models.QuerySet):
     """One canonical definition of which rows count, so every report agrees."""
     def active(self):
