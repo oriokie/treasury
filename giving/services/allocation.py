@@ -22,15 +22,17 @@ _MAX = _dt.date.max
 DEV_NUM_RE = re.compile(r"(?:dev(?:e?l?o?p?)?(?:gr(?:ou)?p?|gp|g)?|gr(?:ou)?p|gp)0*(\d+)")
 DEV_WORD_RE = re.compile(r"(?:dev(?:elop)?|grp|group|gp)")
 
-# Compiled dev-group patterns, cached in-process and invalidated by a signal when
-# a DevGroupPattern is saved/deleted (see giving/signals.py).
-_PATTERN_CACHE = {"loaded": False, "numbered": [], "word": []}
+# Compiled dev-group patterns and exemptions, cached in-process and invalidated
+# by a signal when a DevGroupPattern or DevGroupExemption is saved/deleted
+# (see giving/signals.py).
+_PATTERN_CACHE = {"loaded": False, "numbered": [], "word": [], "exemptions": []}
 
 
 def clear_pattern_cache():
     _PATTERN_CACHE["loaded"] = False
     _PATTERN_CACHE["numbered"] = []
     _PATTERN_CACHE["word"] = []
+    _PATTERN_CACHE["exemptions"] = []
 
 
 def _dev_patterns():
@@ -48,15 +50,32 @@ def _dev_patterns():
     """
     if _PATTERN_CACHE["loaded"]:
         return _PATTERN_CACHE["numbered"], _PATTERN_CACHE["word"]
+    _load_pattern_cache()
+    return _PATTERN_CACHE["numbered"], _PATTERN_CACHE["word"]
+
+
+def _dev_exemptions():
+    """Enabled DevGroupExemption rows, in id order. Loaded with the patterns so
+    one cache miss fills both."""
+    if not _PATTERN_CACHE["loaded"]:
+        _load_pattern_cache()
+    return _PATTERN_CACHE["exemptions"]
+
+
+def _load_pattern_cache():
     numbered, word = [], []
     configured = False
+    exemptions = []
     try:
-        from giving.models import DevGroupPattern
+        from giving.models import DevGroupPattern, DevGroupExemption
         configured = DevGroupPattern.objects.exists()
         rows = list(DevGroupPattern.objects.filter(enabled=True)
                     .order_by("sort_order", "id"))
+        exemptions = list(DevGroupExemption.objects.filter(enabled=True)
+                          .order_by("id"))
     except Exception:
         rows = []
+        exemptions = []
     for r in rows:
         try:
             rx = re.compile(r.pattern)
@@ -67,13 +86,29 @@ def _dev_patterns():
         numbered, word = [DEV_NUM_RE], [DEV_WORD_RE]  # nothing set up yet
     _PATTERN_CACHE["numbered"] = numbered
     _PATTERN_CACHE["word"] = word
+    _PATTERN_CACHE["exemptions"] = exemptions
     _PATTERN_CACHE["loaded"] = True
-    return numbered, word
+
+
+def is_dev_exempt(s):
+    """True when an enabled exemption covers this normalised reference, so
+    development-group detection must not claim it. Shared by detect_dev_group
+    and the live tester on the patterns page."""
+    for ex in _dev_exemptions():
+        if ex.matches(s):
+            return True
+    return False
 
 
 def detect_dev_group(s):
     """Given a normalised reference, return ('NUMBER', n), ('WORD', None) or None
-    using the configured patterns. Shared by allocate() and the live tester."""
+    using the configured patterns. Shared by allocate() and the live tester.
+
+    Exemptions are checked first: a reference that would match a pattern but
+    is covered by an exemption (e.g. starts with ``aymission``) is left alone.
+    """
+    if is_dev_exempt(s):
+        return None
     numbered, word = _dev_patterns()
     for rx in numbered:
         m = rx.search(s)

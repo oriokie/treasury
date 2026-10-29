@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.51.0": "Development-group patterns gain an exemption list. Add a rule when a "
+              "narration looks like a group but is not — for example starts with "
+              "aymission, or does not contain the word “dev” — so references such "
+              "as aymissiongrp2 are no longer booked as development group 2. The "
+              "live tester on the patterns page shows when an exemption applies.",
     "3.50.0": "Gifts that were auto-allocated to the wrong fund can now be moved in "
               "bulk from the ledger. Open Move by reference, paste the M-Pesa or "
               "bank reference numbers, choose the correct fund, and confirm the "

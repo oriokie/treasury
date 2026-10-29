@@ -2955,19 +2955,31 @@ class DevPatternForm(forms.ModelForm):
         widgets = {"kind": forms.Select(attrs={"class": "field--select"})}
 
 
+class DevExemptionForm(forms.ModelForm):
+    class Meta:
+        from giving.models import DevGroupExemption
+        model = DevGroupExemption
+        fields = ["label", "kind", "value", "enabled", "note"]
+        widgets = {"kind": forms.Select(attrs={"class": "field--select"})}
+
+
 class DevPatternListView(TreasurerRequiredMixin, View):
-    """Manage the regexes that recognise development-group references, with a
-    live tester so you can see what a sample reference would match."""
+    """Manage the regexes that recognise development-group references, and the
+    exemptions that keep false matches (e.g. ``aymissiongrp2``) out of
+    development, with a live tester for both."""
     template_name = "giving/dev_patterns.html"
 
     def get(self, request):
-        from giving.models import DevGroupPattern
-        from giving.services.allocation import normalize_reference, detect_dev_group
+        from giving.models import DevGroupPattern, DevGroupExemption
+        from giving.services.allocation import (normalize_reference, detect_dev_group,
+                                                is_dev_exempt)
         patterns = DevGroupPattern.objects.all()
+        exemptions = DevGroupExemption.objects.all()
         sample = request.GET.get("test", "")
         result = None
         if sample:
             norm = normalize_reference(sample)
+            exempt = is_dev_exempt(norm)
             hit = detect_dev_group(norm)
             if hit and hit[0] == "NUMBER":
                 result = {"ok": True, "msg": f"Matches → development group {hit[1]}.",
@@ -2975,18 +2987,33 @@ class DevPatternListView(TreasurerRequiredMixin, View):
             elif hit and hit[0] == "WORD":
                 result = {"ok": True, "msg": "Matches as development (no number) → "
                           "booked to development, awaiting a group.", "norm": norm}
+            elif exempt:
+                # Would have matched a pattern, or merely sits under an exemption
+                # that fires first — either way, development detection skips it.
+                which = next((ex.label for ex in exemptions
+                              if ex.enabled and ex.matches(norm)), "an exemption")
+                result = {"ok": False, "msg": f"Exempted by “{which}” — not treated "
+                          "as development giving.", "norm": norm}
             else:
                 result = {"ok": False, "msg": "No development pattern matches this "
                           "reference.", "norm": norm}
         return render(request, self.template_name, {
-            "patterns": patterns, "form": DevPatternForm(),
+            "patterns": patterns, "exemptions": exemptions,
+            "form": DevPatternForm(), "exemption_form": DevExemptionForm(),
             "sample": sample, "result": result})
 
     def post(self, request):
-        from giving.models import DevGroupPattern
-        pk = request.POST.get("id")
-        instance = DevGroupPattern.objects.filter(pk=pk).first() if pk else None
-        form = DevPatternForm(request.POST, instance=instance)
+        from giving.models import DevGroupPattern, DevGroupExemption
+        if request.POST.get("form") == "exemption":
+            pk = request.POST.get("id")
+            instance = DevGroupExemption.objects.filter(pk=pk).first() if pk else None
+            form = DevExemptionForm(request.POST, instance=instance)
+            ok_msg = "Exemption saved." if instance else "Exemption added."
+        else:
+            pk = request.POST.get("id")
+            instance = DevGroupPattern.objects.filter(pk=pk).first() if pk else None
+            form = DevPatternForm(request.POST, instance=instance)
+            ok_msg = "Pattern saved." if instance else "Pattern added."
         if form.is_valid():
             obj = form.save(commit=False)
             if not obj.created_by_id:
@@ -3000,7 +3027,7 @@ class DevPatternListView(TreasurerRequiredMixin, View):
                 messages.error(request, msg)
                 return redirect("dev_patterns")
             obj.save()
-            messages.success(request, "Pattern saved." if instance else "Pattern added.")
+            messages.success(request, ok_msg)
         else:
             messages.error(request, "; ".join(
                 f"{f}: {', '.join(e)}" for f, e in form.errors.items()))
@@ -3023,6 +3050,26 @@ class DevPatternDelete(TreasurerRequiredMixin, View):
         p = get_object_or_404(DevGroupPattern, pk=pk)
         p.delete()
         messages.success(request, "Pattern removed.")
+        return redirect("dev_patterns")
+
+
+class DevExemptionToggle(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        from giving.models import DevGroupExemption
+        ex = get_object_or_404(DevGroupExemption, pk=pk)
+        ex.enabled = not ex.enabled
+        ex.save()
+        messages.success(request,
+            f"{ex.label} {'enabled' if ex.enabled else 'disabled'}.")
+        return redirect("dev_patterns")
+
+
+class DevExemptionDelete(TreasurerRequiredMixin, View):
+    def post(self, request, pk):
+        from giving.models import DevGroupExemption
+        ex = get_object_or_404(DevGroupExemption, pk=pk)
+        ex.delete()
+        messages.success(request, "Exemption removed.")
         return redirect("dev_patterns")
 
 
