@@ -1,16 +1,41 @@
 """Member matching: phone first, then unambiguous name/alias, else create."""
+import re
+
 from django.db import models, transaction
 
 from members.models import Member, MemberAlias, PossibleDuplicate, normalize_phone, name_key
+
+# Narration / STK purpose text (DEVGR21, GRP100) is not a person. Creating a
+# member from it fills the register with junk and shows on the ledger as the
+# "payer". Shared with the bank-feed StkGiver path and the nameless-gift queue.
+_REF_AS_NAME = re.compile(r"^[A-Za-z]{2,}\d+[A-Za-z0-9]*$")
+
+
+def is_person_name(raw):
+    """True when ``raw`` looks like a person's name, not a paybill reference."""
+    s = " ".join(str(raw or "").split())
+    if len(s) < 2:
+        return False
+    if sum(c.isalpha() for c in s) < 2:
+        return False
+    if _REF_AS_NAME.fullmatch(s):
+        return False
+    return True
 
 
 @transaction.atomic
 def match_or_create_member(payer_name, payer_phone):
     """Return (member, outcome) where outcome is one of:
-    'matched_phone' | 'matched_name' | 'created'. Never orphans a contribution.
+    'matched_phone' | 'matched_name' | 'created' | 'unmatched'.
+
+    Phone match always wins. A paybill/STK reference that landed in the name
+    field (e.g. ``DEVGR100``) is never used to create a member — those gifts
+    stay unlinked for the nameless-gift review queue. A real name with no
+    match still creates, so ordinary bank imports behave as before.
     """
     ph = normalize_phone(payer_phone)
     key = name_key(payer_name)
+    person = is_person_name(payer_name)
 
     # 1) trusted: phone — checks BOTH a member's primary number and any
     # other numbers preserved from a merge (see merge_members below): a
@@ -22,8 +47,8 @@ def match_or_create_member(payer_name, payer_phone):
         if m:
             return m, "matched_phone"
 
-    # 2) name / alias, only if unambiguous
-    if key:
+    # 2) name / alias, only if unambiguous — and only for a real name
+    if person and key:
         qs = (
             Member.objects.filter(models.Q(name_key=key) | models.Q(aliases__name_key=key))
             .distinct()
@@ -37,7 +62,13 @@ def match_or_create_member(payer_name, payer_phone):
             if not ph or m.phone == ph:
                 return m, "matched_name"
 
-    # 3) create, never orphan a gift
+    # 3) No phone match, and either no usable name or a reference mistaken for
+    # a name (STK Push from another site often puts DEVGRn here). Leave the
+    # gift unlinked for a treasurer to name — do not invent a member.
+    if not person:
+        return None, "unmatched"
+
+    # 4) create from a real name, never orphan a gift that named a person
     m = Member.objects.create(
         name=(payer_name or "").strip() or "(unknown)",
         phone=ph,

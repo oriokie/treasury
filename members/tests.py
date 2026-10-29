@@ -71,9 +71,22 @@ class MemberMatchingTests(TestCase):
         self.assertEqual(m.source, Member.Source.AUTO_BANK)
         self.assertNotEqual(m.pk, self.existing.pk)
 
-    def test_never_orphans_gift(self):
-        m, _ = match_or_create_member("", "")
-        self.assertIsNotNone(m)
+    def test_ref_as_name_does_not_create_a_member(self):
+        """STK Push narrations often put DEVGRn where a name should be."""
+        m, outcome = match_or_create_member("DEVGR100", "0700999888")
+        self.assertIsNone(m)
+        self.assertEqual(outcome, "unmatched")
+        self.assertFalse(Member.objects.filter(name__iexact="DEVGR100").exists())
+
+    def test_empty_name_without_phone_stays_unmatched(self):
+        m, outcome = match_or_create_member("", "")
+        self.assertIsNone(m)
+        self.assertEqual(outcome, "unmatched")
+
+    def test_phone_match_still_works_when_name_is_a_ref(self):
+        m, outcome = match_or_create_member("DEVGR100", "254790301470")
+        self.assertEqual(m.pk, self.existing.pk)
+        self.assertEqual(outcome, "matched_phone")
 
 
 class MergeTests(TestCase):

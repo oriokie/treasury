@@ -732,6 +732,35 @@ class Transaction(models.Model):
         return f"{self.date} {self.get_channel_display()} {self.amount}"
 
     @property
+    def display_name(self):
+        """Who to show as the giver on the ledger.
+
+        A linked member always wins — STK Push credits often land with a
+        purpose code (``DEVGR100``) in ``payer_name`` even when the phone
+        matched a real member. A genuine payer name is used only when there
+        is no member.
+        """
+        if self.member_id:
+            return self.member.name
+        return (self.payer_name or "").strip() or "—"
+
+    @property
+    def paid_by_display(self):
+        """Secondary 'paid by …' line when the payer differs from the member.
+
+        Only shown for a real person name — never for a narration reference.
+        """
+        if not self.member_id:
+            return ""
+        from members.services.matching import is_person_name
+        pn = (self.payer_name or "").strip()
+        if not pn or not is_person_name(pn):
+            return ""
+        if pn.upper() == (self.member.name or "").upper():
+            return ""
+        return pn
+
+    @property
     def is_review(self):
         return self.allocation_status == self.Status.REVIEW
 

@@ -411,7 +411,12 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
                         ben_scheme = None
 
                 if is_credit and loan_hit is None:
-                    member, _ = match_or_create_member(row["name"], row["phone"])
+                    from members.services.matching import is_person_name
+                    row_name = row["name"] or ""
+                    if row_name and not is_person_name(row_name):
+                        row_name = ""
+                        row["name"] = ""
+                    member, _ = match_or_create_member(row_name, row["phone"])
                     resolver, alloc_status = allocate(row["reference"], row["date"])
                     if isinstance(resolver, SplitFund):
                         split_fund = resolver
