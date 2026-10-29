@@ -8,7 +8,7 @@
       <h1>{% if cash_only %}Cash entries{% else %}Ledger{% endif %}</h1>
       <div class="desc">{% if cash_only %}Cash collections — filter and check.{% else %}Every receipt and bank movement, with a running balance.{% endif %}</div>
     </div>
-    <div class="mast-actions no-print">{% if can_enter_data %}<a class="btn" href="{% url 'cash_new' %}">＋ Record entry</a>{% if not cash_only %}<a class="btn btn-ghost btn-sm" href="{% url 'mark_processed_import' %}" title="Bulk-mark bank entries as manual (paper) receipts — kept out of receipting, no system envelope">✓ Mark manual receipts</a>{% endif %}{% endif %}</div>
+    <div class="mast-actions no-print">{% if can_enter_data %}<a class="btn" href="{% url 'cash_new' %}">＋ Record entry</a>{% if not cash_only %}<a class="btn btn-ghost btn-sm" href="{% url 'mark_processed_import' %}" title="Bulk-mark bank entries as manual (paper) receipts — kept out of receipting, no system envelope">✓ Mark manual receipts</a>{% if is_treasurer %}<a class="btn btn-ghost btn-sm" href="{% url 'transaction_recategorize' %}" title="Paste M-Pesa or bank reference numbers and move those entries to the correct fund">⇄ Move by reference</a>{% endif %}{% endif %}{% endif %}</div>
   </div>
   <div class="rule" aria-hidden="true"></div>
 </div>
