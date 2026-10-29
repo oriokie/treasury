@@ -195,6 +195,12 @@ def ingest_event(*, date, amount, direction, reference, phone, name, raw_narrati
             loan_hit = lp   # fund unknown -> review queue, no Member created
 
     if is_credit and loan_hit is None and reversal_of is None:
+        # STK Push / paybill narrations often put a purpose code (DEVGR21) in
+        # the name slot. Match by phone when we can; never invent a member
+        # named after the code — those gifts wait in the nameless-gift queue.
+        from members.services.matching import is_person_name
+        if name and not is_person_name(name):
+            name = ""
         member, _ = match_or_create_member(name, phone)
         resolver, alloc_status = allocate(reference, date)
         if isinstance(resolver, SplitFund):

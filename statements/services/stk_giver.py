@@ -7,29 +7,14 @@ keep it and apply it when the credit lands.
 """
 from __future__ import annotations
 
-import re
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction as db_tx
 from django.utils import timezone
 
 from giving.models import ContributionAttempt, Transaction
+from members.services.matching import is_person_name
 from statements.models import BankEvent, PendingStkGiver
-
-# Narration sometimes puts a paybill reference (DEVGR40) where a name would be;
-# that is not a person name and must not block StkGiver.Name.
-_REF_AS_NAME = re.compile(r"^[A-Za-z]{2,}\d+[A-Za-z0-9]*$")
-
-
-def _is_person_name(raw):
-    s = " ".join(str(raw or "").split())
-    if len(s) < 2:
-        return False
-    if sum(c.isalpha() for c in s) < 2:
-        return False
-    if _REF_AS_NAME.fullmatch(s):
-        return False
-    return True
 
 
 def parse_stk_giver(raw):
@@ -77,9 +62,9 @@ def apply_stk_giver_to_transaction(txn, giver, *, bank_name=""):
     receipt = (giver.get("Receipt") or "").strip()
     changed = []
     bank_name = " ".join(str(bank_name or "").split()).strip()
-    bank_is_person = _is_person_name(bank_name)
+    bank_is_person = is_person_name(bank_name)
     existing = (txn.payer_name or "").strip()
-    existing_is_person = _is_person_name(existing)
+    existing_is_person = is_person_name(existing)
 
     if bank_is_person:
         if existing.upper() != bank_name.upper():

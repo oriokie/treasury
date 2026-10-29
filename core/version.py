@@ -38,6 +38,12 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.52.0": "STK Push credits that arrive without a real giver name no longer "
+              "create a member from a purpose code such as DEVGR100. When the "
+              "phone matches someone on the register, the ledger shows that "
+              "member's name. When it does not, the gift waits under Banking → "
+              "Gifts without a name, where a treasurer can link one or many "
+              "rows to the right person in bulk.",
     "3.51.0": "Development-group patterns gain an exemption list. Add a rule when a "
               "narration looks like a group but is not — for example starts with "
               "aymission, or does not contain the word “dev” — so references such "

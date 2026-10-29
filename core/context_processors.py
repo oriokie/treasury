@@ -144,11 +144,18 @@ def site_context(request):
                 channel=Transaction.Channel.BANK)),
             # Feed gifts held for confirmation (no import batch to own them).
             held=Count("pk", filter=Q(
-                confirmed=False, statement_import__isnull=True)))
+                confirmed=False, statement_import__isnull=True)),
+            # STK / bank credits with no member — purpose code was not a name.
+            nameless=Count("pk", filter=Q(
+                channel=Transaction.Channel.BANK,
+                direction=Transaction.Direction.CREDIT,
+                member__isnull=True,
+                is_reversed=False, is_reversal=False)))
         ctx["queue_badge"] = txn_badges["queue"]
         ctx["sabbath_badge"] = txn_badges["sabbath"]
         ctx["debit_badge"] = txn_badges["debit"]
         ctx["held_badge"] = txn_badges["held"]
+        ctx["nameless_badge"] = txn_badges["nameless"]
         if cfg.contrib_links_enabled and ctx.get("is_treasurer"):
             try:
                 from giving.models import ContributionAttempt
@@ -191,6 +198,7 @@ _BREADCRUMBS = {
     "sabbath_queue": ("Giving", "Sabbath confirmations"),
     # Banking
     "statement_list": ("Banking", "Statement imports"),
+    "nameless_queue": ("Banking", "Gifts without a name"),
     "debit_queue": ("Banking", "Bank debits"),
     "reconciliation_list": ("Banking", "Bank reconciliation"),
     "reconciliation_detail": ("Banking", "Bank reconciliation"),

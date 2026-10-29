@@ -635,6 +635,67 @@ class ReviewQueueView(ReadAccessMixin, ListView):
         return ctx
 
 
+class NamelessGiftQueueView(DataEntryRequiredMixin, View):
+    """Bank credits that settled without a usable giver name.
+
+    Typical source: STK Push from another site — the Co-op credit arrives with
+    a purpose code (``DEVGR21``) where the name should be, and a phone that is
+    not on the register. Matching refuses to invent a member from that code;
+    this queue is where a treasurer links the gift to the right person, one at
+    a time or in bulk.
+    """
+    template_name = "giving/nameless_queue.html"
+    paginate_by = 50
+
+    def get(self, request):
+        from django.core.paginator import Paginator
+        from django.db.models import Count, Sum
+        from giving.services.nameless import nameless_gifts_qs
+        qs = nameless_gifts_qs()
+        agg = qs.aggregate(n=Count("id"), total=Sum("amount"))
+        page = Paginator(qs, self.paginate_by).get_page(request.GET.get("page"))
+        return render(request, self.template_name, {
+            "items": page, "page_obj": page, "is_paginated": page.has_other_pages(),
+            "queue_count": agg["n"] or 0,
+            "queue_amount": agg["total"] or 0,
+        })
+
+    def post(self, request):
+        from giving.services.nameless import link_to_member, nameless_gifts_qs
+        from members.models import Member
+        ids = request.POST.getlist("ids")
+        raw_member = (request.POST.get("member") or "").strip()
+        member = Member.objects.filter(pk=raw_member).first() if raw_member.isdigit() else None
+        if not member:
+            messages.error(request, "Choose the member these gifts belong to.")
+            return redirect("nameless_queue")
+        if not ids:
+            messages.info(request, "No gifts were selected.")
+            return redirect("nameless_queue")
+        allowed = {t.pk: t for t in nameless_gifts_qs().filter(pk__in=ids)}
+        linked = 0
+        for pk in ids:
+            try:
+                pk = int(pk)
+            except (TypeError, ValueError):
+                continue
+            txn = allowed.get(pk)
+            if txn and link_to_member(txn, member):
+                linked += 1
+                try:
+                    from pledges.services.matching import resync_contribution_pledges
+                    resync_contribution_pledges(txn)
+                except Exception:
+                    from core.utils import log_exception as _lx; _lx('giving/views.py')
+        if linked:
+            messages.success(request,
+                f"Linked {linked} gift{'s' if linked != 1 else ''} to {member.name}.")
+        else:
+            messages.warning(request, "Nothing was linked — those rows may already "
+                                      "have a member, or were not in this queue.")
+        return redirect("nameless_queue")
+
+
 class RunRulesOnQueueView(AllocateRequiredMixin, View):
     """Re-run allocation rules over the items still in the review queue, so rules
     added after an import can clear matching items without re-importing the file."""

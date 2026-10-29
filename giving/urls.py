@@ -18,6 +18,7 @@ urlpatterns = [
     path("transactions/<int:pk>/send-to-review/", views.TransactionSendToReviewView.as_view(), name="transaction_send_to_review"),
     path("transactions/bulk-reverse/", views.TransactionBulkReverseView.as_view(), name="transaction_bulk_reverse"),
     path("queue/", views.ReviewQueueView.as_view(), name="queue"),
+    path("queue/nameless/", views.NamelessGiftQueueView.as_view(), name="nameless_queue"),
     path("queue/bulk-allocate/", views.BulkAllocateView.as_view(), name="queue_bulk_allocate"),
     path("queue/run-rules/", views.RunRulesOnQueueView.as_view(), name="queue_run_rules"),
     path("queue/fetch-unallocated/", views.FetchUnallocatedView.as_view(), name="queue_fetch_unallocated"),

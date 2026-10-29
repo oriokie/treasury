@@ -87,6 +87,7 @@
              Leaving it out of the sidebar made "confirm under Statements" a
              URL only a developer knew.{% endcomment %}
           <a href="{% url 'held_gifts_review' %}" class="{% if request.resolver_match.url_name == 'held_gifts_review' %}active{% endif %}">Gifts awaiting confirmation{% if held_badge %}<span class="badge">{{ held_badge }}</span>{% endif %}</a>
+          <a href="{% url 'nameless_queue' %}" class="{% if request.resolver_match.url_name == 'nameless_queue' %}active{% endif %}">Gifts without a name{% if nameless_badge %}<span class="badge">{{ nameless_badge }}</span>{% endif %}</a>
           <a href="{% url 'bank_register' %}" class="{% if 'bank_register' in request.resolver_match.url_name %}active{% endif %}">Bank register</a>
           <a href="{% url 'debit_queue' %}" class="{% if request.resolver_match.url_name == 'debit_queue' %}active{% endif %}">Bank debits{% if debit_badge %}<span class="badge">{{ debit_badge }}</span>{% endif %}</a>
           <a href="{% url 'reconciliation_list' %}" class="{% if 'reconciliation' in request.resolver_match.url_name %}active{% endif %}">Bank reconciliation</a>

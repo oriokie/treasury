@@ -1,0 +1,98 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Gifts without a name · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Banking · {{ SITE_NAME }}</div>
+      <h1>Gifts without a name</h1>
+      <div class="desc">{% if queue_count %}STK Push and similar bank credits that settled without a usable giver name, and whose phone is not on the register. Link them to the right member — the system will not invent one from a purpose code like <span class="mono">DEVGR100</span>.{% else %}Every bank credit has a member attached.{% endif %}</div>
+    </div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
+
+{% if queue_count %}
+<div class="ws-summary u-mb">
+  <div class="ws-metric is-warn"><span class="wm-l">Awaiting a name</span><span class="wm-v">{{ queue_count|intcomma }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Total</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ queue_amount|money }}</span></div>
+</div>
+{% endif %}
+
+{% if can_enter_data and items %}
+<form id="namelessBulk" method="post" class="bulk-bar no-print"
+      onsubmit="return document.querySelectorAll('.nl-check:checked').length>0 || (alert('Tick at least one gift first.'), false);">
+  {% csrf_token %}
+  <label class="bulk-bar-lbl"><input type="checkbox" id="nlAll"> Select all on this page</label>
+  <span class="bulk-count muted"><span id="nlN">0</span> selected</span>
+  <div class="pos-rel" style="min-width:240px;flex:1 1 220px">
+    <input id="nlMemberSearch" class="field" autocomplete="off"
+           placeholder="Link selected to member…">
+    <div class="ac-box" id="nlMemberAc"></div>
+    <input type="hidden" name="member" id="nlMemberId" required>
+  </div>
+  <button class="btn btn-sm">Link selected</button>
+</form>
+<script>
+(function(){
+  var all=document.getElementById("nlAll"), n=document.getElementById("nlN");
+  function checks(){return Array.prototype.slice.call(document.querySelectorAll(".nl-check"));}
+  function refresh(){ if(n) n.textContent=checks().filter(function(c){return c.checked;}).length; }
+  if(all) all.addEventListener("change", function(){ checks().forEach(function(c){c.checked=all.checked;}); refresh(); });
+  document.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("nl-check")) refresh(); });
+  refresh();
+
+  var searchUrl="{% url 'member_search' %}";
+  var inp=document.getElementById("nlMemberSearch"), ac=document.getElementById("nlMemberAc");
+  var hidden=document.getElementById("nlMemberId");
+  var t=null;
+  inp.addEventListener("input", function(){
+    clearTimeout(t); hidden.value="";
+    var q=inp.value.trim(); if(q.length<2){ ac.style.display="none"; return; }
+    t=setTimeout(async function(){ try{
+      var d=await (await fetch(searchUrl+"?q="+encodeURIComponent(q))).json();
+      ac.innerHTML=""; if(!d.results.length){ ac.style.display="none"; return; }
+      d.results.forEach(function(m){
+        var it=document.createElement("div"); it.className="ac-item";
+        it.innerHTML=m.name+(m.phone?' <span class="muted">· '+m.phone+'</span>':'');
+        it.addEventListener("mousedown", function(e){
+          e.preventDefault(); inp.value=m.name; hidden.value=m.id; ac.style.display="none";
+        });
+        ac.appendChild(it);
+      });
+      ac.style.display="block";
+    }catch(e){ ac.style.display="none"; } },170);
+  });
+  inp.addEventListener("blur", function(){ setTimeout(function(){ ac.style.display="none"; },150); });
+  document.getElementById("namelessBulk").addEventListener("submit", function(e){
+    if(!hidden.value){ e.preventDefault(); alert("Choose a member from the suggestions."); }
+  });
+})();
+</script>
+{% endif %}
+
+<div class="ws-table sticky">
+  <table class="ledger">
+    <thead><tr>
+      {% if can_enter_data %}<th style="width:28px"></th>{% endif %}
+      <th>Date</th><th>Amount</th><th>Phone</th><th>Reference</th><th>Narration</th><th>Fund</th>
+    </tr></thead>
+    <tbody>
+    {% for t in items %}
+      <tr>
+        {% if can_enter_data %}<td><input type="checkbox" class="nl-check" name="ids" value="{{ t.id }}" form="namelessBulk"></td>{% endif %}
+        <td class="mono">{{ t.date|date:"d/m/y" }}</td>
+        <td class="num mono">{{ t.amount|money }}</td>
+        <td class="mono muted">{{ t.payer_phone|default:"—" }}</td>
+        <td class="mono muted">{{ t.reference|default:"—"|truncatechars:24 }}</td>
+        <td class="muted u-xs">{{ t.raw_narration|default:t.payer_name|truncatechars:72 }}</td>
+        <td>{% if t.department %}{{ t.department.name }}{% if t.dev_group %} · {{ t.dev_group.label }}{% endif %}{% else %}<span class="pill pill-amber">unallocated</span>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7"><div class="ws-empty"><div class="we-mark">✓</div><div class="we-title">Nothing waiting</div><div class="we-hint">Bank credits without a name will appear here when their phone is not already on a member.</div></div></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include 'partials/pagination.html' %}
+{% endblock %}
