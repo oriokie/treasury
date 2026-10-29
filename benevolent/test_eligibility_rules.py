@@ -40,6 +40,14 @@ def _check(res, code):
     return next(c for c in res.checks if c.code == code)
 
 
+def _add_months(day, n):
+    """The same day `n` calendar months later, clamped to that month's length."""
+    import calendar
+    index = day.month - 1 + n
+    year, month = day.year + index // 12, index % 12 + 1
+    return dt.date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
 def _month_samples(days_back):
     """One day inside every month from `days_back` ago through today.
 
@@ -95,11 +103,26 @@ class EligibilityFixture(TestCase):
             user=self.treasurer)
 
     def _pay_months(self, membership, months, start_days_ago):
-        """Pay `months` consecutive monthly dues starting start_days_ago back."""
+        """Pay `months` consecutive monthly dues starting start_days_ago back.
+
+        Each payment is dated in its own calendar month. A 30-day stride is
+        shorter than a month, so the second payment falls in the same period
+        as the first whenever that first date is the 1st — 1 July and 31 July
+        are both July. On 29 October 2026 that is exactly what "120 days ago"
+        and "90 days ago" are, and a test that had paid two months counted
+        one. It passed on every other day of the year.
+        """
+        start = max(TODAY - dt.timedelta(days=start_days_ago), membership.cover_from)
         for i in range(months):
+            day = _add_months(start, i)
+            label = f"{day.year}-{day.month:02d}"
+            if day > TODAY:
+                # Still this month, a few days from now. Date the receipt today
+                # and name the period, so it settles the month that is already due.
+                day = TODAY
             contrib_svc.record_contribution(
-                self.scheme, date=TODAY - dt.timedelta(days=start_days_ago - i * 30),
-                amount=Decimal("100"), user=self.treasurer, membership=membership)
+                self.scheme, date=day, amount=Decimal("100"),
+                user=self.treasurer, membership=membership, period_label=label)
 
 
 # ---------------------------------------------------------------------------
