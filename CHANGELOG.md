@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.50.0
+
+Gifts that were auto-allocated to the wrong fund can now be moved in bulk from the ledger. Open Move by reference, paste the M-Pesa or bank reference numbers, choose the correct fund, and confirm the list before anything changes. Receipted entries and locked months are left untouched, and each move stays in the entry's audit history. Correct the allocation rule as well, so the next import does not send the same references to the wrong fund again.
+
 ## 3.49.8
 
 Automated patch release: Wire Daraja STK settings and Co-op StkGiver on the bank feed.
