@@ -41,3 +41,25 @@ class ExpenseRaisePayableTests(TestCase):
         body = self.c.get(reverse("expense_detail", args=[self.exp.pk])).content.decode()
         self.assertIn("Raise payable", body)
         self.assertIn(reverse("expense_raise_payable", args=[self.exp.pk]), body)
+
+    def test_edit_form_shows_raise_checkbox(self):
+        body = self.c.get(reverse("expense_edit", args=[self.exp.pk])).content.decode()
+        self.assertIn('name="raise_payable"', body)
+        self.assertIn("Also open a payable", body)
+
+    def test_edit_post_can_raise_payable(self):
+        r = self.c.post(reverse("expense_edit", args=[self.exp.pk]), {
+            "date": self.exp.date.isoformat(),
+            "department": self.fund.pk,
+            "description": self.exp.description,
+            "amount": "3500",
+            "category": self.exp.category,
+            "claimant": "Jane Leader",
+            "method": self.exp.method or "BANK",
+            "raise_payable": "1",
+        })
+        self.assertEqual(r.status_code, 302)
+        bill = Payable.objects.order_by("-pk").first()
+        self.assertIsNotNone(bill)
+        self.assertEqual(bill.vendor, "Jane Leader")
+        self.assertEqual(bill.amount, Decimal("3500"))

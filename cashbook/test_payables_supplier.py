@@ -71,6 +71,13 @@ class PayableSupplierSelectorTests(TestCase):
         self.assertIn("Leader paid from personal funds", body)
         self.assertIn("Reimbursement", body)
 
+    def test_fund_typeahead_gets_unique_ids(self):
+        """Three compose forms share name=department; without unique ids the
+        payable Fund field stacked three search boxes."""
+        body = self.client.get(reverse("accruals")).content.decode()
+        self.assertIn("ob_dept_", body)
+        self.assertIn(reverse("fund_search"), body)
+
     def test_an_archived_supplier_is_not_offered(self):
         """Selectable must not mean 'everything ever recorded'."""
         Vendor.objects.create(name="Closed Traders Ltd",

@@ -103,13 +103,60 @@ class DevGroupUnassignedView(RightRequiredMixin, TemplateView):
                 f"Assigned {n} development contribution(s) using suggested groups.")
             return redirect("dev_unassigned")
 
-        gid = request.POST.get("dev_group")
-        # Per-row Assign posts a single ``txn``; bulk posts a list (or ``all``).
+        # Selected rows (checkboxes). Optional parallel ``pick_grp`` list —
+        # same order as ``txn`` — for per-row group picks (queue-style UI).
         ids = request.POST.getlist("txn")
+        pick_grps = request.POST.getlist("pick_grp")
         if request.POST.get("all"):
-            ids = list(self._qs().values_list("id", flat=True))
+            ids = [str(i) for i in self._qs().values_list("id", flat=True)]
+            pick_grps = []
+        if not ids:
+            messages.error(request, "Select at least one contribution to assign.")
+            return redirect("dev_unassigned")
+
+        use_picks = (len(pick_grps) == len(ids)
+                     and any((g or "").strip() for g in pick_grps))
+        if use_picks:
+            by_group = defaultdict(list)
+            for i, raw_id in enumerate(ids):
+                try:
+                    tid = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                raw_g = (pick_grps[i] if i < len(pick_grps) else "").strip()
+                if not raw_g:
+                    continue
+                try:
+                    by_group[int(raw_g)].append(tid)
+                except (TypeError, ValueError):
+                    continue
+            if not by_group:
+                messages.error(request, "Choose a group on each selected row.")
+                return redirect("dev_unassigned")
+            n = 0
+            labels = []
+            for gid, txn_ids in by_group.items():
+                grp = DevelopmentGroup.objects.filter(pk=gid).first()
+                if not grp:
+                    continue
+                n += (Transaction.objects
+                      .filter(id__in=txn_ids, dev_group__isnull=True)
+                      .update(dev_group=grp))
+                self._sync_envelope_groups(txn_ids, grp)
+                labels.append(grp.label)
+            if n:
+                messages.success(
+                    request,
+                    f"Assigned {n} development contribution(s)"
+                    + (f" across {len(labels)} group(s)." if len(labels) > 1
+                       else f" to {labels[0]}."))
+            else:
+                messages.warning(request, "Nothing was assigned.")
+            return redirect("dev_unassigned")
+
+        gid = request.POST.get("dev_group")
         grp = DevelopmentGroup.objects.filter(pk=gid).first()
-        if not grp or not ids:
+        if not grp:
             messages.error(request, "Choose a group and at least one contribution to assign.")
             return redirect("dev_unassigned")
         n = (Transaction.objects.filter(id__in=ids, dev_group__isnull=True)

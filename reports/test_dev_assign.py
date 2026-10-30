@@ -117,7 +117,7 @@ class DevUnassignedAssignTests(TestCase):
             amount=Decimal("250"), department=self.dev, payer_name="ROW PERSON",
             confirmed=True, allocation_status="MANUAL", core_ref="UA-1")
 
-    def test_page_shows_suggestion_and_per_row_assign(self):
+    def test_page_shows_suggestion_and_persist_ui(self):
         Transaction.objects.create(
             date=timezone.localdate() - dt.timedelta(days=10),
             channel="CASH", direction="CREDIT", amount=Decimal("50"),
@@ -126,7 +126,9 @@ class DevUnassignedAssignTests(TestCase):
         r = self.client.get(reverse("dev_unassigned"))
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "ROW PERSON")
-        self.assertContains(r, "Suggested group")
+        self.assertContains(r, "Assign selected")
+        self.assertContains(r, "dev-unassigned-picks-v1")
+        self.assertContains(r, reverse("dev_group_search"))
         item = next(t for t in r.context["items"] if t.id == self.open_txn.id)
         self.assertEqual(item.suggested_group, self.g1)
 
@@ -140,6 +142,22 @@ class DevUnassignedAssignTests(TestCase):
         self.assertEqual(self.open_txn.dev_group_id, self.g1.id)
         page = self.client.get(reverse("dev_unassigned"))
         self.assertNotContains(page, "ROW PERSON")
+
+    def test_per_row_pick_grp_assign(self):
+        g2 = DevelopmentGroup.objects.create(number=8, name="Eight")
+        other = Transaction.objects.create(
+            date=timezone.localdate(), channel="CASH", direction="CREDIT",
+            amount=Decimal("90"), department=self.dev, payer_name="OTHER ROW",
+            confirmed=True, allocation_status="MANUAL", core_ref="UA-P2")
+        r = self.client.post(reverse("dev_unassigned"), {
+            "txn": [str(self.open_txn.id), str(other.id)],
+            "pick_grp": [str(self.g1.id), str(g2.id)],
+        })
+        self.assertEqual(r.status_code, 302)
+        self.open_txn.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(self.open_txn.dev_group_id, self.g1.id)
+        self.assertEqual(other.dev_group_id, g2.id)
 
     def test_assign_all_suggested(self):
         Transaction.objects.create(

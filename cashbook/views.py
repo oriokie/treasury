@@ -510,22 +510,13 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                 messages.error(self.request, refusal)
                 return self.render_to_response(self.get_context_data(form=form))
         exp.save()
-        if (self.request.POST.get("raise_payable") and not exp.payable_id
-                and not exp.accrual_id
-                and exp.doc_class == Expense.DocClass.EXPENSE):
-            who = (exp.claimant or exp.payee or "").strip()[:120]
-            if not who and exp.vendor_id:
-                who = exp.vendor.name[:120]
-            if not who:
-                who = "Reimbursement"
-            Payable.objects.create(
-                date=exp.date, vendor=who, supplier=exp.vendor,
-                description=(exp.description or "Reimbursement")[:200],
-                amount=exp.amount, department=exp.department,
-                category=exp.category, recorded_by=self.request.user)
-            messages.info(
-                self.request,
-                f"Payable to {who} opened — settle it when you refund them.")
+        if self.request.POST.get("raise_payable"):
+            bill = _raise_payable_from_expense(exp, self.request.user)
+            if bill:
+                messages.info(
+                    self.request,
+                    f"Payable to {bill.vendor} opened — settle it when you "
+                    f"refund them.")
         # optional M-Pesa / bank transaction charge -> separate bank-charge expense
         charge = form.cleaned_data.get("charge")
         if charge and charge > 0:
@@ -702,8 +693,23 @@ class ExpenseUpdate(DataEntryRequiredMixin, UpdateView):
         elif existing:
             # charge removed on edit — delete the linked charge entry
             exp.charges.all().delete()
+        if self.request.POST.get("raise_payable"):
+            bill = _raise_payable_from_expense(exp, self.request.user)
+            if bill:
+                messages.info(
+                    self.request,
+                    f"Payable to {bill.vendor} opened — settle it when you "
+                    f"refund them.")
         messages.success(self.request, "Expense updated.")
         return redirect(self.success_url)
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        exp = self.object
+        ctx["can_raise_payable"] = (
+            exp and not exp.payable_id and not exp.accrual_id
+            and exp.doc_class == Expense.DocClass.EXPENSE)
+        return ctx
 
 
 class ExpenseApprove(TreasurerRequiredMixin, View):
@@ -1283,6 +1289,29 @@ class ExpenseDetailView(ReadAccessMixin, DetailView):
         return ctx
 
 
+def _raise_payable_from_expense(exp, user):
+    """Open a payable mirroring an expense (leader reimbursement / credit buy).
+
+    Returns the Payable, or None when the expense already sits on a payable /
+    accrual or is not an operational expense. Does not link expense→payable —
+    linking marks settlement; this tracks what the church still owes.
+    """
+    if exp.payable_id or exp.accrual_id:
+        return None
+    if exp.doc_class != Expense.DocClass.EXPENSE:
+        return None
+    name = (exp.claimant or exp.payee or "").strip()[:120]
+    if not name and exp.vendor_id:
+        name = exp.vendor.name[:120]
+    if not name:
+        name = "Reimbursement"
+    return Payable.objects.create(
+        date=exp.date, vendor=name, supplier=exp.vendor,
+        description=(exp.description or "Reimbursement")[:200],
+        amount=exp.amount, department=exp.department,
+        category=exp.category, recorded_by=user)
+
+
 class ExpenseRaisePayable(DataEntryRequiredMixin, View):
     """Open a payable from an expense already on file.
 
@@ -1299,16 +1328,10 @@ class ExpenseRaisePayable(DataEntryRequiredMixin, View):
             return redirect("expense_detail", pk=pk)
         if _block_if_locked(request, exp.date):
             return redirect("expense_detail", pk=pk)
-        name = (exp.claimant or exp.payee or "").strip()[:120]
-        if not name and exp.vendor_id:
-            name = exp.vendor.name[:120]
-        if not name:
-            name = "Reimbursement"
-        bill = Payable.objects.create(
-            date=exp.date, vendor=name, supplier=exp.vendor,
-            description=(exp.description or "Reimbursement")[:200],
-            amount=exp.amount, department=exp.department,
-            category=exp.category, recorded_by=request.user)
+        bill = _raise_payable_from_expense(exp, request.user)
+        if not bill:
+            messages.info(request, "A payable cannot be raised from this expense.")
+            return redirect("expense_detail", pk=pk)
         messages.success(
             request,
             f"Payable to {bill.vendor} opened for {bill.amount:,.2f}. "
