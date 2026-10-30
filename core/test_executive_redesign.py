@@ -1,5 +1,5 @@
 """Executive overview visual redesign: reorganised into clearly labelled
-sections (Performance this year / Giving breakdown / At a glance / Cash
+sections (Performance / Giving breakdown / At a glance / Cash
 position & forecast / Trends) with consistent section headers, while
 preserving every context variable, URL, chart canvas ID, and interactive
 feature (AI insights) exactly as before — this was a presentation-layer
@@ -35,7 +35,7 @@ class ExecutiveRedesignTests(TestCase):
     def test_all_section_headers_present(self):
         c = Client(); c.force_login(self.tr)
         b = c.get("/executive/").content.decode()
-        for heading in ["Performance this year", "Giving breakdown",
+        for heading in ["Performance", "Giving breakdown",
                         "Cash position", "Trends"]:
             self.assertIn(heading, b)
 

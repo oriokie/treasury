@@ -386,17 +386,22 @@ class BankIntakeToReconciliation(BusinessWorkflowTest):
             dashboard_closing=self.money(self.dashboard_closing(MONTH_END)),
             cash_position=self.money(current_cash_position(MONTH_END)))
 
-        # and the worksheet's own explanation of that figure ties to it
+        # Diagnostics are computed only when the sheet does not balance
+        # (worksheet page speed). When it balances, the four-way check above
+        # is the contract; when it does not, the breakdown must still tie.
         diag = page.context["diag"]
-        self.assert_agree(
-            "the worksheet's diagnostic against its own cash-book balance",
-            diagnostic_book=self.money(diag["book"]),
-            worksheet_stored=self.money(rec.book_balance))
-        self.assert_agree(
-            "opening + income - expenses + transfers, against the same book",
-            components=self.money(diag["opening"] + diag["income"]
-                                  - diag["expenses"] + diag["transfers"]),
-            diagnostic_book=self.money(diag["book"]))
+        if page.context["rec"].is_reconciled:
+            self.assertIsNone(diag)
+        else:
+            self.assert_agree(
+                "the worksheet's diagnostic against its own cash-book balance",
+                diagnostic_book=self.money(diag["book"]),
+                worksheet_stored=self.money(rec.book_balance))
+            self.assert_agree(
+                "opening + income - expenses + transfers, against the same book",
+                components=self.money(diag["opening"] + diag["income"]
+                                      - diag["expenses"] + diag["transfers"]),
+                diagnostic_book=self.money(diag["book"]))
 
     def test_a_worksheet_settled_in_july_still_balances_when_opened_in_august(self):
         """DEFECT — opening a settled worksheet later un-settles it.

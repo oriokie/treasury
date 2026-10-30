@@ -16,7 +16,7 @@ from django.urls import reverse
 from core.roles import TREASURER
 from departments.models import Department
 from giving.models import Transaction
-from giving.services.nameless import link_to_member, nameless_gifts_qs
+from giving.services.nameless import leave_as_is, link_to_member, nameless_gifts_qs
 from members.models import Member
 from members.services.matching import is_person_name, match_or_create_member
 from statements.models import BankAccount
@@ -138,3 +138,32 @@ class NamelessQueueViewTests(TestCase):
     def test_nav_link_present_for_treasurer(self):
         body = self.c.get(reverse("transaction_list")).content.decode()
         self.assertIn(reverse("nameless_queue"), body)
+
+    def test_excluded_from_income_not_in_queue(self):
+        """Loan receipts / capital credits share member=None but are not gifts."""
+        loanish = Transaction.objects.create(
+            date=dt.date(2026, 10, 29), channel="BANK", direction="CREDIT",
+            amount=Decimal("50000"), allocation_status="MANUAL", confirmed=True,
+            member=None, payer_name="", core_ref="LOANISH1",
+            excluded_from_income=True)
+        self.assertNotIn(loanish, list(nameless_gifts_qs()))
+        self.assertIn(self.orphan, list(nameless_gifts_qs()))
+
+    def test_leave_as_is_dismisses_from_queue(self):
+        r = self.c.post(reverse("nameless_queue"), {
+            "action": "leave", "ids": [str(self.orphan.id)]})
+        self.assertEqual(r.status_code, 302)
+        self.orphan.refresh_from_db()
+        self.assertTrue(self.orphan.name_not_required)
+        self.assertIsNone(self.orphan.member_id)
+        self.assertNotIn(self.orphan, list(nameless_gifts_qs()))
+
+    def test_leave_as_is_helper(self):
+        t = Transaction.objects.create(
+            date=dt.date(2026, 10, 28), channel="BANK", direction="CREDIT",
+            amount=Decimal("40"), allocation_status="AUTO", confirmed=True,
+            member=None, payer_name="", core_ref="NLLEAVE")
+        self.assertTrue(leave_as_is(t))
+        t.refresh_from_db()
+        self.assertTrue(t.name_not_required)
+        self.assertFalse(leave_as_is(t))  # already dismissed

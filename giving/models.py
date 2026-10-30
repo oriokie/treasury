@@ -427,6 +427,11 @@ class Transaction(models.Model):
                   "double-count. Always department=None, excluded_from_income=True. "
                   "It counts toward the bank position (the money really is at the "
                   "bank) but nowhere else.")
+    name_not_required = models.BooleanField(
+        default=False, db_index=True,
+        help_text="Treasurer has dismissed this bank credit from the nameless "
+                  "queue — leave it unlinked (e.g. anonymous gift, or not a "
+                  "personal contribution). Does not invent a member.")
 
     # Campaign fallback allocation (e.g. camp-meeting expense contributions
     # matched to a group when the normal rules miss). Kept on the row so the

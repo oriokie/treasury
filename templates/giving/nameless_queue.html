@@ -6,7 +6,7 @@
     <div>
       <div class="eyebrow">Banking · {{ SITE_NAME }}</div>
       <h1>Gifts without a name</h1>
-      <div class="desc">{% if queue_count %}STK Push and similar bank credits that settled without a usable giver name, and whose phone is not on the register. Link them to the right member — the system will not invent one from a purpose code like <span class="mono">DEVGR100</span>.{% else %}Every bank credit has a member attached.{% endif %}</div>
+      <div class="desc">{% if queue_count %}Bank credits with no linked member — usually STK Push settled under a purpose code. Link them, or leave selected rows as they are.{% else %}Nothing waiting.{% endif %}</div>
     </div>
   </div>
   <div class="rule" aria-hidden="true"></div>
@@ -23,19 +23,24 @@
 <form id="namelessBulk" method="post" class="bulk-bar no-print"
       onsubmit="return document.querySelectorAll('.nl-check:checked').length>0 || (alert('Tick at least one gift first.'), false);">
   {% csrf_token %}
+  <input type="hidden" name="action" id="nlAction" value="link">
   <label class="bulk-bar-lbl"><input type="checkbox" id="nlAll"> Select all on this page</label>
   <span class="bulk-count muted"><span id="nlN">0</span> selected</span>
   <div class="pos-rel" style="min-width:240px;flex:1 1 220px">
     <input id="nlMemberSearch" class="field" autocomplete="off"
            placeholder="Link selected to member…">
     <div class="ac-box" id="nlMemberAc"></div>
-    <input type="hidden" name="member" id="nlMemberId" required>
+    <input type="hidden" name="member" id="nlMemberId">
   </div>
-  <button class="btn btn-sm">Link selected</button>
+  <button type="submit" class="btn btn-sm" id="nlLinkBtn">Link selected</button>
+  <button type="submit" class="btn btn-sm btn-ghost" id="nlLeaveBtn"
+          title="Keep unlinked; remove from this queue">Leave as they are</button>
 </form>
 <script>
 (function(){
   var all=document.getElementById("nlAll"), n=document.getElementById("nlN");
+  var action=document.getElementById("nlAction");
+  var form=document.getElementById("namelessBulk");
   function checks(){return Array.prototype.slice.call(document.querySelectorAll(".nl-check"));}
   function refresh(){ if(n) n.textContent=checks().filter(function(c){return c.checked;}).length; }
   if(all) all.addEventListener("change", function(){ checks().forEach(function(c){c.checked=all.checked;}); refresh(); });
@@ -64,8 +69,12 @@
     }catch(e){ ac.style.display="none"; } },170);
   });
   inp.addEventListener("blur", function(){ setTimeout(function(){ ac.style.display="none"; },150); });
-  document.getElementById("namelessBulk").addEventListener("submit", function(e){
-    if(!hidden.value){ e.preventDefault(); alert("Choose a member from the suggestions."); }
+  document.getElementById("nlLinkBtn").addEventListener("click", function(){ action.value="link"; });
+  document.getElementById("nlLeaveBtn").addEventListener("click", function(){ action.value="leave"; });
+  form.addEventListener("submit", function(e){
+    if(action.value==="link" && !hidden.value){
+      e.preventDefault(); alert("Choose a member from the suggestions.");
+    }
   });
 })();
 </script>
@@ -89,7 +98,7 @@
         <td>{% if t.department %}{{ t.department.name }}{% if t.dev_group %} · {{ t.dev_group.label }}{% endif %}{% else %}<span class="pill pill-amber">unallocated</span>{% endif %}</td>
       </tr>
     {% empty %}
-      <tr><td colspan="7"><div class="ws-empty"><div class="we-mark">✓</div><div class="we-title">Nothing waiting</div><div class="we-hint">Bank credits without a name will appear here when their phone is not already on a member.</div></div></td></tr>
+      <tr><td colspan="7"><div class="ws-empty"><div class="we-mark">✓</div><div class="we-title">Nothing waiting</div><div class="we-hint">Unlinked bank gifts appear here when their phone is not on a member.</div></div></td></tr>
     {% endfor %}
     </tbody>
   </table>

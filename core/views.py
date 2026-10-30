@@ -8,7 +8,6 @@ from cashbook.models import Expense
 from departments.models import Department
 from giving.models import Transaction
 from members.models import Member, PossibleDuplicate
-from statements.models import StatementImport
 from reports.services import balances
 from .utils import parse_period
 
@@ -120,8 +119,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "labels": [r["department"].name[:22] for r in _top],
             "values": [float(r["receipts"]) for r in _top]})
         ctx["has_topfunds"] = bool(_top)
-        # trust outstanding total for the KPI strip
+        # trust outstanding total for the KPI strip + section footer
         ctx["trust_outstanding"] = sum((r["to_remit"] for r in ctx["trust_rows"]), Decimal(0))
+        ctx["trust_totals"] = {
+            "collected": sum((r.get("collected") or Decimal(0) for r in ctx["trust_rows"]), Decimal(0)),
+            "remitted": sum((r.get("remitted") or Decimal(0) for r in ctx["trust_rows"]), Decimal(0)),
+            "to_remit": ctx["trust_outstanding"],
+        }
 
         ctx["queue_count"] = Transaction.objects.filter(
             allocation_status=Transaction.Status.REVIEW).exclude(
@@ -136,7 +140,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ctx["dup_count"] = PossibleDuplicate.objects.filter(resolved=False).count()
         ctx["member_count"] = Member.objects.filter(active=True).count()
         ctx["fund_count"] = Department.objects.filter(active=True).count()
-        ctx["recent_imports"] = StatementImport.objects.all()[:5]
 
         # --- "This Sabbath" snapshot: the latest Sabbath's recognised collection,
         # compared to the one before, with a short fund breakdown. Uses the same
@@ -1210,26 +1213,34 @@ class ExecutiveDashboardView(ExecutiveAccessMixin, View):
         return a.get("key") or slugify(a.get("title", ""))[:60]
 
     def get(self, request):
-        import json
         from decimal import Decimal
+        from django.db.models import Sum, F, Value, OuterRef, Subquery
+        from django.db.models.functions import Coalesce, Greatest
         from .services import dashboard, health, forecast
         from core.models import SiteConfig
-        from pledges.models import Pledge
-        ch = dashboard.charts()
-        pledges_out = sum((p.outstanding for p in
-                           Pledge.objects.filter(status=Pledge.Status.ACTIVE)), Decimal(0))
+        from pledges.models import Pledge, PledgePayment
+        from core.utils import parse_period
+        start, end = parse_period(request)
+        ch = dashboard.charts(start, end)
+        paid_sq = (PledgePayment.objects.filter(pledge_id=OuterRef("pk"))
+                   .values("pledge_id").annotate(s=Sum("amount")).values("s")[:1])
+        pledges_out = (
+            Pledge.objects.filter(status=Pledge.Status.ACTIVE)
+            .annotate(paid_amt=Coalesce(Subquery(paid_sq), Value(Decimal("0"))))
+            .annotate(out=Greatest(F("amount") - F("paid_amt"), Value(Decimal("0"))))
+            .aggregate(t=Sum("out"))["t"] or Decimal(0)
+        )
         from cashbook.views import outstanding_advances_total, _petty_balance_asof
-        import datetime as _dt
-        _today = _dt.date.today()
         return render(request, self.template_name, {
+            "start": start, "end": end,
             "forecast": forecast.horizons(),
             "pledges_outstanding": pledges_out,
-            "advances_outstanding": outstanding_advances_total(_today),
-            "petty_balance": _petty_balance_asof(_today),
-            "cards": dashboard.cards(),
-            "insights": dashboard.insights(),
+            "advances_outstanding": outstanding_advances_total(end),
+            "petty_balance": _petty_balance_asof(end),
+            "cards": dashboard.cards(start, end),
+            "insights": dashboard.insights(start, end),
             "kpis": health.kpis(),
-            "facts": dashboard.quick_facts(),
+            "facts": dashboard.quick_facts(start, end),
             "charts_json": safe_json(ch),
             "ai_enabled": SiteConfig.get().llm_enabled,
         })

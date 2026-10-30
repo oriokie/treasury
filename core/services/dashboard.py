@@ -1,11 +1,9 @@
 """Executive dashboard data: KPI cards and Chart.js series."""
-import calendar
 import datetime as dt
 from decimal import Decimal
 
-from django.db.models import Sum, Count, Q
-from django.db.models.functions import ExtractMonth
-from django.db.models.functions import TruncMonth
+from django.db.models import Sum, Count, Avg, Max
+from django.db.models.functions import ExtractMonth, TruncMonth
 
 from giving.models import Transaction
 from cashbook.models import Expense
@@ -30,82 +28,106 @@ def _debits(**extra):
                                       is_reversed=False, **extra)
 
 
-def quick_facts():
-    """A few fast, informative at-a-glance facts for the executive overview —
-    pure DB aggregates (no per-row Python), so they're cheap to compute. These
-    replace the old financial-health anomaly scan, which was slow."""
-    import datetime as dt
-    from decimal import Decimal
-    from django.db.models import Sum, Max
-    from cashbook.models import Expense as E
+def _period_bounds(start=None, end=None):
     today = dt.date.today()
-    ms = today.replace(day=1)
+    end = end or today
+    start = start or end.replace(day=1)
+    return start, end
+
+
+def quick_facts(start=None, end=None):
+    """Fast at-a-glance facts for the selected period — pure DB aggregates."""
+    start, end = _period_bounds(start, end)
     facts = []
 
-    top = (_credits(date__gte=ms).exclude(department__isnull=True)
+    top = (_credits(date__gte=start, date__lte=end).exclude(department__isnull=True)
            .values("department__name").annotate(t=Sum("amount")).order_by("-t").first())
     if top and top["department__name"]:
-        facts.append({"label": "Top fund this month", "text": top["department__name"],
+        facts.append({"label": "Top fund (period)", "text": top["department__name"],
                       "value": top["t"], "money": True})
 
-    cat = (E.objects.filter(date__gte=ms, status__in=[E.Status.APPROVED, E.Status.PAID])
+    cat = (Expense.objects.filter(
+                date__gte=start, date__lte=end,
+                status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .values("category").annotate(t=Sum("amount")).order_by("-t").first())
     if cat:
-        facts.append({"label": "Top spend category (month)",
-                      "text": dict(E.Category.choices).get(cat["category"], cat["category"]),
+        facts.append({"label": "Top spend category",
+                      "text": dict(Expense.Category.choices).get(cat["category"], cat["category"]),
                       "value": cat["t"], "money": True})
 
-    givers = _credits(date__gte=ms).exclude(member__isnull=True).values("member").distinct().count()
-    facts.append({"label": "Givers this month", "text": f"{givers} contributor(s)",
+    givers = (_credits(date__gte=start, date__lte=end)
+              .exclude(member__isnull=True).values("member").distinct().count())
+    facts.append({"label": "Givers in period", "text": f"{givers} contributor(s)",
                   "value": None, "money": False})
 
-    big = _credits(date__gte=ms).aggregate(m=Max("amount"))["m"]
+    big = (_credits(date__gte=start, date__lte=end).aggregate(m=Max("amount"))["m"])
     if big:
-        facts.append({"label": "Largest single gift (month)", "text": "",
+        facts.append({"label": "Largest single gift", "text": "",
                       "value": big, "money": True})
     return facts
 
 
-def cards():
+def cards(start=None, end=None):
+    start, end = _period_bounds(start, end)
     today = dt.date.today()
-    month_start = today.replace(day=1)
-    year = today.year
-    from core.models import SiteConfig
-    _cfg = SiteConfig.get()
+    year = end.year
+    year_start = dt.date(year, 1, 1)
 
-    coll_month = (_credits(date__gte=month_start, date__lte=today)
-                  .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    coll_year = (_credits(date__year=year).aggregate(t=Sum("amount"))["t"] or Decimal(0))
+    # One pass for period + YTD collections.
+    period_agg = _credits(date__gte=start, date__lte=end).aggregate(
+        t=Sum("amount"), n=Count("id"), avg=Avg("amount"))
+    coll_period = period_agg["t"] or Decimal(0)
+    ytd_end = min(end, today) if end.year == today.year else end
+    coll_year = (_credits(date__gte=year_start, date__lte=ytd_end)
+                 .aggregate(t=Sum("amount"))["t"] or Decimal(0))
 
-    # Cash & bank balance = the true current cash position across every
-    # fund — the same figure the Statement of Financial Position shows,
-    # computed the same way, so it can never drift from it.
     cash_balance = current_cash_position()
 
     from core.metrics import metrics as _m
     trust_out = _m.trust_to_remit()
 
-    pending = Expense.objects.filter(
-        status__in=[Expense.Status.PENDING, Expense.Status.APPROVED])
-    pending_total = pending.aggregate(t=Sum("amount"))["t"] or Decimal(0)
+    pending_agg = Expense.objects.filter(
+        status__in=[Expense.Status.PENDING, Expense.Status.APPROVED]
+    ).aggregate(t=Sum("amount"), n=Count("id"))
+    pending_total = pending_agg["t"] or Decimal(0)
+    pending_n = pending_agg["n"] or 0
 
-    unrec = Transaction.objects.filter(allocation_status=Transaction.Status.REVIEW).count()
+    unrec = Transaction.objects.filter(
+        allocation_status=Transaction.Status.REVIEW).count()
 
     from cashbook.views import open_payables_total, open_accruals_total
     commitments = open_payables_total() + open_accruals_total()
 
+    exp_period = (Expense.objects.filter(
+        date__gte=start, date__lte=end,
+        status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
+        .exclude(doc_class=Expense.DocClass.LIABILITY)
+        .aggregate(t=Sum("amount"))["t"] or Decimal(0))
+    net = coll_period - exp_period
+
     cards = [
-        {"label": "Collections this month", "value": coll_month, "money": True, "tone": "ok"},
-        {"label": "Collections (year to date)", "value": coll_year, "money": True, "tone": "ok"},
-        {"label": "Cash & bank balance", "value": cash_balance, "money": True,
-         "sub": "after expenses & remittances", "tone": "ok"},
+        {"label": "Collections (period)", "value": coll_period, "money": True, "tone": "ok"},
+        {"label": "Collections (YTD)", "value": coll_year, "money": True, "tone": "ok"},
+        {"label": "Expenses (period)", "value": exp_period, "money": True,
+         "tone": "warn" if exp_period else "ok"},
+        {"label": "Net (period)", "value": net, "money": True,
+         "tone": "ok" if net >= 0 else "warn",
+         "sub": "collections − expenses"},
+        {"label": "Cash & bank", "value": cash_balance, "money": True, "tone": "ok"},
         {"label": "Outstanding trust", "value": trust_out, "money": True,
          "tone": "warn" if trust_out > 0 else "ok"},
         {"label": "Pending expenses", "value": pending_total, "money": True,
-         "sub": f"{pending.count()} item(s)", "tone": "warn" if pending.count() else "ok"},
+         "sub": f"{pending_n} item(s)", "tone": "warn" if pending_n else "ok"},
         {"label": "Items in review", "value": unrec, "money": False,
          "tone": "warn" if unrec else "ok"},
     ]
+    if period_agg["n"]:
+        cards.append({
+            "label": "Avg gift (period)",
+            "value": period_agg["avg"] or Decimal(0),
+            "money": True, "tone": "ok",
+            "sub": f"{period_agg['n']} donation(s)",
+        })
     if commitments > 0:
         from django.urls import reverse
         cards.append({"label": "Payables & accruals", "value": commitments,
@@ -117,7 +139,6 @@ def cards():
 def _monthly_series(qs, date_field="date", months=12, end=None):
     """Return (labels, values) of monthly sums for the trailing `months`."""
     end = end or dt.date.today()
-    first = (end.replace(day=1) - dt.timedelta(days=1)).replace(day=1)
     # build the window of month starts
     starts = []
     y, m = end.year, end.month
@@ -130,7 +151,8 @@ def _monthly_series(qs, date_field="date", months=12, end=None):
     starts.reverse()
     window_start = starts[0]
     agg = {row["mo"].date() if hasattr(row["mo"], "date") else row["mo"]: row["t"]
-           for row in qs.filter(**{f"{date_field}__gte": window_start})
+           for row in qs.filter(**{f"{date_field}__gte": window_start,
+                                   f"{date_field}__lte": end})
            .annotate(mo=TruncMonth(date_field)).values("mo")
            .annotate(t=Sum("amount")).order_by("mo")}
     labels = [s.strftime("%b %y") for s in starts]
@@ -138,36 +160,37 @@ def _monthly_series(qs, date_field="date", months=12, end=None):
     return labels, values
 
 
-def charts():
-    today = dt.date.today()
-    year = today.year
+def charts(start=None, end=None):
+    start, end = _period_bounds(start, end)
+    year = end.year
 
-    g_labels, g_values = _monthly_series(_credits(), months=12)
-    inc_labels, inc_values = _monthly_series(_credits(date__year=year), months=12)
+    g_labels, g_values = _monthly_series(_credits(), months=12, end=end)
     eff = (Expense.objects.filter(status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
            .exclude(doc_class=Expense.DocClass.LIABILITY))
-    exp_labels, exp_values = _monthly_series(eff, months=12)
+    exp_labels, exp_values = _monthly_series(eff, months=12, end=end)
+    inc_labels, inc_values = _monthly_series(
+        _credits(date__year=year), months=12, end=end)
 
-    # Receipts vs expenses, side by side, for the FULL current year (moved here
-    # from the treasurer dashboard, which only showed the currently-selected
-    # period — usually just the current month).
+    # Receipts vs expenses for the chart year up to `end`.
     MN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     year_start = dt.date(year, 1, 1)
     mrec = {r["m"]: _f(r["t"]) for r in
-            _credits(date__gte=year_start, date__lte=today)
+            _credits(date__gte=year_start, date__lte=end)
             .annotate(m=ExtractMonth("date")).values("m").annotate(t=Sum("amount"))}
     mexp = {r["m"]: _f(r["t"]) for r in
-            eff.filter(date__gte=year_start, date__lte=today)
+            eff.filter(date__gte=year_start, date__lte=end)
             .annotate(m=ExtractMonth("date")).values("m").annotate(t=Sum("amount"))}
-    rve_labels = [MN[m - 1] for m in range(1, today.month + 1)]
-    rve_receipts = [mrec.get(m, 0) for m in range(1, today.month + 1)]
-    rve_expenses = [mexp.get(m, 0) for m in range(1, today.month + 1)]
+    last_m = end.month
+    rve_labels = [MN[m - 1] for m in range(1, last_m + 1)]
+    rve_receipts = [mrec.get(m, 0) for m in range(1, last_m + 1)]
+    rve_expenses = [mexp.get(m, 0) for m in range(1, last_m + 1)]
 
-    # department spending (top-level, current year, top 8)
-    parent_of = {d.id: (d.parent_id or d.id) for d in Department.objects.all()}
-    name_of = {d.id: d.name for d in Department.objects.all()}
+    # department spending (top-level, period year, top 8) — one Department fetch
+    depts = list(Department.objects.all().only("id", "name", "parent_id"))
+    parent_of = {d.id: (d.parent_id or d.id) for d in depts}
+    name_of = {d.id: d.name for d in depts}
     dept_agg = {}
-    for r in (eff.filter(date__year=year).values("department_id")
+    for r in (eff.filter(date__gte=start, date__lte=end).values("department_id")
               .annotate(t=Sum("amount"))):
         top = parent_of.get(r["department_id"], r["department_id"])
         dept_agg[top] = dept_agg.get(top, 0) + _f(r["t"])
@@ -175,7 +198,6 @@ def charts():
     dep_labels = [name_of.get(i, "—") for i, _ in top_depts]
     dep_values = [v for _, v in top_depts]
 
-    # trust outstanding by fund
     trust = [(r["department"].name, _f(r["to_remit"])) for r in balances.trust_summary()
              if r["to_remit"] and r["to_remit"] > 0]
     tr_labels = [n for n, _ in trust]
@@ -192,56 +214,48 @@ def charts():
     }
 
 
-def insights():
-    """Richer executive analytics beyond the headline cards: month-on-month
-    movement, giving concentration, channel mix, expense ratio, average contribution,
-    and the top givers — each returned as a small dict the template renders as
-    a tile. All figures respect the trust/local split and exclude double-counted
-    envelope detail."""
-    import datetime as _dt
-    from django.db.models import Sum, Count, Avg
-    from giving.models import Transaction
-    from cashbook.models import Expense
+def insights(start=None, end=None):
+    """Richer executive analytics for the selected period."""
+    start, end = _period_bounds(start, end)
+    today = end
+    y = end.year
+    m_start = end.replace(day=1)
+    prev_end = m_start - dt.timedelta(days=1)
+    prev_start = prev_end.replace(day=1)
 
     def _money(v):
         return f"KSh {Decimal(v or 0):,.0f}"
 
-    today = _dt.date.today()
-    y = today.year
-    m_start = today.replace(day=1)
-    prev_end = m_start - _dt.timedelta(days=1)
-    prev_start = prev_end.replace(day=1)
-
-    def _credits(**f):
+    def _cr(**f):
         return (Transaction.objects.confirmed_credits()
                 .filter(excluded_from_income=False, **f))
 
-    this_month = _credits(date__gte=m_start, date__lte=today).aggregate(
+    this_month = _cr(date__gte=m_start, date__lte=today).aggregate(
         t=Sum("amount"))["t"] or Decimal(0)
-    last_month = _credits(date__gte=prev_start, date__lte=prev_end).aggregate(
+    last_month = _cr(date__gte=prev_start, date__lte=prev_end).aggregate(
         t=Sum("amount"))["t"] or Decimal(0)
     mom = None
     if last_month:
         mom = float((this_month - last_month) / last_month * 100)
 
-    ytd = _credits(date__year=y).aggregate(t=Sum("amount"))["t"] or Decimal(0)
-    ytd_exp = (Expense.objects.filter(
-        status__in=[Expense.Status.APPROVED, Expense.Status.PAID], date__year=y)
+    period_total = _cr(date__gte=start, date__lte=end).aggregate(
+        t=Sum("amount"))["t"] or Decimal(0)
+    period_exp = (Expense.objects.filter(
+        status__in=[Expense.Status.APPROVED, Expense.Status.PAID],
+        date__gte=start, date__lte=end)
         .exclude(doc_class=Expense.DocClass.LIABILITY)
         .aggregate(t=Sum("amount"))["t"] or Decimal(0))
-    exp_ratio = float(ytd_exp / ytd * 100) if ytd else None
+    exp_ratio = float(period_exp / period_total * 100) if period_total else None
 
-    # channel mix YTD (bank vs cash vs envelope-as-detail excluded)
-    chan = {r["channel"]: r["t"] for r in _credits(date__year=y)
+    chan = {r["channel"]: r["t"] for r in _cr(date__gte=start, date__lte=end)
             .values("channel").annotate(t=Sum("amount"))}
 
-    # average gift + giver count this year
-    gifts = _credits(date__year=y).aggregate(n=Count("id"), avg=Avg("amount"))
-    givers = (_credits(date__year=y).exclude(member__isnull=True)
+    gifts = _cr(date__gte=start, date__lte=end).aggregate(
+        n=Count("id"), avg=Avg("amount"))
+    givers = (_cr(date__gte=start, date__lte=end).exclude(member__isnull=True)
               .values("member").distinct().count())
 
-    # giving concentration: share from the top 10% of givers
-    by_member = list(_credits(date__year=y).exclude(member__isnull=True)
+    by_member = list(_cr(date__gte=start, date__lte=end).exclude(member__isnull=True)
                      .values("member").annotate(t=Sum("amount")).order_by("-t"))
     concentration = None
     if by_member:
@@ -251,14 +265,13 @@ def insights():
         if total:
             concentration = float(top_sum / total * 100)
 
-    # privacy-safe participation: aggregates only, never names or per-person totals
-    amounts = sorted(_credits(date__year=y).values_list("amount", flat=True))
+    amounts = sorted(_cr(date__gte=start, date__lte=end).values_list("amount", flat=True))
     median = Decimal(0)
     if amounts:
         mid = len(amounts) // 2
         median = (amounts[mid] if len(amounts) % 2
                   else (amounts[mid - 1] + amounts[mid]) / 2)
-    new_givers = (_credits(date__gte=m_start, date__lte=today)
+    new_givers = (_cr(date__gte=m_start, date__lte=today)
                   .exclude(member__isnull=True)
                   .exclude(member__created_at__lt=m_start)
                   .values("member").distinct().count())
@@ -266,10 +279,10 @@ def insights():
     tiles = [
         {"label": "This month vs last", "value": this_month, "money": True,
          "delta": mom, "sub": f"vs {_money(last_month)} last month"},
-        {"label": "Expense ratio (YTD)", "pct": exp_ratio,
-         "sub": f"{_money(ytd_exp)} spent of {_money(ytd)} received",
+        {"label": "Expense ratio (period)", "pct": exp_ratio,
+         "sub": f"{_money(period_exp)} spent of {_money(period_total)} received",
          "tone": "warn" if (exp_ratio or 0) > 80 else "ok"},
-        {"label": "Average donation (YTD)", "value": gifts["avg"] or Decimal(0),
+        {"label": "Average donation", "value": gifts["avg"] or Decimal(0),
          "money": True, "sub": f"{gifts['n'] or 0} donations from {givers} givers"},
         {"label": "Top-givers concentration", "pct": concentration,
          "sub": "share of giving from the top 10% of givers"
