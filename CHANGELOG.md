@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.54.0
+
+Payables gains a searchable supplier field (same typeahead as members), a clearer layout, overdue totals, and guidance for leaders reimbursed from personal funds — add them as suppliers tagged Reimbursement when they are paid more than once.
+
 ## 3.53.0
 
 Gifts without a name no longer lists loan receipts or other non-income bank credits, and you can leave selected rows as they are. Bank reconciliation shows a refund-due line when petty cash is negative, loads faster, and uses less wording. The executive dashboard gains a period selector, more KPI cards, and cheaper queries. Home drops recent imports and totals the trust-funds table. Payables guidance covers leaders who paid from personal funds and expect a refund.
