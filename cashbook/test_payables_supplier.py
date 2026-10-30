@@ -62,6 +62,15 @@ class PayableSupplierSelectorTests(TestCase):
             "The supplier register is not offered as choices, so the field is "
             "present but unusable.")
 
+    def test_supplier_field_is_searchable(self):
+        """Same typeahead pattern as members — vendor_lookup + MemberSearch."""
+        body = self.client.get(reverse("accruals")).content.decode()
+        self.assertIn(reverse("vendor_lookup"), body)
+        self.assertIn("member-search.js", body)
+        self.assertIn("MemberSearch.enhance", body)
+        self.assertIn("Leader paid from personal funds", body)
+        self.assertIn("Reimbursement", body)
+
     def test_an_archived_supplier_is_not_offered(self):
         """Selectable must not mean 'everything ever recorded'."""
         Vendor.objects.create(name="Closed Traders Ltd",

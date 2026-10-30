@@ -38,6 +38,10 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.54.0": "Payables gains a searchable supplier field (same typeahead as "
+              "members), a clearer layout, overdue totals, and guidance for "
+              "leaders reimbursed from personal funds — add them as suppliers "
+              "tagged Reimbursement when they are paid more than once.",
     "3.53.0": "Gifts without a name no longer lists loan receipts or other "
               "non-income bank credits, and you can leave selected rows as they "
               "are. Bank reconciliation shows a refund-due line when petty cash "

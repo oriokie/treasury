@@ -1,7 +1,12 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% load static %}
 {% block title %}{{ title }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="card" style="max-width:640px"><div class="hd">{{ title }}</div><div class="bd">
+<div class="rpt-mast">
+  <div class="eyebrow">Expenses</div>
+  <h1>{{ title }}</h1>
+  <div class="rule" aria-hidden="true"></div>
+</div>
+<div class="card" style="max-width:640px"><div class="bd">
   <form method="post">{% csrf_token %}
     {% if form.non_field_errors %}<div class="errorlist">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
     <div class="form-grid">
@@ -15,4 +20,28 @@
     <div class="btn-row"><button class="btn">Save</button><a class="btn btn-ghost" href="{% url 'accruals' %}">Cancel</a></div>
   </form>
 </div></div>
+{% if "supplier" in form.fields %}
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+(function(){
+  if(!window.MemberSearch || !document.getElementById('id_supplier')) return;
+  MemberSearch.enhance({
+    selectId: 'id_supplier',
+    searchUrl: '{% url "vendor_lookup" %}',
+    placeholder: 'Search suppliers…',
+    renderLabel: function(r){ return r.name; },
+    renderMeta: function(r){
+      var bits=[];
+      if(r.code) bits.push(r.code);
+      if(r.terms) bits.push(r.terms);
+      return bits.join(' · ');
+    },
+    onPick: function(r){
+      var v=document.getElementById('id_vendor');
+      if(v && !(v.value||'').trim()) v.value=r.name;
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

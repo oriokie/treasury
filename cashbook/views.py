@@ -1390,6 +1390,7 @@ class AccrualsView(ReadAccessMixin, TemplateView):
     template_name = "cashbook/accruals.html"
 
     def get_context_data(self, **kwargs):
+        from decimal import Decimal
         ctx = super().get_context_data(**kwargs)
         today = dt.date.today()
         # `supplier` and `payments` are both read for every row — the supplier
@@ -1403,17 +1404,34 @@ class AccrualsView(ReadAccessMixin, TemplateView):
         prepayments = list(Prepayment.objects.select_related("department"))
         for p in prepayments:
             p.unexpired_now = p.unexpired(today)
+        open_payables_list = [p for p in payables if not p.settled]
+        overdue_payables = sum(
+            (p.balance for p in open_payables_list
+             if p.due_date and p.due_date < today),
+            Decimal("0"))
+        overdue_count = sum(
+            1 for p in open_payables_list
+            if p.due_date and p.due_date < today)
+        # Tag leaders / staff who are reimbursed so their account is easy to find.
+        from vendors.models import VendorTag
+        reimburse_tag, _ = VendorTag.objects.get_or_create(
+            name="Reimbursement",
+            defaults={"slug": "reimbursement", "colour": "#8a6d3b"})
         ctx.update({
             "payables": payables, "accruals": accruals, "prepayments": prepayments,
             # Bills with no supplier record cannot appear on any supplier
             # account, so the page says how many there are rather than leaving
             # the register quietly incomplete.
-            "unlinked_payables": sum(1 for p in payables
-                                     if not p.supplier_id and not p.settled),
+            "unlinked_payables": sum(1 for p in open_payables_list
+                                     if not p.supplier_id),
+            "open_payable_count": len(open_payables_list),
+            "overdue_payables": overdue_payables,
+            "overdue_count": overdue_count,
             "open_payables": open_payables_total(), "open_accruals": open_accruals_total(),
             "unexpired_prepay": unexpired_prepayments_total(),
             "payable_form": PayableForm(), "accrual_form": AccrualForm(),
             "prepayment_form": PrepaymentForm(), "today": today,
+            "reimburse_tag": reimburse_tag,
         })
         return ctx
 

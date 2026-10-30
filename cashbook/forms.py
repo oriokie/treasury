@@ -172,7 +172,7 @@ class PayableForm(StyledFormMixin, forms.Form):
     date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}), label="Date incurred")
     supplier = forms.ModelChoiceField(
         queryset=None, required=False, label="Supplier",
-        help_text="Choose from the register to group this bill with the "
+        help_text="Search the register to group this bill with the "
                   "supplier's other invoices. Leave blank for a one-off.")
     vendor = forms.CharField(
         max_length=120, required=False, label="Name on the invoice",

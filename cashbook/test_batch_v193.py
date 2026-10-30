@@ -40,8 +40,8 @@ class PayablesTabsTests(TestCase):
 
     def test_tabs_present(self):
         body = self.c.get("/payables/").content.decode()
-        self.assertIn('class="tabbar', body)
-        self.assertEqual(body.count('class="tab-btn'), 3)
+        self.assertIn('class="ob-tabs', body)
+        self.assertEqual(body.count('data-tab='), 3)
         self.assertEqual(body.count('class="tab-panel"'), 3)
         self.assertIn('data-panel="accruals" hidden', body)
 
