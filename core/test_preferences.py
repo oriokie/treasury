@@ -34,7 +34,7 @@ class PreferenceModelTests(TestCase):
         keys = [w["key"] for w in pref.merged_widgets()]
         self.assertNotIn("ghost", keys)
         self.assertIn("kpis", keys)
-        self.assertIn("recent", keys)
+        self.assertIn("trend", keys)
         vis = dict((w["key"], w["visible"]) for w in pref.merged_widgets())
         self.assertFalse(vis["kpis"])
 
@@ -110,12 +110,12 @@ class PreferenceViewTests(TestCase):
                          f"these controls post keys the endpoint rejects: {missing}")
 
     def test_widget_order_persists(self):
-        data = [{"key": "recent", "visible": True}, {"key": "kpis", "visible": False}]
+        data = [{"key": "funds", "visible": True}, {"key": "kpis", "visible": False}]
         r = self.c.post("/preferences/update/",
                         {"key": "dashboard_widgets", "value": json.dumps(data)})
         self.assertTrue(r.json()["ok"])
         pref = UserPreference.get_for(self.u)
-        self.assertEqual(pref.dashboard_widgets[0]["key"], "recent")
+        self.assertEqual(pref.dashboard_widgets[0]["key"], "funds")
         self.assertFalse(pref.dashboard_widgets[1]["visible"])
 
     def test_html_reflects_prefs(self):
@@ -142,15 +142,16 @@ class PreferenceViewTests(TestCase):
 
     def test_dashboard_widget_hide_and_order(self):
         pref = UserPreference.get_for(self.u)
+        # Put funds first (always rendered); hide kpis. Avoid "trend" — that
+        # block is gated on has_trend and may be absent with empty books.
         pref.dashboard_widgets = [
-            {"key": "recent", "visible": True}, {"key": "kpis", "visible": False},
+            {"key": "funds", "visible": True}, {"key": "kpis", "visible": False},
             {"key": "attention", "visible": True}, {"key": "sabbath", "visible": True},
-            {"key": "charts", "visible": True}, {"key": "funds", "visible": True},
-            {"key": "trend", "visible": True}]
+            {"key": "charts", "visible": True}, {"key": "trend", "visible": True}]
         pref.save()
         b = self.c.get("/").content.decode()
         self.assertNotIn('data-w="kpis"', b)               # hidden
-        self.assertIn('data-w="recent" style="order:0"', b)  # reordered first
+        self.assertIn('data-w="funds" style="order:0"', b)  # reordered first
 
     def test_toasts_config_exposed(self):
         b = self.c.get("/").content.decode()

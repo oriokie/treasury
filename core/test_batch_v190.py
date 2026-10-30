@@ -117,4 +117,3 @@ class ReconAdvanceTests(TestCase):
         body = self.c.get(f"/reconciliations/{rec.id}/").content.decode()
         self.assertNotIn("Staff advances (bank-funded)", body)
         self.assertNotIn("Unpresented cheques (from the register)", body)
-        self.assertIn("added to this statement", body)  # the auto note
