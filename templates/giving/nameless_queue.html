@@ -35,6 +35,14 @@
   <button type="submit" class="btn btn-sm" id="nlLinkBtn">Link selected</button>
   <button type="submit" class="btn btn-sm btn-ghost" id="nlLeaveBtn"
           title="Keep unlinked; remove from this queue">Leave as they are</button>
+  <button type="button" class="btn btn-sm btn-ghost" id="nlCreateToggle">New member…</button>
+  <div id="nlCreateBox" hidden style="display:none;flex:1 1 100%;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+    <div class="f"><label class="help">Name</label><br>
+      <input class="field" name="new_name" id="nlNewName" placeholder="Full name" form="namelessBulk"></div>
+    <div class="f"><label class="help">Phone (optional)</label><br>
+      <input class="field" name="new_phone" id="nlNewPhone" placeholder="07…" form="namelessBulk"></div>
+    <button type="submit" class="btn btn-sm btn-brass" id="nlCreateBtn">Create &amp; link</button>
+  </div>
 </form>
 <script>
 (function(){
@@ -71,9 +79,18 @@
   inp.addEventListener("blur", function(){ setTimeout(function(){ ac.style.display="none"; },150); });
   document.getElementById("nlLinkBtn").addEventListener("click", function(){ action.value="link"; });
   document.getElementById("nlLeaveBtn").addEventListener("click", function(){ action.value="leave"; });
+  document.getElementById("nlCreateBtn").addEventListener("click", function(){ action.value="create"; });
+  document.getElementById("nlCreateToggle").addEventListener("click", function(){
+    var box=document.getElementById("nlCreateBox");
+    var on=box.style.display==="none"||box.hidden;
+    box.hidden=!on; box.style.display=on?"flex":"none";
+  });
   form.addEventListener("submit", function(e){
     if(action.value==="link" && !hidden.value){
       e.preventDefault(); alert("Choose a member from the suggestions.");
+    }
+    if(action.value==="create" && !(document.getElementById("nlNewName").value||"").trim()){
+      e.preventDefault(); alert("Enter the new member’s name.");
     }
   });
 })();

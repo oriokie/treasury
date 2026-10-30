@@ -70,6 +70,19 @@
 {% endif %}
 
 {% if can_enter_data %}
+<div class="card u-mt" id="categories"><div class="hd">Supplier categories</div><div class="bd">
+  <p class="help u-mt-0">Categories organise the register (Hardware, Utilities, Individuals for reimbursements, …). Starter ones are created automatically — add your own here.</p>
+  <div class="u-mb" style="display:flex;flex-wrap:wrap;gap:.35rem">
+    {% for c in categories %}<span class="pill">{{ c.name }}</span>{% empty %}<span class="muted">None yet.</span>{% endfor %}
+  </div>
+  <form method="post" action="{% url 'vendor_create' %}" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
+    <input type="hidden" name="action" value="add_category">
+    <div class="f"><label class="help">New category</label><br>
+      <input class="field" type="text" name="category_name" maxlength="80" placeholder="e.g. Security" required></div>
+    <button class="btn btn-sm">Add category</button>
+  </form>
+</div></div>
+
 <div class="card u-mt" id="new"><div class="hd">Add a supplier</div><div class="bd">
 <form method="post" action="{% url 'vendor_create' %}">{% csrf_token %}
   <input type="hidden" name="action" value="save">
@@ -80,7 +93,9 @@
       <input class="field" type="text" name="code" id="id_code" maxlength="20"></div>
     <div><label class="lbl" for="id_category">Category</label>
       <select class="field" name="category" id="id_category"><option value="">—</option>
-        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+      <div class="help">Or type a new one below — it is added to the register.</div>
+      <input class="field u-mt-0" type="text" name="new_category" maxlength="80" placeholder="New category name (optional)"></div>
     <div><label class="lbl" for="id_terms">Payment terms</label>
       <select class="field" name="payment_terms" id="id_terms">
         <option value="IMMEDIATE">On delivery</option><option value="NET7">7 days</option>
@@ -99,5 +114,13 @@
   <button class="btn u-mt">Add supplier</button>
 </form>
 </div></div>
+<script>
+(function(){
+  if(location.search.indexOf('new=1')>=0 || location.hash==='#new'){
+    var el=document.getElementById('new');
+    if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+})();
+</script>
 {% endif %}
 {% endblock %}

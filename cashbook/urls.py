@@ -36,6 +36,8 @@ urlpatterns = [
     path("petty-cash/top-up/", views.PettyCashTopUp.as_view(), name="petty_cash_topup"),
     path("petty-cash/disburse/", views.PettyCashDisburse.as_view(), name="petty_cash_disburse"),
     path("expenses/<int:pk>/", views.ExpenseDetailView.as_view(), name="expense_detail"),
+    path("expenses/<int:pk>/raise-payable/", views.ExpenseRaisePayable.as_view(),
+         name="expense_raise_payable"),
     path("expenses/<int:pk>/refund/", views.ExpenseRefundCreate.as_view(), name="expense_refund"),
     path("expenses/<int:pk>/refund/<int:ref>/delete/", views.ExpenseRefundDelete.as_view(), name="expense_refund_delete"),
     path("expenses/<int:pk>/attach/", views.ExpenseAttachmentUpload.as_view(), name="expense_attachment_upload"),

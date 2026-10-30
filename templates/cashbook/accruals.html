@@ -10,7 +10,7 @@
     </div>
     <div class="mast-actions no-print">
       <a class="btn btn-ghost btn-sm" href="{% url 'vendor_list' %}">Suppliers</a>
-      <a class="btn btn-sm" href="{% url 'vendor_create' %}">＋ Supplier</a>
+      <a class="btn btn-sm" href="{% url 'vendor_list' %}?new=1#new">＋ Supplier</a>
     </div>
   </div>
   <div class="rule" aria-hidden="true"></div>
@@ -44,7 +44,8 @@
   <div class="ob-guide-body">
     <p>Create a <strong>payable</strong> — not a staff advance. Staff advances are church money first; this is the reverse: the church owes them.</p>
     <ol>
-      <li>Add them once as a <a class="link" href="{% url 'vendor_create' %}">supplier</a> and tag <span class="pill pill-brass u-xs">{{ reimburse_tag.name }}</span> if they are reimbursed more than once. One-offs can stay as a typed name only.</li>
+      <li>Add them once as a <a class="link" href="{% url 'vendor_list' %}?new=1#new">supplier</a> (category <em>Individuals</em>, tag <span class="pill pill-brass u-xs">{{ reimburse_tag.name }}</span>) if they are reimbursed more than once. One-offs can stay as a typed name only.</li>
+      <li>Already recorded the spend as an expense? Open that expense and choose <strong>Raise payable</strong>, or use <em>Link expense</em> on a payable to attach the payment.</li>
       <li>Record the payable: supplier (or name), fund that benefited, amount, receipt.</li>
       <li>When you refund them, settle the payable — the expense hits the fund and the liability clears.</li>
     </ol>
@@ -406,6 +407,18 @@
       }
     });
   }
+  // Payable / accrual / prepayment fund pickers — one enhance per visible select.
+  document.querySelectorAll('select[name="department"]').forEach(function(sel){
+    if(!sel.id) sel.id='dept_'+Math.random().toString(36).slice(2,8);
+    MemberSearch.enhance({
+      selectId: sel.id,
+      searchUrl: '{% url "fund_search" %}',
+      params: {scope: 'expense'},
+      placeholder: 'Search fund…',
+      renderLabel: function(r){ return r.label || r.name; },
+      renderMeta: function(r){ return r.tag || ''; }
+    });
+  });
 })();
 </script>
 {% endblock %}

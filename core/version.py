@@ -38,6 +38,12 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.55.0": "Supplier categories can be set up on the register (starter list "
+              "seeded automatically); /vendors/new/ opens the add form. Payables "
+              "and the ledger fund filter are searchable; the review queue keeps "
+              "per-row fund/group picks across refresh with one Allocate button. "
+              "Nameless gifts can create a new member. Expenses can raise a "
+              "payable for leader reimbursements.",
     "3.54.0": "Payables gains a searchable supplier field (same typeahead as "
               "members), a clearer layout, overdue totals, and guidance for "
               "leaders reimbursed from personal funds — add them as suppliers "

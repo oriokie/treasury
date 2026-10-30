@@ -24,6 +24,7 @@ class VendorListView(ReadAccessMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        ensure_default_vendor_categories()
         q = (self.request.GET.get("q") or "").strip()
         status = self.request.GET.get("status") or ""
         category = self.request.GET.get("category") or ""
@@ -92,6 +93,18 @@ class VendorDetailView(ReadAccessMixin, TemplateView):
         return ctx
 
 
+def ensure_default_vendor_categories():
+    """Seed a small starter set so the category dropdown is never an empty
+    mystery. Idempotent — existing names are left alone."""
+    defaults = [
+        "Hardware", "Printing", "Catering", "Utilities", "Transport",
+        "Services", "Individuals",
+    ]
+    for name in defaults:
+        VendorCategory.objects.get_or_create(
+            name=name, defaults={"slug": name.lower(), "active": True})
+
+
 class VendorSaveView(DataEntryRequiredMixin, View):
     """Create or edit a supplier, and everything hanging off it.
 
@@ -100,12 +113,33 @@ class VendorSaveView(DataEntryRequiredMixin, View):
     dozen near-identical classes; the branch here is flat and readable.
     """
 
+    def get(self, request, pk=None):
+        # `/vendors/new/` is linked from payables guidance and elsewhere, but
+        # creation lives on the register form (`?new=1#new`). A bare GET here
+        # used to 405 — send the treasurer to the form that actually works.
+        if pk:
+            return redirect("vendor_detail", pk=pk)
+        return redirect(f"{reverse('vendor_list')}?new=1#new")
+
     def post(self, request, pk=None):
         vendor = get_object_or_404(Vendor, pk=pk) if pk else None
         action = request.POST.get("action") or "save"
         p = request.POST
 
         try:
+            if action == "add_category":
+                name = (p.get("category_name") or "").strip()[:80]
+                if not name:
+                    messages.error(request, "Enter a category name.")
+                else:
+                    cat, created = VendorCategory.objects.get_or_create(
+                        name=name, defaults={"active": True})
+                    if created:
+                        messages.success(request, f"Category “{cat.name}” added.")
+                    else:
+                        messages.info(request, f"“{cat.name}” already exists.")
+                return redirect(f"{reverse('vendor_list')}?new=1#new")
+
             if action == "save":
                 vendor = self._save_vendor(request, vendor)
                 messages.success(request, f"{vendor.name} saved.")
@@ -251,8 +285,18 @@ class VendorSaveView(DataEntryRequiredMixin, View):
         vendor = vendor or Vendor(created_by=request.user)
         vendor.name = p.get("name", "").strip()[:160]
         vendor.code = p.get("code", "").strip()[:20]
-        vendor.category_id = (int(p["category"]) if p.get("category", "").isdigit()
-                              else None)
+        # Prefer the register pick; otherwise create from a typed name so the
+        # category field is never a dead end when the list was empty.
+        cat_id = p.get("category")
+        new_cat = (p.get("new_category") or "").strip()[:80]
+        if cat_id and str(cat_id).isdigit():
+            vendor.category_id = int(cat_id)
+        elif new_cat:
+            cat, _ = VendorCategory.objects.get_or_create(
+                name=new_cat, defaults={"active": True})
+            vendor.category_id = cat.pk
+        else:
+            vendor.category_id = None
         vendor.status = p.get("status") or Vendor.Status.ACTIVE
         vendor.payment_terms = p.get("payment_terms") or Vendor.Terms.IMMEDIATE
         vendor.terms_note = p.get("terms_note", "")[:200]
