@@ -1,77 +1,222 @@
-{% extends 'base.html' %}{% load humanize treasury_extras %}
-{% block title %}Unassigned development offerings · {{ SITE_NAME }}{% endblock %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
+{% block title %}Unassigned development · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Unassigned development offerings</h1>
-  <div class="sub">Development giving recorded on the parent fund but not yet tagged to a specific group. Suggestions look at the past year of giving and development-campaign lists.</div></div>
-  <a class="btn btn-ghost" href="{% url 'report_dev_groups' %}">← Back to dev groups</a></div>
-
-<div class="kpi-grid u-my">
-  {% include "ui/stat.html" with label="Offerings not assigned" value=count accent="warn" %}
-  {% include "ui/stat.html" with label="Total value" prefix=CURRENCY|default:"KSh" value=total|money accent="brass" %}
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Reports · Development</div>
+      <h1>Unassigned offerings</h1>
+      <div class="desc">{% if count %}Pick a group on each gift — choices are saved if you refresh. Assign with the button below.{% else %}Every development offering is tagged to a group.{% endif %}</div>
+    </div>
+    <div class="rpt-actions no-print">
+      <a class="btn btn-ghost btn-sm" href="{% url 'report_dev_groups' %}">← Dev groups</a>
+    </div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
 </div>
 
+{% if count %}
+<div class="ws-summary u-mb">
+  <div class="ws-metric is-warn"><span class="wm-l">Not assigned</span><span class="wm-v">{{ count|intcomma }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Total value</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ total|money }}</span></div>
+  <div class="ws-metric"><span class="wm-l">On this page</span><span class="wm-v">{{ items|length }}</span></div>
+  <div class="ws-metric {% if suggested_count %}is-primary{% endif %}"><span class="wm-l">Suggested</span><span class="wm-v">{{ suggested_count }}</span></div>
+</div>
+{% endif %}
+
 {% if items %}
-<form id="bulk-assign" method="post">{% csrf_token %}
-  <div class="card u-mb"><div class="bd" style="display:flex;gap:.6rem;align-items:flex-end;flex-wrap:wrap">
-    <div class="form-row u-m-0"><label>Assign selected to group</label>
-      <select name="dev_group" class="field--select" required>
-        <option value="">Choose a group…</option>
-        {% for g in groups %}<option value="{{ g.id }}">{{ g.label }}</option>{% endfor %}
-      </select></div>
-    <button class="btn">Assign selected</button>
-    <button class="btn btn-ghost" name="all" value="1" onclick="return confirm('Assign ALL {{ count }} unassigned offerings to the chosen group?');">Assign all to chosen group</button>
-    {% if suggested_count %}
-    <button class="btn btn-ghost" form="assign-suggested" onclick="return confirm('Assign {{ suggested_count }} offering(s) to their suggested groups?');">Assign all suggested ({{ suggested_count }})</button>
-    {% endif %}
-  </div></div>
+<form id="bulk-assign" method="post" class="du-sticky no-print">{% csrf_token %}
+  <label class="bulk-bar-lbl"><input type="checkbox" id="bulkAll"> All on page</label>
+  <span class="bulk-count muted"><span id="bulkN">0</span> selected</span>
+  <div class="du-sticky-grp pos-rel" style="min-width:200px;flex:1 1 200px">
+    <input id="bulkGrpSearch" class="field" autocomplete="off" placeholder="Shared group for selection…">
+    <div class="ac-box" id="bulkGrpAc"></div>
+    <select name="dev_group" id="bulkGrp" class="field--select" hidden aria-hidden="true">
+      <option value="">—</option>
+      {% for g in groups %}<option value="{{ g.id }}">{{ g.label }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-sm btn-brass" id="bulkAssignBtn" type="submit">Assign selected</button>
+  {% if suggested_count %}
+  <button class="btn btn-sm btn-ghost" form="assign-suggested" type="submit"
+          onclick="return confirm('Assign {{ suggested_count }} offering(s) to their suggested groups?');">
+    Apply {{ suggested_count }} suggested
+  </button>
+  {% endif %}
+  <span class="muted u-xs du-sticky-hint">Or set a group on each row — picks survive a refresh.</span>
 </form>
 {% if suggested_count %}
-<form id="assign-suggested" method="post">{% csrf_token %}
+<form id="assign-suggested" method="post" class="u-hidden">{% csrf_token %}
   <input type="hidden" name="assign_suggested" value="1">
 </form>
 {% endif %}
 
-  <div class="table-wrap"><table class="ledger">
-    <thead><tr><th><input type="checkbox" form="bulk-assign" onclick="document.querySelectorAll('input[name=txn][form=bulk-assign]').forEach(c=>c.checked=this.checked)"></th>
-      <th>Date</th><th>Fund</th><th>For / paid by</th><th class="num">Amount</th>
-      <th>Suggested group</th><th>Assign</th></tr></thead>
-    <tbody>
-    {% for t in items %}
-      <tr>
-        <td><input type="checkbox" form="bulk-assign" name="txn" value="{{ t.id }}"></td>
-        <td class="mono">{{ t.date|date:"d/m/y" }}</td>
-        <td>{{ t.department.name }}</td>
-        <td>{% if t.attributed_via_code and t.member %}
-              <a href="{% url 'member_detail' t.member.id %}">{{ t.member.name }}</a>
-              {% if t.payer_name %}<br><span class="muted u-xs">paid by {{ t.payer_name }}</span>{% endif %}
-            {% elif t.payer_name %}{{ t.payer_name }}
-            {% elif t.member %}{{ t.member.name }}
-            {% else %}—{% endif %}
-            <span class="muted mono">{{ t.reference|truncatechars:24 }}</span></td>
-        <td class="num mono">{{ t.amount|money }}</td>
-        <td>{% if t.suggested_group %}
-              <span class="mono">{{ t.suggested_group.label }}</span>
-              {% if t.suggest_reason %}<br><span class="muted u-xs">{{ t.suggest_reason }}</span>{% endif %}
-            {% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>
-          <form method="post" class="u-m-0" style="display:flex;gap:.35rem;align-items:center;flex-wrap:wrap">
-            {% csrf_token %}
-            <input type="hidden" name="txn" value="{{ t.id }}">
-            <select name="dev_group" class="field--select" required style="min-width:8rem">
-              <option value="">Group…</option>
-              {% for g in groups %}
-                <option value="{{ g.id }}"{% if t.suggested_group and t.suggested_group.id == g.id %} selected{% endif %}>{{ g.label }}</option>
-              {% endfor %}
-            </select>
-            <button class="btn btn-sm">Assign</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table></div>
-  {% if count > 500 %}<p class="help">Showing the first 500 — use “Assign all” to handle the rest in one go.</p>{% endif %}
+<div class="du-list">
+{% for t in items %}
+<article class="du-card" data-txn="{{ t.id }}">
+  <label class="du-check no-print"><input type="checkbox" class="bulk-check" name="txn" value="{{ t.id }}" form="bulk-assign"></label>
+  <input type="hidden" class="pick-grp" name="pick_grp" value="{% if t.suggested_group %}{{ t.suggested_group.id }}{% endif %}" form="bulk-assign" data-txn="{{ t.id }}">
+  <div class="du-info">
+    <div class="du-amt-row">
+      <span class="du-amt mono">{{ CURRENCY }} {{ t.amount|money }}</span>
+      <span class="muted mono du-date">{{ t.date|date:"d M Y" }}</span>
+      <span class="pill pill-muted">{{ t.department.name }}</span>
+    </div>
+    <div class="du-payer">
+      {% if t.attributed_via_code and t.member %}
+        <a href="{% url 'member_detail' t.member.id %}">{{ t.member.name }}</a>
+        {% if t.payer_name %}<span class="muted u-xs"> · paid by {{ t.payer_name }}</span>{% endif %}
+      {% elif t.payer_name %}{{ t.payer_name }}
+      {% elif t.member %}{{ t.member.name }}
+      {% else %}<span class="muted">(no payer name)</span>{% endif %}
+    </div>
+    {% if t.reference %}<div class="du-ref mono muted">{{ t.reference|truncatechars:36 }}</div>{% endif %}
+    {% if t.suggested_group %}
+    <div class="du-hint muted u-xs">Suggested: {{ t.suggested_group.label }}{% if t.suggest_reason %} · {{ t.suggest_reason }}{% endif %}</div>
+    {% endif %}
+  </div>
+  <div class="du-pick">
+    <div class="combo">
+      <input type="text" class="field combo-input" placeholder="Group №…" autocomplete="off"
+             value="{% if t.suggested_group %}{{ t.suggested_group.label }}{% endif %}">
+      <input type="hidden" class="combo-value" value="{% if t.suggested_group %}{{ t.suggested_group.id }}{% endif %}">
+      <div class="combo-list" role="listbox" hidden></div>
+    </div>
+  </div>
+</article>
+{% endfor %}
+</div>
+{% if count > 500 %}<p class="help">Showing the first 500 — apply suggested or assign in batches.</p>{% endif %}
+
+<script id="group-data" type="application/json">{ "groups": [{% for g in groups %}{"v":"{{ g.id }}","t":"{{ g.label|escapejs }}","n":"{{ g.number }}"}{% if not forloop.last %},{% endif %}{% endfor %}] }</script>
+<script src="{% static 'js/member-search.js' %}"></script>
+<style>
+.du-sticky{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;
+  padding:.7rem .9rem;margin:0 0 1rem;background:var(--paper);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 4px 18px rgba(20,40,30,.06)}
+.du-sticky-hint{flex:1 1 140px}
+.du-list{display:flex;flex-direction:column;gap:.65rem}
+.du-card{display:grid;grid-template-columns:28px 1fr minmax(200px,260px);gap:.75rem 1rem;
+  align-items:start;padding:.9rem 1rem;background:var(--paper);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 1px 0 rgba(20,40,30,.03)}
+.du-card:hover{border-color:#cfe0d8}
+.du-check{padding-top:.35rem}
+.du-amt{font-size:1.15rem;font-weight:700}
+.du-amt-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:.45rem}
+.du-pick{display:flex;flex-direction:column;gap:.4rem}
+.combo{position:relative}
+.combo-list{position:absolute;left:0;right:0;top:100%;z-index:30;max-height:220px;overflow:auto;
+  background:var(--paper);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+.combo-item{padding:.45rem .65rem;cursor:pointer;font-size:.9rem}
+.combo-item:hover,.combo-item.is-active{background:rgba(40,90,70,.08)}
+.u-hidden{display:none!important}
+@media(max-width:820px){.du-card{grid-template-columns:28px 1fr}}
+</style>
+<script>
+(function(){
+  var DATA = JSON.parse(document.getElementById("group-data").textContent);
+  var GROUPS = DATA.groups || [];
+  var STORE = "dev-unassigned-picks-v1";
+  function loadPicks(){ try{ return JSON.parse(localStorage.getItem(STORE)||"{}"); }catch(e){ return {}; } }
+  function savePicks(p){ try{ localStorage.setItem(STORE, JSON.stringify(p)); }catch(e){} }
+  var picks = loadPicks();
+
+  function setupCombo(card){
+    var combo = card.querySelector(".combo");
+    if(!combo) return;
+    var inp = combo.querySelector(".combo-input");
+    var hid = combo.querySelector(".combo-value");
+    var list = combo.querySelector(".combo-list");
+    var pick = card.querySelector(".pick-grp");
+    var tid = String(card.getAttribute("data-txn"));
+    function persist(){
+      picks[tid] = {grp: hid.value || "", label: inp.value || ""};
+      savePicks(picks);
+      if(pick) pick.value = hid.value || "";
+    }
+    function show(items){
+      list.innerHTML = "";
+      items.slice(0,12).forEach(function(g){
+        var el = document.createElement("div");
+        el.className = "combo-item";
+        el.textContent = g.t;
+        el.addEventListener("mousedown", function(e){
+          e.preventDefault();
+          hid.value = g.v; inp.value = g.t; list.hidden = true; persist();
+        });
+        list.appendChild(el);
+      });
+      list.hidden = !items.length;
+    }
+    inp.addEventListener("focus", function(){
+      var q = (inp.value||"").toLowerCase();
+      show(GROUPS.filter(function(g){ return !q || g.t.toLowerCase().indexOf(q)>=0 || String(g.n).indexOf(q)>=0; }));
+    });
+    inp.addEventListener("input", function(){
+      hid.value = "";
+      if(pick) pick.value = "";
+      var q = (inp.value||"").toLowerCase();
+      show(GROUPS.filter(function(g){ return !q || g.t.toLowerCase().indexOf(q)>=0 || String(g.n).indexOf(q)>=0; }));
+      persist();
+    });
+    inp.addEventListener("blur", function(){ setTimeout(function(){ list.hidden = true; }, 150); });
+    var saved = picks[tid];
+    if(saved && saved.grp){
+      hid.value = saved.grp;
+      inp.value = saved.label || "";
+      if(pick) pick.value = saved.grp;
+    } else {
+      persist();
+    }
+  }
+
+  document.querySelectorAll(".du-card").forEach(setupCombo);
+
+  var bulkAll = document.getElementById("bulkAll");
+  var checks = Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));
+  var bulkN = document.getElementById("bulkN");
+  function syncCount(){
+    var n = checks.filter(function(c){ return c.checked; }).length;
+    if(bulkN) bulkN.textContent = String(n);
+  }
+  if(bulkAll) bulkAll.addEventListener("change", function(){
+    checks.forEach(function(c){ c.checked = bulkAll.checked; });
+    syncCount();
+  });
+  checks.forEach(function(c){ c.addEventListener("change", syncCount); });
+  syncCount();
+
+  if(window.MemberSearch && document.getElementById("bulkGrp")){
+    MemberSearch.enhance({
+      selectId: "bulkGrp",
+      searchUrl: "{% url 'dev_group_search' %}",
+      placeholder: "Shared group for selection…",
+      renderLabel: function(r){ return r.label || r.name; },
+      renderMeta: function(r){ return r.number ? ("№ "+r.number) : ""; }
+    });
+  }
+
+  var form = document.getElementById("bulk-assign");
+  if(form){
+    form.addEventListener("submit", function(){
+      // Disable pick_grp for unchecked rows so only selected rows are assigned
+      // with their per-row group (or the shared bulk group when no pick).
+      checks.forEach(function(c){
+        var card = c.closest(".du-card");
+        var pick = card && card.querySelector(".pick-grp");
+        if(pick) pick.disabled = !c.checked;
+      });
+      var selected = checks.filter(function(c){ return c.checked; });
+      selected.forEach(function(c){
+        var tid = String(c.value);
+        if(picks[tid]){ delete picks[tid]; }
+      });
+      savePicks(picks);
+    });
+  }
+})();
+</script>
 {% else %}
-<div class="info-panel">Every development offering is assigned to a group. ✓</div>
+<div class="empty"><div class="big">✓</div>Every development offering is assigned to a group.</div>
 {% endif %}
 {% endblock %}

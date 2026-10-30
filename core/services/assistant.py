@@ -50,6 +50,17 @@ def parse_period(text):
     if "this month" in t:
         last = calendar.monthrange(today.year, today.month)[1]
         return today.replace(day=1), today.replace(day=last), today.strftime("%B %Y")
+    if "next month" in t:
+        if today.month == 12:
+            n_y, n_m = today.year + 1, 1
+        else:
+            n_y, n_m = today.year, today.month + 1
+        last = calendar.monthrange(n_y, n_m)[1]
+        return (dt.date(n_y, n_m, 1), dt.date(n_y, n_m, last),
+                dt.date(n_y, n_m, 1).strftime("%B %Y"))
+    if "next 30 days" in t or "next thirty days" in t or "coming month" in t:
+        end = today + dt.timedelta(days=30)
+        return today, end, "the next 30 days"
     if "all time" in t or "overall" in t or "total ever" in t:
         return None, None, "all time"
 
@@ -224,6 +235,57 @@ def _smart_fallback(question):
 
 # ---------- answers ----------
 
+def _forecast_answer(t, start, end, label):
+    """Project cash vs recurring dues — answers affordability questions."""
+    from core.services import forecast as forecast_svc
+    today = dt.date.today()
+    # Prefer an explicit calendar next-month window when the question names it;
+    # otherwise use the parsed period, falling back to ~30 days ahead.
+    if "next month" in t and start and end and start > today:
+        days = max(1, (end - today).days)
+        p = forecast_svc.project(days)
+        window = label
+    elif start and end and start >= today:
+        days = max(1, (end - today).days)
+        p = forecast_svc.project(days)
+        window = label
+    else:
+        p = forecast_svc.project(30)
+        window = "the next 30 days"
+
+    closing = p["projected"]
+    recurring = p["recurring"]
+    if closing >= 0 and closing >= recurring:
+        verdict = (f"Yes — on current run-rates you should cover recurring "
+                   f"dues of {_money(recurring)} and still hold about "
+                   f"{_money(closing)}.")
+    elif closing >= 0:
+        verdict = (f"Tight — projected cash stays positive at {_money(closing)}, "
+                   f"but recurring dues ({_money(recurring)}) absorb most of "
+                   f"the headroom. Watch discretionary spend.")
+    else:
+        verdict = (f"No — the projection closes short by {_money(abs(closing))}. "
+                   f"Recurring dues alone are {_money(recurring)}; giving or "
+                   f"spending would need to improve, or defer non-essentials.")
+
+    rows = [
+        ("Opening cash & bank", _money(p["opening"])),
+        ("Projected giving", _money(p["proj_giving"])),
+        ("Pledges expected", _money(p["pledge_in"])),
+        ("Recurring expenses due", _money(recurring)),
+        ("Other spend (run-rate)", _money(p["discretionary"])),
+        ("Projected closing", _money(closing)),
+    ]
+    return {
+        "text": f"Cash outlook for {window}: {verdict}",
+        "note": ("Indicative only — based on the last six months' giving and "
+                 "spend, plus scheduled recurring expenses and pledges."),
+        "rows": rows,
+        "link": reverse("report_forecast"),
+        "link_label": "Cash-flow forecast",
+    }
+
+
 def _fund_balance(dept):
     """Accurate fund balance via the balance engine (carry-forward + transfers)."""
     from reports.services import balances
@@ -285,6 +347,28 @@ def _data_context():
            .aggregate(t=Sum("amount"))["t"] or 0)
     lines.append(f"Local income (all time): {inc}. Recurrent expenditure: {rec}. "
                  f"Operating result: {inc - rec}.")
+    # cash-flow forecast (recurring + run-rate) — powers "can we pay next month?"
+    try:
+        from core.services import forecast as forecast_svc
+        for label, p in forecast_svc.horizons().items():
+            lines.append(
+                f"Cash forecast {label}: opening {p['opening']}, "
+                f"projected giving {p['proj_giving']}, pledges due {p['pledge_in']}, "
+                f"recurring expenses due {p['recurring']}, "
+                f"other spend run-rate {p['discretionary']}, "
+                f"projected closing {p['projected']}.")
+    except Exception:
+        pass
+    try:
+        from cashbook.models import Payable, Accrual
+        open_pay = (Payable.objects.filter(settled=False)
+                    .aggregate(t=Sum("amount"))["t"] or 0)
+        open_acc = (Accrual.objects.filter(settled=False)
+                    .aggregate(t=Sum("amount"))["t"] or 0)
+        lines.append(f"Open payables (unsettled): {open_pay}. "
+                     f"Open accruals: {open_acc}.")
+    except Exception:
+        pass
     # fixed assets net book value
     try:
         from assets.models import FixedAsset
@@ -561,6 +645,8 @@ _ROUTE_INTENTS = {
     "financial_position": "statement of financial position",
     "top_givers": "top givers {period}",
     "cashbook": "cashbook {period}",
+    "forecast": "cash flow forecast {period}",
+    "recurring": "recurring expenses {period}",
 }
 
 
@@ -714,6 +800,20 @@ def _answer_rules(question, user=None):
     # fund balance
     if ("balance" in t or "how much is in" in t or "how much does" in t) and _find_fund(t):
         return _fund_balance(_find_fund(t))
+
+    # ---- cash-flow forecast / "can we pay recurring next month?" ----
+    # Before generic expense / cash rules so affordability questions don't
+    # collapse into "expenses this month" or "how much cash".
+    if any(p in t for p in (
+            "forecast", "cash flow", "cashflow", "run out of money",
+            "can we pay", "can we cover", "can we afford", "can we manage",
+            "able to pay", "enough to pay", "afford recurring",
+            "recurrent expense", "recurring expense", "scheduled expense",
+            "next month's expenses", "next months expenses")) \
+            or (("recurring" in t or "recurrent" in t)
+                and any(p in t for p in ("pay", "cover", "afford", "due",
+                                         "next", "upcoming", "schedule"))):
+        return _forecast_answer(t, start, end, label)
 
     # staff advances outstanding
     if ("advance" in t and ("outstanding" in t or "how much" in t or "total" in t
@@ -1029,6 +1129,7 @@ SUGGESTIONS = [
     "Outstanding expenses",
     "Staff advances outstanding",
     "Petty cash balance",
+    "Can we cover recurring expenses next month?",
     "Are the books balanced?",
     "Are we in surplus this year?",
     "How much cash do we have?",
@@ -1047,10 +1148,11 @@ SUGGESTION_GROUPS = [
         "Top givers this year", "Offerings this month"]},
     {"label": "Money out", "icon": "↑", "items": [
         "Outstanding expenses", "Staff advances outstanding",
-        "Petty cash balance", "Biggest expenses this month"]},
+        "Petty cash balance", "Biggest expenses this month",
+        "Can we cover recurring expenses next month?"]},
     {"label": "Funds & balances", "icon": "▦", "items": [
         "How much cash do we have?", "Balance of Development",
-        "Net assets", "Recent transfers"]},
+        "Net assets", "Recent transfers", "Cash flow forecast"]},
     {"label": "Trust & compliance", "icon": "⚖", "items": [
         "Trust funds to remit", "Are the books balanced?",
         "Are we in surplus this year?", "Budget vs actual this year"]},

@@ -20,28 +20,38 @@
     <div class="btn-row"><button class="btn">Save</button><a class="btn btn-ghost" href="{% url 'accruals' %}">Cancel</a></div>
   </form>
 </div></div>
-{% if "supplier" in form.fields %}
 <script src="{% static 'js/member-search.js' %}"></script>
 <script>
 (function(){
-  if(!window.MemberSearch || !document.getElementById('id_supplier')) return;
-  MemberSearch.enhance({
-    selectId: 'id_supplier',
-    searchUrl: '{% url "vendor_lookup" %}',
-    placeholder: 'Search suppliers…',
-    renderLabel: function(r){ return r.name; },
-    renderMeta: function(r){
-      var bits=[];
-      if(r.code) bits.push(r.code);
-      if(r.terms) bits.push(r.terms);
-      return bits.join(' · ');
-    },
-    onPick: function(r){
-      var v=document.getElementById('id_vendor');
-      if(v && !(v.value||'').trim()) v.value=r.name;
-    }
-  });
+  if(!window.MemberSearch) return;
+  if(document.getElementById('id_supplier')){
+    MemberSearch.enhance({
+      selectId: 'id_supplier',
+      searchUrl: '{% url "vendor_lookup" %}',
+      placeholder: 'Search suppliers…',
+      renderLabel: function(r){ return r.name; },
+      renderMeta: function(r){
+        var bits=[];
+        if(r.code) bits.push(r.code);
+        if(r.terms) bits.push(r.terms);
+        return bits.join(' · ');
+      },
+      onPick: function(r){
+        var v=document.getElementById('id_vendor');
+        if(v && !(v.value||'').trim()) v.value=r.name;
+      }
+    });
+  }
+  if(document.getElementById('id_department')){
+    MemberSearch.enhance({
+      selectId: 'id_department',
+      searchUrl: '{% url "fund_search" %}',
+      params: {scope: 'expense'},
+      placeholder: 'Search fund…',
+      renderLabel: function(r){ return r.label || r.name; },
+      renderMeta: function(r){ return r.tag || ''; }
+    });
+  }
 })();
 </script>
-{% endif %}
 {% endblock %}

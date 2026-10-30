@@ -407,9 +407,14 @@
       }
     });
   }
-  // Payable / accrual / prepayment fund pickers — one enhance per visible select.
-  document.querySelectorAll('select[name="department"]').forEach(function(sel){
-    if(!sel.id) sel.id='dept_'+Math.random().toString(36).slice(2,8);
+  // Three compose forms all render name="department" with the same Django id
+  // (id_department). Without unique ids, MemberSearch.enhance stacks three
+  // typeaheads on the payable Fund field. Give each select its own id first.
+  document.querySelectorAll('select[name="department"]').forEach(function(sel, i){
+    sel.id = 'ob_dept_' + i;
+    var lab = sel.closest('.ob-field');
+    if(lab){ var L = lab.querySelector('label'); if(L) L.setAttribute('for', sel.id); }
+    if(!window.MemberSearch) return;
     MemberSearch.enhance({
       selectId: sel.id,
       searchUrl: '{% url "fund_search" %}',

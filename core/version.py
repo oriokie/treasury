@@ -38,6 +38,11 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.56.0": "Payables fund typeahead no longer triples under Add a payable. "
+              "Unassigned development offerings keep group picks across refresh, "
+              "with searchable groups and one top Assign. Expense edit can open "
+              "a payable if forgotten. The assistant answers cash-flow and "
+              "recurring-affordability questions (e.g. next month).",
     "3.55.0": "Supplier categories can be set up on the register (starter list "
               "seeded automatically); /vendors/new/ opens the add form. Payables "
               "and the ledger fund filter are searchable; the review queue keeps "
