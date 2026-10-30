@@ -113,6 +113,9 @@
 
     {% if not object %}
     <div class="card u-mt" style="box-shadow:none;border:1px solid var(--line,rgba(0,0,0,.1))"><div class="bd">
+      <label class="check-row"><input type="checkbox" name="raise_payable" value="1">
+        <strong>Also open a payable</strong> <span class="muted u-xs">(leader paid personally / credit purchase — church still owes)</span></label>
+      <div class="help u-mt-0 u-mb">Creates a payable to the claimant or supplier so you can track the refund. Settle it later from Payables, or use Raise payable on an expense already saved.</div>
       {% if can_issue_payment_now %}
       <label class="check-row"><input type="checkbox" name="issue_payment" id="issuePayment" value="1" onchange="document.getElementById('paymentFields').style.display=this.checked?'grid':'none'">
         <strong>Issue a payment now</strong> <span class="muted u-xs">(cheque, EFT, RTGS, M-Pesa…)</span></label>

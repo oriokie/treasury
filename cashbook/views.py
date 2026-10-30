@@ -510,6 +510,22 @@ class ExpenseCreate(DataEntryRequiredMixin, CreateView):
                 messages.error(self.request, refusal)
                 return self.render_to_response(self.get_context_data(form=form))
         exp.save()
+        if (self.request.POST.get("raise_payable") and not exp.payable_id
+                and not exp.accrual_id
+                and exp.doc_class == Expense.DocClass.EXPENSE):
+            who = (exp.claimant or exp.payee or "").strip()[:120]
+            if not who and exp.vendor_id:
+                who = exp.vendor.name[:120]
+            if not who:
+                who = "Reimbursement"
+            Payable.objects.create(
+                date=exp.date, vendor=who, supplier=exp.vendor,
+                description=(exp.description or "Reimbursement")[:200],
+                amount=exp.amount, department=exp.department,
+                category=exp.category, recorded_by=self.request.user)
+            messages.info(
+                self.request,
+                f"Payable to {who} opened — settle it when you refund them.")
         # optional M-Pesa / bank transaction charge -> separate bank-charge expense
         charge = form.cleaned_data.get("charge")
         if charge and charge > 0:
@@ -1261,7 +1277,44 @@ class ExpenseDetailView(ReadAccessMixin, DetailView):
         ctx["can_approve"] = roles.can_approve(self.request.user)
         import datetime as _dt
         ctx["today_iso"] = _dt.date.today().isoformat()
+        ctx["can_raise_payable"] = (
+            not self.object.payable_id and not self.object.accrual_id
+            and self.object.doc_class == Expense.DocClass.EXPENSE)
         return ctx
+
+
+class ExpenseRaisePayable(DataEntryRequiredMixin, View):
+    """Open a payable from an expense already on file.
+
+    Used when a leader paid personally (or a credit purchase was keyed as an
+    expense first): the payable tracks what the church still owes; settle it
+    when you refund them, or Link expense if this row already is that payment.
+    """
+
+    def post(self, request, pk):
+        exp = get_object_or_404(Expense, pk=pk)
+        if exp.payable_id or exp.accrual_id:
+            messages.info(request, "This expense is already linked to a payable "
+                                   "or accrual.")
+            return redirect("expense_detail", pk=pk)
+        if _block_if_locked(request, exp.date):
+            return redirect("expense_detail", pk=pk)
+        name = (exp.claimant or exp.payee or "").strip()[:120]
+        if not name and exp.vendor_id:
+            name = exp.vendor.name[:120]
+        if not name:
+            name = "Reimbursement"
+        bill = Payable.objects.create(
+            date=exp.date, vendor=name, supplier=exp.vendor,
+            description=(exp.description or "Reimbursement")[:200],
+            amount=exp.amount, department=exp.department,
+            category=exp.category, recorded_by=request.user)
+        messages.success(
+            request,
+            f"Payable to {bill.vendor} opened for {bill.amount:,.2f}. "
+            f"Settle it when you refund them — or use Link expense if this "
+            f"expense already is that payment.")
+        return redirect("payable_edit", pk=bill.pk)
 
 
 class ExpenseRefundCreate(DataEntryRequiredMixin, View):

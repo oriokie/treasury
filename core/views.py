@@ -675,16 +675,38 @@ class FundSearchView(ReadAccessMixin, View):
             if not q or q in d.name.lower():
                 tag = "Trust" if d.is_trust else "Local"
                 results.append({"key": f"d:{d.id}", "id": d.id, "label": d.name,
-                                "tag": tag,
+                                "name": d.name, "tag": tag,
                                 "dev": d.category == Department.Category.DEVELOPMENT})
         if scope == "income":
             from giving.models import SplitFund
             for s in SplitFund.objects.filter(active=True):
                 if not q or q in s.name.lower():
                     results.append({"key": f"s:{s.id}", "id": s.id,
-                                    "label": f"{s.name} (split)", "tag": "Split"})
+                                    "label": f"{s.name} (split)",
+                                    "name": f"{s.name} (split)", "tag": "Split"})
         results.sort(key=lambda r: r["label"].lower())
         return JsonResponse({"results": results[:20]})
+
+
+class DevGroupSearchView(ReadAccessMixin, View):
+    """Typeahead for development group numbers / labels."""
+
+    def get(self, request):
+        from departments.models import DevelopmentGroup
+        q = (request.GET.get("q") or "").strip().lower()
+        qs = DevelopmentGroup.objects.filter(active=True).order_by("number")
+        results = []
+        for g in qs:
+            label = g.label
+            hay = f"{g.number} {label}".lower()
+            if not q or q in hay:
+                results.append({
+                    "id": g.id, "name": label, "label": label,
+                    "number": g.number,
+                })
+            if len(results) >= 20:
+                break
+        return JsonResponse({"results": results})
 
 
 class GlobalSearchView(ReadAccessMixin, View):

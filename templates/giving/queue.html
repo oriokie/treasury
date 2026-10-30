@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Review queue · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -6,22 +6,22 @@
     <div>
       <div class="eyebrow">Giving · {{ SITE_NAME }}</div>
       <h1>Review queue</h1>
-      <div class="desc">{% if queue_count %}Each entry needs a fund before it counts toward giving — allocate it to a fund, split it, or record it another way.{% else %}Everything imported has been allocated.{% endif %}</div>
+      <div class="desc">{% if queue_count %}Pick a fund on each gift — choices are saved if you refresh. Allocate with the button below.{% else %}Everything imported has been allocated.{% endif %}</div>
     </div>
     <div class="rpt-actions no-print">
       <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
-      {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import allocations</a>{% endif %}
+      {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import</a>{% endif %}
       {% if can_enter_data and items %}
       <form method="post" action="{% url 'queue_run_rules' %}" class="u-inline"
-            onsubmit="return confirm('Re-run allocation rules on the queued items? Items matching a rule (e.g. one you just added) will be allocated automatically.');">
+            onsubmit="return confirm('Re-run allocation rules on the queued items?');">
         {% csrf_token %}
-        <button class="btn btn-brass btn-sm" title="Apply the current allocation rules to the items still in this queue — useful right after adding rules following an import">⚙ Run rules on pending</button>
+        <button class="btn btn-ghost btn-sm">⚙ Run rules</button>
       </form>{% endif %}
       {% if can_enter_data and unallocated_in_ledger %}
       <form method="post" action="{% url 'queue_fetch_unallocated' %}" class="u-inline"
-            onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated contribution(s) from the ledger into the queue for allocation?');">
+            onsubmit="return confirm('Pull {{ unallocated_in_ledger }} unallocated contribution(s) into the queue?');">
         {% csrf_token %}
-        <button class="btn btn-brass btn-sm" title="Contributions in the ledger with no fund assigned that aren't in the queue">⤵ Fetch {{ unallocated_in_ledger }} unallocated from ledger</button>
+        <button class="btn btn-ghost btn-sm">⤵ Fetch {{ unallocated_in_ledger }}</button>
       </form>{% endif %}
     </div>
   </div>
@@ -29,46 +29,49 @@
 </div>
 
 {% if queue_count %}
-<div class="grid-4 u-mb">
-  <div class="stat"><div class="lbl">Awaiting a fund</div><div class="val mono text-amber">{{ queue_count }}</div></div>
-  <div class="stat"><div class="lbl">Total waiting</div><div class="val mono">{{ CURRENCY }} {{ queue_amount|money }}</div></div>
-  <div class="stat"><div class="lbl">On this page</div><div class="val mono">{{ items|length }}</div></div>
-  <div class="stat"><div class="lbl">Unallocated in ledger</div><div class="val mono {% if unallocated_in_ledger %}text-amber{% endif %}">{{ unallocated_in_ledger }}</div></div>
+<div class="ws-summary u-mb">
+  <div class="ws-metric is-warn"><span class="wm-l">Awaiting a fund</span><span class="wm-v">{{ queue_count|intcomma }}</span></div>
+  <div class="ws-metric"><span class="wm-l">Total waiting</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ queue_amount|money }}</span></div>
+  <div class="ws-metric"><span class="wm-l">On this page</span><span class="wm-v">{{ items|length }}</span></div>
+  <div class="ws-metric {% if unallocated_in_ledger %}is-warn{% endif %}"><span class="wm-l">Unallocated in ledger</span><span class="wm-v">{{ unallocated_in_ledger }}</span></div>
 </div>
 {% endif %}
 
 {% if can_enter_data and items %}
-<form id="bulkAllocForm" method="post" action="{% url 'queue_bulk_allocate' %}" class="bulk-bar no-print"
-      onsubmit="return document.querySelectorAll('.bulk-check:checked').length>0 || (alert('Tick at least one contribution first.'),false);">
+<form id="bulkAllocForm" method="post" action="{% url 'queue_bulk_allocate' %}" class="q-sticky no-print">
   {% csrf_token %}
-  <label class="bulk-bar-lbl"><input type="checkbox" id="bulkAll"> Select all on this page</label>
+  <label class="bulk-bar-lbl"><input type="checkbox" id="bulkAll"> All on page</label>
   <span class="bulk-count muted"><span id="bulkN">0</span> selected</span>
-  <select name="department" class="field--select" required style="max-width:280px">
-    <option value="">Allocate selected to fund…</option>
-    {% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
-    {% if split_funds %}<optgroup label="Split funds">{% for s in split_funds %}<option value="sf:{{ s.id }}">{{ s.name }} (split)</option>{% endfor %}</optgroup>{% endif %}
-  </select>
-  <select name="dev_group" class="field--select" style="max-width:240px">
-    <option value="">Development group № (if applicable)…</option>
-    {% for g in dev_groups %}<option value="{{ g.id }}">{{ g.label|truncatechars:32 }}</option>{% endfor %}
-  </select>
-  <button class="btn btn-sm">Allocate selected</button>
+  <div class="q-sticky-fund pos-rel" style="min-width:200px;flex:1 1 180px">
+    <input id="bulkFundSearch" class="field" autocomplete="off" placeholder="Shared fund for selection…">
+    <div class="ac-box" id="bulkFundAc"></div>
+    <select name="department" id="bulkFund" class="field--select" hidden aria-hidden="true">
+      <option value="">—</option>
+      {% for d in departments %}<option value="{{ d.id }}" data-cat="{{ d.category }}">{{ d.name }}</option>{% endfor %}
+      {% if split_funds %}{% for s in split_funds %}<option value="sf:{{ s.id }}" data-cat="SPLIT">{{ s.name }} (split)</option>{% endfor %}{% endif %}
+    </select>
+  </div>
+  <div class="q-sticky-grp pos-rel" style="min-width:160px;flex:0 1 180px" id="bulkGrpWrap" hidden>
+    <input id="bulkGrpSearch" class="field" autocomplete="off" placeholder="Dev group №…">
+    <div class="ac-box" id="bulkGrpAc"></div>
+    <select name="dev_group" id="bulkGrp" class="field--select" hidden aria-hidden="true">
+      <option value="">—</option>
+      {% for g in dev_groups %}<option value="{{ g.id }}">{{ g.label }}</option>{% endfor %}
+    </select>
+  </div>
+  <button class="btn btn-sm btn-brass" id="bulkAllocBtn">Allocate selected</button>
+  <span class="muted u-xs q-sticky-hint">Or set a fund on each card — picks survive a refresh.</span>
 </form>
-<script>
-(function(){
-  var all=document.getElementById("bulkAll"), n=document.getElementById("bulkN");
-  function checks(){return Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));}
-  function refresh(){ if(n) n.textContent=checks().filter(function(c){return c.checked;}).length; }
-  if(all) all.addEventListener("change", function(){ checks().forEach(function(c){c.checked=all.checked;}); refresh(); });
-  document.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("bulk-check")) refresh(); });
-  refresh();
-})();
-</script>
 {% endif %}
 
+<div class="q-list">
 {% for t in items %}
-<div class="q-card">
-  {% if can_enter_data %}<label class="q-check no-print"><input type="checkbox" class="bulk-check" name="txn" value="{{ t.id }}" form="bulkAllocForm"></label>{% endif %}
+<article class="q-card" data-txn="{{ t.id }}">
+  {% if can_enter_data %}
+  <label class="q-check no-print"><input type="checkbox" class="bulk-check" name="txn" value="{{ t.id }}" form="bulkAllocForm"></label>
+  <input type="hidden" class="pick-dept" name="pick_dept" value="" form="bulkAllocForm" data-txn="{{ t.id }}">
+  <input type="hidden" class="pick-grp" name="pick_grp" value="" form="bulkAllocForm" data-txn="{{ t.id }}">
+  {% endif %}
   <div class="q-info">
     <div class="q-amt-row">
       <span class="q-amt mono">{{ CURRENCY }} {{ t.amount|money }}</span>
@@ -91,80 +94,105 @@
   </div>
 
   {% if can_enter_data %}
-  <form method="post" action="{% url 'queue_claim' t.id %}" class="q-form" data-amount="{{ t.amount|floatformat:2 }}">
-    {% csrf_token %}
-    <label class="q-label">Allocate to fund</label>
+  <div class="q-pick">
     <div class="combo">
-      <input type="text" class="field combo-input" placeholder="Search funds…" autocomplete="off" role="combobox" aria-expanded="false">
-      <input type="hidden" name="department" class="combo-value">
+      <input type="text" class="field combo-input" placeholder="Fund…" autocomplete="off" role="combobox" aria-expanded="false">
+      <input type="hidden" class="combo-value">
       <div class="combo-list" role="listbox" hidden></div>
     </div>
-
-    <select name="dev_group" class="field--select dev-pick" hidden>
-      <option value="">Development group №…</option>
-      {% for g in dev_groups %}<option value="{{ g.id }}">{{ g.label|truncatechars:32 }}</option>{% endfor %}
-    </select>
-
-    <label class="check-row q-remember"><input type="checkbox" name="remember_rule"> <span>Remember this reference for next time</span></label>
-
-    <div class="q-actions">
-      <button class="btn btn-sm q-submit" disabled>Allocate</button>
-      <button type="button" class="btn btn-sm btn-ghost q-split-toggle">⑂ Split</button>
-      {% if can.manage_loans and t.direction == 'CREDIT' %}<a class="btn btn-sm btn-ghost" href="{% url 'loan_from_transaction' t.id %}" title="This money is a loan, not a contribution — record it as a loan receipt (a liability), keeping the row on the bank ledger">🤝 Loan receipt</a>{% endif %}
-      <button type="submit" name="kind" value="petty_to_bank" class="btn btn-sm btn-ghost"
-              title="This bank credit is excess petty-cash float deposited back into the bank — reduces the float, not income"
-              onclick="return confirm('Record this as excess petty cash deposited to the bank? The float will be reduced by {{ CURRENCY }} {{ t.amount|floatformat:2 }}.');">↓ Petty → bank</button>
+    <div class="combo combo-grp" hidden>
+      <input type="text" class="field combo-input" placeholder="Dev group №…" autocomplete="off">
+      <input type="hidden" class="combo-value">
+      <div class="combo-list" role="listbox" hidden></div>
     </div>
-
-    <div class="q-split-panel" hidden>
-      <div class="q-split-hint">Divide this offering across funds — the parts must total <strong class="mono">{{ CURRENCY }} {{ t.amount|floatformat:2 }}</strong>.</div>
-      {% for i in "123" %}
-      <div class="split-row">
-        <div class="combo combo-split">
-          <input type="text" class="field combo-input" placeholder="Fund {{ forloop.counter }}…" autocomplete="off">
-          <input type="hidden" name="split_dept" class="combo-value">
-          <div class="combo-list" role="listbox" hidden></div>
+    <details class="q-more">
+      <summary>More</summary>
+      <form method="post" action="{% url 'queue_claim' t.id %}" class="q-more-form" data-amount="{{ t.amount|floatformat:2 }}">
+        {% csrf_token %}
+        <input type="hidden" name="department" class="more-dept">
+        <input type="hidden" name="dev_group" class="more-grp">
+        <label class="check-row"><input type="checkbox" name="remember_rule"> Remember this reference</label>
+        <button type="button" class="btn btn-xs btn-ghost q-split-toggle">⑂ Split</button>
+        {% if can.manage_loans and t.direction == 'CREDIT' %}
+        <a class="btn btn-xs btn-ghost" href="{% url 'loan_from_transaction' t.id %}">🤝 Loan</a>{% endif %}
+        <button type="submit" name="kind" value="petty_to_bank" class="btn btn-xs btn-ghost"
+                onclick="return confirm('Record as excess petty cash to bank?');">↓ Petty → bank</button>
+        <div class="q-split-panel" hidden>
+          <div class="q-split-hint">Parts must total <strong class="mono">{{ CURRENCY }} {{ t.amount|floatformat:2 }}</strong>.</div>
+          {% for i in "123" %}
+          <div class="split-row">
+            <div class="combo combo-split">
+              <input type="text" class="field combo-input" placeholder="Fund {{ forloop.counter }}…" autocomplete="off">
+              <input type="hidden" name="split_dept" class="combo-value">
+              <div class="combo-list" role="listbox" hidden></div>
+            </div>
+            <input name="split_amount" class="field mono split-amt" placeholder="Amount" inputmode="decimal">
+            <select name="split_grp" class="field--select dev-pick" hidden>
+              <option value="">Dev №…</option>
+              {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }}</option>{% endfor %}
+            </select>
+          </div>
+          {% endfor %}
+          <div class="split-running">Allocated <span class="mono alloc">0.00</span> · remaining <span class="mono remain">{{ t.amount|floatformat:2 }}</span></div>
+          <button class="btn btn-xs" name="split" value="1">Split &amp; allocate</button>
         </div>
-        <input name="split_amount" class="field mono split-amt" placeholder="Amount" inputmode="decimal">
-        <select name="split_grp" class="field--select dev-pick" hidden>
-          <option value="">Dev №…</option>
-          {% for g in dev_groups %}<option value="{{ g.id }}">№ {{ g.number }}</option>{% endfor %}
-        </select>
-      </div>
-      {% endfor %}
-      <div class="split-running">Allocated <span class="mono alloc">0.00</span> · remaining <span class="mono remain">{{ t.amount|floatformat:2 }}</span></div>
-      <button class="btn btn-sm btn-ghost" name="split" value="1">⑂ Split &amp; allocate</button>
-    </div>
-  </form>
+      </form>
+    </details>
+  </div>
   {% endif %}
-</div>
+</article>
 {% empty %}
 <div class="empty"><div class="big">✓</div>Queue is clear — every entry is allocated.</div>
 {% endfor %}
+</div>
 
 {% include 'partials/pagination.html' %}
 
-<script id="fund-data" type="application/json">{ "funds": [{% for d in departments %}{"v":"{{ d.id }}","t":"{{ d.name|escapejs }}","cat":"{{ d.category }}"}{% if not forloop.last %},{% endif %}{% endfor %}], "splits": [{% for sf in split_funds %}{"v":"sf:{{ sf.id }}","t":"{{ sf.name|escapejs }}","cat":"SPLIT"}{% if not forloop.last %},{% endif %}{% endfor %}] }</script>
+<script id="fund-data" type="application/json">{ "funds": [{% for d in departments %}{"v":"{{ d.id }}","t":"{{ d.name|escapejs }}","cat":"{{ d.category }}"}{% if not forloop.last %},{% endif %}{% endfor %}], "splits": [{% for sf in split_funds %}{"v":"sf:{{ sf.id }}","t":"{{ sf.name|escapejs }}","cat":"SPLIT"}{% if not forloop.last %},{% endif %}{% endfor %}], "groups": [{% for g in dev_groups %}{"v":"{{ g.id }}","t":"{{ g.label|escapejs }}","n":"{{ g.number }}"}{% if not forloop.last %},{% endif %}{% endfor %}] }</script>
+<script src="{% static 'js/member-search.js' %}"></script>
+<style>
+.q-sticky{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:.55rem;
+  padding:.7rem .9rem;margin:0 0 1rem;background:var(--paper);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 4px 18px rgba(20,40,30,.06)}
+.q-sticky-hint{flex:1 1 140px}
+.q-list{display:flex;flex-direction:column;gap:.65rem}
+.q-card{display:grid;grid-template-columns:28px 1fr minmax(220px,280px);gap:.75rem 1rem;
+  align-items:start;padding:.9rem 1rem;background:var(--paper);border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 1px 0 rgba(20,40,30,.03)}
+.q-card:hover{border-color:#cfe0d8}
+.q-check{padding-top:.35rem}
+.q-amt{font-size:1.15rem;font-weight:700}
+.q-amt-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:.45rem}
+.q-pick{display:flex;flex-direction:column;gap:.4rem}
+.q-more>summary{cursor:pointer;font-size:.78rem;color:var(--muted);font-weight:600;list-style:none}
+.q-more>summary::-webkit-details-marker{display:none}
+.q-more-form{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.4rem;align-items:center}
+@media(max-width:820px){.q-card{grid-template-columns:28px 1fr}}
+</style>
 <script>
 (function(){
   var DATA = JSON.parse(document.getElementById("fund-data").textContent);
-  var OPTS = DATA.funds.concat(DATA.splits);
+  var FUNDS = DATA.funds.concat(DATA.splits);
+  var GROUPS = DATA.groups || [];
+  var STORE = "queue-picks-v1";
+  function loadPicks(){ try{ return JSON.parse(localStorage.getItem(STORE)||"{}"); }catch(e){ return {}; } }
+  function savePicks(p){ try{ localStorage.setItem(STORE, JSON.stringify(p)); }catch(e){} }
+  var picks = loadPicks();
 
-  function setupCombo(combo){
+  function setupCombo(combo, pool, onChoose){
     var input = combo.querySelector(".combo-input");
     var hidden = combo.querySelector(".combo-value");
     var list = combo.querySelector(".combo-list");
-    var isSplit = combo.classList.contains("combo-split");
-    var pool = OPTS;   // split rows may target a split fund (it sub-divides that part)
     var active = -1, shown = [];
-
     function render(q){
       q = (q||"").toLowerCase();
-      shown = pool.filter(function(o){ return o.t.toLowerCase().indexOf(q) > -1; }).slice(0, 8);
+      shown = pool.filter(function(o){
+        return !q || (o.t||"").toLowerCase().indexOf(q)>-1 || String(o.n||"").indexOf(q)>-1;
+      }).slice(0, 10);
       if(!shown.length){ list.innerHTML = '<div class="combo-empty">No match</div>'; }
       else {
         list.innerHTML = shown.map(function(o,i){
-          var tag = o.cat==="SPLIT" ? '<span class="combo-tag">split 50/50</span>' :
+          var tag = o.cat==="SPLIT" ? '<span class="combo-tag">split</span>' :
                     (o.cat==="DEVELOPMENT" ? '<span class="combo-tag">dev</span>' : '');
           return '<div class="combo-opt'+(i===active?' on':'')+'" data-i="'+i+'">'+o.t+tag+'</div>';
         }).join("");
@@ -174,18 +202,10 @@
     function choose(o){
       input.value = o.t; hidden.value = o.v;
       list.hidden = true; input.setAttribute("aria-expanded","false"); active = -1;
-      // dev-group select shows only when a DEVELOPMENT fund is chosen
-      var holder = isSplit ? combo.closest(".split-row") : combo.parentNode;
-      var dev = holder.querySelector(".dev-pick");
-      if(dev){ var on = o.cat==="DEVELOPMENT"; dev.hidden = !on; if(!on) dev.value=""; }
-      // enable the main Allocate button
-      var form = combo.closest("form");
-      if(!isSplit){ var sub = form.querySelector(".q-submit"); if(sub) sub.disabled = !o.v; }
-      input.dispatchEvent(new Event("combo:chosen"));
+      if(onChoose) onChoose(o);
     }
     input.addEventListener("focus", function(){ render(input.value); });
-    input.addEventListener("input", function(){ hidden.value=""; active=-1; render(input.value);
-      var form=combo.closest("form"); if(!isSplit){ var s=form.querySelector(".q-submit"); if(s) s.disabled=true; } });
+    input.addEventListener("input", function(){ hidden.value=""; active=-1; render(input.value); if(onChoose) onChoose(null); });
     input.addEventListener("keydown", function(e){
       if(list.hidden) return;
       if(e.key==="ArrowDown"){ active=Math.min(active+1,shown.length-1); render(input.value); e.preventDefault(); }
@@ -197,18 +217,146 @@
       var opt = e.target.closest(".combo-opt"); if(!opt) return;
       e.preventDefault(); choose(shown[+opt.dataset.i]);
     });
-    document.addEventListener("click", function(e){ if(!combo.contains(e.target)){ list.hidden=true; input.setAttribute("aria-expanded","false"); } });
+    document.addEventListener("click", function(e){ if(!combo.contains(e.target)){ list.hidden=true; } });
+    return { set: function(v, label){ hidden.value=v||""; input.value=label||""; } };
   }
-  document.querySelectorAll(".combo").forEach(setupCombo);
 
-  // split toggle
+  document.querySelectorAll(".q-card").forEach(function(card){
+    var tid = card.dataset.txn;
+    var fundCombo = card.querySelector(".q-pick > .combo:not(.combo-grp)");
+    var grpCombo = card.querySelector(".combo-grp");
+    var pickDept = card.querySelector(".pick-dept");
+    var pickGrp = card.querySelector(".pick-grp");
+    var moreDept = card.querySelector(".more-dept");
+    var moreGrp = card.querySelector(".more-grp");
+    var fundApi = setupCombo(fundCombo, FUNDS, function(o){
+      var isDev = o && o.cat==="DEVELOPMENT";
+      if(grpCombo) grpCombo.hidden = !isDev;
+      if(!isDev && grpApi){ grpApi.set("",""); if(pickGrp) pickGrp.value=""; if(moreGrp) moreGrp.value=""; }
+      if(pickDept) pickDept.value = o ? o.v : "";
+      if(moreDept) moreDept.value = o ? o.v : "";
+      var cur = picks[tid] || {};
+      if(o){ cur.dept=o.v; cur.deptLabel=o.t; cur.cat=o.cat; }
+      else { delete cur.dept; delete cur.deptLabel; delete cur.cat; }
+      if(!isDev){ delete cur.grp; delete cur.grpLabel; }
+      picks[tid]=cur; savePicks(picks);
+    });
+    var grpApi = grpCombo ? setupCombo(grpCombo, GROUPS, function(o){
+      if(pickGrp) pickGrp.value = o ? o.v : "";
+      if(moreGrp) moreGrp.value = o ? o.v : "";
+      var cur = picks[tid] || {};
+      if(o){ cur.grp=o.v; cur.grpLabel=o.t; } else { delete cur.grp; delete cur.grpLabel; }
+      picks[tid]=cur; savePicks(picks);
+    }) : null;
+
+    // Restore saved picks
+    var saved = picks[tid];
+    if(saved && saved.dept){
+      fundApi.set(saved.dept, saved.deptLabel||"");
+      if(pickDept) pickDept.value = saved.dept;
+      if(moreDept) moreDept.value = saved.dept;
+      if(saved.cat==="DEVELOPMENT" && grpCombo){
+        grpCombo.hidden = false;
+        if(saved.grp && grpApi){
+          grpApi.set(saved.grp, saved.grpLabel||"");
+          if(pickGrp) pickGrp.value = saved.grp;
+          if(moreGrp) moreGrp.value = saved.grp;
+        }
+      }
+    }
+
+    card.querySelectorAll(".combo-split").forEach(function(c){ setupCombo(c, FUNDS, null); });
+  });
+
+  // Bulk bar fund search
+  if(window.MemberSearch && document.getElementById("bulkFund")){
+    // Keep native options; enhance with typeahead over the same select
+    MemberSearch.enhance({
+      selectId: "bulkFund",
+      searchUrl: "{% url 'fund_search' %}",
+      params: {scope: "income"},
+      placeholder: "Shared fund for selection…",
+      renderLabel: function(r){ return r.label || r.name; },
+      renderMeta: function(r){ return r.tag || ""; },
+      onPick: function(r){
+        // fund_search keys: d:id or s:id — map to our option values
+        var sel = document.getElementById("bulkFund");
+        var val = r.key && String(r.key).indexOf("s:")===0 ? ("sf:"+r.id) : String(r.id);
+        if(!sel.querySelector('option[value="'+val+'"]')){
+          var opt=document.createElement("option"); opt.value=val; opt.textContent=r.label||r.name;
+          opt.dataset.cat = r.tag==="Split" ? "SPLIT" : (r.dev ? "DEVELOPMENT" : "");
+          sel.appendChild(opt);
+        }
+        sel.value = val;
+        var wrap=document.getElementById("bulkGrpWrap");
+        if(wrap) wrap.hidden = !(r.dev);
+        var search=document.getElementById("bulkFundSearch");
+        // MemberSearch already sets input; our duplicate input is the enhanced one
+      }
+    });
+    // Hide the duplicate manual search we declared — MemberSearch creates its own
+    var bfs=document.getElementById("bulkFundSearch");
+    if(bfs) bfs.style.display="none";
+    var bfa=document.getElementById("bulkFundAc");
+    if(bfa) bfa.style.display="none";
+  }
+  if(window.MemberSearch && document.getElementById("bulkGrp")){
+    MemberSearch.enhance({
+      selectId: "bulkGrp",
+      searchUrl: "{% url 'dev_group_search' %}",
+      placeholder: "Dev group №…",
+      renderLabel: function(r){ return r.name || r.label; },
+      renderMeta: function(r){ return r.number ? ("№ "+r.number) : ""; }
+    });
+    var bgs=document.getElementById("bulkGrpSearch");
+    if(bgs) bgs.style.display="none";
+  }
+
+  // Clear saved picks for allocated ids after successful... we clear on submit of rows that are checked
+  var bulkForm=document.getElementById("bulkAllocForm");
+  if(bulkForm){
+    bulkForm.addEventListener("submit", function(e){
+      if(!document.querySelectorAll(".bulk-check:checked").length){
+        e.preventDefault(); alert("Tick at least one contribution first."); return;
+      }
+      // Only submit picks for checked rows (disabled fields are omitted).
+      document.querySelectorAll(".q-card").forEach(function(card){
+        var cb=card.querySelector(".bulk-check");
+        var on=cb && cb.checked;
+        card.querySelectorAll(".pick-dept, .pick-grp").forEach(function(inp){
+          inp.disabled = !on;
+        });
+      });
+      document.querySelectorAll(".bulk-check:checked").forEach(function(c){
+        delete picks[c.value];
+      });
+      savePicks(picks);
+      var anyPick=false;
+      document.querySelectorAll(".bulk-check:checked").forEach(function(c){
+        var card=c.closest(".q-card");
+        var pd=card && card.querySelector(".pick-dept");
+        if(pd && pd.value) anyPick=true;
+      });
+      if(anyPick){
+        var bf=document.getElementById("bulkFund");
+        if(bf) bf.value="";
+      }
+    });
+  }
+
+  var all=document.getElementById("bulkAll"), n=document.getElementById("bulkN");
+  function checks(){return Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));}
+  function refresh(){ if(n) n.textContent=checks().filter(function(c){return c.checked;}).length; }
+  if(all) all.addEventListener("change", function(){ checks().forEach(function(c){c.checked=all.checked;}); refresh(); });
+  document.addEventListener("change", function(e){ if(e.target && e.target.classList.contains("bulk-check")) refresh(); });
+  refresh();
+
   document.querySelectorAll(".q-split-toggle").forEach(function(btn){
     btn.addEventListener("click", function(){
       var p = btn.closest("form").querySelector(".q-split-panel");
       p.hidden = !p.hidden;
     });
   });
-  // live split tally
   document.addEventListener("input", function(e){
     if(!e.target.classList.contains("split-amt")) return;
     var form = e.target.closest("form");
@@ -221,21 +369,4 @@
   });
 })();
 </script>
-<style>
-/* Review-queue polish. The .q-* vocabulary is used only on this page, so these
-   scoped rules refine it without touching any other screen. Keep the site's
-   paper/forest/brass palette and the existing card structure. */
-.q-card{border-left:3px solid var(--brass);transition:box-shadow var(--t),border-color var(--t)}
-.q-card:hover{border-left-color:var(--forest)}
-.q-amt{font-size:1.24rem}
-/* Set the allocation form apart as the place to act, without a second card. */
-.q-form{background:var(--card-head,#faf7f0);border:1px solid var(--line);
-  border-radius:12px;padding:.9rem 1rem}
-/* The primary action reads as primary once a fund is chosen, and plainly
-   inert until then — so the one button to press is never in doubt. */
-.q-submit:not(:disabled){background:var(--forest);border-color:var(--forest);color:#fff;font-weight:600}
-.q-submit:not(:disabled):hover{background:var(--forest-deep,#1f3d30)}
-.q-actions{flex-wrap:wrap;row-gap:.4rem}
-@media(max-width:760px){.q-form{padding:.8rem}}
-</style>
 {% endblock %}

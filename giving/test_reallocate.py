@@ -1,4 +1,4 @@
-"""Re-running allocation rules over the review queue (the 'Run rules on pending'
+"""Re-running allocation rules over the review queue (the 'Run rules'
 button) — for when rules are added after an import."""
 import datetime as dt
 from decimal import Decimal
@@ -80,7 +80,8 @@ class ReallocatePendingTests(TestCase):
         u.groups.add(Group.objects.get_or_create(name="Treasurer")[0])
         c = Client(); c.force_login(u)
         body = c.get("/queue/").content.decode()
-        self.assertIn("Run rules on pending", body)
+        self.assertIn("Run rules", body)
+        self.assertIn("/queue/run-rules/", body)
 
     def test_split_fund_rule_expands_on_run_rules(self):
         from giving.models import SplitFund, SplitComponent

@@ -5,6 +5,13 @@
   <div class="ws-titles"><h1>{{ expense.description }}</h1>
     <div class="ws-sub">{{ expense.date|date:"d M Y" }} · {{ expense.department.name }}</div></div>
   <div class="toolbar">
+    {% if can_enter_data and can_raise_payable %}
+    <form method="post" action="{% url 'expense_raise_payable' expense.id %}" class="u-inline"
+          onsubmit="return confirm('Open a payable so the church can reimburse this?');">
+      {% csrf_token %}
+      <button class="btn btn-brass btn-sm" title="Leader paid personally, or credit purchase keyed as an expense first">Raise payable</button>
+    </form>
+    {% endif %}
     {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'expense_edit' expense.id %}">Edit</a>{% endif %}
     <a class="btn btn-ghost btn-sm" href="{% url 'expense_list' %}">← Expenses</a>
   </div>

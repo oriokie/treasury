@@ -28,6 +28,7 @@ urlpatterns = [
     path("table-state/<slug:table_key>/", views.TableStateView.as_view(), name="table_state"),
     path("departments/balance/", views.DepartmentBalanceView.as_view(), name="department_balance"),
     path("funds/search/", views.FundSearchView.as_view(), name="fund_search"),
+    path("dev-groups/search/", views.DevGroupSearchView.as_view(), name="dev_group_search"),
     path("search/", views.GlobalSearchView.as_view(), name="global_search"),
     path("assistant/", views.AssistantView.as_view(), name="assistant"),
     path("assistant/ask/", views.AssistantAskView.as_view(), name="assistant_ask"),

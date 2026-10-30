@@ -167,3 +167,16 @@ class NamelessQueueViewTests(TestCase):
         t.refresh_from_db()
         self.assertTrue(t.name_not_required)
         self.assertFalse(leave_as_is(t))  # already dismissed
+
+    def test_create_and_link_new_member(self):
+        r = self.c.post(reverse("nameless_queue"), {
+            "action": "create",
+            "ids": [str(self.orphan.id)],
+            "new_name": "Grace Wanjiku",
+            "new_phone": "254700999888",
+        })
+        self.assertEqual(r.status_code, 302)
+        self.orphan.refresh_from_db()
+        self.assertIsNotNone(self.orphan.member_id)
+        self.assertEqual(self.orphan.member.name, "GRACE WANJIKU")
+        self.assertNotIn(self.orphan, list(nameless_gifts_qs()))

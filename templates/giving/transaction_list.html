@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Ledger · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -226,4 +226,29 @@ td:not(.row-debit) .cr-dr-badge{background:var(--forest-soft,#e3ede9);color:var(
 .ws-summary .ws-metric .wm-v{font-size:1.15rem}
 .ws-toolbar{padding:.6rem .7rem;margin-bottom:.8rem;gap:.5rem}
 </style>
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+(function(){
+  if(!window.MemberSearch || !document.getElementById('id_department_filter')) return;
+  MemberSearch.enhance({
+    selectId: 'id_department_filter',
+    searchUrl: '{% url "fund_search" %}',
+    params: {scope: 'income'},
+    placeholder: 'Search fund…',
+    renderLabel: function(r){ return r.label || r.name; },
+    renderMeta: function(r){ return r.tag || ''; },
+    onPick: function(r){
+      var sel=document.getElementById('id_department_filter');
+      if(!sel || !r) return;
+      var val=String(r.id);
+      if(!sel.querySelector('option[value="'+val+'"]')){
+        var opt=document.createElement('option');
+        opt.value=val; opt.textContent=r.label||r.name;
+        sel.appendChild(opt);
+      }
+      sel.value=val;
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -690,10 +690,46 @@ class NamelessGiftQueueView(DataEntryRequiredMixin, View):
                 messages.warning(request, "Nothing was updated.")
             return redirect("nameless_queue")
 
+        if action == "create":
+            from members.services.matching import is_person_name, match_or_create_member
+            name = (request.POST.get("new_name") or "").strip()
+            phone = (request.POST.get("new_phone") or "").strip()
+            if not is_person_name(name):
+                messages.error(request, "Enter a real person’s name to create a member.")
+                return redirect("nameless_queue")
+            member, _outcome = match_or_create_member(name, phone)
+            if member is None:
+                messages.error(request, "Could not create that member.")
+                return redirect("nameless_queue")
+            linked = 0
+            for pk in ids:
+                try:
+                    pk = int(pk)
+                except (TypeError, ValueError):
+                    continue
+                txn = allowed.get(pk)
+                if txn and link_to_member(txn, member):
+                    linked += 1
+                    try:
+                        from pledges.services.matching import resync_contribution_pledges
+                        resync_contribution_pledges(txn)
+                    except Exception:
+                        from core.utils import log_exception as _lx; _lx('giving/views.py')
+            if linked:
+                messages.success(
+                    request,
+                    f"Created {member.name} and linked {linked} gift"
+                    f"{'s' if linked != 1 else ''}.")
+            else:
+                messages.warning(request, f"Member {member.name} is ready, but "
+                                          f"nothing in the selection was linked.")
+            return redirect("nameless_queue")
+
         raw_member = (request.POST.get("member") or "").strip()
         member = Member.objects.filter(pk=raw_member).first() if raw_member.isdigit() else None
         if not member:
-            messages.error(request, "Choose the member these gifts belong to.")
+            messages.error(request, "Choose the member these gifts belong to, "
+                                    "or use Create member.")
             return redirect("nameless_queue")
         linked = 0
         for pk in ids:
@@ -748,70 +784,99 @@ class RunRulesOnQueueView(AllocateRequiredMixin, View):
 
 
 class BulkAllocateView(AllocateRequiredMixin, View):
-    """Item 1: allocate several review-queue contributions to one fund in a single action,
-    for faster clearing of the queue. Optionally sets a development group when the
-    chosen fund is a development fund."""
+    """Allocate several review-queue contributions in one action.
+
+    Two modes:
+      * Shared fund — ``department`` (+ optional ``dev_group``) applies to every
+        checked row (legacy bulk bar).
+      * Per-row picks — parallel ``pick_dept`` / ``pick_grp`` lists (same order
+        as ``txn``), so each card can keep its own fund/group across a refresh.
+    """
 
     def post(self, request):
         from departments.models import DevelopmentGroup
+        from giving.models import SplitFund
         ids = request.POST.getlist("txn")
+        pick_depts = request.POST.getlist("pick_dept")
+        pick_grps = request.POST.getlist("pick_grp")
         raw_dept = request.POST.get("department", "")
         if not ids:
-            messages.error(request, "Pick a fund and at least one contribution to allocate.")
+            messages.error(request, "Select at least one contribution to allocate.")
             return redirect("queue")
 
-        base_qs = Transaction.objects.filter(
+        base = {t.pk: t for t in Transaction.objects.filter(
             id__in=ids, allocation_status=Transaction.Status.REVIEW,
             direction=Transaction.Direction.CREDIT,
-            processed_via_envelope=False, manual_receipt=False)
+            processed_via_envelope=False, manual_receipt=False)}
 
-        # --- split fund (e.g. Combined Offering = Trust + Local) -------------
-        if raw_dept.startswith("sf:"):
-            from giving.models import SplitFund
-            sf = SplitFund.objects.filter(pk=raw_dept[3:], active=True).first()
-            if not sf:
-                messages.error(request, "That split fund is no longer available.")
-                return redirect("queue")
-            n = 0
-            for txn in base_qs:
+        # Per-row mode when the form posted a pick for every selected id.
+        use_picks = (len(pick_depts) == len(ids)
+                     and any((d or "").strip() for d in pick_depts))
+
+        def _apply_one(txn, raw, grp_raw):
+            if not txn or not raw:
+                return False
+            if raw.startswith("sf:"):
+                sf = SplitFund.objects.filter(pk=raw[3:], active=True).first()
+                if not sf:
+                    return False
                 parts = [(d, amt, None) for d, amt in sf.split(txn.amount)]
                 try:
                     txn.split_into(parts, user=request.user)
                 except (ValueError, ArithmeticError):
-                    continue
+                    return False
                 txn.claimed_by = request.user
                 txn.claimed_at = timezone.now()
                 txn.save(update_fields=["claimed_by", "claimed_at"])
-                n += 1
-            if n:
-                messages.success(request, f"Allocated {n} contribution(s) to {sf.name} — "
-                                          "each split into its parts; the trust "
-                                          "portion is queued for receipting.")
-            else:
-                messages.info(request, "No matching contributions to allocate.")
-            return redirect("queue")
-
-        # --- ordinary fund ----------------------------------------------------
-        dept = Department.objects.filter(pk=raw_dept, active=True).first()
-        if not dept:
-            messages.error(request, "Pick a fund and at least one contribution to allocate.")
-            return redirect("queue")
-        grp = None
-        if dept.category == Department.Category.DEVELOPMENT:
-            grp = DevelopmentGroup.objects.filter(pk=request.POST.get("dev_group")).first()
-        n = 0
-        for txn in base_qs:
+                return True
+            dept = Department.objects.filter(pk=raw, active=True).first()
+            if not dept:
+                return False
+            grp = None
+            if dept.category == Department.Category.DEVELOPMENT and grp_raw:
+                grp = DevelopmentGroup.objects.filter(pk=grp_raw).first()
             txn.department = dept
-            txn.dev_group = grp if grp else None
+            txn.dev_group = grp
             txn.allocation_status = Transaction.Status.MANUAL
             txn.claimed_by = request.user
             txn.claimed_at = timezone.now()
             txn.save(update_fields=["department", "dev_group", "allocation_status",
                                     "claimed_by", "claimed_at"])
-            n += 1
+            return True
+
+        n = 0
+        if use_picks:
+            for i, raw_id in enumerate(ids):
+                try:
+                    tid = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                raw = (pick_depts[i] if i < len(pick_depts) else "").strip()
+                grp_raw = (pick_grps[i] if i < len(pick_grps) else "").strip()
+                if _apply_one(base.get(tid), raw, grp_raw):
+                    n += 1
+            if n:
+                messages.success(request, f"Allocated {n} contribution(s) from "
+                                          f"your saved picks.")
+            else:
+                messages.error(request, "No picks could be applied — choose a "
+                                        "fund on each selected row.")
+            return redirect("queue")
+
+        if not raw_dept:
+            messages.error(request, "Choose a fund for the selection, or set a "
+                                    "fund on each row.")
+            return redirect("queue")
+        shared_grp = request.POST.get("dev_group") or ""
+        for raw_id in ids:
+            try:
+                tid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if _apply_one(base.get(tid), raw_dept, shared_grp):
+                n += 1
         if n:
-            label = dept.name + (f" · {grp.label}" if grp else "")
-            messages.success(request, f"Allocated {n} contribution(s) to {label}.")
+            messages.success(request, f"Allocated {n} contribution(s).")
         else:
             messages.info(request, "No matching contributions to allocate.")
         return redirect("queue")
