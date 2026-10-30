@@ -145,11 +145,15 @@ def site_context(request):
             # Feed gifts held for confirmation (no import batch to own them).
             held=Count("pk", filter=Q(
                 confirmed=False, statement_import__isnull=True)),
-            # STK / bank credits with no member — purpose code was not a name.
+            # STK / bank gifts with no member — exclude financing & dismissals.
             nameless=Count("pk", filter=Q(
                 channel=Transaction.Channel.BANK,
                 direction=Transaction.Direction.CREDIT,
                 member__isnull=True,
+                name_not_required=False,
+                excluded_from_income=False,
+                is_banking=False,
+                loan_receipt__isnull=True,
                 is_reversed=False, is_reversal=False)))
         ctx["queue_badge"] = txn_badges["queue"]
         ctx["sabbath_badge"] = txn_badges["sabbath"]

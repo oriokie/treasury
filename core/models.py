@@ -1111,7 +1111,6 @@ class UserPreference(models.Model):
         {"key": "charts", "label": "Income & expense charts", "visible": True},
         {"key": "funds", "label": "Fund balances", "visible": True},
         {"key": "trend", "label": "Multi-year trend", "visible": True},
-        {"key": "recent", "label": "Recent imports", "visible": True},
     ]
 
     def __str__(self):

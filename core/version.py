@@ -38,6 +38,14 @@ def version_string():
 
 
 WHATS_NEW = {
+    "3.53.0": "Gifts without a name no longer lists loan receipts or other "
+              "non-income bank credits, and you can leave selected rows as they "
+              "are. Bank reconciliation shows a refund-due line when petty cash "
+              "is negative, loads faster, and uses less wording. The executive "
+              "dashboard gains a period selector, more KPI cards, and cheaper "
+              "queries. Home drops recent imports and totals the trust-funds "
+              "table. Payables guidance covers leaders who paid from personal "
+              "funds and expect a refund.",
     "3.52.0": "STK Push credits that arrive without a real giver name no longer "
               "create a member from a purpose code such as DEVGR100. When the "
               "phone matches someone on the register, the ledger shows that "

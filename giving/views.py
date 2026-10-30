@@ -642,7 +642,7 @@ class NamelessGiftQueueView(DataEntryRequiredMixin, View):
     a purpose code (``DEVGR21``) where the name should be, and a phone that is
     not on the register. Matching refuses to invent a member from that code;
     this queue is where a treasurer links the gift to the right person, one at
-    a time or in bulk.
+    a time or in bulk — or leaves selected rows as they are.
     """
     template_name = "giving/nameless_queue.html"
     paginate_by = 50
@@ -661,18 +661,40 @@ class NamelessGiftQueueView(DataEntryRequiredMixin, View):
         })
 
     def post(self, request):
-        from giving.services.nameless import link_to_member, nameless_gifts_qs
+        from giving.services.nameless import (
+            leave_as_is, link_to_member, nameless_gifts_qs)
         from members.models import Member
         ids = request.POST.getlist("ids")
+        action = (request.POST.get("action") or "link").strip()
+        if not ids:
+            messages.info(request, "No gifts were selected.")
+            return redirect("nameless_queue")
+        allowed = {t.pk: t for t in nameless_gifts_qs().filter(pk__in=ids)}
+
+        if action == "leave":
+            left = 0
+            for pk in ids:
+                try:
+                    pk = int(pk)
+                except (TypeError, ValueError):
+                    continue
+                txn = allowed.get(pk)
+                if txn and leave_as_is(txn):
+                    left += 1
+            if left:
+                messages.success(
+                    request,
+                    f"Left {left} entr{'ies' if left != 1 else 'y'} as they are "
+                    f"(removed from this queue, still unlinked).")
+            else:
+                messages.warning(request, "Nothing was updated.")
+            return redirect("nameless_queue")
+
         raw_member = (request.POST.get("member") or "").strip()
         member = Member.objects.filter(pk=raw_member).first() if raw_member.isdigit() else None
         if not member:
             messages.error(request, "Choose the member these gifts belong to.")
             return redirect("nameless_queue")
-        if not ids:
-            messages.info(request, "No gifts were selected.")
-            return redirect("nameless_queue")
-        allowed = {t.pk: t for t in nameless_gifts_qs().filter(pk__in=ids)}
         linked = 0
         for pk in ids:
             try:

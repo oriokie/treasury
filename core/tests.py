@@ -88,10 +88,21 @@ class ExecutiveDashboardTests(TestCase):
 
     def test_cards_and_charts(self):
         from core.services import dashboard
-        self.assertEqual(len(dashboard.cards()), 6)
+        cards = dashboard.cards()
+        self.assertGreaterEqual(len(cards), 6)
+        labels = [c["label"] for c in cards]
+        self.assertTrue(any("Collections" in L for L in labels))
+        self.assertTrue(any("Cash & bank" in L for L in labels))
         ch = dashboard.charts()
         self.assertIn("giving_trend", ch)
         self.assertEqual(len(ch["giving_trend"]["labels"]), 12)
+
+    def test_executive_accepts_period(self):
+        from django.urls import reverse
+        self.client.login(username="ex2", password="x")
+        r = self.client.get(reverse("executive"), {"period": "year"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "period=month")
 
     def test_anomalies_flag_overbudget_and_remittance(self):
         from core.services import health

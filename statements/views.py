@@ -400,10 +400,18 @@ def _sync_managed_recon_items_inner(rec):
 
     # Read every managed figure from the worksheet's own moment — see
     # reconciliation_basis for why all of them and not some.
+    petty = _safe(_petty_balance_asof)
+    PETTY_FLOAT = "Petty cash float (cash on hand)"
+    PETTY_REFUND = "Petty cash refund due (personal funds used)"
+    # Positive float = cash still on hand (ADD). Negative = personal money covered
+    # church spending from an empty tin — church owes a refund (SUBTRACT abs).
+    if petty and petty < 0:
+        petty_desc, petty_amt, petty_effect = PETTY_REFUND, abs(petty), SUB
+    else:
+        petty_desc, petty_amt, petty_effect = PETTY_FLOAT, petty, ADD
+
     managed = [
-        ("Petty cash float (cash on hand)",
-         _safe(_petty_balance_asof),
-         ReconciliationItem.Kind.CASH_AT_HAND, ADD),
+        (petty_desc, petty_amt, ReconciliationItem.Kind.CASH_AT_HAND, petty_effect),
         (PENDING_RECEIPTS_ITEM,
          _pending_at_the_date(),
          ReconciliationItem.Kind.OTHER, SUB),
@@ -425,6 +433,11 @@ def _sync_managed_recon_items_inner(rec):
         return it.amount if it else None
 
     suspense_before = _suspense_on_the_sheet()
+    # Drop the alternate petty description so float ↔ refund never both linger.
+    stale_petty = PETTY_REFUND if petty_desc == PETTY_FLOAT else PETTY_FLOAT
+    for stale in rec.items.filter(description=stale_petty, auto=True):
+        stale.delete()
+
     for desc, amount, kind, effect in managed:
         existing = rec.items.filter(description=desc).first()
         if amount and amount > 0:
@@ -534,11 +547,6 @@ class ReconciliationDetailView(ReadAccessMixin, View):
 
     def get(self, request, pk):
         rec = get_object_or_404(BankReconciliation, pk=pk)
-        from cashbook.models import PaymentInstrument
-        from cashbook.views import (unpresented_cheques_total, _petty_balance_asof,
-                                    outstanding_bank_advances_total)
-        # auto-populate the petty-cash float and bank-funded staff advances as
-        # reconciling items, kept in step with their current values
         from core import roles
         # Fresh worksheets were just synced in start_reconciliation; re-running
         # here doubles the history/advance work on the create→detail hop.
@@ -548,42 +556,30 @@ class ReconciliationDetailView(ReadAccessMixin, View):
             if refreshed is not None:
                 messages.info(
                     request,
-                    f"The receipts this worksheet carries in suspense have "
-                    f"changed since it was prepared, so the cash-book balance "
-                    f"has been re-read for {rec.statement_date:%d %b %Y}: "
-                    f"KSh {refreshed:,.2f}. The two move together — that money "
-                    f"is in the cash book or in suspense, never both and never "
-                    f"neither.")
+                    f"Suspense changed — cash-book balance re-read as "
+                    f"KSh {refreshed:,.2f} for {rec.statement_date:%d %b %Y}.")
         if request.GET.get("export") in ("xlsx", "csv"):
             return self._export(request, rec)
-        # as-at listing: judged on issue/cleared DATES so an instrument that
-        # cleared after this reconciliation's date still shows outstanding here
-        from cashbook.views import unpresented_payments_qs
-        unpresented = (unpresented_payments_qs(rec.statement_date)
-                       .select_related("expense__department")
-                       .order_by("date_issued"))
-        petty_float = _petty_balance_asof(rec.statement_date)
-        # is the petty-cash float already entered as a reconciling item?
-        petty_listed = rec.items.filter(
-            description__icontains="petty cash").exists()
-        bank_advances = outstanding_bank_advances_total(rec.statement_date)
-        advances_listed = rec.items.filter(
-            description__icontains="staff advance").exists()
+        items = list(rec.items.all())
+        ADD = ReconciliationItem.Effect.ADD
+        SUB = ReconciliationItem.Effect.SUBTRACT
+        additions = [it for it in items if it.effect == ADD]
+        subtractions = [it for it in items if it.effect == SUB]
+        # Diagnostics are only useful when the sheet does not balance.
+        _diag = None
+        if not rec.is_reconciled:
+            with reconciliation_basis(rec.statement_date):
+                _diag = _recon_diagnostic(rec.statement_date)
         with reconciliation_basis(rec.statement_date):
             _suggested_book = _ledger_bank_balance(rec.statement_date)
-            _diag = _recon_diagnostic(rec.statement_date)
         return render(request, self.template_name, {
-            "rec": rec, "items": rec.items.all(),
+            "rec": rec, "items": items,
             "item_form": ReconciliationItemForm(),
             "suggested_book": _suggested_book,
             "diag": _diag,
             "default_effects": ReconciliationItem.DEFAULT_EFFECT,
-            "unpresented_cheques": unpresented,
-            "unpresented_total": unpresented_cheques_total(rec.statement_date),
-            "petty_float": petty_float, "petty_listed": petty_listed,
-            "bank_advances": bank_advances, "advances_listed": advances_listed,
-            "additions": rec.items.filter(effect=ReconciliationItem.Effect.ADD),
-            "subtractions": rec.items.filter(effect=ReconciliationItem.Effect.SUBTRACT),
+            "additions": additions,
+            "subtractions": subtractions,
         })
 
     def post(self, request, pk):

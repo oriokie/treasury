@@ -207,6 +207,12 @@ function downloadLocalFundsPng(){
             <td class="num mono">{{ r.remitted|money }}</td>
             <td class="num mono"><strong>{{ r.to_remit|money }}</strong></td></tr>
         {% empty %}<tr><td colspan="4" class="muted">No trust funds yet.</td></tr>{% endfor %}
+        {% if trust_rows %}
+          <tr class="total-row"><td><strong>Total</strong></td>
+            <td class="num mono"><strong>{{ trust_totals.collected|money }}</strong></td>
+            <td class="num mono"><strong>{{ trust_totals.remitted|money }}</strong></td>
+            <td class="num mono"><strong>{{ trust_totals.to_remit|money }}</strong></td></tr>
+        {% endif %}
         </tbody>
       </table>
     </div>
@@ -236,23 +242,6 @@ function downloadLocalFundsPng(){
 </div></div>
 </div>{% endif %}
 
-{% if "recent" in widget_visible %}<div data-w="recent" style="order:{{ widget_order.recent }}">
-<div class="sec-h">Recent imports</div>
-<div class="table-wrap">
-  <table class="ledger">
-    <thead><tr><th>File</th><th>When</th><th class="num">Imported</th><th class="num">Queued</th><th class="num">Duplicates</th><th>Status</th></tr></thead>
-    <tbody>
-    {% for i in recent_imports %}
-      <tr><td><a href="{% url 'statement_detail' i.id %}">{{ i.filename }}</a></td>
-        <td class="muted">{{ i.uploaded_at|date:"j M, H:i" }}</td>
-        <td class="num">{{ i.imported }}</td><td class="num">{{ i.queued_for_review }}</td>
-        <td class="num">{{ i.duplicates_skipped }}</td>
-        <td><span class="pill {% if i.status == 'DONE' %}pill-green{% elif i.status == 'FAILED' %}pill-red{% else %}pill-grey{% endif %}">{{ i.get_status_display }}</span></td></tr>
-    {% empty %}<tr><td colspan="6" class="muted">No statements imported yet.</td></tr>{% endfor %}
-    </tbody>
-  </table>
-</div>
-</div>{% endif %}
 </div>{# /dash-widgets #}
 {% endblock %}
 

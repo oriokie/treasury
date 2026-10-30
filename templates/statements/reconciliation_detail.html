@@ -6,7 +6,7 @@
   <div class="rp-title">Bank Reconciliation</div>
   <div class="rp-date">As at {{ rec.statement_date|date:"d F Y" }}</div>
 </div>
-<div class="page-head no-print"><div><h1>Bank reconciliation</h1><div class="sub">{{ CHURCH_NAME }} · statement dated {{ rec.statement_date|date:"d M Y" }}</div></div>
+<div class="page-head no-print"><div><h1>Bank reconciliation</h1><div class="sub">{{ CHURCH_NAME }} · {{ rec.statement_date|date:"d M Y" }}</div></div>
 <div class="toolbar no-print">
   <a class="btn btn-ghost btn-sm" href="{% url 'reconciliation_list' %}">← All</a>
   <a class="btn btn-ghost btn-sm" href="?export=xlsx">⤓ Excel</a>
@@ -15,27 +15,27 @@
 </div></div>
 
 <div class="recon-kpis no-print">
-  <div class="rk"><div class="l">Per bank statement</div><div class="v">{{ rec.bank_balance|money }}</div></div>
-  <div class="rk"><div class="l">Adjusted bank balance</div><div class="v">{{ rec.adjusted_balance|money }}</div></div>
-  <div class="rk"><div class="l">Per cash book</div><div class="v">{{ rec.book_balance|money }}</div></div>
-  <div class="rk {% if rec.is_reconciled %}ok{% else %}warn{% endif %}"><div class="l">Difference</div><div class="v">{% if rec.difference != None %}{{ rec.difference|money }}{% else %}—{% endif %}</div><div class="s">{% if rec.is_reconciled %}✓ Reconciled{% else %}Not balanced{% endif %}</div></div>
+  <div class="rk"><div class="l">Bank statement</div><div class="v">{{ rec.bank_balance|money }}</div></div>
+  <div class="rk"><div class="l">Adjusted bank</div><div class="v">{{ rec.adjusted_balance|money }}</div></div>
+  <div class="rk"><div class="l">Cash book</div><div class="v">{{ rec.book_balance|money }}</div></div>
+  <div class="rk {% if rec.is_reconciled %}ok{% else %}warn{% endif %}"><div class="l">Difference</div><div class="v">{% if rec.difference != None %}{{ rec.difference|money }}{% else %}—{% endif %}</div><div class="s">{% if rec.is_reconciled %}✓ Balanced{% else %}Not balanced{% endif %}</div></div>
 </div>
 
-<div class="recon-sheet card u-narrow-md"><div class="hd">Reconciliation statement</div><div class="bd">
+<div class="recon-sheet card u-narrow-md"><div class="hd">Statement</div><div class="bd">
   <table class="ledger">
     <tbody>
       <tr><td>Balance as per bank statement</td><td class="num mono">{{ rec.bank_balance|money }}</td><td></td></tr>
-      {% if additions %}<tr class="grp-row"><td colspan="3">Add: items in the cash book not yet on the statement</td></tr>
+      {% if additions %}<tr class="grp-row"><td colspan="3">Add</td></tr>
       {% for it in additions %}<tr>
-        <td class="indent">＋ {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
+        <td class="indent">{{ it.description|default:it.get_kind_display }}</td>
         <td class="num mono">{{ it.amount|money }}</td>
-        <td class="num act no-print">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
+        <td class="num act no-print">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs">auto</span>{% endif %}</td>
       </tr>{% endfor %}{% endif %}
-      {% if subtractions %}<tr class="grp-row"><td colspan="3">Less: items on the statement not yet in the cash book</td></tr>
+      {% if subtractions %}<tr class="grp-row"><td colspan="3">Less</td></tr>
       {% for it in subtractions %}<tr>
-        <td class="indent">− {{ it.get_kind_display }}{% if it.description %} <span class="muted">— {{ it.description }}</span>{% endif %}</td>
+        <td class="indent">{{ it.description|default:it.get_kind_display }}</td>
         <td class="num mono row-debit">({{ it.amount|money }})</td>
-        <td class="num act no-print">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs" title="Maintained automatically">auto</span>{% endif %}</td>
+        <td class="num act no-print">{% if can_enter_data and not it.auto %}<form method="post" class="u-inline">{% csrf_token %}<input type="hidden" name="action" value="delete_item"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="btn btn-xs btn-ghost">✕</button></form>{% elif it.auto %}<span class="muted u-xs">auto</span>{% endif %}</td>
       </tr>{% endfor %}{% endif %}
       <tr class="total-row"><td><strong>Adjusted bank balance</strong></td><td class="num mono"><strong>{{ rec.adjusted_balance|money }}</strong></td><td></td></tr>
       <tr><td>Balance as per cash book</td><td class="num mono">{{ rec.book_balance|money }}</td><td></td></tr>
@@ -44,49 +44,22 @@
         <td>{% if rec.is_reconciled %}<span class="pill pill-green">✓</span>{% endif %}</td></tr>
     </tbody>
   </table>
-  {% if rec.is_reconciled %}<p class="help" style="color:var(--accent)">Reconciled — the adjusted bank balance matches the cash book.</p>{% endif %}
 
-  {% if not rec.is_reconciled and rec.difference != None %}
-  <div class="card no-print" style="margin-top:1rem;border-left:3px solid var(--amber)"><div class="hd">Why might this not balance?</div><div class="bd">
-    {% comment %}Written down because this is the question every treasurer asks
-    of this page, and the answer is a property of how giving actually arrives
-    rather than anything the software chose.{% endcomment %}
-    <details class="u-mb"><summary class="link">Why money at the bank may not be in a fund yet</summary>
-      <div class="help">
-        <p>A member sends 1,000 to the church account on Friday. On Sabbath they
-          write an envelope — sometimes under another name — splitting it 500 to
-          tithe and 500 to development. One bank line, several envelopes, a
-          different name: there is no one-to-one match to be made, and forcing
-          one would misstate both the giver and the funds.</p>
-        <p>So the bank line is marked as receipted and becomes a memo: it keeps
-          the money in the bank balance, and hands the income and the fund
-          allocation to the envelopes. Between the Friday and the Sabbath the
-          money is genuinely at the bank and in no fund, which is a real
-          reconciling item and not an error — it is listed below and carried on
-          the worksheet automatically.</p>
-        <p>The consequence worth knowing: the envelopes carry <em>their own</em>
-          date, so giving banked at a month end and receipted after it falls in
-          the later month. The reconciliation accounts for the timing; the
-          income statement follows the envelope.</p>
-      </div>
-    </details>
-    <p class="help u-mt-0">The cash-book balance of <strong class="mono">{{ diag.book|money }}</strong> = opening {{ diag.opening|money }} + confirmed giving {{ diag.income|money }} − payments {{ diag.expenses|money }}. These bank receipts have <em>not</em> reached the cash book yet, and usually explain a difference right after an import:</p>
+  {% if not rec.is_reconciled and rec.difference != None and diag %}
+  <div class="card no-print recon-hint" style="margin-top:1rem;border-left:3px solid var(--amber)"><div class="bd">
+    <p class="help u-mt-0 u-mb-sm">Cash book <strong class="mono">{{ diag.book|money }}</strong> = opening {{ diag.opening|money }} + giving {{ diag.income|money }} − payments {{ diag.expenses|money }}. Likely timing:</p>
     <table class="ledger compact"><tbody>
-      {% if diag.in_review %}<tr><td>In the review queue (unallocated)</td><td class="num mono">{{ diag.in_review|money }}</td><td><a class="link" href="{% url 'queue' %}">Allocate →</a></td></tr>{% endif %}
-      {% if diag.sab_pending %}<tr><td class="muted">Awaiting Sabbath confirmation <span class="muted">(already in the cash book — Sabbath label only)</span></td><td class="num mono muted">{{ diag.sab_pending|money }}</td><td><a class="link" href="{% url 'sabbath_queue' %}">Review →</a></td></tr>{% endif %}
-      {% if diag.unconfirmed %}<tr><td>Imported but not yet confirmed</td><td class="num mono">{{ diag.unconfirmed|money }}</td><td><span class="muted">confirm the import</span></td></tr>{% endif %}
-      {% if diag.excluded %}<tr><td>Bank M-Pesa already receipted as envelopes <span class="muted">(detail, not double-counted)</span></td><td class="num mono">{{ diag.excluded|money }}</td><td></td></tr>{% endif %}
-      {% if diag.receipted_after %}<tr><td>Banked by this date, receipted afterwards <span class="muted">(in the bank on the day, in a fund only later)</span></td><td class="num mono">{{ diag.receipted_after|money }}</td><td><span class="muted">carried as a reconciling item</span></td></tr>{% endif %}
-      {% if not diag.in_review and not diag.sab_pending and not diag.unconfirmed and not diag.receipted_after %}<tr><td class="muted" colspan="3">All imported giving is confirmed and in the cash book. The difference is likely genuine timing — add an unpresented-cheque or cash-at-hand item above.</td></tr>{% endif %}
+      {% if diag.in_review %}<tr><td>In review (unallocated)</td><td class="num mono">{{ diag.in_review|money }}</td><td><a class="link" href="{% url 'queue' %}">Allocate →</a></td></tr>{% endif %}
+      {% if diag.unconfirmed %}<tr><td>Imported, not confirmed</td><td class="num mono">{{ diag.unconfirmed|money }}</td><td></td></tr>{% endif %}
+      {% if diag.receipted_after %}<tr><td>Banked here, receipted later</td><td class="num mono">{{ diag.receipted_after|money }}</td><td></td></tr>{% endif %}
+      {% if not diag.in_review and not diag.unconfirmed and not diag.receipted_after %}<tr><td class="muted" colspan="3">Imported giving is in the cash book — check unpresented items or cash at hand.</td></tr>{% endif %}
     </tbody></table>
-    {% if diag.off_book_total %}<p class="help">Allocating &amp; confirming the items above moves <strong class="mono">{{ diag.off_book_total|money }}</strong> into the cash book — these are receipts already at the bank, so they will <em>reduce</em> this difference, not appear as reconciling items.</p>{% endif %}
   </div></div>
   {% endif %}
-  <p class="help no-print u-mt-0">The petty-cash float, outstanding bank-funded staff advances and unpresented cheques are added to this statement <strong>automatically</strong> and kept in step with their current values.</p>
 </div></div>
 
 {% if can_enter_data %}
-<div class="card no-print u-narrow-md u-mt"><div class="hd">Add a manual reconciling item</div><div class="bd">
+<div class="card no-print u-narrow-md u-mt"><div class="hd">Manual item</div><div class="bd">
   <form method="post" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
     <input type="hidden" name="action" value="add_item">
     <div class="f"><label>Type</label>{{ item_form.kind }}</div>
@@ -95,19 +68,17 @@
     <div class="f"><label>Effect</label>{{ item_form.effect }}</div>
     <button class="btn btn-sm">Add</button>
   </form>
-  <p class="help">For anything not auto-managed: bank charges &amp; deposits in transit, for example. (Petty cash, staff advances and unpresented cheques are already included automatically.)</p>
 </div></div>
 
 <div class="card no-print u-narrow-md u-mt"><div class="bd">
   <form method="post" class="filters" style="margin:0;align-items:flex-end">{% csrf_token %}
     <input type="hidden" name="action" value="set_book">
     <div class="f"><label>Cash-book balance</label><input name="book_balance" class="field" value="{{ rec.book_balance|floatformat:2 }}"></div>
-    <button class="btn btn-sm btn-ghost">Update book balance</button>
+    <button class="btn btn-sm btn-ghost">Update</button>
   </form>
   <form method="post" class="u-inline u-mt-0" style="margin-top:.4rem">{% csrf_token %}
     <input type="hidden" name="action" value="recompute_book">
-    <button class="btn btn-sm">↻ Recompute from ledger ({{ suggested_book|money }})</button>
-    <span class="help">Pulls the current cash-book balance as of {{ rec.statement_date }} — use this to refresh a stale figure.</span>
+    <button class="btn btn-sm">↻ Recompute ({{ suggested_book|money }})</button>
   </form>
 </div></div>
 {% endif %}
