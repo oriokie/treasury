@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.53.0
+
+Gifts without a name no longer lists loan receipts or other non-income bank credits, and you can leave selected rows as they are. Bank reconciliation shows a refund-due line when petty cash is negative, loads faster, and uses less wording. The executive dashboard gains a period selector, more KPI cards, and cheaper queries. Home drops recent imports and totals the trust-funds table. Payables guidance covers leaders who paid from personal funds and expect a refund.
+
 ## 3.52.0
 
 STK Push credits that arrive without a real giver name no longer create a member from a purpose code such as DEVGR100. When the phone matches someone on the register, the ledger shows that member's name. When it does not, the gift waits under Banking → Gifts without a name, where a treasurer can link one or many rows to the right person in bulk.
