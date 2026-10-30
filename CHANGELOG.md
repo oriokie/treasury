@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.0
+
+Payables fund typeahead no longer triples under Add a payable. Unassigned development offerings keep group picks across refresh, with searchable groups and one top Assign. Expense edit can open a payable if forgotten. The assistant answers cash-flow and recurring-affordability questions (e.g. next month).
+
 ## 3.55.0
 
 Supplier categories can be set up on the register (starter list seeded automatically); /vendors/new/ opens the add form. Payables and the ledger fund filter are searchable; the review queue keeps per-row fund/group picks across refresh with one Allocate button. Nameless gifts can create a new member. Expenses can raise a payable for leader reimbursements.
