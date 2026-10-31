@@ -873,7 +873,13 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
             if include_fulfilled:
                 allowed.append(Pledge.Status.FULFILLED)
             allowed.extend(extra_statuses)
-            qs = (Pledge.objects.filter(member=coded_member, status__in=allowed)
+            # MB… never references a closed/draft pledge campaign — only
+            # ACTIVE campaigns can be matched this way (PG… can still target
+            # a specific pledge even on a closed campaign).
+            from pledges.models import PledgeCampaign
+            qs = (Pledge.objects.filter(
+                    member=coded_member, status__in=allowed,
+                    campaign__status=PledgeCampaign.Status.ACTIVE)
                   .select_related("member", "campaign"))
             out = []
             window = cfg.pledge_match_window_days or 400

@@ -547,6 +547,23 @@ class SiteConfig(models.Model):
                   "to apply matches unattended. Off by default — turn on after "
                   "you have reviewed how auto-match behaves on this church.")
 
+    # --- Member codes (MB…) -------------------------------------------------
+    # Fund is always Development (not configurable): campaign funds use PG…/CM….
+    # Group cascade: active campaign sheet → home group → optional history.
+    mb_code_group_history = models.BooleanField(
+        "Use recent gifts to guess the group",
+        default=False,
+        help_text="When an MB… code credits a member who is not on an active "
+                  "campaign sheet and has no home development group, look at "
+                  "their recent tagged gifts and use the group they have "
+                  "given the most to. Off by default.")
+    mb_code_group_history_months = models.PositiveIntegerField(
+        "History lookback (months)",
+        default=6,
+        help_text="How many months of tagged gifts to consider for the MB… "
+                  "group history fallback (1–24). Only used when the history "
+                  "option above is on.")
+
     # --- Backups -------------------------------------------------------------
     backup_email = models.CharField(max_length=200, blank=True, default="",
         help_text="Email address(es) to send the nightly backup to, comma-separated. "

@@ -200,6 +200,88 @@ class TesterTests(TestCase):
         result = ap.explain(None)
         self.assertIsInstance(result["rows"], list)
 
+    def test_no_code_in_the_reference_reports_no_hit(self):
+        result = ap.explain("DEVGR7")
+        self.assertIn("code", result)
+        self.assertFalse(result["code"]["hit"])
+
+    def test_a_member_code_is_named_with_who_it_credits(self):
+        from decimal import Decimal
+        from departments.models import DevelopmentGroup
+        from members.models import Member
+        from pledges.models import Pledge, PledgeCampaign
+
+        dev = Department.objects.create(
+            name="Development AP", slug="development-ap-probe",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.DEVELOPMENT)
+        g = DevelopmentGroup.objects.create(number=17, name="G17 AP")
+        m = Member.objects.create(name="CODE PROBE", phone="254700000017",
+                                  active=True, dev_group=g)
+        camp = PledgeCampaign.objects.create(
+            name="Roof AP", target_department=self.fund,
+            status=PledgeCampaign.Status.ACTIVE)
+        Pledge.objects.create(
+            campaign=camp, member=m, amount=Decimal("5000"),
+            start_date=dt.date(2026, 1, 1), status=Pledge.Status.ACTIVE)
+
+        result = ap.explain(f"GIFT {m.match_code}")
+        code = result["code"]
+        self.assertTrue(code["hit"])
+        self.assertEqual(code["source"], "member")
+        self.assertEqual(code["beneficiary"], m)
+        # MB… always Development — never the Roof campaign fund.
+        self.assertEqual(code["department"], dev)
+        self.assertEqual(code["dev_group"], g)
+        self.assertEqual(code["group_rule"], "home")
+        self.assertEqual(code["group_rule_label"], "member's home group")
+        self.assertTrue(code["open_pledges"])
+        self.assertFalse(any(r["is_fund_pick"] for r in code["open_pledges"]))
+        self.assertIn("Development", code["detail"])
+
+    def test_a_member_with_no_pledge_falls_to_development(self):
+        from departments.models import DevelopmentGroup
+        from members.models import Member
+
+        g = DevelopmentGroup.objects.create(number=18, name="G18 AP")
+        Department.objects.create(
+            name="Development", slug="development-ap",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.DEVELOPMENT)
+        m = Member.objects.create(name="NO PLEDGE AP", phone="254700000018",
+                                  active=True, dev_group=g)
+        result = ap.explain(m.match_code)
+        self.assertTrue(result["code"]["hit"])
+        self.assertEqual(result["code"]["source"], "member")
+        self.assertEqual(result["code"]["dev_group"], g)
+        self.assertEqual(result["code"]["group_rule"], "home")
+        self.assertEqual(result["code"]["department"].category,
+                         Department.Category.DEVELOPMENT)
+        self.assertEqual(result["code"]["open_pledges"], [])
+
+    def test_mb_probe_names_campaign_sheet_group_rule(self):
+        from departments.models import DevelopmentGroup
+        from giving.models import Campaign, CampaignMember
+        from members.models import Member
+
+        Department.objects.create(
+            name="Development Sheet", slug="development-sheet-ap",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.DEVELOPMENT)
+        g = DevelopmentGroup.objects.create(number=19, name="G19 AP")
+        m = Member.objects.create(name="SHEET PROBE", phone="254700000019",
+                                  active=True, dev_group=None)
+        camp = Campaign.objects.create(
+            name="Sheet Camp AP", department=self.fund,
+            triggers="sheetap", active=True)
+        CampaignMember.objects.create(
+            campaign=camp, name="SHEET PROBE", phone="254700000019",
+            group="19")
+        code = ap.explain(m.match_code)["code"]
+        self.assertEqual(code["group_rule"], "campaign_sheet")
+        self.assertEqual(code["dev_group"], g)
+        self.assertIn("campaign sheet", code["group_rule_label"])
+
 
 class PageTests(TestCase):
     def setUp(self):
@@ -265,6 +347,17 @@ class PageTests(TestCase):
         r = self.client.post(URL, {"action": "test", "reference": "DEVGR7"})
         self.assertEqual(r.status_code, 200)
         self.assertIsNotNone(r.context["probe"])
+
+    def test_the_tester_shows_a_member_code_hit(self):
+        from members.models import Member
+        m = Member.objects.create(name="PAGE CODE", phone="254700000019",
+                                  active=True)
+        r = self.client.post(URL, {"action": "test",
+                                   "reference": f"FOR {m.match_code}"})
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Match code")
+        self.assertContains(r, "Member code")
+        self.assertContains(r, "PAGE CODE")
 
     def test_testing_nothing_asks_for_a_reference(self):
         r = self.client.post(URL, {"action": "test", "reference": "  "})

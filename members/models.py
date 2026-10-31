@@ -157,14 +157,13 @@ class Member(models.Model):
     )
     source = models.CharField(max_length=12, choices=Source.choices, default=Source.MANUAL)
     active = models.BooleanField(default=True)
-    # One code for bank / M-Pesa references: gifts carrying this code are
-    # credited to this member (pledges + development-group tallies), even when
-    # someone else paid. Distinct from per-pledge PG… codes, which target one
-    # specific promise.
+    # One code for bank / M-Pesa references: gifts carrying this code credit
+    # this member and route to Development (+ group cascade). Distinct from
+    # per-pledge PG… codes, which target one specific promise and its fund.
     match_code = models.CharField(
         max_length=16, unique=True, null=True, blank=True, db_index=True,
         help_text="Code others put in a bank reference to credit this member "
-                  "and their development group.")
+                  "on the Development fund and their development group.")
     created_at = models.DateTimeField(auto_now_add=True)
     history = HistoricalRecords()
 

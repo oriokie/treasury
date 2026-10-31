@@ -169,6 +169,133 @@ def _describe(value):
     return getattr(value, "name", str(value))
 
 
+def _explain_code(reference):
+    """What a match code in the reference would do — person, fund, group.
+
+    Codes (PG / MB / CM / DEV) are not one of the seven stages above. They run
+    during import as a separate attribution pass: who gets credit, which
+    development group, and (when a fund is still unknown) which campaign fund.
+    Showing them here is how a treasurer checks a code without importing a
+    statement.
+    """
+    from pledges.services.codes import resolve_code_attribution
+
+    try:
+        hit = resolve_code_attribution(reference)
+    except Exception as exc:      # noqa: BLE001 — a tester never breaks
+        return {"hit": False, "error": type(exc).__name__}
+    if not hit:
+        return {"hit": False}
+
+    source = hit.get("source") or ""
+    labels = {
+        "pledge": "Pledge code (PG…)",
+        "member": "Member code (MB…)",
+        "campaign": "Campaign member code (CM…)",
+        "dev_group": "Development group code (DEV…)",
+    }
+    group_rule_labels = {
+        "campaign_sheet": "active campaign sheet",
+        "home": "member's home group",
+        "history": "most tagged gifts in the lookback window",
+        "none": "no group resolved",
+    }
+    ben = hit.get("beneficiary")
+    pledge = hit.get("pledge")
+    dept = hit.get("department")
+    dg = hit.get("dev_group")
+    camp = hit.get("campaign")
+    camp_group = hit.get("campaign_group") or ""
+    group_rule = hit.get("group_rule") or ""
+
+    # For MB…: list ACTIVE-campaign pledges as informational only — the code
+    # itself never picks a campaign fund (Development always). Matching may
+    # still apply when the gift's fund matches a campaign (same-fund setting).
+    open_pledges = []
+    if source == "member" and ben is not None:
+        try:
+            from pledges.models import Pledge, PledgeCampaign
+            for p in (Pledge.objects.filter(
+                    member=ben, status__in=Pledge.RECOGNISED_STATUSES,
+                    campaign__status=PledgeCampaign.Status.ACTIVE,
+                    campaign__target_department__isnull=False)
+                      .select_related("campaign", "campaign__target_department")
+                      .order_by("-start_date", "-id")):
+                fund = p.campaign.target_department
+                matchable = (p.status in (Pledge.Status.ACTIVE,
+                                          Pledge.Status.LAPSED)
+                             and p.outstanding > 0)
+                open_pledges.append({
+                    "pledge": p,
+                    "campaign": p.campaign,
+                    "fund": getattr(fund, "name", "") if fund else "",
+                    "outstanding": p.outstanding,
+                    "status": p.get_status_display(),
+                    "matchable": matchable,
+                    "is_fund_pick": False,
+                })
+        except Exception:      # noqa: BLE001
+            open_pledges = []
+
+    summary_bits = []
+    if ben is not None:
+        summary_bits.append(f"credits {ben.name}")
+    elif source == "dev_group" and dg is not None:
+        summary_bits.append(f"credits group {dg}")
+    if dept is not None:
+        summary_bits.append(f"fund {dept.name}")
+    elif source == "member":
+        summary_bits.append("Development fund not found — left for review")
+    if dg is not None and source != "dev_group":
+        summary_bits.append(f"group {dg}")
+    if source == "member" and group_rule:
+        summary_bits.append(
+            f"group from {group_rule_labels.get(group_rule, group_rule)}")
+    if camp is not None:
+        summary_bits.append(
+            f"campaign {camp.name}"
+            + (f" ({camp_group})" if camp_group else ""))
+    if pledge is not None and source == "pledge":
+        summary_bits.append(f"pledge on {pledge.campaign.name}")
+
+    member_detail = (
+        "Credits this member. Fund is always Development — never a pledge "
+        "campaign (use PG… or CM… for campaign funds). Group comes from an "
+        "active campaign sheet first, then home group, then optional history."
+    )
+    if source == "member" and group_rule:
+        member_detail += (
+            f" This reference resolved the group via "
+            f"{group_rule_labels.get(group_rule, group_rule)}."
+        )
+
+    return {
+        "hit": True,
+        "source": source,
+        "label": labels.get(source, source),
+        "summary": "; ".join(summary_bits) if summary_bits else "recognised",
+        "beneficiary": ben,
+        "pledge": pledge,
+        "department": dept,
+        "dev_group": dg,
+        "campaign": camp,
+        "campaign_group": camp_group,
+        "via_code": bool(hit.get("via_code")),
+        "group_rule": group_rule,
+        "group_rule_label": group_rule_labels.get(group_rule, group_rule),
+        "open_pledges": open_pledges,
+        "detail": {
+            "pledge": "Only that specific promise receives the gift.",
+            "member": member_detail,
+            "campaign": ("Credits this campaign-sheet row (and the register "
+                         "member when phone or name uniquely matches) and "
+                         "routes to that campaign's fund / subgroup."),
+            "dev_group": ("Routes to Development and that group. Does not "
+                          "redirect credit to another person."),
+        }.get(source, ""),
+    }
+
+
 def explain(reference, date=None, name="", phone="", order=None):
     """What EVERY source would say about one reference, and which one wins.
 
@@ -176,6 +303,10 @@ def explain(reference, date=None, name="", phone="", order=None):
     already knows where it went; what they cannot see is that two sources both
     claimed it and the order decided between them. Showing only the winner
     would reproduce exactly the blindness this page exists to remove.
+
+    Also reports match-code attribution (PG / MB / CM / DEV) when a code is
+    present — that path is separate from the ordered stages, and is how a
+    gift can credit someone other than the payer.
 
     Reads the live rules and writes nothing.
     """
@@ -233,6 +364,7 @@ def explain(reference, date=None, name="", phone="", order=None):
         # More than one source wanting the same money is the whole problem:
         # it is the case where the ORDER, and nothing else, decided the fund.
         "contested": [r for r in rows if r["claims"]][1:] if winner else [],
+        "code": _explain_code(reference),
     }
 
 
