@@ -63,6 +63,13 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
                      ("NONE", "Not depreciated")],
             initial=self.instance.asset_depr_method or "STRAIGHT", required=False)
         self.fields["asset_depr_method"].widget.attrs.update({"class": "field--select"})
+        if "mb_code_group_history_months" in self.fields:
+            self.fields["mb_code_group_history_months"].widget.attrs.update(
+                {"min": 1, "max": 24, "step": 1})
+
+    def clean_mb_code_group_history_months(self):
+        n = self.cleaned_data.get("mb_code_group_history_months") or 6
+        return max(1, min(24, int(n)))
 
 
 class UserPreferenceForm(StyledFormMixin, forms.ModelForm):

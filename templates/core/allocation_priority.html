@@ -35,7 +35,7 @@ claimed it, reorder, check again".{% endcomment %}
     <input type="hidden" name="action" value="test">
     <div class="f"><label class="lbl" for="ref">Reference on the statement</label>
       <input class="field" id="ref" name="reference" value="{{ probe_reference }}"
-             placeholder="e.g. DEVGR7, CAMP EXPENSE 3, LOAN DEV"></div>
+             placeholder="e.g. MB7K2M, PGAB12, CM9X4Q, DEVGR7"></div>
     <div class="f"><label class="lbl" for="pname">Payer name <span class="muted u-xs">(optional)</span></label>
       <input class="field" id="pname" name="name" value="{{ probe_name }}"></div>
     <div class="f"><label class="lbl" for="pphone">Phone <span class="muted u-xs">(optional)</span></label>
@@ -45,6 +45,45 @@ claimed it, reorder, check again".{% endcomment %}
 
   {% if probe %}
   <div class="u-mt">
+    {% if probe.code.hit %}
+    <div class="panel u-mb" style="border-left:3px solid var(--ink, #222)">
+      <b>Match code — {{ probe.code.label }}</b>
+      <div class="u-mt-sm">{{ probe.code.summary }}</div>
+      {% if probe.code.detail %}
+      <div class="muted u-xs u-mt-sm">{{ probe.code.detail }}</div>
+      {% endif %}
+      {% if probe.code.source == "member" and probe.code.group_rule_label %}
+      <div class="muted u-xs u-mt-sm">Group rule: <b>{{ probe.code.group_rule_label }}</b>
+        {% if probe.code.dev_group %} → {{ probe.code.dev_group }}{% endif %}.</div>
+      {% endif %}
+      {% if probe.code.open_pledges %}
+      <div class="muted u-xs u-mt">Active pledges (informational — MB… does not pick their fund;
+        matching only if the gift’s fund matches and same-fund matching is on):</div>
+      <table class="ledger compact u-mt">
+        <thead><tr>
+          <th>Campaign</th><th>Fund</th><th>Status</th><th class="num">Outstanding</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for row in probe.code.open_pledges %}
+          <tr>
+            <td>{{ row.campaign.name }}</td>
+            <td>{{ row.fund|default:"—" }}</td>
+            <td>{{ row.status }}</td>
+            <td class="num">{{ row.outstanding|money:0 }}</td>
+            <td class="muted u-xs">{% if row.matchable %}matchable if same fund{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% elif probe.code.source == "member" %}
+      <div class="muted u-xs u-mt-sm">No active pledges on an active campaign — gift credits the member
+        on Development{% if probe.code.dev_group %} (group {{ probe.code.dev_group }}){% endif %}.</div>
+      {% endif %}
+    </div>
+    {% elif probe.code.error %}
+    <div class="panel panel-amber u-mb">Match code could not be checked ({{ probe.code.error }}).</div>
+    {% endif %}
+
     {% if probe.winner %}
       <p><b>{{ probe.winner.label }}</b> claims it{% if probe.normalised %},
         reading the reference as <code>{{ probe.normalised }}</code>{% endif %}.</p>
@@ -58,8 +97,9 @@ claimed it, reorder, check again".{% endcomment %}
       </div>
       {% endif %}
     {% else %}
-      <p>Nothing claims it, so it would go to the <a class="link" href="{% url 'queue' %}">review queue</a>
-        for someone to allocate by hand.</p>
+      <p>{% if probe.code.hit %}No narration source claims a fund — the match code above is what would settle who is credited{% if probe.code.department %}, and which fund{% endif %}.
+      {% else %}Nothing claims it, so it would go to the <a class="link" href="{% url 'queue' %}">review queue</a>
+        for someone to allocate by hand.{% endif %}</p>
     {% endif %}
     <table class="ledger compact">
       <thead><tr><th>Source</th><th>Would send it to</th><th></th></tr></thead>

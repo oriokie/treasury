@@ -102,6 +102,25 @@
       </div>
     </div></div>
 
+    <div class="card u-mt"><div class="hd">Member codes (MB…)</div><div class="bd">
+      <div class="help u-mb-sm">An <span class="mono">MB…</span> code always credits the register member
+        and routes the gift to the <b>Development</b> fund — never to a pledge campaign
+        (closed or open). Use a pledge’s <span class="mono">PG…</span> code or a campaign-sheet
+        <span class="mono">CM…</span> code when the money is for a campaign fund.
+        The development <b>group</b> is taken from an active campaign sheet first, then the
+        member’s home group; history below is only a fallback when neither is set.</div>
+      <div class="form-grid">
+        {% for f in form %}{% if f.name == 'mb_code_group_history' %}
+          <div class="form-row"><div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+        {% for f in form %}{% if f.name == 'mb_code_group_history_months' %}
+          <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
+        {% endif %}{% endfor %}
+      </div>
+    </div></div>
+
     <div class="card u-mt"><div class="hd">Pledge SMS wording</div><div class="bd">
       <div class="help u-mb-sm">These are the church's own words for pledge messages. Placeholders:
         <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {church}</span>.</div>
