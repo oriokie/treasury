@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.1
+
+Automated patch release covering: Fix CI: use money filter and ship pending members match_code migration; Make MB codes Development-first with configurable group resolution.
+
 ## 3.56.0
 
 Payables fund typeahead no longer triples under Add a payable. Unassigned development offerings keep group picks across refresh, with searchable groups and one top Assign. Expense edit can open a payable if forgotten. The assistant answers cash-flow and recurring-affordability questions (e.g. next month).

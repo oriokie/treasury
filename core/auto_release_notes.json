@@ -14,5 +14,6 @@
   "3.49.5": "Automated patch release covering: fix: one consolidated fund-leader SMS/email with YTD Excel; feat: near-name matching, assign-all suggested, builder gift floor.",
   "3.49.6": "Automated patch release: feat: add detailed ledger sheets to fund-leader Excel.",
   "3.49.7": "Automated patch release: Collect giver name on personal contribution links.",
-  "3.49.8": "Automated patch release: Wire Daraja STK settings and Co-op StkGiver on the bank feed."
+  "3.49.8": "Automated patch release: Wire Daraja STK settings and Co-op StkGiver on the bank feed.",
+  "3.56.1": "Automated patch release covering: Fix CI: use money filter and ship pending members match_code migration; Make MB codes Development-first with configurable group resolution."
 }
