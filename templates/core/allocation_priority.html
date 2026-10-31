@@ -69,7 +69,7 @@ claimed it, reorder, check again".{% endcomment %}
             <td>{{ row.campaign.name }}</td>
             <td>{{ row.fund|default:"—" }}</td>
             <td>{{ row.status }}</td>
-            <td class="num">{{ row.outstanding|floatformat:0|intcomma }}</td>
+            <td class="num">{{ row.outstanding|money:0 }}</td>
             <td class="muted u-xs">{% if row.matchable %}matchable if same fund{% else %}—{% endif %}</td>
           </tr>
         {% endfor %}
