@@ -26,7 +26,7 @@
   <h1>Thank you{% if thanks.name %}, {{ thanks.name|truncatewords:1 }}{% endif %}</h1>
   {% if thanks.item %}
   <p>You pledged <strong>{{ thanks.item }}</strong>
-     {% if thanks.amount %}(KES {{ thanks.amount }}){% endif %}
+     {% if thanks.amount %}({{ CURRENCY }} {{ thanks.amount }}){% endif %}
      {% if thanks.campaign %}toward {{ thanks.campaign }}{% endif %}.</p>
   {% else %}
   <p>Your pledge is recorded.</p>
