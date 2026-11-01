@@ -1,158 +1,214 @@
 {% load treasury_extras %}<!DOCTYPE html>
 <html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>{{ campaign.name }} · Item pledges · {{ cfg.church_name }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#14201c; --muted:#5c6b64; --paper:#f3f6f4; --card:#fff;
-    --pine:#1a4d3e; --pine-2:#246b56; --ember:#c45c26; --line:#d5ddd8;
-    --ok:#1a5c40; --bad:#8a1c12;
+    --ink:#0f1c18; --muted:#5a6a63; --paper:#eef2ef; --card:#ffffff;
+    --pine:#163f33; --pine-2:#1f6b54; --sand:#f7f1e6; --ember:#b84a1f;
+    --line:#cfd8d2; --ok:#1a5c40; --bad:#8a1c12; --chip:#e3ece7;
   }
   *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
   body{
-    margin:0; color:var(--ink);
-    font-family:Outfit,system-ui,sans-serif;
+    margin:0; color:var(--ink); font-family:"DM Sans",system-ui,sans-serif;
     background:
-      radial-gradient(1200px 500px at 10% -10%, rgba(36,107,86,.18), transparent 55%),
-      radial-gradient(900px 420px at 100% 0%, rgba(196,92,38,.12), transparent 50%),
-      linear-gradient(180deg, #e8efe9 0%, var(--paper) 40%, #e4ebe6 100%);
-    min-height:100vh;
+      radial-gradient(900px 380px at 0% 0%, rgba(31,107,84,.16), transparent 55%),
+      radial-gradient(700px 320px at 100% 8%, rgba(184,74,31,.10), transparent 50%),
+      linear-gradient(180deg, #e5ede8 0%, var(--paper) 45%, #e8eeea 100%);
+    min-height:100vh; padding-bottom:7.5rem;
   }
-  .shell{max-width:720px;margin:0 auto;padding:1.4rem 1.1rem 3rem}
-  .brand{
-    font-size:.72rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
-    color:var(--pine); margin-bottom:.35rem;
-    animation:rise .5s ease both;
+  .shell{max-width:640px;margin:0 auto;padding:1.15rem 1rem 2rem}
+  .brand{font-size:.7rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--pine-2)}
+  h1{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:clamp(1.55rem,5.2vw,2.15rem);
+     line-height:1.12;margin:.35rem 0 .4rem}
+  .lede{color:var(--muted);font-size:.98rem;line-height:1.45;margin:0 0 1rem;max-width:36rem}
+  .stats{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1rem}
+  .stat{background:var(--sand);border:1px solid #e6dcc9;border-radius:999px;padding:.35rem .7rem;
+        font-size:.75rem;font-weight:600;color:var(--pine)}
+  .search-wrap{position:sticky;top:0;z-index:5;padding:.55rem 0 .7rem;
+    background:linear-gradient(180deg, rgba(238,242,239,.96) 70%, rgba(238,242,239,0))}
+  .search{
+    width:100%; padding:.85rem 1rem .85rem 2.6rem; border:1px solid var(--line);
+    border-radius:14px; font:inherit; font-size:1.02rem; background:var(--card);
+    box-shadow:0 8px 24px rgba(15,28,24,.05);
   }
-  h1{
-    font-family:Fraunces,Georgia,serif; font-weight:700; font-size:clamp(1.7rem,5vw,2.35rem);
-    line-height:1.15; margin:0 0 .45rem; color:var(--ink);
-    animation:rise .55s .05s ease both;
-  }
-  .lede{color:var(--muted); font-size:1.02rem; line-height:1.45; margin:0 0 1.4rem;
-        max-width:34rem; animation:rise .55s .1s ease both;}
-  .panel{
-    background:var(--card); border:1px solid var(--line); border-radius:18px;
-    padding:1.15rem 1.2rem 1.3rem; box-shadow:0 18px 40px rgba(20,32,28,.06);
-    animation:rise .6s .12s ease both;
-  }
-  .panel h2{font-family:Fraunces,serif;font-size:1.15rem;margin:0 0 .85rem}
-  .items{display:grid;gap:.55rem;margin:0 0 1.2rem;max-height:min(42vh,360px);overflow:auto;
-         padding-right:.2rem}
+  .search:focus{outline:2px solid rgba(31,107,84,.35); border-color:var(--pine-2)}
+  .search-ico{position:absolute;left:1.05rem;top:50%;transform:translateY(-50%);
+              color:var(--muted);pointer-events:none;font-size:1rem}
+  .search-box{position:relative}
+  .letters{display:flex;gap:.35rem;overflow-x:auto;padding:.15rem 0 .55rem;
+           -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .letters::-webkit-scrollbar{display:none}
+  .letters button{
+    flex:0 0 auto; border:1px solid var(--line); background:var(--chip); color:var(--pine);
+    border-radius:999px; padding:.4rem .65rem; font:inherit; font-size:.78rem; font-weight:700;
+    min-width:2.2rem; cursor:pointer}
+  .letters button.is-on{background:var(--pine); color:#fff; border-color:var(--pine)}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;
+         padding:1rem 1rem 1.15rem;box-shadow:0 16px 36px rgba(15,28,24,.06)}
+  .panel h2{font-family:Fraunces,serif;font-size:1.1rem;margin:0 0 .75rem}
+  .items{display:grid;gap:.55rem;margin:0}
   .item{
-    display:grid; grid-template-columns:1fr auto; gap:.35rem .8rem; align-items:center;
-    border:1px solid var(--line); border-radius:12px; padding:.7rem .85rem;
-    cursor:pointer; background:#fbfcfb; transition:border-color .15s, transform .15s, background .15s;
+    display:grid; grid-template-columns:auto 1fr auto; gap:.15rem .75rem; align-items:center;
+    border:1.5px solid var(--line); border-radius:14px; padding:.85rem .9rem;
+    cursor:pointer; background:#fbfcfb; -webkit-tap-highlight-color:transparent;
+    transition:border-color .15s, background .15s, transform .12s;
   }
-  .item:hover{border-color:#a8c0b4; transform:translateY(-1px)}
-  .item.is-on{border-color:var(--pine-2); background:#eef6f2; box-shadow:inset 0 0 0 1px var(--pine-2)}
-  .item input{accent-color:var(--pine-2)}
-  .iname{font-weight:600; font-size:.98rem}
-  .imeta{font-size:.78rem; color:var(--muted)}
+  .item:active{transform:scale(.99)}
+  .item.is-on{border-color:var(--pine-2); background:#eaf4ef;
+              box-shadow:inset 0 0 0 1px var(--pine-2)}
+  .item.is-hidden{display:none}
+  .item.done{opacity:.5; pointer-events:none}
+  .item input{width:1.15rem;height:1.15rem;accent-color:var(--pine-2);margin-top:.15rem}
+  .iname{font-weight:700;font-size:1.02rem;line-height:1.25}
+  .imeta{font-size:.78rem;color:var(--muted);margin-top:.15rem}
   .iright{text-align:right}
-  .iprice{font-weight:700; font-variant-numeric:tabular-nums}
-  .ibar{height:5px; background:#e2eae5; border-radius:3px; overflow:hidden; margin-top:.35rem; grid-column:1 / -1}
-  .ibar > i{display:block; height:100%; background:linear-gradient(90deg,var(--pine),var(--pine-2)); border-radius:3px}
-  label{display:block; font-weight:600; font-size:.82rem; margin:.85rem 0 .28rem}
-  input[type=text], input[type=tel], input[type=number]{
-    width:100%; padding:.7rem .8rem; border:1px solid var(--line); border-radius:10px;
-    font:inherit; background:#fbfcfb;
-  }
-  input:focus{outline:2px solid rgba(36,107,86,.35); border-color:var(--pine-2)}
-  .row2{display:grid; grid-template-columns:1fr 1fr; gap:.8rem}
-  @media(max-width:520px){.row2{grid-template-columns:1fr}}
-  .quote{
-    margin:1rem 0 0; padding:.9rem 1rem; border-radius:12px;
-    background:linear-gradient(135deg, #1a4d3e, #246b56); color:#f4faf7;
-    display:flex; justify-content:space-between; align-items:baseline; gap:1rem;
-    animation:pulseIn .35s ease;
-  }
-  .quote .q-l{font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; opacity:.85}
-  .quote .q-v{font-family:Fraunces,serif; font-size:1.55rem; font-weight:700}
-  .quote .q-v .cur{font-size:.65em; opacity:.8; margin-right:.15em}
-  button.cta{
-    margin-top:1.1rem; width:100%; padding:.95rem 1rem; border:0; border-radius:12px;
-    background:var(--ember); color:#fff; font:inherit; font-weight:700; font-size:1.05rem;
-    cursor:pointer; box-shadow:0 10px 24px rgba(196,92,38,.28);
-    transition:transform .12s, filter .12s;
-  }
-  button.cta:hover{filter:brightness(1.05); transform:translateY(-1px)}
-  button.cta:disabled{opacity:.55; cursor:not-allowed; transform:none; box-shadow:none}
-  .err{background:#fdecea; border:1px solid #f5c6c2; color:var(--bad);
-       padding:.65rem .85rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem}
-  .note{font-size:.78rem; color:var(--muted); margin-top:1rem; line-height:1.5}
+  .iprice{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ibar{height:5px;background:#e0e9e4;border-radius:3px;overflow:hidden;margin-top:.4rem;grid-column:2 / -1}
+  .ibar > i{display:block;height:100%;background:linear-gradient(90deg,var(--pine),var(--pine-2))}
+  .empty{text-align:center;padding:1.4rem .5rem;color:var(--muted);font-size:.95rem}
+  .err{background:#fdecea;border:1px solid #f5c6c2;color:var(--bad);
+       padding:.7rem .85rem;border-radius:12px;margin-bottom:.9rem;font-size:.9rem}
+  .note{font-size:.78rem;color:var(--muted);margin-top:.9rem;line-height:1.5}
   .hp{position:absolute;left:-9999px}
-  .done{opacity:.55}
-  .done .iname::after{content:" · covered"; font-weight:500; color:var(--ok); font-size:.8em}
-  @keyframes rise{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
-  @keyframes pulseIn{from{opacity:0; transform:scale(.98)} to{opacity:1; transform:none}}
+
+  /* Sticky pledge dock — always reachable on mobile */
+  .dock{
+    position:fixed; left:0; right:0; bottom:0; z-index:20;
+    padding: .75rem 1rem calc(.85rem + env(safe-area-inset-bottom));
+    background:rgba(255,255,255,.92); backdrop-filter:blur(10px);
+    border-top:1px solid var(--line);
+    box-shadow:0 -12px 32px rgba(15,28,24,.08);
+    transform:translateY(110%); transition:transform .22s ease;
+  }
+  .dock.is-open{transform:none}
+  .dock-inner{max-width:640px;margin:0 auto}
+  .dock-sel{font-size:.82rem;color:var(--muted);margin-bottom:.45rem}
+  .dock-sel b{color:var(--ink)}
+  .dock-row{display:grid;grid-template-columns:7.5rem 1fr;gap:.55rem;align-items:end}
+  .dock label{display:block;font-size:.72rem;font-weight:700;letter-spacing:.04em;
+              text-transform:uppercase;color:var(--muted);margin:0 0 .25rem}
+  .dock input{
+    width:100%; padding:.7rem .75rem; border:1px solid var(--line); border-radius:11px;
+    font:inherit; font-size:1.05rem; background:#fff;
+  }
+  .quote{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:.65rem .85rem; border-radius:11px;
+    background:linear-gradient(135deg, var(--pine), var(--pine-2)); color:#f4faf7;
+  }
+  .quote .q-l{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
+  .quote .q-v{font-family:Fraunces,serif;font-size:1.35rem;font-weight:700}
+  .quote .q-v .cur{font-size:.65em;opacity:.8;margin-right:.12em}
+  .details{margin-top:.65rem;display:grid;gap:.55rem}
+  .details input{
+    width:100%; padding:.75rem .8rem; border:1px solid var(--line); border-radius:11px;
+    font:inherit; font-size:1.02rem; background:#fff;
+  }
+  button.cta{
+    margin-top:.65rem; width:100%; padding:.95rem 1rem; border:0; border-radius:12px;
+    background:var(--ember); color:#fff; font:inherit; font-weight:700; font-size:1.05rem;
+    cursor:pointer; box-shadow:0 10px 22px rgba(184,74,31,.25);
+  }
+  button.cta:disabled{opacity:.45; cursor:not-allowed; box-shadow:none}
+  @media(min-width:700px){
+    .dock{position:static; transform:none; background:transparent; border:0; box-shadow:none;
+          padding:1rem 0 0; backdrop-filter:none}
+    .dock.is-open{transform:none}
+    body{padding-bottom:2rem}
+    .panel{padding-bottom:1.4rem}
+  }
 </style></head>
 <body>
 <div class="shell">
   <div class="brand">{{ cfg.church_name }}</div>
   <h1>{{ campaign.name }}</h1>
-  <p class="lede">{% if campaign.description %}{{ campaign.description }}{% else %}Choose what you can cover — rice, sugar, oil, and the rest of the camp needs. Your pledge amount updates as you type.{% endif %}</p>
+  <p class="lede">{% if campaign.description %}{{ campaign.description }}{% else %}Search for what you can cover — sugar, rice, oil and the rest. Tap an item, set how many, and confirm.{% endif %}</p>
+  {% with n=items|length %}
+  <div class="stats">
+    <span class="stat">{{ n }} item{{ n|pluralize }} listed</span>
+    {% if campaign.match_code %}<span class="stat">Campaign code {{ campaign.match_code }}</span>{% endif %}
+  </div>
+  {% endwith %}
 
-  <div class="panel">
-    <h2>Pledge an item</h2>
-    {% if error %}<div class="err">{{ error }}</div>{% endif %}
-    {% if not items %}
-      <p class="note">Every listed need is already covered. Thank you.</p>
-    {% else %}
-    <form method="post" id="itemForm" autocomplete="off">{% csrf_token %}
-      <input class="hp" name="website" tabindex="-1" autocomplete="off">
-      <div class="items" role="listbox" aria-label="Items still needed">
+  {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+  {% if not items %}
+  <div class="panel"><p class="empty">Every listed need is already covered. Thank you.</p></div>
+  {% else %}
+  <div class="search-wrap">
+    <div class="search-box">
+      <span class="search-ico" aria-hidden="true">⌕</span>
+      <input class="search" id="search" type="search" placeholder="Search items — e.g. sugar, charcoal…"
+             enterkeyhint="search" autocomplete="off">
+    </div>
+    <div class="letters" id="letters" aria-label="Jump to letter"></div>
+  </div>
+
+  <form method="post" id="itemForm" autocomplete="off">{% csrf_token %}
+    <input class="hp" name="website" tabindex="-1" autocomplete="off">
+    <div class="panel">
+      <h2>Choose an item</h2>
+      <div class="items" id="itemList" role="listbox" aria-label="Items still needed">
         {% for it in items %}
         {% with left=it.quantity_remaining %}
-        <label class="item{% if left == 0 %} done{% endif %}{% if form.item == it.id|stringformat:'s' %} is-on{% endif %}" data-id="{{ it.id }}"
-               data-price="{{ it.unit_price }}" data-left="{{ left }}" data-unit="{{ it.unit }}"
-               data-name="{{ it.name|escape }}">
+        <label class="item{% if left == 0 %} done{% endif %}{% if form.item == it.id|stringformat:'s' %} is-on{% endif %}"
+               data-id="{{ it.id }}"
+               data-name="{{ it.name|escape }}"
+               data-price="{{ it.unit_price }}"
+               data-left="{{ left }}"
+               data-unit="{{ it.unit }}"
+               data-letter="{{ it.name|slice:':1'|upper }}">
+          <input type="radio" name="item" value="{{ it.id }}" required
+            {% if form.item == it.id|stringformat:'s' %}checked{% endif %}
+            {% if left == 0 %}disabled{% endif %}>
           <div>
-            <div class="iname"><input type="radio" name="item" value="{{ it.id }}" required
-              {% if form.item == it.id|stringformat:'s' %}checked{% elif forloop.first and not form.item %}checked{% endif %}
-              {% if left == 0 %}disabled{% endif %}> {{ it.name }}</div>
+            <div class="iname">{{ it.name }}</div>
             <div class="imeta">{% if left == 0 %}Fully pledged{% else %}{{ left }} of {{ it.quantity_needed }} {{ it.unit }} left{% endif %}</div>
+            <div class="ibar"><i style="width:{{ it.pct_pledged }}%"></i></div>
           </div>
           <div class="iright">
             <div class="iprice"><span class="cur">{{ CURRENCY }}</span>{{ it.unit_price|money:0 }}</div>
             <div class="imeta">each</div>
           </div>
-          <div class="ibar"><i style="width:{{ it.pct_pledged }}%"></i></div>
         </label>
         {% endwith %}
         {% endfor %}
       </div>
+      <div class="empty is-hidden" id="noMatch">No items match that search.</div>
+      <p class="note">After you pledge we’ll text a personal <b>PG…</b> code for the M-Pesa reference.
+        {% if campaign.match_code %}You can also use campaign code <b>{{ campaign.match_code }}</b> — we match by your phone if you have more than one pledge.{% endif %}</p>
+    </div>
 
-      <div class="row2">
-        <div>
-          <label for="quantity">How many will you cover?</label>
-          <input id="quantity" name="quantity" type="number" min="0.01" step="any" required
-                 value="{{ form.quantity|default:'1' }}" inputmode="decimal">
-        </div>
-        <div>
-          <label>&nbsp;</label>
-          <div class="quote" id="quote" aria-live="polite">
-            <div><div class="q-l">Your pledge</div><div class="imeta" id="quoteMeta" style="color:#cfe3da;margin-top:.15rem"></div></div>
+    <div class="dock" id="dock">
+      <div class="dock-inner">
+        <div class="dock-sel">Selected: <b id="selName">—</b></div>
+        <div class="dock-row">
+          <div>
+            <label for="quantity">Quantity</label>
+            <input id="quantity" name="quantity" type="number" min="0.01" step="any" required
+                   value="{{ form.quantity|default:'1' }}" inputmode="decimal">
+          </div>
+          <div class="quote" aria-live="polite">
+            <div><div class="q-l">Your pledge</div></div>
             <div class="q-v"><span class="cur">{{ CURRENCY }}</span><span id="quoteAmt">0</span></div>
           </div>
         </div>
+        <div class="details">
+          <input id="name" name="name" required placeholder="Your full name" value="{{ form.name|default:'' }}">
+          <input id="phone" name="phone" inputmode="tel" required placeholder="M-PESA phone — 07XX XXX XXX"
+                 value="{{ form.phone|default:'' }}">
+        </div>
+        <button class="cta" type="submit" id="submitBtn" disabled>Confirm my pledge</button>
       </div>
-
-      <label for="name">Your full name</label>
-      <input id="name" name="name" required value="{{ form.name|default:'' }}">
-      <label for="phone">M-PESA phone number</label>
-      <input id="phone" name="phone" inputmode="tel" required placeholder="07XX XXX XXX" value="{{ form.phone|default:'' }}">
-
-      <button class="cta" type="submit" id="submitBtn">Confirm my pledge</button>
-      <p class="note">We’ll text you a personal code to put in the M-Pesa reference so your gift is matched to this promise.
-        {% if campaign.match_code %}Campaign code <strong>{{ campaign.match_code }}</strong> also works for a general gift to this appeal.{% endif %}</p>
-    </form>
-    {% endif %}
-  </div>
+    </div>
+  </form>
+  {% endif %}
 </div>
 <script>
 (function(){
@@ -160,33 +216,83 @@
   if (!form) return;
   const qty = document.getElementById('quantity');
   const amt = document.getElementById('quoteAmt');
-  const meta = document.getElementById('quoteMeta');
   const btn = document.getElementById('submitBtn');
+  const dock = document.getElementById('dock');
+  const selName = document.getElementById('selName');
+  const search = document.getElementById('search');
+  const letters = document.getElementById('letters');
+  const noMatch = document.getElementById('noMatch');
+  const items = [...document.querySelectorAll('.item:not(.done)')];
+
+  // Letter chips from available items
+  const seen = new Set();
+  items.forEach(el => {
+    const L = (el.dataset.letter || '#').toUpperCase();
+    if (seen.has(L)) return;
+    seen.add(L);
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = L; b.dataset.letter = L;
+    b.addEventListener('click', () => {
+      letters.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
+      search.value = '';
+      filterList('', L);
+      const first = document.querySelector('.item:not(.is-hidden):not(.done)');
+      if (first) first.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+    letters.appendChild(b);
+  });
+
   function selected(){
     const r = form.querySelector('input[name=item]:checked');
     return r ? r.closest('.item') : null;
   }
-  function fmt(n){
-    return Math.round(n).toLocaleString('en-KE');
-  }
+  function fmt(n){ return Math.round(n).toLocaleString('en-KE'); }
+
   function refresh(){
     const el = selected();
     document.querySelectorAll('.item').forEach(n => n.classList.toggle('is-on', n === el));
-    if (!el){ amt.textContent = '0'; meta.textContent = ''; btn.disabled = true; return; }
+    if (!el){
+      amt.textContent = '0'; selName.textContent = '—';
+      btn.disabled = true; dock.classList.remove('is-open'); return;
+    }
+    dock.classList.add('is-open');
     const price = parseFloat(el.dataset.price || '0');
     const left = parseFloat(el.dataset.left || '0');
-    let q = parseFloat(qty.value || '0');
-    if (!(q > 0)) q = 0;
+    let q = parseFloat(qty.value || '0'); if (!(q > 0)) q = 0;
     amt.textContent = fmt(q * price);
     const unit = el.dataset.unit || '';
-    meta.textContent = q > 0
-      ? (q + (unit ? ' ' + unit : '') + ' · ' + el.dataset.name)
-      : el.dataset.name;
+    selName.textContent = el.dataset.name + (q > 0 ? ` · ${q}${unit ? ' ' + unit : ''}` : '');
     btn.disabled = !(q > 0 && q <= left + 1e-9);
     qty.max = left;
   }
-  form.addEventListener('change', refresh);
+
+  function filterList(q, letter){
+    const needle = (q || '').trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll('.item').forEach(el => {
+      if (el.classList.contains('done')) { el.classList.add('is-hidden'); return; }
+      const name = (el.dataset.name || '').toLowerCase();
+      const L = (el.dataset.letter || '').toUpperCase();
+      const ok = (!needle || name.includes(needle)) && (!letter || L === letter);
+      el.classList.toggle('is-hidden', !ok);
+      if (ok) shown++;
+    });
+    noMatch.classList.toggle('is-hidden', shown > 0);
+  }
+
+  form.addEventListener('change', e => {
+    if (e.target && e.target.name === 'item') {
+      letters.querySelectorAll('button').forEach(x => x.classList.remove('is-on'));
+      refresh();
+      // On mobile, bring the dock into view after a tap.
+      setTimeout(() => dock.scrollIntoView({behavior:'smooth', block:'end'}), 50);
+    }
+  });
   qty.addEventListener('input', refresh);
+  search.addEventListener('input', () => {
+    letters.querySelectorAll('button').forEach(x => x.classList.remove('is-on'));
+    filterList(search.value, '');
+  });
   refresh();
 })();
 </script>

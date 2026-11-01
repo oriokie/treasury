@@ -122,15 +122,15 @@ class MemberMatchCodeTests(TestCase):
         self.bob_pledge.refresh_from_db()
         self.assertEqual(self.bob_pledge.paid, Decimal("0"))
 
-    def test_pledge_code_also_credits_group_and_shows_paid_by(self):
-        """PG… codes still target that pledge's campaign fund."""
+    def test_pledge_code_routes_fund_without_development_group(self):
+        """PG… on a non-Development campaign fund must not stamp a home group."""
         member, dept, dg, camp, cgrp, status, via = apply_code_to_import(
             reference=f"ROOF {self.bob_pledge.match_code}",
             member=self.alice, dept=None, dev_group=None,
             campaign=None, campaign_group="", status="REVIEW",
             Transaction=Transaction)
         self.assertEqual(member, self.bob)
-        self.assertEqual(dg, self.g3)
+        self.assertIsNone(dg)  # Roof is MINISTRY, not Development
         self.assertTrue(via)
         self.assertEqual(dept, self.roof)
 
@@ -140,13 +140,11 @@ class MemberMatchCodeTests(TestCase):
             payer_name="ALICE MMC", payer_phone="254711111001",
             reference=f"ROOF {self.bob_pledge.match_code}",
             confirmed=True, allocation_status="AUTO",
-            attributed_via_code=True, dev_group=self.g3)
+            attributed_via_code=True, dev_group=None)
         match_svc.handle_new_contribution(gift, user=self.user)
         self.assertEqual(self.bob_pledge.paid, Decimal("1500"))
-        tallies = dev_group_members(self.g3)
-        bob_row = next(r for r in tallies["rows"] if r["name"] == "BOB MMC")
-        self.assertEqual(bob_row["total"], Decimal("1500"))
-        self.assertIn("ALICE MMC", bob_row["via"])
+        # Not a development gift — group tallies stay empty.
+        self.assertEqual(dev_group_members(self.g3)["total"], Decimal("0"))
 
     def test_campaign_code_also_credits_register_member_and_group(self):
         """CM… codes, once linked to a register Member, route via the sheet."""
