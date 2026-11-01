@@ -828,6 +828,58 @@ def auto_match_all(user=None, campaign=None, allow_fuzzy=True):
         user=user)
 
 
+def _pledges_for_campaign_by_identity(txn, campaign, *, cfg, include_fulfilled,
+                                      extra_statuses, preferred_item=None,
+                                      credited_member_only=False):
+    """Open pledges on ``campaign`` that belong to the gift's person.
+
+    Used when the narration carries a campaign ``PC…`` code or an item name
+    instead of a personal ``PG…`` code. Identity is the credited member, else
+    the M-Pesa phone / name. When ``preferred_item`` is set (narration named
+    that item), those pledges are listed first so matching fills them before
+    the member's other promises on the same appeal.
+    """
+    allowed = list(_OPEN_FOR_FILL)
+    if include_fulfilled:
+        allowed.append(Pledge.Status.FULFILLED)
+    allowed.extend(extra_statuses)
+
+    qs = (Pledge.objects.filter(campaign=campaign, status__in=allowed)
+          .select_related("member", "campaign", "item"))
+    member = txn.member
+    # When a treasurer has already credited a register member, only that
+    # member's pledges qualify — payer phone must not pull in someone else.
+    out = []
+    window = cfg.pledge_match_window_days or 400
+    same_fund_only = cfg.pledge_match_same_fund_only
+    fund_ids = campaign_fund_ids(campaign) if same_fund_only else None
+    for p in qs:
+        if p.outstanding <= 0 and not include_fulfilled:
+            continue
+        start = p.start_date - dt.timedelta(days=7)
+        end = (p.end_date or dt.date.today()) + dt.timedelta(days=window)
+        if not (start <= txn.date <= end):
+            continue
+        if same_fund_only and not _gift_is_for_campaign(txn, fund_ids):
+            continue
+        identity = _pledge_identity(p)
+        if credited_member_only:
+            if member is not None and member.pk in identity["member_ids"]:
+                out.append(p)
+            continue
+        if member is not None and member.pk in identity["member_ids"]:
+            out.append(p)
+            continue
+        # Exact identity only (phone / name) — fuzzy stays on the general path.
+        if _gift_is_from_pledgor(txn, identity, threshold=0.0) == "exact":
+            out.append(p)
+    if preferred_item is not None and out:
+        pref = [p for p in out if p.item_id == preferred_item.pk]
+        rest = [p for p in out if p.item_id != preferred_item.pk]
+        out = pref + rest
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Inline matching hook (Phase 2) — called when a new contribution is created.
 # Behaviour is parameterised by SiteConfig.pledge_match_mode:
@@ -863,7 +915,10 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
         return []
 
     # --- Code wins over identity -------------------------------------------
-    from pledges.services.codes import find_member_by_code, find_pledge_by_code
+    from pledges.services.codes import (
+        find_campaign_item_by_reference, find_member_by_code,
+        find_pledge_by_code, find_pledge_campaign_by_code,
+    )
     coded = find_pledge_by_code(txn.reference or "")
     if coded is None:
         # Member-level code: any recognised open pledge of that member.
@@ -900,6 +955,24 @@ def active_pledges_for_contribution(txn, cfg=None, include_fulfilled=False,
                         continue
                 out.append(p)
             return out
+
+        # Campaign PC… code, or an item name in the narration: fill this
+        # member's open pledges on that campaign (phone / credited member).
+        # Several item pledges for the same person are filled largest-first
+        # by handle_new_contribution.
+        pcamp = find_pledge_campaign_by_code(txn.reference or "")
+        item_hit = None
+        if pcamp is None:
+            item_hit = find_campaign_item_by_reference(txn.reference or "")
+            if item_hit is not None:
+                pcamp = item_hit.campaign
+        if pcamp is not None:
+            return _pledges_for_campaign_by_identity(
+                txn, pcamp, cfg=cfg,
+                include_fulfilled=include_fulfilled,
+                extra_statuses=extra_statuses,
+                preferred_item=item_hit,
+                credited_member_only=credited_member_only)
 
     if coded is not None:
         allowed = list(_OPEN_FOR_FILL)
