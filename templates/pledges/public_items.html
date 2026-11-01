@@ -1,0 +1,193 @@
+{% load treasury_extras %}<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{{ campaign.name }} · Item pledges · {{ cfg.church_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14201c; --muted:#5c6b64; --paper:#f3f6f4; --card:#fff;
+    --pine:#1a4d3e; --pine-2:#246b56; --ember:#c45c26; --line:#d5ddd8;
+    --ok:#1a5c40; --bad:#8a1c12;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; color:var(--ink);
+    font-family:Outfit,system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 500px at 10% -10%, rgba(36,107,86,.18), transparent 55%),
+      radial-gradient(900px 420px at 100% 0%, rgba(196,92,38,.12), transparent 50%),
+      linear-gradient(180deg, #e8efe9 0%, var(--paper) 40%, #e4ebe6 100%);
+    min-height:100vh;
+  }
+  .shell{max-width:720px;margin:0 auto;padding:1.4rem 1.1rem 3rem}
+  .brand{
+    font-size:.72rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--pine); margin-bottom:.35rem;
+    animation:rise .5s ease both;
+  }
+  h1{
+    font-family:Fraunces,Georgia,serif; font-weight:700; font-size:clamp(1.7rem,5vw,2.35rem);
+    line-height:1.15; margin:0 0 .45rem; color:var(--ink);
+    animation:rise .55s .05s ease both;
+  }
+  .lede{color:var(--muted); font-size:1.02rem; line-height:1.45; margin:0 0 1.4rem;
+        max-width:34rem; animation:rise .55s .1s ease both;}
+  .panel{
+    background:var(--card); border:1px solid var(--line); border-radius:18px;
+    padding:1.15rem 1.2rem 1.3rem; box-shadow:0 18px 40px rgba(20,32,28,.06);
+    animation:rise .6s .12s ease both;
+  }
+  .panel h2{font-family:Fraunces,serif;font-size:1.15rem;margin:0 0 .85rem}
+  .items{display:grid;gap:.55rem;margin:0 0 1.2rem;max-height:min(42vh,360px);overflow:auto;
+         padding-right:.2rem}
+  .item{
+    display:grid; grid-template-columns:1fr auto; gap:.35rem .8rem; align-items:center;
+    border:1px solid var(--line); border-radius:12px; padding:.7rem .85rem;
+    cursor:pointer; background:#fbfcfb; transition:border-color .15s, transform .15s, background .15s;
+  }
+  .item:hover{border-color:#a8c0b4; transform:translateY(-1px)}
+  .item.is-on{border-color:var(--pine-2); background:#eef6f2; box-shadow:inset 0 0 0 1px var(--pine-2)}
+  .item input{accent-color:var(--pine-2)}
+  .iname{font-weight:600; font-size:.98rem}
+  .imeta{font-size:.78rem; color:var(--muted)}
+  .iright{text-align:right}
+  .iprice{font-weight:700; font-variant-numeric:tabular-nums}
+  .ibar{height:5px; background:#e2eae5; border-radius:3px; overflow:hidden; margin-top:.35rem; grid-column:1 / -1}
+  .ibar > i{display:block; height:100%; background:linear-gradient(90deg,var(--pine),var(--pine-2)); border-radius:3px}
+  label{display:block; font-weight:600; font-size:.82rem; margin:.85rem 0 .28rem}
+  input[type=text], input[type=tel], input[type=number]{
+    width:100%; padding:.7rem .8rem; border:1px solid var(--line); border-radius:10px;
+    font:inherit; background:#fbfcfb;
+  }
+  input:focus{outline:2px solid rgba(36,107,86,.35); border-color:var(--pine-2)}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:.8rem}
+  @media(max-width:520px){.row2{grid-template-columns:1fr}}
+  .quote{
+    margin:1rem 0 0; padding:.9rem 1rem; border-radius:12px;
+    background:linear-gradient(135deg, #1a4d3e, #246b56); color:#f4faf7;
+    display:flex; justify-content:space-between; align-items:baseline; gap:1rem;
+    animation:pulseIn .35s ease;
+  }
+  .quote .q-l{font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; opacity:.85}
+  .quote .q-v{font-family:Fraunces,serif; font-size:1.55rem; font-weight:700}
+  .quote .q-v .cur{font-size:.65em; opacity:.8; margin-right:.15em}
+  button.cta{
+    margin-top:1.1rem; width:100%; padding:.95rem 1rem; border:0; border-radius:12px;
+    background:var(--ember); color:#fff; font:inherit; font-weight:700; font-size:1.05rem;
+    cursor:pointer; box-shadow:0 10px 24px rgba(196,92,38,.28);
+    transition:transform .12s, filter .12s;
+  }
+  button.cta:hover{filter:brightness(1.05); transform:translateY(-1px)}
+  button.cta:disabled{opacity:.55; cursor:not-allowed; transform:none; box-shadow:none}
+  .err{background:#fdecea; border:1px solid #f5c6c2; color:var(--bad);
+       padding:.65rem .85rem; border-radius:10px; margin-bottom:1rem; font-size:.9rem}
+  .note{font-size:.78rem; color:var(--muted); margin-top:1rem; line-height:1.5}
+  .hp{position:absolute;left:-9999px}
+  .done{opacity:.55}
+  .done .iname::after{content:" · covered"; font-weight:500; color:var(--ok); font-size:.8em}
+  @keyframes rise{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+  @keyframes pulseIn{from{opacity:0; transform:scale(.98)} to{opacity:1; transform:none}}
+</style></head>
+<body>
+<div class="shell">
+  <div class="brand">{{ cfg.church_name }}</div>
+  <h1>{{ campaign.name }}</h1>
+  <p class="lede">{% if campaign.description %}{{ campaign.description }}{% else %}Choose what you can cover — rice, sugar, oil, and the rest of the camp needs. Your pledge amount updates as you type.{% endif %}</p>
+
+  <div class="panel">
+    <h2>Pledge an item</h2>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    {% if not items %}
+      <p class="note">Every listed need is already covered. Thank you.</p>
+    {% else %}
+    <form method="post" id="itemForm" autocomplete="off">{% csrf_token %}
+      <input class="hp" name="website" tabindex="-1" autocomplete="off">
+      <div class="items" role="listbox" aria-label="Items still needed">
+        {% for it in items %}
+        {% with left=it.quantity_remaining %}
+        <label class="item{% if left == 0 %} done{% endif %}{% if form.item == it.id|stringformat:'s' %} is-on{% endif %}" data-id="{{ it.id }}"
+               data-price="{{ it.unit_price }}" data-left="{{ left }}" data-unit="{{ it.unit }}"
+               data-name="{{ it.name|escape }}">
+          <div>
+            <div class="iname"><input type="radio" name="item" value="{{ it.id }}" required
+              {% if form.item == it.id|stringformat:'s' %}checked{% elif forloop.first and not form.item %}checked{% endif %}
+              {% if left == 0 %}disabled{% endif %}> {{ it.name }}</div>
+            <div class="imeta">{% if left == 0 %}Fully pledged{% else %}{{ left }} of {{ it.quantity_needed }} {{ it.unit }} left{% endif %}</div>
+          </div>
+          <div class="iright">
+            <div class="iprice"><span class="cur">{{ CURRENCY }}</span>{{ it.unit_price|money:0 }}</div>
+            <div class="imeta">each</div>
+          </div>
+          <div class="ibar"><i style="width:{{ it.pct_pledged }}%"></i></div>
+        </label>
+        {% endwith %}
+        {% endfor %}
+      </div>
+
+      <div class="row2">
+        <div>
+          <label for="quantity">How many will you cover?</label>
+          <input id="quantity" name="quantity" type="number" min="0.01" step="any" required
+                 value="{{ form.quantity|default:'1' }}" inputmode="decimal">
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <div class="quote" id="quote" aria-live="polite">
+            <div><div class="q-l">Your pledge</div><div class="imeta" id="quoteMeta" style="color:#cfe3da;margin-top:.15rem"></div></div>
+            <div class="q-v"><span class="cur">{{ CURRENCY }}</span><span id="quoteAmt">0</span></div>
+          </div>
+        </div>
+      </div>
+
+      <label for="name">Your full name</label>
+      <input id="name" name="name" required value="{{ form.name|default:'' }}">
+      <label for="phone">M-PESA phone number</label>
+      <input id="phone" name="phone" inputmode="tel" required placeholder="07XX XXX XXX" value="{{ form.phone|default:'' }}">
+
+      <button class="cta" type="submit" id="submitBtn">Confirm my pledge</button>
+      <p class="note">We’ll text you a personal code to put in the M-Pesa reference so your gift is matched to this promise.
+        {% if campaign.match_code %}Campaign code <strong>{{ campaign.match_code }}</strong> also works for a general gift to this appeal.{% endif %}</p>
+    </form>
+    {% endif %}
+  </div>
+</div>
+<script>
+(function(){
+  const form = document.getElementById('itemForm');
+  if (!form) return;
+  const qty = document.getElementById('quantity');
+  const amt = document.getElementById('quoteAmt');
+  const meta = document.getElementById('quoteMeta');
+  const btn = document.getElementById('submitBtn');
+  function selected(){
+    const r = form.querySelector('input[name=item]:checked');
+    return r ? r.closest('.item') : null;
+  }
+  function fmt(n){
+    return Math.round(n).toLocaleString('en-KE');
+  }
+  function refresh(){
+    const el = selected();
+    document.querySelectorAll('.item').forEach(n => n.classList.toggle('is-on', n === el));
+    if (!el){ amt.textContent = '0'; meta.textContent = ''; btn.disabled = true; return; }
+    const price = parseFloat(el.dataset.price || '0');
+    const left = parseFloat(el.dataset.left || '0');
+    let q = parseFloat(qty.value || '0');
+    if (!(q > 0)) q = 0;
+    amt.textContent = fmt(q * price);
+    const unit = el.dataset.unit || '';
+    meta.textContent = q > 0
+      ? (q + (unit ? ' ' + unit : '') + ' · ' + el.dataset.name)
+      : el.dataset.name;
+    btn.disabled = !(q > 0 && q <= left + 1e-9);
+    qty.max = left;
+  }
+  form.addEventListener('change', refresh);
+  qty.addEventListener('input', refresh);
+  refresh();
+})();
+</script>
+</body></html>

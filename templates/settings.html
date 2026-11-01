@@ -123,7 +123,9 @@
 
     <div class="card u-mt"><div class="hd">Pledge SMS wording</div><div class="bd">
       <div class="help u-mb-sm">These are the church's own words for pledge messages. Placeholders:
-        <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {church}</span>.</div>
+        <span class="mono">{name} {amount} {campaign} {paid} {outstanding} {due} {code} {item} {church}</span>.
+        <span class="mono">{code}</span> is the pledge’s PG… match code for M-Pesa;
+        <span class="mono">{item}</span> names an itemised quantity when relevant.</div>
       <div class="form-grid">
         {% for f in form %}{% if f.name in 'pledge_thanks_template pledge_reminder_template pledge_fulfilled_template' %}
           <div class="form-row"><label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}

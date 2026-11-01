@@ -7,6 +7,7 @@ Never raises; respects the member's opt-out and the global channel switches.
 When a member has several pledges, the batch send aggregates them into one
 message so nobody is texted twice for the same appeal cycle.
 """
+import re
 from decimal import Decimal
 
 from core.models import SiteConfig
@@ -18,15 +19,16 @@ from pledges.models import PledgeReminderLog
 #: What a pledge message may say about itself. Kept in one place so the
 #: settings help, the preview and the renderer cannot drift apart.
 PLACEHOLDERS = ("name", "amount", "campaign", "church", "paid", "outstanding",
-                "due")
+                "due", "code", "item")
 
 DEFAULTS = {
     "REMINDER": ("Dear {name}, thank you for your pledge of KES {amount} to "
                  "{campaign}. So far KES {paid} received; KES {outstanding} "
-                 "outstanding. May God bless your faithfulness. - {church}"),
+                 "outstanding. Put {code} in the M-Pesa reference when you "
+                 "give. May God bless your faithfulness. - {church}"),
     "THANKS": ("Dear {name}, thank you for pledging KES {amount} to "
-               "{campaign}. Your promise is recorded. God bless you. "
-               "- {church}"),
+               "{campaign}{item}. Your code is {code} — put it in the M-Pesa "
+               "reference when you pay. God bless you. - {church}"),
     "FULFILLED": ("Dear {name}, thank you — your pledge of KES {amount} to "
                   "{campaign} is fully paid. May God bless your faithfulness. "
                   "- {church}"),
@@ -36,6 +38,14 @@ DEFAULTS = {
 def message_context(pledge, cfg=None):
     """The values a pledge message may draw on."""
     cfg = cfg or SiteConfig.get()
+    item_bit = ""
+    if getattr(pledge, "item_id", None) and pledge.item_quantity:
+        unit = (pledge.item.unit or "").strip()
+        qty = pledge.item_quantity
+        qty_s = format(qty.normalize(), "f").rstrip("0").rstrip(".")
+        label = f"{qty_s} {unit} {pledge.item.name}".strip()
+        label = re.sub(r"\s+", " ", label)
+        item_bit = f" ({label})"
     return {
         "name": sms_first_name(pledge.member.name) or "Friend",
         "amount": f"{pledge.amount:,.0f}",
@@ -44,6 +54,8 @@ def message_context(pledge, cfg=None):
         "paid": f"{pledge.paid:,.0f}",
         "outstanding": f"{pledge.outstanding:,.0f}",
         "due": pledge.end_date.strftime("%d %b %Y") if pledge.end_date else "",
+        "code": pledge.match_code or "",
+        "item": item_bit,
     }
 
 
@@ -67,6 +79,7 @@ def message_context_for_pledges(pledges, cfg=None):
     for p in pledges:
         bal = p.outstanding if p.outstanding > 0 else p.amount
         parts.append(f"{p.campaign.name} (KES {bal:,.0f})")
+    codes = [p.match_code for p in pledges if p.match_code]
     return {
         "name": sms_first_name(pledges[0].member.name) or "Friend",
         "amount": f"{total_amount:,.0f}",
@@ -75,6 +88,8 @@ def message_context_for_pledges(pledges, cfg=None):
         "paid": f"{total_paid:,.0f}",
         "outstanding": f"{total_out:,.0f}",
         "due": min(dues).strftime("%d %b %Y") if dues else "",
+        "code": ", ".join(codes) if codes else "",
+        "item": "",
     }
 
 
@@ -224,7 +239,8 @@ def maybe_send_submit_thanks(pledge_id):
             return None
         if not cfg.sms_enabled:
             return None
-        pledge = (Pledge.objects.select_related("member", "campaign")
+        pledge = (Pledge.objects
+                  .select_related("member", "campaign", "item")
                   .filter(pk=pledge_id).first())
         if not pledge:
             return None

@@ -29,6 +29,8 @@ urlpatterns = [
     path("pledges/campaigns/new/", views.CampaignCreateView.as_view(), name="pledge_campaign_create"),
     path("pledges/campaigns/<int:pk>/", views.CampaignDetailView.as_view(), name="pledge_campaign_detail"),
     path("pledges/campaigns/<int:pk>/import/", views.PledgeImportView.as_view(), name="pledge_campaign_import"),
+    path("pledges/campaigns/<int:pk>/items/", views.CampaignItemsView.as_view(),
+         name="pledge_campaign_items"),
     path("pledges/campaigns/<int:pk>/edit/", views.CampaignCreateView.as_view(), name="pledge_campaign_edit"),
     path("pledges/campaigns/<int:pk>/delete/", views.CampaignDeleteView.as_view(), name="pledge_campaign_delete"),
     # reports
@@ -44,4 +46,10 @@ urlpatterns = [
     path("pledge/<int:pk>/", views.PublicPledgeView.as_view(),
          name="public_pledge_campaign"),
     path("pledge/thanks/", views.PublicPledgeThanksView.as_view(), name="public_pledge_thanks"),
+    # Itemised needs — shareable link (token, not campaign id)
+    path("pledge/items/<str:token>/", views.PublicItemPledgeView.as_view(),
+         name="public_item_pledge"),
+    path("pledge/items/<str:token>/thanks/",
+         views.PublicItemPledgeThanksView.as_view(),
+         name="public_item_pledge_thanks"),
 ]

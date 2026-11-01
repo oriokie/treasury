@@ -12,8 +12,8 @@ from django.views.generic import ListView, TemplateView
 
 from core.permissions import (ReadAccessMixin, DataEntryRequiredMixin,
                               TreasurerRequiredMixin)
-from .models import (PledgeCampaign, Pledge, PledgePayment, PledgeReminderLog,
-                     PledgeMatchAlias)
+from .models import (PledgeCampaign, Pledge, PledgeCampaignItem, PledgePayment,
+                     PledgeReminderLog, PledgeMatchAlias)
 from .forms import CampaignForm, PledgeForm
 from .services import matching as match_svc
 from .services import reminders as rem_svc
@@ -98,6 +98,10 @@ class CampaignDetailView(ReadAccessMixin, TemplateView):
             status=Pledge.Status.DRAFT).count()
         ctx["fulfilled"] = sum(1 for p in pledges if p.status == Pledge.Status.FULFILLED)
         ctx["lapsed"] = sum(1 for p in pledges if p.status == Pledge.Status.LAPSED)
+        items = list(c.items.filter(active=True))
+        ctx["campaign_items"] = items
+        ctx["items_goal_value"] = sum((i.value_needed for i in items), Decimal("0"))
+        ctx["items_pledged_value"] = sum((i.value_pledged for i in items), Decimal("0"))
         return ctx
 
 
@@ -1606,3 +1610,265 @@ class CampaignDeleteView(TreasurerRequiredMixin, View):
         camp.delete()
         messages.success(request, f"Campaign “{name}” deleted.")
         return redirect("pledge_campaign_list")
+
+
+# ===========================================================================
+# Itemised campaign needs (Camporee-style budgets)
+# ===========================================================================
+class CampaignItemsView(TreasurerRequiredMixin, View):
+    """Manage the item list, import a spreadsheet, and publish the share link."""
+    template_name = "pledges/campaign_items.html"
+
+    def get(self, request, pk):
+        camp = get_object_or_404(PledgeCampaign, pk=pk)
+        items = list(camp.items.filter(active=True))
+        return render(request, self.template_name, {
+            "campaign": camp,
+            "items": items,
+            "items_goal_value": sum((i.value_needed for i in items), Decimal("0")),
+            "items_pledged_value": sum((i.value_pledged for i in items), Decimal("0")),
+        })
+
+    def post(self, request, pk):
+        camp = get_object_or_404(PledgeCampaign, pk=pk)
+        action = (request.POST.get("action") or "").strip()
+
+        if action == "enable_public":
+            camp.items_public_enabled = True
+            camp.ensure_items_share_token(save=False)
+            camp.ensure_match_code(save=False)
+            camp.save(update_fields=[
+                "items_public_enabled", "items_share_token", "match_code"])
+            messages.success(request, "Item pledge link is live — share it.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "disable_public":
+            camp.items_public_enabled = False
+            camp.save(update_fields=["items_public_enabled"])
+            messages.success(request, "Item pledge link turned off.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "rotate_token":
+            camp.ensure_items_share_token(save=True, rotate=True)
+            messages.success(request, "Share link rotated — old links no longer work.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "add":
+            name = (request.POST.get("name") or "").strip()[:160]
+            unit = (request.POST.get("unit") or "").strip()[:40]
+            try:
+                qty = Decimal((request.POST.get("quantity") or "").replace(",", ""))
+                price = Decimal((request.POST.get("unit_price") or "").replace(",", ""))
+            except (InvalidOperation, AttributeError):
+                messages.error(request, "Enter a valid quantity and unit price.")
+                return redirect("pledge_campaign_items", pk=pk)
+            if not name or qty <= 0 or price < 0:
+                messages.error(request, "Name, quantity and unit price are required.")
+                return redirect("pledge_campaign_items", pk=pk)
+            order = (camp.items.order_by("-sort_order")
+                     .values_list("sort_order", flat=True).first() or 0) + 10
+            PledgeCampaignItem.objects.create(
+                campaign=camp, name=name, unit=unit,
+                quantity_needed=qty, unit_price=price, sort_order=order)
+            messages.success(request, f"Added “{name}”.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "deactivate":
+            item = get_object_or_404(PledgeCampaignItem, pk=request.POST.get("item_id"),
+                                    campaign=camp)
+            item.active = False
+            item.save(update_fields=["active"])
+            messages.success(request, f"“{item.name}” removed from the public list.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "import":
+            f = request.FILES.get("file")
+            if not f:
+                messages.error(request, "Choose a CSV or Excel file to import.")
+                return redirect("pledge_campaign_items", pk=pk)
+            from pledges.services.items import parse_items_file, replace_campaign_items
+            rows, err = parse_items_file(f)
+            if err:
+                messages.error(request, err)
+                return redirect("pledge_campaign_items", pk=pk)
+            created, deactivated = replace_campaign_items(camp, rows)
+            messages.success(
+                request,
+                f"Imported {created} item(s)"
+                + (f"; {deactivated} previous line(s) with pledges were kept inactive"
+                   if deactivated else "")
+                + ".")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        messages.error(request, "Unknown action.")
+        return redirect("pledge_campaign_items", pk=pk)
+
+
+@method_decorator(csrf_protect, name="dispatch")
+@method_decorator(login_not_required, name="dispatch")
+class PublicItemPledgeView(View):
+    """Shareable page: pick an item, quantity, see the KES pledge, submit."""
+    template_name = "pledges/public_items.html"
+    thanks_template = "pledges/public_items_thanks.html"
+    MIN_SECONDS = 2
+
+    def _campaign(self, token):
+        return (PledgeCampaign.objects
+                .filter(items_share_token=token,
+                        items_public_enabled=True,
+                        status=PledgeCampaign.Status.ACTIVE)
+                .first())
+
+    def _items(self, campaign):
+        items = list(campaign.items.filter(active=True).order_by("sort_order", "id"))
+        # Annotate remaining for the template / JSON payload.
+        for it in items:
+            it.remaining = it.quantity_remaining
+            it.pledged_qty = it.quantity_pledged()
+        return [it for it in items if it.remaining > 0 or it.quantity_needed > 0]
+
+    def get(self, request, token):
+        from core.models import SiteConfig
+        camp = self._campaign(token)
+        if camp is None:
+            return render(request, "pledges/public_disabled.html", status=404)
+        request.session["item_pledge_form_ts"] = time.time()
+        items = self._items(camp)
+        return render(request, self.template_name, {
+            "campaign": camp,
+            "items": items,
+            "cfg": SiteConfig.get(),
+            "token": token,
+        })
+
+    def post(self, request, token):
+        from core.models import SiteConfig
+        from members.models import Member
+        from members.services.matching import name_key, normalize_phone
+        from pledges.services.items import pledge_amount_for, remaining_allows
+
+        cfg = SiteConfig.get()
+        camp = self._campaign(token)
+        if camp is None:
+            return render(request, "pledges/public_disabled.html", status=404)
+        items = self._items(camp)
+
+        def fail(msg):
+            return render(request, self.template_name, {
+                "campaign": camp, "items": items, "cfg": cfg, "token": token,
+                "error": msg, "form": request.POST,
+            })
+
+        if (request.POST.get("website") or "").strip():
+            return redirect("public_item_pledge_thanks", token=token)
+        ts = request.session.get("item_pledge_form_ts")
+        if ts and (time.time() - ts) < self.MIN_SECONDS:
+            return fail("Please take a moment to review your details and try again.")
+        n = request.session.get("item_pledge_submits", 0)
+        if n >= 5:
+            return fail("Thank you — we already received several pledges from "
+                        "this session. Contact the organiser for changes.")
+
+        name = (request.POST.get("name") or "").strip()
+        phone = (request.POST.get("phone") or "").strip()
+        item_id = request.POST.get("item")
+        qty_raw = (request.POST.get("quantity") or "").strip()
+
+        if not name or len(name) < 3:
+            return fail("Please enter your full name.")
+        ph = normalize_phone(phone)
+        if not ph:
+            return fail("Please enter a valid M-PESA phone number.")
+        item = next((i for i in items if str(i.pk) == str(item_id)), None)
+        if item is None:
+            return fail("Please choose an item from the list.")
+        try:
+            qty = Decimal(qty_raw.replace(",", ""))
+        except (InvalidOperation, AttributeError):
+            return fail("Please enter how many you will cover.")
+        if qty <= 0:
+            return fail("Quantity must be greater than zero.")
+        if not remaining_allows(item, qty):
+            left = item.quantity_remaining
+            return fail(
+                f"Only {left.normalize()} {item.unit or 'left'} of "
+                f"{item.name} still needed.".replace("  ", " "))
+
+        amount = pledge_amount_for(item, qty)
+        if amount <= 0:
+            return fail("That item has no unit price set yet.")
+
+        member = Member.objects.filter(phone=ph).first()
+        if not member:
+            matches = Member.objects.filter(name_key=name_key(name))[:2]
+            if len(matches) == 1:
+                member = matches[0]
+        if not member:
+            member = Member.objects.create(
+                name=name, phone=ph,
+                source=Member.Source.AUTO_BANK, active=False)
+        elif not member.phone:
+            member.phone = ph
+            member.save(update_fields=["phone"])
+
+        auto_accept = (cfg.pledge_public_submit_mode
+                       == SiteConfig.PledgePublicSubmitMode.ACTIVE)
+        status = (Pledge.Status.ACTIVE if auto_accept else Pledge.Status.DRAFT)
+        unit = (item.unit or "").strip()
+        qty_s = format(qty.normalize(), "f").rstrip("0").rstrip(".")
+        note = f"{qty_s} {unit} {item.name}".strip()[:200]
+
+        pledge = Pledge.objects.create(
+            campaign=camp, member=member, amount=amount,
+            item=item, item_quantity=qty,
+            frequency=Pledge.Frequency.ONE_OFF,
+            start_date=dt.date.today(), status=status,
+            self_submitted=True,
+            submitted_contact=f"{name} / {phone}"[:120],
+            note=note,
+            approved_at=timezone.now() if auto_accept else None)
+
+        request.session["item_pledge_submits"] = n + 1
+        request.session["item_pledge_thanks"] = {
+            "name": name,
+            "amount": f"{amount:,.0f}",
+            "item": note,
+            "code": pledge.match_code or "",
+            "campaign_code": camp.match_code or "",
+            "campaign": camp.name,
+            "accepted": auto_accept,
+        }
+
+        try:
+            from django.db import transaction
+            from pledges.services.reminders import maybe_send_submit_thanks
+            pledge_id = pledge.pk
+            transaction.on_commit(lambda: maybe_send_submit_thanks(pledge_id))
+        except Exception:
+            from core.utils import log_exception as _lx; _lx('pledges/views.py')
+
+        try:
+            from core.services.notifications import notify
+            notify("pledge",
+                   f"Item pledge: {name} — {note} (KES {amount:,.0f}) "
+                   f"for {camp.name}.",
+                   link=f"/pledges/{pledge.pk}/")
+        except Exception:
+            from core.utils import log_exception as _lx; _lx('pledges/views.py')
+
+        return redirect("public_item_pledge_thanks", token=token)
+
+
+@method_decorator(login_not_required, name="dispatch")
+class PublicItemPledgeThanksView(View):
+    def get(self, request, token):
+        from core.models import SiteConfig
+        data = request.session.pop("item_pledge_thanks", None) or {}
+        camp = (PledgeCampaign.objects
+                .filter(items_share_token=token).first())
+        return render(request, "pledges/public_items_thanks.html", {
+            "cfg": SiteConfig.get(),
+            "campaign": camp,
+            "thanks": data,
+            "token": token,
+        })
