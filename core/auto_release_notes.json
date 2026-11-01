@@ -16,5 +16,6 @@
   "3.49.7": "Automated patch release: Collect giver name on personal contribution links.",
   "3.49.8": "Automated patch release: Wire Daraja STK settings and Co-op StkGiver on the bank feed.",
   "3.56.1": "Automated patch release covering: Fix CI: use money filter and ship pending members match_code migration; Make MB codes Development-first with configurable group resolution.",
-  "3.56.2": "Automated patch release covering: Fix hardcoded KES on item-pledge thanks page; Add itemised campaign pledges with public share link and import."
+  "3.56.2": "Automated patch release covering: Fix hardcoded KES on item-pledge thanks page; Add itemised campaign pledges with public share link and import.",
+  "3.56.3": "Automated patch release: Improve item pledges: fund-scoped groups, mobile UX, offline entry, smarter matching."
 }

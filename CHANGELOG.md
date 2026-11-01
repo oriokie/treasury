@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.3
+
+Automated patch release: Improve item pledges: fund-scoped groups, mobile UX, offline entry, smarter matching.
+
 ## 3.56.2
 
 Automated patch release covering: Fix hardcoded KES on item-pledge thanks page; Add itemised campaign pledges with public share link and import.
