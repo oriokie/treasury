@@ -8,11 +8,12 @@ text or separators (``FOR MB7K2M``, ``MB-7K2M``, ``gift/MB7K2M``) all work.
 
 Priority (longest match within each class; classes in this order):
   1. Pledge-specific ``PG…`` code → that pledge + its member
-  2. Member ``MB…`` code → that register member + Development fund + group
+  2. Pledge-campaign ``PC…`` code → that appeal's target fund (general gift)
+  3. Member ``MB…`` code → that register member + Development fund + group
      (group: active campaign sheet → home → optional history; never a
-     closed/inactive campaign's fund — use PG… / CM… for campaign funds)
-  3. Campaign-member ``CM…`` code → campaign sheet person + group
-  4. Development-group ``DEV…`` code → Development fund + that group
+     closed/inactive campaign's fund — use PG… / CM… / PC… for campaign funds)
+  4. Campaign-member ``CM…`` code → campaign sheet person + group
+  5. Development-group ``DEV…`` code → Development fund + that group
 """
 import datetime as dt
 import re
@@ -64,6 +65,21 @@ def find_pledge_by_code(reference):
                          "member__dev_group")
     )
     return _first_code_hit(s, pledges)
+
+
+def find_pledge_campaign_by_code(reference):
+    """Return the ACTIVE PledgeCampaign whose ``PC…`` match_code is in the ref."""
+    from pledges.models import PledgeCampaign
+    s = codes_in_reference(reference)
+    if not s:
+        return None
+    camps = list(
+        PledgeCampaign.objects.filter(
+            status=PledgeCampaign.Status.ACTIVE,
+            match_code__gt="",
+        ).select_related("target_department")
+    )
+    return _first_code_hit(s, camps)
 
 
 def find_member_by_code(reference):
@@ -345,7 +361,25 @@ def resolve_code_attribution(reference, payer_member=None):
             "source": "pledge",
         }
 
-    # 2. Register member code — always Development fund; group via cascade.
+    # 2. Campaign-level PC… code — general gift to that appeal's fund.
+    pcamp = find_pledge_campaign_by_code(reference)
+    if pcamp is not None:
+        dept = getattr(pcamp, "target_department", None)
+        if dept is None:
+            dept = _development_fund()
+        return {
+            "beneficiary": payer_member,
+            "pledge": None,
+            "department": dept,
+            "dev_group": resolve_dev_group_for_beneficiary(payer_member),
+            "campaign": None,
+            "campaign_group": "",
+            "via_code": False,
+            "source": "pledge_campaign",
+            "pledge_campaign": pcamp,
+        }
+
+    # 3. Register member code — always Development fund; group via cascade.
     # Closed / any pledge campaign is never used to pick the fund (use PG…).
     member = find_member_by_code(reference)
     if member is not None:
@@ -362,7 +396,7 @@ def resolve_code_attribution(reference, payer_member=None):
             "group_rule": grp["group_rule"],
         }
 
-    # 3. Campaign sheet code
+    # 4. Campaign sheet code
     camp, cm = find_campaign_member_by_code(reference)
     if camp is not None and cm is not None:
         from departments.models import Department
@@ -388,7 +422,7 @@ def resolve_code_attribution(reference, payer_member=None):
             "source": "campaign",
         }
 
-    # 4. Development-group code (group-only; no person redirect)
+    # 5. Development-group code (group-only; no person redirect)
     grp = find_dev_group_by_code(reference)
     if grp is not None:
         return {

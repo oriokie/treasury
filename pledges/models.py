@@ -59,6 +59,20 @@ class PledgeCampaign(models.Model):
                   "pledged and amount received — to anyone who opens its "
                   "public pledge link. Leave off for an appeal whose running "
                   "total should stay inside the church.")
+    # Itemised needs (e.g. Camporee sugar, rice): public share page + Excel import.
+    items_public_enabled = models.BooleanField(
+        default=False,
+        help_text="Publish a shareable link where people pledge quantities of "
+                  "listed items (e.g. 2 kg of sugar). Off by default.")
+    items_share_token = models.CharField(
+        max_length=40, unique=True, null=True, blank=True, db_index=True,
+        help_text="Opaque token in the public item-pledge URL. Regenerated when "
+                  "the share link is (re)enabled.")
+    # Optional campaign-wide code for gifts that are not tied to one person.
+    match_code = models.CharField(
+        max_length=16, unique=True, null=True, blank=True, db_index=True,
+        help_text="Optional code for bank/M-Pesa references toward this "
+                  "campaign generally (not one member's promise).")
     created_by = models.ForeignKey("auth.User", null=True, blank=True,
                                    on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -152,6 +166,110 @@ class PledgeCampaign(models.Model):
         """
         return self.counted_pledges.count()
 
+    def ensure_items_share_token(self, save=True, rotate=False):
+        """Assign (or rotate) the opaque public item-pledge URL token."""
+        import secrets
+        if self.items_share_token and not rotate:
+            return self.items_share_token
+        for _ in range(20):
+            token = secrets.token_urlsafe(18)[:32]
+            if not PledgeCampaign.objects.filter(items_share_token=token).exists():
+                self.items_share_token = token
+                if save and self.pk:
+                    self.save(update_fields=["items_share_token"])
+                return token
+        raise RuntimeError("Could not allocate an items share token")
+
+    def ensure_match_code(self, save=True):
+        """Assign a unique campaign-level match code when blank."""
+        if self.match_code:
+            return self.match_code
+        for _ in range(40):
+            code = generate_match_code("PC")
+            clash = (PledgeCampaign.objects.filter(match_code=code).exists()
+                     or Pledge.objects.filter(match_code=code).exists())
+            if not clash:
+                self.match_code = code
+                if save and self.pk:
+                    self.save(update_fields=["match_code"])
+                return code
+        raise RuntimeError("Could not allocate a unique campaign match code")
+
+    @property
+    def items_goal_value(self):
+        return sum((i.value_needed for i in self.items.filter(active=True)),
+                   Decimal("0"))
+
+    @property
+    def items_pledged_value(self):
+        return sum((i.value_pledged for i in self.items.filter(active=True)),
+                   Decimal("0"))
+
+
+class PledgeCampaignItem(models.Model):
+    """One line on an itemised campaign budget (e.g. Sugar · 20 · KES 160).
+
+    People pledge a *quantity* of this item; the money amount of the promise is
+    quantity × unit_price. Fulfilment is still by matching real contributions —
+    never by inventing ledger income.
+    """
+    campaign = models.ForeignKey(
+        PledgeCampaign, on_delete=models.CASCADE, related_name="items")
+    name = models.CharField(max_length=160)
+    unit = models.CharField(
+        max_length=40, blank=True, default="",
+        help_text="Optional unit label shown publicly, e.g. kg, packets, trays.")
+    quantity_needed = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))])
+    unit_price = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        validators=[MinValueValidator(Decimal("0"))])
+    sort_order = models.PositiveIntegerField(default=0, db_index=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    history = HistoricalRecords()
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        indexes = [models.Index(fields=["campaign", "active"])]
+
+    def __str__(self):
+        return f"{self.name} ({self.campaign.name})"
+
+    @property
+    def value_needed(self):
+        return (self.quantity_needed or Decimal("0")) * (self.unit_price or Decimal("0"))
+
+    def quantity_pledged(self, include_drafts=True):
+        """How many units are already promised against this line.
+
+        Drafts count toward the remaining stock so two public pledges cannot
+        oversubscribe while one is waiting for approval. Cancelled pledges do
+        not count.
+        """
+        statuses = list(Pledge.RECOGNISED_STATUSES)
+        if include_drafts:
+            statuses.append(Pledge.Status.DRAFT)
+        return (self.pledges.filter(status__in=statuses)
+                .aggregate(s=Sum("item_quantity"))["s"] or Decimal("0"))
+
+    @property
+    def quantity_remaining(self):
+        left = self.quantity_needed - self.quantity_pledged()
+        return left if left > 0 else Decimal("0")
+
+    @property
+    def value_pledged(self):
+        return self.quantity_pledged() * (self.unit_price or Decimal("0"))
+
+    @property
+    def pct_pledged(self):
+        if not self.quantity_needed:
+            return 0
+        return int(min(
+            self.quantity_pledged() * 100 / self.quantity_needed, 100))
+
 
 class Pledge(models.Model):
     """One member's promise within a campaign. The amount is a commitment, never
@@ -185,6 +303,15 @@ class Pledge(models.Model):
                                  related_name="pledges")
     member = models.ForeignKey("members.Member", on_delete=models.PROTECT,
                                related_name="pledges")
+    # Optional itemised line: quantity × item.unit_price = amount.
+    item = models.ForeignKey(
+        "PledgeCampaignItem", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="pledges",
+        help_text="When set, this promise is for a quantity of a campaign item.")
+    item_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0.01"))],
+        help_text="How many units of the item were promised.")
     amount = models.DecimalField(max_digits=12, decimal_places=2,
         help_text="Total amount promised.")
     frequency = models.CharField(max_length=10, choices=Frequency.choices,

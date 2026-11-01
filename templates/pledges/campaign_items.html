@@ -1,0 +1,101 @@
+{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% block title %}Items · {{ campaign.name }} · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <h1>Item needs</h1>
+    <div class="ws-sub">{{ campaign.name }} · people pledge quantities; money follows unit price</div>
+  </div>
+  <div class="ws-actions">
+    <a class="btn btn-ghost btn-sm" href="{% url 'pledge_campaign_detail' campaign.id %}">← Campaign</a>
+  </div>
+</div>
+
+<div class="ws-summary">
+  <div class="ws-metric"><span class="wm-l">Lines</span><span class="wm-v">{{ items|length }}</span></div>
+  <div class="ws-metric is-primary"><span class="wm-l">Budget</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ items_goal_value|money:0 }}</span></div>
+  <div class="ws-metric is-positive"><span class="wm-l">Pledged</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ items_pledged_value|money:0 }}</span></div>
+</div>
+
+<div class="card u-mb"><div class="hd"><b>Public share link</b></div><div class="bd">
+  <p class="help u-mt-0">A branded page outsiders can open — pick an item, enter quantity, see the pledge amount, then get an SMS with their personal <span class="mono">PG…</span> code{% if campaign.match_code %} (campaign code <span class="mono">{{ campaign.match_code }}</span> also works for general gifts){% endif %}.</p>
+  {% if campaign.items_public_enabled and campaign.items_share_token %}
+  <div style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
+    <input class="field mono" style="flex:1;min-width:240px" readonly id="itemLink"
+           value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_item_pledge' campaign.items_share_token %}">
+    <button type="button" class="btn btn-sm btn-ghost" onclick="var i=document.getElementById('itemLink');i.select();navigator.clipboard.writeText(i.value);this.textContent='Copied';">Copy</button>
+    <a class="btn btn-sm btn-ghost" href="{% url 'public_item_pledge' campaign.items_share_token %}" target="_blank" rel="noopener">Preview</a>
+    <form method="post" class="u-inline">{% csrf_token %}
+      <input type="hidden" name="action" value="rotate_token">
+      <button class="btn btn-sm btn-ghost" onclick="return confirm('Old links will stop working. Continue?')">Rotate link</button>
+    </form>
+    <form method="post" class="u-inline">{% csrf_token %}
+      <input type="hidden" name="action" value="disable_public">
+      <button class="btn btn-sm btn-ghost link-danger">Turn off</button>
+    </form>
+  </div>
+  {% else %}
+  <form method="post">{% csrf_token %}
+    <input type="hidden" name="action" value="enable_public">
+    <button class="btn">Publish share link</button>
+  </form>
+  {% endif %}
+</div></div>
+
+<div class="card u-mb"><div class="hd"><b>Import spreadsheet</b></div><div class="bd">
+  <p class="help u-mt-0">CSV or Excel with columns like the Camporee budget:
+    <span class="mono">Item Description</span>, <span class="mono">Quantity</span>,
+    <span class="mono">Unit Price (KES)</span>. Replaces the current active list
+    (lines that already have pledges are kept inactive).</p>
+  <form method="post" enctype="multipart/form-data" class="filter-bar">{% csrf_token %}
+    <input type="hidden" name="action" value="import">
+    <input class="field" type="file" name="file" accept=".csv,.xlsx,.xlsm,.xls" required>
+    <button class="btn btn-sm">Import</button>
+  </form>
+</div></div>
+
+<div class="card u-mb"><div class="hd"><b>Add one item</b></div><div class="bd">
+  <form method="post" class="filter-bar">{% csrf_token %}
+    <input type="hidden" name="action" value="add">
+    <div class="f"><label class="lbl" for="iname">Item</label>
+      <input class="field" id="iname" name="name" required placeholder="Sugar"></div>
+    <div class="f"><label class="lbl" for="iunit">Unit <span class="muted u-xs">(optional)</span></label>
+      <input class="field" id="iunit" name="unit" placeholder="kg / packets"></div>
+    <div class="f"><label class="lbl" for="iqty">Quantity needed</label>
+      <input class="field" id="iqty" name="quantity" inputmode="decimal" required placeholder="20"></div>
+    <div class="f"><label class="lbl" for="iprice">Unit price ({{ CURRENCY }})</label>
+      <input class="field" id="iprice" name="unit_price" inputmode="decimal" required placeholder="160"></div>
+    <button class="btn btn-sm">Add</button>
+  </form>
+</div></div>
+
+<div class="ws-table"><table class="ledger compact">
+  <thead><tr>
+    <th>Item</th><th>Unit</th><th class="num">Needed</th><th class="num">Pledged</th>
+    <th class="num">Left</th><th class="num">Unit price</th><th class="num">Line total</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for it in items %}
+    <tr>
+      <td>{{ it.name }}</td>
+      <td class="muted">{{ it.unit|default:"—" }}</td>
+      <td class="num mono">{{ it.quantity_needed }}</td>
+      <td class="num mono">{{ it.quantity_pledged }}</td>
+      <td class="num mono {% if it.quantity_remaining == 0 %}row-credit{% endif %}">{{ it.quantity_remaining }}</td>
+      <td class="num mono">{{ it.unit_price|money:0 }}</td>
+      <td class="num mono">{{ it.value_needed|money:0 }}</td>
+      <td>
+        <form method="post" class="u-inline" onsubmit="return confirm('Remove “{{ it.name }}” from the list?');">{% csrf_token %}
+          <input type="hidden" name="action" value="deactivate">
+          <input type="hidden" name="item_id" value="{{ it.id }}">
+          <button class="btn btn-ghost btn-sm link-danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="8"><div class="ws-empty"><div class="we-title">No items yet</div>
+      <div class="muted">Import the Camporee budget spreadsheet or add lines above.</div></div></td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}
