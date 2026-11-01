@@ -69,6 +69,40 @@
   </form>
 </div></div>
 
+<div class="card u-mb"><div class="hd"><b>Record an offline pledge</b>
+  <span class="muted u-xs">— someone promised on paper / at the desk; reserves the quantity</span></div>
+<div class="bd">
+  <p class="help u-mt-0">Creates an active pledge with a <span class="mono">PG…</span> code and marks that quantity as taken on the public list. Prefer picking a register member; otherwise enter visitor name + phone.</p>
+  {% if open_items %}
+  <form method="post" class="filter-bar">{% csrf_token %}
+    <input type="hidden" name="action" value="record_offline">
+    <div class="f" style="min-width:12rem"><label class="lbl" for="oitem">Item</label>
+      <select class="field--select" id="oitem" name="item_id" required>
+        <option value="">— choose —</option>
+        {% for it in open_items %}
+        <option value="{{ it.id }}" data-price="{{ it.unit_price }}" data-left="{{ it.quantity_remaining }}">
+          {{ it.name }} ({{ it.quantity_remaining }} left · {{ CURRENCY }} {{ it.unit_price|money:0 }}/ea)
+        </option>
+        {% endfor %}
+      </select></div>
+    <div class="f"><label class="lbl" for="oqty">Quantity</label>
+      <input class="field" id="oqty" name="quantity" inputmode="decimal" required value="1"></div>
+    <div class="f" style="min-width:12rem"><label class="lbl" for="omember">Member <span class="muted u-xs">(optional)</span></label>
+      <select class="field--select" id="omember" name="member">
+        <option value="">— visitor / type below —</option>
+        {% for m in members %}<option value="{{ m.id }}">{{ m.name }}{% if m.phone %} · {{ m.phone }}{% endif %}</option>{% endfor %}
+      </select></div>
+    <div class="f"><label class="lbl" for="oname">Visitor name</label>
+      <input class="field" id="oname" name="name" placeholder="If not on the register"></div>
+    <div class="f"><label class="lbl" for="ophone">M-PESA phone</label>
+      <input class="field" id="ophone" name="phone" inputmode="tel" placeholder="07XX XXX XXX"></div>
+    <button class="btn btn-sm">Record pledge</button>
+  </form>
+  {% else %}
+  <p class="muted">Nothing left to pledge — every line is fully covered.</p>
+  {% endif %}
+</div></div>
+
 <div class="ws-table"><table class="ledger compact">
   <thead><tr>
     <th>Item</th><th>Unit</th><th class="num">Needed</th><th class="num">Pledged</th>

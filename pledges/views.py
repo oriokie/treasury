@@ -1620,6 +1620,7 @@ class CampaignItemsView(TreasurerRequiredMixin, View):
     template_name = "pledges/campaign_items.html"
 
     def get(self, request, pk):
+        from members.models import Member
         camp = get_object_or_404(PledgeCampaign, pk=pk)
         items = list(camp.items.filter(active=True))
         return render(request, self.template_name, {
@@ -1627,6 +1628,8 @@ class CampaignItemsView(TreasurerRequiredMixin, View):
             "items": items,
             "items_goal_value": sum((i.value_needed for i in items), Decimal("0")),
             "items_pledged_value": sum((i.value_pledged for i in items), Decimal("0")),
+            "members": Member.objects.filter(active=True).order_by("name")[:800],
+            "open_items": [i for i in items if i.quantity_remaining > 0],
         })
 
     def post(self, request, pk):
@@ -1698,6 +1701,77 @@ class CampaignItemsView(TreasurerRequiredMixin, View):
                 + (f"; {deactivated} previous line(s) with pledges were kept inactive"
                    if deactivated else "")
                 + ".")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "record_offline":
+            # Desk / paper pledges: reserve quantity and create a real pledge
+            # so the public list and matching treat the item as taken.
+            from members.models import Member
+            from members.services.matching import normalize_phone
+            from pledges.services.items import pledge_amount_for, remaining_allows
+
+            item = get_object_or_404(
+                PledgeCampaignItem, pk=request.POST.get("item_id"),
+                campaign=camp, active=True)
+            name = (request.POST.get("name") or "").strip()
+            phone = (request.POST.get("phone") or "").strip()
+            member_id = request.POST.get("member")
+            try:
+                qty = Decimal((request.POST.get("quantity") or "").replace(",", ""))
+            except (InvalidOperation, AttributeError):
+                messages.error(request, "Enter a valid quantity.")
+                return redirect("pledge_campaign_items", pk=pk)
+            if qty <= 0:
+                messages.error(request, "Quantity must be greater than zero.")
+                return redirect("pledge_campaign_items", pk=pk)
+            if not remaining_allows(item, qty):
+                messages.error(
+                    request,
+                    f"Only {item.quantity_remaining} of {item.name} still needed.")
+                return redirect("pledge_campaign_items", pk=pk)
+
+            member = None
+            if member_id:
+                member = Member.objects.filter(pk=member_id).first()
+            ph = normalize_phone(phone) if phone else ""
+            if member is None and ph:
+                from django.db.models import Q
+                member = (Member.objects.filter(Q(phone=ph) | Q(phones__number=ph))
+                          .distinct().first())
+            if member is None:
+                if len(name) < 3:
+                    messages.error(request, "Pick a member or enter the pledgor’s name.")
+                    return redirect("pledge_campaign_items", pk=pk)
+                if not ph:
+                    messages.error(request, "Enter an M-PESA number for the pledgor.")
+                    return redirect("pledge_campaign_items", pk=pk)
+                member = Member.objects.create(
+                    name=name, phone=ph,
+                    source=Member.Source.AUTO_BANK, active=False)
+            elif ph and not member.phone:
+                member.phone = ph
+                member.save(update_fields=["phone"])
+
+            amount = pledge_amount_for(item, qty)
+            unit = (item.unit or "").strip()
+            qty_s = format(qty.normalize(), "f").rstrip("0").rstrip(".")
+            note = f"{qty_s} {unit} {item.name}".strip()[:200]
+            contact = f"{member.name} / {ph or member.receipt_phone or ''}"[:120]
+            pledge = Pledge.objects.create(
+                campaign=camp, member=member, amount=amount,
+                item=item, item_quantity=qty,
+                frequency=Pledge.Frequency.ONE_OFF,
+                start_date=dt.date.today(),
+                status=Pledge.Status.ACTIVE,
+                recorded_by=request.user,
+                approved_by=request.user,
+                approved_at=timezone.now(),
+                submitted_contact=contact,
+                note=note)
+            messages.success(
+                request,
+                f"Recorded {note} for {member.name} "
+                f"(KES {amount:,.0f}, code {pledge.match_code}).")
             return redirect("pledge_campaign_items", pk=pk)
 
         messages.error(request, "Unknown action.")

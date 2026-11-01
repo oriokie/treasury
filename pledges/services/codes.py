@@ -82,6 +82,34 @@ def find_pledge_campaign_by_code(reference):
     return _first_code_hit(s, camps)
 
 
+def find_campaign_item_by_reference(reference):
+    """Longest active item name that appears in the narration (no code required).
+
+    So ``CHARCOAL`` or ``sugar 2`` can still reach a Camporee fund when the
+    giver skipped the PG/PC code. Prefer the longest name so ``Green Bananas``
+    beats ``Bananas`` if both exist.
+    """
+    from pledges.models import PledgeCampaign, PledgeCampaignItem
+    s = codes_in_reference(reference)
+    if not s or len(s) < 4:
+        return None
+    items = list(
+        PledgeCampaignItem.objects.filter(
+            active=True,
+            campaign__status=PledgeCampaign.Status.ACTIVE,
+        ).select_related("campaign", "campaign__target_department")
+    )
+    ranked = sorted(
+        ((_norm_code(it.name), it) for it in items),
+        key=lambda pair: len(pair[0]),
+        reverse=True,
+    )
+    for name, it in ranked:
+        if len(name) >= 4 and name in s:
+            return it
+    return None
+
+
 def find_member_by_code(reference):
     """Return the active Member whose ``match_code`` appears in ``reference``."""
     from members.models import Member
@@ -312,6 +340,24 @@ def _development_fund():
     return Department.objects.filter(name__iexact="development").first()
 
 
+def _is_development_fund(dept):
+    from departments.models import Department
+    if dept is None:
+        return False
+    return getattr(dept, "category", None) == Department.Category.DEVELOPMENT
+
+
+def dev_group_only_for_development_fund(dept, dg):
+    """Stamp a development group only when the gift's fund is Development.
+
+    Camporee / ministry / building funds must not inherit a member's home
+    group — that tag is for development tallies, not every pledge gift.
+    """
+    if dg is None:
+        return None
+    return dg if _is_development_fund(dept) else None
+
+
 def pledge_code_allocate(reference):
     """If a pledge match_code is in the reference, return fund routing for it.
 
@@ -346,15 +392,15 @@ def resolve_code_attribution(reference, payer_member=None):
     pledge = find_pledge_by_code(reference)
     if pledge is not None:
         ben = pledge.member
-        dg = resolve_dev_group_for_beneficiary(ben)
         dept = getattr(pledge.campaign, "target_department", None)
-        if dept is None and dg is not None:
+        home = resolve_dev_group_for_beneficiary(ben)
+        if dept is None and home is not None:
             dept = _development_fund()
         return {
             "beneficiary": ben,
             "pledge": pledge,
             "department": dept,
-            "dev_group": dg,
+            "dev_group": dev_group_only_for_development_fund(dept, home),
             "campaign": None,
             "campaign_group": "",
             "via_code": True,
@@ -362,21 +408,46 @@ def resolve_code_attribution(reference, payer_member=None):
         }
 
     # 2. Campaign-level PC… code — general gift to that appeal's fund.
+    # Payer identity (phone on the statement) later picks which of that
+    # member's pledges to fill — including several item pledges.
     pcamp = find_pledge_campaign_by_code(reference)
     if pcamp is not None:
         dept = getattr(pcamp, "target_department", None)
         if dept is None:
             dept = _development_fund()
+        home = resolve_dev_group_for_beneficiary(payer_member)
         return {
             "beneficiary": payer_member,
             "pledge": None,
             "department": dept,
-            "dev_group": resolve_dev_group_for_beneficiary(payer_member),
+            "dev_group": dev_group_only_for_development_fund(dept, home),
             "campaign": None,
             "campaign_group": "",
             "via_code": False,
             "source": "pledge_campaign",
             "pledge_campaign": pcamp,
+        }
+
+    # 2b. Item name in the narration (e.g. "CHARCOAL", "SUGAR 2") when no
+    # code was used — route to that campaign's fund; matching uses phone.
+    item_hit = find_campaign_item_by_reference(reference)
+    if item_hit is not None:
+        pcamp = item_hit.campaign
+        dept = getattr(pcamp, "target_department", None)
+        if dept is None:
+            dept = _development_fund()
+        home = resolve_dev_group_for_beneficiary(payer_member)
+        return {
+            "beneficiary": payer_member,
+            "pledge": None,
+            "department": dept,
+            "dev_group": dev_group_only_for_development_fund(dept, home),
+            "campaign": None,
+            "campaign_group": "",
+            "via_code": False,
+            "source": "pledge_item",
+            "pledge_campaign": pcamp,
+            "campaign_item": item_hit,
         }
 
     # 3. Register member code — always Development fund; group via cascade.
@@ -415,9 +486,10 @@ def resolve_code_attribution(reference, payer_member=None):
             "beneficiary": ben,
             "pledge": None,
             "department": dept,
-            "dev_group": dg,
+            # Sheet group tags only belong on Development fund gifts.
+            "dev_group": dev_group_only_for_development_fund(dept, dg),
             "campaign": camp,
-            "campaign_group": cm.group or "",
+            "campaign_group": (cm.group or "") if _is_development_fund(dept) else "",
             "via_code": True,
             "source": "campaign",
         }

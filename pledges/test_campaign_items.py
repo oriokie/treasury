@@ -136,3 +136,85 @@ class ItemPledgeFlowTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Import spreadsheet")
         self.assertContains(r, "Sugar")
+        self.assertContains(r, "Record an offline pledge")
+
+    def test_pg_code_does_not_stamp_dev_group_on_ministry_fund(self):
+        from departments.models import DevelopmentGroup
+        from giving.models import Transaction
+        from pledges.services.attribution import apply_code_to_import
+
+        g = DevelopmentGroup.objects.create(number=9, name="G9 Camp")
+        m = Member.objects.create(name="PATHFINDER", phone="254700000077",
+                                  active=True, dev_group=g)
+        p = Pledge.objects.create(
+            campaign=self.camp, member=m, amount=Decimal("320"),
+            item=self.sugar, item_quantity=Decimal("2"),
+            status=Pledge.Status.ACTIVE, start_date=dt.date.today())
+        member, dept, dg, camp, cgrp, status, via = apply_code_to_import(
+            reference=f"PAY {p.match_code}",
+            member=None, dept=None, dev_group=None,
+            campaign=None, campaign_group="", status="REVIEW",
+            Transaction=Transaction)
+        self.assertEqual(dept, self.fund)
+        self.assertIsNone(dg)
+        self.assertEqual(member, m)
+
+    def test_item_name_in_narration_routes_to_campaign_fund(self):
+        hit = resolve_code_attribution("CHARCOAL FOR CAMP")
+        # No charcoal item yet — create one
+        charcoal = PledgeCampaignItem.objects.create(
+            campaign=self.camp, name="Charcoal", unit="",
+            quantity_needed=Decimal("1"), unit_price=Decimal("1500"))
+        hit = resolve_code_attribution("CHARCOAL FOR CAMP")
+        self.assertEqual(hit.get("source"), "pledge_item")
+        self.assertEqual(hit.get("department"), self.fund)
+        self.assertEqual(hit.get("campaign_item"), charcoal)
+        self.assertIsNone(hit.get("dev_group"))
+
+    def test_pc_code_plus_phone_fills_multiple_item_pledges(self):
+        from giving.models import Transaction
+        from pledges.services import matching as match_svc
+
+        m = Member.objects.create(name="MULTI PLEDGER", phone="254711122233",
+                                  active=True)
+        rice = PledgeCampaignItem.objects.create(
+            campaign=self.camp, name="Rice", unit="kg",
+            quantity_needed=Decimal("42"), unit_price=Decimal("180"))
+        p1 = Pledge.objects.create(
+            campaign=self.camp, member=m, amount=Decimal("320"),
+            item=self.sugar, item_quantity=Decimal("2"),
+            status=Pledge.Status.ACTIVE, start_date=dt.date(2026, 1, 1),
+            submitted_contact="MULTI / 254711122233")
+        p2 = Pledge.objects.create(
+            campaign=self.camp, member=m, amount=Decimal("360"),
+            item=rice, item_quantity=Decimal("2"),
+            status=Pledge.Status.ACTIVE, start_date=dt.date(2026, 1, 1),
+            submitted_contact="MULTI / 254711122233")
+        cfg = SiteConfig.get()
+        cfg.pledge_match_mode = SiteConfig.PledgeMatchMode.AUTO
+        cfg.pledge_match_same_fund_only = True
+        cfg.save()
+        gift = Transaction.objects.create(
+            date=dt.date(2026, 6, 15), channel="BANK", direction="CREDIT",
+            amount=Decimal("700"), department=self.fund, member=m,
+            payer_name="MULTI PLEDGER", payer_phone="254711122233",
+            reference=f"GIFT {self.camp.match_code}",
+            confirmed=True, allocation_status="AUTO")
+        pledges = match_svc.active_pledges_for_contribution(gift, cfg=cfg)
+        self.assertEqual(len(pledges), 2)
+        match_svc.handle_new_contribution(gift, user=self.user, cfg=cfg)
+        p1.refresh_from_db(); p2.refresh_from_db()
+        self.assertEqual(p1.paid + p2.paid, Decimal("700"))
+
+    def test_offline_pledge_reserves_quantity(self):
+        self.client.force_login(self.user)
+        r = self.client.post(
+            f"/pledges/campaigns/{self.camp.pk}/items/",
+            {"action": "record_offline", "item_id": self.sugar.pk,
+             "quantity": "3", "name": "Desk Visitor",
+             "phone": "0712345670", "member": ""})
+        self.assertEqual(r.status_code, 302)
+        p = Pledge.objects.get(item=self.sugar)
+        self.assertEqual(p.item_quantity, Decimal("3"))
+        self.assertEqual(p.status, Pledge.Status.ACTIVE)
+        self.assertEqual(self.sugar.quantity_remaining, Decimal("17"))
