@@ -1126,6 +1126,28 @@ class BulkAllocateSplitFundTests(TestCase):
         self.assertGreaterEqual(
             Transaction.objects.filter(core_ref__startswith="BSX1").count(), 2)
 
+    def test_bulk_allocate_from_per_row_picks(self):
+        """Per-card fund picks allocate without a shared sticky fund."""
+        import datetime as dt
+        from decimal import Decimal
+        from departments.models import Department
+        from giving.models import Transaction
+        fund = Department.objects.create(
+            name="BS Ministry", fund_type="LOCAL", selectable=True,
+            category="MINISTRY")
+        t = Transaction.objects.create(
+            date=dt.date(2026, 3, 8), channel="BANK", direction="CREDIT",
+            amount=Decimal("500"), payer_name="PICK", reference="PICK1",
+            core_ref="PICK1", allocation_status="REVIEW", confirmed=True)
+        self.client.post("/queue/bulk-allocate/", {
+            "txn": [str(t.id)],
+            "pick_dept": [str(fund.id)],
+            "pick_grp": [""],
+        })
+        t.refresh_from_db()
+        self.assertEqual(t.department_id, fund.id)
+        self.assertEqual(t.allocation_status, "MANUAL")
+
 
 class RuleImportTests(TestCase):
     """Item 1: bulk import of allocation rules from a spreadsheet."""

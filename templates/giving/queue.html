@@ -6,7 +6,7 @@
     <div>
       <div class="eyebrow">Giving · {{ SITE_NAME }}</div>
       <h1>Review queue</h1>
-      <div class="desc">{% if queue_count %}Pick a fund on each gift — choices are saved if you refresh. Allocate with the button below.{% else %}Everything imported has been allocated.{% endif %}</div>
+      <div class="desc">{% if queue_count %}Pick a fund on each gift — choices are saved if you refresh. Then use <b>Allocate picks</b> (no ticking needed).{% else %}Everything imported has been allocated.{% endif %}</div>
     </div>
     <div class="rpt-actions no-print">
       <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
@@ -59,8 +59,9 @@
       {% for g in dev_groups %}<option value="{{ g.id }}">{{ g.label }}</option>{% endfor %}
     </select>
   </div>
-  <button class="btn btn-sm btn-brass" id="bulkAllocBtn">Allocate selected</button>
-  <span class="muted u-xs q-sticky-hint">Or set a fund on each card — picks survive a refresh.</span>
+  <button type="button" class="btn btn-sm btn-brass" id="bulkAllocPicksBtn">Allocate picks</button>
+  <button class="btn btn-sm btn-ghost" id="bulkAllocBtn">Allocate selected</button>
+  <span class="muted u-xs q-sticky-hint">Set a fund on each card, then Allocate picks — no ticking. Or tick rows + shared fund → Allocate selected.</span>
 </form>
 {% endif %}
 
@@ -105,6 +106,7 @@
       <input type="hidden" class="combo-value">
       <div class="combo-list" role="listbox" hidden></div>
     </div>
+    <button type="button" class="btn btn-xs btn-brass q-alloc-one" hidden>Allocate</button>
     <details class="q-more">
       <summary>More</summary>
       <form method="post" action="{% url 'queue_claim' t.id %}" class="q-more-form" data-amount="{{ t.amount|floatformat:2 }}">
@@ -221,6 +223,12 @@
     return { set: function(v, label){ hidden.value=v||""; input.value=label||""; } };
   }
 
+  function syncAllocOne(card){
+    var btn = card.querySelector(".q-alloc-one");
+    var pd = card.querySelector(".pick-dept");
+    if(btn) btn.hidden = !(pd && pd.value);
+  }
+
   document.querySelectorAll(".q-card").forEach(function(card){
     var tid = card.dataset.txn;
     var fundCombo = card.querySelector(".q-pick > .combo:not(.combo-grp)");
@@ -240,6 +248,7 @@
       else { delete cur.dept; delete cur.deptLabel; delete cur.cat; }
       if(!isDev){ delete cur.grp; delete cur.grpLabel; }
       picks[tid]=cur; savePicks(picks);
+      syncAllocOne(card);
     });
     var grpApi = grpCombo ? setupCombo(grpCombo, GROUPS, function(o){
       if(pickGrp) pickGrp.value = o ? o.v : "";
@@ -264,6 +273,7 @@
         }
       }
     }
+    syncAllocOne(card);
 
     card.querySelectorAll(".combo-split").forEach(function(c){ setupCombo(c, FUNDS, null); });
   });
@@ -312,37 +322,86 @@
     if(bgs) bgs.style.display="none";
   }
 
+  function prepareBulkSubmit(checkedOnly){
+    // Only submit picks for rows that will be posted (disabled fields are omitted).
+    document.querySelectorAll(".q-card").forEach(function(card){
+      var cb=card.querySelector(".bulk-check");
+      var on=cb && cb.checked;
+      if(!checkedOnly) on = true;
+      card.querySelectorAll(".pick-dept, .pick-grp").forEach(function(inp){
+        inp.disabled = !on;
+      });
+      if(cb) cb.disabled = !on;
+    });
+    document.querySelectorAll(".bulk-check:checked").forEach(function(c){
+      delete picks[c.value];
+    });
+    savePicks(picks);
+    var anyPick=false;
+    document.querySelectorAll(".bulk-check:checked").forEach(function(c){
+      var card=c.closest(".q-card");
+      var pd=card && card.querySelector(".pick-dept");
+      if(pd && pd.value) anyPick=true;
+    });
+    if(anyPick){
+      var bf=document.getElementById("bulkFund");
+      if(bf) bf.value="";
+    }
+  }
+
+  function selectCardsWithPicks(onlyTid){
+    var n=0;
+    document.querySelectorAll(".q-card").forEach(function(card){
+      var tid=card.dataset.txn;
+      var cb=card.querySelector(".bulk-check");
+      var pd=card.querySelector(".pick-dept");
+      var on = onlyTid ? (tid === String(onlyTid)) : !!(pd && pd.value);
+      if(onlyTid && on && !(pd && pd.value)) on = false;
+      if(cb) cb.checked = on;
+      if(on) n++;
+    });
+    refresh();
+    return n;
+  }
+
   // Clear saved picks for allocated ids after successful... we clear on submit of rows that are checked
   var bulkForm=document.getElementById("bulkAllocForm");
   if(bulkForm){
     bulkForm.addEventListener("submit", function(e){
       if(!document.querySelectorAll(".bulk-check:checked").length){
-        e.preventDefault(); alert("Tick at least one contribution first."); return;
+        e.preventDefault(); alert("Tick at least one contribution first, or use Allocate picks."); return;
       }
-      // Only submit picks for checked rows (disabled fields are omitted).
-      document.querySelectorAll(".q-card").forEach(function(card){
-        var cb=card.querySelector(".bulk-check");
-        var on=cb && cb.checked;
-        card.querySelectorAll(".pick-dept, .pick-grp").forEach(function(inp){
-          inp.disabled = !on;
-        });
-      });
-      document.querySelectorAll(".bulk-check:checked").forEach(function(c){
-        delete picks[c.value];
-      });
-      savePicks(picks);
-      var anyPick=false;
-      document.querySelectorAll(".bulk-check:checked").forEach(function(c){
-        var card=c.closest(".q-card");
-        var pd=card && card.querySelector(".pick-dept");
-        if(pd && pd.value) anyPick=true;
-      });
-      if(anyPick){
-        var bf=document.getElementById("bulkFund");
-        if(bf) bf.value="";
-      }
+      prepareBulkSubmit(true);
     });
   }
+
+  var picksBtn=document.getElementById("bulkAllocPicksBtn");
+  if(picksBtn && bulkForm){
+    picksBtn.addEventListener("click", function(){
+      var n=selectCardsWithPicks(null);
+      if(!n){
+        alert("Set a fund on at least one gift first.");
+        return;
+      }
+      prepareBulkSubmit(true);
+      bulkForm.requestSubmit ? bulkForm.requestSubmit() : bulkForm.submit();
+    });
+  }
+
+  document.querySelectorAll(".q-alloc-one").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var card=btn.closest(".q-card");
+      if(!card || !bulkForm) return;
+      var pd=card.querySelector(".pick-dept");
+      if(!(pd && pd.value)){
+        alert("Pick a fund on this gift first.");
+        return;
+      }
+      selectCardsWithPicks(card.dataset.txn);
+      prepareBulkSubmit(true);
+      bulkForm.requestSubmit ? bulkForm.requestSubmit() : bulkForm.submit();
+    });
+  });
 
   var all=document.getElementById("bulkAll"), n=document.getElementById("bulkN");
   function checks(){return Array.prototype.slice.call(document.querySelectorAll(".bulk-check"));}

@@ -218,3 +218,53 @@ class ItemPledgeFlowTests(TestCase):
         self.assertEqual(p.item_quantity, Decimal("3"))
         self.assertEqual(p.status, Pledge.Status.ACTIVE)
         self.assertEqual(self.sugar.quantity_remaining, Decimal("17"))
+
+    def test_offline_pledge_with_register_member(self):
+        m = Member.objects.create(name="DESK MEMBER", phone="254700000066",
+                                  active=True)
+        self.client.force_login(self.user)
+        r = self.client.post(
+            f"/pledges/campaigns/{self.camp.pk}/items/",
+            {"action": "record_offline", "item_id": self.sugar.pk,
+             "quantity": "1", "member": m.pk, "name": "", "phone": ""})
+        self.assertEqual(r.status_code, 302)
+        p = Pledge.objects.get(item=self.sugar)
+        self.assertEqual(p.member_id, m.pk)
+        self.assertEqual(p.amount, Decimal("160.00"))
+
+    def test_set_memorable_shared_code(self):
+        self.client.force_login(self.user)
+        r = self.client.post(
+            f"/pledges/campaigns/{self.camp.pk}/items/",
+            {"action": "set_match_code", "match_code": "camporee-26"})
+        self.assertEqual(r.status_code, 302)
+        self.camp.refresh_from_db()
+        self.assertEqual(self.camp.match_code, "CAMPOREE26")
+        hit = resolve_code_attribution("GIFT CAMPOREE26")
+        self.assertEqual(hit.get("source"), "pledge_campaign")
+        self.assertEqual(hit.get("department"), self.fund)
+        self.assertEqual(
+            find_pledge_campaign_by_code("pay camporee26"), self.camp)
+
+    def test_shared_code_clash_rejected(self):
+        other = PledgeCampaign.objects.create(
+            name="Other Appeal", target_department=self.fund,
+            status=PledgeCampaign.Status.ACTIVE, match_code="TAKENCODE")
+        self.client.force_login(self.user)
+        r = self.client.post(
+            f"/pledges/campaigns/{self.camp.pk}/items/",
+            {"action": "set_match_code", "match_code": "takencode"},
+            follow=True)
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "already used")
+        self.camp.refresh_from_db()
+        self.assertNotEqual(self.camp.match_code, "TAKENCODE")
+        self.assertEqual(other.match_code, "TAKENCODE")
+
+    def test_items_page_shows_shared_code_panel(self):
+        self.client.force_login(self.user)
+        r = self.client.get(f"/pledges/campaigns/{self.camp.pk}/items/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Shared payment code")
+        self.assertContains(r, self.camp.match_code)
+        self.assertContains(r, "Start typing a member")
