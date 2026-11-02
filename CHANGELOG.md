@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.4
+
+Automated patch release covering: Define shared combo-input and combo-value CSS classes; Improve item desk UX, editable shared code, and queue allocate-picks.
+
 ## 3.56.3
 
 Automated patch release: Improve item pledges: fund-scoped groups, mobile UX, offline entry, smarter matching.
