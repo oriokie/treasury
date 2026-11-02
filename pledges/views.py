@@ -1620,15 +1620,17 @@ class CampaignItemsView(TreasurerRequiredMixin, View):
     template_name = "pledges/campaign_items.html"
 
     def get(self, request, pk):
-        from members.models import Member
         camp = get_object_or_404(PledgeCampaign, pk=pk)
+        # Shared payment code is for sensitization even when the public link
+        # is off (desk / announcement use the same PC… / memorable code).
+        if not camp.match_code:
+            camp.ensure_match_code(save=True)
         items = list(camp.items.filter(active=True))
         return render(request, self.template_name, {
             "campaign": camp,
             "items": items,
             "items_goal_value": sum((i.value_needed for i in items), Decimal("0")),
             "items_pledged_value": sum((i.value_pledged for i in items), Decimal("0")),
-            "members": Member.objects.filter(active=True).order_by("name")[:800],
             "open_items": [i for i in items if i.quantity_remaining > 0],
         })
 
@@ -1654,6 +1656,31 @@ class CampaignItemsView(TreasurerRequiredMixin, View):
         if action == "rotate_token":
             camp.ensure_items_share_token(save=True, rotate=True)
             messages.success(request, "Share link rotated — old links no longer work.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "set_match_code":
+            from pledges.services.codes import (
+                campaign_shared_code_available, normalize_campaign_shared_code)
+            raw = request.POST.get("match_code") or ""
+            code, err = normalize_campaign_shared_code(raw)
+            if err:
+                messages.error(request, err)
+                return redirect("pledge_campaign_items", pk=pk)
+            if not campaign_shared_code_available(code, exclude_campaign_id=camp.pk):
+                messages.error(
+                    request,
+                    f"“{code}” is already used by another code — pick a different one.")
+                return redirect("pledge_campaign_items", pk=pk)
+            camp.match_code = code
+            camp.save(update_fields=["match_code"])
+            messages.success(
+                request,
+                f"Shared payment code is now {code} — use it on posters and SMS.")
+            return redirect("pledge_campaign_items", pk=pk)
+
+        if action == "ensure_match_code":
+            camp.ensure_match_code(save=True)
+            messages.success(request, f"Shared payment code: {camp.match_code}")
             return redirect("pledge_campaign_items", pk=pk)
 
         if action == "add":

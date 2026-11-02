@@ -372,6 +372,49 @@ def pledge_code_allocate(reference):
     return pledge, dept, "AUTO"
 
 
+def normalize_campaign_shared_code(raw):
+    """Uppercase alphanumerics only — suitable for M-Pesa narration / posters.
+
+    Returns (code, error). ``code`` is empty when invalid.
+    """
+    code = re.sub(r"[^A-Za-z0-9]", "", (raw or "").strip()).upper()
+    if len(code) < 4:
+        return "", "Use at least 4 letters or digits (e.g. CAMPOREE26)."
+    if len(code) > 16:
+        return "", "Keep the shared code to 16 characters or fewer."
+    return code, ""
+
+
+def campaign_shared_code_available(code, exclude_campaign_id=None):
+    """True when ``code`` is not already used by another match-code entity.
+
+    Codes are stored uppercase alphanumerics; comparison is case-insensitive.
+    """
+    from departments.models import DevelopmentGroup
+    from giving.models import CampaignMember
+    from members.models import Member
+    from pledges.models import Pledge, PledgeCampaign
+
+    want = (code or "").strip()
+    if len(_norm_code(want)) < 4:
+        return False
+
+    camps = PledgeCampaign.objects.filter(match_code__iexact=want)
+    if exclude_campaign_id:
+        camps = camps.exclude(pk=exclude_campaign_id)
+    if camps.exists():
+        return False
+    if Pledge.objects.filter(match_code__iexact=want).exists():
+        return False
+    if Member.objects.filter(match_code__iexact=want).exists():
+        return False
+    if CampaignMember.objects.filter(match_code__iexact=want).exists():
+        return False
+    if DevelopmentGroup.objects.filter(match_code__iexact=want).exists():
+        return False
+    return True
+
+
 def resolve_code_attribution(reference, payer_member=None):
     """Interpret codes in ``reference`` for import / matching.
 

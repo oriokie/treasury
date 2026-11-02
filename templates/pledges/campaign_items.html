@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}Items · {{ campaign.name }} · {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="ws-head">
@@ -17,91 +17,159 @@
   <div class="ws-metric is-positive"><span class="wm-l">Pledged</span><span class="wm-v"><span class="cur">{{ CURRENCY }}</span>{{ items_pledged_value|money:0 }}</span></div>
 </div>
 
-<div class="card u-mb"><div class="hd"><b>Public share link</b></div><div class="bd">
-  <p class="help u-mt-0">A branded page outsiders can open — pick an item, enter quantity, see the pledge amount, then get an SMS with their personal <span class="mono">PG…</span> code{% if campaign.match_code %} (campaign code <span class="mono">{{ campaign.match_code }}</span> also works for general gifts){% endif %}.</p>
-  {% if campaign.items_public_enabled and campaign.items_share_token %}
-  <div style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
-    <input class="field mono" style="flex:1;min-width:240px" readonly id="itemLink"
-           value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_item_pledge' campaign.items_share_token %}">
-    <button type="button" class="btn btn-sm btn-ghost" onclick="var i=document.getElementById('itemLink');i.select();navigator.clipboard.writeText(i.value);this.textContent='Copied';">Copy</button>
-    <a class="btn btn-sm btn-ghost" href="{% url 'public_item_pledge' campaign.items_share_token %}" target="_blank" rel="noopener">Preview</a>
-    <form method="post" class="u-inline">{% csrf_token %}
-      <input type="hidden" name="action" value="rotate_token">
-      <button class="btn btn-sm btn-ghost" onclick="return confirm('Old links will stop working. Continue?')">Rotate link</button>
+<div class="ci-grid">
+  {# —— Shared payment code (sensitization) —— #}
+  <section class="card ci-panel ci-code-panel">
+    <div class="hd"><b>Shared payment code</b>
+      <span class="muted u-xs">— one code for posters &amp; SMS</span></div>
+    <div class="bd">
+      <p class="help u-mt-0">Everyone puts this in the M-Pesa narration instead of individual <span class="mono">PG…</span> codes. We match who by their phone number to fill their pledges.</p>
+      {% if campaign.match_code %}
+      <div class="ci-code-display">
+        <span class="ci-code mono" id="sharedCode">{{ campaign.match_code }}</span>
+        <button type="button" class="btn btn-sm btn-ghost" id="copySharedCode">Copy</button>
+      </div>
+      {% else %}
+      <form method="post" class="u-mb">{% csrf_token %}
+        <input type="hidden" name="action" value="ensure_match_code">
+        <button class="btn btn-sm">Generate shared code</button>
+      </form>
+      {% endif %}
+      <form method="post" class="ci-code-edit">{% csrf_token %}
+        <input type="hidden" name="action" value="set_match_code">
+        <label class="lbl" for="match_code">Memorable code</label>
+        <div class="ci-code-row">
+          <input class="field mono" id="match_code" name="match_code" maxlength="16"
+                 value="{{ campaign.match_code|default:'' }}"
+                 placeholder="CAMPOREE26" autocomplete="off" required>
+          <button class="btn btn-sm">Save</button>
+        </div>
+        <p class="muted u-xs u-mt-0">Letters and digits, 4–16 characters. Avoid codes that already exist.</p>
+      </form>
+    </div>
+  </section>
+
+  {# —— Public share link —— #}
+  <section class="card ci-panel">
+    <div class="hd"><b>Public share link</b></div>
+    <div class="bd">
+      <p class="help u-mt-0">Outsiders pick an item, enter quantity, then get an SMS with their personal <span class="mono">PG…</span> code{% if campaign.match_code %} (or use shared <span class="mono">{{ campaign.match_code }}</span>){% endif %}.</p>
+      {% if campaign.items_public_enabled and campaign.items_share_token %}
+      <div class="ci-link-row">
+        <input class="field mono" readonly id="itemLink"
+               value="{{ request.scheme }}://{{ request.get_host }}{% url 'public_item_pledge' campaign.items_share_token %}">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="var i=document.getElementById('itemLink');i.select();navigator.clipboard.writeText(i.value);this.textContent='Copied';">Copy</button>
+        <a class="btn btn-sm btn-ghost" href="{% url 'public_item_pledge' campaign.items_share_token %}" target="_blank" rel="noopener">Preview</a>
+      </div>
+      <div class="ci-link-actions">
+        <form method="post" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="rotate_token">
+          <button class="btn btn-sm btn-ghost" onclick="return confirm('Old links will stop working. Continue?')">Rotate link</button>
+        </form>
+        <form method="post" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="disable_public">
+          <button class="btn btn-sm btn-ghost link-danger">Turn off</button>
+        </form>
+      </div>
+      {% else %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="enable_public">
+        <button class="btn btn-sm">Publish share link</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+{# —— Desk: record offline pledge —— #}
+<section class="card u-mb ci-desk">
+  <div class="hd"><b>Record an offline pledge</b>
+    <span class="muted u-xs">— paper / desk promise; reserves quantity</span></div>
+  <div class="bd">
+    {% if open_items %}
+    <form method="post" id="offlinePledgeForm" class="ci-desk-form">{% csrf_token %}
+      <input type="hidden" name="action" value="record_offline">
+      <div class="ci-desk-grid">
+        <div class="f ci-grow">
+          <label class="lbl" for="oitem_search">Item</label>
+          <div class="combo" id="oitemCombo">
+            <input type="text" class="field combo-input" id="oitem_search"
+                   placeholder="Type to find an item…" autocomplete="off" required>
+            <input type="hidden" name="item_id" id="oitem" class="combo-value" required>
+            <div class="combo-list" role="listbox" hidden></div>
+          </div>
+        </div>
+        <div class="f">
+          <label class="lbl" for="oqty">Quantity</label>
+          <input class="field" id="oqty" name="quantity" inputmode="decimal" required value="1">
+        </div>
+        <div class="f ci-amount">
+          <span class="lbl">Amount</span>
+          <div class="ci-amount-val mono" id="oamount">—</div>
+        </div>
+      </div>
+      <div class="ci-desk-grid">
+        <div class="f ci-grow">
+          <label class="lbl" for="omember">Member <span class="muted u-xs">(optional)</span></label>
+          <select class="field--select" id="omember" name="member">
+            <option value="">— visitor / type below —</option>
+          </select>
+        </div>
+        <div class="f ci-grow" id="visitor-name-row">
+          <label class="lbl" for="oname">Visitor name</label>
+          <input class="field" id="oname" name="name" placeholder="If not on the register">
+        </div>
+        <div class="f">
+          <label class="lbl" for="ophone">M-PESA phone</label>
+          <input class="field" id="ophone" name="phone" inputmode="tel" placeholder="07XX XXX XXX">
+        </div>
+      </div>
+      <div class="ci-desk-actions">
+        <button class="btn">Record pledge</button>
+        <span class="muted u-xs" id="oitemHint">Creates an active pledge with a <span class="mono">PG…</span> code.</span>
+      </div>
     </form>
-    <form method="post" class="u-inline">{% csrf_token %}
-      <input type="hidden" name="action" value="disable_public">
-      <button class="btn btn-sm btn-ghost link-danger">Turn off</button>
-    </form>
+    {% else %}
+    <p class="muted">Nothing left to pledge — every line is fully covered.</p>
+    {% endif %}
   </div>
-  {% else %}
-  <form method="post">{% csrf_token %}
-    <input type="hidden" name="action" value="enable_public">
-    <button class="btn">Publish share link</button>
-  </form>
-  {% endif %}
-</div></div>
+</section>
 
-<div class="card u-mb"><div class="hd"><b>Import spreadsheet</b></div><div class="bd">
-  <p class="help u-mt-0">CSV or Excel with columns like the Camporee budget:
-    <span class="mono">Item Description</span>, <span class="mono">Quantity</span>,
-    <span class="mono">Unit Price (KES)</span>. Replaces the current active list
-    (lines that already have pledges are kept inactive).</p>
-  <form method="post" enctype="multipart/form-data" class="filter-bar">{% csrf_token %}
-    <input type="hidden" name="action" value="import">
-    <input class="field" type="file" name="file" accept=".csv,.xlsx,.xlsm,.xls" required>
-    <button class="btn btn-sm">Import</button>
-  </form>
-</div></div>
-
-<div class="card u-mb"><div class="hd"><b>Add one item</b></div><div class="bd">
-  <form method="post" class="filter-bar">{% csrf_token %}
-    <input type="hidden" name="action" value="add">
-    <div class="f"><label class="lbl" for="iname">Item</label>
-      <input class="field" id="iname" name="name" required placeholder="Sugar"></div>
-    <div class="f"><label class="lbl" for="iunit">Unit <span class="muted u-xs">(optional)</span></label>
-      <input class="field" id="iunit" name="unit" placeholder="kg / packets"></div>
-    <div class="f"><label class="lbl" for="iqty">Quantity needed</label>
-      <input class="field" id="iqty" name="quantity" inputmode="decimal" required placeholder="20"></div>
-    <div class="f"><label class="lbl" for="iprice">Unit price ({{ CURRENCY }})</label>
-      <input class="field" id="iprice" name="unit_price" inputmode="decimal" required placeholder="160"></div>
-    <button class="btn btn-sm">Add</button>
-  </form>
-</div></div>
-
-<div class="card u-mb"><div class="hd"><b>Record an offline pledge</b>
-  <span class="muted u-xs">— someone promised on paper / at the desk; reserves the quantity</span></div>
-<div class="bd">
-  <p class="help u-mt-0">Creates an active pledge with a <span class="mono">PG…</span> code and marks that quantity as taken on the public list. Prefer picking a register member; otherwise enter visitor name + phone.</p>
-  {% if open_items %}
-  <form method="post" class="filter-bar">{% csrf_token %}
-    <input type="hidden" name="action" value="record_offline">
-    <div class="f" style="min-width:12rem"><label class="lbl" for="oitem">Item</label>
-      <select class="field--select" id="oitem" name="item_id" required>
-        <option value="">— choose —</option>
-        {% for it in open_items %}
-        <option value="{{ it.id }}" data-price="{{ it.unit_price }}" data-left="{{ it.quantity_remaining }}">
-          {{ it.name }} ({{ it.quantity_remaining }} left · {{ CURRENCY }} {{ it.unit_price|money:0 }}/ea)
-        </option>
-        {% endfor %}
-      </select></div>
-    <div class="f"><label class="lbl" for="oqty">Quantity</label>
-      <input class="field" id="oqty" name="quantity" inputmode="decimal" required value="1"></div>
-    <div class="f" style="min-width:12rem"><label class="lbl" for="omember">Member <span class="muted u-xs">(optional)</span></label>
-      <select class="field--select" id="omember" name="member">
-        <option value="">— visitor / type below —</option>
-        {% for m in members %}<option value="{{ m.id }}">{{ m.name }}{% if m.phone %} · {{ m.phone }}{% endif %}</option>{% endfor %}
-      </select></div>
-    <div class="f"><label class="lbl" for="oname">Visitor name</label>
-      <input class="field" id="oname" name="name" placeholder="If not on the register"></div>
-    <div class="f"><label class="lbl" for="ophone">M-PESA phone</label>
-      <input class="field" id="ophone" name="phone" inputmode="tel" placeholder="07XX XXX XXX"></div>
-    <button class="btn btn-sm">Record pledge</button>
-  </form>
-  {% else %}
-  <p class="muted">Nothing left to pledge — every line is fully covered.</p>
-  {% endif %}
-</div></div>
+<details class="card u-mb ci-tools">
+  <summary class="hd"><b>Add items</b>
+    <span class="muted u-xs">— import spreadsheet or add one line</span></summary>
+  <div class="bd">
+    <div class="ci-tools-grid">
+      <div>
+        <h3 class="ci-tools-h">Import spreadsheet</h3>
+        <p class="help u-mt-0">CSV or Excel:
+          <span class="mono">Item Description</span>, <span class="mono">Quantity</span>,
+          <span class="mono">Unit Price (KES)</span>. Replaces the current active list
+          (lines that already have pledges are kept inactive).</p>
+        <form method="post" enctype="multipart/form-data" class="ci-import">{% csrf_token %}
+          <input type="hidden" name="action" value="import">
+          <input class="field" type="file" name="file" accept=".csv,.xlsx,.xlsm,.xls" required>
+          <button class="btn btn-sm">Import</button>
+        </form>
+      </div>
+      <div>
+        <h3 class="ci-tools-h">Add one item</h3>
+        <form method="post" class="ci-add-one">{% csrf_token %}
+          <input type="hidden" name="action" value="add">
+          <div class="f"><label class="lbl" for="iname">Item</label>
+            <input class="field" id="iname" name="name" required placeholder="Sugar"></div>
+          <div class="f"><label class="lbl" for="iunit">Unit <span class="muted u-xs">(optional)</span></label>
+            <input class="field" id="iunit" name="unit" placeholder="kg / packets"></div>
+          <div class="f"><label class="lbl" for="iqty">Quantity needed</label>
+            <input class="field" id="iqty" name="quantity" inputmode="decimal" required placeholder="20"></div>
+          <div class="f"><label class="lbl" for="iprice">Unit price ({{ CURRENCY }})</label>
+            <input class="field" id="iprice" name="unit_price" inputmode="decimal" required placeholder="160"></div>
+          <button class="btn btn-sm">Add</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</details>
 
 <div class="ws-table"><table class="ledger compact">
   <thead><tr>
@@ -132,4 +200,183 @@
   {% endfor %}
   </tbody>
 </table></div>
+
+<style>
+.ci-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:820px){.ci-grid{grid-template-columns:1fr}}
+.ci-panel .bd{padding-top:.55rem}
+.ci-code-display{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin:.4rem 0 .9rem}
+.ci-code{font-size:1.55rem;font-weight:700;letter-spacing:.06em;color:var(--forest-deep);
+  background:var(--forest-tint);padding:.35rem .7rem;border-radius:10px;border:1px solid #c5d9cf}
+.ci-code-row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.ci-code-row .field{flex:1;min-width:10rem}
+.ci-link-row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.ci-link-row .field{flex:1;min-width:12rem}
+.ci-link-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.55rem}
+.ci-desk-form{display:flex;flex-direction:column;gap:.85rem}
+.ci-desk-grid{display:grid;grid-template-columns:minmax(12rem,2fr) minmax(5rem,1fr) minmax(7rem,1fr);
+  gap:.65rem .75rem;align-items:end}
+.ci-desk-grid .ci-grow{grid-column:span 1}
+@media(max-width:720px){.ci-desk-grid{grid-template-columns:1fr}}
+.ci-amount .lbl{display:block}
+.ci-amount-val{font-size:1.15rem;font-weight:700;padding:.45rem 0;color:var(--forest)}
+.ci-desk-actions{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.ci-tools>summary{cursor:pointer;list-style:none}
+.ci-tools>summary::-webkit-details-marker{display:none}
+.ci-tools>summary::after{content:" ▾";color:var(--muted)}
+.ci-tools[open]>summary::after{content:" ▴"}
+.ci-tools-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+@media(max-width:720px){.ci-tools-grid{grid-template-columns:1fr}}
+.ci-tools-h{margin:0 0 .4rem;font-size:.95rem}
+.ci-import,.ci-add-one{display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end}
+.ci-add-one .f{flex:1;min-width:7rem}
+.ci-add-one .f .field{width:100%}
+</style>
+{% endblock %}
+
+{% block scripts %}
+{% if open_items %}
+<script id="open-items-data" type="application/json">{% for it in open_items %}{% if not forloop.first %},{% endif %}{"v":"{{ it.id }}","t":"{{ it.name|escapejs }}","left":"{{ it.quantity_remaining }}","price":"{{ it.unit_price }}","unit":"{{ it.unit|escapejs }}"}{% empty %}{% endfor %}</script>
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+(function(){
+  var CURRENCY = "{{ CURRENCY }}";
+  var raw = document.getElementById("open-items-data");
+  var ITEMS = [];
+  try { ITEMS = JSON.parse("[" + (raw ? raw.textContent : "") + "]"); } catch(e){ ITEMS = []; }
+
+  // Item combo (typeable)
+  var combo = document.getElementById("oitemCombo");
+  var qtyEl = document.getElementById("oqty");
+  var amtEl = document.getElementById("oamount");
+  var hintEl = document.getElementById("oitemHint");
+  var selected = null;
+
+  function fmtMoney(n){
+    n = Math.round(Number(n) || 0);
+    return CURRENCY + " " + n.toLocaleString();
+  }
+  function refreshAmount(){
+    if(!selected || !qtyEl){ if(amtEl) amtEl.textContent = "—"; return; }
+    var q = parseFloat(String(qtyEl.value || "").replace(",",""));
+    if(!(q > 0)){ amtEl.textContent = "—"; return; }
+    var price = parseFloat(selected.price) || 0;
+    amtEl.textContent = fmtMoney(q * price);
+    if(hintEl){
+      var left = selected.left;
+      hintEl.innerHTML = (selected.t + " · " + left + " left · " +
+        fmtMoney(price) + "/ea").replace(/</g,"");
+    }
+  }
+
+  if(combo){
+    var input = combo.querySelector(".combo-input");
+    var hidden = combo.querySelector(".combo-value");
+    var list = combo.querySelector(".combo-list");
+    var active = -1, shown = [];
+    function render(q){
+      q = (q || "").toLowerCase();
+      shown = ITEMS.filter(function(o){
+        return !q || (o.t || "").toLowerCase().indexOf(q) > -1;
+      }).slice(0, 12);
+      if(!shown.length){
+        list.innerHTML = '<div class="combo-empty">No match</div>';
+      } else {
+        list.innerHTML = shown.map(function(o, i){
+          return '<div class="combo-opt'+(i===active?' on':'')+'" data-i="'+i+'">' +
+            o.t + ' <span class="combo-tag">' + o.left + ' left · ' +
+            fmtMoney(o.price) + '</span></div>';
+        }).join("");
+      }
+      list.hidden = false;
+    }
+    function choose(o){
+      selected = o;
+      input.value = o.t;
+      hidden.value = o.v;
+      list.hidden = true;
+      active = -1;
+      refreshAmount();
+    }
+    input.addEventListener("focus", function(){ render(input.value); });
+    input.addEventListener("input", function(){
+      hidden.value = ""; selected = null; active = -1;
+      render(input.value); refreshAmount();
+    });
+    input.addEventListener("keydown", function(e){
+      if(list.hidden) return;
+      if(e.key === "ArrowDown"){ active = Math.min(active + 1, shown.length - 1); render(input.value); e.preventDefault(); }
+      else if(e.key === "ArrowUp"){ active = Math.max(active - 1, 0); render(input.value); e.preventDefault(); }
+      else if(e.key === "Enter"){ if(active >= 0 && shown[active]){ choose(shown[active]); e.preventDefault(); } }
+      else if(e.key === "Escape"){ list.hidden = true; }
+    });
+    list.addEventListener("mousedown", function(e){
+      var opt = e.target.closest(".combo-opt"); if(!opt) return;
+      e.preventDefault(); choose(shown[+opt.dataset.i]);
+    });
+    document.addEventListener("click", function(e){
+      if(!combo.contains(e.target)) list.hidden = true;
+    });
+    if(qtyEl) qtyEl.addEventListener("input", refreshAmount);
+
+    var form = document.getElementById("offlinePledgeForm");
+    if(form) form.addEventListener("submit", function(e){
+      if(!hidden.value){
+        e.preventDefault();
+        input.focus();
+        render(input.value);
+        alert("Pick an item from the list.");
+      }
+    });
+  }
+
+  // Member typeahead
+  var phone = document.getElementById("ophone");
+  var visitorRow = document.getElementById("visitor-name-row");
+  var memberSelect = document.getElementById("omember");
+  var visitor = document.getElementById("oname");
+
+  function syncVisitorRow(){
+    if(!visitorRow || !memberSelect) return;
+    var hasMember = !!(memberSelect.value);
+    visitorRow.style.display = hasMember ? "none" : "";
+    if(hasMember && visitor) visitor.value = "";
+  }
+
+  if(window.MemberSearch && memberSelect){
+    MemberSearch.enhance({
+      selectId: "omember",
+      searchUrl: "{% url 'member_search' %}",
+      placeholder: "Start typing a member's name or phone…",
+      renderLabel: function(r){ return r.name; },
+      renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+      onPick: function(r){
+        if(phone && r.phone && String(r.phone).indexOf("*") === -1) phone.value = r.phone;
+        syncVisitorRow();
+      }
+    });
+    memberSelect.addEventListener("change", syncVisitorRow);
+    var search = document.getElementById("omember_search");
+    if(search) search.addEventListener("input", function(){
+      if(!memberSelect.value) syncVisitorRow();
+    });
+  }
+  syncVisitorRow();
+})();
+</script>
+{% endif %}
+<script>
+(function(){
+  var btn = document.getElementById("copySharedCode");
+  var code = document.getElementById("sharedCode");
+  if(btn && code){
+    btn.addEventListener("click", function(){
+      var t = code.textContent.trim();
+      if(navigator.clipboard) navigator.clipboard.writeText(t);
+      btn.textContent = "Copied";
+      setTimeout(function(){ btn.textContent = "Copy"; }, 1500);
+    });
+  }
+})();
+</script>
 {% endblock %}

@@ -624,6 +624,8 @@ details.dd > summary::-webkit-details-marker{display:none}
 
 /* searchable combobox */
 .combo{position:relative}
+.combo-input{display:block;width:100%}
+.combo-value{display:none} /* selected id; markup also uses type=hidden */
 .combo-list{position:absolute;top:calc(100% + 2px);left:0;right:0;z-index:40;
   background:var(--paper);border:1px solid var(--line-strong);border-radius:10px;
   box-shadow:var(--shadow-md);max-height:240px;overflow-y:auto;padding:.25rem}
