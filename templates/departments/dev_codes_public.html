@@ -5,34 +5,49 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Development codes · {{ church }}</title>
   <style>
-    :root{--ink:#1a2e24;--muted:#5a6f64;--paper:#f7f4ee;--line:#d5ddd7;
-      --forest:#1f5c45;--brass:#9a7b3c;--paper2:#efeae1}
+    :root{--ink:#1a2e24;--muted:#5a6f64;--line:#d5ddd7;
+      --forest:#1f5c45;--brass:#9a7b3c;--paper2:#efeae1;--paper:#f7f4ee}
     *{box-sizing:border-box}
     body{margin:0;font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
       background:linear-gradient(165deg,#efeae1 0%,#f7f4ee 45%,#e8efe9 100%);
       color:var(--ink);min-height:100vh}
-    .wrap{max-width:920px;margin:0 auto;padding:2rem 1.25rem 3rem}
+    .wrap{max-width:880px;margin:0 auto;padding:2rem 1.25rem 3rem}
     .eyebrow{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.72rem;
       letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 .35rem}
-    h1{font-size:clamp(1.6rem,3vw,2.2rem);margin:0 0 .35rem;letter-spacing:-.02em}
-    .sub{color:var(--muted);margin:0 0 1.5rem;font-size:1rem}
-    table{width:100%;border-collapse:collapse;background:rgba(255,255,255,.72);
+    h1{font-size:clamp(1.55rem,3vw,2.15rem);margin:0 0 .4rem;letter-spacing:-.02em}
+    .sub{color:var(--muted);margin:0 0 1rem;font-size:1rem;line-height:1.45;max-width:42rem}
+    .howto{font-family:"IBM Plex Sans",system-ui,sans-serif;background:rgba(255,255,255,.7);
+      border:1px solid var(--line);border-radius:12px;padding:.85rem 1rem;margin:0 0 1.15rem;
+      font-size:.88rem;color:var(--ink);line-height:1.45}
+    .howto ol{margin:.35rem 0 0;padding-left:1.2rem}
+    .howto li{margin:.2rem 0}
+    .toolbar{display:flex;gap:.65rem;flex-wrap:wrap;align-items:center;margin:0 0 1rem}
+    .search{flex:1;min-width:12rem;font-family:"IBM Plex Sans",system-ui,sans-serif;
+      border:1px solid var(--line);border-radius:10px;padding:.65rem .8rem;font-size:.95rem;
+      background:#fff}
+    .count{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.82rem;color:var(--muted)}
+    .group-block{margin:0 0 1.1rem;background:rgba(255,255,255,.72);
       border:1px solid var(--line);border-radius:14px;overflow:hidden;
-      box-shadow:0 10px 40px rgba(26,46,36,.06)}
-    th,td{padding:.75rem .9rem;text-align:left;border-bottom:1px solid var(--line);
+      box-shadow:0 8px 28px rgba(26,46,36,.05)}
+    .group-hd{display:flex;justify-content:space-between;align-items:baseline;gap:.75rem;
+      padding:.7rem 1rem;background:var(--paper2);border-bottom:1px solid var(--line);
+      font-family:"IBM Plex Sans",system-ui,sans-serif}
+    .group-hd .gno{font-weight:700;color:var(--forest);letter-spacing:.02em}
+    .group-hd .gmeta{font-size:.78rem;color:var(--muted)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:.72rem 1rem;text-align:left;border-bottom:1px solid var(--line);
       font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.92rem}
-    th{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
-      background:var(--paper2)}
+    th{font-size:.66rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+      background:rgba(239,234,225,.55)}
     tr:last-child td{border-bottom:0}
     .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;letter-spacing:.04em}
-    .code{font-weight:700;color:var(--forest);font-size:1.02rem}
-    .btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--forest);
-      border-radius:8px;padding:.28rem .55rem;font-size:.75rem;font-weight:600;
-      cursor:pointer;font-family:inherit}
-    .btn:hover{border-color:var(--forest)}
-    .empty{padding:2rem;text-align:center;color:var(--muted)}
-    .foot{margin-top:1.25rem;font-size:.82rem;color:var(--muted);
+    .code{font-weight:700;color:var(--forest);font-size:1.05rem}
+    .phone{color:var(--muted);font-size:.88rem}
+    .empty,.none{padding:1.5rem;text-align:center;color:var(--muted);
       font-family:"IBM Plex Sans",system-ui,sans-serif}
+    .foot{margin-top:1.1rem;font-size:.82rem;color:var(--muted);
+      font-family:"IBM Plex Sans",system-ui,sans-serif}
+    .is-hidden{display:none!important}
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
@@ -41,43 +56,75 @@
   <div class="wrap">
     <p class="eyebrow">{{ church }} · Development</p>
     <h1>Member contribution codes</h1>
-    <p class="sub">Put the code in the M-Pesa narration. Phones are masked — tap Show to reveal.</p>
-    {% if rows %}
-    <table>
-      <thead><tr><th>Name</th><th>Code</th><th>Group</th><th>Phone</th><th></th></tr></thead>
-      <tbody>
-      {% for r in rows %}
-        <tr>
-          <td>{{ r.name }}</td>
-          <td class="mono code">{{ r.code }}</td>
-          <td>{{ r.group|default:"—" }}</td>
-          <td class="mono phone-cell" data-full="{{ r.phone_full }}" data-masked="{{ r.phone_masked }}">{{ r.phone_masked }}</td>
-          <td><button type="button" class="btn reveal-btn">Show</button></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
+    <p class="sub">Use your personal code in the M-Pesa narration so the gift is credited to you. Phone numbers are masked for privacy and cannot be revealed on this page.</p>
+
+    <div class="howto">
+      <strong>How to use</strong>
+      <ol>
+        <li>Find your name (or type it in the search box).</li>
+        <li>Copy the <span class="mono">MB…</span> code next to your name into the M-Pesa reference.</li>
+        <li>Check the <b>group №</b> beside your name — it should match the development group you belong to. Tell a leader if it looks wrong.</li>
+      </ol>
+    </div>
+
+    {% if groups %}
+    <div class="toolbar">
+      <input class="search" id="codeSearch" type="search" placeholder="Search by name or code…" autocomplete="off">
+      <span class="count" id="visibleCount">{{ total_rows }} member{{ total_rows|pluralize }}</span>
+    </div>
+
+    {% for g in groups %}
+    <section class="group-block" data-group-block>
+      <div class="group-hd">
+        <span class="gno">{% if g.number != None %}Group {{ g.number }}{% else %}No group assigned{% endif %}</span>
+        <span class="gmeta">{% if g.label and g.number != None %}{{ g.label }} · {% endif %}{{ g.rows|length }} code{{ g.rows|length|pluralize }}</span>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Code</th><th>Phone</th><th>Group №</th></tr></thead>
+        <tbody>
+        {% for r in g.rows %}
+          <tr data-row data-q="{{ r.name|lower }} {{ r.code|lower }}">
+            <td>{{ r.name }}</td>
+            <td class="mono code">{{ r.code }}</td>
+            <td class="mono phone">{{ r.phone_masked }}</td>
+            <td class="mono">{% if r.group_number != None %}{{ r.group_number }}{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    {% endfor %}
+    <p class="none is-hidden" id="noMatch">No names match that search.</p>
     {% else %}
     <div class="empty">No qualifying members yet — need a mobile number and a Development gift on record.</div>
     {% endif %}
-    <p class="foot">{{ rows|length }} listed · keep this link private to group leaders</p>
+    <p class="foot">{{ total_rows }} listed · phones stay masked · keep this link with group leaders</p>
   </div>
   <script>
-  document.querySelectorAll(".reveal-btn").forEach(function(btn){
-    btn.addEventListener("click", function(){
-      var cell = btn.closest("tr").querySelector(".phone-cell");
-      var showing = btn.dataset.on === "1";
-      if(showing){
-        cell.textContent = cell.dataset.masked;
-        btn.textContent = "Show";
-        btn.dataset.on = "0";
-      } else {
-        cell.textContent = cell.dataset.full;
-        btn.textContent = "Hide";
-        btn.dataset.on = "1";
-      }
-    });
-  });
+  (function(){
+    var input = document.getElementById("codeSearch");
+    if(!input) return;
+    var rows = Array.prototype.slice.call(document.querySelectorAll("[data-row]"));
+    var blocks = Array.prototype.slice.call(document.querySelectorAll("[data-group-block]"));
+    var countEl = document.getElementById("visibleCount");
+    var none = document.getElementById("noMatch");
+    function refresh(){
+      var q = (input.value || "").trim().toLowerCase();
+      var n = 0;
+      rows.forEach(function(row){
+        var ok = !q || (row.getAttribute("data-q") || "").indexOf(q) !== -1;
+        row.classList.toggle("is-hidden", !ok);
+        if(ok) n++;
+      });
+      blocks.forEach(function(block){
+        var any = block.querySelectorAll("[data-row]:not(.is-hidden)").length > 0;
+        block.classList.toggle("is-hidden", !any);
+      });
+      if(countEl) countEl.textContent = n + " member" + (n === 1 ? "" : "s");
+      if(none) none.classList.toggle("is-hidden", n > 0 || !q);
+    }
+    input.addEventListener("input", refresh);
+  })();
   </script>
 </body>
 </html>

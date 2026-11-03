@@ -568,8 +568,8 @@ class SiteConfig(models.Model):
     dev_codes_public_enabled = models.BooleanField(
         default=False,
         help_text="Publish a shareable page of member MB… codes for "
-                  "development leaders. Phones are masked; holders of the "
-                  "link can reveal a row.")
+                  "development leaders. Phones are permanently masked "
+                  "(last 3 digits); full numbers are never sent to the browser.")
     dev_codes_share_token = models.CharField(
         max_length=40, unique=True, null=True, blank=True, db_index=True,
         help_text="Opaque token in the public development-codes URL.")
