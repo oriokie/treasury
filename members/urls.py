@@ -17,6 +17,8 @@ urlpatterns = [
     path("members/import/", views.MemberImportView.as_view(), name="member_import"),
 
     path("members/merge/", views.MergeMembersView.as_view(), name="member_merge"),
+    path("members/duplicates/ignore/", views.IgnoreDuplicateView.as_view(),
+         name="member_duplicate_ignore"),
     path("members/<int:pk>/", views.MemberDetailView.as_view(), name="member_detail"),
     path("members/<int:pk>/edit/", views.MemberUpdateView.as_view(), name="member_edit"),
     path("members/<int:pk>/phones/add/", views.MemberPhoneAddView.as_view(),

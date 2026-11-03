@@ -564,6 +564,31 @@ class SiteConfig(models.Model):
                   "group history fallback (1–24). Only used when the history "
                   "option above is on.")
 
+    # --- Development codes share (leaders directory) -------------------------
+    dev_codes_public_enabled = models.BooleanField(
+        default=False,
+        help_text="Publish a shareable page of member MB… codes for "
+                  "development leaders. Phones are masked; holders of the "
+                  "link can reveal a row.")
+    dev_codes_share_token = models.CharField(
+        max_length=40, unique=True, null=True, blank=True, db_index=True,
+        help_text="Opaque token in the public development-codes URL.")
+
+    # --- Live Development collection board ----------------------------------
+    dev_live_public_enabled = models.BooleanField(
+        default=False,
+        help_text="Publish a presentation board showing live Development "
+                  "fund totals for the selected period.")
+    dev_live_share_token = models.CharField(
+        max_length=40, unique=True, null=True, blank=True, db_index=True,
+        help_text="Opaque token in the public live Development board URL.")
+    dev_live_period_start = models.DateField(
+        null=True, blank=True,
+        help_text="Inclusive start date for the live Development board.")
+    dev_live_period_end = models.DateField(
+        null=True, blank=True,
+        help_text="Inclusive end date for the live Development board.")
+
     # --- Backups -------------------------------------------------------------
     backup_email = models.CharField(max_length=200, blank=True, default="",
         help_text="Email address(es) to send the nightly backup to, comma-separated. "
@@ -640,6 +665,32 @@ class SiteConfig(models.Model):
         super().save(*args, **kwargs)
         # a settings change must be visible to the remainder of this request
         _siteconfig_local.obj = None
+
+    def _ensure_share_token(self, field_name, save=True, rotate=False):
+        """Assign (or rotate) an opaque public-share token on this singleton."""
+        import secrets
+        current = getattr(self, field_name, None)
+        if current and not rotate:
+            return current
+        for _ in range(20):
+            token = secrets.token_urlsafe(18)[:32]
+            clash = (type(self).objects
+                     .filter(**{field_name: token})
+                     .exclude(pk=self.pk).exists())
+            if not clash:
+                setattr(self, field_name, token)
+                if save and self.pk:
+                    self.save(update_fields=[field_name])
+                return token
+        raise RuntimeError(f"Could not allocate {field_name}")
+
+    def ensure_dev_codes_share_token(self, save=True, rotate=False):
+        return self._ensure_share_token("dev_codes_share_token", save=save,
+                                        rotate=rotate)
+
+    def ensure_dev_live_share_token(self, save=True, rotate=False):
+        return self._ensure_share_token("dev_live_share_token", save=save,
+                                        rotate=rotate)
 
     # ---- Board report configuration (#4) ----
     BOARD_SECTIONS = [

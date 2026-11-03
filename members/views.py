@@ -193,6 +193,9 @@ class MemberDetailView(ReadAccessMixin, DetailView):
         # actually see them, not just have them silently preserved in the
         # database.
         ctx["other_phones"] = self.object.phones.filter(is_primary=False)
+        ctx["merge_logs"] = (
+            self.object.merge_logs_as_keep.select_related("merged_by")
+            .order_by("-merged_at")[:20])
 
         # Welfare schemes. The whole point of the benevolent module extending THIS
         # registry rather than keeping its own is that a member's page can show
@@ -410,7 +413,7 @@ class BulkMergeView(DataEntryRequiredMixin, View):
                     and absorb.source != Member.Source.AUTO_BANK):
                 keep, absorb = absorb, keep
             try:
-                merge_members(keep, absorb)
+                merge_members(keep, absorb, user=request.user)
             except MemberMergeConflict as exc:
                 # one unmergeable pair must not abort the whole run, and
                 # must not leave a half-merged record behind
@@ -445,12 +448,30 @@ class MergeMembersView(DataEntryRequiredMixin, View):
             messages.error(request, "Choose two different members.")
             return redirect("member_duplicates")
         try:
-            merge_members(keep, absorb)
+            merge_members(keep, absorb, user=request.user)
         except MemberMergeConflict as exc:
             for reason in exc.reasons:
                 messages.error(request, reason)
             return redirect("member_duplicates")
         messages.success(request, f"Merged into {keep.name}.")
+        return redirect("member_duplicates")
+
+
+class IgnoreDuplicateView(DataEntryRequiredMixin, View):
+    """Mark a PossibleDuplicate resolved without merging.
+
+    Used when a flag has no same-name candidate (or the treasurer has
+    confirmed the records are genuinely different people).
+    """
+
+    def post(self, request):
+        flag = get_object_or_404(
+            PossibleDuplicate, pk=request.POST.get("flag"), resolved=False)
+        flag.resolved = True
+        flag.save(update_fields=["resolved"])
+        messages.success(
+            request,
+            f"Ignored duplicate flag for {flag.member.name}.")
         return redirect("member_duplicates")
 
 

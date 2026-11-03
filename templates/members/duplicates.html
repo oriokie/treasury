@@ -39,10 +39,23 @@
           </select></div>
         <button class="btn btn-sm">Merge</button>
       {% endif %}
-      <span class="muted" style="font-size:.8rem;display:block;margin-top:.3rem">Moves all donations &amp; aliases and keeps both phone numbers, then deletes the duplicate.</span>
+      <span class="muted" style="font-size:.8rem;display:block;margin-top:.3rem">Moves all donations &amp; aliases and keeps both phone numbers, then deletes the duplicate. A merge log is kept on the surviving record — reverse-merge is not available.</span>
     </form>
-    {% else %}<div class="muted" style="flex:1.4">No same-name candidate to merge with.</div>{% endif %}
+    {% else %}
+    <div style="flex:1.4">
+      <div class="muted">No same-name candidate to merge with.</div>
+      <p class="help u-mt-xs">The other record may have been renamed or removed. You can ignore this flag if it is not a real duplicate.</p>
+    </div>
+    {% endif %}
   </div>
+  {% if can_enter_data %}
+  <form method="post" action="{% url 'member_duplicate_ignore' %}" class="u-mt-sm"
+        onsubmit="return confirm('Ignore the duplicate flag for {{ row.member.name }}? This does not delete the member.');">
+    {% csrf_token %}
+    <input type="hidden" name="flag" value="{{ row.flag.id }}">
+    <button class="btn btn-sm btn-ghost">Ignore</button>
+  </form>
+  {% endif %}
 </div></div>
 {% empty %}<div class="empty"><div class="big">✓</div>No unresolved duplicates.</div>{% endfor %}
 {% endblock %}

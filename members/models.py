@@ -251,6 +251,34 @@ class PossibleDuplicate(models.Model):
         return f"Possible duplicate: {self.member}"
 
 
+class MemberMergeLog(models.Model):
+    """Audit of a merge: absorb was folded into keep, then deleted.
+
+    True reverse-merge is not supported; this snapshot lets treasurers see
+    who was absorbed and how many gifts/pledges moved onto the kept record.
+    """
+    keep = models.ForeignKey(
+        Member, on_delete=models.CASCADE, related_name="merge_logs_as_keep")
+    absorb_id = models.PositiveIntegerField(
+        help_text="Primary key of the absorbed (deleted) member.")
+    absorb_name = models.CharField(max_length=120)
+    absorb_phone = models.CharField(max_length=12, blank=True, default="")
+    absorb_match_code = models.CharField(max_length=16, blank=True, default="")
+    absorb_name_key = models.CharField(max_length=120, blank=True, default="")
+    transactions_moved = models.PositiveIntegerField(default=0)
+    pledges_moved = models.PositiveIntegerField(default=0)
+    merged_by = models.ForeignKey(
+        "auth.User", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+")
+    merged_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-merged_at"]
+
+    def __str__(self):
+        return f"Merged {self.absorb_name} → {self.keep_id}"
+
+
 class MemberPhone(models.Model):
     """An additional phone number for a member who pays from more than one line.
     Exactly one number per member is marked primary and used for receipting."""

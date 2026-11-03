@@ -1,4 +1,4 @@
-{% extends 'base.html' %}{% load humanize treasury_extras %}
+{% extends 'base.html' %}{% load humanize static treasury_extras %}
 {% block title %}{{ campaign.name }} · Campaigns{% endblock %}
 {% block content %}
 <div class="rpt-mast">
@@ -46,10 +46,44 @@
       (no gift in period){% else %}everyone has given{% endif %}</div></div>
 </div>
 
+{% if can_enter_data %}
+<div class="card u-mb"><div class="hd"><b>Add a member to the sheet</b>
+  <span class="muted u-xs">— pick from the register; development group is typeable</span></div>
+<div class="bd">
+  <form method="post" action="{% url 'campaign_member_add' campaign.pk %}" id="campAddMemberForm"
+        class="ci-desk-form" style="display:flex;flex-direction:column;gap:.75rem">{% csrf_token %}
+    <div style="display:grid;grid-template-columns:minmax(12rem,2fr) minmax(10rem,1.4fr) minmax(8rem,1fr);gap:.65rem;align-items:end">
+      <div class="f">
+        <label class="lbl" for="cm_member">Member</label>
+        <select class="field--select" id="cm_member" name="member" required>
+          <option value="">— type to search —</option>
+        </select>
+      </div>
+      <div class="f">
+        <label class="lbl" for="cm_dev_group">Development group</label>
+        <select class="field--select" id="cm_dev_group" name="dev_group">
+          <option value="">— optional / type to search —</option>
+        </select>
+        <input type="hidden" name="group_label" id="cm_group_label" value="">
+      </div>
+      <div class="f">
+        <label class="lbl" for="cm_phone">M-PESA phone</label>
+        <input class="field" id="cm_phone" name="phone" inputmode="tel"
+               placeholder="07XX XXX XXX" autocomplete="off">
+      </div>
+    </div>
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-sm">Add to sheet</button>
+      <span class="muted u-xs">Phone fills from the register when known; enter one if missing. Creates a <span class="mono">CM…</span> code.</span>
+    </div>
+  </form>
+</div></div>
+{% endif %}
+
 {% if not groups %}
 <div class="panel"><p class="muted">No member sheet has been uploaded for this campaign yet.
   {% if can_enter_data %}<a class="link" href="{% url 'campaign_members' campaign.pk %}">Upload one</a>
-  to record who belongs to which group.{% endif %}</p></div>
+  to record who belongs to which group, or add people one-by-one above.{% endif %}</p></div>
 {% endif %}
 
 {% if members %}
@@ -278,4 +312,69 @@ compose it rather than on the confirmation screen afterwards.{% endcomment %}
   </table>
 </div></div>
 {% endfor %}
+{% endblock %}
+
+{% block scripts %}
+{% if can_enter_data %}
+<script src="{% static 'js/member-search.js' %}"></script>
+<script>
+(function(){
+  var phone = document.getElementById("cm_phone");
+  var groupSel = document.getElementById("cm_dev_group");
+  var groupLabel = document.getElementById("cm_group_label");
+  var memberSel = document.getElementById("cm_member");
+  if(!window.MemberSearch || !memberSel) return;
+
+  function setGroup(id, label){
+    if(!groupSel) return;
+    if(id && !groupSel.querySelector('option[value="'+id+'"]')){
+      var opt = document.createElement("option");
+      opt.value = id; opt.textContent = label || ("Group "+id);
+      groupSel.appendChild(opt);
+    }
+    groupSel.value = id || "";
+    if(groupLabel) groupLabel.value = label || "";
+    var search = document.getElementById("cm_dev_group_search");
+    if(search) search.value = label || "";
+  }
+
+  MemberSearch.enhance({
+    selectId: "cm_member",
+    searchUrl: "{% url 'member_search' %}",
+    placeholder: "Start typing a member's name or phone…",
+    renderLabel: function(r){ return r.name; },
+    renderMeta: function(r){ return [r.type, r.phone].filter(Boolean).join(" · "); },
+    onPick: function(r){
+      if(phone && r.phone && String(r.phone).indexOf("*") === -1) phone.value = r.phone;
+      if(r.dev_group) setGroup(r.dev_group, r.dev_group_label || "");
+    }
+  });
+
+  MemberSearch.enhance({
+    selectId: "cm_dev_group",
+    searchUrl: "{% url 'dev_group_search' %}",
+    placeholder: "Type a development group № or name…",
+    renderLabel: function(r){ return r.name || r.label; },
+    renderMeta: function(r){ return r.number ? ("№ "+r.number) : ""; },
+    onPick: function(r){
+      if(groupLabel) groupLabel.value = r.name || r.label || "";
+    }
+  });
+
+  var form = document.getElementById("campAddMemberForm");
+  if(form) form.addEventListener("submit", function(e){
+    if(!memberSel.value){
+      e.preventDefault();
+      alert("Pick a member from the register.");
+      return;
+    }
+    if(phone && !(phone.value || "").trim()){
+      e.preventDefault();
+      phone.focus();
+      alert("Enter an M-PESA phone number for this member.");
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -33,6 +33,8 @@ urlpatterns = [
     path("campaigns/<int:pk>/", views.CampaignDetailView.as_view(), name="campaign_detail"),
     path("campaigns/<int:pk>/sms/", views.CampaignGroupSmsView.as_view(), name="campaign_group_sms"),
     path("campaigns/<int:pk>/members/", views.CampaignMemberImportView.as_view(), name="campaign_members"),
+    path("campaigns/<int:pk>/members/add/", views.CampaignMemberAddView.as_view(),
+         name="campaign_member_add"),
     path("campaigns/<int:pk>/delete/", views.CampaignDeleteView.as_view(), name="campaign_delete"),
 
     path("queue/<int:pk>/claim/", views.ClaimResolveView.as_view(), name="queue_claim"),

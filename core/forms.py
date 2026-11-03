@@ -15,7 +15,8 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         # through its own board-configuration screen, not this general form;
         # id/updated_at are not user-editable. A test
         # (test_siteconfig_form_binds_every_field) asserts this stays true.
-        exclude = ["id", "updated_at", "board_config"]
+        exclude = ["id", "updated_at", "board_config",
+                   "dev_codes_share_token", "dev_live_share_token"]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
                    "contrib_sms_template": forms.Textarea(attrs={"rows": 4}),
                    "receipt_message": forms.Textarea(attrs={"rows": 3}),

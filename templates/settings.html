@@ -119,6 +119,21 @@
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
         {% endif %}{% endfor %}
       </div>
+      <p class="help u-mt-sm">Share a masked phone + codes directory with leaders, or a live collection board:
+        <a class="link" href="{% url 'dev_share_control' %}">Development share</a>.</p>
+    </div></div>
+
+    <div class="card u-mt"><div class="hd">Development public pages</div><div class="bd">
+      <div class="help u-mb-sm">Toggles and the live-board period. Copy / rotate the secret links on
+        <a class="link" href="{% url 'dev_share_control' %}">Development share</a>.</div>
+      <div class="form-grid">
+        {% for f in form %}{% if f.name in 'dev_codes_public_enabled dev_live_public_enabled dev_live_period_start dev_live_period_end' %}
+          <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
+            {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
+            {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+            {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
+        {% endif %}{% endfor %}
+      </div>
     </div></div>
 
     <div class="card u-mt"><div class="hd">Pledge SMS wording</div><div class="bd">
