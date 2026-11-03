@@ -3440,6 +3440,71 @@ class CampaignDetailView(ReadAccessMixin, View):
         })
 
 
+class CampaignMemberAddView(DataEntryRequiredMixin, View):
+    """Append one register member to a campaign sheet (no wipe/replace).
+
+    Picks from the Member register + a DevelopmentGroup; phone is required
+    (autofilled from the member when known).
+    """
+
+    def post(self, request, pk):
+        from departments.models import DevelopmentGroup
+        from giving.models import Campaign, CampaignMember
+        from members.models import Member, normalize_phone
+
+        campaign = get_object_or_404(Campaign, pk=pk)
+        member = get_object_or_404(
+            Member.objects.select_related("dev_group"),
+            pk=request.POST.get("member"), active=True)
+        phone = normalize_phone(request.POST.get("phone") or "") or ""
+        if not phone:
+            phone = normalize_phone(member.receipt_phone or member.phone or "") or ""
+        if not phone:
+            messages.error(
+                request,
+                f"{member.name} has no phone on file — enter an M-PESA number.")
+            return redirect("campaign_detail", pk=pk)
+
+        group_label = (request.POST.get("group_label") or "").strip()[:40]
+        grp_id = request.POST.get("dev_group")
+        if grp_id:
+            dg = DevelopmentGroup.objects.filter(pk=grp_id, active=True).first()
+            if dg:
+                group_label = (dg.label or "")[:40]
+        if not group_label and member.dev_group_id:
+            group_label = (member.dev_group.label or "")[:40]
+
+        existing = None
+        if phone:
+            existing = (CampaignMember.objects
+                        .filter(campaign=campaign, phone=phone).first())
+        if existing is None:
+            existing = (CampaignMember.objects
+                        .filter(campaign=campaign, name_key=member.name_key)
+                        .first())
+
+        if existing:
+            existing.name = member.name
+            existing.phone = phone
+            existing.group = group_label
+            existing.save()
+            messages.success(
+                request,
+                f"Updated {existing.name} on the sheet"
+                + (f" (group {group_label})" if group_label else "")
+                + f" — code {existing.match_code}.")
+        else:
+            row = CampaignMember.objects.create(
+                campaign=campaign, name=member.name, phone=phone,
+                group=group_label)
+            messages.success(
+                request,
+                f"Added {row.name} to the sheet"
+                + (f" (group {group_label})" if group_label else "")
+                + f" — code {row.match_code}.")
+        return redirect("campaign_detail", pk=pk)
+
+
 class CampaignGroupSmsView(TreasurerRequiredMixin, View):
     """Write to one group.
 

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development codes · {{ church }}</title>
+  <style>
+    :root{--ink:#1a2e24;--muted:#5a6f64;--paper:#f7f4ee;--line:#d5ddd7;
+      --forest:#1f5c45;--brass:#9a7b3c;--paper2:#efeae1}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+      background:linear-gradient(165deg,#efeae1 0%,#f7f4ee 45%,#e8efe9 100%);
+      color:var(--ink);min-height:100vh}
+    .wrap{max-width:920px;margin:0 auto;padding:2rem 1.25rem 3rem}
+    .eyebrow{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.72rem;
+      letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 .35rem}
+    h1{font-size:clamp(1.6rem,3vw,2.2rem);margin:0 0 .35rem;letter-spacing:-.02em}
+    .sub{color:var(--muted);margin:0 0 1.5rem;font-size:1rem}
+    table{width:100%;border-collapse:collapse;background:rgba(255,255,255,.72);
+      border:1px solid var(--line);border-radius:14px;overflow:hidden;
+      box-shadow:0 10px 40px rgba(26,46,36,.06)}
+    th,td{padding:.75rem .9rem;text-align:left;border-bottom:1px solid var(--line);
+      font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.92rem}
+    th{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+      background:var(--paper2)}
+    tr:last-child td{border-bottom:0}
+    .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;letter-spacing:.04em}
+    .code{font-weight:700;color:var(--forest);font-size:1.02rem}
+    .btn{appearance:none;border:1px solid var(--line);background:#fff;color:var(--forest);
+      border-radius:8px;padding:.28rem .55rem;font-size:.75rem;font-weight:600;
+      cursor:pointer;font-family:inherit}
+    .btn:hover{border-color:var(--forest)}
+    .empty{padding:2rem;text-align:center;color:var(--muted)}
+    .foot{margin-top:1.25rem;font-size:.82rem;color:var(--muted);
+      font-family:"IBM Plex Sans",system-ui,sans-serif}
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;700&family=IBM+Plex+Sans:wght@400;600&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="wrap">
+    <p class="eyebrow">{{ church }} · Development</p>
+    <h1>Member contribution codes</h1>
+    <p class="sub">Put the code in the M-Pesa narration. Phones are masked — tap Show to reveal.</p>
+    {% if rows %}
+    <table>
+      <thead><tr><th>Name</th><th>Code</th><th>Group</th><th>Phone</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td class="mono code">{{ r.code }}</td>
+          <td>{{ r.group|default:"—" }}</td>
+          <td class="mono phone-cell" data-full="{{ r.phone_full }}" data-masked="{{ r.phone_masked }}">{{ r.phone_masked }}</td>
+          <td><button type="button" class="btn reveal-btn">Show</button></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No qualifying members yet — need a mobile number and a Development gift on record.</div>
+    {% endif %}
+    <p class="foot">{{ rows|length }} listed · keep this link private to group leaders</p>
+  </div>
+  <script>
+  document.querySelectorAll(".reveal-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var cell = btn.closest("tr").querySelector(".phone-cell");
+      var showing = btn.dataset.on === "1";
+      if(showing){
+        cell.textContent = cell.dataset.masked;
+        btn.textContent = "Show";
+        btn.dataset.on = "0";
+      } else {
+        cell.textContent = cell.dataset.full;
+        btn.textContent = "Hide";
+        btn.dataset.on = "1";
+      }
+    });
+  });
+  </script>
+</body>
+</html>

@@ -64,6 +64,29 @@
   <div class="u-mt-xs">{% for a in aliases %}<span class="pill pill-grey" style="margin:.15rem">{{ a.name }}</span>{% endfor %}</div>
 </div></div>
 {% endif %}
+{% if merge_logs %}
+<div class="card u-mb"><div class="hd"><b>Merged into this member</b>
+  <span class="muted u-xs">— records absorbed here; gifts now sit on this ledger. Reverse-merge is not available.</span></div>
+<div class="bd u-pad-cell">
+  <table class="ledger compact">
+    <thead><tr><th>When</th><th>Absorbed name</th><th>Code</th><th>Phone</th>
+      <th class="num">Gifts moved</th><th class="num">Pledges moved</th><th>By</th></tr></thead>
+    <tbody>
+    {% for log in merge_logs %}
+      <tr>
+        <td class="mono muted u-xs">{{ log.merged_at|date:"d M Y H:i" }}</td>
+        <td>{{ log.absorb_name }}</td>
+        <td class="mono">{{ log.absorb_match_code|default:"—" }}</td>
+        <td class="mono muted u-xs">{{ log.absorb_phone|phone_for:user|default:"—" }}</td>
+        <td class="num mono">{{ log.transactions_moved }}</td>
+        <td class="num mono">{{ log.pledges_moved }}</td>
+        <td class="muted u-xs">{% if log.merged_by %}{{ log.merged_by.get_full_name|default:log.merged_by.username }}{% else %}—{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div></div>
+{% endif %}
 {% comment %} A member may give from more than one line — an M-Pesa number, a
    work handset. Every number listed here is matched when a payment arrives, so
    giving from a second line is recognised as theirs instead of going to the

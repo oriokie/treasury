@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Development · Live · {{ church }}</title>
+  <style>
+    :root{--ink:#142820;--muted:#6a7d73;--paper:#f4f0e8;--forest:#184f3a;
+      --brass:#b08a3c;--cream:#faf7f1}
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0}
+    body{font-family:"Fraunces","Source Serif 4",Georgia,serif;color:var(--ink);
+      background:
+        radial-gradient(1200px 600px at 10% -10%,rgba(176,138,60,.18),transparent 55%),
+        radial-gradient(900px 500px at 100% 0%,rgba(24,79,58,.12),transparent 50%),
+        linear-gradient(160deg,#ebe4d6 0%,var(--cream) 40%,#e4efe8 100%);
+      display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .stage{width:min(1100px,94vw);text-align:center;padding:2rem 1rem 3rem}
+    .eyebrow{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.78rem;
+      letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 .8rem}
+    .church{font-size:clamp(1.1rem,2.2vw,1.45rem);font-weight:600;margin:0 0 .25rem;
+      letter-spacing:-.01em}
+    .title{font-size:clamp(1.6rem,3.5vw,2.4rem);font-weight:700;margin:0 0 1.75rem;
+      letter-spacing:-.02em}
+    .period{font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--muted);
+      font-size:.95rem;margin:0 0 2.2rem}
+    .total-wrap{position:relative;margin:0 auto 2rem}
+    .currency{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:clamp(1rem,2vw,1.35rem);
+      color:var(--brass);font-weight:600;letter-spacing:.08em;margin-bottom:.35rem}
+    .total{font-family:"IBM Plex Mono",ui-monospace,monospace;
+      font-size:clamp(3.2rem,12vw,7.5rem);font-weight:700;letter-spacing:-.03em;
+      line-height:1;color:var(--forest);transition:transform .45s cubic-bezier(.2,.8,.2,1),
+      color .45s ease}
+    .total.is-bump{transform:scale(1.035);color:#126048}
+    .metrics{display:flex;justify-content:center;gap:clamp(1.5rem,5vw,3.5rem);flex-wrap:wrap}
+    .metric{min-width:140px}
+    .metric .lbl{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.72rem;
+      letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem}
+    .metric .val{font-family:"IBM Plex Mono",ui-monospace,monospace;
+      font-size:clamp(1.6rem,4vw,2.4rem);font-weight:600}
+    .rule{width:min(220px,40%);height:2px;margin:0 auto 1.6rem;
+      background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.7}
+    .pulse{position:fixed;inset:auto 1.25rem 1.25rem auto;font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+      display:flex;align-items:center;gap:.4rem}
+    .dot{width:7px;height:7px;border-radius:50%;background:var(--forest);
+      animation:blink 2.2s ease-in-out infinite}
+    @keyframes blink{0%,100%{opacity:.35}50%{opacity:1}}
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@600;700&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="stage">
+    <p class="eyebrow">Live collection</p>
+    <p class="church">{{ church }}</p>
+    <h1 class="title">Development Fund</h1>
+    <div class="rule"></div>
+    <p class="period" id="periodLabel">
+      {% if start and end %}{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% else %}Period not set{% endif %}
+    </p>
+    <div class="total-wrap">
+      <div class="currency">{{ currency }}</div>
+      <div class="total" id="totalAmt">{{ total_display }}</div>
+    </div>
+    <div class="metrics">
+      <div class="metric">
+        <div class="lbl">Gifts</div>
+        <div class="val" id="giftCount">{{ count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="pulse"><span class="dot"></span> Live</div>
+  <script>
+  (function(){
+    var pollUrl = "{{ poll_url|escapejs }}";
+    var totalEl = document.getElementById("totalAmt");
+    var countEl = document.getElementById("giftCount");
+    var lastTotal = null;
+    function fmt(n){
+      n = Math.round(Number(n) || 0);
+      return n.toLocaleString();
+    }
+    function bump(){
+      totalEl.classList.remove("is-bump");
+      void totalEl.offsetWidth;
+      totalEl.classList.add("is-bump");
+      setTimeout(function(){ totalEl.classList.remove("is-bump"); }, 500);
+    }
+    function tick(){
+      fetch(pollUrl, {credentials: "same-origin"})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){
+          if(!d) return;
+          var t = d.total_display || fmt(d.total);
+          if(lastTotal !== null && String(lastTotal) !== String(t)) bump();
+          lastTotal = t;
+          totalEl.textContent = t;
+          countEl.textContent = d.count;
+        })
+        .catch(function(){});
+    }
+    setInterval(tick, 7000);
+    setTimeout(tick, 2500);
+  })();
+  </script>
+</body>
+</html>

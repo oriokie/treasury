@@ -496,13 +496,22 @@ class MemberSearchView(DataEntryRequiredMixin, View):
                       | Q(phones__number__icontains=variant))
         qs = (Member.objects.filter(active=True).filter(match)
               .distinct()
+              .select_related("dev_group")
               .prefetch_related("phones")
               .order_by("name")[:5])
         from core.rights import display_phone
-        results = [{"id": m.id, "name": m.name,
-                    "phone": display_phone(request.user, m.receipt_phone or m.phone or ""),
-                    "type": m.get_member_type_display() if m.member_type else ""}
-                   for m in qs]
+        results = []
+        for m in qs:
+            phone = m.receipt_phone or m.phone or ""
+            dg = m.dev_group
+            results.append({
+                "id": m.id,
+                "name": m.name,
+                "phone": display_phone(request.user, phone),
+                "type": m.get_member_type_display() if m.member_type else "",
+                "dev_group": dg.id if dg else None,
+                "dev_group_label": dg.label if dg else "",
+            })
         return JsonResponse({"results": results})
 
 

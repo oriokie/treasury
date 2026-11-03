@@ -174,7 +174,7 @@ def merge_conflicts(keep: Member, absorb: Member):
 
 
 @transaction.atomic
-def merge_members(keep: Member, absorb: Member):
+def merge_members(keep: Member, absorb: Member, user=None):
     """Fold `absorb` into `keep`: repoint EVERY relation on the graph, preserve
     both records' names and phone numbers, then delete the absorbed record.
 
@@ -183,8 +183,13 @@ def merge_members(keep: Member, absorb: Member):
     in the same benevolent scheme). Previously that surfaced as a ProtectedError
     500 on the merge page, or worse: a PROTECT relation blocked the delete while
     five SET_NULL relations had already been quietly cut loose.
+
+    Writes a ``MemberMergeLog`` snapshot so treasurers can still see who was
+    absorbed after the row is deleted (true reverse-merge is not supported).
     """
-    from members.models import MemberPhone
+    from giving.models import Transaction
+    from members.models import MemberMergeLog, MemberPhone
+    from pledges.models import Pledge
 
     if keep.pk == absorb.pk:
         return keep
@@ -192,6 +197,20 @@ def merge_members(keep: Member, absorb: Member):
     reasons = merge_conflicts(keep, absorb)
     if reasons:
         raise MemberMergeConflict(keep, absorb, reasons)
+
+    # Snapshot before repoint/delete — absorb's gifts become keep's, but the
+    # log keeps the pre-merge identity for audit.
+    tx_moved = Transaction.objects.filter(member=absorb).count()
+    pledge_moved = Pledge.objects.filter(member=absorb).count()
+    absorb_snap = {
+        "absorb_id": absorb.pk,
+        "absorb_name": absorb.name,
+        "absorb_phone": absorb.phone or "",
+        "absorb_match_code": absorb.match_code or "",
+        "absorb_name_key": absorb.name_key or "",
+        "transactions_moved": tx_moved,
+        "pledges_moved": pledge_moved,
+    }
 
     # 1) every relation on the graph, not just Transaction
     for rel in _member_relations():
@@ -231,4 +250,7 @@ def merge_members(keep: Member, absorb: Member):
 
     PossibleDuplicate.objects.filter(member__in=[keep, absorb]).update(resolved=True)
     absorb.delete()
+    MemberMergeLog.objects.create(
+        keep=keep, merged_by=user if getattr(user, "pk", None) else None,
+        **absorb_snap)
     return keep

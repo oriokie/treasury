@@ -1,8 +1,17 @@
 from django.urls import path
 from . import views
+from . import views_dev_share as dev_share
 from . import views_fund_leaders as leaders
 
 urlpatterns = [
+    path("dev/share/", dev_share.DevShareControlView.as_view(), name="dev_share_control"),
+    path("dev/codes/<str:token>/", dev_share.DevCodesPublicView.as_view(),
+         name="dev_codes_public"),
+    path("dev/live/<str:token>/", dev_share.DevLivePublicView.as_view(),
+         name="dev_live_public"),
+    path("dev/live/<str:token>/poll/", dev_share.DevLivePollView.as_view(),
+         name="dev_live_poll"),
+
     path("fund-leaders/", leaders.FundLeaderListView.as_view(), name="fund_leader_list"),
     path("fund-leaders/new/", leaders.FundLeaderCreateView.as_view(), name="fund_leader_create"),
     path("fund-leaders/send/", leaders.FundLeaderSendView.as_view(), name="fund_leader_send"),

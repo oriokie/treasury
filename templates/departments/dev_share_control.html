@@ -1,0 +1,94 @@
+{% extends 'base.html' %}{% load humanize %}
+{% block title %}Development share · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="ws-head">
+  <div class="ws-titles">
+    <h1>Development share</h1>
+    <div class="ws-sub">Codes directory for leaders, and a live collection board for presentation</div>
+  </div>
+</div>
+
+<div class="ci-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem">
+  <section class="card">
+    <div class="hd"><b>Member codes directory</b>
+      <span class="muted u-xs">— church-wide, for development leaders</span></div>
+    <div class="bd">
+      <p class="help u-mt-0">Lists active members who have a mobile number and have given to the Development fund.
+        Shows each person’s <span class="mono">MB…</span> code. Phones are masked to the last 3 digits; the link holder can reveal a row.</p>
+      <p class="muted u-xs">{{ contributor_count }} member{{ contributor_count|pluralize }} currently qualify.</p>
+      {% if cfg.dev_codes_public_enabled and codes_url %}
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0">
+        <input class="field mono" style="flex:1;min-width:200px" readonly id="codesLink" value="{{ codes_url }}">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('codesLink').value);this.textContent='Copied'">Copy</button>
+        <a class="btn btn-sm btn-ghost" href="{{ codes_url }}" target="_blank" rel="noopener">Preview</a>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <form method="post" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="rotate_codes">
+          <button class="btn btn-sm btn-ghost" onclick="return confirm('Old links will stop working. Continue?')">Rotate link</button>
+        </form>
+        <form method="post" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="disable_codes">
+          <button class="btn btn-sm btn-ghost link-danger">Turn off</button>
+        </form>
+      </div>
+      {% else %}
+      <form method="post">{% csrf_token %}
+        <input type="hidden" name="action" value="enable_codes">
+        <button class="btn btn-sm">Publish codes page</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="hd"><b>Live collection board</b>
+      <span class="muted u-xs">— presentation totals for Development</span></div>
+    <div class="bd">
+      <p class="help u-mt-0">Full-screen board showing the Development fund total and number of gifts for a period.
+        Updates every few seconds as gifts are allocated. No names or phones.</p>
+      {% if cfg.dev_live_public_enabled and live_url %}
+      <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0">
+        <input class="field mono" style="flex:1;min-width:200px" readonly id="liveLink" value="{{ live_url }}">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('liveLink').value);this.textContent='Copied'">Copy</button>
+        <a class="btn btn-sm btn-ghost" href="{{ live_url }}" target="_blank" rel="noopener">Open board</a>
+      </div>
+      <form method="post" class="filter-bar" style="margin-bottom:.6rem">{% csrf_token %}
+        <input type="hidden" name="action" value="update_live_period">
+        <div class="f"><label class="lbl" for="liveStart">From</label>
+          <input class="field" type="date" id="liveStart" name="start" required
+                 value="{{ cfg.dev_live_period_start|date:'Y-m-d' }}"></div>
+        <div class="f"><label class="lbl" for="liveEnd">To</label>
+          <input class="field" type="date" id="liveEnd" name="end" required
+                 value="{{ cfg.dev_live_period_end|date:'Y-m-d' }}"></div>
+        <button class="btn btn-sm">Update period</button>
+      </form>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <form method="post" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="rotate_live">
+          <button class="btn btn-sm btn-ghost" onclick="return confirm('Old links will stop working. Continue?')">Rotate link</button>
+        </form>
+        <form method="post" class="u-inline">{% csrf_token %}
+          <input type="hidden" name="action" value="disable_live">
+          <button class="btn btn-sm btn-ghost link-danger">Turn off</button>
+        </form>
+      </div>
+      {% else %}
+      <form method="post" class="filter-bar">{% csrf_token %}
+        <input type="hidden" name="action" value="enable_live">
+        <div class="f"><label class="lbl" for="liveStart2">From</label>
+          <input class="field" type="date" id="liveStart2" name="start" required
+                 value="{{ cfg.dev_live_period_start|date:'Y-m-d'|default:'' }}"></div>
+        <div class="f"><label class="lbl" for="liveEnd2">To</label>
+          <input class="field" type="date" id="liveEnd2" name="end" required
+                 value="{{ cfg.dev_live_period_end|date:'Y-m-d'|default:'' }}"></div>
+        <button class="btn btn-sm">Publish live board</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+<style>
+@media(max-width:820px){.ci-grid{grid-template-columns:1fr!important}}
+</style>
+{% endblock %}
