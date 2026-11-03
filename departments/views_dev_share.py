@@ -174,22 +174,40 @@ class DevCodesPublicView(View):
                 or not cfg.dev_codes_share_token
                 or cfg.dev_codes_share_token != token):
             raise Http404()
-        rows = []
+        # Group by home development group № so leaders can spot mismatches.
+        # Only the masked phone ever leaves the server — never put the full
+        # number in HTML/JS (no reveal button / data-full attributes).
+        buckets = {}
         for m in _dev_contributor_members():
             phone = m.receipt_phone or m.phone or ""
             if not phone:
                 continue
             if not m.match_code:
                 m.save()  # Member.save assigns MB… when blank
-            rows.append({
+            dg = m.dev_group
+            number = dg.number if dg else None
+            label = dg.label if dg else ""
+            key = number if number is not None else -1
+            buckets.setdefault(key, {
+                "number": number,
+                "label": label,
+                "rows": [],
+            })
+            buckets[key]["rows"].append({
                 "name": m.name,
                 "code": m.match_code,
-                "phone_full": phone,
                 "phone_masked": mask_phone(phone, 3),
-                "group": m.dev_group.label if m.dev_group_id else "",
+                "group_number": number,
+                "group_label": label,
             })
+        groups = sorted(
+            buckets.values(),
+            key=lambda g: (g["number"] is None, g["number"] or 0, g["label"] or ""),
+        )
+        total = sum(len(g["rows"]) for g in groups)
         return render(request, self.template_name, {
-            "rows": rows,
+            "groups": groups,
+            "total_rows": total,
             "church": cfg.church_name or "Church",
             "currency": cfg.currency_symbol or "KES",
         })

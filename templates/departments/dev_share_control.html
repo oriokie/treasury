@@ -14,7 +14,7 @@
       <span class="muted u-xs">— church-wide, for development leaders</span></div>
     <div class="bd">
       <p class="help u-mt-0">Lists active members who have a mobile number and have given to the Development fund.
-        Shows each person’s <span class="mono">MB…</span> code. Phones are masked to the last 3 digits; the link holder can reveal a row.</p>
+        Shows name, <span class="mono">MB…</span> code, masked phone (last 3 digits only — full numbers never leave the server), and development group №.</p>
       <p class="muted u-xs">{{ contributor_count }} member{{ contributor_count|pluralize }} currently qualify.</p>
       {% if cfg.dev_codes_public_enabled and codes_url %}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0">

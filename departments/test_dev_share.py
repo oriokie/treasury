@@ -40,14 +40,21 @@ class DevSharePublicTests(TestCase):
         self.cfg.save()
         self.client = Client()
 
-    def test_codes_page_lists_contributors_masked(self):
+    def test_codes_page_lists_masked_phones_and_group_number(self):
         r = self.client.get(f"/dev/codes/{self.cfg.dev_codes_share_token}/")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "DEV GIVER")
         self.assertContains(r, self.giver.match_code)
         self.assertContains(r, mask_phone(self.giver.phone, 3))
+        self.assertContains(r, "Group 7")
+        self.assertContains(r, "Group №")
+        html = r.content.decode()
+        self.assertIn(">7</td>", html)  # group number column
+        # Full number must never appear in HTML (no JS reveal / data-full).
+        self.assertNotIn(self.giver.phone, html)
+        self.assertNotIn("data-full", html)
+        self.assertNotContains(r, "Show")
         self.assertNotContains(r, "NO GIFT")
-        self.assertContains(r, "Show")
 
     def test_codes_disabled_is_404(self):
         self.cfg.dev_codes_public_enabled = False
