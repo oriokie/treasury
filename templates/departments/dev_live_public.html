@@ -5,72 +5,130 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Development · Live · {{ church }}</title>
   <style>
-    :root{--ink:#142820;--muted:#6a7d73;--paper:#f4f0e8;--forest:#184f3a;
-      --brass:#b08a3c;--cream:#faf7f1}
+    :root{
+      --ink:#10241c;--muted:#6b7c72;--forest:#164a36;--forest-deep:#0e3426;
+      --brass:#a8843a;--cream:#f7f2e8;--panel:rgba(255,252,246,.78);
+      --line:rgba(22,74,54,.12);
+    }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
-    body{font-family:"Fraunces","Source Serif 4",Georgia,serif;color:var(--ink);
+    body{
+      font-family:"Fraunces","Source Serif 4",Georgia,serif;color:var(--ink);
       background:
-        radial-gradient(1200px 600px at 10% -10%,rgba(176,138,60,.18),transparent 55%),
-        radial-gradient(900px 500px at 100% 0%,rgba(24,79,58,.12),transparent 50%),
-        linear-gradient(160deg,#ebe4d6 0%,var(--cream) 40%,#e4efe8 100%);
-      display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .stage{width:min(1100px,94vw);text-align:center;padding:2rem 1rem 3rem}
-    .eyebrow{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.78rem;
-      letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0 0 .8rem}
-    .church{font-size:clamp(1.1rem,2.2vw,1.45rem);font-weight:600;margin:0 0 .25rem;
-      letter-spacing:-.01em}
-    .title{font-size:clamp(1.6rem,3.5vw,2.4rem);font-weight:700;margin:0 0 1.75rem;
-      letter-spacing:-.02em}
-    .period{font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--muted);
-      font-size:.95rem;margin:0 0 2.2rem}
-    .total-wrap{position:relative;margin:0 auto 2rem}
-    .currency{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:clamp(1rem,2vw,1.35rem);
-      color:var(--brass);font-weight:600;letter-spacing:.08em;margin-bottom:.35rem}
-    .total{font-family:"IBM Plex Mono",ui-monospace,monospace;
-      font-size:clamp(3.2rem,12vw,7.5rem);font-weight:700;letter-spacing:-.03em;
-      line-height:1;color:var(--forest);transition:transform .45s cubic-bezier(.2,.8,.2,1),
-      color .45s ease}
-    .total.is-bump{transform:scale(1.035);color:#126048}
-    .metrics{display:flex;justify-content:center;gap:clamp(1.5rem,5vw,3.5rem);flex-wrap:wrap}
-    .metric{min-width:140px}
-    .metric .lbl{font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:.72rem;
-      letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem}
-    .metric .val{font-family:"IBM Plex Mono",ui-monospace,monospace;
-      font-size:clamp(1.6rem,4vw,2.4rem);font-weight:600}
-    .rule{width:min(220px,40%);height:2px;margin:0 auto 1.6rem;
-      background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.7}
-    .pulse{position:fixed;inset:auto 1.25rem 1.25rem auto;font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
-      display:flex;align-items:center;gap:.4rem}
-    .dot{width:7px;height:7px;border-radius:50%;background:var(--forest);
-      animation:blink 2.2s ease-in-out infinite}
-    @keyframes blink{0%,100%{opacity:.35}50%{opacity:1}}
+        radial-gradient(900px 420px at 8% 12%,rgba(168,132,58,.16),transparent 58%),
+        radial-gradient(700px 380px at 92% 18%,rgba(22,74,54,.10),transparent 55%),
+        linear-gradient(155deg,#e8e0d0 0%,var(--cream) 42%,#e2ebe5 100%);
+      display:flex;align-items:center;justify-content:center;overflow:hidden;
+    }
+    /* 16:9 presentation frame — fills the viewport while keeping slide proportions */
+    .frame{
+      width:min(100vw, calc(100vh * 16 / 9));
+      height:min(100vh, calc(100vw * 9 / 16));
+      position:relative;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      padding:clamp(1.1rem,3.2vh,2.4rem) clamp(1.4rem,4vw,3.2rem);
+    }
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+    .brand .eyebrow{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:clamp(.62rem,1.1vh,0.78rem);
+      letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 .45rem;
+    }
+    .brand .church{
+      margin:0;font-size:clamp(1rem,2.4vh,1.45rem);font-weight:600;letter-spacing:-.01em;
+    }
+    .live-pill{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:clamp(.62rem,1.1vh,.72rem);
+      letter-spacing:.14em;text-transform:uppercase;color:var(--forest);
+      display:inline-flex;align-items:center;gap:.45rem;
+      padding:.45rem .75rem;border:1px solid var(--line);border-radius:999px;
+      background:var(--panel);backdrop-filter:blur(8px);
+    }
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--forest);
+      box-shadow:0 0 0 0 rgba(22,74,54,.35);animation:pulse 2s ease-out infinite}
+    @keyframes pulse{
+      0%{box-shadow:0 0 0 0 rgba(22,74,54,.35)}
+      70%{box-shadow:0 0 0 10px rgba(22,74,54,0)}
+      100%{box-shadow:0 0 0 0 rgba(22,74,54,0)}
+    }
+    .hero{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      text-align:center;min-height:0;
+    }
+    .title{
+      margin:0 0 clamp(.4rem,1.2vh,.8rem);font-weight:700;letter-spacing:-.03em;
+      font-size:clamp(1.55rem,4.6vh,2.75rem);
+    }
+    .period{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--muted);
+      font-size:clamp(.78rem,1.6vh,1rem);margin:0 0 clamp(1rem,3.2vh,2rem);
+    }
+    .rule{
+      width:min(12rem,28%);height:2px;margin:0 auto clamp(1rem,2.8vh,1.8rem);
+      background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.75;
+    }
+    .currency{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(.85rem,1.8vh,1.15rem);color:var(--brass);font-weight:600;
+      letter-spacing:.14em;margin-bottom:.2rem;
+    }
+    .total{
+      font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
+      font-size:clamp(3.4rem,16vh,8.2rem);letter-spacing:-.04em;line-height:.95;
+      color:var(--forest-deep);
+      transition:transform .5s cubic-bezier(.2,.85,.2,1), color .45s ease;
+    }
+    .total.is-bump{transform:scale(1.04);color:var(--forest)}
+    .foot-metrics{
+      display:grid;grid-template-columns:1fr;justify-items:center;
+      padding-top:clamp(.6rem,1.8vh,1.2rem);
+      border-top:1px solid var(--line);
+    }
+    .metric{text-align:center;min-width:12rem}
+    .metric .lbl{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(.62rem,1.2vh,.78rem);letter-spacing:.16em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:.35rem;
+    }
+    .metric .val{
+      font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:600;
+      font-size:clamp(1.5rem,4.2vh,2.5rem);color:var(--ink);
+    }
+    @media (max-aspect-ratio: 4/3){
+      .frame{width:100vw;height:100vh;border-radius:0}
+      .total{font-size:clamp(2.8rem,14vw,6rem)}
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@600;700&family=IBM+Plex+Sans:wght@500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="stage">
-    <p class="eyebrow">Live collection</p>
-    <p class="church">{{ church }}</p>
-    <h1 class="title">Development Fund</h1>
-    <div class="rule"></div>
-    <p class="period" id="periodLabel">
-      {% if start and end %}{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% else %}Period not set{% endif %}
-    </p>
-    <div class="total-wrap">
+  <div class="frame">
+    <div class="top">
+      <div class="brand">
+        <p class="eyebrow">Live collection</p>
+        <p class="church">{{ church }}</p>
+      </div>
+      <div class="live-pill"><span class="dot" aria-hidden="true"></span> Live</div>
+    </div>
+
+    <div class="hero">
+      <h1 class="title">Development Fund</h1>
+      <div class="rule"></div>
+      <p class="period" id="periodLabel">
+        {% if start and end %}{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% else %}Period not set{% endif %}
+      </p>
       <div class="currency">{{ currency }}</div>
       <div class="total" id="totalAmt">{{ total_display }}</div>
     </div>
-    <div class="metrics">
+
+    <div class="foot-metrics">
       <div class="metric">
-        <div class="lbl">Gifts</div>
+        <div class="lbl">No of transactions</div>
         <div class="val" id="giftCount">{{ count }}</div>
       </div>
     </div>
   </div>
-  <div class="pulse"><span class="dot"></span> Live</div>
   <script>
   (function(){
     var pollUrl = "{{ poll_url|escapejs }}";
@@ -85,7 +143,7 @@
       totalEl.classList.remove("is-bump");
       void totalEl.offsetWidth;
       totalEl.classList.add("is-bump");
-      setTimeout(function(){ totalEl.classList.remove("is-bump"); }, 500);
+      setTimeout(function(){ totalEl.classList.remove("is-bump"); }, 550);
     }
     function tick(){
       fetch(pollUrl, {credentials: "same-origin"})

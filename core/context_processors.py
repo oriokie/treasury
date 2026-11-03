@@ -246,6 +246,7 @@ _BREADCRUMBS = {
     "report_envelope_sabbath": ("Reports", "Sabbath statement"),
     "report_collections_summary": ("Reports", "Collections summary"),
     "report_dev_groups": ("Reports", "Development groups"),
+    "dev_share_control": ("Reports", "Development share"),
     "report_audit": ("Reports", "Audit log"),
     "report_reconciliation": ("Reports", "Reconciliation summary"),
     "report_pastor": ("Reports", "Pastor's report"),

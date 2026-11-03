@@ -167,8 +167,6 @@ class DevCodesPublicView(View):
     template_name = "departments/dev_codes_public.html"
 
     def get(self, request, token):
-        from members.models import mask_phone
-
         cfg = _cfg()
         if (not cfg.dev_codes_public_enabled
                 or not cfg.dev_codes_share_token
@@ -181,11 +179,10 @@ class DevCodesPublicView(View):
                 continue
             if not m.match_code:
                 m.save()  # Member.save assigns MB… when blank
+            # Privacy: never expose phones on this public directory — codes only.
             rows.append({
                 "name": m.name,
                 "code": m.match_code,
-                "phone_full": phone,
-                "phone_masked": mask_phone(phone, 3),
                 "group": m.dev_group.label if m.dev_group_id else "",
             })
         return render(request, self.template_name, {

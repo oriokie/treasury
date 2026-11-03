@@ -9,7 +9,7 @@ from core.models import SiteConfig
 from core.roles import TREASURER
 from departments.models import Department, DevelopmentGroup
 from giving.models import Transaction
-from members.models import Member, mask_phone
+from members.models import Member
 
 
 class DevSharePublicTests(TestCase):
@@ -40,14 +40,14 @@ class DevSharePublicTests(TestCase):
         self.cfg.save()
         self.client = Client()
 
-    def test_codes_page_lists_contributors_masked(self):
+    def test_codes_page_lists_contributors_without_phones(self):
         r = self.client.get(f"/dev/codes/{self.cfg.dev_codes_share_token}/")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "DEV GIVER")
         self.assertContains(r, self.giver.match_code)
-        self.assertContains(r, mask_phone(self.giver.phone, 3))
+        self.assertNotContains(r, self.giver.phone)
+        self.assertNotContains(r, "Show")
         self.assertNotContains(r, "NO GIFT")
-        self.assertContains(r, "Show")
 
     def test_codes_disabled_is_404(self):
         self.cfg.dev_codes_public_enabled = False
@@ -59,6 +59,7 @@ class DevSharePublicTests(TestCase):
         r = self.client.get(f"/dev/live/{self.cfg.dev_live_share_token}/")
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Development Fund")
+        self.assertContains(r, "No of transactions")
         self.assertContains(r, "1,500")
         poll = self.client.get(
             f"/dev/live/{self.cfg.dev_live_share_token}/poll/")
