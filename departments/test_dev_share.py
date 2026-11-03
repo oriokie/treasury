@@ -56,6 +56,27 @@ class DevSharePublicTests(TestCase):
         self.assertNotContains(r, "Show")
         self.assertNotContains(r, "NO GIFT")
 
+    def test_codes_page_uses_gift_group_when_home_blank(self):
+        """Members with no home group still show the group stamped on gifts."""
+        stamped = DevelopmentGroup.objects.create(number=12, name="Group 12")
+        orphan = Member.objects.create(
+            name="GIFT GROUPED", phone="254711122233", active=True,
+            dev_group=None)
+        orphan.save()
+        Transaction.objects.create(
+            date=dt.date(2026, 6, 2), channel="BANK", direction="CREDIT",
+            amount=Decimal("800"), department=self.fund, member=orphan,
+            payer_name="GIFT GROUPED", confirmed=True,
+            allocation_status="AUTO", dev_group=stamped)
+        r = self.client.get(f"/dev/codes/{self.cfg.dev_codes_share_token}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "GIFT GROUPED")
+        self.assertContains(r, orphan.match_code)
+        html = r.content.decode()
+        self.assertIn(">12</td>", html)
+        self.assertContains(r, "Group 12")
+        self.assertNotIn(orphan.phone, html)
+
     def test_codes_disabled_is_404(self):
         self.cfg.dev_codes_public_enabled = False
         self.cfg.save(update_fields=["dev_codes_public_enabled"])
@@ -67,6 +88,8 @@ class DevSharePublicTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Development Fund")
         self.assertContains(r, "1,500")
+        self.assertContains(r, "No of transactions")
+        self.assertContains(r, "aspect-ratio")  # 16:9 presentation frame CSS
         poll = self.client.get(
             f"/dev/live/{self.cfg.dev_live_share_token}/poll/")
         self.assertEqual(poll.status_code, 200)

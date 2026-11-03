@@ -66,6 +66,53 @@ def _live_totals(cfg):
     return agg["t"] or Decimal("0"), int(agg["n"] or 0), start, end
 
 
+def _gift_dev_group_by_member(member_ids):
+    """Map member_id → DevelopmentGroup from stamped Development gifts.
+
+    Many register members never have ``Member.dev_group`` set even though their
+    gifts are tagged to a group. For the public codes directory we fall back to
+    the group they have given the most confirmed Development KES to.
+    """
+    from departments.models import Department, DevelopmentGroup
+    from giving.models import Transaction
+
+    if not member_ids:
+        return {}
+    rows = list(
+        Transaction.objects.filter(
+            member_id__in=member_ids,
+            direction=Transaction.Direction.CREDIT,
+            confirmed=True,
+            is_reversed=False,
+            is_reversal=False,
+            department__category=Department.Category.DEVELOPMENT,
+            dev_group__isnull=False,
+        )
+        .values("member_id", "dev_group")
+        .annotate(total=Sum("amount"), n=Count("id"))
+        .order_by("member_id", "-total", "-n", "dev_group")
+    )
+    best = {}
+    for row in rows:
+        mid = row["member_id"]
+        if mid not in best:
+            best[mid] = row["dev_group"]
+    if not best:
+        return {}
+    groups = {
+        g.id: g
+        for g in DevelopmentGroup.objects.filter(pk__in=set(best.values()))
+    }
+    return {mid: groups.get(gid) for mid, gid in best.items() if groups.get(gid)}
+
+
+def _directory_dev_group(member, gift_groups):
+    """Home group first, else the member's strongest tagged Development group."""
+    if getattr(member, "dev_group_id", None):
+        return member.dev_group
+    return gift_groups.get(member.id)
+
+
 class DevShareControlView(TreasurerRequiredMixin, View):
     """Enable / rotate share links and set the live board period."""
     template_name = "departments/dev_share_control.html"
@@ -174,17 +221,25 @@ class DevCodesPublicView(View):
                 or not cfg.dev_codes_share_token
                 or cfg.dev_codes_share_token != token):
             raise Http404()
-        # Group by home development group № so leaders can spot mismatches.
+        # Group by development group № so leaders can spot mismatches.
+        # Prefer home ``Member.dev_group``; if blank, use the group stamped on
+        # their Development gifts (common when home group was never set).
         # Only the masked phone ever leaves the server — never put the full
         # number in HTML/JS (no reveal button / data-full attributes).
-        buckets = {}
+        members = []
         for m in _dev_contributor_members():
             phone = m.receipt_phone or m.phone or ""
             if not phone:
                 continue
             if not m.match_code:
                 m.save()  # Member.save assigns MB… when blank
-            dg = m.dev_group
+            members.append(m)
+        gift_groups = _gift_dev_group_by_member(
+            [m.id for m in members if not m.dev_group_id])
+        buckets = {}
+        for m in members:
+            phone = m.receipt_phone or m.phone or ""
+            dg = _directory_dev_group(m, gift_groups)
             number = dg.number if dg else None
             label = dg.label if dg else ""
             key = number if number is not None else -1
