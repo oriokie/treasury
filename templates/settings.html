@@ -221,13 +221,14 @@
     <div class="card"><div class="bd">
       <div class="help u-mb-sm">Advanta bulk SMS (see <span class="mono">advantasms.com/bulksms-api</span>).</div>
       <div class="form-grid">
-      {% for f in form %}{% if f.name in 'sms_enabled sms_receipt_scope sms_api_url sms_api_key sms_partner_id sms_shortcode sms_receipt_template' %}
+      {% for f in form %}{% if f.name in 'sms_enabled sms_receipt_scope sms_api_url sms_api_key sms_partner_id sms_shortcode sms_receipt_template queue_inquiry_phone queue_inquiry_sms_template' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
           {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
           {% for e in f.errors %}<div class="errorlist">{{ e }}</div>{% endfor %}</div>
       {% endif %}{% endfor %}
       </div>
+      <div class="help u-mt-sm">Queue inquiry wording can also be edited on the dedicated <a class="link" href="{% url 'queue_inquiry_sms' %}">Queue inquiry SMS</a> page (linked from the review queue).</div>
     </div></div>
   </section>
 

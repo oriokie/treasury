@@ -882,6 +882,90 @@ class BulkAllocateView(AllocateRequiredMixin, View):
         return redirect("queue")
 
 
+class QueueInquirySmsEditView(AllocateRequiredMixin, View):
+    """Edit the review-queue inquiry SMS wording and treasurer callback number."""
+    template_name = "giving/queue_inquiry_sms.html"
+
+    def get(self, request):
+        from core.models import SiteConfig
+        from giving.services.queue_inquiry import build_inquiry_text
+
+        cfg = SiteConfig.get()
+        sample = Transaction(
+            amount=Decimal("1500"),
+            date=timezone.localdate(),
+            reference="SAMPLE123",
+            payer_name="SAMPLE GIVER",
+            payer_phone="254700000000",
+        )
+        return render(request, self.template_name, {
+            "phone": cfg.queue_inquiry_phone or "",
+            "template": cfg.queue_inquiry_sms_template or "",
+            "preview": build_inquiry_text(sample, cfg),
+            "sms_enabled": cfg.sms_enabled,
+        })
+
+    def post(self, request):
+        from core.models import SiteConfig
+
+        cfg = SiteConfig.get()
+        cfg.queue_inquiry_phone = (request.POST.get("queue_inquiry_phone") or "").strip()
+        cfg.queue_inquiry_sms_template = (
+            request.POST.get("queue_inquiry_sms_template") or "").strip()
+        cfg.save(update_fields=[
+            "queue_inquiry_phone", "queue_inquiry_sms_template", "updated_at"])
+        messages.success(request, "Queue inquiry SMS saved.")
+        return redirect("queue_inquiry_sms")
+
+
+class QueueInquirySmsSendView(AllocateRequiredMixin, View):
+    """Text selected review-queue gifts asking for the purpose of the payment."""
+
+    def post(self, request):
+        from core.models import SiteConfig
+        from giving.services.queue_inquiry import send_inquiry_sms
+
+        ids = request.POST.getlist("txn")
+        if not ids:
+            messages.error(request, "Select at least one contribution to inquire about.")
+            return redirect("queue")
+        cfg = SiteConfig.get()
+        if not (cfg.queue_inquiry_phone or "").strip():
+            messages.error(
+                request,
+                "Set the treasurer callback number on the inquiry SMS page first.")
+            return redirect("queue_inquiry_sms")
+        txns = list(Transaction.objects.filter(
+            id__in=ids, allocation_status=Transaction.Status.REVIEW,
+            direction=Transaction.Direction.CREDIT,
+            processed_via_envelope=False, manual_receipt=False,
+        ).select_related("member"))
+        sent = failed = skipped = 0
+        for txn in txns:
+            log, reason = send_inquiry_sms(txn, cfg)
+            if reason:
+                skipped += 1
+                continue
+            if log and log.status == log.Status.SENT:
+                sent += 1
+            elif log and log.status == log.Status.DISABLED:
+                skipped += 1
+            else:
+                failed += 1
+        parts = []
+        if sent:
+            parts.append(f"Sent {sent}")
+        if failed:
+            parts.append(f"{failed} failed")
+        if skipped:
+            parts.append(f"{skipped} skipped (no phone or SMS off)")
+        if parts:
+            messages.success(request, "Inquiry SMS: " + "; ".join(parts) + ".")
+        else:
+            messages.info(request, "No inquiry SMS was sent.")
+        return redirect("queue")
+
+
 class FetchUnallocatedView(AllocateRequiredMixin, View):
     """Item 5: pull credits that still need a fund — sitting in the ledger without
     a department but not currently in the review queue — into the queue so they

@@ -11,6 +11,7 @@
     <div class="rpt-actions no-print">
       <a class="btn btn-ghost btn-sm" href="{% url 'queue_export' %}">⬇ Export</a>
       {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_import' %}">⬆ Import</a>{% endif %}
+      {% if can_enter_data %}<a class="btn btn-ghost btn-sm" href="{% url 'queue_inquiry_sms' %}">✉ Inquiry SMS</a>{% endif %}
       {% if can_enter_data and items %}
       <form method="post" action="{% url 'queue_run_rules' %}" class="u-inline"
             onsubmit="return confirm('Re-run allocation rules on the queued items?');">
@@ -61,7 +62,12 @@
   </div>
   <button type="button" class="btn btn-sm btn-brass" id="bulkAllocPicksBtn">Allocate picks</button>
   <button class="btn btn-sm btn-ghost" id="bulkAllocBtn">Allocate selected</button>
-  <span class="muted u-xs q-sticky-hint">Set a fund on each card, then Allocate picks — no ticking. Or tick rows + shared fund → Allocate selected.</span>
+  <button type="button" class="btn btn-sm btn-ghost" id="bulkInquirySmsBtn"
+          title="Ask selected givers the purpose of the gift">✉ SMS inquire</button>
+  <span class="muted u-xs q-sticky-hint">Set a fund on each card, then Allocate picks — no ticking. Or tick rows + shared fund → Allocate selected. Tick rows → SMS inquire to ask purpose (edit wording under Inquiry SMS).</span>
+</form>
+<form id="inquirySmsForm" method="post" action="{% url 'queue_inquiry_sms_send' %}" class="u-hidden" hidden>
+  {% csrf_token %}
 </form>
 {% endif %}
 
@@ -385,6 +391,28 @@
       }
       prepareBulkSubmit(true);
       bulkForm.requestSubmit ? bulkForm.requestSubmit() : bulkForm.submit();
+    });
+  }
+
+  var inquiryBtn=document.getElementById("bulkInquirySmsBtn");
+  var inquiryForm=document.getElementById("inquirySmsForm");
+  if(inquiryBtn && inquiryForm){
+    inquiryBtn.addEventListener("click", function(){
+      var selected=document.querySelectorAll(".bulk-check:checked");
+      if(!selected.length){
+        alert("Tick at least one contribution to inquire about.");
+        return;
+      }
+      if(!confirm("Send an inquiry SMS to "+selected.length+" selected gift(s)? They will be asked to clarify the purpose using the treasurer number on the Inquiry SMS page.")){
+        return;
+      }
+      inquiryForm.querySelectorAll("input[name=txn]").forEach(function(el){ el.remove(); });
+      selected.forEach(function(cb){
+        var inp=document.createElement("input");
+        inp.type="hidden"; inp.name="txn"; inp.value=cb.value;
+        inquiryForm.appendChild(inp);
+      });
+      inquiryForm.submit();
     });
   }
 

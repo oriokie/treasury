@@ -199,6 +199,8 @@ _BREADCRUMBS = {
     "envelope_detail": ("Giving", "Envelopes"),
     "count_list": ("Giving", "Cash counts"),
     "queue": ("Giving", "Review queue"),
+    "queue_inquiry_sms": ("Giving", "Queue inquiry SMS"),
+    "queue_inquiry_sms_send": ("Giving", "Queue inquiry SMS"),
     "sabbath_queue": ("Giving", "Sabbath confirmations"),
     # Banking
     "statement_list": ("Banking", "Statement imports"),
