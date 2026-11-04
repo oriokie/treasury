@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.7
+
+Automated patch release: Show codes-page groups from stamped gifts and ship the 16:9 live board.
+
 ## 3.56.6
 
 Automated patch release covering: Add migration for SiteConfig codes-page help text; Keep codes-page phones permanently masked and show group numbers.
