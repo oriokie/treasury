@@ -14,7 +14,8 @@
       <span class="muted u-xs">— church-wide, for development leaders</span></div>
     <div class="bd">
       <p class="help u-mt-0">Lists active members who have a mobile number and have given to the Development fund.
-        Shows name, <span class="mono">MB…</span> code, masked phone (last 3 digits only — full numbers never leave the server), and development group №.</p>
+        Shows name, <span class="mono">MB…</span> code, masked phone (last 3 digits only — full numbers never leave the server), and development group №
+        (home group, or the group stamped on their Development gifts when home is blank).</p>
       <p class="muted u-xs">{{ contributor_count }} member{{ contributor_count|pluralize }} currently qualify.</p>
       {% if cfg.dev_codes_public_enabled and codes_url %}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0">
@@ -45,8 +46,8 @@
     <div class="hd"><b>Live collection board</b>
       <span class="muted u-xs">— presentation totals for Development</span></div>
     <div class="bd">
-      <p class="help u-mt-0">Full-screen board showing the Development fund total and number of gifts for a period.
-        Updates every few seconds as gifts are allocated. No names or phones.</p>
+      <p class="help u-mt-0">16:9 presentation board showing the Development fund total and number of transactions
+        for a period. Auto-refreshes every few seconds — no browser refresh needed. No names or phones.</p>
       {% if cfg.dev_live_public_enabled and live_url %}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0">
         <input class="field mono" style="flex:1;min-width:200px" readonly id="liveLink" value="{{ live_url }}">
