@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Queue inquiry SMS · {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <h1>Queue inquiry SMS</h1>
+  <div class="sub">Ask selected review-queue givers the purpose of their gift, and give them the treasurer’s number to clarify</div>
+</div>
+<a class="btn btn-ghost btn-sm" href="{% url 'queue' %}">← Review queue</a>
+</div>
+
+{% if not sms_enabled %}
+<div class="info-panel">SMS is currently disabled. Enable it under <a class="link" href="{% url 'settings' %}?tab=sms">Settings → SMS</a> before texts will go out. You can still edit the wording below.</div>
+{% endif %}
+
+<form method="post" class="u-mt">{% csrf_token %}
+  <div class="card"><div class="hd">Treasurer callback number</div><div class="bd">
+    <p class="help u-mt-0">Members reply to this number (call or WhatsApp) to say what the gift was for — easier than ringing each person.</p>
+    <label class="u-block" for="id_queue_inquiry_phone">Mobile number</label>
+    <input class="field" id="id_queue_inquiry_phone" name="queue_inquiry_phone"
+           value="{{ phone }}" maxlength="32" placeholder="e.g. 0712 345 678" autocomplete="tel">
+  </div></div>
+
+  <div class="card u-mt"><div class="hd">Message wording</div><div class="bd">
+    <p class="help u-mt-0">Placeholders:
+      <span class="mono">{name}</span>,
+      <span class="mono">{amount}</span>,
+      <span class="mono">{date}</span>,
+      <span class="mono">{reference}</span>,
+      <span class="mono">{church}</span>,
+      <span class="mono">{treasurer_phone}</span>
+    </p>
+    <label class="u-block" for="id_queue_inquiry_sms_template">SMS text</label>
+    <textarea class="field" id="id_queue_inquiry_sms_template" name="queue_inquiry_sms_template"
+              rows="5" maxlength="480">{{ template }}</textarea>
+  </div></div>
+
+  <div class="card u-mt"><div class="hd">Preview</div><div class="bd">
+    <p class="help u-mt-0">Sample with placeholder gift details:</p>
+    <p style="white-space:pre-wrap">{{ preview }}</p>
+  </div></div>
+
+  <div class="u-mt" style="display:flex;gap:.65rem;flex-wrap:wrap;align-items:center">
+    <button class="btn btn-brass" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{% url 'queue' %}">Back to queue</a>
+  </div>
+</form>
+{% endblock %}

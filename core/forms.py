@@ -18,6 +18,7 @@ class SiteConfigForm(StyledFormMixin, forms.ModelForm):
         exclude = ["id", "updated_at", "board_config",
                    "dev_codes_share_token", "dev_live_share_token"]
         widgets = {"sms_receipt_template": forms.Textarea(attrs={"rows": 3}),
+                   "queue_inquiry_sms_template": forms.Textarea(attrs={"rows": 4}),
                    "contrib_sms_template": forms.Textarea(attrs={"rows": 4}),
                    "receipt_message": forms.Textarea(attrs={"rows": 3}),
                    "pledge_thanks_template": forms.Textarea(attrs={"rows": 2}),

@@ -110,6 +110,21 @@ class SiteConfig(models.Model):
                 "(receipt {receipt}) on {date}. God bless you. - {church}",
         help_text="Placeholders: {name} {amount} {receipt} {date} {church}")
 
+    # Review-queue inquiry: ask selected givers what a gift was for, with the
+    # treasurer's number so they can clarify without a phone-round of calls.
+    queue_inquiry_phone = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Treasurer / office mobile shown in queue inquiry texts so "
+                  "members can call or WhatsApp to clarify the purpose of a gift.")
+    queue_inquiry_sms_template = models.CharField(
+        max_length=480, blank=True,
+        default="Dear {name}, {church} received KES {amount} on {date} "
+                "(ref {reference}). Please call or WhatsApp {treasurer_phone} "
+                "to confirm the purpose of this gift so we can allocate it "
+                "correctly. Thank you.",
+        help_text="Sent from the review queue to selected gifts. Placeholders: "
+                  "{name} {amount} {date} {reference} {church} {treasurer_phone}")
+
     # Pledge messages. Both are editable for the same reason the receipt text
     # is: a church's own words carry further than the software's, and the
     # wording that suits a building appeal does not suit a camp meeting.
