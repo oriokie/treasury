@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.11
+
+Automated patch release: Redesign the live board: premium layout and totals that never clip.
+
 ## 3.56.10
 
 Automated patch release covering: Keep the live board total from overlapping the wider M-Pesa panel; Widen the live board M-Pesa side panel and enlarge Paybill/Account type; Place live board Paybill/Account in a side panel for 16:9 space; Improve live board payment layout: smaller total, clearer Paybill/Account.
