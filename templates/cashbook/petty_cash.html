@@ -1,92 +1,211 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Petty cash · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="rpt-mast">
-  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
-    <div>
-      <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
+<div class="pc">
+  <header class="pc-hero">
+    <div class="pc-hero-copy">
+      <p class="pc-kicker">Cash location</p>
       <h1>Petty cash</h1>
-      <div class="desc">A small cash float — top-ups in, disbursements charged to their ministry</div>
+      <p class="pc-lead">A physical float — not a fund. Top-ups and bank deposits move cash between locations; spending is charged to the ministry fund it was for.</p>
     </div>
-    <div class="rpt-actions no-print"><div class="btn-row no-print"><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=xlsx">⬇ Excel</a><a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=csv">CSV</a><button class="btn btn-sm" onclick="window.print()">⎙ Print</button></div></div>
+    <div class="pc-hero-actions no-print">
+      <a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=xlsx">Excel</a>
+      <a class="btn btn-sm btn-ghost" href="?{% if request.GET.start %}start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}&{% endif %}export=csv">CSV</a>
+      <button class="btn btn-sm" type="button" onclick="window.print()">Print</button>
+    </div>
+  </header>
+
+  {% include "ui/period_selector.html" %}
+
+  <div class="pc-kpis">
+    <div class="pc-kpi">
+      <span class="lbl">Float on hand</span>
+      <span class="val mono">{{ CURRENCY }} {{ balance_now|money }}</span>
+      <span class="foot">As of today</span>
+    </div>
+    {% if float_target %}
+    <div class="pc-kpi">
+      <span class="lbl">Imprest target</span>
+      <span class="val mono">{{ CURRENCY }} {{ float_target|money }}</span>
+      <span class="foot">Configured float</span>
+    </div>
+    <div class="pc-kpi {% if to_topup %}pc-kpi--warn{% endif %}">
+      <span class="lbl">Top-up needed</span>
+      <span class="val mono">{{ CURRENCY }} {{ to_topup|money }}</span>
+      <span class="foot">{% if to_topup %}To reach the float{% else %}Float is whole{% endif %}</span>
+    </div>
+    {% endif %}
   </div>
-  <div class="rule"></div>
-</div>
-{% include "ui/period_selector.html" %}
 
-<div class="kpi-grid u-mb">
-  <div class="stat"><div class="lbl">Float on hand (today)</div><div class="val mono">{{ CURRENCY }} {{ balance_now|money }}</div></div>
-  {% if float_target %}<div class="stat"><div class="lbl">Imprest / float</div><div class="val mono">{{ CURRENCY }} {{ float_target|money }}</div></div>
-  <div class="stat {% if to_topup %}kpi-warn{% endif %}"><div class="lbl">Top-up to reach float</div><div class="val mono">{{ CURRENCY }} {{ to_topup|money }}</div></div>{% endif %}
-</div>
-<div class="info-panel">Petty cash is a cash location, not a fund. Top-ups add physical cash to the box; each disbursement is charged to the fund/ministry it was for (so fund balances stay correct) and reduces the float. Reconcile the float on hand against the actual cash in the box.</div>
+  <p class="pc-note">Reconcile the float on hand against the notes in the box. Ministry funds carry the cost of what was spent; this register only tracks where the cash sits.</p>
 
-{% if can_enter_data %}
-<div class="form-grid no-print" style="display:grid;grid-template-columns:1fr 1.2fr;gap:1rem">
-  <div class="card form-card"><div class="hd">Top up the float</div><div class="bd">
-    <form method="post" action="{% url 'petty_cash_topup' %}">{% csrf_token %}
-      <div class="form-row"><label for="{{ topup_form.date.id_for_label }}">Date</label>{{ topup_form.date }}</div>
-      <div class="form-row"><label for="{{ topup_form.amount.id_for_label }}">Amount</label>{{ topup_form.amount }}</div>
-      <div class="form-row"><label for="{{ topup_form.note.id_for_label }}">Note <span class="muted">(optional)</span></label>{{ topup_form.note }}</div>
-      <div class="btn-row"><button class="btn">Record top-up</button></div>
-    </form>
-  </div></div>
-  <div class="card form-card"><div class="hd">Replenish, and record what was spent</div><div class="bd">
-    <p class="help u-mt-0"><strong>A disbursement is just an expense paid from the float.</strong> There is no separate
-      form for it any more — record it on the ordinary
-      <a class="link" href="{% url 'expense_create' %}?petty=1">expense form</a> and tick
-      <em>“paid from the petty cash float”</em>. One form, one approval trail, one place a voucher can be found —
-      rather than two forms that wrote the same Expense row but only one of which a treasurer could attach a receipt to.</p>
-    <div class="btn-row u-mt">
+  {% if can_enter_data %}
+  <div class="pc-actions no-print">
+    <section class="pc-card">
+      <h2>Top up the float</h2>
+      <p class="help">Cash put into the tin. Does not charge a fund.</p>
+      <form method="post" action="{% url 'petty_cash_topup' %}">{% csrf_token %}
+        <div class="form-row"><label for="{{ topup_form.date.id_for_label }}">Date</label>{{ topup_form.date }}</div>
+        <div class="form-row"><label for="{{ topup_form.amount.id_for_label }}">Amount</label>{{ topup_form.amount }}</div>
+        <div class="form-row"><label for="{{ topup_form.note.id_for_label }}">Note <span class="muted">(optional)</span></label>{{ topup_form.note }}</div>
+        <div class="btn-row"><button class="btn" type="submit">Record top-up</button></div>
+      </form>
+      <p class="help u-mt">Topping up with a cheque? Issue it in the
+        <a class="link" href="{% url 'payment_register' %}">payments register</a> as
+        <em>Petty cash replenishment</em> — the float rises when the cheque is issued.</p>
+    </section>
+
+    <section class="pc-card">
+      <h2>Move float to the bank</h2>
+      <p class="help">Excess notes deposited — cash location only. No fund is charged.</p>
+      <form method="post" action="{% url 'petty_cash_bank_deposit' %}">{% csrf_token %}
+        <div class="form-row"><label for="{{ bank_deposit_form.date.id_for_label }}">Date</label>{{ bank_deposit_form.date }}</div>
+        <div class="form-row"><label for="{{ bank_deposit_form.amount.id_for_label }}">Amount</label>{{ bank_deposit_form.amount }}</div>
+        <div class="form-row"><label for="{{ bank_deposit_form.note.id_for_label }}">Note <span class="muted">(optional)</span></label>{{ bank_deposit_form.note }}</div>
+        <div class="btn-row"><button class="btn" type="submit">Record bank deposit</button></div>
+      </form>
+      <p class="help u-mt">When the matching bank credit lands on the statement, claim it on the queue as <em>Petty → bank</em> to link the two sides.</p>
+    </section>
+
+    <section class="pc-card pc-card--cta">
+      <h2>Spend from the float</h2>
+      <p class="help">A disbursement is an ordinary expense paid from the float — charged to the ministry fund, reducing the tin.</p>
       <a class="btn btn-brass" href="{% url 'expense_create' %}?petty=1">＋ Spend from the float</a>
-    </div>
-    <hr class="u-divider">
-    <p class="help"><strong>Topping the float up with a cheque?</strong> Write it in the
-      <a class="link" href="{% url 'payment_register' %}">payments register</a> with source
-      <em>“Petty cash replenishment”</em>. The float rises automatically when the cheque is issued — because a cheque
-      cashed for petty cash is <em>two</em> movements (money leaves the bank, money arrives in the tin), and entering
-      only one of them is how the books stop adding up.</p>
-  </div></div>
-</div>
-{% endif %}
-
-<div class="print-head" style="display:none"><div class="ph-church">{{ CHURCH_NAME }}</div><div class="ph-title">Petty Cash Register</div><div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div></div>
-<div class="card u-mt"><div class="hd">Register · {{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div><div class="bd u-pad-cell">
-<table class="ledger compact"><thead><tr><th>Date</th><th>Detail</th><th>Charged to</th><th class="num">Top-up</th><th class="num">Paid out</th><th class="num">Float</th></tr></thead>
-<tbody>
-  {% comment %} Newest first, so the row a treasurer just entered is the one they see.
-     The closing float therefore sits at the TOP, where the newest row is, and
-     the opening float at the bottom — the register still reads consistently,
-     just downwards through time rather than up. Both are for the whole period,
-     not the page. {% endcomment %}
-  <tr class="close"><td></td><td colspan="2"><strong>Closing float</strong>
-      <span class="muted">— at {{ end|date:"d M Y" }}</span></td>
-    <td class="num"></td><td class="num"></td>
-    <td class="num mono"><strong>{{ closing|money }}</strong></td></tr>
-  {% for m in rows %}<tr>
-    <td class="mono">{{ m.date|date:"d M" }}</td>
-    <td>{{ m.desc }}{% if m.cat %} <span class="pill pill-grey">{{ m.cat }}</span>{% endif %}</td>
-    <td>{{ m.fund|default:"—" }}</td>
-    <td class="num mono">{% if m.in %}{{ m.in|money }}{% endif %}</td>
-    <td class="num mono">{% if m.out %}{{ m.out|money }}{% endif %}</td>
-    <td class="num mono">{{ m.balance|money }}</td>
-  </tr>{% empty %}<tr><td colspan="6" class="empty">No petty cash movements in this period.</td></tr>{% endfor %}
-  {% if not page.has_next %}
-  <tr class="open"><td></td><td colspan="2"><em>Opening float</em>
-      <span class="muted">— at {{ start|date:"d M Y" }}</span></td>
-    <td class="num"></td><td class="num"></td>
-    <td class="num mono">{{ opening|money }}</td></tr>
+      <p class="help u-mt">Approved or paid expenses are corrected with a refund, not a delete, so the audit trail stays intact.</p>
+    </section>
+  </div>
   {% endif %}
-</tbody></table>
 
-{% if page.has_other_pages %}
-<div class="u-mt no-print" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-  {% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page.previous_page_number }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">← Newer</a>{% endif %}
-  <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}
-    · {{ page.paginator.count }} movement{{ page.paginator.count|pluralize }}</span>
-  {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page.next_page_number }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">Older →</a>{% endif %}
+  <div class="print-head" style="display:none">
+    <div class="ph-church">{{ CHURCH_NAME }}</div>
+    <div class="ph-title">Petty Cash Register</div>
+    <div class="ph-sub">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}</div>
+  </div>
+
+  <section class="pc-register">
+    <div class="pc-register-h">
+      <h2>Register</h2>
+      <span class="muted">{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }} · newest first</span>
+    </div>
+    <div class="table-scroll">
+      <table class="ledger compact pc-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Detail</th>
+            <th>Charged to</th>
+            <th class="num">Top-up</th>
+            <th class="num">Paid out</th>
+            <th class="num">Float</th>
+            {% if can_enter_data %}<th class="no-print pc-col-act"></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="close">
+            <td></td>
+            <td colspan="2"><strong>Closing float</strong>
+              <span class="muted">— at {{ end|date:"d M Y" }}</span></td>
+            <td class="num"></td><td class="num"></td>
+            <td class="num mono"><strong>{{ closing|money }}</strong></td>
+            {% if can_enter_data %}<td class="no-print"></td>{% endif %}
+          </tr>
+          {% for m in rows %}
+          <tr>
+            <td class="mono">{{ m.date|date:"d M" }}</td>
+            <td>{{ m.desc }}{% if m.cat %} <span class="pill pill-grey">{{ m.cat }}</span>{% endif %}</td>
+            <td>{{ m.fund|default:"—" }}</td>
+            <td class="num mono">{% if m.in %}{{ m.in|money }}{% endif %}</td>
+            <td class="num mono">{% if m.out %}{{ m.out|money }}{% endif %}</td>
+            <td class="num mono">{{ m.balance|money }}</td>
+            {% if can_enter_data %}
+            <td class="no-print pc-col-act">
+              {% if m.can_delete and m.kind == 'topup' %}
+              <form method="post" action="{% url 'petty_cash_topup_delete' m.pk %}"
+                    onsubmit="return confirm('Remove this top-up from the float register?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-xs btn-ghost" title="Remove erroneous top-up">Delete</button>
+              </form>
+              {% elif m.can_delete and m.kind == 'bank_deposit' %}
+              <form method="post" action="{% url 'petty_cash_bank_deposit_delete' m.pk %}"
+                    onsubmit="return confirm('Remove this bank deposit from the float register?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-xs btn-ghost" title="Remove erroneous bank deposit">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% empty %}
+          <tr><td colspan="{% if can_enter_data %}7{% else %}6{% endif %}" class="empty">No petty cash movements in this period.</td></tr>
+          {% endfor %}
+          {% if not page.has_next %}
+          <tr class="open">
+            <td></td>
+            <td colspan="2"><em>Opening float</em>
+              <span class="muted">— at {{ start|date:"d M Y" }}</span></td>
+            <td class="num"></td><td class="num"></td>
+            <td class="num mono">{{ opening|money }}</td>
+            {% if can_enter_data %}<td class="no-print"></td>{% endif %}
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if page.has_other_pages %}
+    <div class="u-mt no-print pc-pager">
+      {% if page.has_previous %}<a class="btn btn-ghost btn-sm" href="?page={{ page.previous_page_number }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">← Newer</a>{% endif %}
+      <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}
+        · {{ page.paginator.count }} movement{{ page.paginator.count|pluralize }}</span>
+      {% if page.has_next %}<a class="btn btn-ghost btn-sm" href="?page={{ page.next_page_number }}&start={{ start|date:'Y-m-d' }}&end={{ end|date:'Y-m-d' }}">Older →</a>{% endif %}
+    </div>
+    {% endif %}
+  </section>
 </div>
-{% endif %}
-</div></div>
-<style>.ledger .open td,.ledger .close td{background:var(--card-head)}.ledger .close td{border-top:2px solid var(--forest)}.kpi-warn .val{color:var(--amber)}</style>
+
+<style>
+.pc{max-width:72rem;margin:0 auto 2.5rem}
+.pc-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;
+  margin-bottom:1rem;padding:1.3rem 1.4rem;border-radius:var(--radius-lg);border:1px solid var(--line);
+  background:
+    radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--forest) 12%, transparent), transparent 50%),
+    linear-gradient(165deg, var(--paper), var(--brass-soft) 120%);
+  box-shadow:var(--shadow)}
+.pc-kicker{margin:0 0 .3rem;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);font-weight:700}
+.pc-hero h1{margin:0;font-family:var(--font-display,"Fraunces",Georgia,serif);font-size:clamp(1.8rem,3vw,2.35rem);
+  color:var(--forest-deep);line-height:1.05}
+.pc-lead{margin:.45rem 0 0;max-width:48ch;color:var(--ink-soft);font-size:.94rem;line-height:1.45}
+.pc-hero-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+.pc-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin:1rem 0}
+.pc-kpi{padding:1rem 1.05rem;border-radius:var(--radius);border:1px solid var(--line);
+  background:var(--paper);box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:.2rem}
+.pc-kpi .lbl{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:650}
+.pc-kpi .val{font-size:1.35rem;color:var(--forest-deep);font-weight:650}
+.pc-kpi .foot{font-size:.8rem;color:var(--muted)}
+.pc-kpi--warn{background:var(--amber-soft);border-color:color-mix(in srgb, var(--amber) 30%, var(--line))}
+.pc-kpi--warn .val{color:var(--amber)}
+.pc-note{margin:0 0 1.1rem;padding:.75rem 1rem;border-left:3px solid var(--brass);
+  background:var(--forest-tint);color:var(--ink-soft);border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:.9rem}
+.pc-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem;margin-bottom:1.15rem}
+.pc-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-sm);padding:1rem 1.1rem 1.15rem}
+.pc-card h2{margin:0 0 .25rem;font-family:var(--font-display,"Fraunces",Georgia,serif);
+  font-size:1.08rem;color:var(--forest-deep)}
+.pc-card .help{margin:0 0 .75rem;font-size:.84rem;color:var(--muted);line-height:1.4}
+.pc-card--cta{display:flex;flex-direction:column;justify-content:flex-start}
+.pc-register{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-sm);overflow:hidden}
+.pc-register-h{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap;
+  padding:.9rem 1.1rem;border-bottom:1px solid var(--line);background:var(--card-head)}
+.pc-register-h h2{margin:0;font-family:var(--font-display,"Fraunces",Georgia,serif);
+  font-size:1.1rem;color:var(--forest-deep)}
+.pc-table{margin:0}
+.pc-col-act{width:4.5rem;text-align:right}
+.pc-pager{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:0 1.1rem 1rem}
+.ledger .open td,.ledger .close td{background:var(--card-head)}
+.ledger .close td{border-top:2px solid var(--forest)}
+@media (max-width:960px){
+  .pc-actions{grid-template-columns:1fr}
+}
+</style>
 {% endblock %}

@@ -158,6 +158,20 @@ class PettyCashTopUpForm(StyledFormMixin, forms.Form):
         self._style()
 
 
+class PettyCashBankDepositForm(StyledFormMixin, forms.Form):
+    """Move excess float cash to the bank — a cash-location transfer, not a fund charge."""
+    date = forms.DateField(widget=forms.DateInput(attrs={"type": "date"}))
+    amount = forms.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    note = forms.CharField(max_length=200, required=False,
+                           help_text="Optional. e.g. Excess float banked after the rally.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        import datetime as _dt
+        self.fields["date"].initial = _dt.date.today()
+        self._style()
+
+
 # NOTE: PettyCashDisbursementForm was removed here. It wrote an ordinary
 # Expense with paid_from_petty_cash=True — exactly what ExpenseForm writes
 # when that box is ticked — but could not attach a receipt, set an

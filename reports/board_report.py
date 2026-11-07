@@ -88,8 +88,13 @@ registry.register(Report(
         # liability split by whether it has been receipted, borrowings split
         # current against long-term, and what the net assets consist of. Full
         # width, because that is a statement and not a panel.
+        # PPE omitted: most congregations are not yet capitalising property,
+        # plant & equipment, and a nil fixed-asset block on the board pack
+        # reads as if the church forgot to record buildings. The standalone
+        # Statement of Financial Position still carries the full shape.
         FinancialPositionStatementSection(
             hide_nil_lines=True,
+            include_ppe=False,
             layout=LayoutMeta(order=31, width=12, priority=84,
                               group="Statements")),
         CashFlowStatementSection(
