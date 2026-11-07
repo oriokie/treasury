@@ -102,6 +102,45 @@ class DebitReimportDedupTests(TestCase):
         self._import(csv)
         self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2)
 
+    def test_reimport_survives_queue_notes_appended_to_narration(self):
+        """Debit-queue actions append ``\\n[...]`` onto raw_narration. Exact
+        narration match then fails on re-import and the debit is posted again —
+        the bug treasurers hit after resolving a cheque then re-uploading."""
+        self._import(self.CSV)
+        for t in Transaction.objects.filter(direction="DEBIT"):
+            t.raw_narration = (t.raw_narration or "") + \
+                "\n[Marked already accounted for — settled elsewhere — by treasurer]"
+            t.allocation_status = Transaction.Status.MANUAL
+            t.save(update_fields=["raw_narration", "allocation_status"])
+        imp2 = self._import(self.CSV)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2,
+                         "appended queue notes must not defeat identifier-less dedup")
+        self.assertEqual(imp2.duplicates_skipped, 2)
+
+    def test_reimport_survives_whitespace_drift_in_narration(self):
+        """A regenerated statement can collapse double spaces; the bank line is
+        still the same debit and must not re-post."""
+        spaced = (b"Posting Date,Narration,Debit Amount,Credit Amount,Running Balance\n"
+                  b"01-07-2026,MONTHLY  LEDGER   FEE,250.00,0.00,99750.00\n"
+                  b"02-07-2026,CHQ  No.000777,15000.00,0.00,84750.00\n")
+        self._import(self.CSV)
+        imp2 = self._import(spaced)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2)
+        self.assertEqual(imp2.duplicates_skipped, 2)
+
+    def test_reimport_survives_multi_fund_split_note(self):
+        """Matching a debit across several expenses also appends a split note."""
+        self._import(self.CSV)
+        t = Transaction.objects.get(direction="DEBIT",
+                                    raw_narration="CHQ No.000777")
+        t.raw_narration = (t.raw_narration or "") + \
+            "\n[Split across 2 funds: Maintenance, Evangelism]"
+        t.allocation_status = Transaction.Status.MANUAL
+        t.save(update_fields=["raw_narration", "allocation_status"])
+        imp2 = self._import(self.CSV)
+        self.assertEqual(Transaction.objects.filter(direction="DEBIT").count(), 2)
+        self.assertEqual(imp2.duplicates_skipped, 2)
+
 
 class ChequeReconcileTests(TestCase):
     def setUp(self):
