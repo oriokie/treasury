@@ -58,7 +58,7 @@
     <div class="es-funds" id="esFunds"></div>
   </div>
 
-  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Use <strong>＋</strong> on a row to insert below it — later un-edited receipt numbers shift automatically. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. Type a development <strong>group number</strong> on the Development column (resolved when you submit). New rows copy the Channel and Group number above them.</p>
+  <p class="help">Trust funds (T) are remitted to {{ FIELD_NAME }}. Split offerings divide automatically. <strong>Total</strong> is what's written on the envelope — it's checked against the fund amounts you enter automatically; a mismatch shows below the table. <strong>↑ / ↓ or Enter</strong> moves between rows; Enter on the last row adds a new one. Use <strong>＋</strong> on a row to insert below it — later un-edited receipt numbers shift automatically. Edit a row's <strong>Receipt</strong> to renumber every later un-edited row from that point. Type a development <strong>group number</strong> on the Development column (resolved when you submit) — leave it blank when there is no group. New rows copy the Channel above them; the group number starts empty so a previous row’s group is never carried onto an envelope that had none.</p>
 
   <div class="btn-row entry-actions">
     <div class="add-rows-ctl" title="How many blank rows to append">
@@ -527,8 +527,8 @@ function wireRowEvents(tr){
     markDirtyAndSave();
   });
   // Development group is row-local only — typing a number (or clearing it)
-  // must NOT cascade to later rows. New rows still inherit the number above
-  // them once, via addRow(). Multiple Development fund columns on one row
+  // must NOT cascade to later rows, and new rows do not inherit it either
+  // (blank stays blank). Multiple Development fund columns on one row
   // share the same number.
   tr.querySelectorAll(".devgrp").forEach(devgrp=>{
     devgrp.addEventListener("input", ()=>{
@@ -749,9 +749,10 @@ function resequenceFrom(startTr){
 // Channel cascades the SAME way receipts do: setting it on one row
 // propagates it forward to every later row that hasn't itself been
 // explicitly changed, and a later explicit change becomes the new anchor
-// for whatever follows it. Development group does NOT cascade — each row
-// keeps its own keyed group number (new rows still inherit once from the
-// row above in addRow()).
+// for whatever follows it. Development group does NOT cascade and is NOT
+// copied onto new rows — leaving grp# blank must stay blank (Enter on the
+// last row used to inherit the previous group and looked like empty
+// envelopes were "picking" a random group).
 function cascadeSelectFrom(startTr, selector, overrideFlag){
   const rows = Array.from(document.querySelectorAll("#envBody tr"));
   const startIdx = rows.indexOf(startTr);
@@ -979,13 +980,13 @@ function updateTotals(){
 }
 
 function inheritFrom(prev){
-  // one-shot inheritance at add/insert time — later edits stay on that row
+  // one-shot inheritance at add/insert time — later edits stay on that row.
+  // Channel carries forward (same offering stream). Development group does
+  // not: an empty grp# must stay empty when Enter adds the next envelope.
   const data = {};
   if(!prev) return data;
   const prevChan = prev.querySelector(".chan");
   if(prevChan) data.chan = prevChan.value;
-  const prevDg = prev.querySelector(".devgrp");
-  if(prevDg && prevDg.value) data.dev_group_number = prevDg.value;
   return data;
 }
 function addRow(){
