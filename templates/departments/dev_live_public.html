@@ -6,163 +6,182 @@
   <title>Development · Live · {{ church }}</title>
   <style>
     :root{
-      --ink:#10241c;--muted:#6b7c72;--forest:#164a36;--forest-deep:#0e3426;
-      --brass:#a8843a;--cream:#f7f2e8;--panel:rgba(255,252,246,.78);
-      --line:rgba(22,74,54,.12);
+      --ink:#0c1f18;--muted:#5f7168;--forest:#1a4d38;--forest-deep:#0a2a1e;
+      --brass:#b08a3e;--brass-soft:rgba(176,138,62,.35);
+      --cream:#f6f1e7;--panel:rgba(255,252,247,.82);
+      --line:rgba(26,77,56,.12);--veil:rgba(12,31,24,.04);
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
     body{
       font-family:"Fraunces","Source Serif 4",Georgia,serif;color:var(--ink);
       background:
-        radial-gradient(900px 420px at 8% 12%,rgba(168,132,58,.16),transparent 58%),
-        radial-gradient(700px 380px at 92% 18%,rgba(22,74,54,.10),transparent 55%),
-        linear-gradient(155deg,#e8e0d0 0%,var(--cream) 42%,#e2ebe5 100%);
+        radial-gradient(1100px 520px at 0% 0%,rgba(176,138,62,.18),transparent 55%),
+        radial-gradient(900px 480px at 100% 10%,rgba(26,77,56,.12),transparent 50%),
+        radial-gradient(700px 400px at 70% 100%,rgba(176,138,62,.08),transparent 45%),
+        linear-gradient(160deg,#ebe4d6 0%,var(--cream) 40%,#e4ebe6 100%);
       display:flex;align-items:center;justify-content:center;overflow:hidden;
     }
-    /* 16:9 presentation frame — type ~2× for projector / hall screens */
     .frame{
       width:min(100vw, calc(100vh * 16 / 9));
       height:min(100vh, calc(100vw * 9 / 16));
       position:relative;
       display:grid;
-      grid-template-rows:auto 1fr auto;
-      padding:clamp(1.4rem,4vh,2.8rem) clamp(1.8rem,5vw,3.8rem);
+      grid-template-rows:auto 1fr;
+      padding:clamp(1.5rem,4vh,2.8rem) clamp(1.8rem,4.8vw,3.6rem);
+      gap:clamp(.6rem,1.5vh,1.2rem);
     }
-    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:1.4rem}
+    .frame::before{
+      content:"";position:absolute;inset:clamp(.7rem,1.6vh,1.1rem);
+      border:1px solid var(--brass-soft);pointer-events:none;opacity:.7;
+    }
+    .top{
+      display:flex;justify-content:space-between;align-items:flex-start;gap:1.2rem;
+      position:relative;z-index:1;
+    }
     .brand .eyebrow{
-      font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:clamp(1rem,2vh,1.35rem);
-      letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 .55rem;
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(.9rem,1.7vh,1.15rem);
+      letter-spacing:.28em;text-transform:uppercase;color:var(--muted);margin:0 0 .4rem;
     }
     .brand .church{
-      margin:0;font-size:clamp(1.7rem,4.2vh,2.7rem);font-weight:600;letter-spacing:-.01em;
+      margin:0;font-size:clamp(1.55rem,3.6vh,2.45rem);font-weight:600;letter-spacing:-.015em;
+      color:var(--forest-deep);
     }
     .live-pill{
-      font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:clamp(1rem,2vh,1.25rem);
-      letter-spacing:.14em;text-transform:uppercase;color:var(--forest);
-      display:inline-flex;align-items:center;gap:.65rem;
-      padding:.7rem 1.15rem;border:1px solid var(--line);border-radius:999px;
-      background:var(--panel);backdrop-filter:blur(8px);
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(.9rem,1.7vh,1.15rem);
+      letter-spacing:.16em;text-transform:uppercase;color:var(--forest);
+      display:inline-flex;align-items:center;gap:.55rem;
+      padding:.55rem 1rem;border:1px solid var(--line);
+      background:var(--panel);backdrop-filter:blur(10px);
     }
-    .dot{width:14px;height:14px;border-radius:50%;background:var(--forest);
-      box-shadow:0 0 0 0 rgba(22,74,54,.35);animation:pulse 2s ease-out infinite}
+    .dot{
+      width:10px;height:10px;border-radius:50%;background:var(--forest);
+      box-shadow:0 0 0 0 rgba(26,77,56,.35);animation:pulse 2s ease-out infinite;
+    }
     @keyframes pulse{
-      0%{box-shadow:0 0 0 0 rgba(22,74,54,.35)}
-      70%{box-shadow:0 0 0 14px rgba(22,74,54,0)}
-      100%{box-shadow:0 0 0 0 rgba(22,74,54,0)}
+      0%{box-shadow:0 0 0 0 rgba(26,77,56,.35)}
+      70%{box-shadow:0 0 0 12px rgba(26,77,56,0)}
+      100%{box-shadow:0 0 0 0 rgba(26,77,56,0)}
     }
-    /* Wide stage: total left, giving details on the right */
+    /* Left: amount. Right: fixed giving rail — never steals digits from the total */
     .stage{
-      display:grid;
-      grid-template-columns:1fr;
-      gap:clamp(1.4rem,4vw,3.2rem);
-      align-items:center;
-      min-height:0;
+      display:grid;grid-template-columns:1fr;gap:clamp(1.2rem,3vw,2.4rem);
+      align-items:stretch;min-height:0;position:relative;z-index:1;
     }
     .stage.has-give{
-      grid-template-columns:minmax(0,1fr) minmax(22rem,1.05fr);
+      grid-template-columns:minmax(0,1fr) minmax(18rem,min(34vw,26rem));
+      gap:clamp(1.6rem,3.5vw,3rem);
     }
     .hero{
-      display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
-      text-align:left;min-height:0;min-width:0;overflow:hidden;
+      display:flex;flex-direction:column;justify-content:center;
+      min-width:0;min-height:0;padding-right:clamp(.6rem,1.4vw,1.4rem);
     }
     .title{
-      margin:0 0 clamp(.35rem,1vh,.7rem);font-weight:700;letter-spacing:-.03em;
-      font-size:clamp(2.2rem,6vh,4rem);
+      margin:0;font-weight:700;letter-spacing:-.03em;
+      font-size:clamp(2rem,5.2vh,3.5rem);color:var(--forest-deep);
     }
     .period{
       font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--muted);
-      font-size:clamp(1.1rem,2.3vh,1.55rem);margin:0 0 clamp(.7rem,1.8vh,1.2rem);
+      font-size:clamp(1rem,2.1vh,1.4rem);margin:.45rem 0 0;
     }
     .rule{
-      width:min(14rem,55%);height:3px;margin:0 0 clamp(.55rem,1.5vh,1rem);
-      background:linear-gradient(90deg,var(--brass),transparent);opacity:.85;
+      width:min(11rem,40%);height:2px;margin:clamp(.7rem,1.8vh,1.15rem) 0;
+      background:linear-gradient(90deg,var(--brass),transparent);
     }
+    .amount-block{min-width:0;width:100%;padding-right:clamp(.5rem,1.2vw,1.2rem)}
     .currency{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1.2rem,2.5vh,1.7rem);color:var(--brass);font-weight:600;
-      letter-spacing:.14em;margin-bottom:.1rem;
+      font-size:clamp(1.05rem,2.2vh,1.45rem);color:var(--brass);font-weight:600;
+      letter-spacing:.18em;margin-bottom:.2rem;
     }
+    /* Start large; JS fitTotal() shrinks so every digit stays visible */
     .total{
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
-      font-size:clamp(4.4rem,22vh,11.5rem);letter-spacing:-.04em;line-height:.9;
-      color:var(--forest-deep);max-width:100%;
-      transition:transform .5s cubic-bezier(.2,.85,.2,1), color .45s ease;
+      font-size:clamp(3.2rem,14vh,9rem);letter-spacing:-.045em;line-height:.92;
+      color:var(--forest-deep);white-space:nowrap;display:block;width:max-content;
+      max-width:100%;
+      transition:color .45s ease, transform .5s cubic-bezier(.2,.85,.2,1);
     }
-    /* With the wider give panel, keep the total inside its column */
     .stage.has-give .total{
-      font-size:clamp(3.8rem,16vh,8.8rem);
+      font-size:clamp(2.8rem,10.5vh,6.8rem);
     }
-    .total.is-bump{transform:scale(1.035);color:var(--forest)}
+    .total.is-bump{transform:scale(1.025);color:var(--forest)}
+    .hero-meta{
+      margin-top:clamp(1.1rem,3vh,2rem);
+      padding-top:clamp(.8rem,2vh,1.2rem);
+      border-top:1px solid var(--line);
+      display:flex;align-items:baseline;gap:.85rem;
+    }
+    .hero-meta .lbl{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(.85rem,1.6vh,1.1rem);letter-spacing:.18em;text-transform:uppercase;
+      color:var(--muted);
+    }
+    .hero-meta .val{
+      font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:600;
+      font-size:clamp(1.6rem,4vh,2.6rem);color:var(--ink);line-height:1;
+    }
     .give{
+      display:flex;flex-direction:column;justify-content:center;
       align-self:center;
-      width:100%;
-      padding:clamp(1.4rem,3.4vh,2.4rem) clamp(1.5rem,3.2vw,2.5rem);
+      padding:clamp(1.5rem,3.6vh,2.4rem) clamp(1.4rem,2.8vw,2.2rem);
+      background:
+        linear-gradient(165deg,rgba(255,253,249,.95),rgba(240,236,226,.78));
+      border:1px solid rgba(176,138,62,.3);
       border-left:3px solid var(--brass);
-      background:linear-gradient(165deg,rgba(255,252,246,.88),rgba(232,235,229,.55));
-      backdrop-filter:blur(10px);
-      animation:give-in .7s cubic-bezier(.2,.85,.2,1) both;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,.65) inset,
+        0 22px 55px var(--veil);
+      animation:give-in .65s cubic-bezier(.2,.85,.2,1) both;
+      min-width:0;
     }
     @keyframes give-in{
-      from{opacity:0;transform:translateX(1.1rem)}
+      from{opacity:0;transform:translateX(.8rem)}
       to{opacity:1;transform:none}
     }
     .give .hint{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1.05rem,2.1vh,1.4rem);letter-spacing:.18em;text-transform:uppercase;
-      color:var(--muted);margin:0 0 clamp(1.15rem,2.8vh,1.7rem);
+      font-size:clamp(.9rem,1.8vh,1.15rem);letter-spacing:.2em;text-transform:uppercase;
+      color:var(--muted);margin:0 0 clamp(1rem,2.6vh,1.5rem);
     }
     .give .pair{display:block}
     .give .pair + .pair{
-      margin-top:clamp(1.15rem,3vh,1.9rem);
-      padding-top:clamp(1rem,2.5vh,1.5rem);
+      margin-top:clamp(1rem,2.8vh,1.6rem);
+      padding-top:clamp(.85rem,2.2vh,1.25rem);
       border-top:1px solid var(--line);
     }
     .give .k{
       display:block;
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1.1rem,2.2vh,1.5rem);font-weight:500;letter-spacing:.08em;
+      font-size:clamp(.95rem,1.9vh,1.25rem);font-weight:500;letter-spacing:.12em;
       text-transform:uppercase;color:var(--muted);margin-bottom:.4rem;
     }
     .give .v{
       display:block;
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
-      font-size:clamp(2.5rem,6.4vh,4.3rem);letter-spacing:.01em;
-      color:var(--forest-deep);line-height:1.05;word-break:break-word;
+      font-size:clamp(1.7rem,4.2vh,2.85rem);letter-spacing:.01em;
+      color:var(--forest-deep);line-height:1.08;white-space:nowrap;
+      overflow:hidden;text-overflow:ellipsis;max-width:100%;
     }
-    .foot{
-      display:flex;align-items:flex-end;justify-content:flex-start;
-      padding-top:clamp(.7rem,2vh,1.3rem);
-      border-top:1px solid var(--line);
-    }
-    .metric{text-align:left;min-width:10rem}
-    .metric .lbl{
-      font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(.95rem,1.8vh,1.2rem);letter-spacing:.16em;text-transform:uppercase;
-      color:var(--muted);margin-bottom:.4rem;
-    }
-    .metric .val{
-      font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:600;
-      font-size:clamp(2.2rem,5.8vh,3.8rem);color:var(--ink);line-height:1;
-    }
-    /* Portrait / narrow: stack again, keep giving visible under the total */
     @media (max-aspect-ratio: 4/3){
-      .frame{width:100vw;height:100vh;border-radius:0}
-      .stage{grid-template-columns:1fr;gap:clamp(1rem,3vh,1.6rem)}
-      .hero{align-items:center;text-align:center}
+      .frame{width:100vw;height:100vh}
+      .frame::before{inset:.5rem}
+      .stage,.stage.has-give{grid-template-columns:1fr;gap:clamp(.9rem,2.5vh,1.4rem)}
+      .hero{padding-right:0;text-align:center;align-items:center}
       .rule{margin-left:auto;margin-right:auto;background:linear-gradient(90deg,transparent,var(--brass),transparent)}
-      .total{font-size:clamp(3.6rem,17vw,8.5rem)}
+      .amount-block{display:flex;flex-direction:column;align-items:center}
+      .total{font-size:clamp(2.8rem,12vw,6.5rem)}
+      .hero-meta{justify-content:center}
       .give{
-        width:100%;border-left:0;border-top:3px solid var(--brass);
-        animation-name:give-up;
+        border-left:1px solid rgba(176,138,62,.28);border-top:3px solid var(--brass);
+        animation-name:give-up;text-align:center;
       }
       @keyframes give-up{
-        from{opacity:0;transform:translateY(.8rem)}
+        from{opacity:0;transform:translateY(.6rem)}
         to{opacity:1;transform:none}
       }
-      .give .pair + .pair{margin-top:clamp(.8rem,2vh,1.2rem);padding-top:clamp(.7rem,1.8vh,1rem)}
-      .foot{justify-content:center}
-      .metric{text-align:center}
     }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -181,12 +200,18 @@
     <div class="stage{% if paybill or account %} has-give{% endif %}">
       <div class="hero">
         <h1 class="title">Development Fund</h1>
-        <div class="rule"></div>
         <p class="period" id="periodLabel">
           {% if start and end %}{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% else %}Period not set{% endif %}
         </p>
-        <div class="currency">{{ currency }}</div>
-        <div class="total" id="totalAmt">{{ total_display }}</div>
+        <div class="rule"></div>
+        <div class="amount-block">
+          <div class="currency">{{ currency }}</div>
+          <div class="total" id="totalAmt">{{ total_display }}</div>
+        </div>
+        <div class="hero-meta">
+          <span class="lbl">Transactions</span>
+          <span class="val" id="giftCount">{{ count|stringformat:"d" }}</span>
+        </div>
       </div>
       {% if paybill or account %}
       <aside class="give" aria-label="How to give">
@@ -206,23 +231,37 @@
       </aside>
       {% endif %}
     </div>
-
-    <div class="foot">
-      <div class="metric">
-        <div class="lbl">Transactions</div>
-        <div class="val" id="giftCount">{{ count }}</div>
-      </div>
-    </div>
   </div>
   <script>
   (function(){
     var pollUrl = "{{ poll_url|escapejs }}";
     var totalEl = document.getElementById("totalAmt");
     var countEl = document.getElementById("giftCount");
+    var amountBlock = totalEl && totalEl.parentElement;
     var lastTotal = null;
+    var baseSize = null;
+
     function fmt(n){
       n = Math.round(Number(n) || 0);
       return n.toLocaleString();
+    }
+    function fitTotal(){
+      if(!totalEl || !amountBlock) return;
+      totalEl.style.fontSize = "";
+      baseSize = parseFloat(window.getComputedStyle(totalEl).fontSize) || 64;
+      var minPx = Math.max(28, baseSize * 0.28);
+      var size = baseSize;
+      totalEl.style.fontSize = size + "px";
+      // Leave clear air before the side panel so digits never crowd or clip
+      var limit = Math.max(80, amountBlock.clientWidth - 48);
+      var guard = 120;
+      while(totalEl.scrollWidth > limit && size > minPx && guard--){
+        size -= 1;
+        totalEl.style.fontSize = size + "px";
+      }
+    }
+    if(window.ResizeObserver && amountBlock){
+      new ResizeObserver(fitTotal).observe(amountBlock);
     }
     function bump(){
       totalEl.classList.remove("is-bump");
@@ -239,10 +278,22 @@
           if(lastTotal !== null && String(lastTotal) !== String(t)) bump();
           lastTotal = t;
           totalEl.textContent = t;
-          countEl.textContent = d.count;
+          countEl.textContent = Number(d.count || 0).toLocaleString();
+          fitTotal();
         })
         .catch(function(){});
     }
+    // Format the initial server-rendered count the same way
+    if(countEl){
+      countEl.textContent = Number(countEl.textContent || 0).toLocaleString();
+    }
+    window.addEventListener("resize", fitTotal);
+    fitTotal();
+    if(document.fonts && document.fonts.ready){
+      document.fonts.ready.then(fitTotal);
+    }
+    setTimeout(fitTotal, 120);
+    setTimeout(fitTotal, 400);
     setInterval(tick, 7000);
     setTimeout(tick, 2500);
   })();
