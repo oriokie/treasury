@@ -1090,7 +1090,7 @@ class RecurringGenerate(DataEntryRequiredMixin, View):
 # (top-ups less petty disbursements) reconciled against the cash in the box; the
 # ministry funds carry the actual cost, so fund balances stay correct.
 from django.views.generic import TemplateView
-from .forms import PettyCashTopUpForm
+from .forms import PettyCashTopUpForm, PettyCashBankDepositForm
 from .models import PettyCashTopUp as PettyTopUp
 
 
@@ -1135,8 +1135,14 @@ class PettyCashView(ReadAccessMixin, TemplateView):
         opening = _petty_balance_asof(start - dt.timedelta(days=1))
         movements = []
         for t in PettyTopUp.objects.filter(date__gte=start, date__lte=end):
-            movements.append({"date": t.date, "desc": "Top-up" + (f" — {t.note}" if t.note else ""),
-                              "in": t.amount, "out": None, "fund": None})
+            movements.append({
+                "date": t.date,
+                "desc": "Top-up" + (f" — {t.note}" if t.note else ""),
+                "in": t.amount, "out": None, "fund": None,
+                "kind": "topup", "pk": t.pk,
+                # Linked replenishment cheques are undone from the payments
+                # register, not here — deleting would orphan the instrument.
+                "can_delete": t.instrument_id is None})
         from .models import PettyCashBankDeposit
         for dep in PettyCashBankDeposit.objects.filter(date__gte=start, date__lte=end):
             movements.append({
@@ -1144,14 +1150,20 @@ class PettyCashView(ReadAccessMixin, TemplateView):
                 "desc": "Deposited to bank"
                         + (f" — {dep.note}" if dep.note else ""),
                 "in": None, "out": dep.amount, "fund": None,
-                "cat": "Bank deposit"})
+                "cat": "Bank deposit",
+                "kind": "bank_deposit", "pk": dep.pk,
+                # A deposit claimed from the allocation queue is tied to a bank
+                # credit; remove the link there, not by deleting the float row.
+                "can_delete": dep.bank_transaction_id is None})
         disb = (Expense.objects.filter(paid_from_petty_cash=True, date__gte=start, date__lte=end,
                 status__in=[Expense.Status.APPROVED, Expense.Status.PAID])
                 .select_related("department"))
         for x in disb:
             movements.append({"date": x.date, "desc": x.description
                               + (f" · {x.claimant}" if x.claimant else ""), "in": None,
-                              "out": x.amount, "fund": x.department.name, "cat": x.get_category_display()})
+                              "out": x.amount, "fund": x.department.name,
+                              "cat": x.get_category_display(),
+                              "kind": "expense", "pk": x.pk, "can_delete": False})
         # Cash physically handed back into the tin when an expense is refunded.
         # `petty_balance_asof` — which the "Float on hand (today)" card reads —
         # has always counted these, but the register did not list them, so the
@@ -1220,6 +1232,7 @@ class PettyCashView(ReadAccessMixin, TemplateView):
             "float_target": cfg.petty_cash_float,
             "to_topup": max(cfg.petty_cash_float - balance_now, Decimal(0)) if cfg.petty_cash_float else Decimal(0),
             "topup_form": PettyCashTopUpForm(),
+            "bank_deposit_form": PettyCashBankDepositForm(),
         })
         return ctx
 
@@ -1236,6 +1249,84 @@ class PettyCashTopUp(DataEntryRequiredMixin, View):
             messages.success(request, f"Petty cash float increased by {cd['amount']}.")
         else:
             messages.error(request, "Could not record the top-up: " + form.errors.as_text())
+        return redirect("petty_cash")
+
+
+class PettyCashBankDepositCreate(DataEntryRequiredMixin, View):
+    """Record excess float cash moved to the bank (cash location only).
+
+    No fund is charged. The tin goes down by the amount; when the matching bank
+    credit later arrives on the statement, claim it on the allocation queue as
+    “Petty → bank” to link the two. Recording the float side here stops the
+    books disagreeing while that credit is still pending.
+    """
+
+    def post(self, request):
+        from decimal import Decimal
+        from .models import PettyCashBankDeposit
+        form = PettyCashBankDepositForm(request.POST)
+        if not form.is_valid():
+            messages.error(request, "Could not record the bank deposit: "
+                           + form.errors.as_text())
+            return redirect("petty_cash")
+        cd = form.cleaned_data
+        if _block_if_locked(request, cd["date"]):
+            return redirect("petty_cash")
+        float_bal = _petty_balance_asof(cd["date"])
+        if cd["amount"] > float_bal:
+            messages.error(
+                request,
+                f"The petty-cash float on {cd['date']:%d %b %Y} is only "
+                f"{float_bal:,.2f} — cannot deposit {cd['amount']:,.2f} to the bank.")
+            return redirect("petty_cash")
+        PettyCashBankDeposit.objects.create(
+            date=cd["date"], amount=cd["amount"],
+            note=cd["note"] or "Excess petty cash deposited to bank",
+            recorded_by=request.user)
+        messages.success(
+            request,
+            f"Recorded {cd['amount']:,.2f} moved from the petty-cash float to the bank. "
+            f"When the bank credit appears on the statement, claim it as Petty → bank.")
+        return redirect("petty_cash")
+
+
+class PettyCashTopUpDelete(TreasurerRequiredMixin, View):
+    """Remove an erroneous manual top-up from the float register."""
+
+    def post(self, request, pk):
+        topup = get_object_or_404(PettyTopUp, pk=pk)
+        if _block_if_locked(request, topup.date):
+            return redirect("petty_cash")
+        if topup.instrument_id:
+            messages.error(
+                request,
+                "This top-up came from a replenishment cheque. Reverse or un-issue "
+                "it in the payments register instead.")
+            return redirect("petty_cash")
+        amount = topup.amount
+        topup.delete()
+        messages.success(request, f"Removed top-up of {amount:,.2f} from the float.")
+        return redirect("petty_cash")
+
+
+class PettyCashBankDepositDelete(TreasurerRequiredMixin, View):
+    """Remove an erroneous float→bank transfer that is not yet linked to a credit."""
+
+    def post(self, request, pk):
+        from .models import PettyCashBankDeposit
+        dep = get_object_or_404(PettyCashBankDeposit, pk=pk)
+        if _block_if_locked(request, dep.date):
+            return redirect("petty_cash")
+        if dep.bank_transaction_id:
+            messages.error(
+                request,
+                "This deposit is linked to a bank credit. Unclaim that credit on "
+                "the allocation queue rather than deleting the float movement.")
+            return redirect("petty_cash")
+        amount = dep.amount
+        dep.delete()
+        messages.success(
+            request, f"Removed bank deposit of {amount:,.2f} from the float register.")
         return redirect("petty_cash")
 
 

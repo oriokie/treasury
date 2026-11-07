@@ -116,7 +116,8 @@ async function ask(text){
   renderUser(text); qinput.value=""; chipsBar.hidden=true;
   const typing=add("bot", '<div class="typing"><span></span><span></span><span></span></div>');
   try{
-    const body={q:text};
+    const body={q:text, history: history.slice(-6).map(t=>({
+      q:t.q, d:{text:(t.d && t.d.text) || ""}}))};
     if(ctxActive && REPORT_CTX.report_key){
       body.report_key=REPORT_CTX.report_key;
       body.element=REPORT_CTX.element;

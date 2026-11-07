@@ -234,6 +234,9 @@ class FinancialPositionTests(_Seed):
         section = next(s for s in report.sections
                        if s.key == "financial_position_statement")
         self.assertTrue(section.hide_nil_lines)
+        # Most congregations are not capitalising PPE yet — the board pack
+        # omits the fixed-asset block rather than printing a row of nils.
+        self.assertFalse(section.include_ppe)
 
     def test_headings_subtotals_and_net_assets_always_stand(self):
         _data, labels = self._labels(hide_nil_lines=True)
@@ -261,6 +264,16 @@ class FullFinancialPositionTests(_Seed):
         self.assertIn("Total current assets", v)
         self.assertIn("Net book value", v)
         self.assertIn("TOTAL ASSETS", v)
+
+    def test_board_pack_omits_property_plant_and_equipment(self):
+        _data, v = self._rows(include_ppe=False, hide_nil_lines=True)
+        self.assertNotIn("Property, plant & equipment at cost", v)
+        self.assertNotIn("Less: accumulated depreciation", v)
+        self.assertNotIn("Net book value", v)
+        self.assertNotIn("Invested in property", v)
+        self.assertIn("Total current assets", v)
+        self.assertIn("TOTAL ASSETS", v)
+        self.assertEqual(v["TOTAL ASSETS"], v["Total current assets"])
 
     def test_it_splits_the_trust_liability_by_whether_it_was_receipted(self):
         _data, v = self._rows()

@@ -8,12 +8,12 @@
 {% block portal_content %}
 
 {% if not rows %}
-<div class="panel u-mb"><p class="muted">You are not enrolled in a welfare scheme yet.
+<div class="pt-panel"><p class="muted" style="margin:0">You are not enrolled in a welfare scheme yet.
   Speak to the church office if you think this is wrong.</p></div>
 {% endif %}
 
 {% for row in rows %}
-<div class="panel u-mb">
+<div class="pt-panel">
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap">
     <h2 style="margin:0">{{ row.scheme.name }}</h2>
     {% if row.standing %}
@@ -39,27 +39,29 @@
 </div>
 {% endfor %}
 
-<div class="grid cols-2">
-  <div class="panel">
+<div class="pt-grid-2">
+  <div class="pt-panel">
     <h3>Recent contributions</h3>
     {% for c in recent_contributions %}
     <div class="pt-row"><span class="k">{{ c.date|date:"d M Y" }} · {{ c.get_kind_display }}</span>
       <span class="mono">{{ CURRENCY }} {{ c.amount|money }}</span></div>
-    {% empty %}<div class="pt-empty">Nothing recorded yet.</div>{% endfor %}
+    {% empty %}<div class="pt-empty"><div class="big">Nothing recorded yet</div>
+      <div class="sm">Contributions will appear here once the office posts them.</div></div>{% endfor %}
     <div class="u-mt"><a class="link" href="{% url 'portal_contributions' %}">All contributions →</a></div>
   </div>
-  <div class="panel">
+  <div class="pt-panel">
     <h3>Your requests</h3>
     {% for r in open_requests %}
     <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_request_detail' r.pk %}">{{ r.reference }}</a> · {{ r.subject }}</span>
       <span class="pill {% if r.status == 'INFO_NEEDED' %}pill-amber{% else %}pill-grey{% endif %}">{{ r.get_status_display }}</span></div>
-    {% empty %}<div class="pt-empty">Nothing outstanding.</div>{% endfor %}
+    {% empty %}<div class="pt-empty"><div class="big">Nothing outstanding</div>
+      <div class="sm">Ask for assistance or report a death when you need to.</div></div>{% endfor %}
     <div class="u-mt"><a class="link" href="{% url 'portal_requests' %}">All requests →</a></div>
   </div>
 </div>
 
 {% if recent_cases %}
-<div class="panel u-mt">
+<div class="pt-panel u-mt">
   <h3>Your cases</h3>
   {% for c in recent_cases %}
   <div class="pt-row"><span class="k"><a class="link" href="{% url 'portal_case_detail' c.pk %}">{{ c.number }}</a>

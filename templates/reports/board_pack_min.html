@@ -9,6 +9,10 @@
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=docx">Word</a>
   <a class="btn btn-ghost btn-sm" href="?{{ querystring }}&export=xlsx">Excel</a>
   <span class="sp"></span>
+  <label class="u-inline bpm-show-notes" title="Commentary is optional — figures stand on their own">
+    <input type="checkbox" id="bpmShowNotes"> Show commentary
+  </label>
+  <span class="sp"></span>
   <form method="get" class="filter-bar" style="margin:0" id="bpmPeriod">
     {% comment %}A pack is nearly always run for one of five periods; typing
     two dates every month is friction with no information in it. The chips
@@ -173,16 +177,20 @@
           <p class="bpm-caption">{{ s.note }}</p>
         {% endif %}
 
-        {% comment %} The explanation: generated, AI-drafted or the treasurer's
-        own. Signature blocks and anything with nothing to say carry no
-        commentary box — an empty "What this shows" under a row of signature
-        lines is furniture, not information. {% endcomment %}
+        {% comment %} Commentary is optional. Auto-generated "What this shows"
+        notes stay off the pack until the treasurer opts in (toolbar) or has
+        already written their own. Signature blocks never carry a note box.
+        Executive summary / Matters for the board remain visible when present
+        because they are the narrative sections themselves. {% endcomment %}
         {% if explanation and s.kind != 'signature' %}
-        <div class="bpm-note{% if s.kind == 'commentary' %} bpm-note-prose{% endif %}" data-section="{{ s.key }}">
-          {% if s.kind != 'commentary' or is_treasurer or s.extra|get_item:'explanation_edited' %}
+        {% with edited=s.extra|get_item:'explanation_edited' %}
+        <div class="bpm-note{% if s.kind == 'commentary' %} bpm-note-prose{% endif %}{% if s.kind != 'commentary' and not edited %} bpm-note-optional{% endif %}"
+             data-section="{{ s.key }}"
+             {% if s.kind != 'commentary' and not edited %}hidden{% endif %}>
+          {% if s.kind != 'commentary' or is_treasurer or edited %}
           <div class="bpm-note-head no-print">
-            {% if s.kind != 'commentary' %}<span class="bpm-note-lbl">What this shows</span>{% endif %}
-            {% if s.extra|get_item:'explanation_edited' %}<span class="bpm-tag" data-role="tag">{% if s.extra|get_item:'explanation_source' == 'AI' %}AI draft{% else %}Edited{% endif %}</span>{% endif %}
+            {% if s.kind != 'commentary' %}<span class="bpm-note-lbl">What this shows <span class="muted">(optional)</span></span>{% endif %}
+            {% if edited %}<span class="bpm-tag" data-role="tag">{% if s.extra|get_item:'explanation_source' == 'AI' %}AI draft{% else %}Edited{% endif %}</span>{% endif %}
             {% if is_treasurer %}
             <span class="bpm-note-tools">
               <button type="button" class="bpm-btn" data-act="edit">Edit</button>
@@ -193,6 +201,7 @@
           {% endif %}
           <div class="bpm-note-body" data-role="body">{{ explanation|linebreaks }}</div>
         </div>
+        {% endwith %}
         {% endif %}
 
         </div>
@@ -380,6 +389,23 @@
     });
   }, {rootMargin: "-15% 0px -75% 0px"});
   groups.forEach(function(g){ if(g) obs.observe(g); });
+})();
+
+// Optional commentary: auto-generated "What this shows" notes stay hidden
+// until the treasurer ticks Show commentary. Edited notes always remain.
+(function(){
+  var box = document.getElementById("bpmShowNotes");
+  if(!box) return;
+  var key = "treasury.board_pack.show_notes";
+  try{ box.checked = localStorage.getItem(key) === "1"; }catch(e){}
+  function apply(){
+    document.querySelectorAll(".bpm-note-optional").forEach(function(n){
+      n.hidden = !box.checked;
+    });
+    try{ localStorage.setItem(key, box.checked ? "1" : "0"); }catch(e){}
+  }
+  box.addEventListener("change", apply);
+  apply();
 })();
 </script>
 {% include "reports/_board_pack_min_styles.html" %}

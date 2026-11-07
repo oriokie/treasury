@@ -293,9 +293,14 @@ class FinancialPositionStatementSection(ComponentSection):
                         "net_book_value", "fixed_assets_cost",
                         "accumulated_depreciation", "net_assets")
 
-    def __init__(self, *args, hide_nil_lines=False, **kwargs):
+    def __init__(self, *args, hide_nil_lines=False, include_ppe=True, **kwargs):
         super().__init__(*args, **kwargs)
         self.hide_nil_lines = hide_nil_lines
+        # Churches that do not capitalise property, plant & equipment omit the
+        # fixed-asset block entirely (board pack default). Standalone statutory
+        # statements keep include_ppe=True so the full SOFP shape is available
+        # when a church later begins PPE accounting.
+        self.include_ppe = include_ppe
 
     def render(self, ctx, filters):
         from core.reporting.engine import Section
@@ -327,9 +332,12 @@ class FinancialPositionStatementSection(ComponentSection):
         accruals = _n(ctx.metric("accruals_outstanding", as_of))
         bank = cash - petty - advances
 
-        cost = _n(ctx.metric("fixed_assets_cost", as_of))
-        depreciation = _n(ctx.metric("accumulated_depreciation", as_of))
-        nbv = _n(ctx.metric("net_book_value", as_of))
+        if self.include_ppe:
+            cost = _n(ctx.metric("fixed_assets_cost", as_of))
+            depreciation = _n(ctx.metric("accumulated_depreciation", as_of))
+            nbv = _n(ctx.metric("net_book_value", as_of))
+        else:
+            cost = depreciation = nbv = Decimal(0)
 
         loans = ctx.loans_outstanding(as_of)
         if isinstance(loans, dict):
@@ -362,9 +370,14 @@ class FinancialPositionStatementSection(ComponentSection):
             ("Receipts pending allocation", pending),
             ("Prepayments (unexpired)", prepaid),
             ("Total current assets", current_assets, "subtotal"),
-            ("Property, plant & equipment at cost", cost),
-            ("Less: accumulated depreciation", -depreciation),
-            ("Net book value", nbv, "subtotal"),
+        ]
+        if self.include_ppe:
+            detail.extend([
+                ("Property, plant & equipment at cost", cost),
+                ("Less: accumulated depreciation", -depreciation),
+                ("Net book value", nbv, "subtotal"),
+            ])
+        detail.extend([
             ("TOTAL ASSETS", total_assets, "subtotal"),
             ("Liabilities", None, "heading"),
             ("Trust funds payable — receipted", trust_receipted),
@@ -379,12 +392,15 @@ class FinancialPositionStatementSection(ComponentSection):
             ("Financed by", None, "heading"),
             ("Unallocated (general) funds", unallocated),
             ("Allocated (board-designated) funds", allocated),
-            ("Invested in property", nbv),
+        ])
+        if self.include_ppe:
+            detail.append(("Invested in property", nbv))
+        detail.extend([
             ("Accrual adjustments (prepaid less payables and accruals)",
              accrual_adj),
             ("Less: borrowings to repay", -loans_total),
             ("TOTAL FUNDS", funds_employed, "subtotal"),
-        ]
+        ])
         note = ("Assets less liabilities equals net assets, and the funds "
                 "employed below show what those net assets consist of. Trust "
                 "money is the conference's and is carried as a liability until "

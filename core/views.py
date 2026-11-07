@@ -653,15 +653,19 @@ class AssistantAskView(ReadAccessMixin, View):
         report_key = payload.get("report_key")
         period = payload.get("period")
         element = payload.get("element")
+        # Prior turns from the chat UI — text only, capped in the LLM layer.
+        history = payload.get("history") or []
+        if not isinstance(history, list):
+            history = []
         try:
             if report_key or element:
                 # report-context-aware answering via the Knowledge Service
                 from .services.assistant_knowledge import answer_with_context
                 data = answer_with_context(q, report_key=report_key,
                                            period=period, element=element,
-                                           user=request.user)
+                                           user=request.user, history=history)
             else:
-                data = assistant.answer(q, request.user)
+                data = assistant.answer(q, request.user, history=history)
         except Exception as exc:
             from core.utils import log_exception as _lx; _lx('core/views.py')
             data = {"text": f"Sorry — I hit an error answering that ({type(exc).__name__})."}

@@ -1,105 +1,144 @@
 {% extends 'base.html' %}
 {% block title %}Batch expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="rpt-mast">
-  <div>
-    <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
-    <h1>Enter several expenses</h1>
-    <div class="desc">Enter shared defaults once, then one line per receipt.
-      Leave a line’s override blank to keep the default — e.g. one fund with
-      different claimants, or mixed dates and payees in the same batch.</div>
-  </div>
-  <div class="rule" aria-hidden="true"></div>
-</div>
-
-<form method="post" class="xb-shell" id="xbForm">{% csrf_token %}
-  {# Claimed once on the server, so a second send of this same form saves nothing. #}
-  <input type="hidden" name="submit_token" value="{{ submit_token }}">
-<div class="card"><div class="bd">
-  <div class="xf-group-h" style="margin-top:0"><span class="xf-n">1</span> Defaults for every line</div>
-  <p class="help u-mt-0" style="margin-bottom:.7rem">Applied when a line leaves a field blank. Open <b>More</b> on a line to override.</p>
-  <div class="form-grid xf-grid-2">
-    <div class="form-row"><label for="bDate">Date</label>
-      <input type="date" name="date" id="bDate" class="field" value="{{ today|date:'Y-m-d' }}" required></div>
-    <div class="form-row"><label for="bFundSearch">Fund / department</label>
-      <div class="pos-rel">
-        <input id="bFundSearch" class="field" autocomplete="off" placeholder="Start typing a fund…">
-        <div class="ac-box" id="bFundAc"></div>
+<div class="xb">
+  <header class="xb-hero">
+    <div class="xb-hero-copy">
+      <p class="xb-kicker">Expenses</p>
+      <h1>Batch entry</h1>
+      <p class="xb-lead">Set shared defaults once, then one line per receipt. Overrides stay on the line that needs them — and a draft of what you type is kept if the page reloads.</p>
+    </div>
+    <aside class="xb-hero-aside" aria-label="Batch status">
+      <div class="xb-aside-stat">
+        <span class="lbl">Lines</span>
+        <span class="val mono" id="xbLineCount">0</span>
       </div>
-      <input type="hidden" name="department" id="bFund" required>
-      <div class="help" id="bBal" style="display:none"></div></div>
-    <div class="form-row"><label for="bClaimant">Claimant</label>
-      <input type="text" name="claimant" id="bClaimant" class="field" maxlength="120"
-             placeholder="Who incurred or requested these"></div>
-    <div class="form-row"><label for="bVendor">Supplier <span class="muted u-xs">(optional)</span></label>
-      <select name="vendor" id="bVendor" class="field field--select">
-        <option value="">—</option>
-        {% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
-      </select></div>
-    <div class="form-row"><label for="bPayee">Payee <span class="muted u-xs">(if not the claimant)</span></label>
-      <input type="text" name="payee" id="bPayee" class="field" maxlength="160"></div>
-    <div class="form-row"><label for="bMethod">Method</label>
-      <select name="method" id="bMethod" class="field field--select">
-        {% for value, label in methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-      </select></div>
-    <div class="form-row"><label for="bCategory">Default category</label>
-      <select name="category" id="bCategory" class="field field--select">
-        {% for value, label in categories %}<option value="{{ value }}" {% if value == 'OTHER' %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-      <div class="help">Any line can override this.</div></div>
-    <div class="form-row"><label for="bType">Expenditure type</label>
-      <select name="expenditure_type" id="bType" class="field field--select">
-        {% for value, label in expenditure_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-      </select></div>
-    <div class="form-row"><label for="bVoucher">Voucher no <span class="muted u-xs">(optional)</span></label>
-      <input type="text" name="voucher_no" id="bVoucher" class="field" maxlength="30"></div>
-    <div class="form-row"><label class="check-row" for="bPetty">
-      <input type="checkbox" name="paid_from_petty_cash" id="bPetty"> Paid from the petty cash float</label></div>
-  </div>
-</div></div>
+      <div class="xb-aside-stat">
+        <span class="lbl">Total</span>
+        <span class="val mono" id="xbHeroTotal">0.00</span>
+      </div>
+      <div class="xb-aside-stat xb-aside-stat--soft">
+        <span class="lbl">Charges</span>
+        <span class="val mono" id="xbHeroCharges">0.00</span>
+      </div>
+    </aside>
+  </header>
 
-<div class="card u-mt"><div class="bd">
-  <div class="xf-group-h" style="margin-top:0"><span class="xf-n">2</span> One line per receipt</div>
-  <div class="table-scroll">
-  <table class="ledger compact" id="xbTable">
-    <thead><tr><th style="width:40%">What it was for</th><th>Category</th>
-      <th class="num" style="width:12%">Amount</th>
-      <th class="num" style="width:12%">Charge</th><th style="width:5.5rem"></th></tr></thead>
-    <tbody id="xbBody"></tbody>
-    <tfoot><tr><th colspan="2">Total</th>
-      <th class="num mono" id="xbTotal">0.00</th>
-      <th class="num mono" id="xbCharges">0.00</th><th></th></tr></tfoot>
-  </table>
+  <div class="xb-draft" id="xbDraftBanner" hidden>
+    <div>
+      <strong>Draft restored</strong>
+      <span class="muted"> — your lines were kept after a reload. Review them, then save.</span>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" id="xbDiscardDraft">Discard draft</button>
   </div>
-  <div class="u-mt"><button type="button" class="btn btn-ghost btn-sm" id="xbAdd">+ Add another line</button>
-    <span class="muted u-xs">Blank lines are ignored. A charge on a line is for a
-      payment made on its own. Use <b>More</b> when a line’s fund, claimant,
-      payee, supplier, method, date or voucher differs from the defaults.</span></div>
 
-  <div class="form-row u-mt" style="max-width:34rem">
-    <label for="bSharedCharge">One charge for the whole batch
-      <span class="muted u-xs">(optional)</span></label>
-    <input type="number" step="0.01" min="0" name="shared_charge" id="bSharedCharge" class="field">
-    <div class="help">If you settled all of these with a <b>single</b> transfer, put
-      the one fee the bank took here rather than on each line — the bank charged
-      once, so the church records it once. It is recorded as a single bank-charge
-      expense on this fund, covering the batch.</div>
-  </div>
-</div></div>
+  <form method="post" class="xb-shell" id="xbForm">{% csrf_token %}
+    <input type="hidden" name="submit_token" value="{{ submit_token }}">
 
-<div class="card u-mt"><div class="bd" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap">
-  <div class="muted">
-    {% if auto_approve %}These save as <b>approved</b> and reduce the fund's balance immediately.
-    {% else %}These save as <b>pending</b> — a treasurer approves them before they touch the fund's balance.{% endif %}
-    <br>Either every line is saved or none is.
-  </div>
-  <div class="btn-row"><button class="btn" id="xbSave">Save all lines</button>
-    <a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a></div>
-</div></div>
-</form>
+    <section class="xb-panel">
+      <div class="xb-panel-h">
+        <span class="xb-step">1</span>
+        <div>
+          <h2>Defaults</h2>
+          <p>Applied whenever a line leaves a field blank. Open <b>More</b> on a line to override.</p>
+        </div>
+      </div>
+      <div class="form-grid xf-grid-2">
+        <div class="form-row"><label for="bDate">Date</label>
+          <input type="date" name="date" id="bDate" class="field" value="{{ today|date:'Y-m-d' }}" required></div>
+        <div class="form-row"><label for="bFundSearch">Fund / department</label>
+          <div class="pos-rel">
+            <input id="bFundSearch" class="field" autocomplete="off" placeholder="Start typing a fund…">
+            <div class="ac-box" id="bFundAc"></div>
+          </div>
+          <input type="hidden" name="department" id="bFund" required>
+          <div class="help" id="bBal" style="display:none"></div></div>
+        <div class="form-row"><label for="bClaimant">Claimant</label>
+          <input type="text" name="claimant" id="bClaimant" class="field" maxlength="120"
+                 placeholder="Who incurred or requested these"></div>
+        <div class="form-row"><label for="bVendor">Supplier <span class="muted u-xs">(optional)</span></label>
+          <select name="vendor" id="bVendor" class="field field--select">
+            <option value="">—</option>
+            {% for v in vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+          </select></div>
+        <div class="form-row"><label for="bPayee">Payee <span class="muted u-xs">(if not the claimant)</span></label>
+          <input type="text" name="payee" id="bPayee" class="field" maxlength="160"></div>
+        <div class="form-row"><label for="bMethod">Method</label>
+          <select name="method" id="bMethod" class="field field--select">
+            {% for value, label in methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select></div>
+        <div class="form-row"><label for="bCategory">Default category</label>
+          <select name="category" id="bCategory" class="field field--select">
+            {% for value, label in categories %}<option value="{{ value }}" {% if value == 'OTHER' %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+          <div class="help">Any line can override this.</div></div>
+        <div class="form-row"><label for="bType">Expenditure type</label>
+          <select name="expenditure_type" id="bType" class="field field--select">
+            {% for value, label in expenditure_types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+          </select></div>
+        <div class="form-row"><label for="bVoucher">Voucher no <span class="muted u-xs">(optional)</span></label>
+          <input type="text" name="voucher_no" id="bVoucher" class="field" maxlength="30"></div>
+        <div class="form-row xb-check"><label class="check-row" for="bPetty">
+          <input type="checkbox" name="paid_from_petty_cash" id="bPetty"> Paid from the petty cash float</label></div>
+      </div>
+    </section>
+
+    <section class="xb-panel">
+      <div class="xb-panel-h">
+        <span class="xb-step">2</span>
+        <div>
+          <h2>Lines</h2>
+          <p>One row per receipt. Blank lines are ignored.</p>
+        </div>
+      </div>
+      <div class="table-scroll xb-table-wrap">
+        <table class="ledger compact xb-table" id="xbTable">
+          <thead><tr>
+            <th class="xb-col-what">What it was for</th>
+            <th>Category</th>
+            <th class="num xb-col-amt">Amount</th>
+            <th class="num xb-col-amt">Charge</th>
+            <th class="xb-col-acts"></th>
+          </tr></thead>
+          <tbody id="xbBody"></tbody>
+          <tfoot><tr>
+            <th colspan="2">Total</th>
+            <th class="num mono" id="xbTotal">0.00</th>
+            <th class="num mono" id="xbCharges">0.00</th>
+            <th></th>
+          </tr></tfoot>
+        </table>
+      </div>
+      <div class="xb-line-tools">
+        <button type="button" class="btn btn-ghost btn-sm" id="xbAdd">+ Add another line</button>
+        <span class="muted u-xs">A charge on a line is for a payment made on its own. Use <b>More</b> when fund, claimant, payee, supplier, method, date or voucher differs from the defaults.</span>
+      </div>
+
+      <div class="form-row xb-shared" style="max-width:34rem">
+        <label for="bSharedCharge">One charge for the whole batch
+          <span class="muted u-xs">(optional)</span></label>
+        <input type="number" step="0.01" min="0" name="shared_charge" id="bSharedCharge" class="field">
+        <div class="help">If you settled all of these with a <b>single</b> transfer, put the one fee the bank took here rather than on each line.</div>
+      </div>
+    </section>
+
+    <footer class="xb-foot">
+      <div class="xb-foot-note muted">
+        {% if auto_approve %}These save as <b>approved</b> and reduce the fund's balance immediately.
+        {% else %}These save as <b>pending</b> — a treasurer approves them before they touch the fund's balance.{% endif %}
+        <br>Either every line is saved or none is. Your draft is kept until you save or discard it.
+      </div>
+      <div class="btn-row">
+        <button class="btn" id="xbSave" type="submit">Save all lines</button>
+        <a class="btn btn-ghost" href="{% url 'expense_list' %}">Cancel</a>
+      </div>
+    </footer>
+  </form>
+</div>
 
 <script>
 const fundUrl="{% url 'fund_search' %}", balUrl="{% url 'department_balance' %}";
+const DRAFT_KEY="treasury.expense_batch.draft.v1";
 const fmt=n=>Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const catOptions=`{% for value, label in categories %}<option value="{{ value }}">{{ label }}</option>{% endfor %}`;
 const methodOptions=`{% for value, label in methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}`;
@@ -118,6 +157,7 @@ function wireFundSearch(searchEl, hiddenEl, acEl, balEl){
   }
   searchEl.addEventListener("input",()=>{ clearTimeout(ft); hiddenEl.value="";
     if(balEl) balEl.style.display="none";
+    scheduleDraft();
     ft=setTimeout(async()=>{ try{
       const d=await (await fetch(fundUrl+"?scope=expense&q="+encodeURIComponent(searchEl.value.trim()))).json();
       acEl.innerHTML=""; if(!d.results.length){ acEl.style.display="none"; return; }
@@ -125,7 +165,7 @@ function wireFundSearch(searchEl, hiddenEl, acEl, balEl){
         it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
         it.addEventListener("mousedown",e=>{ e.preventDefault();
           searchEl.value=r.label; hiddenEl.value=r.id; acEl.style.display="none"; showBal();
-          markOverride(searchEl.closest("tr")); });
+          markOverride(searchEl.closest("tr")); scheduleDraft(); });
         acEl.appendChild(it); });
       acEl.style.display="block";
     }catch(e){ acEl.style.display="none"; } },160);
@@ -147,7 +187,7 @@ function markOverride(ovrTr){
   btn.title=filled?"Overrides set — click to edit":"Override defaults for this line";
 }
 
-function addRow(){
+function addRow(seed){
   const body=document.getElementById("xbBody");
   const main=document.createElement("tr");
   main.className="xb-main";
@@ -187,7 +227,7 @@ function addRow(){
   body.appendChild(main);
   body.appendChild(ovr);
   main.querySelector(".xb-del").addEventListener("click",()=>{
-    ovr.remove(); main.remove(); total();
+    ovr.remove(); main.remove(); total(); scheduleDraft();
   });
   main.querySelector(".xb-more").addEventListener("click",()=>{
     ovr.hidden=!ovr.hidden;
@@ -199,54 +239,243 @@ function addRow(){
     ovr.querySelector(".xb-fund-ac"),
     null);
   ovr.addEventListener("input",()=>markOverride(ovr));
-  ovr.addEventListener("change",()=>markOverride(ovr));
+  ovr.addEventListener("change",()=>{ markOverride(ovr); scheduleDraft(); });
+  if(seed){
+    main.querySelector('[name="line_description"]').value=seed.description||"";
+    main.querySelector('[name="line_category"]').value=seed.category||"";
+    main.querySelector('[name="line_amount"]').value=seed.amount||"";
+    main.querySelector('[name="line_charge"]').value=seed.charge||"";
+    ovr.querySelector('[name="line_date"]').value=seed.date||"";
+    ovr.querySelector('[name="line_department"]').value=seed.department||"";
+    ovr.querySelector(".xb-fund-search").value=seed.department_label||"";
+    ovr.querySelector('[name="line_claimant"]').value=seed.claimant||"";
+    ovr.querySelector('[name="line_payee"]').value=seed.payee||"";
+    ovr.querySelector('[name="line_vendor"]').value=seed.vendor||"";
+    ovr.querySelector('[name="line_method"]').value=seed.method||"";
+    ovr.querySelector('[name="line_voucher"]').value=seed.voucher||"";
+    markOverride(ovr);
+    if([...ovr.querySelectorAll("input,select")].some(el=>{
+      if(el.type==="hidden") return !!el.value;
+      return !!(el.value||"").trim();
+    })){
+      ovr.hidden=false;
+      main.querySelector(".xb-more").textContent="Less";
+    }
+  }
   return main;
 }
+
 function total(){
-  let a=0,c=0;
-  document.querySelectorAll(".xb-amt").forEach(i=>a+=Number(i.value||0));
+  let a=0,c=0,n=0;
+  document.querySelectorAll(".xb-amt").forEach(i=>{
+    const v=Number(i.value||0); a+=v;
+    const row=i.closest("tr.xb-main");
+    const desc=row && row.querySelector('[name="line_description"]');
+    if((desc && desc.value.trim()) || v) n+=1;
+  });
   document.querySelectorAll(".xb-chg").forEach(i=>c+=Number(i.value||0));
+  const shared=Number(document.getElementById("bSharedCharge").value||0);
   document.getElementById("xbTotal").textContent=fmt(a);
-  document.getElementById("xbCharges").textContent=fmt(c);
+  document.getElementById("xbCharges").textContent=fmt(c+shared);
+  document.getElementById("xbHeroTotal").textContent=fmt(a);
+  document.getElementById("xbHeroCharges").textContent=fmt(c+shared);
+  document.getElementById("xbLineCount").textContent=String(n);
 }
-// The save is a single act. Saving a stack of receipts takes a moment, and a
-// second click during that moment used to write the whole batch again — so the
-// first submit closes the door and says what is happening. The token in the
-// form is what actually guarantees it; this is so the treasurer can see why the
-// button stopped responding.
+
+function collectDraft(){
+  const lines=[];
+  document.querySelectorAll("#xbBody tr.xb-main").forEach(main=>{
+    const ovr=main.nextElementSibling;
+    lines.push({
+      description: main.querySelector('[name="line_description"]').value||"",
+      category: main.querySelector('[name="line_category"]').value||"",
+      amount: main.querySelector('[name="line_amount"]').value||"",
+      charge: main.querySelector('[name="line_charge"]').value||"",
+      date: ovr.querySelector('[name="line_date"]').value||"",
+      department: ovr.querySelector('[name="line_department"]').value||"",
+      department_label: ovr.querySelector(".xb-fund-search").value||"",
+      claimant: ovr.querySelector('[name="line_claimant"]').value||"",
+      payee: ovr.querySelector('[name="line_payee"]').value||"",
+      vendor: ovr.querySelector('[name="line_vendor"]').value||"",
+      method: ovr.querySelector('[name="line_method"]').value||"",
+      voucher: ovr.querySelector('[name="line_voucher"]').value||"",
+    });
+  });
+  return {
+    savedAt: Date.now(),
+    defaults: {
+      date: document.getElementById("bDate").value||"",
+      department: document.getElementById("bFund").value||"",
+      department_label: document.getElementById("bFundSearch").value||"",
+      claimant: document.getElementById("bClaimant").value||"",
+      vendor: document.getElementById("bVendor").value||"",
+      payee: document.getElementById("bPayee").value||"",
+      method: document.getElementById("bMethod").value||"",
+      category: document.getElementById("bCategory").value||"",
+      expenditure_type: document.getElementById("bType").value||"",
+      voucher_no: document.getElementById("bVoucher").value||"",
+      paid_from_petty_cash: document.getElementById("bPetty").checked,
+      shared_charge: document.getElementById("bSharedCharge").value||"",
+    },
+    lines,
+  };
+}
+
+function draftHasContent(draft){
+  if(!draft) return false;
+  const d=draft.defaults||{};
+  if((d.claimant||"").trim() || (d.payee||"").trim() || (d.voucher_no||"").trim()
+     || (d.shared_charge||"") || d.paid_from_petty_cash || (d.department||"")) return true;
+  return (draft.lines||[]).some(l =>
+    (l.description||"").trim() || l.amount || l.charge || l.department
+    || (l.claimant||"").trim() || (l.payee||"").trim() || l.date || l.voucher);
+}
+
+let draftTimer=null;
+function scheduleDraft(){
+  clearTimeout(draftTimer);
+  draftTimer=setTimeout(saveDraft, 250);
+}
+function saveDraft(){
+  try{
+    const draft=collectDraft();
+    if(!draftHasContent(draft)){ localStorage.removeItem(DRAFT_KEY); return; }
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  }catch(e){ /* private mode / quota — typing must still work */ }
+}
+function clearDraft(){
+  try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+  const banner=document.getElementById("xbDraftBanner");
+  if(banner) banner.hidden=true;
+}
+function readDraft(){
+  try{
+    const raw=localStorage.getItem(DRAFT_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+function applyDraft(draft){
+  if(!draft || !draftHasContent(draft)) return false;
+  const d=draft.defaults||{};
+  if(d.date) document.getElementById("bDate").value=d.date;
+  if(d.department){
+    document.getElementById("bFund").value=d.department;
+    document.getElementById("bFundSearch").value=d.department_label||"";
+  }
+  if(d.claimant!=null) document.getElementById("bClaimant").value=d.claimant;
+  if(d.vendor) document.getElementById("bVendor").value=d.vendor;
+  if(d.payee!=null) document.getElementById("bPayee").value=d.payee;
+  if(d.method) document.getElementById("bMethod").value=d.method;
+  if(d.category) document.getElementById("bCategory").value=d.category;
+  if(d.expenditure_type) document.getElementById("bType").value=d.expenditure_type;
+  if(d.voucher_no!=null) document.getElementById("bVoucher").value=d.voucher_no;
+  document.getElementById("bPetty").checked=!!d.paid_from_petty_cash;
+  if(d.shared_charge!=null) document.getElementById("bSharedCharge").value=d.shared_charge;
+
+  document.getElementById("xbBody").innerHTML="";
+  const lines=(draft.lines&&draft.lines.length)?draft.lines:[{}];
+  lines.forEach(seed=>addRow(seed));
+  // Keep a trailing blank row ready for the next receipt.
+  const last=document.querySelector("#xbBody tr.xb-main:last-of-type");
+  if(last){
+    const desc=last.querySelector('[name="line_description"]');
+    const amt=last.querySelector('[name="line_amount"]');
+    if((desc&&desc.value.trim()) || (amt&&amt.value)) addRow();
+  }
+  total();
+  document.getElementById("xbDraftBanner").hidden=false;
+  const fundWire=window.__xbFundWire;
+  if(fundWire && fundWire.showBal) fundWire.showBal();
+  return true;
+}
+
 document.getElementById("xbForm").addEventListener("submit",function(e){
   const btn=document.getElementById("xbSave");
   if(this.dataset.sent==="1"){ e.preventDefault(); return; }
   this.dataset.sent="1";
   btn.disabled=true; btn.textContent="Saving…";
+  clearDraft();
 });
-document.getElementById("xbAdd").addEventListener("click",()=>addRow());
-document.addEventListener("input",e=>{ if(e.target.matches(".xb-amt,.xb-chg")) total(); });
-// A last row that is always empty, so there is always somewhere to type without
-// reaching for the button first.
+document.getElementById("xbAdd").addEventListener("click",()=>{ addRow(); scheduleDraft(); });
+document.getElementById("xbDiscardDraft").addEventListener("click",()=>{
+  clearDraft();
+  document.getElementById("xbBody").innerHTML="";
+  for(let i=0;i<4;i++) addRow();
+  total();
+});
+document.addEventListener("input",e=>{
+  if(e.target.matches(".xb-amt,.xb-chg,#bSharedCharge")) total();
+  if(e.target.closest("#xbForm")) scheduleDraft();
+});
+document.addEventListener("change",e=>{
+  if(e.target.closest("#xbForm")) scheduleDraft();
+});
 document.addEventListener("input",e=>{
   if(!e.target.matches('input[name="line_description"]')) return;
   const rows=[...document.querySelectorAll("#xbBody tr.xb-main")];
   const last=rows[rows.length-1];
   if(last && last.contains(e.target) && e.target.value.trim()) addRow();
 });
-for(let i=0;i<4;i++) addRow();
 
-// fund autocomplete + balance, same behaviour as the single expense form
 const fs=document.getElementById("bFundSearch"), fh=document.getElementById("bFund"),
       fa=document.getElementById("bFundAc"), fb=document.getElementById("bBal");
-wireFundSearch(fs, fh, fa, fb);
+window.__xbFundWire=wireFundSearch(fs, fh, fa, fb);
+
+const restored=applyDraft(readDraft());
+if(!restored){
+  for(let i=0;i<4;i++) addRow();
+  total();
+}
 </script>
 <style>
-.xb-shell .ledger td{padding:.35rem .4rem}
-.xb-shell .ledger .field{margin:0}
-.xf-group-h{font-family:var(--font-display,"Fraunces",serif);font-size:.95rem;font-weight:600;
-  color:var(--ink-soft);margin-bottom:.7rem;padding-bottom:.25rem;border-bottom:1px solid var(--brass);
-  display:inline-block}
-.xf-n{display:inline-flex;align-items:center;justify-content:center;width:1.35rem;height:1.35rem;
-  margin-right:.4rem;border-radius:50%;background:var(--brass);color:#fff;font-size:.72rem;
-  font-weight:700;font-family:"IBM Plex Mono",ui-monospace,monospace}
+.xb{max-width:68rem;margin:0 auto 2.5rem}
+.xb-hero{
+  display:grid;grid-template-columns:minmax(0,1.6fr) minmax(14rem,0.9fr);
+  gap:1.25rem;align-items:end;margin-bottom:1.15rem;
+  padding:1.35rem 1.4rem 1.25rem;border-radius:var(--radius-lg);
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--brass) 16%, transparent), transparent 55%),
+    linear-gradient(160deg, var(--forest-tint), var(--paper) 55%, var(--brass-soft));
+  border:1px solid var(--line);
+  box-shadow:var(--shadow);
+}
+.xb-kicker{margin:0 0 .35rem;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--brass);font-weight:700}
+.xb-hero h1{margin:0;font-family:var(--font-display,"Fraunces",Georgia,serif);
+  font-size:clamp(1.85rem,3vw,2.45rem);line-height:1.05;color:var(--forest-deep);font-weight:700}
+.xb-lead{margin:.55rem 0 0;max-width:42ch;color:var(--ink-soft);font-size:.95rem;line-height:1.45}
+.xb-hero-aside{display:grid;gap:.55rem;padding:.85rem .95rem;border-radius:var(--radius);
+  background:color-mix(in srgb, var(--paper) 88%, white);border:1px solid var(--line)}
+.xb-aside-stat{display:flex;justify-content:space-between;align-items:baseline;gap:.75rem}
+.xb-aside-stat .lbl{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.xb-aside-stat .val{font-size:1.15rem;color:var(--forest-deep);font-weight:650}
+.xb-aside-stat--soft .val{font-size:1rem;color:var(--ink-soft)}
+.xb-draft{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
+  margin:0 0 1rem;padding:.75rem 1rem;border-radius:var(--radius);
+  background:var(--amber-soft);border:1px solid color-mix(in srgb, var(--amber) 28%, var(--line));
+  color:var(--ink-soft)}
+.xb-draft[hidden]{display:none}
+.xb-panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-sm);padding:1.1rem 1.2rem 1.25rem;margin-bottom:1rem}
+.xb-panel-h{display:flex;gap:.85rem;align-items:flex-start;margin-bottom:1rem;
+  padding-bottom:.75rem;border-bottom:1px solid var(--line)}
+.xb-panel-h h2{margin:0;font-family:var(--font-display,"Fraunces",Georgia,serif);
+  font-size:1.15rem;color:var(--forest-deep)}
+.xb-panel-h p{margin:.2rem 0 0;color:var(--muted);font-size:.86rem;max-width:54ch}
+.xb-step{flex:0 0 auto;width:1.7rem;height:1.7rem;border-radius:50%;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--forest);color:#fff;font-size:.78rem;font-weight:700;
+  font-family:"IBM Plex Mono",ui-monospace,monospace}
 .xf-grid-2{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.xb-check{display:flex;align-items:flex-end}
+.xb-table-wrap{border:1px solid var(--line);border-radius:var(--radius);overflow:auto;background:var(--paper-2)}
+.xb-table{margin:0}
+.xb-shell .ledger td{padding:.4rem .45rem}
+.xb-shell .ledger .field{margin:0}
+.xb-col-what{width:40%}.xb-col-amt{width:12%}.xb-col-acts{width:5.5rem}
+.xb-line-tools{display:flex;align-items:center;gap:.85rem;flex-wrap:wrap;margin-top:.75rem}
+.xb-shared{margin-top:1rem}
 .xb-acts{white-space:nowrap;vertical-align:middle}
 .xb-acts .btn{margin-left:.15rem}
 .xb-more--set{color:var(--forest);font-weight:600}
@@ -255,5 +484,12 @@ wireFundSearch(fs, fh, fa, fb);
 .xb-ovr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.55rem .7rem}
 .xb-ovr-grid .form-row{margin:0}
 .xb-ovr-grid label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:.15rem}
+.xb-foot{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
+  padding:1rem 1.15rem;border-radius:var(--radius-lg);border:1px solid var(--line);
+  background:linear-gradient(180deg, var(--paper), var(--forest-tint));box-shadow:var(--shadow-sm)}
+.xb-foot-note{font-size:.86rem;line-height:1.4;max-width:42rem}
+@media (max-width:860px){
+  .xb-hero{grid-template-columns:1fr}
+}
 </style>
 {% endblock %}
