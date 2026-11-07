@@ -623,11 +623,23 @@ class AssistantView(ReadAccessMixin, View):
     def get(self, request):
         from .services.assistant import SUGGESTIONS, suggestion_groups_for_site
         from core.models import SiteConfig
+        cfg = SiteConfig.get()
         report_key = request.GET.get("report_key", "")
+        provider_label = ""
+        if cfg.llm_enabled:
+            try:
+                provider_label = cfg.get_llm_provider_display()
+            except Exception:
+                provider_label = cfg.llm_provider or ""
+            if cfg.llm_model:
+                provider_label = f"{provider_label} · {cfg.llm_model}"
         ctx = {
             "suggestions": SUGGESTIONS,
             "suggestion_groups": suggestion_groups_for_site(),
-            "llm_on": SiteConfig.get().llm_enabled,
+            "llm_on": bool(cfg.llm_enabled and cfg.llm_api_key),
+            "llm_enabled_flag": cfg.llm_enabled,
+            "llm_has_key": bool(cfg.llm_api_key),
+            "llm_provider_label": provider_label,
             "ctx_report_key": report_key,
             "ctx_start": request.GET.get("start", ""),
             "ctx_end": request.GET.get("end", ""),

@@ -177,6 +177,7 @@ def answer_with_context(question, report_key=None, period=None, element=None,
                                    history=history)
         if text:
             return {"text": text.strip(),
+                    "source": "ai", "source_label": "AI assist",
                     "provenance": {"report": report_key, "grounded": True}}
         # fall through to structured answer on LLM error
 
@@ -185,6 +186,8 @@ def answer_with_context(question, report_key=None, period=None, element=None,
     intent = _classify(question)
     ans = structured_answer(report_key, period, element_txt, intent)
     ans.setdefault("provenance", {"report": report_key, "grounded": True})
+    ans.setdefault("source", "rules")
+    ans.setdefault("source_label", "Live books")
     return ans
 
 

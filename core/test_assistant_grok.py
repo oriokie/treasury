@@ -30,3 +30,17 @@ class RichContextTests(TestCase):
         ctx = assistant._rich_data_context()
         self.assertIn("Today:", ctx)
         self.assertIn("Collections year-to-date", ctx)
+
+
+class AnswerSourceAndFollowupTests(TestCase):
+    def test_rules_answers_are_tagged_live_books(self):
+        d = assistant.answer("what needs attention")
+        self.assertEqual(d.get("source"), "rules")
+        self.assertEqual(d.get("source_label"), "Live books")
+        self.assertTrue(d.get("suggestions"))
+
+    def test_followup_cues_are_recognised(self):
+        hist = [{"q": "Tithe this month", "d": {"text": "12000"}}]
+        self.assertTrue(assistant._looks_like_followup("and last month?", hist))
+        self.assertFalse(assistant._looks_like_followup(
+            "how much tithe this year", hist))

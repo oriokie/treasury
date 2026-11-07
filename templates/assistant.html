@@ -1,13 +1,37 @@
 {% extends 'base.html' %}
 {% block title %}Assistant · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="page-head no-print">
-  <div><h1>Treasury assistant</h1>
-  <div class="sub">Ask in plain language — answers come straight from your live data · read-only</div></div>
-  <div class="btn-row">
-    <span class="asst-badge {% if llm_on %}is-on{% endif %}" title="{% if llm_on %}AI assist is enabled: questions the built-in rules can't match are passed to the language model.{% else %}AI assist is off — answers come from the built-in rules over your live data only.{% endif %}">
-      <span class="asst-badge-dot"></span>{% if llm_on %}AI assist on{% else %}Rules only{% endif %}</span>
-    <button type="button" class="btn btn-ghost btn-sm" id="clearBtn" title="Clear conversation">⟲ Clear</button>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">{{ SITE_NAME }} · Assistant</div>
+      <h1>Treasury assistant</h1>
+      <div class="desc">Ask in plain language. Figures come from your live books — read-only, never changes data.</div>
+    </div>
+    <div class="mast-actions no-print btn-row">
+      <span class="asst-badge {% if llm_on %}is-on{% endif %}" id="asstModeBadge"
+            title="{% if llm_on %}AI assist is on. Unmatched questions and follow-ups go to {{ llm_provider_label|default:'the language model' }}. Matched questions still read the live books first.{% elif llm_enabled_flag and not llm_has_key %}AI assist is switched on but no API key is set — only the live-books engine answers.{% else %}AI assist is off. Answers come from the live-books engine only. Turn it on in Settings → Assistant.{% endif %}">
+        <span class="asst-badge-dot"></span>
+        {% if llm_on %}AI assist on{% elif llm_enabled_flag %}AI on · no key{% else %}Live books only{% endif %}
+      </span>
+      {% if llm_on and llm_provider_label %}
+      <span class="asst-provider muted u-xs">{{ llm_provider_label }}</span>
+      {% endif %}
+      <a class="btn btn-ghost btn-sm" href="{% url 'settings' %}?tab=assistant">Settings</a>
+      <button type="button" class="btn btn-ghost btn-sm" id="clearBtn" title="Clear conversation">Clear chat</button>
+    </div>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
+
+<div class="asst-howto no-print">
+  <div class="asst-howto-item">
+    <span class="tag tag-rules">Live books</span>
+    Exact totals from the ledger — used whenever a question matches a known report.
+  </div>
+  <div class="asst-howto-item">
+    <span class="tag tag-ai">AI assist</span>
+    {% if llm_on %}Used for freer wording and follow-ups (e.g. “and last month?”). Each reply is tagged so you can see which path answered.{% elif llm_enabled_flag %}Switched on in settings, but no API key is saved yet — add one under Settings → Assistant.{% else %}Off right now — enable under Settings → Assistant (xAI Grok recommended) to unlock freer chat.{% endif %}
   </div>
 </div>
 
@@ -20,39 +44,47 @@
 {% endif %}
 
 <div class="asst">
-  <div class="asst-log" id="log">
-    <!-- empty state -->
-    <div class="asst-empty" id="empty">
-      <div class="asst-hero">
-        <div class="asst-mark">₳</div>
-        <div>
-          <div class="asst-hi">Hi{% if request.user.first_name %} {{ request.user.first_name }}{% endif %} 👋</div>
-          <div class="asst-hi-sub">I can read collections, balances, the ledger, budgets, trust funds, assets and more. Pick a question below, or type your own.</div>
+  <div class="asst-shell">
+    <div class="asst-log" id="log" role="log" aria-live="polite">
+      <div class="asst-empty" id="empty">
+        <div class="asst-hero">
+          <div class="asst-mark">₳</div>
+          <div>
+            <div class="asst-hi">Hi{% if request.user.first_name %} {{ request.user.first_name }}{% endif %}</div>
+            <div class="asst-hi-sub">Ask about collections, balances, trust funds, budgets, health, or what needs attention. Follow up naturally — “and last month?” keeps the thread.</div>
+          </div>
+        </div>
+        <div class="asst-groups">
+          {% for g in suggestion_groups %}
+          <div class="asst-group">
+            <div class="asst-group-h"><span class="asst-group-ic">{{ g.icon }}</span>{{ g.label }}</div>
+            {% for s in g.items %}<button type="button" class="chip" data-q="{{ s }}">{{ s }}</button>{% endfor %}
+          </div>
+          {% endfor %}
         </div>
       </div>
-      <div class="asst-groups">
-        {% for g in suggestion_groups %}
-        <div class="asst-group">
-          <div class="asst-group-h"><span class="asst-group-ic">{{ g.icon }}</span>{{ g.label }}</div>
-          {% for s in g.items %}<button type="button" class="chip" data-q="{{ s }}">{{ s }}</button>{% endfor %}
-        </div>
-        {% endfor %}
+    </div>
+
+    <div class="asst-composer">
+      <div class="chips" id="chips" hidden></div>
+      <form class="asst-input" id="askForm" autocomplete="off">
+        <input id="q" class="field" autocomplete="off"
+               placeholder="Ask a question, or follow up on the last answer…"
+               aria-label="Your question">
+        <button class="btn" id="send" type="submit">Send</button>
+      </form>
+      <div class="asst-foot">
+        <span id="asstFootHint">Each answer shows whether it came from the live books or AI assist.</span>
+        <span class="muted"> · Read-only</span>
       </div>
     </div>
   </div>
-
-  <div class="chips" id="chips" hidden></div>
-
-  <form class="asst-input" id="askForm" autocomplete="off">
-    <input id="q" class="field" autocomplete="off" placeholder="Ask about collections, balances, trust, budgets, the ledger…">
-    <button class="btn" id="send" type="submit" aria-label="Send">Ask ↑</button>
-  </form>
-  <div class="asst-foot">Answers are read-only and never change your data.</div>
 </div>
 
 <script>
 const askUrl="{% url 'assistant_ask' %}";
-const KEY="asst_history_v1";
+const KEY="asst_history_v2";
+const LLM_ON={% if llm_on %}true{% else %}false{% endif %};
 const REPORT_CTX={
   report_key:"{{ ctx_report_key|escapejs }}",
   element:"{{ ctx_element|escapejs }}",
@@ -63,12 +95,25 @@ const log=document.getElementById("log"), qinput=document.getElementById("q"),
       empty=document.getElementById("empty"), chipsBar=document.getElementById("chips");
 const csrftoken=(document.cookie.match(/csrftoken=([^;]+)/)||[])[1];
 let history=[];
+let asking=false;
 
 function esc(s){const d=document.createElement("div");d.textContent=(s==null?"":s);return d.innerHTML;}
 function hideEmpty(){ if(empty){ empty.style.display="none"; } }
 
+function sourceBadge(d){
+  const src=d.source||"";
+  const label=d.source_label||"";
+  if(!src && !label) return "";
+  let cls="tag-rules";
+  if(src==="ai" || src==="ai_routed") cls="tag-ai";
+  else if(src==="fallback") cls="tag-fallback";
+  return '<div class="b-meta"><span class="tag '+cls+'">'
+    +esc(label||src)+'</span></div>';
+}
+
 function bubbleHTML(d){
-  let html='<div class="b-text">'+esc(d.text)+'</div>';
+  let html=sourceBadge(d);
+  html+='<div class="b-text">'+esc(d.text)+'</div>';
   if(d.note){ html+='<div class="b-note">'+esc(d.note)+'</div>'; }
   if(d.rows && d.rows.length){
     html+='<table class="b-table">'+d.rows.map(r=>
@@ -83,24 +128,25 @@ function bubbleHTML(d){
   }
   return html;
 }
-function add(role, innerHTML, save){
+function add(role, innerHTML){
   hideEmpty();
   const m=document.createElement("div"); m.className="msg "+role;
   const mark = role==="user" ? "{{ request.user.first_name.0|default:'U'|upper }}" : "₳";
-  m.innerHTML='<div class="avatar">'+mark+'</div><div class="bubble">'+innerHTML+'</div>';
+  m.innerHTML='<div class="avatar" aria-hidden="true">'+mark+'</div><div class="bubble">'+innerHTML+'</div>';
   log.appendChild(m); log.scrollTop=log.scrollHeight;
   return m;
 }
 function renderUser(text){ add("user", '<div class="b-text">'+esc(text)+'</div>'); }
 function renderBot(d){
   add("bot", bubbleHTML(d));
-  // contextual follow-up chips
   if(d.suggestions && d.suggestions.length){
     chipsBar.hidden=false; chipsBar.innerHTML="";
     d.suggestions.slice(0,6).forEach(s=>{
       const b=document.createElement("button"); b.type="button"; b.className="chip"; b.dataset.q=s; b.textContent=s;
       chipsBar.appendChild(b);
     });
+  } else {
+    chipsBar.hidden=true; chipsBar.innerHTML="";
   }
 }
 function persist(){ try{ sessionStorage.setItem(KEY, JSON.stringify(history)); }catch(e){} }
@@ -112,9 +158,11 @@ function restore(){
 }
 
 async function ask(text){
-  text=(text||"").trim(); if(!text) return;
+  text=(text||"").trim(); if(!text || asking) return;
+  asking=true;
+  document.getElementById("send").disabled=true;
   renderUser(text); qinput.value=""; chipsBar.hidden=true;
-  const typing=add("bot", '<div class="typing"><span></span><span></span><span></span></div>');
+  const typing=add("bot", '<div class="typing" aria-label="Thinking"><span></span><span></span><span></span></div>');
   try{
     const body={q:text, history: history.slice(-6).map(t=>({
       q:t.q, d:{text:(t.d && t.d.text) || ""}}))};
@@ -130,7 +178,12 @@ async function ask(text){
     typing.remove(); renderBot(d);
     history.push({q:text, d:d}); persist();
   }catch(e){
-    typing.remove(); renderBot({text:"Sorry — something went wrong reaching the assistant."});
+    typing.remove(); renderBot({text:"Sorry — something went wrong reaching the assistant.",
+      source:"fallback", source_label:"Error"});
+  } finally {
+    asking=false;
+    document.getElementById("send").disabled=false;
+    qinput.focus();
   }
 }
 
@@ -141,88 +194,105 @@ document.addEventListener("click",e=>{
 document.getElementById("clearBtn").addEventListener("click",()=>{
   history=[]; persist();
   log.querySelectorAll(".msg").forEach(n=>n.remove());
-  chipsBar.hidden=true; if(empty){ empty.style.display=""; }
+  chipsBar.hidden=true; chipsBar.innerHTML="";
+  if(empty){ empty.style.display=""; }
   qinput.focus();
 });
 const clearCtxBtn=document.getElementById("clearCtx");
 if(clearCtxBtn){ clearCtxBtn.addEventListener("click",()=>{
   ctxActive=false;
-  const b=document.getElementById("ctxBanner"); if(b){ b.style.opacity=".5"; b.querySelector("span:nth-child(2)").innerHTML="General mode — context cleared"; }
+  const b=document.getElementById("ctxBanner"); if(b){ b.style.opacity=".55"; b.querySelector("span:nth-child(2)").innerHTML="General mode — context cleared"; }
 }); }
+qinput.addEventListener("keydown",e=>{
+  if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); ask(qinput.value); }
+});
 restore(); qinput.focus();
 {% if ctx_prefill %}ask("{{ ctx_prefill|escapejs }}");{% endif %}
 </script>
 
 <style>
-.asst-context{max-width:860px;margin:0 auto .7rem;display:flex;align-items:center;gap:.55rem;
-  background:var(--forest-soft);border:1px solid var(--forest);border-radius:var(--radius-sm);
-  padding:.5rem .85rem;font-size:.86rem;color:var(--forest)}
+.asst-howto{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;max-width:920px;margin:0 auto 1rem}
+.asst-howto-item{display:flex;gap:.55rem;align-items:flex-start;padding:.7rem .85rem;
+  border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);
+  box-shadow:var(--shadow-sm);font-size:.84rem;color:var(--ink-soft);line-height:1.4}
+.asst-provider{align-self:center}
+.tag{display:inline-flex;align-items:center;padding:.12rem .45rem;border-radius:999px;
+  font-size:.68rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.tag-rules{background:var(--forest-soft);color:var(--forest-deep)}
+.tag-ai{background:var(--brass-soft);color:var(--amber)}
+.tag-fallback{background:var(--paper-2);color:var(--muted);border:1px solid var(--line)}
+.asst-context{max-width:920px;margin:0 auto .75rem;display:flex;align-items:center;gap:.55rem;
+  background:var(--forest-soft);border:1px solid color-mix(in srgb, var(--forest) 35%, var(--line));
+  border-radius:var(--radius);padding:.55rem .9rem;font-size:.86rem;color:var(--forest-deep)}
 .asst-context-ic{font-size:1rem}
-.asst-context strong{color:var(--forest-deep)}
 .asst-context .btn-link{margin-left:auto;color:var(--forest)}
-.asst{max-width:900px;margin:0 auto;display:flex;flex-direction:column;
-  height:calc(100vh - 190px);min-height:460px}
-.asst-log{border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper);
-  padding:1.2rem 1.3rem;flex:1;overflow:auto;margin-bottom:.7rem;
-  box-shadow:var(--shadow);scroll-behavior:smooth}
-/* AI-assist status badge */
+.asst{max-width:920px;margin:0 auto 1.5rem}
+.asst-shell{display:flex;flex-direction:column;height:calc(100vh - 280px);min-height:480px;
+  border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--paper);
+  box-shadow:var(--shadow);overflow:hidden}
+.asst-log{flex:1;overflow:auto;padding:1.25rem 1.35rem;scroll-behavior:smooth;
+  background:
+    radial-gradient(90% 60% at 100% 0%, color-mix(in srgb, var(--forest) 6%, transparent), transparent 55%),
+    var(--paper)}
 .asst-badge{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line-strong,var(--line));
-  border-radius:999px;padding:.2rem .65rem;font-size:.74rem;color:var(--muted);white-space:nowrap}
+  border-radius:999px;padding:.22rem .7rem;font-size:.74rem;color:var(--muted);white-space:nowrap;background:var(--paper)}
 .asst-badge-dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
 .asst-badge.is-on{border-color:var(--forest);color:var(--forest);background:var(--forest-tint,#eef4f1)}
 .asst-badge.is-on .asst-badge-dot{background:var(--forest)}
-/* empty state — centred in the log so a tall viewport doesn't leave the
-   panel looking half-empty below the suggestions */
-.asst-empty{display:flex;flex-direction:column;justify-content:center;min-height:100%}
-.asst-hero{display:flex;gap:.85rem;align-items:flex-start;margin-bottom:1.1rem}
-.asst-mark{width:42px;height:42px;border-radius:12px;flex:none;display:grid;place-items:center;
+.asst-empty{display:flex;flex-direction:column;justify-content:center;min-height:100%;padding:.4rem 0}
+.asst-hero{display:flex;gap:.9rem;align-items:flex-start;margin-bottom:1.15rem}
+.asst-mark{width:44px;height:44px;border-radius:14px;flex:none;display:grid;place-items:center;
   font-size:1.25rem;color:#fff;background:linear-gradient(135deg,var(--forest),var(--forest-deep));
   box-shadow:var(--shadow-sm)}
-.asst-hi{font-family:var(--font-display,Fraunces),serif;font-size:1.18rem;font-weight:600;color:var(--ink)}
-.asst-hi-sub{color:var(--muted);font-size:.9rem;margin-top:.15rem;max-width:46ch}
+.asst-hi{font-family:var(--font-display,Fraunces),serif;font-size:1.28rem;font-weight:650;color:var(--forest-deep)}
+.asst-hi-sub{color:var(--muted);font-size:.92rem;margin-top:.2rem;max-width:48ch;line-height:1.45}
 .asst-groups{display:grid;grid-template-columns:1fr 1fr;gap:.85rem}
-.asst-group{border:1px solid var(--line);border-radius:var(--radius-sm);padding:.7rem .75rem;background:var(--paper-2)}
-.asst-group-h{display:flex;align-items:center;gap:.4rem;font-weight:600;font-size:.82rem;
-  text-transform:uppercase;letter-spacing:.04em;color:var(--forest);margin-bottom:.5rem}
+.asst-group{border:1px solid var(--line);border-radius:var(--radius);padding:.75rem .8rem;background:var(--paper-2)}
+.asst-group-h{display:flex;align-items:center;gap:.4rem;font-weight:650;font-size:.78rem;
+  text-transform:uppercase;letter-spacing:.05em;color:var(--forest);margin-bottom:.45rem}
 .asst-group-ic{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;
   background:var(--forest-soft);color:var(--forest);font-size:.8rem}
 .asst-group .chip{display:block;width:100%;text-align:left;margin:.28rem 0}
-/* messages */
-.msg{display:flex;gap:.55rem;margin:.7rem 0;align-items:flex-end}
+.msg{display:flex;gap:.55rem;margin:.85rem 0;align-items:flex-end}
 .msg.user{flex-direction:row-reverse}
 .avatar{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;
   font-size:.8rem;font-weight:700;color:#fff}
 .msg.bot .avatar{background:linear-gradient(135deg,var(--forest),var(--forest-deep))}
 .msg.user .avatar{background:var(--brass)}
-.bubble{padding:.6rem .85rem;border-radius:16px;max-width:80%;font-size:.92rem;line-height:1.5;
+.bubble{padding:.7rem .9rem;border-radius:16px;max-width:78%;font-size:.93rem;line-height:1.5;
   box-shadow:var(--shadow-sm)}
-.msg.bot .bubble{background:var(--paper-2);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px}
+.msg.bot .bubble{background:var(--paper);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:5px}
 .msg.user .bubble{background:linear-gradient(135deg,var(--forest),var(--forest-2));color:#fff;border-bottom-right-radius:5px}
-.b-note{font-size:.82rem;opacity:.78;margin-top:.25rem}
+.b-meta{margin-bottom:.35rem}
+.msg.user .b-meta{display:none}
+.b-note{font-size:.82rem;opacity:.8;margin-top:.3rem}
 .b-table{width:100%;margin-top:.55rem;border-collapse:collapse;font-size:.88rem}
-.b-table td{padding:.26rem .15rem;border-top:1px solid rgba(0,0,0,.08)}
+.b-table td{padding:.28rem .15rem;border-top:1px solid rgba(0,0,0,.08)}
 .b-table td.num{text-align:right;white-space:nowrap;padding-left:1rem}
 .msg.bot .b-table tr:last-child td{border-top:2px solid var(--forest-soft);font-weight:600}
-.b-links{margin-top:.6rem;display:flex;gap:.4rem;flex-wrap:wrap}
+.b-links{margin-top:.65rem;display:flex;gap:.4rem;flex-wrap:wrap}
 .btn-xs{padding:.22rem .6rem;font-size:.78rem;border-radius:7px}
-/* typing dots */
-.typing{display:flex;gap:.25rem;padding:.15rem 0}
+.typing{display:flex;gap:.25rem;padding:.2rem 0}
 .typing span{width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.5;animation:bob 1s infinite}
 .typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
 @keyframes bob{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:.9}}
-/* chips bar + input */
-.chips{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem}
+.asst-composer{border-top:1px solid var(--line);background:var(--paper-2);padding:.75rem .95rem .85rem}
+.chips{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.55rem}
 .chip{border:1px solid var(--line-strong);background:var(--paper);border-radius:var(--radius-pill,999px);
   padding:.32rem .72rem;font-size:.82rem;cursor:pointer;color:var(--ink-soft);transition:var(--t,all .15s)}
 .chip:hover{border-color:var(--forest);color:var(--forest);background:var(--forest-soft)}
 .asst-input{display:flex;gap:.5rem;background:var(--paper);border:1px solid var(--line-strong);
-  border-radius:var(--radius-pill);padding:.35rem .35rem .35rem 1.1rem;box-shadow:var(--shadow);
+  border-radius:var(--radius-pill);padding:.35rem .35rem .35rem 1.1rem;box-shadow:var(--shadow-sm);
   transition:border-color var(--t),box-shadow var(--t)}
-.asst-input:focus-within{border-color:var(--forest);box-shadow:var(--ring),var(--shadow)}
-.asst-input .field{flex:1;border:none;background:none;box-shadow:none;padding:.5rem 0;font-size:.95rem}
+.asst-input:focus-within{border-color:var(--forest);box-shadow:var(--ring),var(--shadow-sm)}
+.asst-input .field{flex:1;border:none;background:none;box-shadow:none;padding:.55rem 0;font-size:.95rem}
 .asst-input .field:focus{box-shadow:none;border:none}
-.asst-input .btn{border-radius:var(--radius-pill);padding:.5rem 1.25rem}
-.asst-foot{font-size:.76rem;color:var(--muted);margin-top:.4rem;text-align:center}
-@media(max-width:620px){.asst-groups{grid-template-columns:1fr}.bubble{max-width:86%}}
+.asst-input .btn{border-radius:var(--radius-pill);padding:.5rem 1.2rem}
+.asst-foot{font-size:.74rem;color:var(--muted);margin-top:.45rem;text-align:center}
+@media(max-width:720px){
+  .asst-howto,.asst-groups{grid-template-columns:1fr}
+  .bubble{max-width:88%}
+  .asst-shell{height:calc(100vh - 320px);min-height:420px}
+}
 </style>
 {% endblock %}

@@ -1,14 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Batch expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
-<div class="xb">
-  <header class="xb-hero">
-    <div class="xb-hero-copy">
-      <p class="xb-kicker">Expenses</p>
+<div class="rpt-mast">
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+    <div>
+      <div class="eyebrow">Expenses · {{ SITE_NAME }}</div>
       <h1>Batch entry</h1>
-      <p class="xb-lead">Set shared defaults once, then one line per receipt. Overrides stay on the line that needs them — and a draft of what you type is kept if the page reloads.</p>
+      <div class="desc">Set shared defaults once, then one line per receipt. Overrides stay on the line that needs them — a draft of what you type is kept if the page reloads.</div>
     </div>
-    <aside class="xb-hero-aside" aria-label="Batch status">
+    <aside class="xb-hero-aside no-print" aria-label="Batch status">
       <div class="xb-aside-stat">
         <span class="lbl">Lines</span>
         <span class="val mono" id="xbLineCount">0</span>
@@ -22,8 +22,11 @@
         <span class="val mono" id="xbHeroCharges">0.00</span>
       </div>
     </aside>
-  </header>
+  </div>
+  <div class="rule" aria-hidden="true"></div>
+</div>
 
+<div class="xb">
   <div class="xb-draft" id="xbDraftBanner" hidden>
     <div>
       <strong>Draft restored</strong>
@@ -430,27 +433,12 @@ if(!restored){
 </script>
 <style>
 .xb{max-width:68rem;margin:0 auto 2.5rem}
-.xb-hero{
-  display:grid;grid-template-columns:minmax(0,1.6fr) minmax(14rem,0.9fr);
-  gap:1.25rem;align-items:end;margin-bottom:1.15rem;
-  padding:1.35rem 1.4rem 1.25rem;border-radius:var(--radius-lg);
-  background:
-    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--brass) 16%, transparent), transparent 55%),
-    linear-gradient(160deg, var(--forest-tint), var(--paper) 55%, var(--brass-soft));
-  border:1px solid var(--line);
-  box-shadow:var(--shadow);
-}
-.xb-kicker{margin:0 0 .35rem;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--brass);font-weight:700}
-.xb-hero h1{margin:0;font-family:var(--font-display,"Fraunces",Georgia,serif);
-  font-size:clamp(1.85rem,3vw,2.45rem);line-height:1.05;color:var(--forest-deep);font-weight:700}
-.xb-lead{margin:.55rem 0 0;max-width:42ch;color:var(--ink-soft);font-size:.95rem;line-height:1.45}
-.xb-hero-aside{display:grid;gap:.55rem;padding:.85rem .95rem;border-radius:var(--radius);
-  background:color-mix(in srgb, var(--paper) 88%, white);border:1px solid var(--line)}
+.rpt-mast .xb-hero-aside{display:grid;gap:.4rem;min-width:12.5rem;padding:.7rem .85rem;border-radius:var(--radius);
+  background:var(--paper);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
 .xb-aside-stat{display:flex;justify-content:space-between;align-items:baseline;gap:.75rem}
-.xb-aside-stat .lbl{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
-.xb-aside-stat .val{font-size:1.15rem;color:var(--forest-deep);font-weight:650}
-.xb-aside-stat--soft .val{font-size:1rem;color:var(--ink-soft)}
+.xb-aside-stat .lbl{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:650}
+.xb-aside-stat .val{font-size:1.05rem;color:var(--forest-deep);font-weight:650}
+.xb-aside-stat--soft .val{font-size:.95rem;color:var(--ink-soft)}
 .xb-draft{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
   margin:0 0 1rem;padding:.75rem 1rem;border-radius:var(--radius);
   background:var(--amber-soft);border:1px solid color-mix(in srgb, var(--amber) 28%, var(--line));
@@ -486,10 +474,7 @@ if(!restored){
 .xb-ovr-grid label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:.15rem}
 .xb-foot{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
   padding:1rem 1.15rem;border-radius:var(--radius-lg);border:1px solid var(--line);
-  background:linear-gradient(180deg, var(--paper), var(--forest-tint));box-shadow:var(--shadow-sm)}
+  background:var(--paper);box-shadow:var(--shadow-sm)}
 .xb-foot-note{font-size:.86rem;line-height:1.4;max-width:42rem}
-@media (max-width:860px){
-  .xb-hero{grid-template-columns:1fr}
-}
 </style>
 {% endblock %}
