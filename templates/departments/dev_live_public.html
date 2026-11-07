@@ -80,11 +80,12 @@
     }
     .total.is-bump{transform:scale(1.04);color:var(--forest)}
     .foot-metrics{
-      display:grid;grid-template-columns:1fr;justify-items:center;
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));
+      gap:clamp(1rem,3vw,2.4rem);justify-items:center;align-items:end;
       padding-top:clamp(.8rem,2.2vh,1.5rem);
       border-top:1px solid var(--line);
     }
-    .metric{text-align:center;min-width:16rem}
+    .metric{text-align:center;min-width:12rem}
     .metric .lbl{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
       font-size:clamp(1rem,2vh,1.35rem);letter-spacing:.16em;text-transform:uppercase;
@@ -92,11 +93,15 @@
     }
     .metric .val{
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:600;
-      font-size:clamp(2.6rem,7vh,4.5rem);color:var(--ink);
+      font-size:clamp(2.2rem,6vh,4.2rem);color:var(--ink);
+    }
+    .metric.pay .val{
+      font-size:clamp(1.8rem,5vh,3.2rem);letter-spacing:.02em;color:var(--forest-deep);
     }
     @media (max-aspect-ratio: 4/3){
       .frame{width:100vw;height:100vh;border-radius:0}
       .total{font-size:clamp(4.2rem,22vw,10rem)}
+      .foot-metrics{grid-template-columns:1fr}
     }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -127,6 +132,18 @@
         <div class="lbl">No of transactions</div>
         <div class="val" id="giftCount">{{ count }}</div>
       </div>
+      {% if paybill %}
+      <div class="metric pay">
+        <div class="lbl">Paybill</div>
+        <div class="val">{{ paybill }}</div>
+      </div>
+      {% endif %}
+      {% if account %}
+      <div class="metric pay">
+        <div class="lbl">Account</div>
+        <div class="val">{{ account }}</div>
+      </div>
+      {% endif %}
     </div>
   </div>
   <script>

@@ -90,12 +90,28 @@ class DevSharePublicTests(TestCase):
         self.assertContains(r, "1,500")
         self.assertContains(r, "No of transactions")
         self.assertContains(r, "aspect-ratio")  # 16:9 presentation frame CSS
+        # Defaults: Co-op Paybill + Development account reference.
+        self.assertContains(r, "Paybill")
+        self.assertContains(r, "400222")
+        self.assertContains(r, "Account")
+        self.assertContains(r, "441211#DEV")
         poll = self.client.get(
             f"/dev/live/{self.cfg.dev_live_share_token}/poll/")
         self.assertEqual(poll.status_code, 200)
         data = poll.json()
         self.assertEqual(data["count"], 1)
         self.assertEqual(float(data["total"]), 1500.0)
+
+    def test_live_board_hides_blank_payment_fields(self):
+        self.cfg.dev_live_paybill = ""
+        self.cfg.dev_live_account = ""
+        self.cfg.save(update_fields=["dev_live_paybill", "dev_live_account"])
+        r = self.client.get(f"/dev/live/{self.cfg.dev_live_share_token}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "Paybill")
+        self.assertNotContains(r, "400222")
+        self.assertNotContains(r, "Account")
+        self.assertNotContains(r, "441211#DEV")
 
     def test_staff_control_enable(self):
         self.client.force_login(self.user)
@@ -106,3 +122,20 @@ class DevSharePublicTests(TestCase):
         self.cfg.refresh_from_db()
         self.assertTrue(self.cfg.dev_codes_public_enabled)
         self.assertTrue(self.cfg.dev_codes_share_token)
+
+    def test_staff_can_configure_live_paybill_and_account(self):
+        self.client.force_login(self.user)
+        r = self.client.post("/dev/share/", {
+            "action": "update_live_period",
+            "start": "2026-01-01",
+            "end": "2026-12-31",
+            "paybill": "400222",
+            "account": "441211#DEV",
+        })
+        self.assertEqual(r.status_code, 302)
+        self.cfg.refresh_from_db()
+        self.assertEqual(self.cfg.dev_live_paybill, "400222")
+        self.assertEqual(self.cfg.dev_live_account, "441211#DEV")
+        board = self.client.get(f"/dev/live/{self.cfg.dev_live_share_token}/")
+        self.assertContains(board, "400222")
+        self.assertContains(board, "441211#DEV")

@@ -603,6 +603,18 @@ class SiteConfig(models.Model):
     dev_live_period_end = models.DateField(
         null=True, blank=True,
         help_text="Inclusive end date for the live Development board.")
+    # Shown on the public live board so givers know where to pay. Editable from
+    # Development share (and Settings); blank either field to hide that line.
+    dev_live_paybill = models.CharField(
+        max_length=40, blank=True, default="400222",
+        verbose_name="Live board Paybill",
+        help_text="M-Pesa Paybill shown on the live Development board "
+                  "(e.g. 400222). Leave blank to hide.")
+    dev_live_account = models.CharField(
+        max_length=80, blank=True, default="441211#DEV",
+        verbose_name="Live board Account",
+        help_text="Account / reference shown on the live Development board "
+                  "(e.g. 441211#DEV). Leave blank to hide.")
 
     # --- Backups -------------------------------------------------------------
     backup_email = models.CharField(max_length=200, blank=True, default="",

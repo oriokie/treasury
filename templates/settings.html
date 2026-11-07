@@ -127,7 +127,7 @@
       <div class="help u-mb-sm">Toggles and the live-board period. Copy / rotate the secret links on
         <a class="link" href="{% url 'dev_share_control' %}">Development share</a>.</div>
       <div class="form-grid">
-        {% for f in form %}{% if f.name in 'dev_codes_public_enabled dev_live_public_enabled dev_live_period_start dev_live_period_end' %}
+        {% for f in form %}{% if f.name in 'dev_codes_public_enabled dev_live_public_enabled dev_live_period_start dev_live_period_end dev_live_paybill dev_live_account' %}
           <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
             {% else %}<label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% endif %}
             {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
