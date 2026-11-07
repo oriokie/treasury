@@ -157,11 +157,14 @@ class DevShareControlView(TreasurerRequiredMixin, View):
                 return redirect("dev_share_control")
             cfg.dev_live_period_start = start_d
             cfg.dev_live_period_end = end_d
+            cfg.dev_live_paybill = (request.POST.get("paybill") or "").strip()[:40]
+            cfg.dev_live_account = (request.POST.get("account") or "").strip()[:80]
             cfg.dev_live_public_enabled = True
             cfg.ensure_dev_live_share_token(save=False)
             cfg.save(update_fields=[
                 "dev_live_public_enabled", "dev_live_share_token",
-                "dev_live_period_start", "dev_live_period_end"])
+                "dev_live_period_start", "dev_live_period_end",
+                "dev_live_paybill", "dev_live_account"])
             messages.success(request, "Live Development board is on.")
         elif action == "update_live_period":
             start = request.POST.get("start") or ""
@@ -177,8 +180,12 @@ class DevShareControlView(TreasurerRequiredMixin, View):
                 return redirect("dev_share_control")
             cfg.dev_live_period_start = start_d
             cfg.dev_live_period_end = end_d
-            cfg.save(update_fields=["dev_live_period_start", "dev_live_period_end"])
-            messages.success(request, "Live board period updated.")
+            cfg.dev_live_paybill = (request.POST.get("paybill") or "").strip()[:40]
+            cfg.dev_live_account = (request.POST.get("account") or "").strip()[:80]
+            cfg.save(update_fields=[
+                "dev_live_period_start", "dev_live_period_end",
+                "dev_live_paybill", "dev_live_account"])
+            messages.success(request, "Live board settings updated.")
         elif action == "disable_live":
             cfg.dev_live_public_enabled = False
             cfg.save(update_fields=["dev_live_public_enabled"])
@@ -289,6 +296,8 @@ class DevLivePublicView(View):
             "end": end,
             "church": cfg.church_name or "Church",
             "currency": cfg.currency_symbol or "KES",
+            "paybill": (cfg.dev_live_paybill or "").strip(),
+            "account": (cfg.dev_live_account or "").strip(),
             "poll_url": request.path.rstrip("/") + "/poll/",
         })
 

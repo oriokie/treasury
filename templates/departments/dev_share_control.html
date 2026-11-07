@@ -47,14 +47,14 @@
       <span class="muted u-xs">— presentation totals for Development</span></div>
     <div class="bd">
       <p class="help u-mt-0">16:9 presentation board showing the Development fund total and number of transactions
-        for a period. Auto-refreshes every few seconds — no browser refresh needed. No names or phones.</p>
+        for a period, plus the Paybill and Account to use. Auto-refreshes every few seconds — no browser refresh needed. No names or phones.</p>
       {% if cfg.dev_live_public_enabled and live_url %}
       <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.6rem 0">
         <input class="field mono" style="flex:1;min-width:200px" readonly id="liveLink" value="{{ live_url }}">
         <button type="button" class="btn btn-sm btn-ghost" onclick="navigator.clipboard.writeText(document.getElementById('liveLink').value);this.textContent='Copied'">Copy</button>
         <a class="btn btn-sm btn-ghost" href="{{ live_url }}" target="_blank" rel="noopener">Open board</a>
       </div>
-      <form method="post" class="filter-bar" style="margin-bottom:.6rem">{% csrf_token %}
+      <form method="post" class="filter-bar" style="margin-bottom:.6rem;flex-wrap:wrap">{% csrf_token %}
         <input type="hidden" name="action" value="update_live_period">
         <div class="f"><label class="lbl" for="liveStart">From</label>
           <input class="field" type="date" id="liveStart" name="start" required
@@ -62,7 +62,13 @@
         <div class="f"><label class="lbl" for="liveEnd">To</label>
           <input class="field" type="date" id="liveEnd" name="end" required
                  value="{{ cfg.dev_live_period_end|date:'Y-m-d' }}"></div>
-        <button class="btn btn-sm">Update period</button>
+        <div class="f"><label class="lbl" for="livePaybill">Paybill</label>
+          <input class="field mono" type="text" id="livePaybill" name="paybill" maxlength="40"
+                 value="{{ cfg.dev_live_paybill }}" placeholder="e.g. 400222"></div>
+        <div class="f"><label class="lbl" for="liveAccount">Account</label>
+          <input class="field mono" type="text" id="liveAccount" name="account" maxlength="80"
+                 value="{{ cfg.dev_live_account }}" placeholder="e.g. 441211#DEV"></div>
+        <button class="btn btn-sm">Update board</button>
       </form>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap">
         <form method="post" class="u-inline">{% csrf_token %}
@@ -75,7 +81,7 @@
         </form>
       </div>
       {% else %}
-      <form method="post" class="filter-bar">{% csrf_token %}
+      <form method="post" class="filter-bar" style="flex-wrap:wrap">{% csrf_token %}
         <input type="hidden" name="action" value="enable_live">
         <div class="f"><label class="lbl" for="liveStart2">From</label>
           <input class="field" type="date" id="liveStart2" name="start" required
@@ -83,6 +89,12 @@
         <div class="f"><label class="lbl" for="liveEnd2">To</label>
           <input class="field" type="date" id="liveEnd2" name="end" required
                  value="{{ cfg.dev_live_period_end|date:'Y-m-d'|default:'' }}"></div>
+        <div class="f"><label class="lbl" for="livePaybill2">Paybill</label>
+          <input class="field mono" type="text" id="livePaybill2" name="paybill" maxlength="40"
+                 value="{{ cfg.dev_live_paybill|default:'400222' }}" placeholder="e.g. 400222"></div>
+        <div class="f"><label class="lbl" for="liveAccount2">Account</label>
+          <input class="field mono" type="text" id="liveAccount2" name="account" maxlength="80"
+                 value="{{ cfg.dev_live_account|default:'441211#DEV' }}" placeholder="e.g. 441211#DEV"></div>
         <button class="btn btn-sm">Publish live board</button>
       </form>
       {% endif %}
