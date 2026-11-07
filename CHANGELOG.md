@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.13
+
+Automated patch release: Fix identifier-less debit duplication after queue notes.
+
 ## 3.56.12
 
 Automated patch release: Stop envelope ledger from copying the previous development group.
