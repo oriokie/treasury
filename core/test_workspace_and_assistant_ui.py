@@ -137,12 +137,15 @@ class AssistantPageTests(TestCase):
         from core.models import SiteConfig
         cfg = SiteConfig.get(); cfg.llm_enabled = False; cfg.save()
         body = self.client.get(reverse("assistant")).content.decode()
-        self.assertIn("Rules only", body)
+        self.assertIn("Live books only", body)
         self.assertNotIn("AI assist on", body)
 
     def test_badge_reports_ai_assist_on(self):
         from core.models import SiteConfig
-        cfg = SiteConfig.get(); cfg.llm_enabled = True; cfg.save()
+        cfg = SiteConfig.get()
+        cfg.llm_enabled = True
+        cfg.llm_api_key = "test-key-not-used"
+        cfg.save()
         body = self.client.get(reverse("assistant")).content.decode()
         self.assertIn("AI assist on", body)
 

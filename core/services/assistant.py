@@ -763,27 +763,90 @@ def _llm_route(question, cfg):
     return routed
 
 
+def _looks_like_followup(question, history):
+    """Short replies that only make sense with the previous turn.
+
+    Without this, "and last month?" is answered as a brand-new question and the
+    chat never feels constructive — especially when AI assist is on but rules
+    still fire first on a lonely keyword.
+    """
+    if not history:
+        return False
+    t = (question or "").strip().lower()
+    if not t:
+        return False
+    cues = ("and ", "what about", "how about", "same for", "same again",
+            "last month", "this month", "last year", "previous", "compared",
+            "versus", " vs ", "why", "explain", "break that", "more detail",
+            "go deeper", "tell me more", "the other", "those", "that one")
+    return len(t.split()) <= 10 and any(c in t or t.startswith(c.strip()) for c in cues)
+
+
+def _with_source(data, source, label=None):
+    """Attach a UI-facing source tag so the chat can show how the answer was made."""
+    if not isinstance(data, dict):
+        return data
+    data["source"] = source
+    data["source_label"] = label or {
+        "rules": "Live books",
+        "ai_routed": "AI → live books",
+        "ai": "AI assist",
+        "fallback": "Suggestions",
+    }.get(source, source)
+    return data
+
+
 def answer(question, user=None, history=None):
+    from core.models import SiteConfig
+    cfg = SiteConfig.get()
+    history = history or []
+
+    # Follow-ups need the prior turn. Prefer the LLM (with history) when it is
+    # on; otherwise rewrite the question against the last user message so the
+    # rule engine still has something to match.
+    if _looks_like_followup(question, history) and cfg.llm_enabled and cfg.llm_api_key:
+        try:
+            routed = _llm_route(question, cfg)
+        except Exception:
+            routed = None
+        if routed:
+            return _with_source(routed, "ai_routed")
+        text = _llm_answer(question, cfg, history=history)
+        if text:
+            return _with_source({"text": text.strip()}, "ai")
+    elif _looks_like_followup(question, history):
+        prev = (history[-1].get("q") or "").strip()
+        if prev:
+            question = f"{prev} — follow-up: {question}"
+
     data = _answer_rules(question, user)
     # If the rule engine didn't understand, optionally defer to a configured LLM.
     if data.get("_fallback"):
-        from core.models import SiteConfig
-        cfg = SiteConfig.get()
-        if cfg.llm_enabled:
+        if cfg.llm_enabled and cfg.llm_api_key:
             # first let the LLM pick the right report from natural phrasing…
             try:
                 routed = _llm_route(question, cfg)
             except Exception:
                 routed = None
             if routed:
-                return routed
+                return _with_source(routed, "ai_routed")
             # …otherwise a conversational answer grounded in the rich data summary
             # and prior turns (so follow-ups like "and last month?" make sense).
             text = _llm_answer(question, cfg, history=history)
             if text:
-                return {"text": text.strip()}
+                return _with_source({"text": text.strip()}, "ai")
+        data.pop("_fallback", None)
+        return _with_source(data, "fallback")
     data.pop("_fallback", None)
-    return data
+    # Helpful follow-ups after a solid rules answer keep the chat constructive
+    # even when AI assist is off.
+    if not data.get("suggestions"):
+        data["suggestions"] = [
+            "How does this compare to last month?",
+            "What needs attention?",
+            "What should I do about it?",
+        ]
+    return _with_source(data, "rules")
 
 
 def _answer_rules(question, user=None):
