@@ -1,6 +1,7 @@
 """Ledger UX: development group is keyed by NUMBER (not a long <select>),
-resolved on submit; cascade to other rows is gone; members are embedded for
-client-side autocomplete; the sheet scrolls with the page (no 72vh trap).
+resolved on submit; cascade to other rows is gone; new rows do not inherit
+the previous group (blank stays blank); members are embedded for client-side
+autocomplete; the sheet scrolls with the page (no 72vh trap).
 
 Behaviour for invalid group numbers lives in ledger.html JS (validateRow /
 row-bad-group). These tests lock the server-rendered contract that JS relies
@@ -46,6 +47,18 @@ class LedgerGroupNumberUxTests(TestCase):
         # Channel may still cascade; development group must not.
         self.assertIn('cascadeSelectFrom(tr, ".chan"', html)
         self.assertNotIn('cascadeSelectFrom(tr, ".devgrp"', html)
+
+    def test_new_rows_do_not_inherit_previous_group_number(self):
+        """Enter on the last row used to copy grp# from above — empty envelopes
+        then looked like they had picked a random development group."""
+        html = self.client.get(reverse("envelope_ledger")).content.decode()
+        self.assertIn("function inheritFrom(prev)", html)
+        # Channel still carries forward…
+        self.assertIn("data.chan = prevChan.value", html)
+        # …but the previous row's group number must not.
+        self.assertNotIn("data.dev_group_number = prevDg.value", html)
+        self.assertNotIn("dev_group_number = prevDg", html)
+        self.assertIn("group number starts empty", html)
 
     def test_invalid_group_number_blocks_submit_via_row_bad_group(self):
         html = self.client.get(reverse("envelope_ledger")).content.decode()
