@@ -22,5 +22,6 @@
   "3.56.5": "Automated patch release: Add campaign sheet members, duplicate ignore, codes share, live board.",
   "3.56.6": "Automated patch release covering: Add migration for SiteConfig codes-page help text; Keep codes-page phones permanently masked and show group numbers.",
   "3.56.7": "Automated patch release: Show codes-page groups from stamped gifts and ship the 16:9 live board.",
-  "3.56.8": "Automated patch release: Scale the live board and add review-queue inquiry SMS."
+  "3.56.8": "Automated patch release: Scale the live board and add review-queue inquiry SMS.",
+  "3.56.9": "Automated patch release: Show configurable Paybill and Account on the live Development board."
 }

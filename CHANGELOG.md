@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.9
+
+Automated patch release: Show configurable Paybill and Account on the live Development board.
+
 ## 3.56.8
 
 Automated patch release: Scale the live board and add review-queue inquiry SMS.
