@@ -88,9 +88,10 @@ class DevSharePublicTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertContains(r, "Development Fund")
         self.assertContains(r, "1,500")
-        self.assertContains(r, "No of transactions")
+        self.assertContains(r, "Transactions")
         self.assertContains(r, "aspect-ratio")  # 16:9 presentation frame CSS
-        # Defaults: Co-op Paybill + Development account reference.
+        # Defaults: Co-op Paybill + Development account as one giving line.
+        self.assertContains(r, "Lipa na M-Pesa")
         self.assertContains(r, "Paybill")
         self.assertContains(r, "400222")
         self.assertContains(r, "Account")
@@ -108,6 +109,7 @@ class DevSharePublicTests(TestCase):
         self.cfg.save(update_fields=["dev_live_paybill", "dev_live_account"])
         r = self.client.get(f"/dev/live/{self.cfg.dev_live_share_token}/")
         self.assertEqual(r.status_code, 200)
+        self.assertNotContains(r, "Lipa na M-Pesa")
         self.assertNotContains(r, "Paybill")
         self.assertNotContains(r, "400222")
         self.assertNotContains(r, "Account")

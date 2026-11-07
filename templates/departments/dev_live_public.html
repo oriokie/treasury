@@ -27,7 +27,7 @@
       position:relative;
       display:grid;
       grid-template-rows:auto 1fr auto;
-      padding:clamp(1.6rem,4.5vh,3.2rem) clamp(2rem,5.5vw,4.2rem);
+      padding:clamp(1.4rem,4vh,2.8rem) clamp(1.8rem,5vw,3.8rem);
     }
     .top{display:flex;justify-content:space-between;align-items:flex-start;gap:1.4rem}
     .brand .eyebrow{
@@ -51,57 +51,118 @@
       70%{box-shadow:0 0 0 14px rgba(22,74,54,0)}
       100%{box-shadow:0 0 0 0 rgba(22,74,54,0)}
     }
+    /* Wide stage: total left, giving details on the right */
+    .stage{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:clamp(1.4rem,4vw,3.2rem);
+      align-items:center;
+      min-height:0;
+    }
+    .stage.has-give{
+      grid-template-columns:minmax(0,1fr) minmax(22rem,1.05fr);
+    }
     .hero{
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      text-align:center;min-height:0;
+      display:flex;flex-direction:column;align-items:flex-start;justify-content:center;
+      text-align:left;min-height:0;min-width:0;overflow:hidden;
     }
     .title{
-      margin:0 0 clamp(.5rem,1.4vh,1rem);font-weight:700;letter-spacing:-.03em;
-      font-size:clamp(2.6rem,7.5vh,4.8rem);
+      margin:0 0 clamp(.35rem,1vh,.7rem);font-weight:700;letter-spacing:-.03em;
+      font-size:clamp(2.2rem,6vh,4rem);
     }
     .period{
       font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--muted);
-      font-size:clamp(1.25rem,2.8vh,1.85rem);margin:0 0 clamp(.8rem,2.2vh,1.4rem);
+      font-size:clamp(1.1rem,2.3vh,1.55rem);margin:0 0 clamp(.7rem,1.8vh,1.2rem);
     }
     .rule{
-      width:min(18rem,36%);height:3px;margin:0 auto clamp(.8rem,2vh,1.4rem);
-      background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.75;
+      width:min(14rem,55%);height:3px;margin:0 0 clamp(.55rem,1.5vh,1rem);
+      background:linear-gradient(90deg,var(--brass),transparent);opacity:.85;
     }
     .currency{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1.4rem,3vh,2rem);color:var(--brass);font-weight:600;
-      letter-spacing:.14em;margin-bottom:.15rem;
+      font-size:clamp(1.2rem,2.5vh,1.7rem);color:var(--brass);font-weight:600;
+      letter-spacing:.14em;margin-bottom:.1rem;
     }
     .total{
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
-      font-size:clamp(5.5rem,28vh,14rem);letter-spacing:-.04em;line-height:.92;
-      color:var(--forest-deep);
+      font-size:clamp(4.4rem,22vh,11.5rem);letter-spacing:-.04em;line-height:.9;
+      color:var(--forest-deep);max-width:100%;
       transition:transform .5s cubic-bezier(.2,.85,.2,1), color .45s ease;
     }
-    .total.is-bump{transform:scale(1.04);color:var(--forest)}
-    .foot-metrics{
-      display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));
-      gap:clamp(1rem,3vw,2.4rem);justify-items:center;align-items:end;
-      padding-top:clamp(.8rem,2.2vh,1.5rem);
+    /* With the wider give panel, keep the total inside its column */
+    .stage.has-give .total{
+      font-size:clamp(3.8rem,16vh,8.8rem);
+    }
+    .total.is-bump{transform:scale(1.035);color:var(--forest)}
+    .give{
+      align-self:center;
+      width:100%;
+      padding:clamp(1.4rem,3.4vh,2.4rem) clamp(1.5rem,3.2vw,2.5rem);
+      border-left:3px solid var(--brass);
+      background:linear-gradient(165deg,rgba(255,252,246,.88),rgba(232,235,229,.55));
+      backdrop-filter:blur(10px);
+      animation:give-in .7s cubic-bezier(.2,.85,.2,1) both;
+    }
+    @keyframes give-in{
+      from{opacity:0;transform:translateX(1.1rem)}
+      to{opacity:1;transform:none}
+    }
+    .give .hint{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(1.05rem,2.1vh,1.4rem);letter-spacing:.18em;text-transform:uppercase;
+      color:var(--muted);margin:0 0 clamp(1.15rem,2.8vh,1.7rem);
+    }
+    .give .pair{display:block}
+    .give .pair + .pair{
+      margin-top:clamp(1.15rem,3vh,1.9rem);
+      padding-top:clamp(1rem,2.5vh,1.5rem);
       border-top:1px solid var(--line);
     }
-    .metric{text-align:center;min-width:12rem}
+    .give .k{
+      display:block;
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(1.1rem,2.2vh,1.5rem);font-weight:500;letter-spacing:.08em;
+      text-transform:uppercase;color:var(--muted);margin-bottom:.4rem;
+    }
+    .give .v{
+      display:block;
+      font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
+      font-size:clamp(2.5rem,6.4vh,4.3rem);letter-spacing:.01em;
+      color:var(--forest-deep);line-height:1.05;word-break:break-word;
+    }
+    .foot{
+      display:flex;align-items:flex-end;justify-content:flex-start;
+      padding-top:clamp(.7rem,2vh,1.3rem);
+      border-top:1px solid var(--line);
+    }
+    .metric{text-align:left;min-width:10rem}
     .metric .lbl{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1rem,2vh,1.35rem);letter-spacing:.16em;text-transform:uppercase;
-      color:var(--muted);margin-bottom:.45rem;
+      font-size:clamp(.95rem,1.8vh,1.2rem);letter-spacing:.16em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:.4rem;
     }
     .metric .val{
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:600;
-      font-size:clamp(2.2rem,6vh,4.2rem);color:var(--ink);
+      font-size:clamp(2.2rem,5.8vh,3.8rem);color:var(--ink);line-height:1;
     }
-    .metric.pay .val{
-      font-size:clamp(1.8rem,5vh,3.2rem);letter-spacing:.02em;color:var(--forest-deep);
-    }
+    /* Portrait / narrow: stack again, keep giving visible under the total */
     @media (max-aspect-ratio: 4/3){
       .frame{width:100vw;height:100vh;border-radius:0}
-      .total{font-size:clamp(4.2rem,22vw,10rem)}
-      .foot-metrics{grid-template-columns:1fr}
+      .stage{grid-template-columns:1fr;gap:clamp(1rem,3vh,1.6rem)}
+      .hero{align-items:center;text-align:center}
+      .rule{margin-left:auto;margin-right:auto;background:linear-gradient(90deg,transparent,var(--brass),transparent)}
+      .total{font-size:clamp(3.6rem,17vw,8.5rem)}
+      .give{
+        width:100%;border-left:0;border-top:3px solid var(--brass);
+        animation-name:give-up;
+      }
+      @keyframes give-up{
+        from{opacity:0;transform:translateY(.8rem)}
+        to{opacity:1;transform:none}
+      }
+      .give .pair + .pair{margin-top:clamp(.8rem,2vh,1.2rem);padding-top:clamp(.7rem,1.8vh,1rem)}
+      .foot{justify-content:center}
+      .metric{text-align:center}
     }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -117,33 +178,40 @@
       <div class="live-pill"><span class="dot" aria-hidden="true"></span> Live</div>
     </div>
 
-    <div class="hero">
-      <h1 class="title">Development Fund</h1>
-      <div class="rule"></div>
-      <p class="period" id="periodLabel">
-        {% if start and end %}{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% else %}Period not set{% endif %}
-      </p>
-      <div class="currency">{{ currency }}</div>
-      <div class="total" id="totalAmt">{{ total_display }}</div>
+    <div class="stage{% if paybill or account %} has-give{% endif %}">
+      <div class="hero">
+        <h1 class="title">Development Fund</h1>
+        <div class="rule"></div>
+        <p class="period" id="periodLabel">
+          {% if start and end %}{{ start|date:"d M Y" }} – {{ end|date:"d M Y" }}{% else %}Period not set{% endif %}
+        </p>
+        <div class="currency">{{ currency }}</div>
+        <div class="total" id="totalAmt">{{ total_display }}</div>
+      </div>
+      {% if paybill or account %}
+      <aside class="give" aria-label="How to give">
+        <p class="hint">Lipa na M-Pesa</p>
+        {% if paybill %}
+        <div class="pair">
+          <span class="k">Paybill</span>
+          <span class="v">{{ paybill }}</span>
+        </div>
+        {% endif %}
+        {% if account %}
+        <div class="pair">
+          <span class="k">Account</span>
+          <span class="v">{{ account }}</span>
+        </div>
+        {% endif %}
+      </aside>
+      {% endif %}
     </div>
 
-    <div class="foot-metrics">
+    <div class="foot">
       <div class="metric">
-        <div class="lbl">No of transactions</div>
+        <div class="lbl">Transactions</div>
         <div class="val" id="giftCount">{{ count }}</div>
       </div>
-      {% if paybill %}
-      <div class="metric pay">
-        <div class="lbl">Paybill</div>
-        <div class="val">{{ paybill }}</div>
-      </div>
-      {% endif %}
-      {% if account %}
-      <div class="metric pay">
-        <div class="lbl">Account</div>
-        <div class="val">{{ account }}</div>
-      </div>
-      {% endif %}
     </div>
   </div>
   <script>
