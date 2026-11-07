@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.15
+
+Automated patch release: Make assistant chat constructive and align batch to site mast.
+
 ## 3.56.14
 
 Automated patch release covering: Fix petty-cash CI eyebrow; add xAI Grok; smarter assistant; Premium UI polish across batch expenses, petty cash, and reports.
