@@ -176,7 +176,8 @@ class SiteConfig(models.Model):
         ANTHROPIC = "ANTHROPIC", "Anthropic (Claude)"
         OPENAI = "OPENAI", "OpenAI (GPT)"
         GEMINI = "GEMINI", "Google (Gemini)"
-        GROQ = "GROQ", "Groq"
+        GROK = "GROK", "xAI (Grok)"
+        GROQ = "GROQ", "Groq (Llama / Mixtral)"
         OPENROUTER = "OPENROUTER", "OpenRouter"
         CUSTOM = "CUSTOM", "Custom (OpenAI-compatible)"
 
@@ -188,10 +189,12 @@ class SiteConfig(models.Model):
     llm_api_key = EncryptedCharField(max_length=500, blank=True)
     llm_model = models.CharField(
         max_length=80, blank=True,
-        help_text="e.g. claude-3-5-sonnet, gpt-4o-mini, gemini-1.5-flash.")
+        help_text="e.g. grok-3, claude-3-5-sonnet-latest, gpt-4o-mini. "
+                  "Leave blank to use the provider default.")
     llm_base_url = models.CharField(
         max_length=200, blank=True,
-        help_text="Only for Custom / self-hosted OpenAI-compatible endpoints.")
+        help_text="Only needed for Custom. Grok uses api.x.ai automatically. "
+                  "(Groq is a different provider — fast Llama — not xAI Grok.)")
 
     # ---- Telegram bot (remote treasurer access) ----
     telegram_enabled = models.BooleanField(default=False)

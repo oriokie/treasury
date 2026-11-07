@@ -4,7 +4,7 @@
 <div class="pc">
   <header class="pc-hero">
     <div class="pc-hero-copy">
-      <p class="pc-kicker">Cash location</p>
+      <div class="eyebrow">Cash location · {{ SITE_NAME }}</div>
       <h1>Petty cash</h1>
       <p class="pc-lead">A physical float — not a fund. Top-ups and bank deposits move cash between locations; spending is charged to the ministry fund it was for.</p>
     </div>
@@ -171,7 +171,7 @@
     radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--forest) 12%, transparent), transparent 50%),
     linear-gradient(165deg, var(--paper), var(--brass-soft) 120%);
   box-shadow:var(--shadow)}
-.pc-kicker{margin:0 0 .3rem;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);font-weight:700}
+.pc-hero .eyebrow{margin:0 0 .3rem}
 .pc-hero h1{margin:0;font-family:var(--font-display,"Fraunces",Georgia,serif);font-size:clamp(1.8rem,3vw,2.35rem);
   color:var(--forest-deep);line-height:1.05}
 .pc-lead{margin:.45rem 0 0;max-width:48ch;color:var(--ink-soft);font-size:.94rem;line-height:1.45}

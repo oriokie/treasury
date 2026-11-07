@@ -147,7 +147,7 @@ def structured_answer(report_key=None, period=None, element=None, intent=None):
 
 
 def answer_with_context(question, report_key=None, period=None, element=None,
-                        user=None):
+                        user=None, history=None):
     """Report-context-aware answering. Resolves the open report + period so the
     user never restates context, grounds the answer in the Knowledge Service, and
     uses the LLM (if enabled) with that grounded context — otherwise returns a
@@ -165,15 +165,16 @@ def answer_with_context(question, report_key=None, period=None, element=None,
         system = (
             "You are the treasurer's assistant embedded in a church finance "
             "report. Answer the user's question using ONLY the figures and "
-            "insights in the KNOWLEDGE CONTEXT. Never invent or recalculate a "
-            "number; if a figure isn't in the context, say so. When the user "
-            "refers to 'this' (chart/score/figure/section), use the element they "
-            "are focused on. Be concise and board-appropriate. Cite the metric "
-            "names behind any figure you state.")
+            "insights in the KNOWLEDGE CONTEXT (and prior turns). Never invent "
+            "or recalculate a number; if a figure isn't in the context, say so. "
+            "When the user refers to 'this' (chart/score/figure/section), use "
+            "the element they are focused on. Be concise and board-appropriate. "
+            "Cite the metric names behind any figure you state.")
         q = question
         if element_txt:
             q = f"[Focused on: {element_txt}] {question}"
-        text, err = base._llm_call(q, cfg, context=ctx_block, system=system)
+        text, err = base._llm_call(q, cfg, context=ctx_block, system=system,
+                                   history=history)
         if text:
             return {"text": text.strip(),
                     "provenance": {"report": report_key, "grounded": True}}

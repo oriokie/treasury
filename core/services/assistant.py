@@ -488,8 +488,41 @@ def _data_context():
     return "\n".join(lines)
 
 
+def _rich_data_context():
+    """Data summary plus the intelligence digest the treasurer workspace uses.
+
+    Grounding the LLM on risks and recommendations — not only raw totals —
+    is what makes freer questions land as useful answers instead of a restatement
+    of fund balances.
+    """
+    lines = [_data_context()]
+    try:
+        import datetime as _dt
+        today = _dt.date.today()
+        start = _dt.date(today.year, today.month, 1)
+        digest = _intelligence_digest(start, today, "this month", limit=5)
+        if digest and digest.get("text"):
+            lines.append("ATTENTION / HEALTH:")
+            lines.append(digest["text"])
+            for row in (digest.get("rows") or [])[:5]:
+                if isinstance(row, (list, tuple)) and len(row) >= 2:
+                    lines.append(f"- {row[0]}: {row[1]}")
+        recs = _recommendation_digest(start, today, "this month", limit=4)
+        if recs and recs.get("rows"):
+            lines.append("RECOMMENDED ACTIONS:")
+            for row in recs["rows"][:4]:
+                if isinstance(row, (list, tuple)) and len(row) >= 2:
+                    lines.append(f"- {row[0]}: {row[1]}")
+                elif isinstance(row, (list, tuple)) and row:
+                    lines.append(f"- {row[0]}")
+    except Exception:
+        pass
+    return "\n".join(lines)
+
+
 _OPENAI_BASES = {
     "OPENAI": "https://api.openai.com/v1",
+    "GROK": "https://api.x.ai/v1",
     "GROQ": "https://api.groq.com/openai/v1",
     "OPENROUTER": "https://openrouter.ai/api/v1",
     "GEMINI": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -498,10 +531,24 @@ _OPENAI_BASES = {
 _DEFAULT_MODEL = {
     "ANTHROPIC": "claude-3-5-sonnet-latest",
     "OPENAI": "gpt-4o-mini",
+    "GROK": "grok-3",
     "GROQ": "llama-3.3-70b-versatile",
     "OPENROUTER": "openai/gpt-4o-mini",
     "GEMINI": "gemini-1.5-flash",
 }
+
+_DEFAULT_SYSTEM = (
+    "You are the church treasurer's assistant for a live Seventh-day Adventist "
+    "treasury system. You answer from the DATA SUMMARY (and any prior turns) only — "
+    "never invent figures, names, or balances that are not there. "
+    "Be precise with amounts (KES), name the period you are talking about, and "
+    "say clearly when a figure is missing. Prefer short, decision-ready answers: "
+    "lead with the number or verdict, then one sentence of context. "
+    "When the summary lists risks or recommendations, surface those. "
+    "You cannot change data, approve expenses, or send money — if asked, say so "
+    "and point to the right screen in the app.")
+
+_MAX_TOKENS = 1200
 
 
 def _parse_json(body, status):
@@ -532,13 +579,35 @@ def _normalise_openai_base(base, provider):
     # a bare host for a known provider -> add the OpenAI-compatible prefix
     if provider == "GROQ" and "/openai" not in base:
         base = base + "/openai/v1"
+    elif provider == "GROK" and not base.endswith("/v1"):
+        if base.count("/") <= 2:
+            base = base + "/v1"
     elif provider in ("OPENAI", "OPENROUTER") and not base.endswith("/v1"):
         if base.count("/") <= 2:           # just a host
             base = base + "/v1"
     return base
 
 
-def _llm_call(question, cfg, context=None, system=None):
+def _history_messages(history):
+    """Turn prior chat turns into provider messages (text only, capped)."""
+    out = []
+    if not history:
+        return out
+    for turn in history[-6:]:
+        if not isinstance(turn, dict):
+            continue
+        q = (turn.get("q") or "").strip()
+        d = turn.get("d") or {}
+        a = (d.get("text") if isinstance(d, dict) else str(d) or "").strip()
+        if q:
+            out.append({"role": "user", "content": q[:800]})
+        if a:
+            out.append({"role": "assistant", "content": a[:1200]})
+    return out
+
+
+def _llm_call(question, cfg, context=None, system=None, history=None,
+              max_tokens=None):
     """Call the configured provider. Returns (text, error). On success error is
     None; on failure text is None and error is a short human-readable reason."""
     from core.services.net import post_json
@@ -548,11 +617,11 @@ def _llm_call(question, cfg, context=None, system=None):
     provider = cfg.llm_provider or "OPENAI"
     model = cfg.llm_model or _DEFAULT_MODEL.get(provider, "")
     if system is None:
-        system = ("You are the treasurer's assistant for a church finance system. "
-                  "Answer concisely using only the data summary provided. If the "
-                  "answer isn't in the summary, say you don't have that figure.")
+        system = _DEFAULT_SYSTEM
     if context is None:
-        context = _data_context()
+        context = _rich_data_context()
+    tokens = max_tokens or _MAX_TOKENS
+    prior = _history_messages(history)
     user_msg = f"DATA SUMMARY:\n{context}\n\nQUESTION: {question}"
     try:
         if provider == "ANTHROPIC":
@@ -563,9 +632,10 @@ def _llm_call(question, cfg, context=None, system=None):
                 url = url + "/messages"
             else:
                 url = url + "/v1/messages"
+            msgs = list(prior) + [{"role": "user", "content": user_msg}]
             status, body = post_json(url, {
-                "model": model, "max_tokens": 400, "system": system,
-                "messages": [{"role": "user", "content": user_msg}]},
+                "model": model, "max_tokens": tokens, "system": system,
+                "messages": msgs},
                 headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
             data, perr = _parse_json(body, status)
             if perr:
@@ -573,19 +643,21 @@ def _llm_call(question, cfg, context=None, system=None):
             if status >= 400:
                 return None, _api_error(data, status)
             return "".join(b.get("text", "") for b in data.get("content", [])), None
-        # OpenAI-compatible (OpenAI, Groq, OpenRouter, Gemini-openai, custom)
+        # OpenAI-compatible (OpenAI, Grok/xAI, Groq, OpenRouter, Gemini, custom)
         base = _normalise_openai_base(cfg.llm_base_url or _OPENAI_BASES.get(provider, ""),
                                       provider)
         if not base:
             return None, f"No base URL is configured for provider {provider}."
         if not model:
-            return None, "No model is set. Enter a model name in Settings (e.g. " \
-                         "llama-3.3-70b-versatile for Groq)."
+            return None, ("No model is set. Enter a model name in Settings "
+                          "(e.g. grok-3 for xAI Grok, llama-3.3-70b-versatile for Groq).")
+        msgs = ([{"role": "system", "content": system}]
+                + list(prior)
+                + [{"role": "user", "content": user_msg}])
         status, body = post_json(base + "/chat/completions", {
             "model": model,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user_msg}],
-            "max_tokens": 400}, headers={"authorization": f"Bearer {key}"})
+            "messages": msgs,
+            "max_tokens": tokens}, headers={"authorization": f"Bearer {key}"})
         data, perr = _parse_json(body, status)
         if perr:
             return None, perr
@@ -624,9 +696,9 @@ def test_llm(cfg=None):
     return True, (text or "").strip()[:200]
 
 
-def _llm_answer(question, cfg):
+def _llm_answer(question, cfg, history=None):
     """Used as a fallback by answer(); returns text or None."""
-    text, _err = _llm_call(question, cfg)
+    text, _err = _llm_call(question, cfg, history=history)
     return text
 
 
@@ -647,6 +719,10 @@ _ROUTE_INTENTS = {
     "cashbook": "cashbook {period}",
     "forecast": "cash flow forecast {period}",
     "recurring": "recurring expenses {period}",
+    "petty_cash": "petty cash balance",
+    "health": "financial health",
+    "attention": "what needs attention",
+    "compare": "how does this month compare to last month",
 }
 
 
@@ -687,7 +763,7 @@ def _llm_route(question, cfg):
     return routed
 
 
-def answer(question, user=None):
+def answer(question, user=None, history=None):
     data = _answer_rules(question, user)
     # If the rule engine didn't understand, optionally defer to a configured LLM.
     if data.get("_fallback"):
@@ -701,8 +777,9 @@ def answer(question, user=None):
                 routed = None
             if routed:
                 return routed
-            # …otherwise fall back to a conversational answer from the data summary
-            text = _llm_answer(question, cfg)
+            # …otherwise a conversational answer grounded in the rich data summary
+            # and prior turns (so follow-ups like "and last month?" make sense).
+            text = _llm_answer(question, cfg, history=history)
             if text:
                 return {"text": text.strip()}
     data.pop("_fallback", None)

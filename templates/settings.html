@@ -234,7 +234,7 @@
 
   <section class="tabpane" data-pane="assistant">
     <div class="card"><div class="bd">
-      <div class="info-panel">The assistant works offline using the built-in engine. Turn this on only if you have purchased API credentials for a provider — then the assistant will use that model and fall back to the offline engine if the call fails.</div>
+      <div class="info-panel">The assistant always answers from your live books via the built-in engine. Turn the LLM on to let it understand freer wording and explain figures in plain language — it still cannot change data. Prefer <strong>xAI (Grok)</strong> if you have an xAI API key (the model Cursor uses for Grok). <em>Groq</em> is a different service (fast Llama). Cursor itself does not issue an API key for this app.</div>
       <div class="form-grid">
       {% for f in form %}{% if f.name in 'llm_enabled llm_provider llm_model llm_api_key llm_base_url' %}
         <div class="form-row">{% if f.field.widget.input_type == 'checkbox' %}<div class="check-row">{{ f }} <label for="{{ f.id_for_label }}" class="u-m-0">{{ f.label }}</label></div>
@@ -242,7 +242,14 @@
           {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}</div>
       {% endif %}{% endfor %}
       </div>
-      <div class="help u-mt-sm">Suggested models — Anthropic: <span class="mono">claude-3-5-sonnet-latest</span>; OpenAI: <span class="mono">gpt-4o-mini</span>; Gemini: <span class="mono">gemini-1.5-flash</span>; Groq: <span class="mono">llama-3.3-70b-versatile</span>. If you leave the model blank a sensible default for the chosen provider is used.</div>
+      <div class="help u-mt-sm">Suggested models —
+        xAI Grok: <span class="mono">grok-3</span> or <span class="mono">grok-2-latest</span>
+        (base URL left blank — uses <span class="mono">https://api.x.ai/v1</span>);
+        Anthropic: <span class="mono">claude-3-5-sonnet-latest</span>;
+        OpenAI: <span class="mono">gpt-4o-mini</span>;
+        Gemini: <span class="mono">gemini-1.5-flash</span>;
+        Groq: <span class="mono">llama-3.3-70b-versatile</span>.
+        Leave the model blank to use the provider default. Paste your xAI key into API key, pick <b>xAI (Grok)</b>, Save &amp; test.</div>
       <div class="u-mt-sm">
         <button class="btn btn-sm" name="test_llm" value="1">Save &amp; test assistant connection</button>
         <span class="help u-ml-sm">Saves your settings, then makes one live call — the result (or the exact error) appears at the top.</span>
