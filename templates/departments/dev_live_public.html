@@ -56,52 +56,81 @@
       text-align:center;min-height:0;
     }
     .title{
-      margin:0 0 clamp(.5rem,1.4vh,1rem);font-weight:700;letter-spacing:-.03em;
-      font-size:clamp(2.6rem,7.5vh,4.8rem);
+      margin:0 0 clamp(.4rem,1.2vh,.85rem);font-weight:700;letter-spacing:-.03em;
+      font-size:clamp(2.2rem,6.2vh,4rem);
     }
     .period{
       font-family:"IBM Plex Sans",system-ui,sans-serif;color:var(--muted);
-      font-size:clamp(1.25rem,2.8vh,1.85rem);margin:0 0 clamp(.8rem,2.2vh,1.4rem);
+      font-size:clamp(1.15rem,2.4vh,1.65rem);margin:0 0 clamp(.55rem,1.6vh,1.1rem);
     }
     .rule{
-      width:min(18rem,36%);height:3px;margin:0 auto clamp(.8rem,2vh,1.4rem);
+      width:min(16rem,34%);height:3px;margin:0 auto clamp(.55rem,1.6vh,1.1rem);
       background:linear-gradient(90deg,transparent,var(--brass),transparent);opacity:.75;
     }
     .currency{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1.4rem,3vh,2rem);color:var(--brass);font-weight:600;
-      letter-spacing:.14em;margin-bottom:.15rem;
+      font-size:clamp(1.25rem,2.6vh,1.75rem);color:var(--brass);font-weight:600;
+      letter-spacing:.14em;margin-bottom:.1rem;
     }
+    /* Slightly smaller total so the giving line fits under it */
     .total{
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
-      font-size:clamp(5.5rem,28vh,14rem);letter-spacing:-.04em;line-height:.92;
+      font-size:clamp(3.8rem,18vh,9.5rem);letter-spacing:-.04em;line-height:.92;
       color:var(--forest-deep);
       transition:transform .5s cubic-bezier(.2,.85,.2,1), color .45s ease;
     }
     .total.is-bump{transform:scale(1.04);color:var(--forest)}
-    .foot-metrics{
-      display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));
-      gap:clamp(1rem,3vw,2.4rem);justify-items:center;align-items:end;
-      padding-top:clamp(.8rem,2.2vh,1.5rem);
+    /* Giving details under the total for hall-screen readability */
+    .give{
+      margin-top:clamp(1rem,2.8vh,1.8rem);
+      padding-top:clamp(.75rem,2vh,1.2rem);
+      border-top:1px solid var(--line);
+      width:min(46rem,92%);
+    }
+    .give .hint{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(1rem,2vh,1.3rem);letter-spacing:.16em;text-transform:uppercase;
+      color:var(--muted);margin:0 0 clamp(.55rem,1.4vh,.9rem);
+    }
+    .give .row{
+      display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;
+      gap:.65rem clamp(1.4rem,3vw,2.4rem);
+    }
+    .give .pair{
+      display:inline-flex;align-items:baseline;gap:.65rem;
+    }
+    .give .k{
+      font-family:"IBM Plex Sans",system-ui,sans-serif;
+      font-size:clamp(1.2rem,2.5vh,1.7rem);font-weight:500;color:var(--muted);
+    }
+    .give .v{
+      font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:700;
+      font-size:clamp(2.3rem,5.8vh,3.9rem);letter-spacing:.01em;
+      color:var(--forest-deep);line-height:1.05;
+    }
+    .give .sep{
+      width:1px;height:1.35em;background:rgba(22,74,54,.22);align-self:center;
+      flex:0 0 auto;
+    }
+    .foot{
+      display:flex;align-items:flex-end;justify-content:center;
+      padding-top:clamp(.7rem,2vh,1.3rem);
       border-top:1px solid var(--line);
     }
-    .metric{text-align:center;min-width:12rem}
+    .metric{text-align:center;min-width:10rem}
     .metric .lbl{
       font-family:"IBM Plex Sans",system-ui,sans-serif;
-      font-size:clamp(1rem,2vh,1.35rem);letter-spacing:.16em;text-transform:uppercase;
-      color:var(--muted);margin-bottom:.45rem;
+      font-size:clamp(.95rem,1.8vh,1.2rem);letter-spacing:.16em;text-transform:uppercase;
+      color:var(--muted);margin-bottom:.4rem;
     }
     .metric .val{
       font-family:"IBM Plex Mono",ui-monospace,monospace;font-weight:600;
-      font-size:clamp(2.2rem,6vh,4.2rem);color:var(--ink);
-    }
-    .metric.pay .val{
-      font-size:clamp(1.8rem,5vh,3.2rem);letter-spacing:.02em;color:var(--forest-deep);
+      font-size:clamp(2.2rem,5.8vh,3.8rem);color:var(--ink);line-height:1;
     }
     @media (max-aspect-ratio: 4/3){
       .frame{width:100vw;height:100vh;border-radius:0}
-      .total{font-size:clamp(4.2rem,22vw,10rem)}
-      .foot-metrics{grid-template-columns:1fr}
+      .total{font-size:clamp(3.4rem,16vw,8rem)}
+      .give .v{font-size:clamp(1.7rem,6.5vw,2.8rem)}
     }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -125,25 +154,27 @@
       </p>
       <div class="currency">{{ currency }}</div>
       <div class="total" id="totalAmt">{{ total_display }}</div>
+      {% if paybill or account %}
+      <div class="give">
+        <p class="hint">Lipa na M-Pesa</p>
+        <div class="row">
+          {% if paybill %}
+          <span class="pair"><span class="k">Paybill</span> <span class="v">{{ paybill }}</span></span>
+          {% endif %}
+          {% if paybill and account %}<span class="sep" aria-hidden="true"></span>{% endif %}
+          {% if account %}
+          <span class="pair"><span class="k">Account</span> <span class="v">{{ account }}</span></span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
     </div>
 
-    <div class="foot-metrics">
+    <div class="foot">
       <div class="metric">
-        <div class="lbl">No of transactions</div>
+        <div class="lbl">Transactions</div>
         <div class="val" id="giftCount">{{ count }}</div>
       </div>
-      {% if paybill %}
-      <div class="metric pay">
-        <div class="lbl">Paybill</div>
-        <div class="val">{{ paybill }}</div>
-      </div>
-      {% endif %}
-      {% if account %}
-      <div class="metric pay">
-        <div class="lbl">Account</div>
-        <div class="val">{{ account }}</div>
-      </div>
-      {% endif %}
     </div>
   </div>
   <script>
