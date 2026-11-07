@@ -4,6 +4,7 @@ Runs synchronously (fine for the typical weekly/monthly statement). For very
 large files this is the function a Celery task would call.
 """
 import datetime as dt
+import re
 from decimal import Decimal
 
 from django.db import transaction as db_tx
@@ -16,6 +17,38 @@ from giving.services.allocation import allocate
 from members.services.matching import match_or_create_member
 from statements.models import StatementImport
 from statements.services.parser import read_rows
+
+
+def _bank_narration_key(text: str) -> str:
+    """Identity of the bank's own narration line, ignoring treasurer notes.
+
+    Debit-queue actions (already-accounted, multi-fund split, remittance settle)
+    and the STK giver form append ``\\n[...]`` notes onto ``Transaction.raw_narration``.
+    Identifier-less re-import must still recognise the bank line underneath, so
+    we compare only the first line and collapse whitespace the same way the
+    bank register's SYN fingerprint does.
+    """
+    first = (text or "").split("\n", 1)[0]
+    return re.sub(r"\s+", " ", first).strip().upper()
+
+
+def _identifierless_already(*, date, amount, direction, raw_narration) -> bool:
+    """True when an identifier-less bank line is already on the ledger.
+
+    Date + amount + direction narrows to a handful of candidates; narration is
+    then matched on the bank's first line so appended treasurer notes do not
+    defeat re-import dedup.
+    """
+    narr_key = _bank_narration_key(raw_narration)
+    if not narr_key:
+        return False
+    candidates = Transaction.objects.filter(
+        channel=Transaction.Channel.BANK,
+        date=date,
+        amount=amount,
+        direction=direction,
+    ).only("raw_narration")
+    return any(_bank_narration_key(t.raw_narration) == narr_key for t in candidates)
 
 
 def _pin_campaign_dev_group(dev_group, campaign, campaign_group):
@@ -310,19 +343,19 @@ def run_import(import_obj: StatementImport, path_or_bytes, filename, bank_accoun
         # bank that leaves those columns blank are the common case, and with
         # nothing above to match on they re-imported on every upload, duplicating
         # the debit each time. Fall back to the same identity the bank register
-        # uses for such lines — exact date, signed amount and narration — so a
+        # uses for such lines — date, signed amount and (bank) narration — so a
         # true re-import collapses while two genuinely different charges (which
-        # differ in amount or narration) stay distinct. Matches the register's
-        # own synthetic (SYN) dedup key, so the two layers agree.
+        # differ in amount or narration) stay distinct. Narration is matched on
+        # the bank's first line only: debit-queue / STK notes appended after
+        # import must not defeat the match on the next upload.
         if not already and not rcpt_up and not mref_up and not core_ref:
-            already = Transaction.objects.filter(
-                channel=Transaction.Channel.BANK,
+            already = _identifierless_already(
                 date=row["date"],
                 amount=abs(_amt),
                 direction=(Transaction.Direction.DEBIT if _amt < 0
                            else Transaction.Direction.CREDIT),
                 raw_narration=row["raw_narration"],
-            ).exists()
+            )
         if already:
             dup += 1
             continue
