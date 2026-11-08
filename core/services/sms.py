@@ -74,15 +74,126 @@ def send_sms(to, message, cfg=None):
     return log
 
 
-def build_receipt_text(envelope, cfg=None):
-    """The receipt message body for an envelope (shared by SMS and WhatsApp)."""
+# Compact labels keep SMS under one segment when possible.
+_SMS_SHORT_LABELS = {
+    "Combined Offering": "Combined",
+    "Local Church Budget": "LCB",
+}
+
+
+def _sms_fund_label(name):
+    """Short, member-facing fund name for a text message."""
+    raw = (name or "").strip()
+    if not raw:
+        return "Gift"
+    if raw in _SMS_SHORT_LABELS:
+        return _SMS_SHORT_LABELS[raw]
+    # Collapse "Combined Offering (Trust 50%)" → Combined when not already
+    # rolled up via SplitFund (defensive for older rows).
+    for full, short in _SMS_SHORT_LABELS.items():
+        if raw.startswith(full):
+            return short
+    return raw
+
+
+def format_gift_breakdown(envelope, *, include_total=False):
+    """Minimal gift lines for SMS: ``Tithe - 200, Combined - 100``.
+
+    Split-fund halves (e.g. Combined Offering Trust/Local) roll up to the
+    parent name — same idea as the Sabbath Excel entries sheet — so the
+    member sees what they gave, not the internal remittance split.
+    Numbered small-group sub-accounts roll up to their parent fund.
+    """
+    from decimal import Decimal
+    from departments.models import numbered_subgroup_parent_map
+    from giving.models import SplitFund
+
+    split_parent = {}
+    for sf in SplitFund.objects.filter(active=True).prefetch_related(
+            "components"):
+        for comp in sf.components.all():
+            split_parent[comp.department_id] = sf.name
+    subgroup_parent = numbered_subgroup_parent_map()
+
+    totals = {}  # label -> Decimal
+    lines = list(envelope.lines.select_related("department").all())
+    for line in lines:
+        amt = line.amount or Decimal(0)
+        if not amt:
+            continue
+        if line.department_id in split_parent:
+            label = split_parent[line.department_id]
+        else:
+            dept = subgroup_parent.get(line.department_id, line.department)
+            label = dept.name if dept is not None else "Gift"
+        label = _sms_fund_label(label)
+        totals[label] = totals.get(label, Decimal(0)) + amt
+
+    if not totals:
+        return ""
+
+    # Trust-ish first is nice but we lack is_trust after rollup; keep
+    # insertion order from preferred church funds then alpha.
+    preferred = ["Tithe", "Combined", "LCB", "Camp Meeting", "Development"]
+    order = {n: i for i, n in enumerate(preferred)}
+    items = sorted(totals.items(), key=lambda kv: (order.get(kv[0], 99), kv[0]))
+    body = ", ".join(f"{name} - {amt:,.0f}" for name, amt in items)
+    if include_total:
+        total = envelope.total
+        if total is None:
+            total = sum(totals.values(), Decimal(0))
+        body = f"{body} · total {total:,.0f}"
+    return body
+
+
+def _inject_breakdown(text, breakdown, church_name=""):
+    """Insert gift lines into a template that has no {breakdown} placeholder.
+
+    Prefer ``: Tithe - 200, Combined - 100`` just before the blessing / church
+    sign-off so the existing greeting and total stay intact.
+    """
+    if not breakdown:
+        return text
+    snippet = f": {breakdown}"
+    # Common closing: "God bless you. - Church"
+    for marker in (" God bless", " May God", " Blessings"):
+        idx = text.find(marker)
+        if idx > 0:
+            return text[:idx].rstrip(" .") + snippet + "." + text[idx:]
+    church = (church_name or "").strip()
+    if church and text.rstrip().endswith(church):
+        stem = text.rstrip()[: -len(church)].rstrip(" -–—")
+        return f"{stem.rstrip(' .')}{snippet}. - {church}"
+    return text.rstrip() + snippet + "."
+
+
+def build_receipt_text(envelope, cfg=None, include_breakdown=None):
+    """The receipt message body for an envelope (shared by SMS and WhatsApp).
+
+    ``include_breakdown`` overrides Settings → SMS → include gift breakdown.
+    When on, fills ``{breakdown}`` or injects compact gift lines into the
+    message (``Tithe - 200, Combined - 100``).
+    """
     cfg = cfg or SiteConfig.get()
-    return _format(cfg.sms_receipt_template,
+    if include_breakdown is None:
+        include_breakdown = bool(getattr(cfg, "sms_include_breakdown", False))
+    template = cfg.sms_receipt_template or ""
+    # Skip repeating the total when the template already shows {amount}.
+    include_total = "{amount}" not in template
+    breakdown = (
+        format_gift_breakdown(envelope, include_total=include_total)
+        if include_breakdown else ""
+    )
+    text = _format(template,
                    name=sms_first_name(envelope.contributor_name) or "Friend",
                    amount=f"{envelope.total:,.0f}",
                    receipt=envelope.receipt_no,
                    date=envelope.date.strftime("%d %b %Y"),
-                   church=cfg.church_name)
+                   church=cfg.church_name,
+                   breakdown=breakdown)
+    if include_breakdown and breakdown and "{breakdown}" not in template:
+        text = _inject_breakdown(text, breakdown, cfg.church_name)
+    return text
 
 
 def send_receipt_sms(envelope, cfg=None):

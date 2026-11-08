@@ -127,3 +127,80 @@ class ReceiptSmsScopeTests(TestCase):
         text = sms_svc.build_receipt_text(self._envelope(), cfg)
         self.assertIn("Asha", text)
         self.assertIn("RS1", text)
+
+
+class GiftBreakdownSmsTests(TestCase):
+    """Optional gift-line breakdown for receipt SMS / WhatsApp."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from envelopes.models import EnvelopeLine
+        from giving.models import SplitFund, SplitComponent
+        self.user = User.objects.create_user("bd_u", password="x")
+        self.member = Member.objects.create(name="Edwin Orioki", phone="254711000111")
+        self.tithe = Department.objects.create(
+            name="Tithe", fund_type="TRUST", category="OFFERING", is_trust=True)
+        self.co_trust = Department.objects.create(
+            name="Combined Offering (Trust 50%)", fund_type="TRUST",
+            category="OFFERING", is_trust=True, selectable=False)
+        self.co_local = Department.objects.create(
+            name="Combined Offering (Local 50%)", fund_type="LOCAL",
+            category="OFFERING", is_trust=False, selectable=False)
+        sf = SplitFund.objects.create(name="Combined Offering")
+        SplitComponent.objects.create(split_fund=sf, department=self.co_trust, percent=50)
+        SplitComponent.objects.create(split_fund=sf, department=self.co_local, percent=50)
+        self.env = Envelope.objects.create(
+            date=dt.date.today(), sabbath_week=1, receipt_no="BD-1",
+            member=self.member, contributor_name="EDWIN ORIOKI",
+            channel="CASH", total=Decimal("300"), recorded_by=self.user)
+        EnvelopeLine.objects.create(
+            envelope=self.env, department=self.tithe, amount=Decimal("200"))
+        EnvelopeLine.objects.create(
+            envelope=self.env, department=self.co_trust, amount=Decimal("50"))
+        EnvelopeLine.objects.create(
+            envelope=self.env, department=self.co_local, amount=Decimal("50"))
+        self.env.recompute_total()
+        self.env.save()
+
+    def test_format_rolls_up_combined_offering(self):
+        text = sms_svc.format_gift_breakdown(self.env, include_total=True)
+        self.assertEqual(text, "Tithe - 200, Combined - 100 · total 300")
+
+    def test_off_by_default_no_breakdown(self):
+        cfg = SiteConfig.get()
+        cfg.sms_include_breakdown = False
+        cfg.save()
+        text = sms_svc.build_receipt_text(self.env, cfg)
+        self.assertNotIn("Tithe - 200", text)
+        self.assertNotIn("Combined - 100", text)
+
+    def test_settings_flag_injects_breakdown(self):
+        cfg = SiteConfig.get()
+        cfg.sms_include_breakdown = True
+        cfg.sms_receipt_template = (
+            "Dear {name}, we received your offering of KES {amount} "
+            "(receipt {receipt}) on {date}. God bless you. - {church}")
+        cfg.church_name = "KWS"
+        cfg.save()
+        text = sms_svc.build_receipt_text(self.env, cfg)
+        self.assertIn("Tithe - 200, Combined - 100", text)
+        self.assertIn("God bless you", text)
+        # total already in {amount} — do not repeat
+        self.assertNotIn("total 300", text)
+
+    def test_breakdown_placeholder(self):
+        cfg = SiteConfig.get()
+        cfg.sms_include_breakdown = True
+        cfg.sms_receipt_template = (
+            "Dear {name}, {breakdown}. God bless you. - {church}")
+        cfg.church_name = "KWS"
+        cfg.save()
+        text = sms_svc.build_receipt_text(self.env, cfg)
+        self.assertIn("Tithe - 200, Combined - 100 · total 300", text)
+
+    def test_override_forces_on_when_settings_off(self):
+        cfg = SiteConfig.get()
+        cfg.sms_include_breakdown = False
+        cfg.save()
+        text = sms_svc.build_receipt_text(self.env, cfg, include_breakdown=True)
+        self.assertIn("Tithe - 200", text)
