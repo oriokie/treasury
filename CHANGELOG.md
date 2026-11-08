@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.16
+
+Automated patch release: Add optional gift breakdown to receipt SMS.
+
 ## 3.56.15
 
 Automated patch release: Make assistant chat constructive and align batch to site mast.
