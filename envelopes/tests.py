@@ -334,6 +334,8 @@ class EnvelopeSendButtonGatingTests(TestCase):
         html = c.get(self._sabbath_url()).content.decode()
         self.assertIn("SMS all", html)
         self.assertNotIn("WhatsApp all", html)
+        self.assertIn("Gift breakdown", html)
+        self.assertIn('id="inclBreakdown"', html)
 
     def test_whatsapp_button_shown_when_enabled(self):
         from django.test import Client

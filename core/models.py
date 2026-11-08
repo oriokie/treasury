@@ -108,7 +108,14 @@ class SiteConfig(models.Model):
         max_length=320, blank=True,
         default="Dear {name}, we received your offering of KES {amount} "
                 "(receipt {receipt}) on {date}. God bless you. - {church}",
-        help_text="Placeholders: {name} {amount} {receipt} {date} {church}")
+        help_text="Placeholders: {name} {amount} {receipt} {date} {church} "
+                  "{breakdown}. Use {breakdown} for gift lines "
+                  "(e.g. Tithe - 200, Combined - 100).")
+    sms_include_breakdown = models.BooleanField(
+        default=False,
+        help_text="When on, receipt texts include a short gift breakdown "
+                  "(Tithe - 200, Combined - 100). Also available as a "
+                  "checkbox when sending from a Sabbath page.")
 
     # Review-queue inquiry: ask selected givers what a gift was for, with the
     # treasurer's number so they can clarify without a phone-round of calls.

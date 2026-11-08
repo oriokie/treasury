@@ -36,8 +36,14 @@
   {% if sec.count %}
   <a class="btn btn-ghost btn-sm" href="{% url 'envelope_receipts_bulk' %}?date={{ sabbath|date:'Y-m-d' }}" target="_blank" title="Print all receipts, several per A4 page (cut to separate)">🧾 Receipts (A4)</a>
   <a class="btn btn-ghost btn-sm" href="{% url 'envelope_receipts_bulk' %}?date={{ sabbath|date:'Y-m-d' }}&format=etr&print=1" target="_blank" title="Print all receipts on a thermal/ETR printer">ETR</a>
-  {% if sms_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="sms"><button class="btn btn-ghost btn-sm" title="Send all receipts by SMS">✉ SMS all</button></form>{% endif %}
-  {% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline">{% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="whatsapp"><button class="btn btn-ghost btn-sm" title="Send all receipts by WhatsApp">🟢 WhatsApp all</button></form>{% endif %}
+  {% if sms_enabled or whatsapp_enabled %}
+  <label class="check-row sab-sms-opt" title="Add Tithe - 200, Combined - 100 style gift lines to each receipt text">
+    <input type="checkbox" id="inclBreakdown" {% if sms_include_breakdown %}checked{% endif %}>
+    <span>Gift breakdown</span>
+  </label>
+  {% endif %}
+  {% if sms_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline sms-send-form">{% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="sms"><button class="btn btn-ghost btn-sm" title="Send all receipts by SMS">✉ SMS all</button></form>{% endif %}
+  {% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_bulk' %}" class="u-inline sms-send-form">{% csrf_token %}<input type="hidden" name="date" value="{{ sabbath|date:'Y-m-d' }}"><input type="hidden" name="channel" value="whatsapp"><button class="btn btn-ghost btn-sm" title="Send all receipts by WhatsApp">🟢 WhatsApp all</button></form>{% endif %}
   {% endif %}
   {% if can_enter_data %}
   <a class="btn btn-ghost btn-sm" href="{% url 'envelope_bulk_reassign' %}?from={{ sabbath|date:'Y-m-d' }}" title="Paste a list of receipt numbers to move to another Sabbath">⇄ Move by numbers</a>
@@ -115,8 +121,8 @@
                 <a href="{% url 'envelope_receipt' e.id %}" target="_blank">🧾 Print receipt</a>
                 <a href="{% url 'envelope_receipt' e.id %}?format=etr&print=1" target="_blank">ETR receipt</a>
                 {% if e.member %}
-                  {% if sms_enabled %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}">{% csrf_token %}<input type="hidden" name="channel" value="sms"><button class="dd-item-btn" type="submit">✉ Send by SMS</button></form>{% endif %}
-                  {% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}">{% csrf_token %}<input type="hidden" name="channel" value="whatsapp"><button class="dd-item-btn" type="submit">🟢 Send by WhatsApp</button></form>{% endif %}
+                  {% if sms_enabled %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}" class="sms-send-form">{% csrf_token %}<input type="hidden" name="channel" value="sms"><button class="dd-item-btn" type="submit">✉ Send by SMS</button></form>{% endif %}
+                  {% if whatsapp_enabled %}<form method="post" action="{% url 'envelope_send_receipt' e.id %}" class="sms-send-form">{% csrf_token %}<input type="hidden" name="channel" value="whatsapp"><button class="dd-item-btn" type="submit">🟢 Send by WhatsApp</button></form>{% endif %}
                 {% endif %}
                 {% endif %}
                 <form method="post" action="{% url 'envelope_delete' e.id %}" onsubmit="return confirm('Delete envelope {{ e.receipt_no }} and its ledger entries? This cannot be undone.');">{% csrf_token %}<button class="dd-item-btn dd-item-danger" type="submit">Delete</button></form>
@@ -167,6 +173,11 @@
   padding-bottom:.7rem;border-bottom:1px solid var(--line)}
 .sab-toolbar .grow{flex:1}
 .sab-status{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap}
+.sab-sms-opt{display:inline-flex;align-items:center;gap:.35rem;margin:0;font-size:.78rem;
+  color:var(--muted);padding:.2rem .45rem;border:1px solid var(--line);border-radius:var(--radius);
+  background:var(--paper);cursor:pointer;user-select:none}
+.sab-sms-opt input{margin:0}
+.sab-sms-opt:has(input:checked){border-color:var(--forest);color:var(--forest);background:var(--forest-soft)}
 
 .filter-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.7rem;flex-wrap:wrap}
 .filter-row .field{max-width:340px;margin:0}
@@ -247,6 +258,29 @@
       updBulk();
   });
   updBulk();
+
+  // One toolbar toggle drives every SMS / WhatsApp send form on the page.
+  var breakdown = document.getElementById("inclBreakdown");
+  function syncBreakdown(form){
+    if(!form) return;
+    var existing = form.querySelector('input[name="include_breakdown"]');
+    if(!existing){
+      existing = document.createElement("input");
+      existing.type = "hidden";
+      existing.name = "include_breakdown";
+      form.appendChild(existing);
+    }
+    existing.value = (breakdown && breakdown.checked) ? "1" : "0";
+  }
+  document.querySelectorAll("form.sms-send-form").forEach(function(form){
+    form.addEventListener("submit", function(){ syncBreakdown(form); });
+    syncBreakdown(form);
+  });
+  if(breakdown){
+    breakdown.addEventListener("change", function(){
+      document.querySelectorAll("form.sms-send-form").forEach(syncBreakdown);
+    });
+  }
 })();
 </script>
 {% endblock %}

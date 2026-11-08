@@ -257,6 +257,7 @@ class EnvelopeSabbathEntriesView(ReadAccessMixin, View):
             "month_locked": period_locked(sabbath),
             "sms_enabled": cfg.sms_enabled,
             "whatsapp_enabled": cfg.whatsapp_enabled,
+            "sms_include_breakdown": bool(cfg.sms_include_breakdown),
         })
 
 
@@ -2021,6 +2022,19 @@ class EnvelopeReversalView(TreasurerRequiredMixin, View):
         return redirect(f"{reverse('envelope_list')}?date={raw}")
 
 
+def _post_wants_breakdown(request, cfg=None):
+    """Whether this send should include gift lines.
+
+    Sabbath forms may post ``include_breakdown=1`` / ``0``. When the field is
+    absent (auto-receipts, older clients), fall back to Settings.
+    """
+    raw = request.POST.get("include_breakdown")
+    if raw is None:
+        cfg = cfg or SiteConfig.get()
+        return bool(getattr(cfg, "sms_include_breakdown", False))
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
 class EnvelopeSendReceiptView(DataEntryRequiredMixin, View):
     """Send one envelope's receipt by SMS or WhatsApp to the contributor's phone,
     as an alternative to printing."""
@@ -2036,7 +2050,8 @@ class EnvelopeSendReceiptView(DataEntryRequiredMixin, View):
             messages.error(request, "No phone number on file for this contributor "
                                     "(link a member with a phone to send a receipt).")
             return redirect(back)
-        msg = build_receipt_text(env, cfg)
+        msg = build_receipt_text(
+            env, cfg, include_breakdown=_post_wants_breakdown(request, cfg))
         if channel == "whatsapp":
             from core.services.whatsapp import send_whatsapp
             ok, detail = send_whatsapp(phone, msg, cfg)
@@ -2077,13 +2092,16 @@ class EnvelopeBulkSendView(DataEntryRequiredMixin, View):
         if not ids:
             messages.info(request, "No contributors with a phone number for this Sabbath.")
             return redirect(f"{reverse('envelope_list')}?date={sabbath.isoformat()}")
-        threading.Thread(target=self._send_all, args=(ids, channel), daemon=True).start()
+        include_breakdown = _post_wants_breakdown(request, cfg)
+        threading.Thread(
+            target=self._send_all, args=(ids, channel, include_breakdown),
+            daemon=True).start()
         messages.success(request, f"Sending {len(ids)} receipt(s) by {channel.upper()} "
                                   f"in the background.")
         return redirect(f"{reverse('envelope_list')}?date={sabbath.isoformat()}")
 
     @staticmethod
-    def _send_all(ids, channel):
+    def _send_all(ids, channel, include_breakdown=None):
         import time
         from django.db import connection
         from envelopes.models import Envelope
@@ -2095,7 +2113,8 @@ class EnvelopeBulkSendView(DataEntryRequiredMixin, View):
                 env = Envelope.objects.filter(pk=eid).select_related("member").first()
                 if not env or not (env.member and env.member.receipt_phone):
                     continue
-                msg = build_receipt_text(env, cfg)
+                msg = build_receipt_text(
+                    env, cfg, include_breakdown=include_breakdown)
                 if channel == "whatsapp":
                     send_whatsapp(env.member.receipt_phone, msg, cfg)
                 else:
