@@ -6,6 +6,10 @@ Generated from `core.version.WHATS_NEW` by `python manage.py release` — edit t
 entry there, not this file, or the next release will overwrite your change.
 Auto patch releases may also add notes via `core/auto_release_notes.json`.
 
+## 3.56.17
+
+Automated patch release: Fix batch expense save: fund resolve and keep draft on errors.
+
 ## 3.56.16
 
 Automated patch release: Add optional gift breakdown to receipt SMS.
