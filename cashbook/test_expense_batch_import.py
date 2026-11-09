@@ -97,6 +97,58 @@ class ExpenseBatchEntryTests(Base):
         self._post(department="")
         self.assertEqual(Expense.objects.count(), 0)
 
+    def test_missing_fund_redisplays_the_typed_lines(self):
+        """A validation miss must not wipe the stack of receipts."""
+        r = self._post(department="", department_label="")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Expense.objects.count(), 0)
+        draft = r.context["batch_draft"]
+        self.assertIsNotNone(draft)
+        descriptions = [ln["description"] for ln in draft["lines"]]
+        self.assertIn("Fuel to Kisii", descriptions)
+        self.assertIn("Fare for choir", descriptions)
+        self.assertContains(r, "Choose the fund first")
+
+    def test_typed_fund_name_resolves_without_the_hidden_id(self):
+        """Typeahead without clicking still saves when the name is unique."""
+        self._post(department="", department_label=self.fund.name)
+        self.assertEqual(
+            Expense.objects.filter(charge_for__isnull=True).count(), 2)
+        self.assertTrue(
+            Expense.objects.filter(department=self.fund,
+                                   description="Fuel to Kisii").exists())
+
+    def test_ambiguous_typed_fund_name_is_rejected(self):
+        Department.objects.create(
+            name="Youth Fund B", slug="youth-fund-b",
+            fund_type=Department.FundType.LOCAL,
+            category=Department.Category.MINISTRY,
+            active=True, show_in_expenses=True, selectable=True)
+        r = self._post(department="", department_label="Youth")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Expense.objects.count(), 0)
+        self.assertContains(r, "not linked yet")
+
+    def test_failed_validation_does_not_burn_the_submit_token(self):
+        token = self.client.get(reverse("expense_batch")).context["submit_token"]
+        bad = {
+            "submit_token": token,
+            "date": TODAY.isoformat(), "department": "",
+            "claimant": "J. Mwangi", "method": "MPESA", "category": "TRANSPORT",
+            "line_description": ["Fuel to Kisii"],
+            "line_amount": ["1200"],
+            "line_category": [""], "line_charge": [""],
+        }
+        r = self.client.post(reverse("expense_batch"), bad)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(Expense.objects.count(), 0)
+        # Same token can still save once the fund is filled in.
+        good = dict(bad)
+        good["department"] = self.fund.pk
+        r2 = self.client.post(reverse("expense_batch"), good)
+        self.assertEqual(r2.status_code, 302)
+        self.assertEqual(Expense.objects.filter(charge_for__isnull=True).count(), 1)
+
     def test_the_batch_is_all_or_nothing(self):
         """A half-entered stack of receipts is worse than none — the treasurer
         cannot tell which ones went in."""
