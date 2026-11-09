@@ -4272,6 +4272,94 @@ class PaymentAnalysisView(ReadAccessMixin, View):
             "f": request.GET})
 
 
+def _resolve_batch_fund(post):
+    """Header fund from the hidden id, or a unique typed name from the search box.
+
+    The fund picker is a typeahead: typing without clicking a suggestion leaves
+    ``department`` empty even when the visible label is a real fund. Matching
+    that label exactly (or uniquely) recovers the intended fund.
+    """
+    from departments.models import Department, expense_departments
+
+    raw = (post.get("department") or "").strip()
+    if raw.isdigit():
+        fund = Department.objects.filter(pk=int(raw)).first()
+        if fund is not None:
+            return fund
+
+    label = (post.get("department_label") or "").strip()
+    if not label:
+        return None
+    eligible = list(expense_departments())
+    exact = [d for d in eligible if d.name.casefold() == label.casefold()]
+    if len(exact) == 1:
+        return exact[0]
+    partial = [d for d in eligible if label.casefold() in d.name.casefold()]
+    if len(partial) == 1:
+        return partial[0]
+    return None
+
+
+def _batch_draft_from_post(post, fund=None):
+    """Rebuild the client draft shape from a failed POST so lines are not lost."""
+    def _list(name):
+        return list(post.getlist(name))
+
+    descriptions = _list("line_description")
+    amounts = _list("line_amount")
+    categories = _list("line_category")
+    charges = _list("line_charge")
+    line_dates = _list("line_date")
+    line_depts = _list("line_department")
+    line_dept_labels = _list("line_department_label")
+    line_claimants = _list("line_claimant")
+    line_payees = _list("line_payee")
+    line_vendors = _list("line_vendor")
+    line_methods = _list("line_method")
+    line_vouchers = _list("line_voucher")
+
+    def _at(seq, i):
+        return seq[i] if i < len(seq) else ""
+
+    lines = []
+    for i, description in enumerate(descriptions):
+        lines.append({
+            "description": description or "",
+            "amount": _at(amounts, i) or "",
+            "category": _at(categories, i) or "",
+            "charge": _at(charges, i) or "",
+            "date": _at(line_dates, i) or "",
+            "department": _at(line_depts, i) or "",
+            "department_label": _at(line_dept_labels, i) or "",
+            "claimant": _at(line_claimants, i) or "",
+            "payee": _at(line_payees, i) or "",
+            "vendor": _at(line_vendors, i) or "",
+            "method": _at(line_methods, i) or "",
+            "voucher": _at(line_vouchers, i) or "",
+        })
+
+    return {
+        "defaults": {
+            "date": post.get("date") or "",
+            "department": str(fund.pk) if fund is not None else (post.get("department") or ""),
+            "department_label": (
+                post.get("department_label")
+                or (fund.name if fund is not None else "")
+                or ""),
+            "claimant": post.get("claimant") or "",
+            "vendor": post.get("vendor") or "",
+            "payee": post.get("payee") or "",
+            "method": post.get("method") or "",
+            "category": post.get("category") or "",
+            "expenditure_type": post.get("expenditure_type") or "",
+            "voucher_no": post.get("voucher_no") or "",
+            "paid_from_petty_cash": bool(post.get("paid_from_petty_cash")),
+            "shared_charge": post.get("shared_charge") or "",
+        },
+        "lines": lines,
+    }
+
+
 class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
     """Several expenses that usually share a date, fund, claimant and method.
 
@@ -4305,32 +4393,48 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
             # A fresh token per render; the post claims it once. See
             # core.services.idempotency.
             "submit_token": ctx.get("submit_token") or idempotency.issue(),
+            "batch_draft": kwargs.get("batch_draft"),
         })
         return ctx
 
+    def _redisplay(self, request, batch_draft, **kwargs):
+        """Re-render the form with a new token and the posted draft intact."""
+        return self.render_to_response(
+            self.get_context_data(batch_draft=batch_draft, **kwargs))
+
     def post(self, request, *args, **kwargs):
+        from django.urls import reverse
         from core.models import SiteConfig
         from core.services import idempotency
         from departments.models import Department
         from vendors.models import Vendor
         from .services import expenses as expense_svc
 
-        # A batch sent twice — the double click on a slow save — is one batch.
-        # Nothing in the request distinguishes it from a genuine second batch
-        # (a church may pay the same claimant the same amount twice in a day),
-        # so the form's own token decides.
-        if not idempotency.claim(request, view="expense_batch"):
-            messages.info(request,
-                          "Those lines were already saved — nothing was "
-                          "recorded a second time.")
-            return redirect("expense_list")
-
         post = request.POST
-        fund = Department.objects.filter(pk=post.get("department") or 0).first()
+        fund = _resolve_batch_fund(post)
         when = _parse_date(post.get("date"))
+        draft = _batch_draft_from_post(post, fund=fund)
+
+        # Validate before claiming the idempotency token — a missing fund/date
+        # must not burn the token or wipe the typed lines.
         if fund is None or when is None:
-            messages.error(request, "Choose the fund and the date first.")
-            return self.render_to_response(self.get_context_data(**kwargs))
+            if fund is None and when is None:
+                messages.error(request, "Choose the fund and the date first.")
+            elif when is None:
+                messages.error(request, "Choose the date first.")
+            else:
+                typed = (post.get("department_label") or "").strip()
+                if typed:
+                    messages.error(
+                        request,
+                        f'Pick the fund from the suggestions — “{typed}” is '
+                        f"not linked yet. Click the matching fund in the list.")
+                else:
+                    messages.error(
+                        request,
+                        "Choose the fund first — type a name and pick it from "
+                        "the suggestions.")
+            return self._redisplay(request, draft, **kwargs)
 
         vendor = None
         if (post.get("vendor") or "").isdigit():
@@ -4394,6 +4498,22 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
                 "voucher_no": (_at(line_vouchers, i) or "").strip() or None,
             })
 
+        has_line = any(
+            (ln.get("description") or "").strip() and str(ln.get("amount") or "").strip()
+            for ln in lines)
+        if not has_line:
+            messages.error(request, "No lines had both a description and an amount.")
+            return self._redisplay(request, draft, **kwargs)
+
+        # A batch sent twice — the double click on a slow save — is one batch.
+        # Claim only after the form is worth saving, so a validation miss does
+        # not burn the token.
+        if not idempotency.claim(request, view="expense_batch"):
+            messages.info(request,
+                          "Those lines were already saved — nothing was "
+                          "recorded a second time.")
+            return redirect(f"{reverse('expense_list')}?batch_cleared=1")
+
         try:
             created = expense_svc.record_batch(
                 header=header, lines=lines, user=request.user,
@@ -4403,11 +4523,11 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
             from core.utils import log_exception as _lx
             _lx("cashbook/views.py")
             messages.error(request, f"Nothing was saved — {exc}")
-            return self.render_to_response(self.get_context_data(**kwargs))
+            return self._redisplay(request, draft, **kwargs)
 
         if not created:
             messages.error(request, "No lines had both a description and an amount.")
-            return self.render_to_response(self.get_context_data(**kwargs))
+            return self._redisplay(request, draft, **kwargs)
 
         # Unlinked rows include principal lines and any shared batch charge.
         roots = [e for e in created if e.charge_for_id is None]
@@ -4420,4 +4540,5 @@ class ExpenseBatchCreate(DataEntryRequiredMixin, TemplateView):
             request,
             f"{len(created)} expense(s) recorded against {fund_label} "
             f"{date_label}.")
-        return redirect("expense_list")
+        # batch_cleared tells the expenses list to drop the localStorage draft.
+        return redirect(f"{reverse('expense_list')}?batch_cleared=1")

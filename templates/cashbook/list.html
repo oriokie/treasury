@@ -1,6 +1,9 @@
 {% extends 'base.html' %}{% load humanize treasury_extras %}
 {% block title %}Expenses · {{ SITE_NAME }}{% endblock %}
 {% block content %}
+{% if request.GET.batch_cleared %}
+<script>try{localStorage.removeItem("treasury.expense_batch.draft.v1");}catch(e){}</script>
+{% endif %}
 <div class="rpt-mast">
   <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap">
     <div>

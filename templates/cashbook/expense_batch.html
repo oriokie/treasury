@@ -51,10 +51,12 @@
           <input type="date" name="date" id="bDate" class="field" value="{{ today|date:'Y-m-d' }}" required></div>
         <div class="form-row"><label for="bFundSearch">Fund / department</label>
           <div class="pos-rel">
-            <input id="bFundSearch" class="field" autocomplete="off" placeholder="Start typing a fund…">
+            <input id="bFundSearch" name="department_label" class="field" autocomplete="off"
+                   placeholder="Start typing a fund…" aria-autocomplete="list">
             <div class="ac-box" id="bFundAc"></div>
           </div>
-          <input type="hidden" name="department" id="bFund" required>
+          <input type="hidden" name="department" id="bFund" value="">
+          <div class="help">Type a name, then click the matching fund in the list.</div>
           <div class="help" id="bBal" style="display:none"></div></div>
         <div class="form-row"><label for="bClaimant">Claimant</label>
           <input type="text" name="claimant" id="bClaimant" class="field" maxlength="120"
@@ -139,6 +141,7 @@
   </form>
 </div>
 
+{% if batch_draft %}{{ batch_draft|json_script:"xb-server-draft" }}{% endif %}
 <script>
 const fundUrl="{% url 'fund_search' %}", balUrl="{% url 'department_balance' %}";
 const DRAFT_KEY="treasury.expense_batch.draft.v1";
@@ -149,6 +152,7 @@ const vendorOptions=`{% for v in vendors %}<option value="{{ v.id }}">{{ v.name|
 
 function wireFundSearch(searchEl, hiddenEl, acEl, balEl){
   let ft=null;
+  let lastResults=[];
   async function showBal(){
     if(!balEl) return;
     if(!hiddenEl.value){ balEl.style.display="none"; return; }
@@ -158,23 +162,39 @@ function wireFundSearch(searchEl, hiddenEl, acEl, balEl){
       balEl.style.display="block";
     }catch(e){ balEl.style.display="none"; }
   }
+  function pick(r){
+    searchEl.value=r.label; hiddenEl.value=r.id; acEl.style.display="none";
+    showBal(); markOverride(searchEl.closest("tr")); scheduleDraft();
+  }
+  function resolveTyped(){
+    if(hiddenEl.value) return true;
+    const q=(searchEl.value||"").trim().toLowerCase();
+    if(!q || !lastResults.length) return false;
+    const exact=lastResults.filter(r=>(r.label||"").toLowerCase()===q);
+    const hit=exact.length===1?exact[0]
+      :(lastResults.length===1?lastResults[0]:null);
+    if(!hit) return false;
+    pick(hit); return true;
+  }
   searchEl.addEventListener("input",()=>{ clearTimeout(ft); hiddenEl.value="";
     if(balEl) balEl.style.display="none";
     scheduleDraft();
     ft=setTimeout(async()=>{ try{
       const d=await (await fetch(fundUrl+"?scope=expense&q="+encodeURIComponent(searchEl.value.trim()))).json();
-      acEl.innerHTML=""; if(!d.results.length){ acEl.style.display="none"; return; }
-      d.results.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
+      lastResults=d.results||[];
+      acEl.innerHTML=""; if(!lastResults.length){ acEl.style.display="none"; return; }
+      lastResults.forEach(r=>{ const it=document.createElement("div"); it.className="ac-item";
         it.innerHTML=`${r.label} <span class="muted">· ${r.tag}</span>`;
-        it.addEventListener("mousedown",e=>{ e.preventDefault();
-          searchEl.value=r.label; hiddenEl.value=r.id; acEl.style.display="none"; showBal();
-          markOverride(searchEl.closest("tr")); scheduleDraft(); });
+        it.addEventListener("mousedown",e=>{ e.preventDefault(); pick(r); });
         acEl.appendChild(it); });
       acEl.style.display="block";
     }catch(e){ acEl.style.display="none"; } },160);
   });
-  searchEl.addEventListener("blur",()=>setTimeout(()=>acEl.style.display="none",150));
-  return {showBal};
+  searchEl.addEventListener("blur",()=>setTimeout(()=>{
+    resolveTyped();
+    acEl.style.display="none";
+  },150));
+  return {showBal, resolveTyped};
 }
 
 function markOverride(ovrTr){
@@ -209,7 +229,7 @@ function addRow(seed){
           <input type="date" name="line_date" class="field"></div>
         <div class="form-row"><label>Fund / department</label>
           <div class="pos-rel">
-            <input type="text" class="field xb-fund-search" autocomplete="off" placeholder="— use default —">
+            <input type="text" name="line_department_label" class="field xb-fund-search" autocomplete="off" placeholder="— use default —">
             <div class="ac-box xb-fund-ac"></div>
           </div>
           <input type="hidden" name="line_department" class="xb-fund-id" value=""></div>
@@ -396,9 +416,28 @@ function applyDraft(draft){
 document.getElementById("xbForm").addEventListener("submit",function(e){
   const btn=document.getElementById("xbSave");
   if(this.dataset.sent==="1"){ e.preventDefault(); return; }
+  const fundWire=window.__xbFundWire;
+  if(fundWire && fundWire.resolveTyped) fundWire.resolveTyped();
+  if(!document.getElementById("bFund").value){
+    e.preventDefault();
+    const typed=(document.getElementById("bFundSearch").value||"").trim();
+    alert(typed
+      ? 'Pick the fund from the suggestions — “'+typed+'” is not linked yet. Click the matching fund in the list.'
+      : "Choose the fund first — type a name and pick it from the suggestions.");
+    document.getElementById("bFundSearch").focus();
+    return;
+  }
+  if(!document.getElementById("bDate").value){
+    e.preventDefault();
+    alert("Choose the date first.");
+    document.getElementById("bDate").focus();
+    return;
+  }
+  // Keep the draft until a successful save clears it on the expenses list.
+  // Clearing here used to wipe every line when the server rejected the post.
+  saveDraft();
   this.dataset.sent="1";
   btn.disabled=true; btn.textContent="Saving…";
-  clearDraft();
 });
 document.getElementById("xbAdd").addEventListener("click",()=>{ addRow(); scheduleDraft(); });
 document.getElementById("xbDiscardDraft").addEventListener("click",()=>{
@@ -425,10 +464,18 @@ const fs=document.getElementById("bFundSearch"), fh=document.getElementById("bFu
       fa=document.getElementById("bFundAc"), fb=document.getElementById("bBal");
 window.__xbFundWire=wireFundSearch(fs, fh, fa, fb);
 
-const restored=applyDraft(readDraft());
+function readServerDraft(){
+  const el=document.getElementById("xb-server-draft");
+  if(!el) return null;
+  try{ return JSON.parse(el.textContent); }catch(e){ return null; }
+}
+const restored=applyDraft(readServerDraft()) || applyDraft(readDraft());
 if(!restored){
   for(let i=0;i<4;i++) addRow();
   total();
+}else if(readServerDraft()){
+  // Failed save — keep localStorage in sync with what the server echoed back.
+  saveDraft();
 }
 </script>
 <style>
